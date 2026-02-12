@@ -1,0 +1,42 @@
+platforms:
+  instagram:
+    display_name: Instagram
+    post_types: [image, video, carousel, reel, story]
+    supports_comments: true
+    supports_engagement_refresh: true
+    default_max_posts: 2000
+
+  tiktok:
+    display_name: TikTok
+    post_types: [video]
+    supports_comments: true
+    supports_engagement_refresh: true
+    default_max_posts: 2000
+
+  reddit:
+    display_name: Reddit
+    post_types: [text, image, video, link]
+    supports_comments: true
+    supports_engagement_refresh: true
+    default_max_posts: 2000
+
+  twitter:
+    display_name: Twitter / X
+    post_types: [text, image, video]
+    supports_comments: true
+    supports_engagement_refresh: true
+    default_max_posts: 2000
+
+  youtube:
+    display_name: YouTube
+    post_types: [video]
+    supports_comments: true
+    supports_engagement_refresh: true
+    default_max_posts: 1000
+
+  linkedin:
+    display_name: LinkedIn
+    post_types: [text, image, video, article]
+    supports_comments: true
+    supports_engagement_refresh: false
+    default_max_posts: 500

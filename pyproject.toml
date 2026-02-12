@@ -1,0 +1,27 @@
+[project]
+name = "social-listening-platform"
+version = "0.1.0"
+description = "Conversational social listening platform with AI-powered insights"
+requires-python = ">=3.12"
+dependencies = [
+    "google-adk>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sse-starlette>=2.0.0",
+    "google-cloud-bigquery>=3.25.0",
+    "google-cloud-firestore>=2.19.0",
+    "google-cloud-storage>=2.18.0",
+    "google-cloud-tasks>=2.16.0",
+    "pydantic-settings>=2.5.0",
+    "pydantic>=2.9.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+chat = "scripts.chat:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
