@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces — faint indigo tint instead of flat grey */
+  --color-bg-primary: #F8F9FC;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-surface-secondary: #F1F3F9;
+  --color-border-default: #DFE3EE;
+
+  /* Text — softer than pure black */
+  --color-text-primary: #1E2340;
+  --color-text-secondary: #5E6488;
+  --color-text-tertiary: #9098B8;
+
+  /* Accent */
+  --color-accent: #4F46E5;
+  --color-accent-subtle: #EEF2FF;
+  --color-accent-hover: #4338CA;
+
+  /* Sentiment */
+  --color-sentiment-positive: #059669;
+  --color-sentiment-negative: #DC2626;
+  --color-sentiment-neutral: #6B7294;
+  --color-sentiment-mixed: #D97706;
+
+  /* Status */
+  --color-status-active: #4F46E5;
+  --color-status-complete: #059669;
+  --color-status-warning: #D97706;
+  --color-status-error: #DC2626;
+
+  /* Platforms */
+  --color-platform-instagram: #E4405F;
+  --color-platform-tiktok: #1E2340;
+  --color-platform-twitter: #1DA1F2;
+  --color-platform-reddit: #FF4500;
+  --color-platform-youtube: #FF0000;
+
+  /* Fonts */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-primary);
+  margin: 0;
+  min-width: 1280px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}

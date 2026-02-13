@@ -43,9 +43,21 @@ class BQClient:
                     query_params.append(
                         bigquery.ArrayQueryParameter(k, "STRING", v)
                     )
+                elif isinstance(v, bool):
+                    query_params.append(
+                        bigquery.ScalarQueryParameter(k, "BOOL", v)
+                    )
+                elif isinstance(v, int):
+                    query_params.append(
+                        bigquery.ScalarQueryParameter(k, "INT64", v)
+                    )
+                elif isinstance(v, float):
+                    query_params.append(
+                        bigquery.ScalarQueryParameter(k, "FLOAT64", v)
+                    )
                 else:
                     query_params.append(
-                        bigquery.ScalarQueryParameter(k, "STRING", v)
+                        bigquery.ScalarQueryParameter(k, "STRING", str(v))
                     )
             job_config.query_parameters = query_params
 
