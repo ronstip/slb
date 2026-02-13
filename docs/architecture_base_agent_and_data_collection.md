@@ -120,7 +120,7 @@ CREATE TABLE social_listening.collections (
           "https://tiktok.com/@drunkmelephant"
         ],
         "time_range": {"start": "2025-01-01", "end": "2025-04-01"},
-        "max_posts_per_platform": 2000,
+        "max_calls": 2,
         "include_comments": true,
         "geo_scope": "US"
       }
@@ -431,6 +431,8 @@ FROM AI.GENERATE_EMBEDDING(
 
 Writes to three BQ tables: `posts`, `post_engagements`, `channels`. Downloads media to GCS. Knows nothing about enrichment or embeddings. Runs in a background thread in dev mode. Checks for cancellation between batches.
 
+Platforms and keywords are collected in parallel via `ThreadPoolExecutor`. `wrapper.collect_all()` returns `list[Batch]` (not an iterator), so all API work finishes before BQ inserts begin.
+
 ```python
 def run_collection(collection_id: str):
     collection = get_collection(collection_id)
@@ -441,7 +443,10 @@ def run_collection(collection_id: str):
         config=collection['config']
     )
 
-    for batch in wrapper.collect_all():
+    # collect_all() returns list[Batch] — parallel collection is done inside adapters
+    batches: list[Batch] = wrapper.collect_all()
+
+    for batch in batches:
         # Check for cancellation before processing each batch
         status = get_firestore_status(collection_id)
         if status.get("status") == "cancelled":
@@ -464,17 +469,21 @@ def run_collection(collection_id: str):
 
 Single entry point. Receives the full config and routes to the correct adapter per platform.
 
+Adapters handle parallelism internally (e.g., ThreadPoolExecutor over platforms and keywords). The wrapper simply delegates and aggregates results.
+
 ```python
 class DataProviderWrapper:
     def __init__(self, providers: list[DataProviderAdapter], config: dict):
         self.providers = providers
         self.config = config
 
-    def collect_all(self) -> Iterator[Batch]:
+    def collect_all(self) -> list[Batch]:
+        batches: list[Batch] = []
         for platform in self.config['platforms']:
             adapter = self._get_adapter(platform)
-            for raw_batch in adapter.collect(self.config):
-                yield self._normalize(raw_batch, platform)
+            raw_batches = adapter.collect(self.config)  # returns list[RawBatch]
+            batches.extend(self._normalize(rb, platform) for rb in raw_batches)
+        return batches
 
     def fetch_engagements(self, platform: str, post_urls: list[str]) -> list[dict]:
         adapter = self._get_adapter(platform)
@@ -534,22 +543,38 @@ class VetricAdapter(DataProviderAdapter):
     """
     Wraps Vetric's social data API.
     Typically covers platforms or data types not available through BrightData.
+    Uses ThreadPoolExecutor for parallel collection at both platform and keyword levels.
     """
 
     def supported_platforms(self) -> list[str]:
         return ["instagram", "tiktok", "facebook"]
 
-    def collect(self, config: dict) -> Iterator[RawBatch]:
-        for platform in config['platforms']:
-            if platform not in self.supported_platforms():
-                continue
+    def collect(self, config: dict) -> list[RawBatch]:
+        """Collect posts in parallel across platforms and keywords.
+        Returns list[RawBatch] (not an iterator)."""
+        platforms = [p for p in config['platforms'] if p in self.supported_platforms()]
 
-            query_id = self._create_query(platform, config)
+        def _collect_keyword(platform: str, keyword: str) -> list[RawBatch]:
+            query_id = self._create_query(platform, keyword, config)
+            batches = []
             for page in self._fetch_results(query_id):
-                yield RawBatch(
+                batches.append(RawBatch(
                     posts=self._parse_posts(page, platform),
                     channels=self._extract_channels(page, platform)
-                )
+                ))
+            return batches
+
+        all_batches: list[RawBatch] = []
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for platform in platforms:
+                for keyword in config['keywords']:
+                    futures.append(
+                        executor.submit(_collect_keyword, platform, keyword)
+                    )
+            for future in as_completed(futures):
+                all_batches.extend(future.result())
+        return all_batches
 
     def fetch_engagements(self, post_urls: list[str]) -> list[dict]:
         results = self._api.get_post_metrics(post_urls)
@@ -577,6 +602,10 @@ def _significant_change(prev: Channel, curr: Channel) -> bool:
         return True
     return abs(curr.subscribers - prev.subscribers) > prev.subscribers * 0.05
 ```
+
+### Error Handling
+
+In the Collection Worker, every API call site catches both `VetricAPIError` and `requests.RequestException`. This ensures that transient network errors (timeouts, connection resets, DNS failures) are handled the same way as provider-specific errors -- logged, retried where appropriate, and surfaced in Firestore status if retries are exhausted.
 
 ---
 
@@ -998,7 +1027,7 @@ User: "How is Glossier perceived vs Drunk Elephant on Instagram and TikTok?"
 → design_research()
   → config: platforms=[instagram, tiktok], keywords=[glossier, drunk elephant],
     channel_urls=[instagram.com/glossier, tiktok.com/@drunkmelephant],
-    time_range=90d, max_posts=5/platform (dev default)
+    time_range=90d, max_calls=2/keyword (dev default)
   "I'll collect posts from both platforms. Proceed?"
 
 → "Yes" → start_collection(config)

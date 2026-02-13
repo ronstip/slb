@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -8,9 +9,14 @@ from dotenv import load_dotenv
 # Load .env into os.environ so google-genai SDK can find credentials
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+# Initialize Firebase Admin SDK (must happen before auth imports use it)
+from api.auth.firebase_init import init_firebase
+
+init_firebase()
+
 import requests as http_requests
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from google.adk.runners import Runner
@@ -19,6 +25,7 @@ from google.genai import types
 from sse_starlette.sse import EventSourceResponse
 
 from api.agent.agent import APP_NAME, create_runner
+from api.auth.dependencies import CurrentUser, get_current_user
 from api.schemas.requests import ChatRequest, CreateCollectionRequest
 from api.schemas.responses import CollectionStatusResponse, FeedPostResponse, FeedResponse
 from api.services.collection_service import create_collection_from_request
@@ -49,11 +56,47 @@ def get_runner() -> Runner:
     return _runner
 
 
+# ---------------------------------------------------------------------------
+# Auth helper
+# ---------------------------------------------------------------------------
+
+
+def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
+    """Check if the user can access a collection (user-scoped only for now)."""
+    return collection_status.get("user_id") == user.uid
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+
+@app.get("/me")
+async def get_me(user: CurrentUser = Depends(get_current_user)):
+    """Return the current user's profile."""
+    org_name = None
+    if user.org_id:
+        settings = get_settings()
+        fs = FirestoreClient(settings)
+        org = fs.get_org(user.org_id)
+        if org:
+            org_name = org.get("name")
+
+    return {
+        "uid": user.uid,
+        "email": user.email,
+        "display_name": user.display_name,
+        "org_id": user.org_id,
+        "org_role": user.org_role,
+        "org_name": org_name,
+    }
+
+
 @app.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """SSE endpoint — streams agent events to the client."""
     runner = get_runner()
-    user_id = request.user_id
+    user_id = user.uid
     session_id = request.session_id or str(uuid4())
 
     # Get or create session
@@ -71,6 +114,7 @@ async def chat(request: ChatRequest):
             session_id=session_id,
             state={
                 "user_id": user_id,
+                "org_id": user.org_id,
                 "session_id": session_id,
                 "selected_sources": request.selected_sources or [],
             },
@@ -120,25 +164,27 @@ async def chat(request: ChatRequest):
 
 
 @app.post("/collections")
-async def create_collection(request: CreateCollectionRequest):
+async def create_collection(
+    request: CreateCollectionRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
     """Create a collection directly from the frontend modal (bypasses agent)."""
-    result = create_collection_from_request(request)
+    result = create_collection_from_request(request, user_id=user.uid, org_id=user.org_id)
     return result
 
 
 @app.get("/collections")
-async def list_collections(user_id: str = Query(default="default_user")):
-    """List all collections for a user."""
+async def list_collections(user: CurrentUser = Depends(get_current_user)):
+    """List all collections for the authenticated user."""
     settings = get_settings()
     fs = FirestoreClient(settings)
 
     db = fs._db
 
-    # Simple filter by user_id (no composite index required).
-    # Sort in Python to avoid needing a Firestore composite index.
+    # User-scoped only: filter by user_id derived from token
     docs = (
         db.collection("collection_status")
-        .where("user_id", "==", user_id)
+        .where("user_id", "==", user.uid)
         .stream()
     )
 
@@ -176,6 +222,7 @@ async def list_collections(user_id: str = Query(default="default_user")):
 @app.get("/collections/{collection_id}/posts", response_model=FeedResponse)
 async def get_collection_posts(
     collection_id: str,
+    user: CurrentUser = Depends(get_current_user),
     sort: str = Query(default="engagement"),
     platform: str = Query(default="all"),
     sentiment: str = Query(default="all"),
@@ -184,6 +231,15 @@ async def get_collection_posts(
 ):
     """Paginated enriched posts for the Feed."""
     settings = get_settings()
+
+    # Verify access
+    fs = FirestoreClient(settings)
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if not _can_access_collection(user, status):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     bq = BQClient(settings)
 
     # Build query dynamically
@@ -318,13 +374,18 @@ async def get_collection_posts(
 
 
 @app.get("/collection/{collection_id}", response_model=CollectionStatusResponse)
-async def get_collection_status(collection_id: str):
+async def get_collection_status(
+    collection_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
     """Read collection status from Firestore."""
     settings = get_settings()
     fs = FirestoreClient(settings)
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
+    if not _can_access_collection(user, status):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     return CollectionStatusResponse(
         collection_id=collection_id,
@@ -335,6 +396,104 @@ async def get_collection_status(collection_id: str):
         error_message=status.get("error_message"),
         config=status.get("config"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Organization endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/orgs")
+async def create_org(
+    request: dict,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Create an organization. The creator becomes the owner."""
+    name = request.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Organization name is required")
+
+    if user.org_id:
+        raise HTTPException(status_code=400, detail="You already belong to an organization")
+
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+
+    domain = request.get("domain", "").strip().lower() or None
+
+    # Check domain uniqueness if provided
+    if domain:
+        existing = fs.find_org_by_domain(domain)
+        if existing:
+            raise HTTPException(status_code=409, detail="An organization with this domain already exists")
+
+    slug = name.lower().replace(" ", "-")
+
+    org_id = fs.create_org({
+        "name": name,
+        "slug": slug,
+        "owner_uid": user.uid,
+        "domain": domain,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    # Update the user's org membership
+    fs.update_user(user.uid, org_id=org_id, org_role="owner")
+
+    return {"org_id": org_id, "name": name, "slug": slug, "domain": domain}
+
+
+@app.get("/orgs/me")
+async def get_my_org(user: CurrentUser = Depends(get_current_user)):
+    """Get the current user's organization details and member list."""
+    if not user.org_id:
+        raise HTTPException(status_code=404, detail="You are not in an organization")
+
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+
+    org = fs.get_org(user.org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    members = fs.list_org_members(user.org_id)
+    member_list = [
+        {
+            "uid": m["uid"],
+            "email": m.get("email"),
+            "display_name": m.get("display_name"),
+            "role": m.get("org_role"),
+        }
+        for m in members
+    ]
+
+    return {
+        "org_id": user.org_id,
+        "name": org.get("name"),
+        "slug": org.get("slug"),
+        "domain": org.get("domain"),
+        "members": member_list,
+    }
+
+
+@app.delete("/orgs/me/leave")
+async def leave_org(user: CurrentUser = Depends(get_current_user)):
+    """Leave the current organization."""
+    if not user.org_id:
+        raise HTTPException(status_code=400, detail="You are not in an organization")
+
+    if user.org_role == "owner":
+        raise HTTPException(status_code=400, detail="Organization owner cannot leave. Transfer ownership first.")
+
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+    fs.update_user(user.uid, org_id=None, org_role=None)
+    return {"status": "left"}
+
+
+# ---------------------------------------------------------------------------
+# Public / unauthenticated endpoints
+# ---------------------------------------------------------------------------
 
 
 @app.get("/health")
@@ -402,6 +561,11 @@ async def proxy_media(url: str = Query(...)):
     except Exception as e:
         logger.exception("Media proxy error: %s", url)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 
 def _extract_event_data(event) -> dict | None:

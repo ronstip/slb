@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS social_listening.collections (
     collection_id STRING NOT NULL,
     user_id STRING NOT NULL,
+    org_id STRING,
     session_id STRING,
     original_question STRING NOT NULL,
     config JSON NOT NULL,

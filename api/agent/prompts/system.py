@@ -42,6 +42,7 @@ Follow this natural flow:
 
 The following are available in the session context:
 - `user_id`: The authenticated user's ID
+- `org_id`: The user's organization ID (may be empty if not in an org)
 - `session_id`: The current conversation session ID
 
 Use these when calling `start_collection`.

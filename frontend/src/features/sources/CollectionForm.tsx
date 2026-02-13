@@ -9,6 +9,8 @@ import { PLATFORMS, PLATFORM_LABELS } from '../../lib/constants.ts';
 interface CollectionFormProps {
   prefill?: CollectionConfig;
   onClose: () => void;
+  variant?: 'modal' | 'inline';
+  onSubmitSuccess?: () => void;
 }
 
 const TIME_RANGES = [
@@ -18,9 +20,9 @@ const TIME_RANGES = [
   { label: '1 year', value: 365 },
 ];
 
-const MAX_POSTS_OPTIONS = [5, 50, 500, 1000, 2000, 5000];
+const MAX_CALLS_OPTIONS = [1, 2, 3, 5];
 
-export function CollectionForm({ prefill, onClose }: CollectionFormProps) {
+export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSuccess }: CollectionFormProps) {
   const [description, setDescription] = useState(prefill?.keywords?.join(', ') || '');
   const [platforms, setPlatforms] = useState<string[]>(prefill?.platforms || ['instagram', 'tiktok']);
   const [keywords, setKeywords] = useState<string[]>(prefill?.keywords || []);
@@ -33,9 +35,10 @@ export function CollectionForm({ prefill, onClose }: CollectionFormProps) {
       : 90,
   );
   const [geoScope, setGeoScope] = useState(prefill?.geo_scope || 'global');
-  const [maxPosts, setMaxPosts] = useState(prefill?.max_posts_per_platform || 5);
+  const [maxCalls, setMaxCalls] = useState(prefill?.max_calls || 2);
   const [includeComments, setIncludeComments] = useState(prefill?.include_comments ?? true);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const addSource = useSourcesStore((s) => s.addSource);
   const addSystemMessage = useChatStore((s) => s.addSystemMessage);
@@ -79,6 +82,7 @@ export function CollectionForm({ prefill, onClose }: CollectionFormProps) {
   const handleSubmit = async () => {
     if (platforms.length === 0) return;
     setSubmitting(true);
+    setError(null);
 
     try {
       const req: CreateCollectionRequest = {
@@ -88,7 +92,7 @@ export function CollectionForm({ prefill, onClose }: CollectionFormProps) {
         channel_urls: channelUrls.length > 0 ? channelUrls : undefined,
         time_range_days: timeRangeDays,
         geo_scope: geoScope,
-        max_posts_per_platform: maxPosts,
+        max_calls: maxCalls,
         include_comments: includeComments,
       };
 
@@ -105,7 +109,7 @@ export function CollectionForm({ prefill, onClose }: CollectionFormProps) {
             start: new Date(Date.now() - timeRangeDays * 86_400_000).toISOString().split('T')[0],
             end: new Date().toISOString().split('T')[0],
           },
-          max_posts_per_platform: maxPosts,
+          max_calls: maxCalls,
           include_comments: includeComments,
           geo_scope: geoScope,
         },
@@ -123,15 +127,17 @@ export function CollectionForm({ prefill, onClose }: CollectionFormProps) {
       );
 
       onClose();
+      onSubmitSuccess?.();
     } catch (err) {
-      console.error('Failed to create collection:', err);
+      const message = err instanceof Error ? err.message : 'Failed to create collection';
+      setError(message);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="max-h-[70vh] overflow-y-auto px-6 py-4">
+    <div className={`overflow-y-auto px-6 py-4 ${variant === 'modal' ? 'max-h-[70vh]' : ''}`}>
       {/* Description */}
       <div className="mb-4">
         <label className="mb-1 block text-xs font-medium text-text-secondary">Description</label>
@@ -254,14 +260,14 @@ export function CollectionForm({ prefill, onClose }: CollectionFormProps) {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary">Max Posts / Platform</label>
+          <label className="mb-1 block text-xs font-medium text-text-secondary">API Calls / Keyword</label>
           <select
-            value={maxPosts}
-            onChange={(e) => setMaxPosts(Number(e.target.value))}
+            value={maxCalls}
+            onChange={(e) => setMaxCalls(Number(e.target.value))}
             className="w-full rounded-xl border border-border-default/60 bg-bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/50"
           >
-            {MAX_POSTS_OPTIONS.map((n) => (
-              <option key={n} value={n}>{n.toLocaleString()}</option>
+            {MAX_CALLS_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
             ))}
           </select>
         </div>
@@ -280,13 +286,20 @@ export function CollectionForm({ prefill, onClose }: CollectionFormProps) {
         </label>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-300/50 bg-red-50/50 px-4 py-2.5 text-xs text-red-600 dark:border-red-500/20 dark:bg-red-500/5 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-border-default/50 pt-4">
         <button
           onClick={onClose}
           className="rounded-xl px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-surface-secondary"
         >
-          Cancel
+          {variant === 'inline' ? 'Dismiss' : 'Cancel'}
         </button>
         <button
           onClick={handleSubmit}

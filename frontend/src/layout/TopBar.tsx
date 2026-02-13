@@ -1,42 +1,23 @@
-import { BarChart3, Plus, Settings, User } from 'lucide-react';
+import { BarChart3, Building2, LogOut, Plus, Settings } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../auth/useAuth.ts';
-import { useUIStore } from '../stores/ui-store.ts';
 
 export function TopBar() {
-  const { user } = useAuth();
-  const userId = useUIStore((s) => s.userId);
-  const setUserId = useUIStore((s) => s.setUserId);
+  const { user, profile, signOut, devMode } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [editingId, setEditingId] = useState(false);
-  const [draftId, setDraftId] = useState(userId);
   const menuRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
-        setEditingId(false);
       }
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  useEffect(() => {
-    if (editingId) inputRef.current?.focus();
-  }, [editingId]);
-
-  const handleSaveId = () => {
-    const trimmed = draftId.trim();
-    if (trimmed) {
-      setUserId(trimmed);
-    }
-    setEditingId(false);
-  };
-
-  const displayInitial = user?.displayName?.[0] || userId[0]?.toUpperCase() || '?';
+  const displayInitial = user?.displayName?.[0] || profile?.display_name?.[0] || '?';
 
   return (
     <header className="flex h-12 shrink-0 items-center border-b border-border-default/50 bg-bg-surface px-4">
@@ -72,7 +53,7 @@ export function TopBar() {
         {/* User avatar */}
         <div className="relative" ref={menuRef}>
           <button
-            onClick={() => { setUserMenuOpen(!userMenuOpen); setDraftId(userId); }}
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-accent-subtle"
           >
             {user?.photoURL ? (
@@ -92,51 +73,31 @@ export function TopBar() {
             <div className="absolute right-0 top-full z-50 mt-1.5 w-64 rounded-xl border border-border-default/60 bg-bg-surface py-1 shadow-lg">
               <div className="border-b border-border-default/60 px-3 py-2.5">
                 <p className="text-sm font-medium text-text-primary">
-                  {user?.displayName || 'Dev Mode'}
+                  {user?.displayName || profile?.display_name || 'Dev Mode'}
                 </p>
-                {user?.email && (
-                  <p className="text-xs text-text-secondary">{user.email}</p>
+                {(user?.email || profile?.email) && (
+                  <p className="text-xs text-text-secondary">{user?.email || profile?.email}</p>
                 )}
 
-                {/* User ID — editable */}
-                <div className="mt-2">
-                  <div className="flex items-center gap-1.5">
-                    <User className="h-3 w-3 text-text-tertiary" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
-                      User ID
-                    </span>
-                  </div>
-                  {editingId ? (
-                    <div className="mt-1 flex gap-1.5">
-                      <input
-                        ref={inputRef}
-                        type="text"
-                        value={draftId}
-                        onChange={(e) => setDraftId(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveId();
-                          if (e.key === 'Escape') setEditingId(false);
-                        }}
-                        className="min-w-0 flex-1 rounded-lg border border-border-default/60 bg-bg-surface-secondary px-2 py-1 text-xs text-text-primary outline-none focus:border-accent"
-                      />
-                      <button
-                        onClick={handleSaveId}
-                        className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => { setEditingId(true); setDraftId(userId); }}
-                      className="mt-1 flex w-full items-center justify-between rounded-lg bg-bg-surface-secondary px-2 py-1.5 text-left transition-colors hover:bg-border-default/40"
-                    >
-                      <span className="truncate text-xs font-mono text-text-primary">{userId}</span>
-                      <span className="shrink-0 text-[10px] text-text-tertiary">edit</span>
-                    </button>
-                  )}
+                {/* Organization */}
+                <div className="mt-2 flex items-center gap-1.5">
+                  <Building2 className="h-3 w-3 text-text-tertiary" />
+                  <span className="text-xs text-text-secondary">
+                    {profile?.org_name || 'Personal Workspace'}
+                  </span>
                 </div>
               </div>
+
+              {/* Sign Out */}
+              {!devMode && (
+                <button
+                  onClick={() => { signOut(); setUserMenuOpen(false); }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-bg-surface-secondary"
+                >
+                  <LogOut className="h-3.5 w-3.5 text-text-tertiary" />
+                  Sign Out
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -8,8 +8,16 @@
 export interface ChatRequest {
   message: string;
   session_id?: string;
-  user_id?: string;
   selected_sources?: string[];
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  display_name: string | null;
+  org_id: string | null;
+  org_role: string | null;
+  org_name: string | null;
 }
 
 export interface CreateCollectionRequest {
@@ -19,7 +27,7 @@ export interface CreateCollectionRequest {
   channel_urls?: string[];
   time_range_days: number;
   geo_scope: string;
-  max_posts_per_platform: number;
+  max_calls: number;
   include_comments: boolean;
 }
 
@@ -46,7 +54,7 @@ export interface CollectionConfig {
   keywords: string[];
   channel_urls: string[];
   time_range: { start: string; end: string };
-  max_posts_per_platform: number;
+  max_calls: number;
   include_comments: boolean;
   geo_scope: string;
   video_params?: {

@@ -13,14 +13,12 @@ export interface PollData {
 }
 
 interface UIStore {
-  userId: string;
   sourcesPanelCollapsed: boolean;
   studioPanelCollapsed: boolean;
   collectionModalOpen: boolean;
   collectionModalPrefill: CollectionConfig | null;
   activePoll: PollData | null;
 
-  setUserId: (id: string) => void;
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
   openCollectionModal: (prefill?: CollectionConfig) => void;
@@ -37,26 +35,12 @@ const loadCollapsed = (key: string): boolean => {
   }
 };
 
-const loadString = (key: string, fallback: string): string => {
-  try {
-    return localStorage.getItem(key) || fallback;
-  } catch {
-    return fallback;
-  }
-};
-
 export const useUIStore = create<UIStore>((set) => ({
-  userId: loadString('slb-user-id', 'default_user'),
   sourcesPanelCollapsed: loadCollapsed('sources-collapsed'),
   studioPanelCollapsed: loadCollapsed('studio-collapsed'),
   collectionModalOpen: false,
   collectionModalPrefill: null,
   activePoll: null,
-
-  setUserId: (id) => {
-    localStorage.setItem('slb-user-id', id);
-    set({ userId: id });
-  },
 
   toggleSourcesPanel: () =>
     set((s) => {

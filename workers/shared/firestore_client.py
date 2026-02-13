@@ -14,12 +14,17 @@ class FirestoreClient:
         self._db = firestore.Client(project=self._settings.gcp_project_id)
 
     def create_collection_status(
-        self, collection_id: str, user_id: str, config: dict
+        self,
+        collection_id: str,
+        user_id: str,
+        config: dict,
+        org_id: str | None = None,
     ) -> None:
         doc_ref = self._db.collection("collection_status").document(collection_id)
         doc_ref.set(
             {
                 "user_id": user_id,
+                "org_id": org_id,
                 "status": "pending",
                 "error_message": None,
                 "posts_collected": 0,
@@ -60,3 +65,61 @@ class FirestoreClient:
     def save_session(self, session_id: str, data: dict) -> None:
         doc_ref = self._db.collection("sessions").document(session_id)
         doc_ref.set(data, merge=True)
+
+    # --- User methods ---
+
+    def get_user(self, uid: str) -> dict | None:
+        doc = self._db.collection("users").document(uid).get()
+        if not doc.exists:
+            return None
+        return doc.to_dict()
+
+    def create_user(self, uid: str, data: dict) -> None:
+        self._db.collection("users").document(uid).set(data)
+
+    def update_user(self, uid: str, **fields) -> None:
+        self._db.collection("users").document(uid).update(fields)
+
+    # --- Organization methods ---
+
+    def get_org(self, org_id: str) -> dict | None:
+        doc = self._db.collection("organizations").document(org_id).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["org_id"] = doc.id
+        return data
+
+    def create_org(self, data: dict) -> str:
+        """Create an organization and return its auto-generated ID."""
+        doc_ref = self._db.collection("organizations").document()
+        doc_ref.set(data)
+        return doc_ref.id
+
+    def find_org_by_domain(self, domain: str) -> dict | None:
+        """Find an organization with auto_join_domain matching the given domain."""
+        docs = (
+            self._db.collection("organizations")
+            .where("domain", "==", domain)
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            data["org_id"] = doc.id
+            return data
+        return None
+
+    def list_org_members(self, org_id: str) -> list[dict]:
+        """List all users belonging to an organization."""
+        docs = (
+            self._db.collection("users")
+            .where("org_id", "==", org_id)
+            .stream()
+        )
+        members = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["uid"] = doc.id
+            members.append(data)
+        return members

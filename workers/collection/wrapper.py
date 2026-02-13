@@ -1,5 +1,4 @@
 import logging
-from collections.abc import Iterator
 
 from config.settings import get_settings
 from workers.collection.adapters.base import DataProviderAdapter
@@ -40,16 +39,27 @@ class DataProviderWrapper:
                 return provider
         raise ValueError(f"No adapter supports platform: {platform}")
 
-    def collect_all(self) -> Iterator[Batch]:
-        platforms = self.config.get("platforms", [])
-        for platform in platforms:
+    def collect_all(self) -> list[Batch]:
+        # Adapters handle platform-level parallelism internally.
+        # The wrapper delegates to the first matching adapter.
+        adapters_used: set[int] = set()
+        all_batches: list[Batch] = []
+
+        for platform in self.config.get("platforms", []):
             try:
                 adapter = self._get_adapter(platform)
-                logger.info("Collecting from %s via %s", platform, type(adapter).__name__)
-                for batch in adapter.collect(self.config):
-                    yield batch
             except ValueError as e:
                 logger.warning("Skipping platform %s: %s", platform, e)
+                continue
+
+            # Each adapter already parallelises internally across platforms,
+            # so call collect() once per unique adapter instance.
+            if id(adapter) not in adapters_used:
+                adapters_used.add(id(adapter))
+                logger.info("Collecting via %s", type(adapter).__name__)
+                all_batches.extend(adapter.collect(self.config))
+
+        return all_batches
 
     def fetch_engagements(self, platform: str, post_urls: list[str]) -> list[dict]:
         adapter = self._get_adapter(platform)

@@ -15,6 +15,7 @@ def start_collection(
     original_question: str,
     user_id: str,
     session_id: str,
+    org_id: str = "",
 ) -> dict:
     """Start a data collection experiment by creating the collection record and dispatching the worker.
 
@@ -27,6 +28,7 @@ def start_collection(
         original_question: The user's original research question.
         user_id: The user's ID from the session context.
         session_id: The current session ID from the session context.
+        org_id: The user's organization ID from the session context (may be empty).
 
     Returns:
         A dictionary with the collection_id and status.
@@ -43,6 +45,8 @@ def start_collection(
     else:
         config = config_json
 
+    resolved_org_id = org_id if org_id else None
+
     # Insert collection record into BigQuery
     bq.insert_rows(
         "collections",
@@ -50,6 +54,7 @@ def start_collection(
             {
                 "collection_id": collection_id,
                 "user_id": user_id,
+                "org_id": resolved_org_id,
                 "session_id": session_id,
                 "original_question": original_question,
                 "config": json.dumps(config),
@@ -58,7 +63,7 @@ def start_collection(
     )
 
     # Create Firestore status document
-    fs.create_collection_status(collection_id, user_id, config)
+    fs.create_collection_status(collection_id, user_id, config, org_id=resolved_org_id)
 
     # Dispatch worker
     if settings.is_dev:

@@ -14,7 +14,11 @@ from workers.shared.firestore_client import FirestoreClient
 logger = logging.getLogger(__name__)
 
 
-def create_collection_from_request(request: CreateCollectionRequest) -> dict:
+def create_collection_from_request(
+    request: CreateCollectionRequest,
+    user_id: str,
+    org_id: str | None = None,
+) -> dict:
     """Create a collection from a frontend modal request.
 
     This replicates the logic from start_collection tool but is callable
@@ -37,7 +41,7 @@ def create_collection_from_request(request: CreateCollectionRequest) -> dict:
             "start": start_date.strftime("%Y-%m-%d"),
             "end": end_date.strftime("%Y-%m-%d"),
         },
-        "max_posts_per_platform": request.max_posts_per_platform,
+        "max_calls": request.max_calls,
         "include_comments": request.include_comments,
         "geo_scope": request.geo_scope,
     }
@@ -48,7 +52,8 @@ def create_collection_from_request(request: CreateCollectionRequest) -> dict:
         [
             {
                 "collection_id": collection_id,
-                "user_id": request.user_id,
+                "user_id": user_id,
+                "org_id": org_id,
                 "session_id": "",
                 "original_question": request.description,
                 "config": json.dumps(config),
@@ -57,7 +62,7 @@ def create_collection_from_request(request: CreateCollectionRequest) -> dict:
     )
 
     # Create Firestore status document
-    fs.create_collection_status(collection_id, request.user_id, config)
+    fs.create_collection_status(collection_id, user_id, config, org_id=org_id)
 
     # Dispatch worker
     if settings.is_dev:

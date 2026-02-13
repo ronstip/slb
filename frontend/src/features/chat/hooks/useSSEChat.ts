@@ -2,18 +2,16 @@ import { useCallback, useRef } from 'react';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
-import { useUIStore } from '../../../stores/ui-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
 import { getToolDisplayText, isDesignResearchResult, isInsightResult, isProgressResult } from '../../../lib/event-parser.ts';
-import type { CollectionConfig, InsightData } from '../../../api/types.ts';
+import type { InsightData } from '../../../api/types.ts';
 
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
   const chatStore = useChatStore();
-  const openCollectionModal = useUIStore((s) => s.openCollectionModal);
   const addArtifact = useStudioStore((s) => s.addArtifact);
 
   const sendMessage = useCallback(
@@ -33,13 +31,11 @@ export function useSSEChat() {
       const selectedSources = useSourcesStore.getState().sources
         .filter((s) => s.selected)
         .map((s) => s.collectionId);
-      const userId = useUIStore.getState().userId;
 
       try {
         const stream = streamChat(
           {
             message: text,
-            user_id: userId,
             session_id: chatStore.sessionId ?? undefined,
             selected_sources: selectedSources.length > 0 ? selectedSources : undefined,
           },
@@ -72,7 +68,6 @@ export function useSSEChat() {
                   type: 'research_design',
                   data: result,
                 });
-                openCollectionModal(result.config as CollectionConfig);
               } else if (isInsightResult(toolName, result)) {
                 chatStore.addCard(messageId, {
                   type: 'insight_summary',
@@ -118,7 +113,7 @@ export function useSSEChat() {
         chatStore.finalizeMessage(messageId);
       }
     },
-    [chatStore, getToken, openCollectionModal, addArtifact],
+    [chatStore, getToken, addArtifact],
   );
 
   const cancelStream = useCallback(() => {

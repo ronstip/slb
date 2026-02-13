@@ -5,6 +5,7 @@ per-platform base URL routing.
 """
 
 import logging
+import threading
 import time
 from typing import Any
 
@@ -42,6 +43,7 @@ class VetricClient:
         self._session = self._build_session()
         self._min_interval = 0.5
         self._last_request_time = 0.0
+        self._throttle_lock = threading.Lock()
 
     def _build_session(self) -> requests.Session:
         session = requests.Session()
@@ -66,10 +68,11 @@ class VetricClient:
         return key
 
     def _throttle(self) -> None:
-        elapsed = time.monotonic() - self._last_request_time
-        if elapsed < self._min_interval:
-            time.sleep(self._min_interval - elapsed)
-        self._last_request_time = time.monotonic()
+        with self._throttle_lock:
+            elapsed = time.monotonic() - self._last_request_time
+            if elapsed < self._min_interval:
+                time.sleep(self._min_interval - elapsed)
+            self._last_request_time = time.monotonic()
 
     def get(self, platform: str, path: str, params: dict[str, Any] | None = None) -> dict:
         url = f"{_BASE_URLS[platform]}/{path.lstrip('/')}"

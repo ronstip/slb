@@ -1,12 +1,17 @@
 """Vetric social data API adapter.
 
 Supports: Instagram, TikTok, Twitter/X, Reddit, YouTube.
+
+Platforms and keywords are collected in parallel via ThreadPoolExecutor for
+speed and fault isolation — a single failed API call does not block others.
 """
 
 import logging
 import re
-from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+
+import requests
 
 from config.settings import get_settings
 from workers.collection.adapters.base import DataProviderAdapter
@@ -27,6 +32,9 @@ from workers.collection.adapters.vetric_parsers import (
 from workers.collection.models import Batch, Channel, Post
 
 logger = logging.getLogger(__name__)
+
+_MAX_WORKERS_PLATFORMS = 5
+_MAX_WORKERS_KEYWORDS = 5
 
 
 class VetricAdapter(DataProviderAdapter):
@@ -55,88 +63,141 @@ class VetricAdapter(DataProviderAdapter):
     def supported_platforms(self) -> list[str]:
         return list(self._api_keys.keys())
 
-    def collect(self, config: dict) -> Iterator[Batch]:
-        platforms = config.get("platforms", [])
-        for platform in platforms:
-            if platform not in self.supported_platforms():
-                continue
-            try:
-                yield from self._collect_platform(platform, config)
-            except VetricAPIError as e:
-                logger.error("Vetric API error for %s: %s", platform, e)
+    def collect(self, config: dict) -> list[Batch]:
+        platforms = [p for p in config.get("platforms", []) if p in self.supported_platforms()]
+        if not platforms:
+            return []
 
-    def _collect_platform(self, platform: str, config: dict) -> Iterator[Batch]:
-        collector = {
+        collector_map = {
             "instagram": self._collect_instagram,
             "tiktok": self._collect_tiktok,
             "twitter": self._collect_twitter,
             "reddit": self._collect_reddit,
             "youtube": self._collect_youtube,
-        }[platform]
-        yield from collector(config)
+        }
+
+        all_batches: list[Batch] = []
+        with ThreadPoolExecutor(max_workers=min(len(platforms), _MAX_WORKERS_PLATFORMS)) as pool:
+            futures = {
+                pool.submit(collector_map[p], config): p
+                for p in platforms
+            }
+            for future in as_completed(futures):
+                platform = futures[future]
+                try:
+                    batches = future.result()
+                    all_batches.extend(batches)
+                    logger.info("Platform %s: collected %d batches", platform, len(batches))
+                except (VetricAPIError, requests.RequestException) as e:
+                    logger.error("Vetric API error for %s: %s", platform, e)
+                except Exception:
+                    logger.exception("Unexpected error collecting %s", platform)
+
+        return all_batches
 
     # ------------------------------------------------------------------
     # Instagram
     # ------------------------------------------------------------------
 
-    def _collect_instagram(self, config: dict) -> Iterator[Batch]:
+    def _collect_instagram(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
         channel_urls = config.get("channel_urls", [])
-        max_posts = config.get("max_posts_per_platform", 200)
+        max_calls = config.get("max_calls", 2)
         time_range = config.get("time_range", {})
-        total = 0
 
-        # Keyword search via top_serp
-        for keyword in keywords:
-            if total >= max_posts:
-                break
-            try:
-                resp = self._client.get("instagram", "fbsearch/top_serp/", {"query": keyword})
-            except VetricAPIError as e:
-                logger.warning("Instagram top_serp failed for '%s': %s", keyword, e)
-                continue
-
-            items = flatten_instagram_top_serp(resp)
-            posts, channels = self._parse_instagram_items(items, time_range, max_posts - total)
-            total += len(posts)
-            if posts:
-                yield Batch(posts=posts, channels=channels)
-
-        # Also search reels
-        for keyword in keywords:
-            if total >= max_posts:
-                break
-            try:
-                resp = self._client.get("instagram", "search/reels", {"q": keyword})
-            except VetricAPIError as e:
-                logger.warning("Instagram reels search failed for '%s': %s", keyword, e)
-                continue
-
-            items = resp.get("items") or resp.get("medias") or []
-            # Reels items may be wrapped: {media: {...}}
-            unwrapped = [i.get("media", i) for i in items if isinstance(i, dict)]
-            posts, channels = self._parse_instagram_items(unwrapped, time_range, max_posts - total)
-            total += len(posts)
-            if posts:
-                yield Batch(posts=posts, channels=channels)
-
-        # Channel feed collection
+        # Build task list: (task_type, target)
+        tasks: list[tuple[str, str]] = []
+        for kw in keywords:
+            tasks.append(("top_serp", kw))
+            tasks.append(("reels", kw))
         for url in channel_urls:
-            if total >= max_posts:
-                break
             username = _extract_instagram_username(url)
-            if not username:
-                continue
-            yield from self._collect_instagram_feed(username, config, max_posts - total)
+            if username:
+                tasks.append(("feed", username))
+
+        if not tasks:
+            return []
+
+        all_batches: list[Batch] = []
+        with ThreadPoolExecutor(max_workers=min(len(tasks), _MAX_WORKERS_KEYWORDS)) as pool:
+            futures = {
+                pool.submit(self._ig_task, task_type, target, time_range, max_calls): (task_type, target)
+                for task_type, target in tasks
+            }
+            for future in as_completed(futures):
+                task_type, target = futures[future]
+                try:
+                    all_batches.extend(future.result())
+                except (VetricAPIError, requests.RequestException) as e:
+                    logger.warning("Instagram %s failed for '%s': %s", task_type, target, e)
+                except Exception:
+                    logger.exception("Instagram %s unexpected error for '%s'", task_type, target)
+
+        return all_batches
+
+    def _ig_task(self, task_type: str, target: str, time_range: dict, max_calls: int) -> list[Batch]:
+        if task_type == "top_serp":
+            return self._ig_top_serp(target, time_range)
+        elif task_type == "reels":
+            return self._ig_reels(target, time_range)
+        else:  # feed
+            return self._ig_feed(target, time_range, max_calls)
+
+    def _ig_top_serp(self, keyword: str, time_range: dict) -> list[Batch]:
+        resp = self._client.get("instagram", "fbsearch/top_serp/", {"query": keyword})
+        items = flatten_instagram_top_serp(resp)
+        posts, channels = self._parse_instagram_items(items, time_range)
+        return [Batch(posts=posts, channels=channels)] if posts else []
+
+    def _ig_reels(self, keyword: str, time_range: dict) -> list[Batch]:
+        resp = self._client.get("instagram", "search/reels", {"q": keyword})
+        items = resp.get("items") or resp.get("medias") or []
+        unwrapped = [i.get("media", i) for i in items if isinstance(i, dict)]
+        posts, channels = self._parse_instagram_items(unwrapped, time_range)
+        return [Batch(posts=posts, channels=channels)] if posts else []
+
+    def _ig_feed(self, username: str, time_range: dict, max_calls: int) -> list[Batch]:
+        user_info = self._client.get("instagram", f"users/{username}/usernameinfo")
+        user = user_info.get("user") or {}
+        user_id = user.get("pk") or user.get("id")
+        if not user_id:
+            return []
+
+        channel = parse_instagram_channel(user)
+        batches: list[Batch] = []
+        next_max_id = None
+
+        for _ in range(max_calls):
+            params: dict = {}
+            if next_max_id:
+                params["next_max_id"] = next_max_id
+            resp = self._client.get("instagram", f"feed/user/{user_id}", params)
+
+            items = resp.get("items") or []
+            if not items:
+                break
+
+            posts: list[Post] = []
+            for item in items:
+                post = parse_instagram_post(item)
+                if _in_time_range(post.posted_at, time_range):
+                    posts.append(post)
+
+            if posts:
+                batches.append(Batch(posts=posts, channels=[channel] if not batches else []))
+
+            next_max_id = resp.get("next_max_id")
+            if not resp.get("more_available", False) or not next_max_id:
+                break
+
+        return batches
 
     def _parse_instagram_items(
-        self, items: list[dict], time_range: dict, remaining: int
+        self, items: list[dict], time_range: dict
     ) -> tuple[list[Post], list[Channel]]:
         posts: list[Post] = []
         channels_seen: dict[str, Channel] = {}
         for item in items:
-            if len(posts) >= remaining:
-                break
             post = parse_instagram_post(item)
             if not _in_time_range(post.posted_at, time_range):
                 continue
@@ -147,270 +208,273 @@ class VetricAdapter(DataProviderAdapter):
                 channels_seen[handle] = parse_instagram_channel(user)
         return posts, list(channels_seen.values())
 
-    def _collect_instagram_feed(
-        self, username: str, config: dict, remaining: int
-    ) -> Iterator[Batch]:
-        time_range = config.get("time_range", {})
-        # Resolve username to user_id
-        try:
-            user_info = self._client.get("instagram", f"users/{username}/usernameinfo")
-        except VetricAPIError as e:
-            logger.warning("Instagram usernameinfo failed for '%s': %s", username, e)
-            return
-
-        user = user_info.get("user") or {}
-        user_id = user.get("pk") or user.get("id")
-        if not user_id:
-            return
-
-        channel = parse_instagram_channel(user)
-        collected = 0
-        next_max_id = None
-
-        while collected < remaining:
-            params: dict = {}
-            if next_max_id:
-                params["next_max_id"] = next_max_id
-            try:
-                resp = self._client.get("instagram", f"feed/user/{user_id}", params)
-            except VetricAPIError as e:
-                logger.warning("Instagram feed failed for user %s: %s", user_id, e)
-                break
-
-            items = resp.get("items") or []
-            if not items:
-                break
-
-            posts: list[Post] = []
-            for item in items:
-                if collected + len(posts) >= remaining:
-                    break
-                post = parse_instagram_post(item)
-                if not _in_time_range(post.posted_at, time_range):
-                    continue
-                posts.append(post)
-
-            collected += len(posts)
-            if posts:
-                yield Batch(posts=posts, channels=[channel] if collected <= len(posts) else [])
-
-            next_max_id = resp.get("next_max_id")
-            if not resp.get("more_available", False) or not next_max_id:
-                break
-
     # ------------------------------------------------------------------
     # TikTok
     # ------------------------------------------------------------------
 
-    def _collect_tiktok(self, config: dict) -> Iterator[Batch]:
+    def _collect_tiktok(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
-        max_posts = config.get("max_posts_per_platform", 200)
+        max_calls = config.get("max_calls", 2)
         time_range = config.get("time_range", {})
-        total = 0
 
-        for keyword in keywords:
-            if total >= max_posts:
-                break
-            cursor: str | int | None = None
+        if not keywords:
+            return []
 
-            while total < max_posts:
-                params: dict = {"keyword": keyword}
-                if cursor:
-                    params["cursor"] = cursor
+        all_batches: list[Batch] = []
+        with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
+            futures = {
+                pool.submit(self._tiktok_search, kw, time_range, max_calls): kw
+                for kw in keywords
+            }
+            for future in as_completed(futures):
+                kw = futures[future]
                 try:
-                    resp = self._client.get("tiktok", "search/posts-by-keyword", params)
-                except VetricAPIError as e:
-                    logger.warning("TikTok search failed for '%s': %s", keyword, e)
-                    break
+                    all_batches.extend(future.result())
+                except (VetricAPIError, requests.RequestException) as e:
+                    logger.warning("TikTok search failed for '%s': %s", kw, e)
+                except Exception:
+                    logger.exception("TikTok unexpected error for '%s'", kw)
 
-                items = resp.get("posts") or resp.get("data") or []
-                if not items:
-                    break
+        return all_batches
 
-                posts: list[Post] = []
-                channels_seen: dict[str, Channel] = {}
-                for item in items:
-                    if total + len(posts) >= max_posts:
-                        break
-                    post = parse_tiktok_post(item)
-                    if not _in_time_range(post.posted_at, time_range):
-                        continue
-                    posts.append(post)
-                    author = item.get("author") or {}
-                    handle = author.get("username", "")
-                    if handle and handle not in channels_seen:
-                        channels_seen[handle] = parse_tiktok_channel(author)
+    def _tiktok_search(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+        batches: list[Batch] = []
+        cursor: str | int | None = None
 
-                total += len(posts)
-                if posts:
-                    yield Batch(posts=posts, channels=list(channels_seen.values()))
+        for _ in range(max_calls):
+            params: dict = {"keyword": keyword}
+            if cursor:
+                params["cursor"] = cursor
+            resp = self._client.get("tiktok", "search/posts-by-keyword", params)
 
-                pagination = resp.get("pagination") or {}
-                if not (pagination.get("hasMore") or pagination.get("has_more")):
-                    break
-                cursor = pagination.get("cursor")
-                if not cursor:
-                    break
+            items = resp.get("posts") or resp.get("data") or []
+            if not items:
+                break
+
+            posts: list[Post] = []
+            channels_seen: dict[str, Channel] = {}
+            for item in items:
+                post = parse_tiktok_post(item)
+                if not _in_time_range(post.posted_at, time_range):
+                    continue
+                posts.append(post)
+                author = item.get("author") or {}
+                handle = author.get("username", "")
+                if handle and handle not in channels_seen:
+                    channels_seen[handle] = parse_tiktok_channel(author)
+
+            if posts:
+                batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
+
+            pagination = resp.get("pagination") or {}
+            if not (pagination.get("hasMore") or pagination.get("has_more")):
+                break
+            cursor = pagination.get("cursor")
+            if not cursor:
+                break
+
+        return batches
 
     # ------------------------------------------------------------------
     # Twitter / X
     # ------------------------------------------------------------------
 
-    def _collect_twitter(self, config: dict) -> Iterator[Batch]:
+    def _collect_twitter(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
-        max_posts = config.get("max_posts_per_platform", 200)
+        max_calls = config.get("max_calls", 2)
         time_range = config.get("time_range", {})
-        total = 0
 
-        for keyword in keywords:
-            if total >= max_posts:
+        if not keywords:
+            return []
+
+        # Build tasks: each keyword × search type
+        tasks: list[tuple[str, str]] = []
+        for kw in keywords:
+            tasks.append(("popular", kw))
+            tasks.append(("recent", kw))
+
+        all_batches: list[Batch] = []
+        with ThreadPoolExecutor(max_workers=min(len(tasks), _MAX_WORKERS_KEYWORDS)) as pool:
+            futures = {
+                pool.submit(self._twitter_search, search_type, kw, time_range, max_calls): (search_type, kw)
+                for search_type, kw in tasks
+            }
+            for future in as_completed(futures):
+                search_type, kw = futures[future]
+                try:
+                    all_batches.extend(future.result())
+                except (VetricAPIError, requests.RequestException) as e:
+                    logger.warning("Twitter %s search failed for '%s': %s", search_type, kw, e)
+                except Exception:
+                    logger.exception("Twitter %s unexpected error for '%s'", search_type, kw)
+
+        return all_batches
+
+    def _twitter_search(self, search_type: str, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+        batches: list[Batch] = []
+        cursor: str | None = None
+
+        for _ in range(max_calls):
+            params: dict = {"query": keyword}
+            if cursor:
+                params["cursor"] = cursor
+            resp = self._client.get("twitter", f"search/{search_type}", params)
+
+            tweets = resp.get("tweets") or []
+            if not tweets:
                 break
-            # Search popular first, then recent for more volume
-            for search_type in ("popular", "recent"):
-                if total >= max_posts:
-                    break
-                cursor: str | None = None
 
-                while total < max_posts:
-                    params: dict = {"query": keyword}
-                    if cursor:
-                        params["cursor"] = cursor
-                    try:
-                        resp = self._client.get("twitter", f"search/{search_type}", params)
-                    except VetricAPIError as e:
-                        logger.warning("Twitter %s search failed for '%s': %s", search_type, keyword, e)
-                        break
+            posts: list[Post] = []
+            channels_seen: dict[str, Channel] = {}
+            for item in tweets:
+                post = parse_twitter_post(item)
+                if not _in_time_range(post.posted_at, time_range):
+                    continue
+                posts.append(post)
+                user_details = (item.get("tweet") or item).get("user_details") or {}
+                handle = user_details.get("screen_name", "")
+                if handle and handle not in channels_seen:
+                    channels_seen[handle] = parse_twitter_channel(user_details)
 
-                    tweets = resp.get("tweets") or []
-                    if not tweets:
-                        break
+            if posts:
+                batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
 
-                    posts: list[Post] = []
-                    channels_seen: dict[str, Channel] = {}
-                    for item in tweets:
-                        if total + len(posts) >= max_posts:
-                            break
-                        post = parse_twitter_post(item)
-                        if not _in_time_range(post.posted_at, time_range):
-                            continue
-                        posts.append(post)
-                        user_details = (item.get("tweet") or item).get("user_details") or {}
-                        handle = user_details.get("screen_name", "")
-                        if handle and handle not in channels_seen:
-                            channels_seen[handle] = parse_twitter_channel(user_details)
+            cursor = resp.get("cursor_bottom")
+            if not cursor:
+                break
 
-                    total += len(posts)
-                    if posts:
-                        yield Batch(posts=posts, channels=list(channels_seen.values()))
-
-                    cursor = resp.get("cursor_bottom")
-                    if not cursor:
-                        break
+        return batches
 
     # ------------------------------------------------------------------
     # Reddit
     # ------------------------------------------------------------------
 
-    def _collect_reddit(self, config: dict) -> Iterator[Batch]:
+    def _collect_reddit(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
-        max_posts = config.get("max_posts_per_platform", 200)
+        max_calls = config.get("max_calls", 2)
         time_range = config.get("time_range", {})
-        total = 0
 
-        for keyword in keywords:
-            if total >= max_posts:
-                break
-            query = keyword[:256]  # Reddit max query 256 chars
-            cursor: str | None = None
+        if not keywords:
+            return []
 
-            while total < max_posts:
-                params: dict = {"query": query, "sort": "RELEVANCE"}
-                if cursor:
-                    params["cursor"] = cursor
+        all_batches: list[Batch] = []
+        with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
+            futures = {
+                pool.submit(self._reddit_search, kw, time_range, max_calls): kw
+                for kw in keywords
+            }
+            for future in as_completed(futures):
+                kw = futures[future]
                 try:
-                    resp = self._client.get("reddit", "discover/posts", params)
-                except VetricAPIError as e:
-                    logger.warning("Reddit discover failed for '%s': %s", keyword, e)
-                    break
+                    all_batches.extend(future.result())
+                except (VetricAPIError, requests.RequestException) as e:
+                    logger.warning("Reddit discover failed for '%s': %s", kw, e)
+                except Exception:
+                    logger.exception("Reddit unexpected error for '%s'", kw)
 
-                items = resp.get("posts") or resp.get("data") or []
-                if not items:
-                    break
+        return all_batches
 
-                posts: list[Post] = []
-                channels_seen: dict[str, Channel] = {}
-                for item in items:
-                    if total + len(posts) >= max_posts:
-                        break
-                    post = parse_reddit_post(item)
-                    if not _in_time_range(post.posted_at, time_range):
-                        continue
-                    posts.append(post)
-                    sub = post.channel_id
-                    if sub and sub not in channels_seen:
-                        channels_seen[sub] = parse_reddit_channel(item)
+    def _reddit_search(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+        batches: list[Batch] = []
+        query = keyword[:256]  # Reddit max query 256 chars
+        cursor: str | None = None
 
-                total += len(posts)
-                if posts:
-                    yield Batch(posts=posts, channels=list(channels_seen.values()))
+        for _ in range(max_calls):
+            params: dict = {"query": query, "sort": "RELEVANCE"}
+            if cursor:
+                params["cursor"] = cursor
+            resp = self._client.get("reddit", "discover/posts", params)
 
-                page_info = resp.get("pageInfo") or {}
-                if not page_info.get("hasNextPage", False):
-                    break
-                cursor = page_info.get("cursor")
-                if not cursor:
-                    break
+            items = resp.get("posts") or resp.get("data") or []
+            if not items:
+                break
+
+            posts: list[Post] = []
+            channels_seen: dict[str, Channel] = {}
+            for item in items:
+                post = parse_reddit_post(item)
+                if not _in_time_range(post.posted_at, time_range):
+                    continue
+                posts.append(post)
+                sub = post.channel_id
+                if sub and sub not in channels_seen:
+                    channels_seen[sub] = parse_reddit_channel(item)
+
+            if posts:
+                batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
+
+            page_info = resp.get("pageInfo") or {}
+            if not page_info.get("hasNextPage", False):
+                break
+            cursor = page_info.get("cursor")
+            if not cursor:
+                break
+
+        return batches
 
     # ------------------------------------------------------------------
     # YouTube
     # ------------------------------------------------------------------
 
-    def _collect_youtube(self, config: dict) -> Iterator[Batch]:
+    def _collect_youtube(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
-        max_posts = config.get("max_posts_per_platform", 200)
+        max_calls = config.get("max_calls", 2)
         time_range = config.get("time_range", {})
-        total = 0
 
-        for keyword in keywords:
-            if total >= max_posts:
-                break
-            cursor: str | None = None
+        if not keywords:
+            return []
 
-            while total < max_posts:
-                params: dict = {"keywords": keyword, "sortBy": "UploadDate"}
-                if cursor:
-                    params["cursor"] = cursor
+        all_batches: list[Batch] = []
+        with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
+            futures = {
+                pool.submit(self._youtube_search, kw, time_range, max_calls): kw
+                for kw in keywords
+            }
+            for future in as_completed(futures):
+                kw = futures[future]
                 try:
-                    resp = self._client.get("youtube", "discover/videos", params)
-                except VetricAPIError as e:
-                    logger.warning("YouTube discover failed for '%s': %s", keyword, e)
-                    break
+                    all_batches.extend(future.result())
+                except (VetricAPIError, requests.RequestException) as e:
+                    logger.warning("YouTube discover failed for '%s': %s", kw, e)
+                except Exception:
+                    logger.exception("YouTube unexpected error for '%s'", kw)
 
-                items = resp.get("data") or []
-                if not items:
-                    break
+        return all_batches
 
-                posts: list[Post] = []
-                channels_seen: dict[str, Channel] = {}
-                for item in items:
-                    if total + len(posts) >= max_posts:
-                        break
-                    post = parse_youtube_post(item)
-                    if not _in_time_range(post.posted_at, time_range):
-                        continue
-                    posts.append(post)
-                    ch = item.get("channel") or {}
-                    ch_name = ch.get("name", "")
-                    if ch_name and ch_name not in channels_seen:
-                        channels_seen[ch_name] = parse_youtube_channel(ch)
+    def _youtube_search(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+        batches: list[Batch] = []
+        cursor: str | None = None
 
-                total += len(posts)
-                if posts:
-                    yield Batch(posts=posts, channels=list(channels_seen.values()))
+        for _ in range(max_calls):
+            params: dict = {"keywords": keyword, "sortBy": "UploadDate"}
+            if cursor:
+                params["cursor"] = cursor
+            resp = self._client.get("youtube", "discover/videos", params)
 
-                cursor = resp.get("cursor")
-                if not cursor:
-                    break
+            items = resp.get("data") or []
+            if not items:
+                break
+
+            posts: list[Post] = []
+            channels_seen: dict[str, Channel] = {}
+            for item in items:
+                post = parse_youtube_post(item)
+                if not _in_time_range(post.posted_at, time_range):
+                    continue
+                posts.append(post)
+                ch = item.get("channel") or {}
+                ch_name = ch.get("name", "")
+                if ch_name and ch_name not in channels_seen:
+                    channels_seen[ch_name] = parse_youtube_channel(ch)
+
+            if posts:
+                batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
+
+            cursor = resp.get("cursor")
+            if not cursor:
+                break
+
+        return batches
 
     # ------------------------------------------------------------------
     # Engagement refresh
@@ -428,7 +492,7 @@ class VetricAdapter(DataProviderAdapter):
                 if engagement:
                     engagement["post_url"] = url
                     results.append(engagement)
-            except VetricAPIError as e:
+            except (VetricAPIError, requests.RequestException) as e:
                 logger.warning("Failed to fetch engagement for %s: %s", url, e)
         return results
 

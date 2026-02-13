@@ -16,7 +16,6 @@ export async function getCollectionStatus(
   return apiGet(`/collection/${collectionId}`);
 }
 
-export async function listCollections(userId?: string): Promise<CollectionStatusResponse[]> {
-  const params = userId ? { user_id: userId } : undefined;
-  return apiGet('/collections', params);
+export async function listCollections(): Promise<CollectionStatusResponse[]> {
+  return apiGet('/collections');
 }

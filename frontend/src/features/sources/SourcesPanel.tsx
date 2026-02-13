@@ -13,7 +13,6 @@ export function SourcesPanel() {
   const collapsed = useUIStore((s) => s.sourcesPanelCollapsed);
   const toggle = useUIStore((s) => s.toggleSourcesPanel);
   const openModal = useUIStore((s) => s.openCollectionModal);
-  const userId = useUIStore((s) => s.userId);
   const sources = useSourcesStore((s) => s.sources);
   const addSource = useSourcesStore((s) => s.addSource);
   const selectAll = useSourcesStore((s) => s.selectAll);
@@ -26,10 +25,10 @@ export function SourcesPanel() {
   const [idError, setIdError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Fetch previous collections for this user
+  // Fetch previous collections for this user (auth token scopes the query)
   const { data: previousCollections, isLoading: loadingPrevious } = useQuery({
-    queryKey: ['collections', userId],
-    queryFn: () => listCollections(userId),
+    queryKey: ['collections'],
+    queryFn: () => listCollections(),
     staleTime: 30_000,
   });
 
@@ -62,7 +61,7 @@ export function SourcesPanel() {
           keywords: [],
           channel_urls: [],
           time_range: { start: '', end: '' },
-          max_posts_per_platform: 0,
+          max_calls: 0,
           include_comments: false,
           geo_scope: 'global',
         },
@@ -92,7 +91,7 @@ export function SourcesPanel() {
         keywords: [],
         channel_urls: [],
         time_range: { start: '', end: '' },
-        max_posts_per_platform: 0,
+        max_calls: 0,
         include_comments: false,
         geo_scope: 'global',
       },

@@ -2,7 +2,7 @@ import logging
 
 from google.adk.agents import LlmAgent
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from api.auth.session_service import FirestoreSessionService
 from google.adk.tools.google_search_tool import GoogleSearchTool
 
 from api.agent.prompts.system import SYSTEM_PROMPT
@@ -48,7 +48,7 @@ def create_agent() -> LlmAgent:
 def create_runner(session_service=None) -> Runner:
     agent = create_agent()
     if session_service is None:
-        session_service = InMemorySessionService()
+        session_service = FirestoreSessionService()
     return Runner(
         agent=agent,
         app_name=APP_NAME,

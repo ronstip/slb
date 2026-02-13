@@ -7,7 +7,6 @@ real social media patterns (few viral posts, many low-engagement posts).
 import hashlib
 import random
 import time
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -172,10 +171,10 @@ class MockAdapter(DataProviderAdapter):
     def supported_platforms(self) -> list[str]:
         return ["instagram", "tiktok", "reddit"]
 
-    def collect(self, config: dict) -> Iterator[Batch]:
+    def collect(self, config: dict) -> list[Batch]:
         platforms = config.get("platforms", ["instagram"])
         keywords = config.get("keywords", ["glossier"])
-        max_posts = config.get("max_posts_per_platform", 200)
+        max_calls = config.get("max_calls", 2)
         time_range = config.get("time_range", {})
         include_comments = config.get("include_comments", True)
 
@@ -186,21 +185,22 @@ class MockAdapter(DataProviderAdapter):
         if time_range.get("end"):
             end_date = datetime.fromisoformat(time_range["end"]).replace(tzinfo=timezone.utc)
 
+        all_batches: list[Batch] = []
+        posts_per_batch = 10
+
         for platform in platforms:
             if platform not in self.supported_platforms():
                 continue
 
             handles = self._get_handles(platform)
-            batch_size = min(50, max_posts)
             posts_generated = 0
 
-            while posts_generated < max_posts:
-                current_batch_size = min(batch_size, max_posts - posts_generated)
+            for _ in range(max_calls):
                 posts = []
                 channels = []
-                seen_handles = set()
+                seen_handles: set[str] = set()
 
-                for i in range(current_batch_size):
+                for i in range(posts_per_batch):
                     handle = random.choice(handles)
                     post = self._generate_post(
                         platform, handle, posts_generated + i,
@@ -212,11 +212,13 @@ class MockAdapter(DataProviderAdapter):
                         seen_handles.add(handle)
                         channels.append(self._generate_channel(platform, handle))
 
-                yield Batch(posts=posts, channels=channels)
-                posts_generated += current_batch_size
+                all_batches.append(Batch(posts=posts, channels=channels))
+                posts_generated += len(posts)
 
                 # Minimal simulated delay
                 time.sleep(0.05)
+
+        return all_batches
 
     def fetch_engagements(self, post_urls: list[str]) -> list[dict]:
         results = []

@@ -9,7 +9,7 @@ def design_research(
     platforms: str = "instagram,tiktok",
     keywords: str = "",
     time_range_days: int = 90,
-    max_posts_per_platform: int = 5,
+    max_calls: int = 2,
     geo_scope: str = "global",
     include_comments: bool = True,
     video_fps: float = 1.0,
@@ -30,7 +30,7 @@ def design_research(
         keywords: Comma-separated list of brand names, product names, or search
             terms to track. Extract these from the user's question.
         time_range_days: Number of days to look back for posts. Default 90.
-        max_posts_per_platform: Maximum posts to collect per platform. Default 5.
+        max_calls: Maximum pagination calls per keyword per endpoint. Default 2.
         geo_scope: Geographic scope — "global", "US", "EU", or a specific country.
         include_comments: Whether to collect comments on posts.
         video_fps: Frames per second for Gemini video analysis during enrichment.
@@ -56,7 +56,7 @@ def design_research(
             "start": start_date.strftime("%Y-%m-%d"),
             "end": end_date.strftime("%Y-%m-%d"),
         },
-        "max_posts_per_platform": max_posts_per_platform,
+        "max_calls": max_calls,
         "include_comments": include_comments,
         "geo_scope": geo_scope,
         "video_params": {
@@ -67,8 +67,10 @@ def design_research(
         "reasoning_level": reasoning_level,
     }
 
-    estimated_posts = len(platform_list) * max_posts_per_platform
-    estimated_time_minutes = max(5, estimated_posts // 100)
+    # Each keyword generates multiple search tasks per platform; each task paginates up to max_calls pages
+    num_keywords = max(len(keyword_list), 1)
+    estimated_api_calls = len(platform_list) * num_keywords * max_calls
+    estimated_time_minutes = max(1, estimated_api_calls // 10)
 
     return {
         "status": "success",
@@ -78,15 +80,15 @@ def design_research(
             "platforms": platform_list,
             "keywords": keyword_list,
             "time_range": f"{time_range_days} days ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})",
-            "estimated_posts": estimated_posts,
+            "estimated_api_calls": estimated_api_calls,
             "estimated_time_minutes": estimated_time_minutes,
             "include_comments": include_comments,
         },
         "message": (
-            f"Research plan ready: collecting up to {estimated_posts} posts "
-            f"across {', '.join(platform_list)} for keywords [{', '.join(keyword_list)}] "
-            f"over the past {time_range_days} days. "
-            f"Estimated time: ~{estimated_time_minutes} minutes. "
+            f"Research plan ready: collecting from {', '.join(platform_list)} "
+            f"for keywords [{', '.join(keyword_list)}] "
+            f"over the past {time_range_days} days "
+            f"({estimated_api_calls} API calls, ~{estimated_time_minutes} min). "
             "Please confirm to start collection."
         ),
     }

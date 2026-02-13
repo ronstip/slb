@@ -59,12 +59,12 @@ Helpers:
 
 ### Step 4: VetricAdapter (`workers/collection/adapters/vetric.py`)
 
-Replace stub. Core structure:
+Replace stub. Platforms and keywords are collected in parallel via `concurrent.futures.ThreadPoolExecutor`. The `collect()` method returns `list[Batch]` instead of `Iterator[Batch]`. Core structure:
 
 ```
 class VetricAdapter(DataProviderAdapter):
     supported_platforms() → ["instagram", "tiktok", "twitter", "reddit", "youtube"]
-    collect(config) → iterates platforms, dispatches to _collect_{platform}(config)
+    collect(config) → runs platform/keyword search tasks in parallel via ThreadPoolExecutor, returns list[Batch]
     fetch_engagements(post_urls) → detects platform from URL, calls detail endpoints
 ```
 
@@ -82,8 +82,8 @@ class VetricAdapter(DataProviderAdapter):
 1. Iterate `config["keywords"]` — search each keyword with pagination
 2. For Instagram only: also iterate `config["channel_urls"]` — resolve username → fetch user feed
 3. Filter by `config["time_range"]` (skip posts outside range)
-4. Respect `config["max_posts_per_platform"]`
-5. **1 API page = 1 batch** — yield each API response page as a `Batch` directly (no buffering). This gives natural progress updates after each API call and minimal data loss on crash.
+4. Respect `config["max_calls"]` (pagination depth per keyword, default 2)
+5. **Parallel search tasks** — each platform/keyword combination is submitted as a task to a `ThreadPoolExecutor`, where each task paginates up to `max_calls` pages and collects results. The `collect()` method gathers all task results and returns `list[Batch]` rather than yielding.
 6. Track seen channels to avoid duplicates across pages
 7. On `VetricAPIError` for a platform: log warning, continue to next platform
 
@@ -382,8 +382,8 @@ For keyword search (top_serp), channel info is extracted from `item.user` embedd
 ## Error Handling
 
 - **Transport**: `urllib3.Retry` handles 429/5xx automatically with backoff
-- **Per-platform**: `VetricAPIError` caught in `collect()` — logs error, continues to next platform
-- **Per-request within platform**: Individual failures caught inside pagination loops — yield whatever was collected
+- **Per-platform**: `VetricAPIError` and `requests.RequestException` caught in `collect()` — logs error, continues to next platform. Catching `requests.RequestException` alongside `VetricAPIError` provides fault isolation so transient HTTP errors (ConnectionError, Timeout, MaxRetryError) don't kill the collection.
+- **Per-request within platform**: Individual failures caught inside pagination loops — return whatever was collected
 - **Worker level**: Existing try/except in `worker.py` catches unrecoverable errors, sets Firestore status to "failed"
 
 ## Verification

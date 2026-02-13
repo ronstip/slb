@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Iterable
 
 from workers.collection.models import Batch
 
 
 class DataProviderAdapter(ABC):
     @abstractmethod
-    def collect(self, config: dict) -> Iterator[Batch]:
-        """Yield batches of posts + channel metadata from the platform."""
+    def collect(self, config: dict) -> Iterable[Batch]:
+        """Return batches of posts + channel metadata from the platform."""
 
     @abstractmethod
     def fetch_engagements(self, post_urls: list[str]) -> list[dict]:
