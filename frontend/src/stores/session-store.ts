@@ -16,6 +16,7 @@ interface SessionStore {
   updateSessionTitle: (id: string, title: string) => void;
   loadSessions: () => void;
   saveSessions: () => void;
+  reset: () => void;
 }
 
 const STORAGE_KEY = 'slp-sessions';
@@ -54,5 +55,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   loadSessions: () => set({ sessions: loadFromStorage() }),
   saveSessions: () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(get().sessions));
+  },
+  reset: () => {
+    localStorage.removeItem(STORAGE_KEY);
+    set({ sessions: [], activeSessionId: null });
   },
 }));

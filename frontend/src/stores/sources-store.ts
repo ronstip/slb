@@ -25,6 +25,7 @@ interface SourcesStore {
   deselectAll: () => void;
   removeSource: (id: string) => void;
   setSources: (sources: Source[]) => void;
+  reset: () => void;
 }
 
 export const useSourcesStore = create<SourcesStore>((set, get) => ({
@@ -66,4 +67,5 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
     })),
 
   setSources: (sources) => set({ sources }),
+  reset: () => set({ sources: [] }),
 }));

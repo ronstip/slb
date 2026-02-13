@@ -22,6 +22,7 @@ interface StudioStore {
   expandReport: (id: string) => void;
   collapseReport: () => void;
   setFeedSource: (id: string | null) => void;
+  reset: () => void;
 }
 
 export const useStudioStore = create<StudioStore>((set) => ({
@@ -38,4 +39,5 @@ export const useStudioStore = create<StudioStore>((set) => ({
   expandReport: (id) => set({ expandedReportId: id }),
   collapseReport: () => set({ expandedReportId: null }),
   setFeedSource: (id) => set({ feedSourceId: id }),
+  reset: () => set({ activeTab: 'feed', artifacts: [], expandedReportId: null, feedSourceId: null }),
 }));

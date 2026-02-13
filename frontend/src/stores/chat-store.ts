@@ -37,6 +37,7 @@ interface ChatStore {
   setSessionId: (id: string) => void;
   setIsAgentResponding: (responding: boolean) => void;
   clearMessages: () => void;
+  reset: () => void;
 }
 
 let messageCounter = 0;
@@ -157,4 +158,5 @@ export const useChatStore = create<ChatStore>((set) => ({
   setSessionId: (id) => set({ sessionId: id }),
   setIsAgentResponding: (responding) => set({ isAgentResponding: responding }),
   clearMessages: () => set({ messages: [], isAgentResponding: false }),
+  reset: () => set({ messages: [], isAgentResponding: false, sessionId: null }),
 }));
