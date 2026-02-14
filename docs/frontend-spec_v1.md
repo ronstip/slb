@@ -340,7 +340,7 @@ Shows the actual social media posts from selected sources. This is the trust lay
 │  obsessed…"  [more]       │
 │                           │
 │ 🟢 Positive · Tutorial    │
-│ ❤️ 12.4K  💬 847  👁 245K │
+│ 👍 12.4K  💬 847  👁 245K │
 │ skincare · unboxing       │
 │                           │
 │ [↗ Original]  [📌 Save]   │

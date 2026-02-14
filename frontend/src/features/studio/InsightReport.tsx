@@ -1,13 +1,15 @@
-import { ArrowLeft } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { ArrowLeft, PieChart, TrendingUp, Layers, Users, Download, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
-import { SentimentBar } from './charts/SentimentBar.tsx';
+import { SentimentPie } from './charts/SentimentPie.tsx';
 import { VolumeChart } from './charts/VolumeChart.tsx';
 import { ThemeBar } from './charts/ThemeBar.tsx';
 import { ContentTypeDonut } from './charts/ContentTypeDonut.tsx';
 import { EngagementMetrics } from './charts/EngagementMetrics.tsx';
 import { ChannelTable } from './charts/ChannelTable.tsx';
+import { downloadReportPdf } from '../../lib/download-pdf.ts';
 
 interface InsightReportProps {
   artifact: Artifact;
@@ -16,11 +18,30 @@ interface InsightReportProps {
 export function InsightReport({ artifact }: InsightReportProps) {
   const collapseReport = useStudioStore((s) => s.collapseReport);
   const data = artifact.data;
+  const [downloading, setDownloading] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const handleDownload = async () => {
+    if (!contentRef.current || downloading) return;
+    setDownloading(true);
+    try {
+      await downloadReportPdf(contentRef.current, artifact.title || 'insight-report');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const hasSentiment = (data?.quantitative?.sentiment_breakdown?.length ?? 0) > 0;
+  const hasVolume = (data?.quantitative?.volume_over_time?.length ?? 0) > 0;
+  const hasThemes = (data?.qualitative?.theme_distribution?.length ?? 0) > 0;
+  const hasContentTypes = (data?.qualitative?.content_type_breakdown?.length ?? 0) > 0;
+  const hasEngagement = (data?.quantitative?.engagement_summary?.length ?? 0) > 0;
+  const hasChannels = (data?.quantitative?.channel_summary?.length ?? 0) > 0;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       {/* Back button */}
-      <div className="sticky top-0 z-10 border-b border-border-default bg-bg-surface-secondary px-3 py-2">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border-default bg-bg-surface-secondary px-3 py-2">
         <button
           onClick={collapseReport}
           className="flex items-center gap-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary"
@@ -28,75 +49,90 @@ export function InsightReport({ artifact }: InsightReportProps) {
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Studio
         </button>
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="flex items-center gap-1.5 rounded-lg border border-border-default/50 px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary disabled:opacity-50"
+        >
+          {downloading
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Download className="h-3.5 w-3.5" />}
+          {downloading ? 'Exporting...' : 'Download PDF'}
+        </button>
       </div>
 
-      <div className="p-4">
+      <div ref={contentRef} className="p-4">
         {/* Header */}
         <h3 className="text-base font-semibold text-text-primary">{artifact.title}</h3>
 
-        {/* Narrative */}
-        <div className="mt-4 prose prose-sm max-w-none text-text-primary">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {artifact.narrative}
-          </ReactMarkdown>
-        </div>
-
-        {/* Charts */}
         {data && (
-          <div className="mt-6 flex flex-col gap-6">
-            {data.quantitative.sentiment_breakdown.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  Sentiment Breakdown
-                </h4>
-                <SentimentBar data={data.quantitative.sentiment_breakdown} />
+          <div className="mt-4 flex flex-col gap-4">
+            {/* 1. Engagement metrics — top */}
+            {hasEngagement && (
+              <EngagementMetrics data={data.quantitative.engagement_summary} />
+            )}
+
+            {/* 2. Charts — 2-column grid */}
+            {(hasSentiment || hasVolume || hasThemes || hasContentTypes) && (
+              <div className="grid grid-cols-2 gap-4">
+                {hasSentiment && (
+                  <div>
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                      <PieChart className="h-3.5 w-3.5 text-accent" />
+                      Sentiment
+                    </h4>
+                    <SentimentPie data={data.quantitative.sentiment_breakdown} />
+                  </div>
+                )}
+                {hasVolume && (
+                  <div>
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                      <TrendingUp className="h-3.5 w-3.5 text-accent" />
+                      Volume Over Time
+                    </h4>
+                    <VolumeChart data={data.quantitative.volume_over_time} />
+                  </div>
+                )}
+                {hasThemes && (
+                  <div>
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                      <Layers className="h-3.5 w-3.5 text-accent" />
+                      Top Themes
+                    </h4>
+                    <ThemeBar data={data.qualitative.theme_distribution} />
+                  </div>
+                )}
+                {hasContentTypes && (
+                  <div>
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                      <PieChart className="h-3.5 w-3.5 text-accent" />
+                      Content Types
+                    </h4>
+                    <ContentTypeDonut data={data.qualitative.content_type_breakdown} />
+                  </div>
+                )}
               </div>
             )}
 
-            {data.quantitative.volume_over_time.length > 0 && (
+            {/* 3. Channels table — full width */}
+            {hasChannels && (
               <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  Volume Over Time
-                </h4>
-                <VolumeChart data={data.quantitative.volume_over_time} />
-              </div>
-            )}
-
-            {data.qualitative.theme_distribution.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  Top Themes
-                </h4>
-                <ThemeBar data={data.qualitative.theme_distribution} />
-              </div>
-            )}
-
-            {data.qualitative.content_type_breakdown.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  Content Types
-                </h4>
-                <ContentTypeDonut data={data.qualitative.content_type_breakdown} />
-              </div>
-            )}
-
-            {data.quantitative.engagement_summary.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  Engagement Summary
-                </h4>
-                <EngagementMetrics data={data.quantitative.engagement_summary} />
-              </div>
-            )}
-
-            {data.quantitative.channel_summary.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                  <Users className="h-3.5 w-3.5 text-accent" />
                   Top Channels
                 </h4>
                 <ChannelTable data={data.quantitative.channel_summary} />
               </div>
             )}
+          </div>
+        )}
+
+        {/* 4. Narrative — bottom */}
+        {artifact.narrative && (
+          <div className="mt-6 prose prose-sm max-w-none text-text-primary">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {artifact.narrative}
+            </ReactMarkdown>
           </div>
         )}
       </div>

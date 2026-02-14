@@ -84,5 +84,5 @@ def get_insights(collection_id: str) -> dict:
         "status": "success",
         "narrative": narrative,
         "data": {"quantitative": quantitative, "qualitative": qualitative},
-        "message": narrative,
+        "message": "Insight report generated successfully. The report card is displayed below.",
     }

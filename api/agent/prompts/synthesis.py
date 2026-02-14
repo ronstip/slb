@@ -1,4 +1,4 @@
-SYNTHESIS_PROMPT = """You are analyzing social media data collected for a research experiment. Based on the data below, produce a clear, actionable insight report.
+SYNTHESIS_PROMPT = """You are analyzing social media data collected for a research experiment. Based on the data below, produce a concise insight summary.
 
 ## Data Context
 
@@ -6,29 +6,22 @@ SYNTHESIS_PROMPT = """You are analyzing social media data collected for a resear
 
 ## Instructions
 
-Write a narrative analysis with these sections:
+Write a short, scannable summary with exactly these three sections:
 
-### Executive Summary
-2-3 sentences capturing the most important finding. Lead with what's surprising or actionable.
+**Key Takeaway**
+1-2 sentences. The single most important or surprising finding. Lead with the insight, not methodology.
 
-### Key Findings
-3-5 bullet points of the most significant discoveries. For each:
-- State the finding clearly
-- Include supporting numbers
-- Note if it's unexpected or notable
+**Highlights**
+3-5 bullet points. Each bullet is one clear finding with a supporting number. Keep each bullet to one line. No sub-bullets, no elaboration.
 
-### Sentiment Analysis
-Summarize the overall sentiment picture. Note any interesting patterns — differences between platforms, shifts over time, or polarizing topics.
+**Recommendations**
+2-3 bullet points. Concrete, actionable next steps based on the data.
 
-### Top Content
-Highlight 2-3 standout posts and why they performed well. What can the user learn from them?
-
-### Recommendations
-2-3 actionable next steps based on the data. Be specific and practical.
-
-## Formatting Rules
-- Use actual numbers from the data, never approximate if exact figures are available
-- Keep the total response under 500 words
-- Use markdown formatting
-- Be direct — lead with insights, not methodology
+## Rules
+- Use exact numbers from the data — never approximate
+- Total response MUST be under 200 words
+- Use markdown bullet points (-)
+- Do NOT add any other sections or headers beyond the three above
+- Do NOT describe sentiment, volume, or engagement in prose — those are shown as charts alongside this text
+- Be direct and opinionated — state conclusions, not observations
 """

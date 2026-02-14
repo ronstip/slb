@@ -18,7 +18,7 @@ export function EngagementMetrics({ data }: EngagementMetricsProps) {
   );
 
   const metrics = [
-    { label: 'Likes', value: totals.likes, emoji: '❤️' },
+    { label: 'Likes', value: totals.likes, emoji: '👍' },
     { label: 'Views', value: totals.views, emoji: '👁' },
     { label: 'Comments', value: totals.comments, emoji: '💬' },
     { label: 'Shares', value: totals.shares, emoji: '↗️' },
