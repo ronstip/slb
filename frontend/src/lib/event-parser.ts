@@ -1,4 +1,4 @@
-import type { DesignResearchResult, InsightResult } from '../api/types.ts';
+import type { DesignResearchResult, InsightResult, DataExportResult } from '../api/types.ts';
 import { TOOL_DISPLAY_NAMES } from './constants.ts';
 
 export function getToolDisplayText(toolName: string): string {
@@ -24,4 +24,11 @@ export function isProgressResult(
   result?: Record<string, unknown>,
 ): boolean {
   return toolName === 'get_progress' && result?.status === 'success';
+}
+
+export function isDataExportResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): result is Record<string, unknown> & DataExportResult {
+  return toolName === 'export_data' && result?.status === 'success' && Array.isArray(result?.rows);
 }

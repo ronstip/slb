@@ -19,7 +19,7 @@ export function StudioPanel() {
     { label: 'Insight Report', icon: FileText, enabled: true, onClick: () => sendMessage('Generate an insight report for the selected sources.') },
     { label: 'Slide Deck', icon: Presentation, enabled: false },
     { label: 'Comparison Chart', icon: BarChart3, enabled: false },
-    { label: 'Data Export', icon: FileDown, enabled: false },
+    { label: 'Data Export', icon: FileDown, enabled: true, onClick: () => sendMessage('Export the data for the selected sources as CSV.') },
     { label: 'Custom...', icon: Sparkles, enabled: false },
   ];
 

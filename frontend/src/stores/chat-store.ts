@@ -7,7 +7,7 @@ export interface ToolIndicator {
 }
 
 export interface MessageCard {
-  type: 'research_design' | 'progress' | 'insight_summary';
+  type: 'research_design' | 'progress' | 'insight_summary' | 'data_export';
   data: Record<string, unknown>;
 }
 

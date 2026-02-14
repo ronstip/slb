@@ -13,7 +13,7 @@ import { ChannelTable } from './charts/ChannelTable.tsx';
 import { downloadReportPdf } from '../../lib/download-pdf.ts';
 
 interface InsightReportProps {
-  artifact: Artifact;
+  artifact: Extract<Artifact, { type: 'insight_report' }>;
 }
 
 export function InsightReport({ artifact }: InsightReportProps) {

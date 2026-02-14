@@ -178,6 +178,7 @@ When the SSE stream includes a `function_call` part, show a brief inline indicat
 | `enrich_collection` | Enriching posts… |
 | `refresh_engagements` | Refreshing engagement data… |
 | `cancel_collection` | Cancelling collection… |
+| `export_data` | Preparing data export… |
 
 Renders as dimmed italic text. Resolves when the corresponding `function_response` arrives.
 
@@ -272,6 +273,15 @@ From `get_insights`. The key value-delivery moment.
 
 In MVP, [Save] works. [Chart] and [Share] show "Coming soon" tooltips.
 
+#### Data Export Card
+
+From `export_data`. Shows a preview of the exported data with a download button.
+
+- Row count summary (e.g., "247 posts")
+- Preview table showing first 5 rows with key columns (platform, channel, title, sentiment, engagement)
+- **[Download CSV]** — generates and downloads the full CSV file client-side
+- Saved to Artifacts tab automatically
+
 ### 6.5 Message Input
 
 Pinned to bottom.
@@ -313,7 +323,7 @@ A grid of artifact creation actions.
 | **Slide Deck** | Disabled — "Coming soon" |
 | **Comparison Chart** | Disabled — "Coming soon" |
 | **Executive Brief** | Disabled — "Coming soon" |
-| **Data Export** | Disabled — "Coming soon" |
+| **Data Export** | Available — triggers agent via chat, exports all posts as CSV |
 | **Custom…** | Disabled — "Coming soon" |
 
 Clicking "Insight Report" sends a message to the agent. The result appears in chat (Insight Summary Card) and is saved to the Artifacts tab.
@@ -373,7 +383,7 @@ Paginated. Initial load: 50 posts. Infinite scroll for more. For multiple select
 
 Lists generated outputs.
 
-For MVP, only Insight Reports appear here. Each artifact card shows title, date, source count, and actions.
+Insight Reports and Data Exports appear here. Each artifact card shows an icon (document for reports, table for exports), title, date, and metadata (source count for reports, row count for exports).
 
 ```
 ┌───────────────────────────┐
@@ -521,6 +531,7 @@ Authorization: Bearer {token}
 | `design_research` | Render Research Design Card in chat. Open New Collection modal pre-filled with the agent's recommended config. |
 | `ask_user_choice` | Render poll modal above input with options. Return selection as function response. |
 | `get_insights` | Render Insight Summary Card in chat. Save report to Artifacts tab. |
+| `export_data` | Render Data Export Card in chat (preview table + download). Save export to Artifacts tab. |
 
 ### Collection Status Polling
 
@@ -606,7 +617,7 @@ Frontend polls `GET /collection/{id}` every 5 seconds while status is `collectin
 
 **Chat:** SSE streaming. Markdown rendering. Tool indicators. Research Design Card (opens pre-filled modal). Collection Progress Card. Insight Summary Card with mini charts. Agent poll modal (`ask_user_choice`). Welcome screen.
 
-**Studio:** Action buttons (Insight Report functional, others disabled). Feed tab with post cards, sort, filter, pagination, auto-open on collection complete. Artifacts tab with Insight Report (expandable to full report with charts). New `/collections/{id}/posts` and `POST /collections` endpoints.
+**Studio:** Action buttons (Insight Report and Data Export functional, others disabled). Feed tab with post cards, sort, filter, pagination, auto-open on collection complete. Artifacts tab with Insight Report (expandable to full report with charts) and Data Export (table view + CSV download). New `/collections/{id}/posts` and `POST /collections` endpoints.
 
 **Polling:** 5-second interval for active collections.
 

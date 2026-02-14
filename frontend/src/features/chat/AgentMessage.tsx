@@ -7,6 +7,7 @@ import { ToolIndicator } from './ToolIndicator.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
 import { ProgressCard } from './cards/ProgressCard.tsx';
 import { InsightSummaryCard } from './cards/InsightSummaryCard.tsx';
+import { DataExportCard } from './cards/DataExportCard.tsx';
 
 interface AgentMessageProps {
   message: ChatMessage;
@@ -44,6 +45,8 @@ export function AgentMessage({ message }: AgentMessageProps) {
               return <ProgressCard key={i} data={card.data} />;
             case 'insight_summary':
               return <InsightSummaryCard key={i} data={card.data} />;
+            case 'data_export':
+              return <DataExportCard key={i} data={card.data} />;
             default:
               return null;
           }

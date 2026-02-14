@@ -7,6 +7,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   enrich_collection: 'Enriching posts...',
   refresh_engagements: 'Refreshing engagement data...',
   cancel_collection: 'Cancelling collection...',
+  export_data: 'Preparing data export...',
 };
 
 export const PLATFORM_COLORS: Record<string, string> = {

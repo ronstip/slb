@@ -223,3 +223,33 @@ export interface DesignResearchResult {
   };
   message: string;
 }
+
+export interface DataExportRow {
+  post_id: string;
+  platform: string;
+  channel_handle: string;
+  title: string | null;
+  content: string | null;
+  post_url: string;
+  posted_at: string;
+  post_type: string;
+  likes: number | null;
+  shares: number | null;
+  views: number | null;
+  comments_count: number | null;
+  saves: number | null;
+  total_engagement: number;
+  sentiment: string | null;
+  themes: string | null;
+  entities: string | null;
+  ai_summary: string | null;
+  content_type: string | null;
+}
+
+export interface DataExportResult {
+  status: string;
+  message: string;
+  rows: DataExportRow[];
+  row_count: number;
+  column_names: string[];
+}

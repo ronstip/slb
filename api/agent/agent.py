@@ -9,6 +9,7 @@ from api.agent.prompts.system import SYSTEM_PROMPT
 from api.agent.tools.cancel_collection import cancel_collection
 from api.agent.tools.design_research import design_research
 from api.agent.tools.enrich_collection import enrich_collection
+from api.agent.tools.export_data import export_data
 from api.agent.tools.get_insights import get_insights
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
@@ -30,6 +31,7 @@ def create_agent() -> LlmAgent:
         get_progress,
         enrich_collection,
         get_insights,
+        export_data,
         refresh_engagements,
     ]
 

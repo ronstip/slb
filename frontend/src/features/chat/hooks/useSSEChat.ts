@@ -4,8 +4,8 @@ import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isInsightResult, isProgressResult } from '../../../lib/event-parser.ts';
-import type { InsightData } from '../../../api/types.ts';
+import { getToolDisplayText, isDesignResearchResult, isInsightResult, isProgressResult, isDataExportResult } from '../../../lib/event-parser.ts';
+import type { InsightData, DataExportRow } from '../../../api/types.ts';
 
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
@@ -80,6 +80,22 @@ export function useSSEChat() {
                   title: 'Insight Report',
                   narrative: result.narrative as string,
                   data: result.data as InsightData,
+                  sourceIds: selectedSources,
+                  createdAt: new Date(),
+                });
+              } else if (isDataExportResult(toolName, result)) {
+                chatStore.addCard(messageId, {
+                  type: 'data_export',
+                  data: result,
+                });
+                // Save to artifacts
+                addArtifact({
+                  id: `artifact-${Date.now()}`,
+                  type: 'data_export',
+                  title: 'Data Export',
+                  rows: result.rows as DataExportRow[],
+                  rowCount: result.row_count as number,
+                  columnNames: result.column_names as string[],
                   sourceIds: selectedSources,
                   createdAt: new Date(),
                 });

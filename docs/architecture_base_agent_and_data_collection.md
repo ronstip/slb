@@ -44,7 +44,9 @@ Collected data is shared across customers — only the `collections` table knows
 │    collection  │    │                                    │
 │  • get_        │    │  Engagement Worker                 │
 │    insights    │    │    refreshes post_engagements       │
-│  • refresh_    │    │    triggered by agent or cron       │
+│  • export_     │    │    triggered by agent or cron       │
+│    data        │    │                                    │
+│  • refresh_    │    │                                    │
 │    engagements │    │                                    │
 └────────────────┘    └────────────────────────────────────┘
                         │
@@ -711,7 +713,16 @@ The agent has no dedicated clarification tool. For clear requests, it immediatel
 | `get_progress` | Read live pipeline progress | collection_id | Status + counts |
 | `enrich_collection` | Manually trigger enrichment + embedding for a collection or specific posts | collection_id or post_ids | Confirmation |
 | `get_insights` | Query BQ for aggregated data, synthesize with Gemini Pro | collection_id | Narrative + data |
+| `export_data` | Export all posts + enrichment as structured rows for CSV download | collection_id | Rows + column names |
 | `refresh_engagements` | Dispatch Engagement Worker | collection_id or post_ids | Confirmation |
+
+### export_data
+
+Exports all posts for a collection as structured JSON rows suitable for CSV download.
+
+**Query:** `bigquery/export_queries/export_posts.sql` — joins posts + latest post_engagements + enriched_posts. No LIMIT. Array fields (themes, entities) are flattened to semicolon-separated strings on the backend. CSV generation happens on the frontend via a modular `CSV_COLUMNS` config.
+
+**Output:** `{ status, message, rows: [...], row_count, column_names }`
 
 ### get_insights
 
@@ -960,6 +971,7 @@ social-listening-platform/
 │   │       ├── get_progress.py
 │   │       ├── enrich_collection.py
 │   │       ├── get_insights.py
+│   │       ├── export_data.py
 │   │       └── refresh_engagements.py
 │   ├── schemas/
 │   └── Dockerfile
@@ -1003,6 +1015,8 @@ social-listening-platform/
 │   │   ├── content_type_breakdown.sql
 │   │   ├── channel_summary.sql
 │   │   └── entity_co_occurrence.sql
+│   ├── export_queries/
+│   │   └── export_posts.sql
 │   └── indexes/
 │       └── vector_index.sql
 ├── scripts/
@@ -1065,4 +1079,9 @@ User: "How is Glossier perceived vs Drunk Elephant on Instagram and TikTok?"
 
 → "Refresh engagements" → refresh_engagements(collection_id)
   → Engagement Worker re-fetches metrics + comments
+
+→ "Export this data" → export_data(collection_id)
+  → BQ query: all posts + engagements + enrichment → JSON rows
+  → Frontend renders preview card in chat + saves artifact
+  → User clicks "Download CSV" → client-side CSV generation
 ```

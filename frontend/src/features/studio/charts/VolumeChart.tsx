@@ -1,9 +1,11 @@
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import type { VolumeOverTime } from '../../../api/types.ts';
 
 interface VolumeChartProps {
   data: VolumeOverTime[];
 }
+
+const BAR_COLOR = '#6366F1'; // indigo-500
 
 export function VolumeChart({ data }: VolumeChartProps) {
   // Aggregate by date (sum across platforms)
@@ -18,18 +20,12 @@ export function VolumeChart({ data }: VolumeChartProps) {
 
   return (
     <ResponsiveContainer width="100%" height={150}>
-      <AreaChart data={chartData} margin={{ left: 10, right: 10, top: 5, bottom: 5 }}>
+      <BarChart data={chartData} margin={{ left: 10, right: 10, top: 5, bottom: 5 }}>
         <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => d.slice(5)} />
         <YAxis tick={{ fontSize: 10 }} width={30} />
         <Tooltip contentStyle={{ fontSize: 12 }} />
-        <Area
-          type="monotone"
-          dataKey="count"
-          stroke="hsl(var(--primary))"
-          fill="hsl(var(--primary) / 0.1)"
-          strokeWidth={1.5}
-        />
-      </AreaChart>
+        <Bar dataKey="count" fill={BAR_COLOR} radius={[6, 6, 6, 6]} />
+      </BarChart>
     </ResponsiveContainer>
   );
 }
