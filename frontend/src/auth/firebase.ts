@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -15,11 +15,13 @@ export const isFirebaseConfigured = !!firebaseConfig.apiKey;
 
 let auth: ReturnType<typeof getAuth> | null = null;
 let googleProvider: GoogleAuthProvider | null = null;
+let microsoftProvider: OAuthProvider | null = null;
 
 if (isFirebaseConfigured) {
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   googleProvider = new GoogleAuthProvider();
+  microsoftProvider = new OAuthProvider('microsoft.com');
 }
 
-export { auth, googleProvider };
+export { auth, googleProvider, microsoftProvider };

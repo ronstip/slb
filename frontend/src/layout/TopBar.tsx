@@ -1,4 +1,4 @@
-import { BarChart3, Building2, LogOut, Moon, Plus, Settings, Sun } from 'lucide-react';
+import { Building2, LogOut, Moon, Plus, Settings, Sun } from 'lucide-react';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from '../components/theme-provider.tsx';
 import { Button } from '../components/ui/button.tsx';
@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip.tsx';
 import { Separator } from '../components/ui/separator.tsx';
+import { Logo } from '../components/Logo.tsx';
 
 export function TopBar() {
   const { user, profile, signOut, devMode } = useAuth();
@@ -24,14 +25,7 @@ export function TopBar() {
   return (
     <header className="flex h-12 shrink-0 items-center border-b border-border bg-card px-4">
       {/* Logo */}
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-          <BarChart3 className="h-4 w-4 text-primary" />
-        </div>
-        <span className="text-sm font-semibold text-foreground">
-          Social Listening
-        </span>
-      </div>
+      <Logo size="sm" />
 
       {/* Session title */}
       <Separator orientation="vertical" className="mx-4 h-5" />

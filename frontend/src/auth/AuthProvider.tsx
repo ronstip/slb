@@ -11,7 +11,7 @@ import {
   type User,
 } from 'firebase/auth';
 import { useQueryClient } from '@tanstack/react-query';
-import { auth, googleProvider, isFirebaseConfigured } from './firebase.ts';
+import { auth, googleProvider, microsoftProvider, isFirebaseConfigured } from './firebase.ts';
 import { setTokenGetter } from '../api/client.ts';
 import { apiGet } from '../api/client.ts';
 import type { UserProfile } from '../api/types.ts';
@@ -25,6 +25,7 @@ interface AuthContextValue {
   profile: UserProfile | null;
   loading: boolean;
   signIn: () => Promise<void>;
+  signInWithMicrosoft: () => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
   refreshProfile: () => Promise<void>;
@@ -82,6 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signInWithMicrosoft = async () => {
+    if (auth && microsoftProvider) {
+      await signInWithPopup(auth, microsoftProvider);
+    }
+  };
+
   const resetAllStores = () => {
     useChatStore.getState().reset();
     useSessionStore.getState().reset();
@@ -99,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signOut, getToken, refreshProfile: fetchProfile, devMode: !isFirebaseConfigured }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signInWithMicrosoft, signOut, getToken, refreshProfile: fetchProfile, devMode: !isFirebaseConfigured }}>
       {children}
     </AuthContext.Provider>
   );
