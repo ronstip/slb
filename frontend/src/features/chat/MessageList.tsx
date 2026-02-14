@@ -3,19 +3,19 @@ import { useChatStore } from '../../stores/chat-store.ts';
 import { UserMessage } from './UserMessage.tsx';
 import { AgentMessage } from './AgentMessage.tsx';
 import { SystemMessage } from './SystemMessage.tsx';
+import { ScrollArea } from '../../components/ui/scroll-area.tsx';
 
 export function MessageList() {
   const messages = useChatStore((s) => s.messages);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new messages or streaming text
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-4">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+    <ScrollArea className="flex-1 px-6 py-4">
+      <div className="mx-auto flex max-w-3xl flex-col gap-4 overflow-hidden">
         {messages.map((msg) => {
           switch (msg.role) {
             case 'user':
@@ -28,6 +28,6 @@ export function MessageList() {
         })}
         <div ref={bottomRef} />
       </div>
-    </div>
+    </ScrollArea>
   );
 }

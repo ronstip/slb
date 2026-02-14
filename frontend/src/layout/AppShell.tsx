@@ -13,7 +13,7 @@ const SOURCES_DEFAULT = 280;
 const STUDIO_MIN = 300;
 const STUDIO_MAX = 700;
 const STUDIO_DEFAULT = 520;
-const COLLAPSED_W = 48; // w-12
+const COLLAPSED_W = 48;
 
 export function AppShell() {
   const {
@@ -46,7 +46,6 @@ export function AppShell() {
       if (dragging.current === 'sources') {
         setSourcesW(Math.max(SOURCES_MIN, Math.min(SOURCES_MAX, startW.current + dx)));
       } else {
-        // Studio: dragging left edge, so moving left = wider
         setStudioW(Math.max(STUDIO_MIN, Math.min(STUDIO_MAX, startW.current - dx)));
       }
     };
@@ -66,12 +65,12 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col bg-background">
       <TopBar />
       <div className="flex flex-1 overflow-hidden">
         {/* Sources Panel */}
         <aside
-          className="shrink-0 bg-bg-surface"
+          className="shrink-0 bg-card"
           style={{ width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW }}
         >
           <SourcesPanel />
@@ -83,7 +82,7 @@ export function AppShell() {
             className="group relative z-10 w-1 shrink-0 cursor-col-resize"
             onMouseDown={(e) => onMouseDown('sources', e)}
           >
-            <div className="absolute inset-y-0 -left-px w-[3px] bg-transparent transition-colors group-hover:bg-accent/20 group-active:bg-accent/40" />
+            <div className="absolute inset-y-0 -left-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
           </div>
         )}
 
@@ -96,13 +95,13 @@ export function AppShell() {
             className="group relative z-10 w-1 shrink-0 cursor-col-resize"
             onMouseDown={(e) => onMouseDown('studio', e)}
           >
-            <div className="absolute inset-y-0 -right-px w-[3px] bg-transparent transition-colors group-hover:bg-accent/20 group-active:bg-accent/40" />
+            <div className="absolute inset-y-0 -right-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
           </div>
         )}
 
         {/* Studio Panel */}
         <aside
-          className="shrink-0 bg-bg-surface"
+          className="shrink-0 bg-card"
           style={{ width: studioPanelCollapsed ? COLLAPSED_W : studioW }}
         >
           <StudioPanel />

@@ -1,106 +1,113 @@
-import { BarChart3, Building2, LogOut, Plus, Settings } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { BarChart3, Building2, LogOut, Moon, Plus, Settings, Sun } from 'lucide-react';
 import { useAuth } from '../auth/useAuth.ts';
+import { useTheme } from '../components/theme-provider.tsx';
+import { Button } from '../components/ui/button.tsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu.tsx';
+import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar.tsx';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip.tsx';
+import { Separator } from '../components/ui/separator.tsx';
 
 export function TopBar() {
   const { user, profile, signOut, devMode } = useAuth();
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  const { theme, setTheme } = useTheme();
 
   const displayInitial = user?.displayName?.[0] || profile?.display_name?.[0] || '?';
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   return (
-    <header className="flex h-12 shrink-0 items-center border-b border-border-default/50 bg-bg-surface px-4">
+    <header className="flex h-12 shrink-0 items-center border-b border-border bg-card px-4">
       {/* Logo */}
       <div className="flex items-center gap-2.5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10">
-          <BarChart3 className="h-4 w-4 text-accent" />
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+          <BarChart3 className="h-4 w-4 text-primary" />
         </div>
-        <span className="text-sm font-semibold text-text-primary">
+        <span className="text-sm font-semibold text-foreground">
           Social Listening
         </span>
       </div>
 
-      {/* Session title (placeholder) */}
-      <div className="ml-8 flex items-center gap-1">
-        <span className="text-sm text-text-secondary">New Session</span>
-      </div>
+      {/* Session title */}
+      <Separator orientation="vertical" className="mx-4 h-5" />
+      <span className="text-sm text-muted-foreground">New Session</span>
 
       {/* Spacer */}
       <div className="flex-1" />
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
-        <button className="flex items-center gap-1.5 rounded-lg border border-border-default/60 px-3 py-1.5 text-xs font-medium text-text-primary shadow-sm transition-colors hover:bg-bg-surface-secondary">
+      <div className="flex items-center gap-1.5">
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
           <Plus className="h-3.5 w-3.5" />
           New Session
-        </button>
+        </Button>
 
-        <button className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-bg-surface-secondary hover:text-text-primary">
-          <Settings className="h-4 w-4" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            >
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Toggle theme</TooltipContent>
+        </Tooltip>
 
-        {/* User avatar */}
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setUserMenuOpen(!userMenuOpen)}
-            className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-accent-subtle"
-          >
-            {user?.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="text-xs font-medium text-accent">
-                {displayInitial}
-              </span>
-            )}
-          </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Settings className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Settings</TooltipContent>
+        </Tooltip>
 
-          {userMenuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1.5 w-64 rounded-xl border border-border-default/60 bg-bg-surface py-1 shadow-lg">
-              <div className="border-b border-border-default/60 px-3 py-2.5">
-                <p className="text-sm font-medium text-text-primary">
-                  {user?.displayName || profile?.display_name || 'Dev Mode'}
-                </p>
-                {(user?.email || profile?.email) && (
-                  <p className="text-xs text-text-secondary">{user?.email || profile?.email}</p>
-                )}
-
-                {/* Organization */}
-                <div className="mt-2 flex items-center gap-1.5">
-                  <Building2 className="h-3 w-3 text-text-tertiary" />
-                  <span className="text-xs text-text-secondary">
-                    {profile?.org_name || 'Personal Workspace'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Sign Out */}
-              {!devMode && (
-                <button
-                  onClick={() => { signOut(); setUserMenuOpen(false); }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-bg-surface-secondary"
-                >
-                  <LogOut className="h-3.5 w-3.5 text-text-tertiary" />
-                  Sign Out
-                </button>
+        {/* User menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+              <Avatar className="h-7 w-7">
+                <AvatarImage src={user?.photoURL || undefined} />
+                <AvatarFallback className="bg-accent text-xs font-medium text-accent-foreground">
+                  {displayInitial}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel className="font-normal">
+              <p className="text-sm font-medium">
+                {user?.displayName || profile?.display_name || 'Dev Mode'}
+              </p>
+              {(user?.email || profile?.email) && (
+                <p className="text-xs text-muted-foreground">{user?.email || profile?.email}</p>
               )}
-            </div>
-          )}
-        </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                <Building2 className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {profile?.org_name || 'Personal Workspace'}
+                </span>
+              </div>
+            </DropdownMenuLabel>
+            {!devMode && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut}>
+                  <LogOut className="mr-2 h-3.5 w-3.5" />
+                  Sign Out
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

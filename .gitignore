@@ -27,12 +27,18 @@ uv.lock
 *.swo
 *~
 
-# GCP
-*.json
-!config/*.json
-!bigquery/**/*.json
+# GCP - ignore credential files but allow config files
 service-account*.json
 credentials*.json
+*-key.json
+*-credentials.json
+
+# Allow essential JSON files
+!package.json
+!package-lock.json
+!tsconfig.json
+!config/*.json
+!bigquery/**/*.json
 
 # OS
 .DS_Store
@@ -42,3 +48,12 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Frontend / Node.js
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/
+frontend/.turbo/
+frontend/.next/
+frontend/out/
+frontend/build/

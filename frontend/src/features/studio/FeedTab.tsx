@@ -74,7 +74,7 @@ export function FeedTab() {
   if (!activeSourceId) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm text-muted-foreground">
           Select a source to view its posts.
         </p>
       </div>
@@ -99,11 +99,11 @@ export function FeedTab() {
         {isLoading ? (
           <div className={useTwoCols ? 'grid grid-cols-2 gap-3 pt-3' : 'flex flex-col gap-3 pt-3'}>
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-32 animate-pulse rounded-xl bg-bg-surface-secondary" />
+              <div key={i} className="h-32 animate-pulse rounded-xl bg-secondary" />
             ))}
           </div>
         ) : allPosts.length === 0 ? (
-          <p className="py-12 text-center text-sm text-text-secondary">
+          <p className="py-12 text-center text-sm text-muted-foreground">
             No posts found.
           </p>
         ) : useTwoCols ? (
@@ -120,7 +120,7 @@ export function FeedTab() {
               ))}
             </div>
             {isFetching && (
-              <div className="col-span-2 py-4 text-center text-xs text-text-tertiary">
+              <div className="col-span-2 py-4 text-center text-xs text-muted-foreground/70">
                 Loading more...
               </div>
             )}
@@ -132,7 +132,7 @@ export function FeedTab() {
               <PostCard key={post.post_id} post={post} />
             ))}
             {isFetching && (
-              <div className="py-4 text-center text-xs text-text-tertiary">
+              <div className="py-4 text-center text-xs text-muted-foreground/70">
                 Loading more...
               </div>
             )}

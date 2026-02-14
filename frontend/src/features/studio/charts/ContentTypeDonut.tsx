@@ -38,7 +38,7 @@ export function ContentTypeDonut({ data }: ContentTypeDonutProps) {
               className="h-2 w-2 rounded-full"
               style={{ backgroundColor: COLORS[i % COLORS.length] }}
             />
-            <span className="text-xs capitalize text-text-secondary">
+            <span className="text-xs capitalize text-muted-foreground">
               {item.content_type} ({item.percentage.toFixed(0)}%)
             </span>
           </div>

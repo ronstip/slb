@@ -7,13 +7,12 @@ function App() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-bg-primary">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-default border-t-accent" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
       </div>
     );
   }
 
-  // In dev mode (no Firebase config), skip auth and show the app directly
   if (devMode || user) {
     return <AppShell />;
   }

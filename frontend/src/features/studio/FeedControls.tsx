@@ -1,5 +1,12 @@
 import type { FeedParams } from '../../api/types.ts';
 import { formatNumber } from '../../lib/format.ts';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select.tsx';
 
 interface FeedControlsProps {
   sort: FeedParams['sort'];
@@ -21,45 +28,50 @@ export function FeedControls({
   totalCount,
 }: FeedControlsProps) {
   return (
-    <div className="flex flex-col gap-2 border-b border-border-default/60 px-3 py-2">
+    <div className="flex flex-col gap-2 border-b border-border px-3 py-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-text-tertiary">
+        <span className="text-xs text-muted-foreground/70">
           {formatNumber(totalCount)} posts
         </span>
       </div>
       <div className="flex flex-wrap gap-2">
-        <select
-          value={sort}
-          onChange={(e) => onSortChange(e.target.value as FeedParams['sort'])}
-          className="rounded-lg border border-border-default/60 bg-bg-surface px-2 py-1 text-xs text-text-primary outline-none focus:border-accent/50"
-        >
-          <option value="engagement">Engagement</option>
-          <option value="recent">Most Recent</option>
-          <option value="sentiment">Sentiment</option>
-        </select>
-        <select
-          value={platform}
-          onChange={(e) => onPlatformChange(e.target.value)}
-          className="rounded-lg border border-border-default/60 bg-bg-surface px-2 py-1 text-xs text-text-primary outline-none focus:border-accent/50"
-        >
-          <option value="all">All Platforms</option>
-          <option value="instagram">Instagram</option>
-          <option value="tiktok">TikTok</option>
-          <option value="twitter">Twitter/X</option>
-          <option value="reddit">Reddit</option>
-          <option value="youtube">YouTube</option>
-        </select>
-        <select
-          value={sentiment}
-          onChange={(e) => onSentimentChange(e.target.value)}
-          className="rounded-lg border border-border-default/60 bg-bg-surface px-2 py-1 text-xs text-text-primary outline-none focus:border-accent/50"
-        >
-          <option value="all">All Sentiment</option>
-          <option value="positive">Positive</option>
-          <option value="negative">Negative</option>
-          <option value="neutral">Neutral</option>
-          <option value="mixed">Mixed</option>
-        </select>
+        <Select value={sort} onValueChange={(v) => onSortChange(v as FeedParams['sort'])}>
+          <SelectTrigger className="h-7 w-auto min-w-[120px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="engagement">Engagement</SelectItem>
+            <SelectItem value="recent">Most Recent</SelectItem>
+            <SelectItem value="sentiment">Sentiment</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={platform} onValueChange={onPlatformChange}>
+          <SelectTrigger className="h-7 w-auto min-w-[120px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Platforms</SelectItem>
+            <SelectItem value="instagram">Instagram</SelectItem>
+            <SelectItem value="tiktok">TikTok</SelectItem>
+            <SelectItem value="twitter">Twitter/X</SelectItem>
+            <SelectItem value="reddit">Reddit</SelectItem>
+            <SelectItem value="youtube">YouTube</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={sentiment} onValueChange={onSentimentChange}>
+          <SelectTrigger className="h-7 w-auto min-w-[120px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sentiment</SelectItem>
+            <SelectItem value="positive">Positive</SelectItem>
+            <SelectItem value="negative">Negative</SelectItem>
+            <SelectItem value="neutral">Neutral</SelectItem>
+            <SelectItem value="mixed">Mixed</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

@@ -2,6 +2,9 @@ import { Eye } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { formatNumber } from '../../../lib/format.ts';
+import { Card } from '../../../components/ui/card.tsx';
+import { Badge } from '../../../components/ui/badge.tsx';
+import { Button } from '../../../components/ui/button.tsx';
 
 interface ProgressCardProps {
   data: Record<string, unknown>;
@@ -25,44 +28,43 @@ export function ProgressCard({ data }: ProgressCardProps) {
   };
 
   return (
-    <div className="mt-3 rounded-xl border border-border-default/60 bg-bg-surface p-4 shadow-sm">
+    <Card className="mt-3 p-4">
       <div className="flex items-center gap-2">
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
-            status === 'completed'
-              ? 'bg-green-50 text-status-complete'
-              : status === 'failed'
-                ? 'bg-red-50 text-status-error'
-                : 'bg-blue-50 text-status-active'
+        <Badge
+          variant={
+            status === 'completed' ? 'default' :
+            status === 'failed' ? 'destructive' : 'secondary'
+          }
+          className={`capitalize ${
+            status === 'completed' ? 'bg-status-complete/10 text-status-complete hover:bg-status-complete/20' :
+            status === 'failed' ? '' :
+            'bg-primary/10 text-primary hover:bg-primary/20'
           }`}
         >
           {status}
-        </span>
+        </Badge>
       </div>
 
-      <div className="mt-2 flex gap-4 text-xs text-text-secondary">
+      <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
         <span>{formatNumber(postsCollected)} collected</span>
         <span>{formatNumber(postsEnriched)} enriched</span>
       </div>
 
       {status !== 'completed' && status !== 'failed' && (
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-surface-secondary">
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
           <div
-            className="h-full rounded-full bg-accent transition-all"
+            className="h-full rounded-full bg-primary transition-all"
             style={{ width: `${Math.min(100, postsCollected > 0 ? 60 : 20)}%` }}
           />
         </div>
       )}
 
       <div className="mt-3 flex gap-2">
-        <button
-          onClick={handleViewInStudio}
-          className="flex items-center gap-1.5 rounded-lg border border-border-default/60 px-3 py-1.5 text-xs font-medium text-text-secondary shadow-sm transition-colors hover:bg-bg-surface-secondary hover:text-text-primary"
-        >
+        <Button variant="outline" size="sm" onClick={handleViewInStudio} className="h-7 gap-1.5 text-xs">
           <Eye className="h-3 w-3" />
           View in Studio
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }

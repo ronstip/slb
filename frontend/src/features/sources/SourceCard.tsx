@@ -4,6 +4,8 @@ import { useUIStore } from '../../stores/ui-store.ts';
 import { PLATFORM_LABELS } from '../../lib/constants.ts';
 import { formatNumber, shortDate } from '../../lib/format.ts';
 import { BarChart3 } from 'lucide-react';
+import { Card } from '../../components/ui/card.tsx';
+import { Checkbox } from '../../components/ui/checkbox.tsx';
 
 interface SourceCardProps {
   source: Source;
@@ -32,32 +34,30 @@ export function SourceCard({ source }: SourceCardProps) {
   };
 
   return (
-    <div
-      className="group cursor-pointer rounded-xl border border-border-default/50 bg-bg-surface p-3 shadow-sm transition-all hover:border-accent/30 hover:shadow-md"
+    <Card
+      className="group cursor-pointer p-3 transition-all hover:border-primary/30 hover:shadow-md"
       onClick={handleCardClick}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 shrink-0 text-text-secondary" />
-          <span className="text-sm font-medium text-text-primary leading-tight">
+          <BarChart3 className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground leading-tight">
             {source.title}
           </span>
         </div>
-        <label className="flex items-center" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="checkbox"
+        <div onClick={(e) => e.stopPropagation()}>
+          <Checkbox
             checked={source.selected}
-            onChange={() => toggleSelected(source.collectionId)}
-            className="h-3.5 w-3.5 rounded border-border-default text-accent focus:ring-accent"
+            onCheckedChange={() => toggleSelected(source.collectionId)}
           />
-        </label>
+        </div>
       </div>
 
       <div className="mt-1.5 pl-6">
-        <span className="text-xs text-text-tertiary">{platformAbbrevs}</span>
+        <span className="text-xs text-muted-foreground">{platformAbbrevs}</span>
       </div>
       <div className="mt-1 pl-6">
-        <span className="text-xs text-text-tertiary">
+        <span className="text-xs text-muted-foreground">
           {formatNumber(source.postsCollected)} posts · {shortDate(source.createdAt)}
         </span>
       </div>
@@ -81,6 +81,6 @@ export function SourceCard({ source }: SourceCardProps) {
           </>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

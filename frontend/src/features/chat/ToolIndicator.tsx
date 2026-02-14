@@ -11,11 +11,11 @@ export function ToolIndicator({ indicator }: ToolIndicatorProps) {
       {indicator.resolved ? (
         <Check className="h-3.5 w-3.5 text-status-complete" />
       ) : (
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-text-tertiary" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
       )}
       <span
         className={`text-xs italic ${
-          indicator.resolved ? 'text-text-tertiary' : 'text-text-secondary'
+          indicator.resolved ? 'text-muted-foreground/60' : 'text-muted-foreground'
         }`}
       >
         {indicator.displayText}

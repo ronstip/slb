@@ -12,22 +12,22 @@ export function ChannelTable({ data }: ChannelTableProps) {
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="border-b border-border-default text-left">
-          <th className="py-1.5 font-medium text-text-secondary">Channel</th>
-          <th className="py-1.5 font-medium text-text-secondary">Platform</th>
-          <th className="py-1.5 text-right font-medium text-text-secondary">Posts</th>
-          <th className="py-1.5 text-right font-medium text-text-secondary">Engagement</th>
+        <tr className="border-b border-border text-left">
+          <th className="py-1.5 font-medium text-muted-foreground">Channel</th>
+          <th className="py-1.5 font-medium text-muted-foreground">Platform</th>
+          <th className="py-1.5 text-right font-medium text-muted-foreground">Posts</th>
+          <th className="py-1.5 text-right font-medium text-muted-foreground">Engagement</th>
         </tr>
       </thead>
       <tbody>
         {top10.map((ch) => (
-          <tr key={`${ch.platform}-${ch.channel_handle}`} className="border-b border-border-default/50">
-            <td className="py-1.5 text-text-primary">@{ch.channel_handle}</td>
-            <td className="py-1.5 text-text-secondary">
+          <tr key={`${ch.platform}-${ch.channel_handle}`} className="border-b border-border/50">
+            <td className="py-1.5 text-foreground">@{ch.channel_handle}</td>
+            <td className="py-1.5 text-muted-foreground">
               {PLATFORM_LABELS[ch.platform] || ch.platform}
             </td>
-            <td className="py-1.5 text-right font-mono text-text-primary">{ch.post_count}</td>
-            <td className="py-1.5 text-right font-mono text-text-primary">
+            <td className="py-1.5 text-right font-mono text-foreground">{ch.post_count}</td>
+            <td className="py-1.5 text-right font-mono text-foreground">
               {formatNumber(ch.total_engagement)}
             </td>
           </tr>

@@ -3,6 +3,7 @@ import { ArrowLeft, PieChart, TrendingUp, Layers, Users, Download, Loader2 } fro
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
+import { Button } from '../../components/ui/button.tsx';
 import { SentimentPie } from './charts/SentimentPie.tsx';
 import { VolumeChart } from './charts/VolumeChart.tsx';
 import { ThemeBar } from './charts/ThemeBar.tsx';
@@ -41,29 +42,33 @@ export function InsightReport({ artifact }: InsightReportProps) {
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       {/* Back button */}
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border-default bg-bg-surface-secondary px-3 py-2">
-        <button
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-secondary px-3 py-2">
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={collapseReport}
-          className="flex items-center gap-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary"
+          className="h-auto gap-1.5 px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Studio
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           onClick={handleDownload}
           disabled={downloading}
-          className="flex items-center gap-1.5 rounded-lg border border-border-default/50 px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary disabled:opacity-50"
+          className="h-auto gap-1.5 px-2.5 py-1 text-xs"
         >
           {downloading
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
             : <Download className="h-3.5 w-3.5" />}
           {downloading ? 'Exporting...' : 'Download PDF'}
-        </button>
+        </Button>
       </div>
 
       <div ref={contentRef} className="p-4">
         {/* Header */}
-        <h3 className="text-base font-semibold text-text-primary">{artifact.title}</h3>
+        <h3 className="text-base font-semibold text-foreground">{artifact.title}</h3>
 
         {data && (
           <div className="mt-4 flex flex-col gap-4">
@@ -77,8 +82,8 @@ export function InsightReport({ artifact }: InsightReportProps) {
               <div className="grid grid-cols-2 gap-4">
                 {hasSentiment && (
                   <div>
-                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                      <PieChart className="h-3.5 w-3.5 text-accent" />
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <PieChart className="h-3.5 w-3.5 text-primary" />
                       Sentiment
                     </h4>
                     <SentimentPie data={data.quantitative.sentiment_breakdown} />
@@ -86,8 +91,8 @@ export function InsightReport({ artifact }: InsightReportProps) {
                 )}
                 {hasVolume && (
                   <div>
-                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                      <TrendingUp className="h-3.5 w-3.5 text-accent" />
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <TrendingUp className="h-3.5 w-3.5 text-primary" />
                       Volume Over Time
                     </h4>
                     <VolumeChart data={data.quantitative.volume_over_time} />
@@ -95,8 +100,8 @@ export function InsightReport({ artifact }: InsightReportProps) {
                 )}
                 {hasThemes && (
                   <div>
-                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                      <Layers className="h-3.5 w-3.5 text-accent" />
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Layers className="h-3.5 w-3.5 text-primary" />
                       Top Themes
                     </h4>
                     <ThemeBar data={data.qualitative.theme_distribution} />
@@ -104,8 +109,8 @@ export function InsightReport({ artifact }: InsightReportProps) {
                 )}
                 {hasContentTypes && (
                   <div>
-                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                      <PieChart className="h-3.5 w-3.5 text-accent" />
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <PieChart className="h-3.5 w-3.5 text-primary" />
                       Content Types
                     </h4>
                     <ContentTypeDonut data={data.qualitative.content_type_breakdown} />
@@ -117,8 +122,8 @@ export function InsightReport({ artifact }: InsightReportProps) {
             {/* 3. Channels table — full width */}
             {hasChannels && (
               <div>
-                <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  <Users className="h-3.5 w-3.5 text-accent" />
+                <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Users className="h-3.5 w-3.5 text-primary" />
                   Top Channels
                 </h4>
                 <ChannelTable data={data.quantitative.channel_summary} />
@@ -129,7 +134,7 @@ export function InsightReport({ artifact }: InsightReportProps) {
 
         {/* 4. Narrative — bottom */}
         {artifact.narrative && (
-          <div className="mt-6 prose prose-sm max-w-none text-text-primary">
+          <div className="mt-6 prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-code:text-foreground">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {artifact.narrative}
             </ReactMarkdown>

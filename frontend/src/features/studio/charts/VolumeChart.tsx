@@ -25,8 +25,8 @@ export function VolumeChart({ data }: VolumeChartProps) {
         <Area
           type="monotone"
           dataKey="count"
-          stroke="#4338CA"
-          fill="#EEF2FF"
+          stroke="hsl(var(--primary))"
+          fill="hsl(var(--primary) / 0.1)"
           strokeWidth={1.5}
         />
       </AreaChart>

@@ -10,7 +10,7 @@ export function ChatPanel() {
   const hasMessages = messages.length > 0;
 
   return (
-    <main className="flex min-w-[480px] flex-1 flex-col bg-bg-primary">
+    <main className="flex min-w-[480px] flex-1 flex-col bg-background">
       {hasMessages ? (
         <MessageList />
       ) : (

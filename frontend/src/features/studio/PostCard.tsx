@@ -4,6 +4,8 @@ import type { FeedPost, MediaRef } from '../../api/types.ts';
 import { mediaUrl } from '../../api/client.ts';
 import { PLATFORM_LABELS, SENTIMENT_COLORS } from '../../lib/constants.ts';
 import { formatNumber, timeAgo } from '../../lib/format.ts';
+import { Card } from '../../components/ui/card.tsx';
+import { Badge } from '../../components/ui/badge.tsx';
 
 interface PostCardProps {
   post: FeedPost;
@@ -16,7 +18,7 @@ export function PostCard({ post }: PostCardProps) {
   const media = (post.media_refs ?? []).filter((m) => m?.original_url || m?.gcs_uri);
 
   return (
-    <div className="rounded-xl border border-border-default/50 bg-bg-surface shadow-sm overflow-hidden">
+    <Card className="overflow-hidden">
       {/* Media */}
       {media.length > 0 && <PostMedia media={media} postUrl={post.post_url} />}
 
@@ -29,13 +31,13 @@ export function PostCard({ post }: PostCardProps) {
           >
             {platformAbbrev}
           </span>
-          <span className="font-medium text-text-primary">@{post.channel_handle}</span>
-          <span className="text-text-tertiary">{timeAgo(post.posted_at)}</span>
+          <span className="font-medium text-foreground">@{post.channel_handle}</span>
+          <span className="text-muted-foreground/70">{timeAgo(post.posted_at)}</span>
         </div>
 
         {/* Content */}
         {(post.title || post.content) && (
-          <p className="mt-2 text-sm text-text-primary line-clamp-3">
+          <p className="mt-2 text-sm text-foreground line-clamp-3">
             {post.title && <span className="font-medium">{post.title} </span>}
             {post.content}
           </p>
@@ -55,14 +57,14 @@ export function PostCard({ post }: PostCardProps) {
             </span>
           )}
           {post.content_type && (
-            <span className="text-xs text-text-tertiary capitalize">
+            <span className="text-xs text-muted-foreground/70 capitalize">
               {post.content_type}
             </span>
           )}
         </div>
 
         {/* Engagement */}
-        <div className="mt-2 flex items-center gap-3 text-xs text-text-secondary">
+        <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
           {post.likes != null && <span>&#10084;&#65039; {formatNumber(post.likes)}</span>}
           {post.comments_count != null && <span>&#128172; {formatNumber(post.comments_count)}</span>}
           {post.views != null && <span>&#128065; {formatNumber(post.views)}</span>}
@@ -73,9 +75,9 @@ export function PostCard({ post }: PostCardProps) {
         {post.themes && post.themes.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {post.themes.slice(0, 3).map((theme) => (
-              <span key={theme} className="rounded-lg bg-bg-surface-secondary px-1.5 py-0.5 text-xs text-text-secondary">
+              <Badge key={theme} variant="secondary" className="text-xs font-normal">
                 {theme}
-              </span>
+              </Badge>
             ))}
           </div>
         )}
@@ -86,14 +88,14 @@ export function PostCard({ post }: PostCardProps) {
             href={post.post_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-accent transition-colors hover:text-accent-hover"
+            className="flex items-center gap-1 text-xs text-primary transition-colors hover:text-primary/80"
           >
             <ExternalLink className="h-3 w-3" />
             Original
           </a>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -178,7 +180,7 @@ function MediaImage({ media, className }: { media: MediaRef; className?: string 
 
   if (failed) {
     return (
-      <div className={`flex items-center justify-center bg-bg-surface-secondary text-text-tertiary ${className}`}>
+      <div className={`flex items-center justify-center bg-secondary text-muted-foreground/70 ${className}`}>
         <ImageOff className="h-5 w-5" />
       </div>
     );
@@ -217,7 +219,7 @@ function VideoPlayer({ media, postUrl }: { media: MediaRef; postUrl: string }) {
         href={postUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex h-40 items-center justify-center gap-2 bg-bg-surface-secondary text-text-secondary transition-colors hover:bg-border-default"
+        className="flex h-40 items-center justify-center gap-2 bg-secondary text-muted-foreground transition-colors hover:bg-border"
       >
         <Play className="h-8 w-8" />
         <span className="text-sm font-medium">Watch on original platform</span>

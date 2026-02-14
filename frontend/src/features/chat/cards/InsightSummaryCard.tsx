@@ -10,6 +10,8 @@ import { ContentTypeDonut } from '../../studio/charts/ContentTypeDonut.tsx';
 import { EngagementMetrics } from '../../studio/charts/EngagementMetrics.tsx';
 import { ChannelTable } from '../../studio/charts/ChannelTable.tsx';
 import { downloadReportPdf } from '../../../lib/download-pdf.ts';
+import { Card } from '../../../components/ui/card.tsx';
+import { Button } from '../../../components/ui/button.tsx';
 
 interface InsightSummaryCardProps {
   data: Record<string, unknown>;
@@ -23,13 +25,13 @@ interface ChartSectionProps {
 
 function ChartSection({ icon, title, children }: ChartSectionProps) {
   return (
-    <div className="rounded-xl border border-border-default/40 bg-bg-surface p-4">
+    <Card className="p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-accent">{icon}</span>
-        <h5 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">{title}</h5>
+        <span className="text-primary">{icon}</span>
+        <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h5>
       </div>
       {children}
-    </div>
+    </Card>
   );
 }
 
@@ -43,7 +45,7 @@ export function InsightSummaryCard({ data }: InsightSummaryCardProps) {
     if (!contentRef.current || downloading) return;
     setDownloading(true);
     try {
-      await downloadReportPdf(contentRef.current);
+      await downloadReportPdf(contentRef.current, 'insight-report');
     } finally {
       setDownloading(false);
     }
@@ -60,37 +62,39 @@ export function InsightSummaryCard({ data }: InsightSummaryCardProps) {
   const hasChannels = (insightData?.quantitative?.channel_summary?.length ?? 0) > 0;
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-accent/20 bg-gradient-to-b from-accent-subtle/40 to-bg-surface shadow-sm">
+    <div className="mt-3 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/5 to-card shadow-sm">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-5 py-3.5 transition-colors hover:bg-accent-subtle/30"
+        className="flex w-full items-center justify-between px-5 py-3.5 transition-colors hover:bg-primary/5"
       >
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10">
-            <BarChart3 className="h-4 w-4 text-accent" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+            <BarChart3 className="h-4 w-4 text-primary" />
           </div>
-          <h4 className="text-sm font-semibold text-text-primary">Insight Report</h4>
+          <h4 className="text-sm font-semibold text-foreground">Insight Report</h4>
         </div>
         <div className="flex items-center gap-1">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={handleDownload}
             disabled={downloading}
-            className="rounded-lg p-1 text-text-tertiary transition-colors hover:bg-bg-surface-secondary hover:text-text-secondary disabled:opacity-50"
+            className="h-7 w-7"
             title="Download as PDF"
           >
             {downloading
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
               : <Download className="h-3.5 w-3.5" />}
-          </button>
+          </Button>
           {expanded
-            ? <ChevronUp className="h-4 w-4 text-text-tertiary" />
-            : <ChevronDown className="h-4 w-4 text-text-tertiary" />}
+            ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
         </div>
       </button>
 
       {expanded && insightData && (
-        <div ref={contentRef} className="border-t border-accent/10 px-5 pb-5">
+        <div ref={contentRef} className="border-t border-primary/10 px-5 pb-5">
           {/* 1. Engagement metrics — top */}
           {hasEngagement && (
             <div className="mt-4">
@@ -135,8 +139,8 @@ export function InsightSummaryCard({ data }: InsightSummaryCardProps) {
 
           {/* 4. Narrative — bottom */}
           {narrative && (
-            <div className="mt-4 rounded-xl border border-border-default/40 bg-bg-surface p-4">
-              <div className="prose prose-sm max-w-none text-text-secondary prose-headings:text-text-primary prose-strong:text-text-primary prose-p:leading-relaxed">
+            <div className="mt-4 rounded-xl border border-border bg-card p-4">
+              <div className="prose prose-sm max-w-none text-muted-foreground prose-headings:text-foreground prose-strong:text-foreground prose-p:leading-relaxed">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{narrative}</ReactMarkdown>
               </div>
             </div>

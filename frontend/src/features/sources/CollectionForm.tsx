@@ -5,6 +5,18 @@ import { createCollection } from '../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { PLATFORMS, PLATFORM_LABELS } from '../../lib/constants.ts';
+import { Button } from '../../components/ui/button.tsx';
+import { Textarea } from '../../components/ui/textarea.tsx';
+import { Label } from '../../components/ui/label.tsx';
+import { Badge } from '../../components/ui/badge.tsx';
+import { Checkbox } from '../../components/ui/checkbox.tsx';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select.tsx';
 
 interface CollectionFormProps {
   prefill?: CollectionConfig;
@@ -140,19 +152,18 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
     <div className={`overflow-y-auto px-6 py-4 ${variant === 'modal' ? 'max-h-[70vh]' : ''}`}>
       {/* Description */}
       <div className="mb-4">
-        <label className="mb-1 block text-xs font-medium text-text-secondary">Description</label>
-        <textarea
+        <Label className="mb-1.5">Description</Label>
+        <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="What this collection is about..."
           rows={2}
-          className="w-full rounded-xl border border-border-default/60 bg-bg-surface px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent/50"
         />
       </div>
 
       {/* Platforms */}
       <div className="mb-4">
-        <label className="mb-1.5 block text-xs font-medium text-text-secondary">Platforms</label>
+        <Label className="mb-1.5">Platforms</Label>
         <div className="flex flex-wrap gap-2">
           {PLATFORMS.map((p) => (
             <button
@@ -160,8 +171,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
               onClick={() => togglePlatform(p)}
               className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
                 platforms.includes(p)
-                  ? 'bg-accent text-white shadow-sm'
-                  : 'border border-border-default/60 bg-bg-surface text-text-secondary hover:border-accent/40 hover:text-accent'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
               }`}
             >
               {PLATFORM_LABELS[p]}
@@ -172,18 +183,15 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
 
       {/* Keywords */}
       <div className="mb-4">
-        <label className="mb-1 block text-xs font-medium text-text-secondary">Keywords</label>
-        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border-default/60 bg-bg-surface px-3 py-2 focus-within:border-accent/50">
+        <Label className="mb-1.5">Keywords</Label>
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-ring">
           {keywords.map((kw) => (
-            <span
-              key={kw}
-              className="flex items-center gap-1 rounded-lg bg-accent/10 px-2 py-0.5 text-xs text-accent"
-            >
+            <Badge key={kw} variant="secondary" className="gap-1 bg-primary/10 text-primary">
               {kw}
               <button onClick={() => setKeywords(keywords.filter((k) => k !== kw))}>
                 <X className="h-3 w-3" />
               </button>
-            </span>
+            </Badge>
           ))}
           <input
             value={keywordInput}
@@ -191,27 +199,24 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
             onKeyDown={handleKeywordKeyDown}
             onBlur={addKeyword}
             placeholder={keywords.length === 0 ? 'Type + Enter to add' : ''}
-            className="min-w-[100px] flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary"
+            className="min-w-[100px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
         </div>
       </div>
 
       {/* Channel URLs */}
       <div className="mb-4">
-        <label className="mb-1 block text-xs font-medium text-text-secondary">
-          Channel URLs <span className="text-text-tertiary">(optional)</span>
-        </label>
-        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border-default/60 bg-bg-surface px-3 py-2 focus-within:border-accent/50">
+        <Label className="mb-1.5">
+          Channel URLs <span className="text-muted-foreground">(optional)</span>
+        </Label>
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-ring">
           {channelUrls.map((url) => (
-            <span
-              key={url}
-              className="flex items-center gap-1 rounded-lg bg-accent/10 px-2 py-0.5 text-xs text-accent"
-            >
+            <Badge key={url} variant="secondary" className="gap-1 bg-primary/10 text-primary">
               {url.length > 30 ? url.slice(0, 30) + '...' : url}
               <button onClick={() => setChannelUrls(channelUrls.filter((u) => u !== url))}>
                 <X className="h-3 w-3" />
               </button>
-            </span>
+            </Badge>
           ))}
           <input
             value={channelInput}
@@ -219,14 +224,14 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
             onKeyDown={handleChannelKeyDown}
             onBlur={addChannel}
             placeholder={channelUrls.length === 0 ? 'Paste URL + Enter' : ''}
-            className="min-w-[100px] flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary"
+            className="min-w-[100px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
         </div>
       </div>
 
       {/* Time Range */}
       <div className="mb-4">
-        <label className="mb-1.5 block text-xs font-medium text-text-secondary">Time Range</label>
+        <Label className="mb-1.5">Time Range</Label>
         <div className="flex flex-wrap gap-2">
           {TIME_RANGES.map(({ label, value }) => (
             <button
@@ -234,8 +239,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
               onClick={() => setTimeRangeDays(value)}
               className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
                 timeRangeDays === value
-                  ? 'bg-accent text-white shadow-sm'
-                  : 'border border-border-default/60 bg-bg-surface text-text-secondary hover:border-accent/40'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:border-primary/40'
               }`}
             >
               {label}
@@ -247,67 +252,63 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
       {/* Region + Max Posts row */}
       <div className="mb-4 grid grid-cols-2 gap-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary">Region</label>
-          <select
-            value={geoScope}
-            onChange={(e) => setGeoScope(e.target.value)}
-            className="w-full rounded-xl border border-border-default/60 bg-bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/50"
-          >
-            <option value="global">Global</option>
-            <option value="US">US</option>
-            <option value="EU">EU</option>
-            <option value="UK">UK</option>
-          </select>
+          <Label className="mb-1.5">Region</Label>
+          <Select value={geoScope} onValueChange={setGeoScope}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global">Global</SelectItem>
+              <SelectItem value="US">US</SelectItem>
+              <SelectItem value="EU">EU</SelectItem>
+              <SelectItem value="UK">UK</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary">API Calls / Keyword</label>
-          <select
-            value={maxCalls}
-            onChange={(e) => setMaxCalls(Number(e.target.value))}
-            className="w-full rounded-xl border border-border-default/60 bg-bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/50"
-          >
-            {MAX_CALLS_OPTIONS.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+          <Label className="mb-1.5">API Calls / Keyword</Label>
+          <Select value={String(maxCalls)} onValueChange={(v) => setMaxCalls(Number(v))}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MAX_CALLS_OPTIONS.map((n) => (
+                <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       {/* Include Comments */}
       <div className="mb-6">
         <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={includeComments}
-            onChange={(e) => setIncludeComments(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-border-default text-accent focus:ring-accent"
+            onCheckedChange={(checked) => setIncludeComments(checked === true)}
           />
-          <span className="text-sm text-text-primary">Include Comments</span>
+          <span className="text-sm text-foreground">Include Comments</span>
         </label>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mb-4 rounded-xl border border-red-300/50 bg-red-50/50 px-4 py-2.5 text-xs text-red-600 dark:border-red-500/20 dark:bg-red-500/5 dark:text-red-400">
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-xs text-destructive">
           {error}
         </div>
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-end gap-3 border-t border-border-default/50 pt-4">
-        <button
-          onClick={onClose}
-          className="rounded-xl px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-surface-secondary"
-        >
+      <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+        <Button variant="ghost" onClick={onClose}>
           {variant === 'inline' ? 'Dismiss' : 'Cancel'}
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={handleSubmit}
           disabled={platforms.length === 0 || submitting}
-          className="rounded-xl bg-accent px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-50"
         >
           {submitting ? 'Starting...' : 'Start Collection'}
-        </button>
+        </Button>
       </div>
     </div>
   );

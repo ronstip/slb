@@ -40,7 +40,7 @@ export function SentimentPie({ data }: SentimentPieProps) {
               className="h-2 w-2 rounded-full"
               style={{ backgroundColor: SENTIMENT_COLORS[item.sentiment] || '#78716C' }}
             />
-            <span className="text-xs capitalize text-text-secondary">
+            <span className="text-xs capitalize text-muted-foreground">
               {item.sentiment} ({item.percentage.toFixed(0)}%)
             </span>
           </div>

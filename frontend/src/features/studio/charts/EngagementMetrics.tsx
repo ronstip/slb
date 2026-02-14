@@ -29,12 +29,12 @@ export function EngagementMetrics({ data }: EngagementMetricsProps) {
       {metrics.map(({ label, value, emoji }) => (
         <div
           key={label}
-          className="rounded-lg border border-border-default bg-bg-surface p-3"
+          className="rounded-lg border border-border bg-card p-3"
         >
-          <span className="text-xs text-text-secondary">
+          <span className="text-xs text-muted-foreground">
             {emoji} {label}
           </span>
-          <p className="mt-1 font-mono text-lg font-medium text-text-primary">
+          <p className="mt-1 font-mono text-lg font-medium text-foreground">
             {formatNumber(value)}
           </p>
         </div>

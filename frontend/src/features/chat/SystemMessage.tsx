@@ -7,7 +7,7 @@ interface SystemMessageProps {
 export function SystemMessage({ message }: SystemMessageProps) {
   return (
     <div className="flex justify-center">
-      <p className="text-xs text-text-tertiary">{message.content}</p>
+      <p className="text-xs text-muted-foreground/70">{message.content}</p>
     </div>
   );
 }

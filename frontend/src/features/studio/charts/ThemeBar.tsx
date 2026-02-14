@@ -14,7 +14,7 @@ export function ThemeBar({ data }: ThemeBarProps) {
         <XAxis type="number" tick={{ fontSize: 10 }} />
         <YAxis type="category" dataKey="theme" tick={{ fontSize: 10 }} width={75} />
         <Tooltip contentStyle={{ fontSize: 12 }} />
-        <Bar dataKey="post_count" fill="#4338CA" radius={[0, 4, 4, 0]} />
+        <Bar dataKey="post_count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
