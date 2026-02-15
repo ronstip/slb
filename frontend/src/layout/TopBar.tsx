@@ -1,6 +1,7 @@
 import { Building2, LogOut, Moon, Plus, Settings, Sun } from 'lucide-react';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from '../components/theme-provider.tsx';
+import { useUIStore } from '../stores/ui-store.ts';
 import { Button } from '../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -57,7 +58,12 @@ export function TopBar() {
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => useUIStore.getState().openSettings()}
+            >
               <Settings className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -91,14 +97,16 @@ export function TopBar() {
                 </span>
               </div>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => useUIStore.getState().openSettings()}>
+              <Settings className="mr-2 h-3.5 w-3.5" />
+              Settings
+            </DropdownMenuItem>
             {!devMode && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={signOut}>
-                  <LogOut className="mr-2 h-3.5 w-3.5" />
-                  Sign Out
-                </DropdownMenuItem>
-              </>
+              <DropdownMenuItem onClick={signOut}>
+                <LogOut className="mr-2 h-3.5 w-3.5" />
+                Sign Out
+              </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

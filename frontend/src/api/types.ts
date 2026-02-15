@@ -11,13 +11,110 @@ export interface ChatRequest {
   selected_sources?: string[];
 }
 
+export interface UserPreferences {
+  email_notifications: boolean;
+  data_retention_days: number;
+  allow_model_training: boolean;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
   display_name: string | null;
+  photo_url: string | null;
   org_id: string | null;
   org_role: string | null;
   org_name: string | null;
+  preferences: UserPreferences | null;
+  subscription_plan: string | null;
+  subscription_status: string | null;
+}
+
+export interface OrgMember {
+  uid: string;
+  email: string;
+  display_name: string | null;
+  photo_url: string | null;
+  role: string;
+}
+
+export interface OrgDetails {
+  org_id: string;
+  name: string;
+  slug: string;
+  domain: string | null;
+  members: OrgMember[];
+  subscription_plan: string | null;
+  subscription_status: string | null;
+  billing_cycle: string | null;
+  current_period_end: string | null;
+}
+
+export interface OrgInvite {
+  invite_id: string;
+  email: string;
+  role: string;
+  status: string;
+  invite_code: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface SubscriptionInfo {
+  status: string | null;
+  plan: string | null;
+  billing_cycle: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  is_org: boolean;
+}
+
+export interface UsageStats {
+  period_start: string;
+  period_end: string;
+  queries_used: number;
+  queries_limit: number;
+  collections_created: number;
+  collections_limit: number;
+  posts_collected: number;
+  posts_limit: number;
+}
+
+export interface UsageTrendPoint {
+  date: string;
+  queries: number;
+  collections: number;
+  posts: number;
+  user_name?: string;
+  user_id?: string;
+}
+
+export interface UsageTrendResponse {
+  points: UsageTrendPoint[];
+  granularity: string;
+}
+
+export interface CreditBalance {
+  credits_remaining: number;
+  credits_used: number;
+  credits_total: number;
+  is_org: boolean;
+}
+
+export interface CreditPack {
+  pack_id: string;
+  name: string;
+  credits: number;
+  price_cents: number;
+  popular: boolean;
+}
+
+export interface CreditPurchaseHistoryItem {
+  purchased_at: string;
+  credits: number;
+  amount_cents: number;
+  purchased_by?: string;
+  purchased_by_name?: string;
 }
 
 export interface CreateCollectionRequest {
@@ -74,6 +171,8 @@ export interface CollectionStatusResponse {
   error_message?: string;
   config?: CollectionConfig;
   created_at?: string;
+  visibility?: 'private' | 'org';
+  user_id?: string;
 }
 
 export interface MediaRef {

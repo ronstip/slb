@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     enable_search_grounding: bool = True
     google_genai_use_vertexai: bool = True
 
+    # Frontend URL for Stripe redirect callbacks
+    frontend_url: str = "http://localhost:5173"
+
+    # Stripe billing (optional — billing features disabled if not set)
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     def model_post_init(self, __context) -> None:

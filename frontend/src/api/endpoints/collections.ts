@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../client.ts';
+import { apiGet, apiPost, apiDelete } from '../client.ts';
 import type {
   CollectionStatusResponse,
   CreateCollectionRequest,
@@ -18,4 +18,17 @@ export async function getCollectionStatus(
 
 export async function listCollections(): Promise<CollectionStatusResponse[]> {
   return apiGet('/collections');
+}
+
+export async function setCollectionVisibility(
+  collectionId: string,
+  visibility: 'private' | 'org',
+): Promise<{ status: string; visibility: string }> {
+  return apiPost(`/collection/${collectionId}/visibility`, { visibility });
+}
+
+export async function deleteCollection(
+  collectionId: string,
+): Promise<{ status: string }> {
+  return apiDelete(`/collection/${collectionId}`);
 }

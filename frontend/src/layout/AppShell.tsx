@@ -70,7 +70,7 @@ export function AppShell() {
       <div className="flex flex-1 overflow-hidden">
         {/* Sources Panel */}
         <aside
-          className="shrink-0 bg-card"
+          className="shrink-0 overflow-hidden bg-card"
           style={{ width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW }}
         >
           <SourcesPanel />

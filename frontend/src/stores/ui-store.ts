@@ -12,13 +12,18 @@ export interface PollData {
   type: 'single' | 'multi' | 'confirm';
 }
 
+type AppView = 'dashboard' | 'settings';
+
 interface UIStore {
+  currentView: AppView;
   sourcesPanelCollapsed: boolean;
   studioPanelCollapsed: boolean;
   collectionModalOpen: boolean;
   collectionModalPrefill: CollectionConfig | null;
   activePoll: PollData | null;
 
+  openSettings: () => void;
+  closeSettings: () => void;
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
   openCollectionModal: (prefill?: CollectionConfig) => void;
@@ -36,11 +41,15 @@ const loadCollapsed = (key: string): boolean => {
 };
 
 export const useUIStore = create<UIStore>((set) => ({
+  currentView: 'dashboard',
   sourcesPanelCollapsed: loadCollapsed('sources-collapsed'),
   studioPanelCollapsed: loadCollapsed('studio-collapsed'),
   collectionModalOpen: false,
   collectionModalPrefill: null,
   activePoll: null,
+
+  openSettings: () => set({ currentView: 'settings' }),
+  closeSettings: () => set({ currentView: 'dashboard' }),
 
   toggleSourcesPanel: () =>
     set((s) => {

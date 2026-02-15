@@ -26,6 +26,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from api.agent.agent import APP_NAME, create_runner
 from api.auth.dependencies import CurrentUser, get_current_user
+from api.routers import settings as settings_router
+from api.routers import billing as billing_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest
 from api.schemas.responses import CollectionStatusResponse, FeedPostResponse, FeedResponse
 from api.services.collection_service import create_collection_from_request
@@ -36,6 +38,10 @@ from workers.shared.firestore_client import FirestoreClient
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Social Listening Platform", version="0.1.0")
+
+# Include settings and billing routers
+app.include_router(settings_router.router)
+app.include_router(billing_router.router)
 
 # CORS middleware — allow frontend dev server and production domains
 app.add_middleware(
@@ -62,8 +68,18 @@ def get_runner() -> Runner:
 
 
 def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
-    """Check if the user can access a collection (user-scoped only for now)."""
-    return collection_status.get("user_id") == user.uid
+    """Check if the user can access a collection (user-scoped + org-scoped with visibility check)."""
+    # Owner always has access
+    if collection_status.get("user_id") == user.uid:
+        return True
+    # Org members can access collections shared with the org
+    if (
+        user.org_id
+        and collection_status.get("org_id") == user.org_id
+        and collection_status.get("visibility") == "org"
+    ):
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -74,21 +90,28 @@ def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
 @app.get("/me")
 async def get_me(user: CurrentUser = Depends(get_current_user)):
     """Return the current user's profile."""
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+
     org_name = None
     if user.org_id:
-        settings = get_settings()
-        fs = FirestoreClient(settings)
         org = fs.get_org(user.org_id)
         if org:
             org_name = org.get("name")
 
+    user_doc = fs.get_user(user.uid)
+
     return {
         "uid": user.uid,
         "email": user.email,
-        "display_name": user.display_name,
+        "display_name": user_doc.get("display_name") if user_doc else user.display_name,
+        "photo_url": user_doc.get("photo_url") if user_doc else None,
         "org_id": user.org_id,
         "org_role": user.org_role,
         "org_name": org_name,
+        "preferences": user_doc.get("preferences") if user_doc else None,
+        "subscription_plan": user_doc.get("subscription_plan") if user_doc else None,
+        "subscription_status": user_doc.get("subscription_status") if user_doc else None,
     }
 
 
@@ -173,23 +196,100 @@ async def create_collection(
     return result
 
 
+@app.post("/collection/{collection_id}/visibility")
+async def set_collection_visibility(
+    collection_id: str,
+    request: dict,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Toggle collection visibility between 'private' and 'org'. Only the owner can change this."""
+    visibility = request.get("visibility", "private")
+    if visibility not in ("private", "org"):
+        raise HTTPException(status_code=400, detail="Visibility must be 'private' or 'org'")
+
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if status.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the collection owner can change visibility")
+    if not user.org_id:
+        raise HTTPException(status_code=400, detail="You must be in an organization to share collections")
+
+    fs.update_collection_status(collection_id, visibility=visibility, org_id=user.org_id)
+    return {"status": "updated", "visibility": visibility}
+
+
+@app.delete("/collection/{collection_id}")
+async def delete_collection(
+    collection_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Delete a collection. Only the owner can delete."""
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if status.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the collection owner can delete")
+
+    # Delete from Firestore
+    fs._db.collection("collection_status").document(collection_id).delete()
+    return {"status": "deleted"}
+
+
 @app.get("/collections")
 async def list_collections(user: CurrentUser = Depends(get_current_user)):
-    """List all collections for the authenticated user."""
+    """List all collections for the authenticated user (own + org-shared)."""
     settings = get_settings()
     fs = FirestoreClient(settings)
 
     db = fs._db
 
-    # User-scoped only: filter by user_id derived from token
+    # User's own collections
     docs = (
         db.collection("collection_status")
         .where("user_id", "==", user.uid)
         .stream()
     )
 
+    seen_ids = set()
+    all_docs = list(docs)
+
+    # Backfill org_id on user's own collections that are missing it
+    if user.org_id:
+        for doc in all_docs:
+            data = doc.to_dict()
+            if not data.get("org_id"):
+                try:
+                    fs.update_collection_status(doc.id, org_id=user.org_id)
+                    logger.info("Backfilled org_id=%s on collection %s", user.org_id, doc.id)
+                except Exception as e:
+                    logger.warning("Failed to backfill org_id on %s: %s", doc.id, e)
+
+    # Also fetch org-shared collections if user is in an org
+    if user.org_id:
+        try:
+            # Query by org_id and filter visibility in Python (avoids composite index requirement)
+            org_docs = list(
+                db.collection("collection_status")
+                .where("org_id", "==", user.org_id)
+                .stream()
+            )
+            for doc in org_docs:
+                data = doc.to_dict()
+                if data.get("visibility") == "org":
+                    all_docs.append(doc)
+        except Exception as e:
+            logger.error("Org query failed: %s", e)
+
     collections = []
-    for doc in docs:
+    for doc in all_docs:
+        if doc.id in seen_ids:
+            continue
+        seen_ids.add(doc.id)
         data = doc.to_dict()
         created_at_raw = data.get("created_at")
         created_at_str = None
@@ -211,6 +311,8 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
                 error_message=data.get("error_message"),
                 config=data.get("config"),
                 created_at=created_at_str,
+                visibility=data.get("visibility", "private"),
+                user_id=data.get("user_id"),
             )
         )
 
@@ -395,6 +497,8 @@ async def get_collection_status(
         posts_embedded=status.get("posts_embedded", 0),
         error_message=status.get("error_message"),
         config=status.get("config"),
+        visibility=status.get("visibility", "private"),
+        user_id=status.get("user_id"),
     )
 
 
@@ -462,6 +566,7 @@ async def get_my_org(user: CurrentUser = Depends(get_current_user)):
             "uid": m["uid"],
             "email": m.get("email"),
             "display_name": m.get("display_name"),
+            "photo_url": m.get("photo_url"),
             "role": m.get("org_role"),
         }
         for m in members
@@ -473,6 +578,10 @@ async def get_my_org(user: CurrentUser = Depends(get_current_user)):
         "slug": org.get("slug"),
         "domain": org.get("domain"),
         "members": member_list,
+        "subscription_plan": org.get("subscription_plan"),
+        "subscription_status": org.get("subscription_status"),
+        "billing_cycle": org.get("billing_cycle"),
+        "current_period_end": org.get("current_period_end"),
     }
 
 

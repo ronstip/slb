@@ -1,5 +1,6 @@
 """Firestore-backed session service for persistent ADK agent sessions."""
 
+import json
 import logging
 from typing import Any, Optional
 from uuid import uuid4
@@ -150,17 +151,30 @@ class FirestoreSessionService(BaseSessionService):
 
     def _write_session(self, session: Session) -> None:
         """Serialize and persist a session to Firestore."""
+        # Serialize events via JSON round-trip to ensure all values are
+        # Firestore-compatible primitives (strips non-serializable objects
+        # like GroundingMetadata / protobuf instances).
+        events_safe = []
+        for e in session.events:
+            try:
+                dumped = e.model_dump(mode="json", exclude_none=True)
+                # Round-trip through json to force everything to primitives
+                events_safe.append(json.loads(json.dumps(dumped, default=str)))
+            except Exception:
+                logger.warning("Failed to serialize event, skipping")
+
         data = {
             "session_id": session.id,
             "app_name": session.app_name,
             "user_id": session.user_id,
             "state": session.state,
             "last_update_time": session.last_update_time,
-            "events_json": [
-                e.model_dump(mode="json", exclude_none=True) for e in session.events
-            ],
+            "events_json": events_safe,
         }
-        self._db.collection(SESSIONS_COLLECTION).document(session.id).set(data)
+        try:
+            self._db.collection(SESSIONS_COLLECTION).document(session.id).set(data)
+        except Exception as exc:
+            logger.error("Failed to write session %s to Firestore: %s", session.id, exc)
 
     def _deserialize(self, data: dict) -> Session:
         """Reconstruct a Session from a Firestore document."""

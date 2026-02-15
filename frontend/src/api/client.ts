@@ -43,6 +43,17 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export async function apiDelete<T = void>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'DELETE',
+    headers: await getHeaders(),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await res.text());
+  }
+  return res.json();
+}
+
 /**
  * Convert a media reference to a proxied URL.
  * GCS URIs go through /media/{path}, external URLs go through /media-proxy.

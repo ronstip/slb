@@ -12,6 +12,8 @@ export interface Source {
   selected: boolean;
   createdAt: string;
   errorMessage?: string;
+  visibility?: 'private' | 'org';
+  userId?: string;
 }
 
 interface SourcesStore {
