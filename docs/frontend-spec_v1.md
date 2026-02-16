@@ -61,9 +61,9 @@ Three columns. Chat anchored in the center. Side panels collapsible.
 
 | Panel | Width | Collapsible | Collapsed State |
 |-------|-------|-------------|-----------------|
-| Sources | ~280px | Yes | Icon rail (~48px) with status dots |
+| Sources | ~320px (default) | Yes | Icon rail (~48px) with status dots |
 | Chat | Remaining space (min 480px) | No | Always visible |
-| Studio | ~360px | Yes | Icon rail (~48px) with tab icons |
+| Studio | ~320px (default) | Yes | Icon rail (~48px) with tab icons |
 
 Collapse state persists in localStorage.
 
@@ -104,7 +104,7 @@ Single button at the top. Opens a dropdown menu:
 
 ### Source List
 
-A flat list. No grouping by status. Failed or cancelled sources are not shown.
+Grouped into sections: **My Collections**, **Shared with me**, and **My Sessions**. Failed or cancelled sources are not shown.
 
 Each source card:
 
@@ -340,7 +340,7 @@ Shows the actual social media posts from selected sources. This is the trust lay
 
 ```
 ┌───────────────────────────┐
-│ [IG] @glossier · 3d ago   │
+│ [icon] @glossier · 3d ago │
 ├───────────────────────────┤
 │ ┌───────────────────────┐ │
 │ │    [thumbnail]        │ │
@@ -357,24 +357,31 @@ Shows the actual social media posts from selected sources. This is the trust lay
 └───────────────────────────┘
 ```
 
+- **Platform icon:** Inline SVG icons for each platform (Instagram, Twitter/X, TikTok, Reddit, YouTube) colored with the platform's brand color. Replaces previous 2-letter text abbreviations.
+- **Engagement icons:** Lucide icons — ThumbsUp for likes, MessageCircle for comments, Eye for views, Share2 for shares.
+- **Video posts:** Show only the video player — no extra thumbnail images alongside.
+- **Layout:** Two-column masonry by default (single-column below 440px). Cards have `p-4` padding and `gap-4` between them.
+- **Image loading:** Shimmer placeholder shown while images load (`loading="lazy"` + animated skeleton).
 - **[↗ Original]** — opens post on its platform (new tab)
 - **[📌 Save]** — saves to Artifacts as evidence (Phase 2, visible but disabled in MVP)
 
 #### Feed Controls
 
-Top of the tab:
+Compact single-row bar: a Sort dropdown (with "Sort:" label prefix), a Filter dropdown button (with active-filter dot indicator), and a post count.
 
-- **Sort:** Engagement (default) · Most Recent · Sentiment
-- **Platform filter:** All · Instagram · TikTok · Twitter/X · Reddit · YouTube
-- **Sentiment filter:** All · Positive · Negative · Neutral · Mixed
-- **Count label:** "834 posts from 2 sources"
+- **Sort dropdown:** `Sort: Most Viewed` (default) · Engagement · Most Recent · Sentiment
+- **Filter button:** Opens a dropdown with two radio-group sections:
+  - **Platform:** All · Instagram · TikTok · Twitter/X · Reddit · YouTube
+  - **Sentiment:** All · Positive · Negative · Neutral · Mixed
+  - Shows a small dot on the button when a non-default filter is active
+- **Count label:** post count at the right end of the bar
 
 #### Data Loading
 
 Fed by a dedicated API endpoint — no agent round-trip:
 
 ```
-GET /collections/{id}/posts?sort=engagement&platform=all&sentiment=all&limit=50&offset=0
+GET /collections/{id}/posts?sort=views&platform=all&sentiment=all&limit=20&offset=0
 ```
 
 Paginated. Initial load: 50 posts. Infinite scroll for more. For multiple selected sources, the frontend makes parallel calls and merges client-side (or a `POST /feed` endpoint accepts multiple IDs — decide in engineering).

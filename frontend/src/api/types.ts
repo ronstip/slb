@@ -129,7 +129,7 @@ export interface CreateCollectionRequest {
 }
 
 export interface FeedParams {
-  sort?: 'engagement' | 'recent' | 'sentiment';
+  sort?: 'engagement' | 'recent' | 'sentiment' | 'views';
   platform?: string;
   sentiment?: string;
   limit?: number;

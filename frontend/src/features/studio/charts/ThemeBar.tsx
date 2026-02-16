@@ -5,7 +5,7 @@ interface ThemeBarProps {
   data: ThemeDistribution[];
 }
 
-const BAR_COLOR = '#818CF8'; // indigo-400
+const BAR_COLOR = '#3B82F6'; // blue-500
 
 export function ThemeBar({ data }: ThemeBarProps) {
   const top10 = data.slice(0, 10);

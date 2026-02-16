@@ -364,6 +364,7 @@ async def get_collection_posts(
         "engagement": "COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) DESC",
         "recent": "p.posted_at DESC",
         "sentiment": "ep.sentiment ASC, p.posted_at DESC",
+        "views": "COALESCE(pe.views, 0) DESC, p.posted_at DESC",
     }
     order_sql = sort_map.get(sort, sort_map["engagement"])
 

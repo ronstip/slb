@@ -34,14 +34,14 @@ export function MessageInput({ onSend }: MessageInputProps) {
   };
 
   return (
-    <div className="border-t border-border bg-card/80 p-4 backdrop-blur-sm">
-      <div className="flex items-end gap-2 rounded-2xl border border-border bg-card px-4 py-2.5 shadow-sm transition-shadow focus-within:border-primary/50 focus-within:shadow-md">
+    <div className="px-6 pb-5 pt-2">
+      <div className="flex items-end gap-2 rounded-2xl border border-border bg-card px-4 py-2.5 shadow-md transition-shadow focus-within:border-primary/50 focus-within:shadow-lg">
         <textarea
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask about your sources..."
+          placeholder="Ask me to research anything on social media..."
           disabled={isAgentResponding}
           rows={1}
           className="max-h-36 flex-1 resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50"

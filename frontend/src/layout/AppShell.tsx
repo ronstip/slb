@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TopBar } from './TopBar.tsx';
 import { useUIStore } from '../stores/ui-store.ts';
+import { useStudioStore } from '../stores/studio-store.ts';
+import { useSourcesStore } from '../stores/sources-store.ts';
 import { ChatPanel } from '../features/chat/ChatPanel.tsx';
 import { SourcesPanel } from '../features/sources/SourcesPanel.tsx';
 import { StudioPanel } from '../features/studio/StudioPanel.tsx';
@@ -9,10 +11,11 @@ import { useCollectionPolling } from '../features/sources/useCollectionPolling.t
 
 const SOURCES_MIN = 220;
 const SOURCES_MAX = 420;
-const SOURCES_DEFAULT = 280;
+const SOURCES_DEFAULT = 320;
 const STUDIO_MIN = 300;
 const STUDIO_MAX = 700;
-const STUDIO_DEFAULT = 520;
+const STUDIO_DEFAULT = 320;
+const STUDIO_FEED_W = 440;
 const COLLAPSED_W = 48;
 
 export function AppShell() {
@@ -22,13 +25,26 @@ export function AppShell() {
     collectionModalOpen,
   } = useUIStore();
 
+  const activeTab = useStudioStore((s) => s.activeTab);
+  const feedSourceId = useStudioStore((s) => s.feedSourceId);
+  const sources = useSourcesStore((s) => s.sources);
+  const hasSelectedSource = sources.some((s) => s.selected);
+  const feedHasPosts = activeTab === 'feed' && !!(feedSourceId || hasSelectedSource);
+
   const [sourcesW, setSourcesW] = useState(SOURCES_DEFAULT);
   const [studioW, setStudioW] = useState(STUDIO_DEFAULT);
+  const userResizedStudio = useRef(false);
   const dragging = useRef<'sources' | 'studio' | null>(null);
   const startX = useRef(0);
   const startW = useRef(0);
 
   useCollectionPolling();
+
+  // Auto-adjust studio width when feed state changes (unless user manually resized)
+  useEffect(() => {
+    if (userResizedStudio.current) return;
+    setStudioW(feedHasPosts ? STUDIO_FEED_W : STUDIO_DEFAULT);
+  }, [feedHasPosts]);
 
   const onMouseDown = useCallback((panel: 'sources' | 'studio', e: React.MouseEvent) => {
     e.preventDefault();
@@ -46,6 +62,7 @@ export function AppShell() {
       if (dragging.current === 'sources') {
         setSourcesW(Math.max(SOURCES_MIN, Math.min(SOURCES_MAX, startW.current + dx)));
       } else {
+        userResizedStudio.current = true;
         setStudioW(Math.max(STUDIO_MIN, Math.min(STUDIO_MAX, startW.current - dx)));
       }
     };

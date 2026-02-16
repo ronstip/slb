@@ -24,20 +24,20 @@ export function TopBar() {
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   return (
-    <header className="flex h-12 shrink-0 items-center border-b border-border bg-card px-4">
+    <header className="flex h-12 shrink-0 items-center bg-gradient-to-r from-[#0F172A] to-[#1E293B] px-4">
       {/* Logo */}
-      <Logo size="sm" />
+      <Logo size="sm" inverted />
 
       {/* Session title */}
-      <Separator orientation="vertical" className="mx-4 h-5" />
-      <span className="text-sm text-muted-foreground">New Session</span>
+      <Separator orientation="vertical" className="mx-4 h-5 bg-white/20" />
+      <span className="text-sm text-white/60">New Session</span>
 
       {/* Spacer */}
       <div className="flex-1" />
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 border-white/20 bg-transparent text-xs text-white hover:bg-white/10 hover:text-white">
           <Plus className="h-3.5 w-3.5" />
           New Session
         </Button>
@@ -47,7 +47,7 @@ export function TopBar() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 text-white/70 hover:bg-white/10 hover:text-white"
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
             >
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -61,7 +61,7 @@ export function TopBar() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 text-white/70 hover:bg-white/10 hover:text-white"
               onClick={() => useUIStore.getState().openSettings()}
             >
               <Settings className="h-4 w-4" />
@@ -73,10 +73,10 @@ export function TopBar() {
         {/* User menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white/10">
               <Avatar className="h-7 w-7">
                 <AvatarImage src={user?.photoURL || undefined} />
-                <AvatarFallback className="bg-accent text-xs font-medium text-accent-foreground">
+                <AvatarFallback className="bg-white/10 text-xs font-medium text-white">
                   {displayInitial}
                 </AvatarFallback>
               </Avatar>

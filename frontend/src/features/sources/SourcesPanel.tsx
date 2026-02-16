@@ -1,4 +1,4 @@
-import { PanelLeftClose, PanelLeftOpen, Plus, ChevronDown, Loader2, Search, X, FolderOpen, Users } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Plus, ChevronDown, Loader2, Search, X, FolderOpen, Users, History } from 'lucide-react';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/ui-store.ts';
@@ -284,6 +284,21 @@ export function SourcesPanel() {
                       <SourceCard key={source.collectionId} source={source} />
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* My Sessions */}
+              {!searchQuery && (
+                <div className={filteredMine.length > 0 || filteredShared.length > 0 ? 'mt-3' : ''}>
+                  <div className="mb-1.5 flex items-center gap-1.5 px-0.5 pt-1">
+                    <History className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      My Sessions
+                    </span>
+                  </div>
+                  <p className="px-0.5 text-[10px] text-muted-foreground/60">
+                    No sessions yet
+                  </p>
                 </div>
               )}
 

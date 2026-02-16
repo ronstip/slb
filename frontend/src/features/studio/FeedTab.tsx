@@ -20,21 +20,21 @@ export function FeedTab() {
   const sources = useSourcesStore((s) => s.sources);
   const selectedSources = sources.filter((s) => s.selected);
 
-  const [sort, setSort] = useState<FeedParams['sort']>('engagement');
+  const [sort, setSort] = useState<FeedParams['sort']>('views');
   const [platform, setPlatform] = useState('all');
   const [sentiment, setSentiment] = useState('all');
 
   // Track container width to decide 1-col vs 2-col layout
   const containerRef = useRef<HTMLDivElement>(null);
-  const [useTwoCols, setUseTwoCols] = useState(false);
+  const [useTwoCols, setUseTwoCols] = useState(true);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     // Set initial value immediately so first render uses correct layout
-    setUseTwoCols(el.getBoundingClientRect().width >= 440);
+    setUseTwoCols(el.getBoundingClientRect().width >= 380);
     const observer = new ResizeObserver(([entry]) => {
-      setUseTwoCols(entry.contentRect.width >= 440);
+      setUseTwoCols(entry.contentRect.width >= 380);
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -42,10 +42,10 @@ export function FeedTab() {
 
   const activeSourceId = feedSourceId || selectedSources[0]?.collectionId;
 
-  const { data, fetchNextPage, hasNextPage, isFetching, isLoading } = useInfiniteQuery({
+  const { data, fetchNextPage, hasNextPage, isFetching, isLoading, isError } = useInfiniteQuery({
     queryKey: ['feed', activeSourceId, sort, platform, sentiment],
     queryFn: ({ pageParam = 0 }) =>
-      getPosts(activeSourceId!, { sort, platform, sentiment, limit: 50, offset: pageParam }),
+      getPosts(activeSourceId!, { sort, platform, sentiment, limit: 12, offset: pageParam }),
     getNextPageParam: (lastPage) => {
       const nextOffset = lastPage.offset + lastPage.limit;
       return nextOffset < lastPage.total ? nextOffset : undefined;
@@ -95,26 +95,30 @@ export function FeedTab() {
         totalCount={totalCount}
       />
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-3" onScroll={handleScroll}>
+      <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>
         {isLoading ? (
-          <div className={useTwoCols ? 'grid grid-cols-2 gap-3 pt-3' : 'flex flex-col gap-3 pt-3'}>
+          <div className={useTwoCols ? 'grid grid-cols-2 gap-4 pt-4' : 'flex flex-col gap-4 pt-4'}>
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-32 animate-pulse rounded-xl bg-secondary" />
             ))}
           </div>
+        ) : isError ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            Failed to load posts. Try adjusting the filters.
+          </p>
         ) : allPosts.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             No posts found.
           </p>
         ) : useTwoCols ? (
           /* Two-column masonry-style layout */
-          <div className="grid grid-cols-2 gap-3 pt-3 items-start">
-            <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-4 pt-4 items-start">
+            <div className="flex flex-col gap-4">
               {colA.map((post) => (
                 <PostCard key={post.post_id} post={post} />
               ))}
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
               {colB.map((post) => (
                 <PostCard key={post.post_id} post={post} />
               ))}
@@ -127,7 +131,7 @@ export function FeedTab() {
           </div>
         ) : (
           /* Single-column layout for narrower widths */
-          <div className="flex flex-col gap-3 pt-3">
+          <div className="flex flex-col gap-4 pt-4">
             {allPosts.map((post) => (
               <PostCard key={post.post_id} post={post} />
             ))}

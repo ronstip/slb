@@ -5,7 +5,7 @@ interface VolumeChartProps {
   data: VolumeOverTime[];
 }
 
-const BAR_COLOR = '#6366F1'; // indigo-500
+const BAR_COLOR = '#1E40AF'; // blue-800
 
 export function VolumeChart({ data }: VolumeChartProps) {
   // Aggregate by date (sum across platforms)
