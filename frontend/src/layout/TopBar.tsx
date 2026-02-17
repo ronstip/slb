@@ -1,7 +1,7 @@
 import { Building2, LogOut, Moon, Plus, Settings, Sun } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from '../components/theme-provider.tsx';
-import { useUIStore } from '../stores/ui-store.ts';
 import { Button } from '../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -17,6 +17,7 @@ import { Separator } from '../components/ui/separator.tsx';
 import { Logo } from '../components/Logo.tsx';
 
 export function TopBar() {
+  const navigate = useNavigate();
   const { user, profile, signOut, devMode } = useAuth();
   const { theme, setTheme } = useTheme();
 
@@ -26,7 +27,9 @@ export function TopBar() {
   return (
     <header className="flex h-12 shrink-0 items-center bg-gradient-to-r from-[#0F172A] to-[#1E293B] px-4">
       {/* Logo */}
-      <Logo size="sm" inverted />
+      <button onClick={() => navigate('/')} className="focus:outline-none">
+        <Logo size="sm" inverted />
+      </button>
 
       {/* Session title */}
       <Separator orientation="vertical" className="mx-4 h-5 bg-white/20" />
@@ -62,7 +65,7 @@ export function TopBar() {
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-white/70 hover:bg-white/10 hover:text-white"
-              onClick={() => useUIStore.getState().openSettings()}
+              onClick={() => navigate('/settings')}
             >
               <Settings className="h-4 w-4" />
             </Button>
@@ -98,7 +101,7 @@ export function TopBar() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => useUIStore.getState().openSettings()}>
+            <DropdownMenuItem onClick={() => navigate('/settings')}>
               <Settings className="mr-2 h-3.5 w-3.5" />
               Settings
             </DropdownMenuItem>

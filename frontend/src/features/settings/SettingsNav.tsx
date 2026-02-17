@@ -1,7 +1,7 @@
 import { User, Building2, CreditCard, BarChart3, Shield, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { cn } from '../../lib/utils.ts';
 import { useAuth } from '../../auth/useAuth.ts';
-import { useUIStore } from '../../stores/ui-store.ts';
 
 export type SettingsSection = 'account' | 'organization' | 'billing' | 'usage' | 'privacy';
 
@@ -19,12 +19,12 @@ interface SettingsNavProps {
 }
 
 export function SettingsNav({ activeSection, onSelect }: SettingsNavProps) {
+  const navigate = useNavigate();
   const { signOut } = useAuth();
-  const closeSettings = useUIStore((s) => s.closeSettings);
 
   const handleSignOut = async () => {
-    closeSettings();
     await signOut();
+    navigate('/login');
   };
 
   return (

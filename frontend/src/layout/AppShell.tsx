@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router';
 import { TopBar } from './TopBar.tsx';
 import { useUIStore } from '../stores/ui-store.ts';
 import { useStudioStore } from '../stores/studio-store.ts';
@@ -19,6 +20,7 @@ const STUDIO_FEED_W = 440;
 const COLLAPSED_W = 48;
 
 export function AppShell() {
+  const params = useParams<{ id?: string }>();
   const {
     sourcesPanelCollapsed,
     studioPanelCollapsed,
@@ -27,7 +29,11 @@ export function AppShell() {
 
   const activeTab = useStudioStore((s) => s.activeTab);
   const feedSourceId = useStudioStore((s) => s.feedSourceId);
+  const setFeedSource = useStudioStore((s) => s.setFeedSource);
+  const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const sources = useSourcesStore((s) => s.sources);
+  const toggleSelected = useSourcesStore((s) => s.toggleSelected);
+  const deselectAll = useSourcesStore((s) => s.deselectAll);
   const hasSelectedSource = sources.some((s) => s.selected);
   const feedHasPosts = activeTab === 'feed' && !!(feedSourceId || hasSelectedSource);
 
@@ -39,6 +45,45 @@ export function AppShell() {
   const startW = useRef(0);
 
   useCollectionPolling();
+
+  // Sync URL params with studio store (for page refresh/direct links)
+  useEffect(() => {
+    if (params.id) {
+      // Collection is selected via URL - ensure state matches
+      if (params.id !== feedSourceId) {
+        setFeedSource(params.id);
+        setActiveTab('feed');
+      }
+
+      // Ensure ONLY this collection is selected
+      const source = sources.find((s) => s.collectionId === params.id);
+      if (source) {
+        // Check if other collections are selected
+        const hasOtherSelected = sources.some(
+          (s) => s.selected && s.collectionId !== params.id
+        );
+
+        // Deselect all if there are other selections
+        if (hasOtherSelected) {
+          deselectAll();
+        }
+
+        // Ensure this collection is selected
+        if (!source.selected) {
+          toggleSelected(params.id);
+        }
+      }
+    } else {
+      // No collection in URL - clear selection and feed
+      if (feedSourceId) {
+        setFeedSource(null);
+      }
+      // Deselect all collections when navigating to home
+      if (hasSelectedSource) {
+        deselectAll();
+      }
+    }
+  }, [params.id, feedSourceId, sources, hasSelectedSource, setFeedSource, setActiveTab, toggleSelected, deselectAll]);
 
   // Auto-adjust studio width when feed state changes (unless user manually resized)
   useEffect(() => {

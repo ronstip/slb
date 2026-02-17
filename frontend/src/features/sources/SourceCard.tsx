@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useSourcesStore, type Source } from '../../stores/sources-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
@@ -38,8 +39,10 @@ interface SourceCardProps {
 }
 
 export function SourceCard({ source }: SourceCardProps) {
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const toggleSelected = useSourcesStore((s) => s.toggleSelected);
+  const deselectAll = useSourcesStore((s) => s.deselectAll);
   const updateSource = useSourcesStore((s) => s.updateSource);
   const removeSource = useSourcesStore((s) => s.removeSource);
   const setFeedSource = useStudioStore((s) => s.setFeedSource);
@@ -63,12 +66,18 @@ export function SourceCard({ source }: SourceCardProps) {
     .join(', ');
 
   const handleCardClick = () => {
-    toggleSelected(source.collectionId);
+    // Deselect all collections first, then select only this one
+    if (!source.selected) {
+      deselectAll();
+      toggleSelected(source.collectionId);
+    }
     setFeedSource(source.collectionId);
     setActiveTab('feed');
     if (studioPanelCollapsed) {
       toggleStudioPanel();
     }
+    // Navigate to the collection URL
+    navigate(`/collection/${source.collectionId}`);
   };
 
   const handleToggleVisibility = async (e: Event) => {
