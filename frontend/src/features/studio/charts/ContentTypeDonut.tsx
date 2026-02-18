@@ -5,7 +5,7 @@ interface ContentTypeDonutProps {
   data: ContentTypeBreakdown[];
 }
 
-const COLORS = ['#4338CA', '#059669', '#D97706', '#DC2626', '#78716C', '#E4405F', '#1DA1F2'];
+const COLORS = ['#6B7B9E', '#7BA589', '#B89A6A', '#A87878', '#8E8E93', '#A8788C', '#6A9AB8'];
 
 export function ContentTypeDonut({ data }: ContentTypeDonutProps) {
   return (

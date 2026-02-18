@@ -22,6 +22,7 @@ Collected data is shared across customers — only the `collections` table knows
 │               API — Cloud Run (FastAPI)                   │
 │  /chat              → ADK agent (streaming)              │
 │  /collection/{id}   → status (Firestore read)            │
+│  /sessions          → list / get / delete sessions       │
 └──────┬───────────────────────┬───────────────────────────┘
        │                       │
        ▼                       ▼
@@ -790,11 +791,16 @@ BQ remote models reference these. To swap: update config → recreate remote mod
 ## Firestore
 
 ```
-sessions/{session_id}
+sessions/{session_id}           (managed by ADK FirestoreSessionService)
 ├── user_id
-├── messages: [{role, content, timestamp}]
-├── active_collection_id
-└── created_at
+├── state
+│   ├── session_title           -- auto-named after first agent turn
+│   ├── selected_sources[]
+│   ├── message_count
+│   ├── first_message
+│   └── created_at
+├── events[]                    -- full ADK event history for session restoration
+└── last_update_time
 
 collection_status/{collection_id}
 ├── user_id

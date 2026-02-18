@@ -2,6 +2,7 @@ import { Building2, LogOut, Moon, Plus, Settings, Sun } from 'lucide-react';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from '../components/theme-provider.tsx';
 import { useUIStore } from '../stores/ui-store.ts';
+import { useSessionStore } from '../stores/session-store.ts';
 import { Button } from '../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -19,6 +20,8 @@ import { Logo } from '../components/Logo.tsx';
 export function TopBar() {
   const { user, profile, signOut, devMode } = useAuth();
   const { theme, setTheme } = useTheme();
+  const activeSessionTitle = useSessionStore((s) => s.activeSessionTitle);
+  const startNewSession = useSessionStore((s) => s.startNewSession);
 
   const displayInitial = user?.displayName?.[0] || profile?.display_name?.[0] || '?';
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -30,14 +33,19 @@ export function TopBar() {
 
       {/* Session title */}
       <Separator orientation="vertical" className="mx-4 h-5 bg-white/20" />
-      <span className="text-sm text-white/60">New Session</span>
+      <span className="text-sm text-white/60">{activeSessionTitle}</span>
 
       {/* Spacer */}
       <div className="flex-1" />
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 border-white/20 bg-transparent text-xs text-white hover:bg-white/10 hover:text-white">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 border-white/20 bg-transparent text-xs text-white hover:bg-white/10 hover:text-white"
+          onClick={startNewSession}
+        >
           <Plus className="h-3.5 w-3.5" />
           New Session
         </Button>

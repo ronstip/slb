@@ -16,6 +16,7 @@ def design_research(
     video_start_offset_sec: int = 0,
     video_end_offset_sec: int = 120,
     reasoning_level: str = "standard",
+    min_likes: int = 0,
 ) -> dict:
     """Convert a user's research question into a data collection configuration.
 
@@ -38,6 +39,8 @@ def design_research(
         video_end_offset_sec: End offset in seconds for video analysis.
         reasoning_level: Gemini reasoning level for enrichment. One of "none",
             "standard", or "deep".
+        min_likes: Minimum likes threshold for enrichment eligibility. Default 0
+            (enrich all posts). Set higher to enrich only popular posts.
 
     Returns:
         A dictionary with the collection config and estimated scope.
@@ -65,6 +68,7 @@ def design_research(
             "end_offset_sec": video_end_offset_sec,
         },
         "reasoning_level": reasoning_level,
+        "min_likes": min_likes,
     }
 
     # Each keyword generates multiple search tasks per platform; each task paginates up to max_calls pages

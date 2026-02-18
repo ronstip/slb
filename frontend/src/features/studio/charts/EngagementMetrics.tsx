@@ -1,3 +1,4 @@
+import { ThumbsUp, Eye, MessageCircle, Share2 } from 'lucide-react';
 import type { EngagementSummary } from '../../../api/types.ts';
 import { formatNumber } from '../../../lib/format.ts';
 
@@ -18,22 +19,23 @@ export function EngagementMetrics({ data }: EngagementMetricsProps) {
   );
 
   const metrics = [
-    { label: 'Likes', value: totals.likes, emoji: '👍' },
-    { label: 'Views', value: totals.views, emoji: '👁' },
-    { label: 'Comments', value: totals.comments, emoji: '💬' },
-    { label: 'Shares', value: totals.shares, emoji: '↗️' },
+    { label: 'Likes', value: totals.likes, icon: ThumbsUp },
+    { label: 'Views', value: totals.views, icon: Eye },
+    { label: 'Comments', value: totals.comments, icon: MessageCircle },
+    { label: 'Shares', value: totals.shares, icon: Share2 },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {metrics.map(({ label, value, emoji }) => (
+    <div className="grid grid-cols-4 gap-3">
+      {metrics.map(({ label, value, icon: Icon }) => (
         <div
           key={label}
-          className="rounded-lg border border-border bg-card p-3"
+          className="rounded-md border border-border bg-card p-3"
         >
-          <span className="text-xs text-muted-foreground">
-            {emoji} {label}
-          </span>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Icon className="h-3 w-3" />
+            {label}
+          </div>
           <p className="mt-1 font-mono text-lg font-medium text-foreground">
             {formatNumber(value)}
           </p>

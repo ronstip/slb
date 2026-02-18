@@ -3,9 +3,8 @@ import logging
 import threading
 from uuid import uuid4
 
+from api.deps import get_bq, get_fs
 from config.settings import get_settings
-from workers.shared.bq_client import BQClient
-from workers.shared.firestore_client import FirestoreClient
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +33,8 @@ def start_collection(
         A dictionary with the collection_id and status.
     """
     settings = get_settings()
-    bq = BQClient(settings)
-    fs = FirestoreClient(settings)
+    bq = get_bq()
+    fs = get_fs()
 
     collection_id = str(uuid4())
 
@@ -107,7 +106,9 @@ def _run_pipeline(collection_id: str) -> None:
     if status and status.get("status") == "completed":
         try:
             from workers.enrichment.worker import run_enrichment
-            run_enrichment(collection_id)
+            config = status.get("config") or {}
+            min_likes = config.get("min_likes", 0)
+            run_enrichment(collection_id, min_likes=min_likes)
         except Exception:
             logger.exception("Enrichment pipeline failed for %s", collection_id)
 

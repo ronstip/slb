@@ -1,4 +1,4 @@
-import { Loader2, Check } from 'lucide-react';
+import { Check, CircleDot } from 'lucide-react';
 import type { ToolIndicator as ToolIndicatorType } from '../../stores/chat-store.ts';
 
 interface ToolIndicatorProps {
@@ -7,15 +7,17 @@ interface ToolIndicatorProps {
 
 export function ToolIndicator({ indicator }: ToolIndicatorProps) {
   return (
-    <div className="mb-2 flex items-center gap-2">
+    <div className="flex items-center gap-2 py-0.5">
       {indicator.resolved ? (
-        <Check className="h-3.5 w-3.5 text-status-complete" />
+        <Check className="h-3 w-3 text-status-complete" strokeWidth={2.5} />
       ) : (
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+        <CircleDot className="h-3 w-3 animate-pulse text-primary/70" />
       )}
       <span
-        className={`text-xs italic ${
-          indicator.resolved ? 'text-muted-foreground/60' : 'text-muted-foreground'
+        className={`text-xs tracking-wide ${
+          indicator.resolved
+            ? 'text-muted-foreground/50'
+            : 'text-muted-foreground font-medium'
         }`}
       >
         {indicator.displayText}

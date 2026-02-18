@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -26,22 +27,23 @@ from sse_starlette.sse import EventSourceResponse
 
 from api.agent.agent import APP_NAME, create_runner
 from api.auth.dependencies import CurrentUser, get_current_user
+from api.deps import get_bq, get_fs
 from api.routers import settings as settings_router
 from api.routers import billing as billing_router
+from api.routers import sessions as sessions_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest
 from api.schemas.responses import CollectionStatusResponse, FeedPostResponse, FeedResponse
 from api.services.collection_service import create_collection_from_request
 from config.settings import get_settings
-from workers.shared.bq_client import BQClient
-from workers.shared.firestore_client import FirestoreClient
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Social Listening Platform", version="0.1.0")
 
-# Include settings and billing routers
+# Include routers
 app.include_router(settings_router.router)
 app.include_router(billing_router.router)
+app.include_router(sessions_router.router)
 
 # CORS middleware — allow frontend dev server and production domains
 app.add_middleware(
@@ -90,8 +92,7 @@ def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
 @app.get("/me")
 async def get_me(user: CurrentUser = Depends(get_current_user)):
     """Return the current user's profile."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     org_name = None
     if user.org_id:
@@ -140,6 +141,10 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                 "org_id": user.org_id,
                 "session_id": session_id,
                 "selected_sources": request.selected_sources or [],
+                "session_title": "New Session",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "message_count": 0,
+                "first_message": None,
             },
         )
     else:
@@ -150,6 +155,11 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
     content = types.Content(
         role="user", parts=[types.Part.from_text(text=request.message)]
     )
+
+    # Track first message for session naming
+    if not session.state.get("first_message"):
+        session.state["first_message"] = request.message
+    session.state["message_count"] = session.state.get("message_count", 0) + 1
 
     async def event_stream():
         try:
@@ -166,16 +176,27 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
 
                 if event.is_final_response():
                     text = _extract_text(event)
+
+                    # Yield "done" immediately with current title — naming
+                    # runs in the background so the client isn't blocked.
+                    current_title = session.state.get("session_title", "New Session")
+
                     yield {
                         "event": "done",
                         "data": json.dumps(
                             {
                                 "event_type": "done",
                                 "session_id": session_id,
+                                "session_title": current_title,
                                 "content": text,
                             }
                         ),
                     }
+
+                    # Fire-and-forget session naming (2-5s Gemini call)
+                    asyncio.create_task(
+                        _maybe_name_session(runner, user_id, session_id)
+                    )
         except Exception as e:
             logger.exception("Error in event stream")
             yield {
@@ -207,8 +228,7 @@ async def set_collection_visibility(
     if visibility not in ("private", "org"):
         raise HTTPException(status_code=400, detail="Visibility must be 'private' or 'org'")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
@@ -227,8 +247,7 @@ async def delete_collection(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Delete a collection. Only the owner can delete."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
@@ -243,8 +262,7 @@ async def delete_collection(
 @app.get("/collections")
 async def list_collections(user: CurrentUser = Depends(get_current_user)):
     """List all collections for the authenticated user (own + org-shared)."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     db = fs._db
 
@@ -332,17 +350,15 @@ async def get_collection_posts(
     offset: int = Query(default=0, ge=0),
 ):
     """Paginated enriched posts for the Feed."""
-    settings = get_settings()
-
     # Verify access
-    fs = FirestoreClient(settings)
+    fs = get_fs()
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if not _can_access_collection(user, status):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    bq = BQClient(settings)
+    bq = get_bq()
 
     # Build query dynamically
     # Use unqualified 'social_listening.' refs — BQClient.query() auto-qualifies them
@@ -482,8 +498,7 @@ async def get_collection_status(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Read collection status from Firestore."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
@@ -521,8 +536,7 @@ async def create_org(
     if user.org_id:
         raise HTTPException(status_code=400, detail="You already belong to an organization")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     domain = request.get("domain", "").strip().lower() or None
 
@@ -554,8 +568,7 @@ async def get_my_org(user: CurrentUser = Depends(get_current_user)):
     if not user.org_id:
         raise HTTPException(status_code=404, detail="You are not in an organization")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     org = fs.get_org(user.org_id)
     if not org:
@@ -595,8 +608,7 @@ async def leave_org(user: CurrentUser = Depends(get_current_user)):
     if user.org_role == "owner":
         raise HTTPException(status_code=400, detail="Organization owner cannot leave. Transfer ownership first.")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
     fs.update_user(user.uid, org_id=None, org_role=None)
     return {"status": "left"}
 
@@ -678,6 +690,62 @@ async def proxy_media(url: str = Query(...)):
 # ---------------------------------------------------------------------------
 
 
+async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> str:
+    """Generate a smart session title after the first agent turn.
+
+    Returns the current session title (may be newly generated or existing).
+    """
+    try:
+        session = await runner.session_service.get_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+        if not session:
+            return "New Session"
+
+        current_title = session.state.get("session_title", "New Session")
+
+        # Only name once — skip if already named
+        if current_title != "New Session":
+            return current_title
+
+        first_message = session.state.get("first_message")
+        if not first_message:
+            logger.debug("Session %s has no first_message, skipping naming", session_id)
+            return current_title
+
+        # Lightweight LLM call to generate a title
+        from google import genai
+
+        settings = get_settings()
+        client = genai.Client(
+            vertexai=True,
+            project=settings.gcp_project_id,
+            location=settings.gemini_location,
+        )
+        response = client.models.generate_content(
+            model=settings.gemini_model,
+            contents=(
+                "Generate a very short (3-6 word) descriptive title for this social "
+                "listening research session. The user asked: "
+                f"'{first_message[:300]}'. Reply with ONLY the title, nothing else."
+            ),
+        )
+        title = response.text.strip().strip('"').strip("'")
+        if title and len(title) < 80:
+            session.state["session_title"] = title
+            # Persist the updated state
+            runner.session_service._write_session(session)
+            logger.info("Named session %s: %s", session_id, title)
+            return title
+        else:
+            logger.warning("Generated invalid title for session %s: %r", session_id, title)
+
+    except Exception:
+        logger.exception("Failed to auto-name session %s", session_id)
+
+    return "New Session"
+
+
 def _extract_event_data(event) -> dict | None:
     """Extract structured data from an ADK event."""
     if not event.content or not event.content.parts:
@@ -691,6 +759,8 @@ def _extract_event_data(event) -> dict | None:
                 "author": event.author,
             }
         if part.function_call:
+            if part.function_call.name == "transfer_to_agent":
+                return None
             return {
                 "event_type": "tool_call",
                 "content": part.function_call.name,
@@ -701,6 +771,8 @@ def _extract_event_data(event) -> dict | None:
                 "author": event.author,
             }
         if part.function_response:
+            if part.function_response.name == "transfer_to_agent":
+                return None
             # Include the actual response data so frontend can render structured cards
             response_data = {}
             if part.function_response.response:

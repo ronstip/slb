@@ -2,7 +2,7 @@ import type { DesignResearchResult, InsightResult, DataExportResult } from '../a
 import { TOOL_DISPLAY_NAMES } from './constants.ts';
 
 export function getToolDisplayText(toolName: string): string {
-  return TOOL_DISPLAY_NAMES[toolName] || `Running ${toolName}...`;
+  return TOOL_DISPLAY_NAMES[toolName] || toolName.replace(/_/g, ' ');
 }
 
 export function isDesignResearchResult(

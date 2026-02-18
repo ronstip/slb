@@ -2,10 +2,15 @@ import logging
 
 from google.adk.agents import LlmAgent
 from google.adk.runners import Runner
-from api.auth.session_service import FirestoreSessionService
+from google.adk.tools.bigquery import BigQueryToolset
+from google.adk.tools.bigquery.config import BigQueryToolConfig, WriteMode
 from google.adk.tools.google_search_tool import GoogleSearchTool
+from google.genai import types
 
-from api.agent.prompts.system import SYSTEM_PROMPT
+from api.agent.prompts.analyst_agent import ANALYST_AGENT_PROMPT
+from api.agent.prompts.collection_agent import COLLECTION_AGENT_PROMPT
+from api.agent.prompts.orchestrator import ORCHESTRATOR_PROMPT
+from api.agent.prompts.research_agent import RESEARCH_AGENT_PROMPT
 from api.agent.tools.cancel_collection import cancel_collection
 from api.agent.tools.design_research import design_research
 from api.agent.tools.enrich_collection import enrich_collection
@@ -14,6 +19,7 @@ from api.agent.tools.get_insights import get_insights
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
 from api.agent.tools.start_collection import start_collection
+from api.auth.session_service import FirestoreSessionService
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -24,27 +30,88 @@ APP_NAME = "social_listening"
 def create_agent() -> LlmAgent:
     settings = get_settings()
 
-    tools = [
-        design_research,
-        start_collection,
-        cancel_collection,
-        get_progress,
-        enrich_collection,
-        get_insights,
-        export_data,
-        refresh_engagements,
-    ]
-
+    # --- Research Agent ---
+    research_tools = [design_research]
     if settings.enable_search_grounding:
-        tools.insert(0, GoogleSearchTool(bypass_multi_tools_limit=True))
+        research_tools.insert(0, GoogleSearchTool(bypass_multi_tools_limit=True))
 
-    return LlmAgent(
-        model=settings.gemini_model,
-        name="social_listening_agent",
-        description="Social listening research assistant that helps users understand brand perception, competitor analysis, and sentiment trends across social media.",
-        instruction=SYSTEM_PROMPT,
-        tools=tools,
+    research_agent = LlmAgent(
+        model=settings.research_model,
+        name="research_agent",
+        description=(
+            "Designs social media research experiments. Handles research "
+            "planning, keyword selection, platform choices, and uses web "
+            "search for brand context. Transfer here when the user asks "
+            "a new research question or wants to modify a research design."
+        ),
+        instruction=RESEARCH_AGENT_PROMPT,
+        tools=research_tools,
     )
+
+    # --- Collection Agent ---
+    collection_agent = LlmAgent(
+        model=settings.collection_model,
+        name="collection_agent",
+        description=(
+            "Manages the full data collection lifecycle including enrichment. "
+            "Starts, monitors, cancels collections, runs AI enrichment on "
+            "collected posts, and refreshes engagement data. Transfer here "
+            "when the user approves a research design, asks about progress, "
+            "or wants to manage an existing collection."
+        ),
+        instruction=COLLECTION_AGENT_PROMPT,
+        tools=[
+            start_collection,
+            cancel_collection,
+            get_progress,
+            refresh_engagements,
+            enrich_collection,
+        ],
+    )
+
+    # --- Analyst Agent ---
+    bq_toolset = BigQueryToolset(
+        bigquery_tool_config=BigQueryToolConfig(
+            write_mode=WriteMode.BLOCKED,
+            max_query_result_rows=100,
+            location=settings.gcp_region,
+        ),
+        tool_filter=["execute_sql", "get_table_info", "list_table_ids"],
+    )
+
+    analyst_agent = LlmAgent(
+        model=settings.analyst_model,
+        name="analyst_agent",
+        description=(
+            "Generates insight reports, exports data as CSV, and answers "
+            "custom analytical questions by querying BigQuery directly. "
+            "Transfer here when the user wants results, insights, data "
+            "exports, or asks questions about collected data."
+        ),
+        instruction=ANALYST_AGENT_PROMPT,
+        tools=[get_insights, export_data, bq_toolset],
+    )
+
+    # --- Orchestrator (root agent) ---
+    # Disable thinking and cap output — orchestrator only routes, never reasons.
+    orchestrator = LlmAgent(
+        model=settings.orchestrator_model,
+        name="orchestrator",
+        description=(
+            "Social listening research assistant that helps users "
+            "understand brand perception, competitor analysis, and "
+            "sentiment trends across social media."
+        ),
+        instruction=ORCHESTRATOR_PROMPT,
+        sub_agents=[research_agent, collection_agent, analyst_agent],
+        generate_content_config=types.GenerateContentConfig(
+            temperature=0,
+            max_output_tokens=256,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
+    )
+
+    return orchestrator
 
 
 def create_runner(session_service=None) -> Runner:

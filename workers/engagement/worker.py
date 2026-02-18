@@ -8,6 +8,7 @@ Usage:
 import json
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import groupby
 from operator import itemgetter
 from uuid import uuid4
@@ -59,10 +60,14 @@ def refresh_engagements(payload: dict) -> None:
 
     logger.info("Refreshing engagements for %d posts", len(posts))
 
-    # Group by platform
+    # Group by platform and process platforms in parallel
     sorted_posts = sorted(posts, key=itemgetter("platform"))
-    for platform, group in groupby(sorted_posts, key=itemgetter("platform")):
-        group_list = list(group)
+    platform_groups = {
+        platform: list(group)
+        for platform, group in groupby(sorted_posts, key=itemgetter("platform"))
+    }
+
+    def _refresh_platform(platform: str, group_list: list[dict]) -> None:
         post_urls = [p["post_url"] for p in group_list]
         post_id_map = {p["post_url"]: p["post_id"] for p in group_list}
 
@@ -91,6 +96,18 @@ def refresh_engagements(payload: dict) -> None:
         if rows:
             bq.insert_rows("post_engagements", rows)
             logger.info("Inserted %d engagement snapshots for %s", len(rows), platform)
+
+    with ThreadPoolExecutor(max_workers=min(len(platform_groups), 5)) as pool:
+        futures = {
+            pool.submit(_refresh_platform, platform, group_list): platform
+            for platform, group_list in platform_groups.items()
+        }
+        for future in as_completed(futures):
+            platform = futures[future]
+            try:
+                future.result()
+            except Exception:
+                logger.exception("Engagement refresh failed for %s", platform)
 
 
 if __name__ == "__main__":

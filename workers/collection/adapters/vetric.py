@@ -8,6 +8,7 @@ speed and fault isolation — a single failed API call does not block others.
 
 import logging
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
@@ -58,12 +59,19 @@ class VetricAdapter(DataProviderAdapter):
         if not self._api_keys:
             raise ValueError("No Vetric API keys configured — set at least one VETRIC_API_KEY_* env var")
         self._client = VetricClient(self._api_keys)
+        self._platform_stats: dict[str, dict] = {}
+        self._stats_lock = threading.Lock()
         logger.info("VetricAdapter initialized for platforms: %s", list(self._api_keys.keys()))
 
     def supported_platforms(self) -> list[str]:
         return list(self._api_keys.keys())
 
+    @property
+    def platform_stats(self) -> dict[str, dict]:
+        return dict(self._platform_stats)
+
     def collect(self, config: dict) -> list[Batch]:
+        self._platform_stats = {}
         platforms = [p for p in config.get("platforms", []) if p in self.supported_platforms()]
         if not platforms:
             return []
@@ -87,10 +95,21 @@ class VetricAdapter(DataProviderAdapter):
                 try:
                     batches = future.result()
                     all_batches.extend(batches)
-                    logger.info("Platform %s: collected %d batches", platform, len(batches))
+                    post_count = sum(len(b.posts) for b in batches)
+                    with self._stats_lock:
+                        self._platform_stats[platform] = {
+                            "posts": post_count,
+                            "batches": len(batches),
+                            "errors": 0,
+                        }
+                    logger.info("Platform %s: collected %d posts in %d batches", platform, post_count, len(batches))
                 except (VetricAPIError, requests.RequestException) as e:
+                    with self._stats_lock:
+                        self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1, "error": str(e)}
                     logger.error("Vetric API error for %s: %s", platform, e)
                 except Exception:
+                    with self._stats_lock:
+                        self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1}
                     logger.exception("Unexpected error collecting %s", platform)
 
         return all_batches
@@ -137,24 +156,86 @@ class VetricAdapter(DataProviderAdapter):
 
     def _ig_task(self, task_type: str, target: str, time_range: dict, max_calls: int) -> list[Batch]:
         if task_type == "top_serp":
-            return self._ig_top_serp(target, time_range)
+            return self._ig_top_serp(target, time_range, max_calls)
         elif task_type == "reels":
-            return self._ig_reels(target, time_range)
+            return self._ig_reels(target, time_range, max_calls)
         else:  # feed
             return self._ig_feed(target, time_range, max_calls)
 
-    def _ig_top_serp(self, keyword: str, time_range: dict) -> list[Batch]:
-        resp = self._client.get("instagram", "fbsearch/top_serp/", {"query": keyword})
-        items = flatten_instagram_top_serp(resp)
-        posts, channels = self._parse_instagram_items(items, time_range)
-        return [Batch(posts=posts, channels=channels)] if posts else []
+    def _ig_top_serp(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+        all_posts: list[Post] = []
+        all_channels: dict[str, Channel] = {}
+        next_max_id = None
 
-    def _ig_reels(self, keyword: str, time_range: dict) -> list[Batch]:
-        resp = self._client.get("instagram", "search/reels", {"q": keyword})
-        items = resp.get("items") or resp.get("medias") or []
-        unwrapped = [i.get("media", i) for i in items if isinstance(i, dict)]
-        posts, channels = self._parse_instagram_items(unwrapped, time_range)
-        return [Batch(posts=posts, channels=channels)] if posts else []
+        for call_num in range(max_calls):
+            params: dict = {"query": keyword}
+            if next_max_id:
+                params["next_max_id"] = next_max_id
+            resp = self._client.get("instagram", "fbsearch/top_serp/", params)
+
+            if call_num == 0:
+                logger.debug(
+                    "IG top_serp response keys for '%s': %s",
+                    keyword, list(resp.keys()),
+                )
+
+            items = flatten_instagram_top_serp(resp)
+            if not items:
+                break
+
+            posts, channels = self._parse_instagram_items(items, time_range)
+            all_posts.extend(posts)
+            for ch in channels:
+                if ch.channel_handle not in all_channels:
+                    all_channels[ch.channel_handle] = ch
+
+            # Try pagination: check top-level and media_grid-level cursors
+            next_max_id = resp.get("next_max_id")
+            if not next_max_id:
+                media_grid = resp.get("media_grid") or {}
+                next_max_id = media_grid.get("next_max_id")
+            if not next_max_id or not resp.get("more_available", resp.get("has_more", False)):
+                break
+
+        if all_posts:
+            return [Batch(posts=all_posts, channels=list(all_channels.values()))]
+        return []
+
+    def _ig_reels(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+        all_posts: list[Post] = []
+        all_channels: dict[str, Channel] = {}
+        next_max_id = None
+
+        for call_num in range(max_calls):
+            params: dict = {"q": keyword}
+            if next_max_id:
+                params["next_max_id"] = next_max_id
+            resp = self._client.get("instagram", "search/reels", params)
+
+            if call_num == 0:
+                logger.debug(
+                    "IG reels response keys for '%s': %s",
+                    keyword, list(resp.keys()),
+                )
+
+            items = resp.get("items") or resp.get("medias") or []
+            unwrapped = [i.get("media", i) for i in items if isinstance(i, dict)]
+            if not unwrapped:
+                break
+
+            posts, channels = self._parse_instagram_items(unwrapped, time_range)
+            all_posts.extend(posts)
+            for ch in channels:
+                if ch.channel_handle not in all_channels:
+                    all_channels[ch.channel_handle] = ch
+
+            next_max_id = resp.get("next_max_id") or resp.get("paging_token")
+            if not next_max_id or not resp.get("more_available", resp.get("has_more", False)):
+                break
+
+        if all_posts:
+            return [Batch(posts=all_posts, channels=list(all_channels.values()))]
+        return []
 
     def _ig_feed(self, username: str, time_range: dict, max_calls: int) -> list[Batch]:
         user_info = self._client.get("instagram", f"users/{username}/usernameinfo")
@@ -481,19 +562,30 @@ class VetricAdapter(DataProviderAdapter):
     # ------------------------------------------------------------------
 
     def fetch_engagements(self, post_urls: list[str]) -> list[dict]:
-        results = []
-        for url in post_urls:
+        if not post_urls:
+            return []
+
+        def _fetch_one(url: str) -> dict | None:
             platform = _detect_platform_from_url(url)
             if not platform:
                 logger.warning("Cannot determine platform for URL: %s", url)
-                continue
+                return None
             try:
                 engagement = self._fetch_single_engagement(platform, url)
                 if engagement:
                     engagement["post_url"] = url
-                    results.append(engagement)
+                    return engagement
             except (VetricAPIError, requests.RequestException) as e:
                 logger.warning("Failed to fetch engagement for %s: %s", url, e)
+            return None
+
+        results: list[dict] = []
+        with ThreadPoolExecutor(max_workers=min(len(post_urls), _MAX_WORKERS_KEYWORDS)) as pool:
+            futures = {pool.submit(_fetch_one, url): url for url in post_urls}
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    results.append(result)
         return results
 
     def _fetch_single_engagement(self, platform: str, url: str) -> dict | None:

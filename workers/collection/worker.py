@@ -7,6 +7,8 @@ Usage:
 import json
 import logging
 import sys
+import time
+from datetime import datetime, timezone
 
 from config.settings import get_settings
 from workers.collection.media_downloader import download_media
@@ -46,8 +48,11 @@ def run_collection(collection_id: str) -> None:
 
     wrapper = DataProviderWrapper(config=config)
     total_posts = 0
+    total_dupes = 0
     seen_post_ids: set[str] = set()
     seen_channel_ids: set[str] = set()
+    collection_start = time.monotonic()
+    collection_started_at = datetime.now(timezone.utc).isoformat()
 
     try:
         for batch in wrapper.collect_all():
@@ -87,14 +92,27 @@ def run_collection(collection_id: str) -> None:
             if channel_rows:
                 bq.insert_rows("channels", channel_rows)
 
+            dupes_in_batch = len(batch.posts) - len(new_posts)
             total_posts += len(new_posts)
+            total_dupes += dupes_in_batch
             fs.update_collection_status(
                 collection_id, posts_collected=total_posts
             )
-            logger.info("Collection %s: %d posts so far (%d dupes skipped)", collection_id, total_posts, len(batch.posts) - len(new_posts))
+            logger.info("Collection %s: %d posts so far (%d dupes skipped)", collection_id, total_posts, dupes_in_batch)
 
-        fs.update_collection_status(collection_id, status="completed")
-        logger.info("Collection %s completed: %d total posts", collection_id, total_posts)
+        # Build run_log with platform stats and timing
+        duration_sec = round(time.monotonic() - collection_start, 1)
+        run_log = {
+            "collection": {
+                "started_at": collection_started_at,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "duration_sec": duration_sec,
+                "total_dupes_skipped": total_dupes,
+                "platforms": wrapper.get_platform_stats(),
+            },
+        }
+        fs.update_collection_status(collection_id, status="completed", run_log=run_log)
+        logger.info("Collection %s completed: %d total posts in %.1fs", collection_id, total_posts, duration_sec)
 
     except Exception as e:
         logger.exception("Collection %s failed", collection_id)

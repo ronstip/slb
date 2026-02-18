@@ -19,6 +19,7 @@ export interface Source {
 interface SourcesStore {
   sources: Source[];
   selectedSourceIds: string[];
+  pendingSelectedIds: string[] | null;
 
   addSource: (source: Source) => void;
   updateSource: (id: string, updates: Partial<Source>) => void;
@@ -26,6 +27,7 @@ interface SourcesStore {
   selectAll: () => void;
   deselectAll: () => void;
   removeSource: (id: string) => void;
+  selectByIds: (ids: string[]) => void;
   setSources: (sources: Source[]) => void;
   reset: () => void;
 }
@@ -35,6 +37,7 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
   get selectedSourceIds() {
     return get().sources.filter((s) => s.selected).map((s) => s.collectionId);
   },
+  pendingSelectedIds: null,
 
   addSource: (source) =>
     set((s) => ({ sources: [source, ...s.sources] })),
@@ -61,6 +64,7 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
   deselectAll: () =>
     set((s) => ({
       sources: s.sources.map((src) => ({ ...src, selected: false })),
+      pendingSelectedIds: null,
     })),
 
   removeSource: (id) =>
@@ -68,6 +72,34 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
       sources: s.sources.filter((src) => src.collectionId !== id),
     })),
 
-  setSources: (sources) => set({ sources }),
-  reset: () => set({ sources: [] }),
+  selectByIds: (ids) =>
+    set((s) => {
+      if (s.sources.length === 0) {
+        return { pendingSelectedIds: ids };
+      }
+      return {
+        pendingSelectedIds: null,
+        sources: s.sources.map((src) => ({
+          ...src,
+          selected: ids.includes(src.collectionId),
+        })),
+      };
+    }),
+
+  setSources: (sources) =>
+    set((s) => {
+      const pending = s.pendingSelectedIds;
+      if (pending) {
+        return {
+          sources: sources.map((src) => ({
+            ...src,
+            selected: pending.includes(src.collectionId),
+          })),
+          pendingSelectedIds: null,
+        };
+      }
+      return { sources };
+    }),
+
+  reset: () => set({ sources: [], pendingSelectedIds: null }),
 }));

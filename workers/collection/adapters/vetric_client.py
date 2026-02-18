@@ -42,8 +42,14 @@ class VetricClient:
         self._api_keys = api_keys
         self._session = self._build_session()
         self._min_interval = 0.5
-        self._last_request_time = 0.0
-        self._throttle_lock = threading.Lock()
+        # Per-platform rate limiting: each platform has its own lock + timestamp
+        # so requests to different platforms (with separate API keys) run in parallel.
+        self._throttle_locks: dict[str, threading.Lock] = {
+            platform: threading.Lock() for platform in api_keys
+        }
+        self._last_request_times: dict[str, float] = {
+            platform: 0.0 for platform in api_keys
+        }
 
     def _build_session(self) -> requests.Session:
         session = requests.Session()
@@ -67,23 +73,26 @@ class VetricClient:
             raise ValueError(f"No Vetric API key configured for platform: {platform}")
         return key
 
-    def _throttle(self) -> None:
-        with self._throttle_lock:
-            elapsed = time.monotonic() - self._last_request_time
+    def _throttle(self, platform: str) -> None:
+        lock = self._throttle_locks.get(platform)
+        if lock is None:
+            return
+        with lock:
+            elapsed = time.monotonic() - self._last_request_times.get(platform, 0.0)
             if elapsed < self._min_interval:
                 time.sleep(self._min_interval - elapsed)
-            self._last_request_time = time.monotonic()
+            self._last_request_times[platform] = time.monotonic()
 
     def get(self, platform: str, path: str, params: dict[str, Any] | None = None) -> dict:
         url = f"{_BASE_URLS[platform]}/{path.lstrip('/')}"
-        self._throttle()
+        self._throttle(platform)
         headers = {"x-api-key": self._get_api_key(platform)}
         resp = self._session.get(url, params=params, headers=headers, timeout=_REQUEST_TIMEOUT)
         return self._handle_response(resp, url)
 
     def post(self, platform: str, path: str, body: dict[str, Any] | None = None) -> dict:
         url = f"{_BASE_URLS[platform]}/{path.lstrip('/')}"
-        self._throttle()
+        self._throttle(platform)
         headers = {"x-api-key": self._get_api_key(platform)}
         resp = self._session.post(url, json=body, headers=headers, timeout=_REQUEST_TIMEOUT)
         return self._handle_response(resp, url)

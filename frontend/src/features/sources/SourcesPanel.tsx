@@ -3,9 +3,11 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
+import { useSessionStore } from '../../stores/session-store.ts';
 import { useAuth } from '../../auth/useAuth.ts';
 import { listCollections, getCollectionStatus } from '../../api/endpoints/collections.ts';
 import { SourceCard } from './SourceCard.tsx';
+import { SessionCard } from './SessionCard.tsx';
 import type { CollectionStatusResponse } from '../../api/types.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Input } from '../../components/ui/input.tsx';
@@ -16,6 +18,20 @@ import {
   DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu.tsx';
 import { ScrollArea } from '../../components/ui/scroll-area.tsx';
+
+function useSessions() {
+  const sessions = useSessionStore((s) => s.sessions);
+  const activeSessionId = useSessionStore((s) => s.activeSessionId);
+  const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
+  const fetchSessions = useSessionStore((s) => s.fetchSessions);
+
+  useEffect(() => {
+    fetchSessions();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pastSessions = sessions.filter((s) => s.session_id !== activeSessionId);
+  return { pastSessions, isLoadingSessions };
+}
 
 function mapCollectionToSource(c: CollectionStatusResponse) {
   return {
@@ -51,12 +67,21 @@ export function SourcesPanel() {
   const addSource = useSourcesStore((s) => s.addSource);
   const setSources = useSourcesStore((s) => s.setSources);
 
+  const { pastSessions, isLoadingSessions } = useSessions();
+
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [idInputOpen, setIdInputOpen] = useState(false);
   const [collectionIdValue, setCollectionIdValue] = useState('');
   const [idLoading, setIdLoading] = useState(false);
   const [idError, setIdError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Debounce search input to avoid filtering on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Fetch all collections and auto-populate the store
   const { data: allCollections, isLoading } = useQuery({
@@ -65,16 +90,19 @@ export function SourcesPanel() {
     staleTime: 30_000,
   });
 
-  // Auto-load collections into the store when data arrives
+  // Auto-load collections into the store when data arrives.
+  // Read sources from getState() (not the render closure) to avoid stale
+  // selections when selectByIds runs between render and effect execution.
   useEffect(() => {
     if (!allCollections || allCollections.length === 0) return;
-    const existingIds = new Set(sources.map((s) => s.collectionId));
+    const currentSources = useSourcesStore.getState().sources;
+    const existingIds = new Set(currentSources.map((s) => s.collectionId));
     const newCollections = allCollections.filter((c) => !existingIds.has(c.collection_id));
     if (newCollections.length === 0) return;
 
     // Preserve existing sources (with their selected state), add new ones
     const newSources = newCollections.map(mapCollectionToSource);
-    setSources([...sources, ...newSources]);
+    setSources([...currentSources, ...newSources]);
   }, [allCollections]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Split into My Collections vs Shared with me
@@ -91,10 +119,10 @@ export function SourcesPanel() {
     return { myCollections: mine, sharedCollections: shared };
   }, [sources, profile?.uid]);
 
-  // Filter by search query
+  // Filter by debounced search query
   const filterBySearch = (list: typeof sources) => {
-    if (!searchQuery.trim()) return list;
-    const q = searchQuery.toLowerCase();
+    if (!debouncedSearch.trim()) return list;
+    const q = debouncedSearch.toLowerCase();
     return list.filter(
       (s) =>
         s.title.toLowerCase().includes(q) ||
@@ -103,8 +131,12 @@ export function SourcesPanel() {
     );
   };
 
-  const filteredMine = filterBySearch(myCollections);
-  const filteredShared = filterBySearch(sharedCollections);
+  const filteredMine = filterBySearch(myCollections)
+    .slice()
+    .sort((a, b) => Number(b.selected) - Number(a.selected));
+  const filteredShared = filterBySearch(sharedCollections)
+    .slice()
+    .sort((a, b) => Number(b.selected) - Number(a.selected));
 
   const handleAddById = async () => {
     const id = collectionIdValue.trim();
@@ -203,13 +235,13 @@ export function SourcesPanel() {
           )}
 
           {/* Search bar */}
-          <div className="px-3 pt-2">
+          <div className="px-3 pt-2 pb-3">
             <div className="relative">
               <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search collections..."
+                placeholder="Search..."
                 className="h-8 pl-7 text-xs"
               />
               {searchQuery && (
@@ -223,9 +255,8 @@ export function SourcesPanel() {
             </div>
           </div>
 
-          {/* Scrollable content area — padding is INSIDE the wrapper so
-               the Radix viewport width stays constrained to the panel */}
-          <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block">
+          {/* Collections — independently scrollable */}
+          <ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block">
             <div className="px-3 pb-3">
               {/* Loading state */}
               {isLoading && sources.length === 0 && (
@@ -287,21 +318,6 @@ export function SourcesPanel() {
                 </div>
               )}
 
-              {/* My Sessions */}
-              {!searchQuery && (
-                <div className={filteredMine.length > 0 || filteredShared.length > 0 ? 'mt-3' : ''}>
-                  <div className="mb-1.5 flex items-center gap-1.5 px-0.5 pt-1">
-                    <History className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      My Sessions
-                    </span>
-                  </div>
-                  <p className="px-0.5 text-[10px] text-muted-foreground/60">
-                    No sessions yet
-                  </p>
-                </div>
-              )}
-
               {/* No search results */}
               {searchQuery && filteredMine.length === 0 && filteredShared.length === 0 && sources.length > 0 && (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -312,6 +328,46 @@ export function SourcesPanel() {
               )}
             </div>
           </ScrollArea>
+
+          {/* Sessions — header pinned, cards scroll independently */}
+          {!searchQuery && (
+            <div className="flex min-h-0 flex-1 flex-col border-t border-border">
+              {/* Pinned header */}
+              <div className="flex items-center gap-1.5 px-3.5 pt-3 pb-1.5">
+                <History className="h-3 w-3 text-muted-foreground" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  My Sessions
+                </span>
+                {pastSessions.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground/60">
+                    {pastSessions.length}
+                  </span>
+                )}
+              </div>
+              {/* Scrollable session cards */}
+              <ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block">
+                <div className="px-3 pb-3">
+                  {isLoadingSessions && pastSessions.length === 0 && (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                  {!isLoadingSessions && pastSessions.length === 0 && (
+                    <p className="px-0.5 text-[10px] text-muted-foreground/60">
+                      No sessions yet
+                    </p>
+                  )}
+                  {pastSessions.length > 0 && (
+                    <div className="flex flex-col gap-0.5">
+                      {pastSessions.map((session) => (
+                        <SessionCard key={session.session_id} session={session} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
         </div>
       )}
     </div>

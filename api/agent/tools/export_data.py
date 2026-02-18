@@ -1,7 +1,6 @@
 import logging
 
-from config.settings import get_settings
-from workers.shared.bq_client import BQClient
+from api.deps import get_bq
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +18,7 @@ def export_data(collection_id: str) -> dict:
     Returns:
         A dictionary with status, rows (list of dicts), row_count, and column_names.
     """
-    settings = get_settings()
-    bq = BQClient(settings)
+    bq = get_bq()
     params = {"collection_id": collection_id}
 
     try:

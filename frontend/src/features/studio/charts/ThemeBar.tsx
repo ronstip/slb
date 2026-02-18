@@ -5,7 +5,7 @@ interface ThemeBarProps {
   data: ThemeDistribution[];
 }
 
-const BAR_COLOR = '#3B82F6'; // blue-500
+const BAR_COLOR = '#6B8CAE';
 
 export function ThemeBar({ data }: ThemeBarProps) {
   const top10 = data.slice(0, 10);
@@ -16,7 +16,7 @@ export function ThemeBar({ data }: ThemeBarProps) {
         <XAxis type="number" tick={{ fontSize: 10 }} />
         <YAxis type="category" dataKey="theme" tick={{ fontSize: 10 }} width={75} />
         <Tooltip contentStyle={{ fontSize: 12 }} />
-        <Bar dataKey="post_count" fill={BAR_COLOR} radius={[0, 6, 6, 0]} />
+        <Bar dataKey="post_count" fill={BAR_COLOR} radius={[0, 2, 2, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

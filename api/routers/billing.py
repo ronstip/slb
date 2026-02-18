@@ -12,6 +12,7 @@ from api.schemas.responses import (
     CreditPackResponse,
     CreditPurchaseHistoryItem,
 )
+from api.deps import get_fs
 from config.settings import get_settings
 from workers.shared.firestore_client import FirestoreClient
 
@@ -110,8 +111,7 @@ def _get_or_create_customer(stripe, fs: FirestoreClient, user: CurrentUser) -> s
 @router.get("/credits", response_model=CreditBalanceResponse)
 async def get_credit_balance(user: CurrentUser = Depends(get_current_user)):
     """Get current credit balance for the user or their org."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     if user.org_id:
         org = fs.get_org(user.org_id)
@@ -157,7 +157,7 @@ async def purchase_credits(
 
     stripe = _get_stripe()
     settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     customer_id = _get_or_create_customer(stripe, fs, user)
 
@@ -197,8 +197,7 @@ async def purchase_credits(
 @router.get("/credit-history", response_model=list[CreditPurchaseHistoryItem])
 async def get_credit_history(user: CurrentUser = Depends(get_current_user)):
     """Get credit purchase history."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     if user.org_id:
         history = fs.get_credit_history(org_id=user.org_id)
@@ -237,7 +236,7 @@ async def stripe_webhook(request: Request):
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     match event["type"]:
         case "checkout.session.completed":
