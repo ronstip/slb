@@ -230,7 +230,7 @@ export type SSEEvent =
   | { event_type: 'text'; content: string; author: string }
   | { event_type: 'tool_call'; content: string; metadata: ToolCallMeta; author: string }
   | { event_type: 'tool_result'; content: string; metadata: ToolResultMeta; author: string }
-  | { event_type: 'done'; session_id: string; content: string }
+  | { event_type: 'done'; session_id: string; session_title?: string; content: string }
   | { event_type: 'error'; content: string };
 
 // --- Insight Data (for charts) ---
@@ -275,8 +275,11 @@ export interface EngagementSummary {
 export interface ChannelSummary {
   channel_handle: string;
   platform: string;
-  post_count: number;
-  total_engagement: number;
+  subscribers: number;
+  channel_url: string;
+  collected_posts: number;
+  avg_likes: number;
+  avg_views: number;
 }
 
 export interface EntityCoOccurrence {
@@ -285,9 +288,22 @@ export interface EntityCoOccurrence {
   co_occurrence_count: number;
 }
 
+export interface LanguageDistribution {
+  language: string;
+  post_count: number;
+  percentage: number;
+}
+
+export interface EntitySummary {
+  entity: string;
+  mentions: number;
+  total_views: number;
+  total_likes: number;
+}
+
 export interface InsightData {
   quantitative: {
-    total_posts: Array<{ platform: string; total_posts: number }>;
+    total_posts: Array<{ platform: string; post_count: number }>;
     sentiment_breakdown: SentimentBreakdown[];
     volume_over_time: VolumeOverTime[];
     engagement_summary: EngagementSummary[];
@@ -298,12 +314,17 @@ export interface InsightData {
     theme_distribution: ThemeDistribution[];
     content_type_breakdown: ContentTypeBreakdown[];
     entity_co_occurrence: EntityCoOccurrence[];
+    language_distribution: LanguageDistribution[];
+    entity_summary: EntitySummary[];
   };
 }
 
 export interface InsightResult {
   status: string;
   narrative: string;
+  collection_name: string;
+  date_from: string | null;
+  date_to: string | null;
   data: InsightData;
   message: string;
 }

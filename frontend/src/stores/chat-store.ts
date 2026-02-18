@@ -19,6 +19,7 @@ export interface ChatMessage {
   isStreaming: boolean;
   toolIndicators: ToolIndicator[];
   cards: MessageCard[];
+  activeAgent?: string;
 }
 
 interface ChatStore {
@@ -29,12 +30,14 @@ interface ChatStore {
   sendUserMessage: (text: string) => void;
   startAgentMessage: () => string;
   appendText: (messageId: string, text: string) => void;
+  setActiveAgent: (messageId: string, agent: string) => void;
   addToolCall: (messageId: string, name: string, displayText: string) => void;
   resolveToolCall: (messageId: string, name: string, result?: Record<string, unknown>) => void;
   addCard: (messageId: string, card: MessageCard) => void;
   finalizeMessage: (messageId: string) => void;
   addSystemMessage: (text: string) => void;
   setSessionId: (id: string) => void;
+  setMessages: (messages: ChatMessage[]) => void;
   setIsAgentResponding: (responding: boolean) => void;
   clearMessages: () => void;
   reset: () => void;
@@ -90,6 +93,13 @@ export const useChatStore = create<ChatStore>((set) => ({
     set((s) => ({
       messages: s.messages.map((m) =>
         m.id === messageId ? { ...m, content: m.content + text } : m,
+      ),
+    })),
+
+  setActiveAgent: (messageId, agent) =>
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId ? { ...m, activeAgent: agent } : m,
       ),
     })),
 
@@ -155,6 +165,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       ],
     })),
 
+  setMessages: (messages) => set({ messages, isAgentResponding: false }),
   setSessionId: (id) => set({ sessionId: id }),
   setIsAgentResponding: (responding) => set({ isAgentResponding: responding }),
   clearMessages: () => set({ messages: [], isAgentResponding: false }),

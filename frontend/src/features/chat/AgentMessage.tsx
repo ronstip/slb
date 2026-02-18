@@ -8,28 +8,62 @@ import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
 import { ProgressCard } from './cards/ProgressCard.tsx';
 import { InsightSummaryCard } from './cards/InsightSummaryCard.tsx';
 import { DataExportCard } from './cards/DataExportCard.tsx';
+import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
 
 interface AgentMessageProps {
   message: ChatMessage;
 }
 
 export function AgentMessage({ message }: AgentMessageProps) {
+  const hasInsightCard = message.cards.some((c) => c.type === 'insight_summary');
+  const agentLabel = message.activeAgent
+    ? AGENT_DISPLAY_NAMES[message.activeAgent] || message.activeAgent
+    : null;
+
+  const hasActivity = message.content || message.toolIndicators.length > 0 || message.cards.length > 0;
+  const isThinking = message.isStreaming && !hasActivity;
+
   return (
-    <div className="max-w-[90%] flex gap-3 overflow-hidden">
+    <div className={`flex gap-3 overflow-hidden ${hasInsightCard ? 'max-w-full' : 'max-w-[90%]'}`}>
       {/* Avatar */}
       <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5">
         <Sparkles className="h-3.5 w-3.5 text-primary" />
       </div>
 
       <div className="min-w-0 flex-1 overflow-hidden">
+        {/* Agent label */}
+        {agentLabel && (
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-primary/50">
+              {agentLabel}
+            </span>
+          </div>
+        )}
+
+        {/* Thinking indicator — before any content or tools appear */}
+        {isThinking && (
+          <div className="flex items-center gap-2 py-0.5">
+            <div className="flex items-center gap-1">
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50" />
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50 [animation-delay:150ms]" />
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50 [animation-delay:300ms]" />
+            </div>
+            <span className="text-xs text-muted-foreground/60">Thinking</span>
+          </div>
+        )}
+
         {/* Tool indicators */}
-        {message.toolIndicators.map((indicator) => (
-          <ToolIndicator key={indicator.name} indicator={indicator} />
-        ))}
+        {message.toolIndicators.length > 0 && (
+          <div className="mb-2 rounded-lg border border-border/40 bg-accent/20 px-3 py-2 space-y-0.5">
+            {message.toolIndicators.map((indicator) => (
+              <ToolIndicator key={indicator.name} indicator={indicator} />
+            ))}
+          </div>
+        )}
 
         {/* Markdown content */}
         {message.content && (
-          <div className="agent-prose prose prose-sm max-w-none break-words prose-headings:text-foreground prose-headings:tracking-tight prose-h1:text-sm prose-h2:text-sm prose-h3:text-xs prose-p:text-[12.5px] prose-p:leading-[1.65] prose-p:text-muted-foreground prose-p:tracking-normal prose-p:break-words prose-strong:text-foreground prose-strong:font-semibold prose-a:text-primary prose-a:font-medium prose-a:no-underline prose-a:break-all hover:prose-a:underline prose-ul:text-[12.5px] prose-ul:leading-[1.65] prose-ul:text-muted-foreground prose-ol:text-[12.5px] prose-ol:leading-[1.65] prose-ol:text-muted-foreground prose-li:text-muted-foreground prose-li:marker:text-muted-foreground/50 prose-code:text-[11px] prose-code:font-normal prose-code:text-primary prose-code:bg-primary/5 prose-code:rounded-md prose-code:px-1.5 prose-code:py-0.5 prose-code:break-all prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-secondary prose-pre:rounded-xl prose-pre:border prose-pre:border-border prose-pre:overflow-x-auto prose-th:text-xs prose-th:text-muted-foreground prose-td:text-xs prose-td:text-foreground">
+          <div className="agent-prose prose prose-sm max-w-none break-words prose-headings:text-foreground prose-headings:tracking-tight prose-headings:font-medium prose-h1:text-[13px] prose-h1:mb-2 prose-h2:text-[12.5px] prose-h2:mb-1.5 prose-h3:text-[12px] prose-h3:mb-1 prose-p:text-[11.5px] prose-p:leading-[1.7] prose-p:text-muted-foreground/90 prose-p:tracking-[0.01em] prose-p:break-words prose-strong:text-foreground/90 prose-strong:font-semibold prose-a:text-primary prose-a:font-medium prose-a:no-underline prose-a:break-all hover:prose-a:underline prose-ul:text-[11.5px] prose-ul:leading-[1.7] prose-ul:text-muted-foreground/90 prose-ul:my-1 prose-ol:text-[11.5px] prose-ol:leading-[1.7] prose-ol:text-muted-foreground/90 prose-ol:my-1 prose-li:text-muted-foreground/90 prose-li:my-0 prose-li:marker:text-muted-foreground/40 prose-code:text-[10.5px] prose-code:font-normal prose-code:text-primary/80 prose-code:bg-primary/5 prose-code:rounded prose-code:px-1 prose-code:py-px prose-code:break-all prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-secondary prose-pre:rounded-lg prose-pre:border prose-pre:border-border/50 prose-pre:overflow-x-auto prose-pre:text-[10.5px] prose-th:text-[10.5px] prose-th:font-medium prose-th:text-muted-foreground prose-th:tracking-wide prose-td:text-[11px] prose-td:text-foreground/80 prose-table:my-2 prose-hr:border-border/30 prose-hr:my-3 prose-blockquote:border-primary/20 prose-blockquote:text-muted-foreground/70 prose-blockquote:text-[11.5px] prose-blockquote:not-italic">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>
@@ -52,8 +86,8 @@ export function AgentMessage({ message }: AgentMessageProps) {
           }
         })}
 
-        {/* Streaming cursor */}
-        {message.isStreaming && !message.content && message.toolIndicators.every(t => t.resolved) && (
+        {/* Streaming cursor — shown between tool completion and text arrival */}
+        {message.isStreaming && !message.content && message.toolIndicators.length > 0 && message.toolIndicators.every(t => t.resolved) && (
           <div className="flex items-center gap-1.5 py-1">
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/40" />
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/40 [animation-delay:150ms]" />

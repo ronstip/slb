@@ -7,6 +7,8 @@ interface InsightReportArtifact {
   title: string;
   narrative: string;
   data: InsightData;
+  dateFrom: string | null;
+  dateTo: string | null;
   sourceIds: string[];
   createdAt: Date;
 }
@@ -34,6 +36,7 @@ interface StudioStore {
   addArtifact: (artifact: Artifact) => void;
   expandReport: (id: string) => void;
   collapseReport: () => void;
+  setArtifacts: (artifacts: Artifact[]) => void;
   setFeedSource: (id: string | null) => void;
   reset: () => void;
 }
@@ -49,6 +52,7 @@ export const useStudioStore = create<StudioStore>((set) => ({
   addArtifact: (artifact) =>
     set((s) => ({ artifacts: [artifact, ...s.artifacts] })),
 
+  setArtifacts: (artifacts) => set({ artifacts }),
   expandReport: (id) => set({ expandedReportId: id }),
   collapseReport: () => set({ expandedReportId: null }),
   setFeedSource: (id) => set({ feedSourceId: id }),

@@ -31,7 +31,7 @@ export function MessageList() {
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4">
         {messages.map((msg) => {
           switch (msg.role) {
             case 'user':

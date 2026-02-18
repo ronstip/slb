@@ -1,8 +1,8 @@
 import logging
 import threading
 
+from api.deps import get_fs
 from config.settings import get_settings
-from workers.shared.firestore_client import FirestoreClient
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 def enrich_collection(
     collection_id: str = "",
     post_ids: str = "",
+    min_likes: int = 0,
 ) -> dict:
     """Run AI enrichment on collected posts to extract sentiment, themes, and generate embeddings.
 
@@ -18,12 +19,13 @@ def enrich_collection(
     - Provide post_ids (comma-separated) to enrich specific posts.
 
     Enrichment uses BQ integrated LLMs (AI.GENERATE_TEXT and AI.GENERATE_EMBEDDING).
-    Only posts with >= 30 likes will be enriched. This is required before get_insights
-    can return sentiment, theme, and entity data.
+    Posts are filtered by min_likes (default 0 = enrich all). This is required before
+    get_insights can return sentiment, theme, and entity data.
 
     Args:
         collection_id: The collection ID to enrich. Provide this OR post_ids.
         post_ids: Comma-separated post IDs to enrich. Provide this OR collection_id.
+        min_likes: Minimum likes threshold for enrichment. Default 0 (enrich all).
 
     Returns:
         A dictionary confirming enrichment has started.
@@ -37,7 +39,7 @@ def enrich_collection(
     settings = get_settings()
 
     if collection_id:
-        fs = FirestoreClient(settings)
+        fs = get_fs()
         status = fs.get_collection_status(collection_id)
         if not status:
             return {
@@ -54,6 +56,7 @@ def enrich_collection(
             thread = threading.Thread(
                 target=run_enrichment_for_posts,
                 args=(ids,),
+                kwargs={"min_likes": min_likes},
                 daemon=True,
             )
             thread.start()
@@ -68,6 +71,7 @@ def enrich_collection(
             thread = threading.Thread(
                 target=run_enrichment,
                 args=(collection_id,),
+                kwargs={"min_likes": min_likes},
                 daemon=True,
             )
             thread.start()

@@ -5,7 +5,7 @@ interface VolumeChartProps {
   data: VolumeOverTime[];
 }
 
-const BAR_COLOR = '#1E40AF'; // blue-800
+const BAR_COLOR = '#5A7A9E';
 
 export function VolumeChart({ data }: VolumeChartProps) {
   // Aggregate by date (sum across platforms)
@@ -24,7 +24,7 @@ export function VolumeChart({ data }: VolumeChartProps) {
         <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => d.slice(5)} />
         <YAxis tick={{ fontSize: 10 }} width={30} />
         <Tooltip contentStyle={{ fontSize: 12 }} />
-        <Bar dataKey="count" fill={BAR_COLOR} radius={[6, 6, 6, 6]} />
+        <Bar dataKey="count" fill={BAR_COLOR} radius={[2, 2, 2, 2]} />
       </BarChart>
     </ResponsiveContainer>
   );

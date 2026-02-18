@@ -61,6 +61,14 @@ class DataProviderWrapper:
 
         return all_batches
 
+    def get_platform_stats(self) -> dict[str, dict]:
+        """Return per-platform collection stats from the last collect_all() call."""
+        stats: dict[str, dict] = {}
+        for provider in self._providers:
+            if hasattr(provider, "platform_stats"):
+                stats.update(provider.platform_stats)
+        return stats
+
     def fetch_engagements(self, platform: str, post_urls: list[str]) -> list[dict]:
         adapter = self._get_adapter(platform)
         return adapter.fetch_engagements(post_urls)

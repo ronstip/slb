@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, Request
 from firebase_admin import auth as firebase_auth
 
+from api.deps import get_fs
 from config.settings import get_settings
-from workers.shared.firestore_client import FirestoreClient
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +71,7 @@ async def get_current_user(request: Request) -> CurrentUser:
 
 def _get_or_create_user(uid: str, decoded_token: dict) -> dict:
     """Lazy user provisioning — create Firestore user doc on first login."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     existing = fs.get_user(uid)
     if existing:

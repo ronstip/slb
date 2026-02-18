@@ -2,7 +2,7 @@
 -- Supports two input modes:
 --   @collection_id — enrich all qualifying posts in a collection
 --   @post_ids — enrich specific posts by ID
--- Posts must have >= 30 likes to qualify.
+-- Posts must have >= @min_likes likes to qualify (default 0 = enrich all).
 INSERT INTO social_listening.enriched_posts (
     post_id, sentiment, entities, themes,
     ai_summary, language, content_type, enriched_at
@@ -61,7 +61,7 @@ FROM (
                 SELECT 1 FROM social_listening.enriched_posts ep
                 WHERE ep.post_id = p.post_id
             )
-            AND COALESCE(eng.likes, 0) >= 30
+            AND COALESCE(eng.likes, 0) >= @min_likes
             AND (
                 p.collection_id = @collection_id
                 OR p.post_id IN UNNEST(@post_ids)

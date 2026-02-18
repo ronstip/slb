@@ -4,6 +4,7 @@ import { TopBar } from './TopBar.tsx';
 import { useUIStore } from '../stores/ui-store.ts';
 import { useStudioStore } from '../stores/studio-store.ts';
 import { useSourcesStore } from '../stores/sources-store.ts';
+import { useSessionStore } from '../stores/session-store.ts';
 import { ChatPanel } from '../features/chat/ChatPanel.tsx';
 import { SourcesPanel } from '../features/sources/SourcesPanel.tsx';
 import { StudioPanel } from '../features/studio/StudioPanel.tsx';
@@ -45,6 +46,16 @@ export function AppShell() {
   const startW = useRef(0);
 
   useCollectionPolling();
+
+  // Restore active session on mount (page refresh)
+  useEffect(() => {
+    const sessionStore = useSessionStore.getState();
+    const storedId = sessionStore.activeSessionId;
+    if (storedId) {
+      sessionStore.restoreSession(storedId);
+    }
+    sessionStore.fetchSessions();
+  }, []);
 
   // Sync URL params with studio store (for page refresh/direct links)
   useEffect(() => {

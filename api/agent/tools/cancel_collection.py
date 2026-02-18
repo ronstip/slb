@@ -1,7 +1,6 @@
 import logging
 
-from config.settings import get_settings
-from workers.shared.firestore_client import FirestoreClient
+from api.deps import get_fs
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +18,7 @@ def cancel_collection(collection_id: str) -> dict:
     Returns:
         A dictionary confirming the cancellation request.
     """
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     status = fs.get_collection_status(collection_id)
     if not status:

@@ -510,6 +510,9 @@ Unauthenticated users see only the sign-in screen.
 | `/collection/{id}` | GET | Poll collection status | Exists |
 | `/collections` | POST | Create collection from modal | New for MVP |
 | `/collections/{id}/posts` | GET | Paginated enriched posts for Feed | New for MVP |
+| `/sessions` | GET | List user's sessions (metadata only) | Exists |
+| `/sessions/{id}` | GET | Full session with events for restoration | Exists |
+| `/sessions/{id}` | DELETE | Delete a session | Exists |
 
 ### SSE Event Format
 

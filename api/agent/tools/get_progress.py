@@ -1,7 +1,6 @@
 import logging
 
-from config.settings import get_settings
-from workers.shared.firestore_client import FirestoreClient
+from api.deps import get_fs
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +17,7 @@ def get_progress(collection_id: str) -> dict:
     Returns:
         A dictionary with status and progress counts.
     """
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     status = fs.get_collection_status(collection_id)
     if not status:
@@ -28,7 +26,7 @@ def get_progress(collection_id: str) -> dict:
             "message": f"Collection {collection_id} not found.",
         }
 
-    return {
+    result = {
         "status": "success",
         "collection_status": status.get("status", "unknown"),
         "posts_collected": status.get("posts_collected", 0),
@@ -37,6 +35,12 @@ def get_progress(collection_id: str) -> dict:
         "error_message": status.get("error_message"),
         "message": _format_message(status),
     }
+
+    run_log = status.get("run_log")
+    if run_log:
+        result["run_log"] = run_log
+
+    return result
 
 
 def _format_message(status: dict) -> str:
@@ -53,9 +57,26 @@ def _format_message(status: dict) -> str:
     elif s == "completed":
         enriched = status.get("posts_enriched", 0)
         embedded = status.get("posts_embedded", 0)
-        msg = f"Collection complete! {posts} posts collected."
+        run_log = status.get("run_log") or {}
+
+        msg = f"Collection complete! {posts} posts collected"
+
+        # Add per-platform breakdown if available
+        collection_log = run_log.get("collection") or {}
+        platform_stats = collection_log.get("platforms")
+        if platform_stats:
+            parts = [f"{p}: {s.get('posts', 0)}" for p, s in platform_stats.items()]
+            msg += f" ({', '.join(parts)})"
+        if collection_log.get("duration_sec"):
+            msg += f" in {collection_log['duration_sec']}s"
+        msg += "."
+
         if enriched > 0:
             msg += f" Enriched: {enriched}, Embedded: {embedded}."
+            enrich_log = run_log.get("enrichment") or {}
+            skipped = enrich_log.get("total_skipped")
+            if skipped:
+                msg += f" ({skipped} posts skipped below {enrich_log.get('min_likes_threshold', 0)} likes threshold.)"
             msg += " Ready for insights — use get_insights."
         else:
             msg += " Enrichment has not run yet. Use enrich_collection to run AI enrichment before generating insights."

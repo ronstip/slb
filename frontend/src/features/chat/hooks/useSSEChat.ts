@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
+import { useSessionStore } from '../../../stores/session-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
@@ -11,8 +12,6 @@ export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
-  const chatStore = useChatStore();
-  const addArtifact = useStudioStore((s) => s.addArtifact);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -21,11 +20,15 @@ export function useSSEChat() {
       const abortController = new AbortController();
       abortRef.current = abortController;
 
+      // Access stores via getState() to avoid subscribing to reactive updates.
+      // Action functions are stable references — no re-renders from store changes.
+      const cs = useChatStore.getState();
+
       // Add user message
-      chatStore.sendUserMessage(text);
+      cs.sendUserMessage(text);
 
       // Start agent message
-      const messageId = chatStore.startAgentMessage();
+      const messageId = cs.startAgentMessage();
       activeMessageRef.current = messageId;
 
       const selectedSources = useSourcesStore.getState().sources
@@ -36,7 +39,7 @@ export function useSSEChat() {
         const stream = streamChat(
           {
             message: text,
-            session_id: chatStore.sessionId ?? undefined,
+            session_id: cs.sessionId ?? undefined,
             selected_sources: selectedSources.length > 0 ? selectedSources : undefined,
           },
           getToken,
@@ -46,50 +49,61 @@ export function useSSEChat() {
         for await (const event of stream) {
           if (abortController.signal.aborted) break;
 
+          // Re-read from getState() to ensure fresh references
+          const chatState = useChatStore.getState();
+
+          // Track which agent is active (skip orchestrator — it's just routing)
+          if ('author' in event && event.author && event.author !== 'orchestrator') {
+            chatState.setActiveAgent(messageId, event.author);
+          }
+
           switch (event.event_type) {
             case 'text':
-              chatStore.appendText(messageId, event.content);
+              chatState.appendText(messageId, event.content);
               break;
 
             case 'tool_call': {
               const toolName = event.metadata.name;
-              chatStore.addToolCall(messageId, toolName, getToolDisplayText(toolName));
+              chatState.addToolCall(messageId, toolName, getToolDisplayText(toolName));
               break;
             }
 
             case 'tool_result': {
               const toolName = event.metadata.name;
               const result = event.metadata.result;
-              chatStore.resolveToolCall(messageId, toolName, result);
+              chatState.resolveToolCall(messageId, toolName, result);
 
               // Handle special tool results
               if (isDesignResearchResult(toolName, result)) {
-                chatStore.addCard(messageId, {
+                chatState.addCard(messageId, {
                   type: 'research_design',
                   data: result,
                 });
               } else if (isInsightResult(toolName, result)) {
-                chatStore.addCard(messageId, {
+                chatState.addCard(messageId, {
                   type: 'insight_summary',
                   data: result,
                 });
                 // Save to artifacts
-                addArtifact({
+                const collectionName = result.collection_name as string | undefined;
+                useStudioStore.getState().addArtifact({
                   id: `artifact-${Date.now()}`,
                   type: 'insight_report',
-                  title: 'Insight Report',
+                  title: collectionName ? `Insight Report: ${collectionName}` : 'Insight Report',
                   narrative: result.narrative as string,
                   data: result.data as InsightData,
+                  dateFrom: (result.date_from as string) || null,
+                  dateTo: (result.date_to as string) || null,
                   sourceIds: selectedSources,
                   createdAt: new Date(),
                 });
               } else if (isDataExportResult(toolName, result)) {
-                chatStore.addCard(messageId, {
+                chatState.addCard(messageId, {
                   type: 'data_export',
                   data: result,
                 });
                 // Save to artifacts
-                addArtifact({
+                useStudioStore.getState().addArtifact({
                   id: `artifact-${Date.now()}`,
                   type: 'data_export',
                   title: 'Data Export',
@@ -100,7 +114,7 @@ export function useSSEChat() {
                   createdAt: new Date(),
                 });
               } else if (isProgressResult(toolName, result)) {
-                chatStore.addCard(messageId, {
+                chatState.addCard(messageId, {
                   type: 'progress',
                   data: result!,
                 });
@@ -108,36 +122,45 @@ export function useSSEChat() {
               break;
             }
 
-            case 'done':
-              chatStore.setSessionId(event.session_id);
-              chatStore.finalizeMessage(messageId);
+            case 'done': {
+              chatState.setSessionId(event.session_id);
+              chatState.finalizeMessage(messageId);
+              const sessionStore = useSessionStore.getState();
+              const isNew = !sessionStore.sessions.some(s => s.session_id === event.session_id);
+              sessionStore.setActiveSession(event.session_id);
+              if (event.session_title) {
+                sessionStore.setActiveSessionTitle(event.session_title);
+              }
+              // Only fetch full sessions list when this is a brand-new session
+              if (isNew) sessionStore.fetchSessions();
               break;
+            }
 
             case 'error':
-              chatStore.appendText(messageId, `\n\nError: ${event.content}`);
-              chatStore.finalizeMessage(messageId);
+              chatState.appendText(messageId, `\n\nError: ${event.content}`);
+              chatState.finalizeMessage(messageId);
               break;
           }
         }
         // If stream ends without a 'done' event, finalize anyway
-        chatStore.finalizeMessage(messageId);
+        useChatStore.getState().finalizeMessage(messageId);
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           const detail = err instanceof Error ? err.message : 'Unknown error';
-          chatStore.appendText(messageId, `\n\nConnection error: ${detail}`);
+          useChatStore.getState().appendText(messageId, `\n\nConnection error: ${detail}`);
         }
-        chatStore.finalizeMessage(messageId);
+        useChatStore.getState().finalizeMessage(messageId);
       }
     },
-    [chatStore, getToken, addArtifact],
+    [getToken],
   );
 
   const cancelStream = useCallback(() => {
     abortRef.current?.abort();
     if (activeMessageRef.current) {
-      chatStore.finalizeMessage(activeMessageRef.current);
+      useChatStore.getState().finalizeMessage(activeMessageRef.current);
     }
-  }, [chatStore]);
+  }, []);
 
   return { sendMessage, cancelStream };
 }

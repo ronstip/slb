@@ -10,23 +10,23 @@
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
   /* Sentiment (app-specific) */
-  --color-sentiment-positive: #059669;
-  --color-sentiment-negative: #DC2626;
-  --color-sentiment-neutral: #78716C;
-  --color-sentiment-mixed: #D97706;
+  --color-sentiment-positive: #5A9E7E;
+  --color-sentiment-negative: #C07070;
+  --color-sentiment-neutral: #8E8E93;
+  --color-sentiment-mixed: #B89A5A;
 
   /* Status (app-specific) */
-  --color-status-active: #1E40AF;
-  --color-status-complete: #059669;
-  --color-status-warning: #D97706;
-  --color-status-error: #DC2626;
+  --color-status-active: #5A7A9E;
+  --color-status-complete: #5A9E7E;
+  --color-status-warning: #B89A5A;
+  --color-status-error: #C07070;
 
   /* Platforms (app-specific) */
-  --color-platform-instagram: #E4405F;
-  --color-platform-tiktok: #1E2340;
-  --color-platform-twitter: #1DA1F2;
-  --color-platform-reddit: #FF4500;
-  --color-platform-youtube: #FF0000;
+  --color-platform-instagram: #A8677A;
+  --color-platform-tiktok: #57534E;
+  --color-platform-twitter: #6A9AB8;
+  --color-platform-reddit: #B87845;
+  --color-platform-youtube: #B85C5C;
 }
 
 @theme inline {
@@ -72,7 +72,7 @@
 
 /* ---------- Light Mode (Navy + Warm Stone) ---------- */
 :root {
-  --radius: 0.75rem;
+  --radius: 0.375rem;
   --background: #FAFAF9;
   --foreground: #1C1917;
   --card: #FFFFFF;
@@ -91,11 +91,11 @@
   --border: #E7E5E4;
   --input: #E7E5E4;
   --ring: #1E40AF;
-  --chart-1: #1E40AF;
-  --chart-2: #059669;
-  --chart-3: #D97706;
-  --chart-4: #E4405F;
-  --chart-5: #0891B2;
+  --chart-1: #5A7A9E;
+  --chart-2: #5A9E7E;
+  --chart-3: #B89A5A;
+  --chart-4: #A8677A;
+  --chart-5: #6A9AB8;
   --sidebar: #FFFFFF;
   --sidebar-foreground: #1C1917;
   --sidebar-primary: #1E40AF;
@@ -126,11 +126,11 @@
   --border: #44403C;
   --input: #44403C;
   --ring: #60A5FA;
-  --chart-1: #60A5FA;
-  --chart-2: #34D399;
-  --chart-3: #FBBF24;
-  --chart-4: #FB7185;
-  --chart-5: #22D3EE;
+  --chart-1: #7A9DBE;
+  --chart-2: #7ABE9E;
+  --chart-3: #C8AA6A;
+  --chart-4: #B8879A;
+  --chart-5: #7AABB8;
   --sidebar: #1C1917;
   --sidebar-foreground: #FAFAF9;
   --sidebar-primary: #60A5FA;
@@ -157,6 +157,48 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+}
+
+/* Agent prose refinements */
+.agent-prose ul,
+.agent-prose ol {
+  padding-left: 1.25em;
+}
+.agent-prose li + li {
+  margin-top: 0.15em;
+}
+.agent-prose table {
+  font-size: 11px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.agent-prose thead th {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+  padding: 6px 10px;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+.agent-prose tbody td {
+  padding: 5px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.agent-prose tbody tr:last-child td {
+  border-bottom: none;
+}
+.agent-prose pre {
+  padding: 12px 14px;
+}
+.agent-prose pre code {
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+.agent-prose blockquote {
+  padding-left: 12px;
+  border-left-width: 2px;
 }
 
 /* Custom scrollbar */

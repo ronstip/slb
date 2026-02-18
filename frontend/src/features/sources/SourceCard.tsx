@@ -33,6 +33,7 @@ import {
 import { setCollectionVisibility, deleteCollection } from '../../api/endpoints/collections.ts';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '../../lib/utils.ts';
+import { Checkbox } from '../../components/ui/checkbox.tsx';
 
 interface SourceCardProps {
   source: Source;
@@ -133,6 +134,13 @@ export function SourceCard({ source }: SourceCardProps) {
         )}
         onClick={handleCardClick}
       >
+        {/* Selection checkbox */}
+        <Checkbox
+          checked={source.selected}
+          tabIndex={-1}
+          className="mt-0.5 mr-1.5 pointer-events-none"
+          aria-hidden
+        />
         {/* Content — min-w-0 + overflow-hidden ensures text truncates */}
         <div className="min-w-0 flex-1 overflow-hidden">
           {/* Title row with inline visibility badge */}

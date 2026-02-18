@@ -15,8 +15,10 @@ export function ChannelTable({ data }: ChannelTableProps) {
         <tr className="border-b border-border text-left">
           <th className="py-1.5 font-medium text-muted-foreground">Channel</th>
           <th className="py-1.5 font-medium text-muted-foreground">Platform</th>
+          <th className="py-1.5 text-right font-medium text-muted-foreground">Subscribers</th>
           <th className="py-1.5 text-right font-medium text-muted-foreground">Posts</th>
-          <th className="py-1.5 text-right font-medium text-muted-foreground">Engagement</th>
+          <th className="py-1.5 text-right font-medium text-muted-foreground">Avg Likes</th>
+          <th className="py-1.5 text-right font-medium text-muted-foreground">Avg Views</th>
         </tr>
       </thead>
       <tbody>
@@ -26,9 +28,15 @@ export function ChannelTable({ data }: ChannelTableProps) {
             <td className="py-1.5 text-muted-foreground">
               {PLATFORM_LABELS[ch.platform] || ch.platform}
             </td>
-            <td className="py-1.5 text-right font-mono text-foreground">{ch.post_count}</td>
             <td className="py-1.5 text-right font-mono text-foreground">
-              {formatNumber(ch.total_engagement)}
+              {formatNumber(ch.subscribers)}
+            </td>
+            <td className="py-1.5 text-right font-mono text-foreground">{ch.collected_posts}</td>
+            <td className="py-1.5 text-right font-mono text-foreground">
+              {formatNumber(ch.avg_likes)}
+            </td>
+            <td className="py-1.5 text-right font-mono text-foreground">
+              {formatNumber(ch.avg_views)}
             </td>
           </tr>
         ))}

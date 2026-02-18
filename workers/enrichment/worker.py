@@ -10,6 +10,8 @@ Usage:
 
 import logging
 import sys
+import time
+from datetime import datetime, timezone
 
 from config.settings import get_settings
 from workers.shared.bq_client import BQClient
@@ -18,31 +20,63 @@ from workers.shared.firestore_client import FirestoreClient
 logger = logging.getLogger(__name__)
 
 
-def run_enrichment(collection_id: str) -> None:
+def run_enrichment(collection_id: str, min_likes: int = 0) -> None:
     """Enrich all qualifying posts in a collection."""
-    _run(collection_id=collection_id, post_ids=[])
+    _run(collection_id=collection_id, post_ids=[], min_likes=min_likes)
 
 
-def run_enrichment_for_posts(post_ids: list[str]) -> None:
+def run_enrichment_for_posts(post_ids: list[str], min_likes: int = 0) -> None:
     """Enrich specific posts by ID."""
-    _run(collection_id="", post_ids=post_ids)
+    _run(collection_id="", post_ids=post_ids, min_likes=min_likes)
 
 
-def _run(collection_id: str, post_ids: list[str]) -> None:
+def _run(collection_id: str, post_ids: list[str], min_likes: int = 0) -> None:
     settings = get_settings()
     bq = BQClient(settings)
     fs = FirestoreClient(settings)
 
-    params = {"collection_id": collection_id, "post_ids": post_ids}
+    params = {"collection_id": collection_id, "post_ids": post_ids, "min_likes": min_likes}
 
     # Update status if collection-level enrichment
     if collection_id:
         fs.update_collection_status(collection_id, status="enriching")
 
     try:
+        # Pre-enrichment stats: count eligible vs skipped posts
+        enrich_stats: dict = {"min_likes_threshold": min_likes}
+        if collection_id:
+            pre_result = bq.query(
+                "SELECT "
+                "  COUNT(*) AS total, "
+                "  COUNTIF(COALESCE(eng.likes, 0) >= @min_likes) AS eligible, "
+                "  COUNTIF(ep.post_id IS NOT NULL) AS already_enriched "
+                "FROM social_listening.posts p "
+                "LEFT JOIN ("
+                "  SELECT post_id, likes, "
+                "    ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn "
+                "  FROM social_listening.post_engagements"
+                ") eng ON eng.post_id = p.post_id AND eng.rn = 1 "
+                "LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id "
+                "WHERE p.collection_id = @collection_id",
+                {"collection_id": collection_id, "min_likes": min_likes},
+            )
+            if pre_result:
+                row = pre_result[0]
+                enrich_stats["total_posts"] = row["total"]
+                enrich_stats["total_eligible"] = row["eligible"]
+                enrich_stats["total_already_enriched"] = row["already_enriched"]
+                enrich_stats["total_skipped"] = row["total"] - row["eligible"]
+                logger.info(
+                    "Enrichment filter: %d total, %d eligible (>=%d likes), %d already enriched, %d skipped",
+                    row["total"], row["eligible"], min_likes, row["already_enriched"],
+                    row["total"] - row["eligible"],
+                )
+
         # Step 1: Enrich posts via BQ AI.GENERATE_TEXT()
         logger.info("Running batch enrichment for %s", collection_id or f"posts {post_ids}")
+        enrich_start = time.monotonic()
         bq.query_from_file("batch_queries/batch_enrich.sql", params)
+        enrich_duration = round(time.monotonic() - enrich_start, 1)
 
         # Count enriched posts
         if collection_id:
@@ -54,7 +88,7 @@ def _run(collection_id: str, post_ids: list[str]) -> None:
             )
             enriched_count = result[0]["cnt"] if result else 0
             fs.update_collection_status(collection_id, posts_enriched=enriched_count)
-            logger.info("Enriched %d posts for collection %s", enriched_count, collection_id)
+            logger.info("Enriched %d posts for collection %s in %.1fs", enriched_count, collection_id, enrich_duration)
 
         # Check for cancellation before embeddings
         if collection_id:
@@ -65,9 +99,11 @@ def _run(collection_id: str, post_ids: list[str]) -> None:
 
         # Step 2: Generate embeddings via BQ AI.GENERATE_EMBEDDING()
         logger.info("Running batch embedding for %s", collection_id or f"posts {post_ids}")
+        embed_start = time.monotonic()
         bq.query_from_file("batch_queries/batch_embed.sql", params)
+        embed_duration = round(time.monotonic() - embed_start, 1)
 
-        # Count embeddings
+        # Count embeddings and update run_log
         if collection_id:
             result = bq.query(
                 "SELECT COUNT(*) AS cnt FROM social_listening.post_embeddings pe "
@@ -77,10 +113,25 @@ def _run(collection_id: str, post_ids: list[str]) -> None:
                 {"collection_id": collection_id},
             )
             embedded_count = result[0]["cnt"] if result else 0
+
+            # Merge enrichment + embedding stats into run_log
+            now_iso = datetime.now(timezone.utc).isoformat()
+            existing_status = fs.get_collection_status(collection_id)
+            run_log = (existing_status or {}).get("run_log") or {}
+            run_log["enrichment"] = {
+                **enrich_stats,
+                "completed_at": now_iso,
+                "duration_sec": enrich_duration,
+            }
+            run_log["embedding"] = {
+                "completed_at": now_iso,
+                "duration_sec": embed_duration,
+            }
+
             fs.update_collection_status(
-                collection_id, posts_embedded=embedded_count, status="completed"
+                collection_id, posts_embedded=embedded_count, status="completed", run_log=run_log,
             )
-            logger.info("Generated %d embeddings for collection %s", embedded_count, collection_id)
+            logger.info("Generated %d embeddings for collection %s in %.1fs", embedded_count, collection_id, embed_duration)
 
     except Exception as e:
         logger.exception("Enrichment failed for %s", collection_id or post_ids)

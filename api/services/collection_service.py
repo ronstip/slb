@@ -6,10 +6,9 @@ import threading
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from api.deps import get_bq, get_fs
 from api.schemas.requests import CreateCollectionRequest
 from config.settings import get_settings
-from workers.shared.bq_client import BQClient
-from workers.shared.firestore_client import FirestoreClient
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +24,8 @@ def create_collection_from_request(
     from the REST API without going through the agent.
     """
     settings = get_settings()
-    bq = BQClient(settings)
-    fs = FirestoreClient(settings)
+    bq = get_bq()
+    fs = get_fs()
 
     collection_id = str(uuid4())
 

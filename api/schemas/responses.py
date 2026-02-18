@@ -135,3 +135,22 @@ class CreditPurchaseHistoryItem(BaseModel):
     amount_cents: int
     purchased_by: str | None = None
     purchased_by_name: str | None = None
+
+
+# --- Sessions ---
+
+
+class SessionListItem(BaseModel):
+    session_id: str
+    title: str
+    created_at: str | None = None
+    updated_at: str | None = None
+    message_count: int = 0
+    preview: str | None = None
+
+
+class SessionDetailResponse(BaseModel):
+    session_id: str
+    title: str
+    state: dict
+    events: list[dict]

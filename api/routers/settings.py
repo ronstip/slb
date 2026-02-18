@@ -22,8 +22,7 @@ from api.schemas.responses import (
     UsageTrendPoint,
     UsageTrendResponse,
 )
-from config.settings import get_settings
-from workers.shared.firestore_client import FirestoreClient
+from api.deps import get_fs
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +46,7 @@ async def update_profile(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Update the current user's profile (display name, preferences)."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     updates = {}
     if request.display_name is not None:
@@ -94,8 +92,7 @@ async def update_org(
     """Update organization details (name, domain). Requires admin role."""
     require_org_role(user, "admin")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     updates = {}
     if request.name is not None:
@@ -151,8 +148,7 @@ async def create_invite(
     if request.role not in ("member", "admin"):
         raise HTTPException(status_code=400, detail="Role must be 'member' or 'admin'")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     now = datetime.now(timezone.utc)
     invite_code = uuid4().hex[:12]
@@ -186,8 +182,7 @@ async def list_invites(user: CurrentUser = Depends(get_current_user)):
     """List pending invites for the org. Requires admin role."""
     require_org_role(user, "admin")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
     invites = fs.list_org_invites(user.org_id)
 
     return [
@@ -213,8 +208,7 @@ async def revoke_invite(
     """Revoke a pending invite. Requires admin role."""
     require_org_role(user, "admin")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
     fs.delete_invite(invite_id)
     return {"status": "revoked"}
 
@@ -228,8 +222,7 @@ async def join_org(
     if user.org_id:
         raise HTTPException(status_code=400, detail="You already belong to an organization")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     invite = fs.get_invite_by_code(invite_code)
     if not invite:
@@ -280,8 +273,7 @@ async def update_member_role(
     if member_uid == user.uid:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     member = fs.get_user(member_uid)
     if not member or member.get("org_id") != user.org_id:
@@ -306,8 +298,7 @@ async def remove_member(
     if member_uid == user.uid:
         raise HTTPException(status_code=400, detail="Cannot remove yourself. Use leave instead.")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     member = fs.get_user(member_uid)
     if not member or member.get("org_id") != user.org_id:
@@ -331,8 +322,7 @@ async def leave_org(user: CurrentUser = Depends(get_current_user)):
             detail="Organization owner cannot leave. Transfer ownership first.",
         )
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
     fs.update_user(user.uid, org_id=None, org_role=None)
     return {"status": "left"}
 
@@ -345,8 +335,7 @@ async def leave_org(user: CurrentUser = Depends(get_current_user)):
 @router.get("/usage/me", response_model=UsageResponse)
 async def get_usage(user: CurrentUser = Depends(get_current_user)):
     """Get the current user's usage stats."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     # Determine plan limits
     plan = "free"
@@ -385,8 +374,7 @@ async def get_org_usage(user: CurrentUser = Depends(get_current_user)):
     """Get the organization's aggregate usage stats. Requires admin role."""
     require_org_role(user, "admin")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     org = fs.get_org(user.org_id)
     plan = org.get("subscription_plan", "free") if org else "free"
@@ -416,8 +404,7 @@ async def get_usage_trend(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Get daily usage trend for the current user (personal view)."""
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     now = datetime.now(timezone.utc)
     start_date = now - timedelta(days=days)
@@ -453,8 +440,7 @@ async def get_org_usage_trend(
     """Get daily usage trend for the org, split by user. Requires admin role."""
     require_org_role(user, "admin")
 
-    settings = get_settings()
-    fs = FirestoreClient(settings)
+    fs = get_fs()
 
     now = datetime.now(timezone.utc)
     start_date = now - timedelta(days=days)
