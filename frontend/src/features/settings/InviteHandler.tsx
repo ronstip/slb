@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useAuth } from '../../auth/useAuth.ts';
 import { joinOrg } from '../../api/endpoints/settings.ts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card.tsx';
@@ -16,16 +17,10 @@ export function getInviteCode(): string | null {
   return match ? match[1] : null;
 }
 
-/**
- * Clears the invite path from the URL without a page reload.
- */
-function clearInvitePath() {
-  window.history.replaceState({}, '', '/');
-}
-
 type InviteState = 'joining' | 'success' | 'error';
 
 export function InviteHandler({ inviteCode }: { inviteCode: string }) {
+  const navigate = useNavigate();
   const { refreshProfile } = useAuth();
   const [state, setState] = useState<InviteState>('joining');
   const [error, setError] = useState('');
@@ -56,7 +51,8 @@ export function InviteHandler({ inviteCode }: { inviteCode: string }) {
   }, [inviteCode]);
 
   const handleContinue = () => {
-    clearInvitePath();
+    // Navigate to home and reload to refresh profile data
+    navigate('/', { replace: true });
     window.location.reload();
   };
 

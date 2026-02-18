@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
-import { useUIStore } from '../../stores/ui-store.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Separator } from '../../components/ui/separator.tsx';
 import { Logo } from '../../components/Logo.tsx';
@@ -20,19 +19,25 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
 };
 
 export function SettingsPage() {
-  const closeSettings = useUIStore((s) => s.closeSettings);
-  const [activeSection, setActiveSection] = useState<SettingsSection>('account');
+  const navigate = useNavigate();
+  const params = useParams<{ section?: string }>();
+
+  // Default to 'account' if no section specified, or validate the section
+  const activeSection: SettingsSection =
+    (params.section && ['account', 'organization', 'billing', 'usage', 'privacy'].includes(params.section))
+      ? params.section as SettingsSection
+      : 'account';
 
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Top bar */}
       <header className="flex h-12 shrink-0 items-center border-b border-border bg-card px-4">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={closeSettings}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('/')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="ml-3">
+        <button onClick={() => navigate('/')} className="ml-3 focus:outline-none">
           <Logo size="sm" />
-        </div>
+        </button>
         <Separator orientation="vertical" className="mx-4 h-5" />
         <span className="text-sm font-medium text-foreground">Settings</span>
       </header>
@@ -40,7 +45,10 @@ export function SettingsPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside className="w-60 shrink-0 border-r border-border bg-card p-4">
-          <SettingsNav activeSection={activeSection} onSelect={setActiveSection} />
+          <SettingsNav
+            activeSection={activeSection}
+            onSelect={(section) => navigate(`/settings/${section}`)}
+          />
         </aside>
 
         {/* Content */}
