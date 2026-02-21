@@ -1,6 +1,8 @@
 """FastAPI auth dependencies — Firebase ID token verification + user provisioning."""
 
+import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -11,6 +13,15 @@ from api.deps import get_fs
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache: uid -> (CurrentUser, expiry_timestamp)
+# Avoids a Firestore read + write on every single API request.
+_user_cache: dict[str, tuple["CurrentUser", float]] = {}
+_USER_CACHE_TTL = 300  # 5 minutes
+
+# Track last_login_at writes to avoid writing on every request
+_last_login_written: dict[str, float] = {}
+_LAST_LOGIN_INTERVAL = 3600  # Only update last_login_at once per hour
 
 
 @dataclass
@@ -48,25 +59,36 @@ async def get_current_user(request: Request) -> CurrentUser:
 
     token = auth_header.removeprefix("Bearer ")
 
-    # Verify with Firebase Admin SDK
+    # Verify with Firebase Admin SDK (CPU-bound crypto — run in thread pool)
     try:
-        decoded = firebase_auth.verify_id_token(token)
+        decoded = await asyncio.to_thread(firebase_auth.verify_id_token, token)
     except Exception as e:
         logger.warning("Invalid Firebase token: %s", e)
         raise HTTPException(status_code=401, detail="Invalid auth token")
 
     uid = decoded["uid"]
 
-    # Fetch or provision user in Firestore
-    user_doc = _get_or_create_user(uid, decoded)
+    # Check in-memory cache first
+    now = time.monotonic()
+    cached = _user_cache.get(uid)
+    if cached and cached[1] > now:
+        return cached[0]
 
-    return CurrentUser(
+    # Fetch or provision user in Firestore
+    user_doc = await asyncio.to_thread(_get_or_create_user, uid, decoded)
+
+    current_user = CurrentUser(
         uid=uid,
         email=decoded.get("email", ""),
         display_name=decoded.get("name"),
         org_id=user_doc.get("org_id"),
         org_role=user_doc.get("org_role"),
     )
+
+    # Cache the result
+    _user_cache[uid] = (current_user, now + _USER_CACHE_TTL)
+
+    return current_user
 
 
 def _get_or_create_user(uid: str, decoded_token: dict) -> dict:
@@ -75,7 +97,12 @@ def _get_or_create_user(uid: str, decoded_token: dict) -> dict:
 
     existing = fs.get_user(uid)
     if existing:
-        fs.update_user(uid, last_login_at=datetime.now(timezone.utc))
+        # Only update last_login_at once per hour (not on every request)
+        now_mono = time.monotonic()
+        last_written = _last_login_written.get(uid, 0)
+        if now_mono - last_written > _LAST_LOGIN_INTERVAL:
+            fs.update_user(uid, last_login_at=datetime.now(timezone.utc))
+            _last_login_written[uid] = now_mono
         return existing
 
     # New user — check for domain auto-join

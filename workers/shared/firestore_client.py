@@ -266,14 +266,14 @@ class FirestoreClient:
                 self._db.collection("usage_daily")
                 .document(user_id)
                 .collection("days")
+                .where("__name__", ">=", start_str)
+                .where("__name__", "<=", end_str)
             )
             docs = days_ref.stream()
 
             result = {}
             for doc in docs:
-                # Filter by date range in Python (document IDs are YYYY-MM-DD)
-                if start_str <= doc.id <= end_str:
-                    result[doc.id] = doc.to_dict()
+                result[doc.id] = doc.to_dict()
             return result
         except Exception as e:
             logger.warning("Failed to fetch daily usage for %s: %s", user_id, e)

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
 import { useAuth } from '../../../auth/useAuth.ts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card.tsx';
 import { Progress } from '../../../components/ui/progress.tsx';
 import { Database, FileText, MessageSquare } from 'lucide-react';
-import type { UsageStats, UsageTrendPoint } from '../../../api/types.ts';
+import type { UsageTrendPoint } from '../../../api/types.ts';
 import { getUsage, getOrgUsage, getUsageTrend, getOrgUsageTrend } from '../../../api/endpoints/settings.ts';
+import { useQuery } from '@tanstack/react-query';
 import {
   Area,
   AreaChart,
@@ -18,36 +18,39 @@ import {
 
 export function UsageSection() {
   const { profile } = useAuth();
-  const [usage, setUsage] = useState<UsageStats | null>(null);
-  const [orgUsage, setOrgUsage] = useState<UsageStats | null>(null);
-  const [trendData, setTrendData] = useState<UsageTrendPoint[]>([]);
-  const [orgTrendData, setOrgTrendData] = useState<UsageTrendPoint[]>([]);
-  const [loading, setLoading] = useState(true);
 
   const isOrg = !!profile?.org_id;
   const isAdmin = profile?.org_role === 'owner' || profile?.org_role === 'admin';
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [userUsage, orgData, trend, orgTrend] = await Promise.all([
-          getUsage(),
-          isOrg && isAdmin ? getOrgUsage().catch(() => null) : Promise.resolve(null),
-          getUsageTrend(30).catch(() => ({ points: [], granularity: 'daily' })),
-          isOrg && isAdmin ? getOrgUsageTrend(30).catch(() => ({ points: [], granularity: 'daily' })) : Promise.resolve({ points: [], granularity: 'daily' }),
-        ]);
-        setUsage(userUsage);
-        setOrgUsage(orgData);
-        setTrendData(trend.points);
-        setOrgTrendData(orgTrend.points);
-      } catch {
-        // handle error
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAll();
-  }, []);
+  const { data: usage, isLoading: loadingUsage } = useQuery({
+    queryKey: ['usage', 'me'],
+    queryFn: getUsage,
+    staleTime: 60_000,
+  });
+
+  const { data: orgUsage } = useQuery({
+    queryKey: ['usage', 'org'],
+    queryFn: getOrgUsage,
+    enabled: isOrg && isAdmin,
+    staleTime: 60_000,
+  });
+
+  const { data: trendResponse } = useQuery({
+    queryKey: ['usage', 'trend', 30],
+    queryFn: () => getUsageTrend(30),
+    staleTime: 60_000,
+  });
+
+  const { data: orgTrendResponse } = useQuery({
+    queryKey: ['usage', 'org-trend', 30],
+    queryFn: () => getOrgUsageTrend(30),
+    enabled: isOrg && isAdmin,
+    staleTime: 60_000,
+  });
+
+  const trendData = trendResponse?.points ?? [];
+  const orgTrendData = orgTrendResponse?.points ?? [];
+  const loading = loadingUsage;
 
   if (loading) {
     return (

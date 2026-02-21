@@ -21,13 +21,12 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from google.adk.runners import Runner
-from google.cloud import storage as gcs
 from google.genai import types
 from sse_starlette.sse import EventSourceResponse
 
 from api.agent.agent import APP_NAME, create_memory_service, create_runner
 from api.auth.dependencies import CurrentUser, get_current_user
-from api.deps import get_bq, get_fs
+from api.deps import get_bq, get_fs, get_gcs
 from api.routers import settings as settings_router
 from api.routers import billing as billing_router
 from api.routers import sessions as sessions_router
@@ -281,17 +280,6 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
     seen_ids = set()
     all_docs = list(docs)
 
-    # Backfill org_id on user's own collections that are missing it
-    if user.org_id:
-        for doc in all_docs:
-            data = doc.to_dict()
-            if not data.get("org_id"):
-                try:
-                    fs.update_collection_status(doc.id, org_id=user.org_id)
-                    logger.info("Backfilled org_id=%s on collection %s", user.org_id, doc.id)
-                except Exception as e:
-                    logger.warning("Failed to backfill org_id on %s: %s", doc.id, e)
-
     # Also fetch org-shared collections if user is in an org
     if user.org_id:
         try:
@@ -389,22 +377,11 @@ async def get_collection_posts(
     }
     order_sql = sort_map.get(sort, sort_map["engagement"])
 
-    # Count query
-    count_sql = f"""
-    SELECT COUNT(*) as total
-    FROM social_listening.posts p
-    LEFT JOIN social_listening.enriched_posts ep ON p.post_id = ep.post_id
-    LEFT JOIN (
-        SELECT post_id, likes, shares, comments_count, views, saves,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-        FROM social_listening.post_engagements
-    ) pe ON p.post_id = pe.post_id AND pe.rn = 1
-    WHERE {where_sql}
-    """
-    count_result = bq.query(count_sql, params)
-    total = count_result[0]["total"] if count_result else 0
+    # Single query with COUNT(*) OVER() to get total alongside results
+    # This avoids two separate BigQuery jobs (each takes 1-5s minimum)
+    params["limit"] = limit
+    params["offset"] = offset
 
-    # Main query
     main_sql = f"""
     SELECT
         p.post_id,
@@ -427,7 +404,8 @@ async def get_collection_posts(
         ep.themes,
         ep.entities,
         ep.ai_summary,
-        ep.content_type
+        ep.content_type,
+        COUNT(*) OVER() as _total
     FROM social_listening.posts p
     LEFT JOIN social_listening.enriched_posts ep ON p.post_id = ep.post_id
     LEFT JOIN (
@@ -439,10 +417,11 @@ async def get_collection_posts(
     ORDER BY {order_sql}
     LIMIT @limit OFFSET @offset
     """
-    params["limit"] = limit
-    params["offset"] = offset
 
-    rows = bq.query(main_sql, params)
+    # Run blocking BigQuery call in thread pool to avoid blocking the event loop
+    rows = await asyncio.to_thread(bq.query, main_sql, params)
+
+    total = rows[0]["_total"] if rows else 0
 
     posts = []
     for row in rows:
@@ -494,7 +473,7 @@ async def get_collection_posts(
             )
         )
 
-    return FeedResponse(posts=posts, total=total, offset=offset, limit=limit)
+    return FeedResponse(posts=posts, total=int(total), offset=offset, limit=limit)
 
 
 @app.get("/collection/{collection_id}", response_model=CollectionStatusResponse)
@@ -635,7 +614,7 @@ async def serve_media(path: str):
     bucket_name = settings.gcs_media_bucket
 
     try:
-        client = gcs.Client(project=settings.gcp_project_id)
+        client = get_gcs()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(path)
 
@@ -669,7 +648,9 @@ async def serve_media(path: str):
 async def proxy_media(url: str = Query(...)):
     """Proxy external media URLs to bypass CORS restrictions on social platform CDNs."""
     try:
-        resp = http_requests.get(
+        # Run synchronous requests.get in a thread to avoid blocking the event loop
+        resp = await asyncio.to_thread(
+            http_requests.get,
             url,
             stream=True,
             timeout=30,

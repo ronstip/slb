@@ -1,5 +1,6 @@
 """Settings router — profile updates, organization management, invites, usage."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -446,18 +447,23 @@ async def get_org_usage_trend(
     start_date = now - timedelta(days=days)
 
     try:
-        members = fs.list_org_members(user.org_id)
+        members = await asyncio.to_thread(fs.list_org_members, user.org_id)
     except Exception as e:
         logger.warning("Failed to list org members for trend: %s", e)
         return UsageTrendResponse(points=[], granularity="daily")
 
-    # Fetch daily logs for each member once (not per-day)
-    member_logs: dict[str, dict] = {}
-    for member in members:
+    # Fetch daily logs for all members in parallel (not sequentially)
+    async def _fetch_member_usage(uid: str) -> tuple[str, dict]:
         try:
-            member_logs[member["uid"]] = fs.get_usage_daily(member["uid"], start_date, now)
+            logs = await asyncio.to_thread(fs.get_usage_daily, uid, start_date, now)
+            return uid, logs
         except Exception:
-            member_logs[member["uid"]] = {}
+            return uid, {}
+
+    results = await asyncio.gather(
+        *[_fetch_member_usage(m["uid"]) for m in members]
+    )
+    member_logs: dict[str, dict] = dict(results)
 
     points = []
     for i in range(days):
