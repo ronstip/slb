@@ -14,44 +14,87 @@ Collected data is shared across customers — only the `collections` table knows
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                   CLIENT (React / Next.js)                │
+│                   CLIENT (React + Vite)                    │
 └────────────┬─────────────────────────────────────────────┘
              │ REST / SSE
              ▼
 ┌──────────────────────────────────────────────────────────┐
 │               API — Cloud Run (FastAPI)                   │
-│  /chat              → ADK agent (streaming)              │
+│  /chat              → ADK multi-agent (streaming SSE)    │
 │  /collection/{id}   → status (Firestore read)            │
 │  /sessions          → list / get / delete sessions       │
 └──────┬───────────────────────┬───────────────────────────┘
        │                       │
        ▼                       ▼
-┌────────────────┐    ┌────────────────────────────────────┐
-│   ADK AGENT    │    │   WORKERS (Cloud Run Jobs)         │
-│  (Gemini Pro)  │    │   dispatched via Cloud Tasks       │
-│                │    │                                    │
-│  Tools:        │    │  Collection Worker                 │
-│  • google_     │    │    writes → posts,                 │
-│    search      │    │    post_engagements, channels      │
-│  • design_     │    │    downloads media → GCS           │
-│    research    │    │                                    │
-│  • start_      │    │  Enrichment Worker                 │
-│    collection  │    │    BQ batch processing query        │
-│  • cancel_     │    │    posts → enriched_posts           │
-│    collection  │    │                                    │
-│  • get_        │    │  Embedding Worker                  │
-│    progress    │    │    BQ batch processing query        │
-│  • enrich_     │    │    enriched_posts → post_embeddings │
-│    collection  │    │                                    │
-│  • get_        │    │  Engagement Worker                 │
-│    insights    │    │    refreshes post_engagements       │
-│  • export_     │    │    triggered by agent or cron       │
-│    data        │    │                                    │
-│  • refresh_    │    │                                    │
-│    engagements │    │                                    │
-└────────────────┘    └────────────────────────────────────┘
-                        │
-                        ▼
+┌──────────────────────────────────────────────────────────┐
+│              ADK MULTI-AGENT SYSTEM                       │
+│                                                          │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  ORCHESTRATOR (Gemini 3 Flash)                     │  │
+│  │  Routes user intent to specialists. No tools.      │  │
+│  │  thinking_budget=0, max_output_tokens=256          │  │
+│  └──────┬──────────────┬──────────────┬───────────────┘  │
+│         │              │              │                   │
+│         ▼              ▼              ▼                   │
+│  ┌────────────┐ ┌─────────────┐ ┌──────────────┐        │
+│  │ RESEARCH   │ │ COLLECTION  │ │ ANALYST      │        │
+│  │ AGENT      │ │ AGENT       │ │ AGENT        │        │
+│  │ Flash      │ │ Flash       │ │ Pro          │        │
+│  │            │ │             │ │              │        │
+│  │ Tools:     │ │ Tools:      │ │ Tools:       │        │
+│  │ • google_  │ │ • start_    │ │ • get_       │        │
+│  │   search   │ │   collection│ │   insights   │        │
+│  │ • design_  │ │ • cancel_   │ │ • export_    │        │
+│  │   research │ │   collection│ │   data       │        │
+│  │ • preload_ │ │ • get_      │ │ • execute_   │        │
+│  │   memory   │ │   progress  │ │   sql (BQ)   │        │
+│  │            │ │ • refresh_  │ │ • get_table_ │        │
+│  │ Callbacks: │ │   engmts    │ │   info (BQ)  │        │
+│  │ after_tool:│ │ • enrich_   │ │ • list_table │        │
+│  │  log       │ │   collection│ │   _ids (BQ)  │        │
+│  │            │ │ • preload_  │ │ • preload_   │        │
+│  │            │ │   memory    │ │   memory     │        │
+│  │            │ │             │ │              │        │
+│  │            │ │ Callbacks:  │ │ Callbacks:   │        │
+│  │            │ │ before_mdl: │ │ before_mdl:  │        │
+│  │            │ │  inject_ctx │ │  inject_ctx  │        │
+│  │            │ │ after_tool: │ │ after_tool:  │        │
+│  │            │ │  state_track│ │  log         │        │
+│  │            │ │  + log      │ │              │        │
+│  └────────────┘ └─────────────┘ └──────────────┘        │
+│                                                          │
+│  Memory Bank: PreloadMemoryTool auto-injects past        │
+│  conversation context before each LLM call.              │
+│  Dev: InMemoryMemoryService | Prod: VertexAiMemoryBank   │
+│                                                          │
+│  Session State (shared across all agents via callbacks):  │
+│  active_collection_id, collection_status,                │
+│  posts_collected, posts_enriched, posts_embedded         │
+└──────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│   WORKERS (Cloud Run Jobs)                               │
+│   dispatched via Cloud Tasks                             │
+│                                                          │
+│  Collection Worker                                       │
+│    writes → posts, post_engagements, channels            │
+│    downloads media → GCS                                 │
+│                                                          │
+│  Enrichment Worker                                       │
+│    BQ batch processing query                             │
+│    posts → enriched_posts                                │
+│                                                          │
+│  Embedding Worker                                        │
+│    BQ batch processing query                             │
+│    enriched_posts → post_embeddings                      │
+│                                                          │
+│  Engagement Worker                                       │
+│    refreshes post_engagements                            │
+│    triggered by agent or cron                            │
+└──────────────────────────────────────────────────────────┘
+       │
+       ▼
 ┌──────────────────────────────────────────────────────────┐
 │                BIGQUERY — Shared Analytical Data          │
 │                                                          │
@@ -60,17 +103,17 @@ Collected data is shared across customers — only the `collections` table knows
 │  ├── posts             embed.sql   (enriched → vectors)  │
 │  ├── post_engagements                                    │
 │  ├── enriched_posts    Remote Models:                    │
-│  ├── post_embeddings   ├── enrichment_model (Gemini)     │
+│  ├── post_embeddings   ├── enrichment_model (Gemini 3)   │
 │  └── channels          └── embedding_model (text-emb)    │
 │                                                          │
 │  media_objects (object table → GCS)                      │
 └──────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────┐
-│  FIRESTORE              │  GCS                           │
-│  sessions/{id}          │  {project}-media/              │
-│  collection_status/{id} │    {collection_id}/{post_id}.x │
-└─────────────────────────┴────────────────────────────────┘
+│  FIRESTORE              │  GCS           │  MEMORY BANK  │
+│  sessions/{id}          │  {proj}-media/ │  Vertex AI    │
+│  collection_status/{id} │  {proj}-export │  (prod only)  │
+└─────────────────────────┴────────────────┴───────────────┘
 ```
 
 ---
@@ -674,6 +717,8 @@ def refresh_engagements(payload: dict):
 
 In dev mode, `start_collection` starts a background thread that runs collection, enrichment, and embedding as a pipeline. Each step is an independent worker — the pipeline simply orchestrates their execution order and manages Firestore status.
 
+ADK callbacks (`collection_state_tracker`) automatically capture the `collection_id` and pipeline status into session state after each tool call. This enables cross-agent context: when analyst_agent runs, it reads `active_collection_id` from session state via the `inject_collection_context` callback without the user having to specify which collection they mean.
+
 ```python
 def _run_pipeline(collection_id):
     # Step 1: Collect posts
@@ -699,23 +744,82 @@ thread.start()
 
 ---
 
+## Agent Architecture
+
+The system uses a multi-agent hierarchy with ADK's `sub_agents` and `transfer_to_agent` delegation. The orchestrator routes user intent to the right specialist. Sub-agents talk directly to the user and can transfer to peers.
+
+### Agent Hierarchy
+
+| Agent | Model | Role | Tools |
+|-------|-------|------|-------|
+| **orchestrator** | Gemini 3 Flash | Routes intent, no tools. `thinking_budget=0` for speed. | — |
+| **research_agent** | Gemini 3 Flash | Research design, keyword strategy, web context | `google_search`, `design_research`, `preload_memory` |
+| **collection_agent** | Gemini 3 Flash | Collection lifecycle: start, monitor, cancel, enrich, refresh | `start_collection`, `cancel_collection`, `get_progress`, `refresh_engagements`, `enrich_collection`, `preload_memory` |
+| **analyst_agent** | Gemini 3 Pro | Insight reports, data export, ad-hoc BQ queries | `get_insights`, `export_data`, `execute_sql`, `get_table_info`, `list_table_ids`, `preload_memory` |
+
+### Callbacks
+
+Registered on agents via `before_model_callback` and `after_tool_callback`. Defined in `api/agent/callbacks.py`.
+
+| Callback | Type | Agents | Purpose |
+|----------|------|--------|---------|
+| `collection_state_tracker` | `after_tool` | collection_agent | Captures `active_collection_id`, `collection_status`, progress counts into session state after each tool call |
+| `inject_collection_context` | `before_model` | collection_agent, analyst_agent | Prepends active collection context to system instruction before each LLM call |
+| `log_tool_invocation` | `after_tool` | all sub-agents | Structured logging of every tool invocation for observability |
+
+### Memory Bank
+
+Cross-session memory gives agents context from previous conversations. When a user returns, agents automatically recall past research designs, collection results, and analysis preferences.
+
+**How it works:**
+1. **Saving**: After each conversation turn, the session is saved to the memory service (fire-and-forget in `main.py` after the "done" SSE event).
+2. **Retrieval**: `PreloadMemoryTool` on each sub-agent auto-queries memory before every LLM call and injects relevant past conversations into the system instruction as `<PAST_CONVERSATIONS>...</PAST_CONVERSATIONS>`.
+3. **Scoping**: Memories are isolated per `user_id + app_name` — multi-tenant by default.
+
+**Backends:**
+
+| Environment | Service | Search | Persistence |
+|-------------|---------|--------|-------------|
+| Development | `InMemoryMemoryService` | Keyword matching | Volatile (lost on restart) |
+| Production | `VertexAiMemoryBankService` | Semantic search | Persistent (Vertex AI) |
+
+Selected automatically via `settings.is_dev`. Production requires `AGENT_ENGINE_ID` in `.env` (Vertex AI Agent Engine resource).
+
+**Config:** `config/settings.py` → `agent_engine_id: str = ""`
+
+### Per-Agent Model Configuration
+
+Models are configurable per agent via `config/settings.py` and environment variables:
+
+```
+ORCHESTRATOR_MODEL=gemini-3-flash-preview
+RESEARCH_MODEL=gemini-3-flash-preview
+COLLECTION_MODEL=gemini-3-flash-preview
+ANALYST_MODEL=gemini-3-pro-preview
+ENRICHMENT_MODEL=gemini-3-flash-preview
+```
+
+Note: `gemini_location=global` is required for Gemini 3 preview models (not regional endpoints).
+
 ## Agent Tools
 
-The agent has Google Search grounding enabled (`GoogleSearchTool`) for researching brands, competitors, and industry context before designing research. It uses web search when external context would improve the research design, not for every request.
+Google Search grounding is enabled on research_agent (`GoogleSearchTool`) for researching brands, competitors, and industry context. Analyst_agent has direct BigQuery access via ADK's built-in `BigQueryToolset` (read-only, `WriteMode.BLOCKED`).
 
-The agent has no dedicated clarification tool. For clear requests, it immediately calls `design_research`. It only asks clarifying questions as natural text when there is genuine ambiguity that would lead to a fundamentally wrong research design.
-
-| Tool | Purpose | Input | Output |
-|------|---------|-------|--------|
-| `google_search` | Research brands, competitors, trends on the web | (built-in) | Search results |
-| `design_research` | Convert the user's question into a collection config | Question + context | Config JSON for review |
-| `start_collection` | Create `collections` row, dispatch pipeline (collection → enrichment → embedding) | Approved config | collection_id |
-| `cancel_collection` | Cancel a running collection or enrichment | collection_id | Confirmation |
-| `get_progress` | Read live pipeline progress | collection_id | Status + counts |
-| `enrich_collection` | Manually trigger enrichment + embedding for a collection or specific posts | collection_id or post_ids | Confirmation |
-| `get_insights` | Query BQ for aggregated data, synthesize with Gemini Pro | collection_id | Narrative + data |
-| `export_data` | Export all posts + enrichment as structured rows for CSV download | collection_id | Rows + column names |
-| `refresh_engagements` | Dispatch Engagement Worker | collection_id or post_ids | Confirmation |
+| Tool | Agent | Purpose | Input | Output |
+|------|-------|---------|-------|--------|
+| `google_search` | research | Research brands, competitors, trends on the web | (built-in) | Search results |
+| `design_research` | research | Convert the user's question into a collection config | Question + context | Config JSON for review |
+| `start_collection` | collection | Create `collections` row, dispatch pipeline | Approved config | collection_id |
+| `cancel_collection` | collection | Cancel a running collection or enrichment | collection_id | Confirmation |
+| `get_progress` | collection | Read live pipeline progress | collection_id | Status + counts |
+| `enrich_collection` | collection | Manually trigger enrichment for a collection or specific posts | collection_id or post_ids | Confirmation |
+| `refresh_engagements` | collection | Dispatch Engagement Worker | collection_id or post_ids | Confirmation |
+| `get_insights` | analyst | Query BQ for aggregated data, synthesize with Gemini Pro | collection_id | Narrative + data |
+| `export_data` | analyst | Export all posts + enrichment as structured rows for CSV download | collection_id | Rows + column names |
+| `execute_sql` | analyst | Run ad-hoc SQL queries on BigQuery (read-only) | SQL query | Query results |
+| `get_table_info` | analyst | Inspect BQ table schema | table name | Column names + types |
+| `list_table_ids` | analyst | List all tables in the dataset | — | Table names |
+| `preload_memory` | all sub-agents | Auto-injects past conversation context before each LLM call | (automatic) | System instruction augmented |
 
 ### export_data
 
@@ -767,24 +871,22 @@ def get_insights(collection_id: str) -> dict:
 
 ## Model Configuration
 
-```yaml
-# config/models.yaml
-models:
-  agent:
-    model_id: "gemini-3-pro"
-    purpose: "Conversational agent"
-  enrichment:
-    model_id: "gemini-3-flash"
-    purpose: "Multimodal post analysis"
-  embedding:
-    model_id: "text-embedding-005"
-    purpose: "Vector embeddings"
-  synthesis:
-    model_id: "gemini-3-pro"
-    purpose: "Insight generation"
-```
+Per-agent models configured in `config/settings.py` (loaded from `.env`):
 
-BQ remote models reference these. To swap: update config → recreate remote model → zero code changes.
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `orchestrator_model` | `gemini-3-flash-preview` | Orchestrator routing |
+| `research_model` | `gemini-3-flash-preview` | Research design |
+| `collection_model` | `gemini-3-flash-preview` | Collection management |
+| `analyst_model` | `gemini-3-pro-preview` | Data analysis (higher reasoning) |
+| `enrichment_model` | `gemini-3-flash-preview` | BQ batch enrichment (via remote model) |
+| `embedding_model` | `text-embedding-005` | BQ batch embeddings (via remote model) |
+| `gemini_model` | `gemini-3-flash-preview` | Session naming, misc |
+| `agent_engine_id` | `""` (empty) | Vertex AI Agent Engine ID for Memory Bank (prod only) |
+
+Gemini 3 preview models require `gemini_location=global` (not regional `us-central1`). BQ and Cloud Tasks still use `gcp_region=us-central1`.
+
+BQ remote models are created in `setup_bq.sh`. To swap: update env var → recreate remote model → zero code changes.
 
 ---
 
@@ -798,7 +900,12 @@ sessions/{session_id}           (managed by ADK FirestoreSessionService)
 │   ├── selected_sources[]
 │   ├── message_count
 │   ├── first_message
-│   └── created_at
+│   ├── created_at
+│   ├── active_collection_id    -- set by collection_state_tracker callback
+│   ├── collection_status       -- collecting | enriching | completed | cancelled
+│   ├── posts_collected         -- updated by get_progress callback
+│   ├── posts_enriched          -- updated by get_progress callback
+│   └── posts_embedded          -- updated by get_progress callback
 ├── events[]                    -- full ADK event history for session restoration
 └── last_update_time
 
@@ -961,14 +1068,17 @@ bq query --use_legacy_sql=false < bigquery/indexes/vector_index.sql
 ```
 social-listening-platform/
 ├── config/
-│   ├── models.yaml
-│   └── platforms.yaml
+│   └── settings.py              -- Pydantic Settings (per-agent models, GCP config)
 ├── api/
 │   ├── main.py
 │   ├── agent/
-│   │   ├── agent.py
+│   │   ├── agent.py             -- multi-agent hierarchy, memory service, PreloadMemoryTool
+│   │   ├── callbacks.py         -- ADK callbacks (state tracking, context injection, logging)
 │   │   ├── prompts/
-│   │   │   ├── system.py
+│   │   │   ├── orchestrator.py
+│   │   │   ├── research_agent.py
+│   │   │   ├── collection_agent.py
+│   │   │   ├── analyst_agent.py
 │   │   │   └── synthesis.py
 │   │   └── tools/
 │   │       ├── design_research.py
@@ -979,6 +1089,13 @@ social-listening-platform/
 │   │       ├── get_insights.py
 │   │       ├── export_data.py
 │   │       └── refresh_engagements.py
+│   ├── auth/
+│   │   ├── session_service.py   -- FirestoreSessionService (ADK BaseSessionService)
+│   │   └── dependencies.py
+│   ├── routers/
+│   │   ├── sessions.py
+│   │   ├── settings.py
+│   │   └── billing.py
 │   ├── schemas/
 │   └── Dockerfile
 ├── workers/
@@ -1042,19 +1159,25 @@ social-listening-platform/
 ```
 User: "How is Glossier perceived vs Drunk Elephant on Instagram and TikTok?"
 
-→ Agent uses Google Search to research brand context, competitors, trends
+→ ORCHESTRATOR routes to research_agent
 
+→ RESEARCH AGENT: PreloadMemoryTool auto-injects relevant past conversations
+→ RESEARCH AGENT uses Google Search to research brand context
 → design_research()
   → config: platforms=[instagram, tiktok], keywords=[glossier, drunk elephant],
     channel_urls=[instagram.com/glossier, tiktok.com/@drunkmelephant],
     time_range=90d, max_calls=2/keyword (dev default)
+  → log_tool_invocation: logs tool call
   "I'll collect posts from both platforms. Proceed?"
 
-→ "Yes" → start_collection(config)
+→ "Yes" → ORCHESTRATOR routes to collection_agent
+→ inject_collection_context: no active collection yet → no-op
+→ start_collection(config)
   → BQ: insert collections row
   → Firestore: status = pending
   → Background pipeline starts (dev: thread, prod: Cloud Tasks)
   → Returns immediately with collection_id
+  → collection_state_tracker: stores active_collection_id, status=collecting
 
 → Pipeline runs in background:
   1. Collection Worker: adapters → collect posts → GCS media → BQ inserts
@@ -1067,27 +1190,35 @@ User: "How is Glossier perceived vs Drunk Elephant on Instagram and TikTok?"
      → embed.sql: ai_summary → BQ batch processing → post_embeddings
      → Firestore: status = completed
 
-→ "What's the progress?" → get_progress(collection_id)
+→ "What's the progress?"
+→ inject_collection_context: prepends "Active collection: abc-123 (collecting)"
+→ get_progress(collection_id)
   → Firestore read → "Enriching posts — 8 of 10 enriched so far"
+  → collection_state_tracker: updates status, posts_collected, posts_enriched
 
-→ "What did you find?" → get_insights(collection_id)
+→ "What did you find?" → ORCHESTRATOR routes to analyst_agent
+→ inject_collection_context: prepends "Active collection: abc-123 (completed, 42 posts)"
+→ get_insights(collection_id)
   → BQ queries → Gemini Pro synthesis
   "Glossier: 68% positive sentiment vs DE's 54%.
    TikTok Boy Brow tutorials avg 45K views.
    DE packaging backlash — top negative post at 12K likes.
    Key channels: @skincarebyhyram (1.2M subs)..."
 
-→ "Stop this collection" → cancel_collection(collection_id)
+→ "What are the top 5 posts by likes?" → analyst_agent uses execute_sql
+  → Generates SQL, queries BQ directly, presents results in markdown table
+
+→ "Stop this collection" → ORCHESTRATOR routes to collection_agent
+→ cancel_collection(collection_id)
   → Firestore: status = cancelled → worker stops at next batch
+  → collection_state_tracker: updates status=cancelled
 
-→ "Re-enrich this post" → enrich_collection(post_ids="abc123")
-  → Dispatches Enrichment Worker, then Embedding Worker for specific posts
-
-→ "Refresh engagements" → refresh_engagements(collection_id)
-  → Engagement Worker re-fetches metrics + comments
-
-→ "Export this data" → export_data(collection_id)
+→ "Export this data" → ORCHESTRATOR routes to analyst_agent
+→ export_data(collection_id)
   → BQ query: all posts + engagements + enrichment → JSON rows
   → Frontend renders preview card in chat + saves artifact
   → User clicks "Download CSV" → client-side CSV generation
+
+→ After each turn: session saved to memory bank (fire-and-forget)
+  → Next session: agents recall this research via PreloadMemoryTool
 ```

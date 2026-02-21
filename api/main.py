@@ -25,7 +25,7 @@ from google.cloud import storage as gcs
 from google.genai import types
 from sse_starlette.sse import EventSourceResponse
 
-from api.agent.agent import APP_NAME, create_runner
+from api.agent.agent import APP_NAME, create_memory_service, create_runner
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs
 from api.routers import settings as settings_router
@@ -55,12 +55,14 @@ app.add_middleware(
 )
 
 _runner: Runner | None = None
+_memory_service = None
 
 
 def get_runner() -> Runner:
-    global _runner
+    global _runner, _memory_service
     if _runner is None:
-        _runner = create_runner()
+        _memory_service = create_memory_service()
+        _runner = create_runner(memory_service=_memory_service)
     return _runner
 
 
@@ -193,9 +195,12 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                         ),
                     }
 
-                    # Fire-and-forget session naming (2-5s Gemini call)
+                    # Fire-and-forget background tasks
                     asyncio.create_task(
                         _maybe_name_session(runner, user_id, session_id)
+                    )
+                    asyncio.create_task(
+                        _save_to_memory(runner, user_id, session_id)
                     )
         except Exception as e:
             logger.exception("Error in event stream")
@@ -688,6 +693,21 @@ async def proxy_media(url: str = Query(...)):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+async def _save_to_memory(runner: Runner, user_id: str, session_id: str):
+    """Fire-and-forget: save session events to memory bank."""
+    try:
+        if _memory_service is None:
+            return
+        session = await runner.session_service.get_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+        if session:
+            await _memory_service.add_session_to_memory(session)
+            logger.info("Saved session %s to memory bank", session_id)
+    except Exception:
+        logger.exception("Failed to save session %s to memory", session_id)
 
 
 async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> str:

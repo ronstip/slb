@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     vetric_api_key_youtube: str = ""
     environment: str = "development"
     enable_search_grounding: bool = True
+    agent_engine_id: str = ""  # Vertex AI Agent Engine ID for Memory Bank (prod only)
     google_genai_use_vertexai: bool = True
 
     # Frontend URL for Stripe redirect callbacks

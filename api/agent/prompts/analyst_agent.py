@@ -10,7 +10,7 @@ ANALYST_AGENT_PROMPT = """You are a data analysis specialist for social media li
 
 ## BigQuery Schema Reference
 
-Project: Use the project ID from the session context.
+Project: `{project_id}`
 Dataset: `social_listening`
 
 **Key tables:**
