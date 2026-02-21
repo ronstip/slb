@@ -77,7 +77,10 @@ def parse_instagram_channel(user: dict) -> Channel:
 def flatten_instagram_top_serp(resp: dict) -> list[dict]:
     """Extract media items from Instagram's nested top_serp response.
 
-    The response has: media_grid.sections[].layout_content.{key}.clips.items[].media
+    The response has two layout structures per section:
+    - layout_content.{key} (dict) → clips.items[].media  (reels/clips)
+    - layout_content.fill_items (list) → [].media         (grid posts)
+
     This flattens all of those into a simple list of media dicts.
     """
     items = []
@@ -100,6 +103,13 @@ def flatten_instagram_top_serp(resp: dict) -> list[dict]:
                     media = media_item.get("media", media_item)
                     if media and isinstance(media, dict):
                         items.append(media)
+            elif isinstance(layout_val, list):
+                # fill_items: list of {media: {...}} dicts (grid posts)
+                for entry in layout_val:
+                    if isinstance(entry, dict):
+                        media = entry.get("media")
+                        if media and isinstance(media, dict):
+                            items.append(media)
     return items
 
 

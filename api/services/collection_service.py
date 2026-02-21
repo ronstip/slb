@@ -88,6 +88,7 @@ def _run_pipeline(collection_id: str) -> None:
     """Run collection then enrichment as a single pipeline (dev mode)."""
     from workers.collection.worker import run_collection
     from workers.enrichment.worker import run_enrichment
+    from workers.shared.firestore_client import FirestoreClient
 
     try:
         run_collection(collection_id)
@@ -101,7 +102,9 @@ def _run_pipeline(collection_id: str) -> None:
     status = fs.get_collection_status(collection_id)
     if status and status.get("status") == "completed":
         try:
-            run_enrichment(collection_id)
+            config = status.get("config") or {}
+            min_likes = config.get("min_likes", 0)
+            run_enrichment(collection_id, min_likes=min_likes)
         except Exception:
             logger.exception("Enrichment pipeline failed for %s", collection_id)
 

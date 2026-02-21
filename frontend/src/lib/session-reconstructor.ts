@@ -53,6 +53,8 @@ export function reconstructSession(
         isStreaming: false,
         toolIndicators: [],
         cards: [],
+        thinkingEntries: [],
+        suggestions: [],
       };
     }
     return currentAgentMsg;
@@ -73,6 +75,8 @@ export function reconstructSession(
           isStreaming: false,
           toolIndicators: [],
           cards: [],
+          thinkingEntries: [],
+          suggestions: [],
         });
         continue;
       }

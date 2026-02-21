@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timezone
 
 from config.settings import get_settings
-from workers.collection.media_downloader import download_media
+from workers.collection.media_downloader import download_media_batch
 from workers.collection.normalizer import (
     channel_to_bq_row,
     post_to_bq_row,
@@ -72,10 +72,8 @@ def run_collection(collection_id: str) -> None:
             if not new_posts:
                 continue
 
-            # Download media to GCS
-            for post in new_posts:
-                if post.media_urls:
-                    post.media_refs = download_media(gcs, post, collection_id)
+            # Download media to GCS (parallelized)
+            download_media_batch(gcs, new_posts, collection_id)
 
             # Insert posts
             post_rows = [post_to_bq_row(p, collection_id) for p in new_posts]
