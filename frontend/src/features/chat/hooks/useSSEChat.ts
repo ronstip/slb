@@ -32,7 +32,7 @@ export function useSSEChat() {
       activeMessageRef.current = messageId;
 
       const selectedSources = useSourcesStore.getState().sources
-        .filter((s) => s.selected)
+        .filter((s) => s.active)
         .map((s) => s.collectionId);
 
       try {

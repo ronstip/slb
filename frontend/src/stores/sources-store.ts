@@ -9,7 +9,10 @@ export interface Source {
   postsCollected: number;
   postsEnriched: number;
   postsEmbedded: number;
+  /** true = card is shown in the panel (in session) */
   selected: boolean;
+  /** true = checkbox is checked; collection contributes to agent context */
+  active: boolean;
   createdAt: string;
   errorMessage?: string;
   visibility?: 'private' | 'org';
@@ -23,7 +26,12 @@ interface SourcesStore {
 
   addSource: (source: Source) => void;
   updateSource: (id: string, updates: Partial<Source>) => void;
-  toggleSelected: (id: string) => void;
+  /** Add to session panel and activate (checkbox on) */
+  addToSession: (id: string) => void;
+  /** Remove from session panel entirely */
+  removeFromSession: (id: string) => void;
+  /** Toggle active (checkbox) without affecting session membership */
+  toggleActive: (id: string) => void;
   selectAll: () => void;
   deselectAll: () => void;
   removeSource: (id: string) => void;
@@ -49,21 +57,35 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
       ),
     })),
 
-  toggleSelected: (id) =>
+  addToSession: (id) =>
     set((s) => ({
       sources: s.sources.map((src) =>
-        src.collectionId === id ? { ...src, selected: !src.selected } : src,
+        src.collectionId === id ? { ...src, selected: true, active: true } : src,
+      ),
+    })),
+
+  removeFromSession: (id) =>
+    set((s) => ({
+      sources: s.sources.map((src) =>
+        src.collectionId === id ? { ...src, selected: false, active: false } : src,
+      ),
+    })),
+
+  toggleActive: (id) =>
+    set((s) => ({
+      sources: s.sources.map((src) =>
+        src.collectionId === id ? { ...src, active: !src.active } : src,
       ),
     })),
 
   selectAll: () =>
     set((s) => ({
-      sources: s.sources.map((src) => ({ ...src, selected: true })),
+      sources: s.sources.map((src) => ({ ...src, selected: true, active: true })),
     })),
 
   deselectAll: () =>
     set((s) => ({
-      sources: s.sources.map((src) => ({ ...src, selected: false })),
+      sources: s.sources.map((src) => ({ ...src, selected: false, active: false })),
       pendingSelectedIds: null,
     })),
 
@@ -82,6 +104,7 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
         sources: s.sources.map((src) => ({
           ...src,
           selected: ids.includes(src.collectionId),
+          active: ids.includes(src.collectionId),
         })),
       };
     }),
@@ -94,6 +117,7 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
           sources: sources.map((src) => ({
             ...src,
             selected: pending.includes(src.collectionId),
+            active: pending.includes(src.collectionId),
           })),
           pendingSelectedIds: null,
         };

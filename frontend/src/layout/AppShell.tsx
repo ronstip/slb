@@ -33,8 +33,7 @@ export function AppShell() {
   const setFeedSource = useStudioStore((s) => s.setFeedSource);
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const sources = useSourcesStore((s) => s.sources);
-  const toggleSelected = useSourcesStore((s) => s.toggleSelected);
-  const deselectAll = useSourcesStore((s) => s.deselectAll);
+  const addToSession = useSourcesStore((s) => s.addToSession);
   const hasSelectedSource = sources.some((s) => s.selected);
   const feedHasPosts = activeTab === 'feed' && !!(feedSourceId || hasSelectedSource);
 
@@ -58,43 +57,21 @@ export function AppShell() {
   }, []);
 
   // Sync URL params with studio store (for page refresh/direct links)
+  // URL controls feedSourceId only — session membership (selected) is managed separately.
+  // Only depends on params.id to avoid fighting user's checkbox interactions.
   useEffect(() => {
     if (params.id) {
-      // Collection is selected via URL - ensure state matches
-      if (params.id !== feedSourceId) {
-        setFeedSource(params.id);
-        setActiveTab('feed');
-      }
-
-      // Ensure ONLY this collection is selected
-      const source = sources.find((s) => s.collectionId === params.id);
-      if (source) {
-        // Check if other collections are selected
-        const hasOtherSelected = sources.some(
-          (s) => s.selected && s.collectionId !== params.id
-        );
-
-        // Deselect all if there are other selections
-        if (hasOtherSelected) {
-          deselectAll();
-        }
-
-        // Ensure this collection is selected
-        if (!source.selected) {
-          toggleSelected(params.id);
-        }
+      setFeedSource(params.id);
+      setActiveTab('feed');
+      // Ensure the collection is in session (for direct links / page refresh)
+      const source = useSourcesStore.getState().sources.find((s) => s.collectionId === params.id);
+      if (source && !source.selected) {
+        addToSession(params.id);
       }
     } else {
-      // No collection in URL - clear selection and feed
-      if (feedSourceId) {
-        setFeedSource(null);
-      }
-      // Deselect all collections when navigating to home
-      if (hasSelectedSource) {
-        deselectAll();
-      }
+      setFeedSource(null);
     }
-  }, [params.id, feedSourceId, sources, hasSelectedSource, setFeedSource, setActiveTab, toggleSelected, deselectAll]);
+  }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-adjust studio width when feed state changes (unless user manually resized)
   useEffect(() => {

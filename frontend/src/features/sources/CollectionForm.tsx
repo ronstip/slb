@@ -130,6 +130,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
         postsEnriched: 0,
         postsEmbedded: 0,
         selected: true,
+        active: true,
         createdAt: new Date().toISOString(),
       });
 

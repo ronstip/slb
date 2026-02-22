@@ -1,9 +1,7 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router';
 import { Check, FolderOpen, Loader2, Plus, Search, Users, X } from 'lucide-react';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
-import { useStudioStore } from '../../stores/studio-store.ts';
 import { useAuth } from '../../auth/useAuth.ts';
 import { getCollectionStatus } from '../../api/endpoints/collections.ts';
 import { PLATFORM_LABELS } from '../../lib/constants.ts';
@@ -37,6 +35,7 @@ function mapCollectionToSource(c: Awaited<ReturnType<typeof getCollectionStatus>
     postsEnriched: c.posts_enriched,
     postsEmbedded: c.posts_embedded,
     selected: false,
+    active: false,
     createdAt: c.created_at ?? new Date().toISOString(),
     errorMessage: c.error_message,
     visibility: (c.visibility as 'private' | 'org') ?? 'private',
@@ -102,16 +101,11 @@ function PickerRow({ source, onSelect }: { source: Source; onSelect: () => void 
 }
 
 export function CollectionPicker({ onClose }: CollectionPickerProps) {
-  const navigate = useNavigate();
   const { profile } = useAuth();
   const sources = useSourcesStore((s) => s.sources);
-  const toggleSelected = useSourcesStore((s) => s.toggleSelected);
+  const addToSession = useSourcesStore((s) => s.addToSession);
   const addSource = useSourcesStore((s) => s.addSource);
   const openModal = useUIStore((s) => s.openCollectionModal);
-  const studioPanelCollapsed = useUIStore((s) => s.studioPanelCollapsed);
-  const toggleStudioPanel = useUIStore((s) => s.toggleStudioPanel);
-  const setFeedSource = useStudioStore((s) => s.setFeedSource);
-  const setActiveTab = useStudioStore((s) => s.setActiveTab);
 
   const [search, setSearch] = useState('');
   const [idInputOpen, setIdInputOpen] = useState(false);
@@ -143,8 +137,9 @@ export function CollectionPicker({ onClose }: CollectionPickerProps) {
     );
   };
 
-  const filteredMine = filterSources(myCollections);
-  const filteredShared = filterSources(sharedCollections);
+  // Only show collections not already in session
+  const filteredMine = filterSources(myCollections.filter((s) => !s.selected));
+  const filteredShared = filterSources(sharedCollections.filter((s) => !s.selected));
   const hasResults = filteredMine.length > 0 || filteredShared.length > 0;
 
   const handleAddById = async () => {
@@ -154,9 +149,8 @@ export function CollectionPicker({ onClose }: CollectionPickerProps) {
     setIdError(null);
     try {
       const c = await getCollectionStatus(id);
-      addSource({ ...mapCollectionToSource(c), selected: true });
-      setCollectionIdValue('');
-      setIdInputOpen(false);
+      addSource({ ...mapCollectionToSource(c), selected: true, active: true });
+      onClose();
     } catch {
       setIdError('Collection not found');
     } finally {
@@ -164,14 +158,9 @@ export function CollectionPicker({ onClose }: CollectionPickerProps) {
     }
   };
 
-  const handleSelect = (collectionId: string, alreadySelected: boolean) => {
-    toggleSelected(collectionId);
-    if (!alreadySelected) {
-      setFeedSource(collectionId);
-      setActiveTab('feed');
-      if (studioPanelCollapsed) toggleStudioPanel();
-      navigate(`/collection/${collectionId}`);
-    }
+  const handleSelect = (collectionId: string) => {
+    addToSession(collectionId);
+    onClose();
   };
 
   const handleCreateNew = () => {
@@ -217,7 +206,9 @@ export function CollectionPicker({ onClose }: CollectionPickerProps) {
 
           {sources.length > 0 && !hasResults && (
             <p className="py-4 text-center text-xs text-muted-foreground">
-              No collections match "{search}"
+              {search.trim()
+                ? `No collections match "${search}"`
+                : 'All collections are in this session'}
             </p>
           )}
 
@@ -234,7 +225,7 @@ export function CollectionPicker({ onClose }: CollectionPickerProps) {
                 <PickerRow
                   key={source.collectionId}
                   source={source}
-                  onSelect={() => handleSelect(source.collectionId, source.selected)}
+                  onSelect={() => handleSelect(source.collectionId)}
                 />
               ))}
             </div>
@@ -253,7 +244,7 @@ export function CollectionPicker({ onClose }: CollectionPickerProps) {
                 <PickerRow
                   key={source.collectionId}
                   source={source}
-                  onSelect={() => handleSelect(source.collectionId, source.selected)}
+                  onSelect={() => handleSelect(source.collectionId)}
                 />
               ))}
             </div>

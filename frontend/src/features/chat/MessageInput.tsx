@@ -41,7 +41,7 @@ export function MessageInput({ onSend }: MessageInputProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask me to research anything on social media..."
+          placeholder="Ask me anything on social media..."
           disabled={isAgentResponding}
           rows={1}
           className="max-h-36 flex-1 resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50"

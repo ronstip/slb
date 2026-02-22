@@ -29,6 +29,7 @@ function mapCollectionToSource(c: CollectionStatusResponse) {
     postsEnriched: c.posts_enriched,
     postsEmbedded: c.posts_embedded,
     selected: false,
+    active: false,
     createdAt: c.created_at ?? new Date().toISOString(),
     errorMessage: c.error_message,
     visibility: (c.visibility as 'private' | 'org') ?? 'private',
@@ -89,11 +90,13 @@ export function SourcesPanel() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {isEmpty ? (
             /* ── Empty state: centered "+ Add Collection" ── */
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-6">
+            <div className="flex flex-1 flex-col items-center px-4">
+              {/* top spacer — roughly 30% of panel height */}
+              <div className="flex-[3]" />
               {isLoading ? (
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/40" />
               ) : (
-                <>
+                <div className="flex w-full flex-col items-center gap-4">
                   <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
                     <PopoverTrigger asChild>
                       <Button
@@ -114,8 +117,10 @@ export function SourcesPanel() {
                       No collections in this session
                     </p>
                   </div>
-                </>
+                </div>
               )}
+              {/* bottom spacer — remainder */}
+              <div className="flex-[7]" />
             </div>
           ) : (
             /* ── Has collections: button at top + card list ── */
