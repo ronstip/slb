@@ -58,13 +58,9 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           </div>
         )}
 
-        {/* Markdown content — rendered before tools/thinking so ack text appears first */}
-        {message.content && (
-          <div className="agent-prose prose prose-sm max-w-none break-words prose-headings:text-foreground prose-headings:tracking-tight prose-headings:font-medium prose-h1:text-[13px] prose-h1:mb-2 prose-h2:text-[12.5px] prose-h2:mb-1.5 prose-h3:text-[12px] prose-h3:mb-1 prose-p:text-[11.5px] prose-p:leading-[1.7] prose-p:text-muted-foreground/90 prose-p:tracking-[0.01em] prose-p:break-words prose-strong:text-foreground/90 prose-strong:font-semibold prose-a:text-primary prose-a:font-medium prose-a:no-underline prose-a:break-all hover:prose-a:underline prose-ul:text-[11.5px] prose-ul:leading-[1.7] prose-ul:text-muted-foreground/90 prose-ul:my-1 prose-ol:text-[11.5px] prose-ol:leading-[1.7] prose-ol:text-muted-foreground/90 prose-ol:my-1 prose-li:text-muted-foreground/90 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:text-[10.5px] prose-code:font-normal prose-code:text-primary/80 prose-code:bg-primary/5 prose-code:rounded prose-code:px-1 prose-code:py-px prose-code:break-all prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-secondary prose-pre:rounded-lg prose-pre:border prose-pre:border-border/50 prose-pre:overflow-x-auto prose-pre:text-[10.5px] prose-th:text-[10.5px] prose-th:font-medium prose-th:text-muted-foreground prose-th:tracking-wide prose-td:text-[11px] prose-td:text-foreground/80 prose-table:my-2 prose-hr:border-border/30 prose-hr:my-3 prose-blockquote:border-primary/20 prose-blockquote:text-muted-foreground/70 prose-blockquote:text-[11.5px] prose-blockquote:not-italic">
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
-              {message.content}
-            </ReactMarkdown>
-          </div>
+        {/* Thinking box — collapsible SQL/tool activity log — shown at top before content */}
+        {message.thinkingEntries.length > 0 && (
+          <ThinkingBox entries={message.thinkingEntries} isStreaming={message.isStreaming} />
         )}
 
         {/* Tool indicators */}
@@ -76,9 +72,13 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           </div>
         )}
 
-        {/* Thinking box — collapsible SQL/tool activity log */}
-        {message.thinkingEntries.length > 0 && (
-          <ThinkingBox entries={message.thinkingEntries} isStreaming={message.isStreaming} />
+        {/* Markdown content */}
+        {message.content && (
+          <div className="agent-prose prose prose-sm max-w-none break-words prose-headings:text-foreground prose-headings:tracking-tight prose-h1:text-18px] prose-h1:font-semibold prose-h1:leading-tight prose-h1:mb-3 prose-h2:text-[15px] prose-h2:font-semibold prose-h2:leading-snug prose-h2:mb-2 prose-h2:mt-5 prose-h3:text-[13px] prose-h3:font-medium prose-h3:leading-snug prose-h3:mb-1.5 prose-h3:mt-4 prose-p:text-[12px] prose-p:leading-[1.75] prose-p:text-muted-foreground/90 prose-p:tracking-[0.01em] prose-p:break-words prose-p:mb-3 prose-strong:text-foreground/90 prose-strong:font-semibold prose-a:text-primary prose-a:font-medium prose-a:no-underline prose-a:break-all hover:prose-a:underline prose-ul:text-[12px] prose-ul:leading-[1.75] prose-ul:text-muted-foreground/90 prose-ul:mb-3 prose-ol:text-[12px] prose-ol:leading-[1.75] prose-ol:text-muted-foreground/90 prose-ol:mb-3 prose-li:text-muted-foreground/90 prose-li:my-0.5 prose-li:marker:text-muted-foreground prose-code:text-[10.5px] prose-code:font-normal prose-code:text-primary/80 prose-code:bg-primary/5 prose-code:rounded prose-code:px-1 prose-code:py-px prose-code:break-all prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-secondary prose-pre:rounded-lg prose-pre:border prose-pre:border-border/50 prose-pre:overflow-x-auto prose-pre:text-[10.5px] prose-th:text-[10.5px] prose-th:font-medium prose-th:text-muted-foreground prose-th:tracking-wide prose-td:text-[11px] prose-td:text-foreground/80 prose-table:my-2 prose-hr:border-border/60 prose-hr:my-5 prose-blockquote:border-primary/20 prose-blockquote:text-muted-foreground/70 prose-blockquote:text-[11.5px] prose-blockquote:not-italic">
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
         )}
 
         {/* Structured cards */}

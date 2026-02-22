@@ -16,6 +16,7 @@ from api.agent.callbacks import (
 )
 from api.agent.prompts.analyst_agent import ANALYST_AGENT_PROMPT
 from api.agent.prompts.collection_agent import COLLECTION_AGENT_PROMPT
+from api.agent.prompts.formatting import FORMATTING_INSTRUCTIONS
 from api.agent.prompts.orchestrator import ORCHESTRATOR_PROMPT
 from api.agent.prompts.research_agent import RESEARCH_AGENT_PROMPT
 from api.agent.tools.cancel_collection import cancel_collection
@@ -27,6 +28,7 @@ from api.agent.tools.export_data import export_data
 from api.agent.tools.get_insights import get_insights
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
+from api.agent.tools.run_analysis_flow import run_analysis_flow
 from api.agent.tools.start_collection import start_collection
 from api.auth.session_service import FirestoreSessionService
 from config.settings import get_settings
@@ -55,7 +57,7 @@ def create_agent() -> LlmAgent:
             "search for brand context. Transfer here when the user asks "
             "a new research question or wants to modify a research design."
         ),
-        instruction=RESEARCH_AGENT_PROMPT,
+        instruction=RESEARCH_AGENT_PROMPT + FORMATTING_INSTRUCTIONS,
         tools=research_tools,
         after_tool_callback=log_tool_invocation,
     )
@@ -71,7 +73,7 @@ def create_agent() -> LlmAgent:
             "when the user approves a research design, asks about progress, "
             "or wants to manage an existing collection."
         ),
-        instruction=COLLECTION_AGENT_PROMPT,
+        instruction=COLLECTION_AGENT_PROMPT + FORMATTING_INSTRUCTIONS,
         tools=[
             start_collection,
             cancel_collection,
@@ -104,8 +106,8 @@ def create_agent() -> LlmAgent:
             "Transfer here when the user wants results, insights, data "
             "exports, or asks questions about collected data."
         ),
-        instruction=ANALYST_AGENT_PROMPT.format(project_id=settings.gcp_project_id),
-        tools=[get_insights, export_data, create_chart, display_posts, bq_toolset, memory_tool],
+        instruction=ANALYST_AGENT_PROMPT.format(project_id=settings.gcp_project_id) + FORMATTING_INSTRUCTIONS,
+        tools=[run_analysis_flow, get_insights, export_data, create_chart, display_posts, bq_toolset, memory_tool],
         before_model_callback=inject_collection_context,
         after_tool_callback=log_tool_invocation,
     )

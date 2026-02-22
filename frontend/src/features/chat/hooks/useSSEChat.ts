@@ -58,9 +58,17 @@ export function useSSEChat() {
           }
 
           switch (event.event_type) {
-            case 'text':
-              chatState.appendText(messageId, event.content);
+            case 'text': {
+              // Extract <!-- thinking: ... --> comments and route to the thinking panel
+              const thinkingRe = /<!--\s*thinking:\s*([\s\S]*?)\s*-->/g;
+              let thinkingMatch;
+              while ((thinkingMatch = thinkingRe.exec(event.content)) !== null) {
+                chatState.appendThinking(messageId, thinkingMatch[1].trim());
+              }
+              const cleanText = event.content.replace(/<!--\s*thinking:\s*[\s\S]*?\s*-->/g, '').trimEnd();
+              if (cleanText) chatState.appendText(messageId, cleanText);
               break;
+            }
 
             case 'thinking':
               chatState.appendThinking(messageId, event.content);

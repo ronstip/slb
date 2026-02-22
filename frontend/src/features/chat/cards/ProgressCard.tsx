@@ -3,7 +3,6 @@ import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { formatNumber } from '../../../lib/format.ts';
 import { Card } from '../../../components/ui/card.tsx';
-import { Badge } from '../../../components/ui/badge.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 
 interface ProgressCardProps {
@@ -21,6 +20,8 @@ export function ProgressCard({ data }: ProgressCardProps) {
   const postsCollected = (data.posts_collected as number) || 0;
   const postsEnriched = (data.posts_enriched as number) || 0;
 
+  const isActive = status !== 'completed' && status !== 'failed';
+
   const handleViewInStudio = () => {
     if (collectionId) setFeedSource(collectionId);
     setActiveTab('feed');
@@ -28,42 +29,65 @@ export function ProgressCard({ data }: ProgressCardProps) {
   };
 
   return (
-    <Card className="mt-3 p-4">
-      <div className="flex items-center gap-2">
-        <Badge
-          variant={
-            status === 'completed' ? 'default' :
-            status === 'failed' ? 'destructive' : 'secondary'
-          }
-          className={`capitalize ${
-            status === 'completed' ? 'bg-status-complete/10 text-status-complete hover:bg-status-complete/20' :
-            status === 'failed' ? '' :
-            'bg-primary/10 text-primary hover:bg-primary/20'
-          }`}
-        >
-          {status}
-        </Badge>
-      </div>
-
-      <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
-        <span>{formatNumber(postsCollected)} collected</span>
-        <span>{formatNumber(postsEnriched)} enriched</span>
-      </div>
-
-      {status !== 'completed' && status !== 'failed' && (
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${Math.min(100, postsCollected > 0 ? 60 : 20)}%` }}
-          />
+    <Card className="mt-3 overflow-hidden">
+      {/* Live collection header */}
+      {isActive && (
+        <div className="flex items-center gap-2 border-b border-border/30 bg-primary/5 px-4 py-2">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+          </span>
+          <span className="text-[11px] font-medium text-primary">Collecting</span>
+          {postsCollected > 0 && (
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              {formatNumber(postsCollected)} posts so far
+            </span>
+          )}
         </div>
       )}
 
-      <div className="mt-3 flex gap-2">
-        <Button variant="outline" size="sm" onClick={handleViewInStudio} className="h-7 gap-1.5 text-xs">
-          <Eye className="h-3 w-3" />
-          View in Studio
-        </Button>
+      <div className="p-4">
+        {/* Status + counts */}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            <span>
+              <span className="font-medium text-foreground">{formatNumber(postsCollected)}</span>
+              {' '}collected
+            </span>
+            <span>
+              <span className="font-medium text-foreground">{formatNumber(postsEnriched)}</span>
+              {' '}enriched
+            </span>
+          </div>
+          {!isActive && (
+            <span className={`text-[10px] font-semibold uppercase tracking-wider ${
+              status === 'completed' ? 'text-status-complete' : 'text-status-error'
+            }`}>
+              {status}
+            </span>
+          )}
+        </div>
+
+        {/* Progress bar */}
+        {isActive && (
+          <div className="mt-3 space-y-1">
+            <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-500"
+                style={{ width: `${postsCollected > 0 ? 60 : 20}%` }}
+              />
+              {/* Shimmer overlay */}
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            </div>
+          </div>
+        )}
+
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={handleViewInStudio} className="h-7 gap-1.5 text-xs">
+            <Eye className="h-3 w-3" />
+            View in Studio
+          </Button>
+        </div>
       </div>
     </Card>
   );

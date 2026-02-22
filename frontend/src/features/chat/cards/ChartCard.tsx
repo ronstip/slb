@@ -4,6 +4,8 @@ import { Card } from '../../../components/ui/card.tsx';
 import { SentimentPie } from '../../studio/charts/SentimentPie.tsx';
 import { SentimentBar } from '../../studio/charts/SentimentBar.tsx';
 import { VolumeChart } from '../../studio/charts/VolumeChart.tsx';
+import { LineChart } from '../../studio/charts/LineChart.tsx';
+import { Histogram } from '../../studio/charts/Histogram.tsx';
 import { ThemeBar } from '../../studio/charts/ThemeBar.tsx';
 import { PlatformBar } from '../../studio/charts/PlatformBar.tsx';
 import { ContentTypeDonut } from '../../studio/charts/ContentTypeDonut.tsx';
@@ -20,6 +22,8 @@ type ChartType =
   | 'sentiment_pie'
   | 'sentiment_bar'
   | 'volume_chart'
+  | 'line_chart'
+  | 'histogram'
   | 'theme_bar'
   | 'platform_bar'
   | 'content_type_donut'
@@ -33,6 +37,8 @@ const CHART_COMPONENTS: Record<ChartType, React.ComponentType<{ data: any; overr
   sentiment_pie: SentimentPie,
   sentiment_bar: SentimentBar,
   volume_chart: VolumeChart,
+  line_chart: LineChart,
+  histogram: Histogram,
   theme_bar: ThemeBar,
   platform_bar: PlatformBar,
   content_type_donut: ContentTypeDonut,
@@ -83,6 +89,16 @@ const CHART_CUSTOMIZATIONS: Partial<Record<ChartType, ChartCustomization>> = {
     defaultColors: { bar: '#6B8CAE' },
     supportsValues: true,
   },
+  line_chart: {
+    colorKeys: () => ['line'],
+    defaultColors: { line: '#5A7A9E' },
+    supportsValues: false,
+  },
+  histogram: {
+    colorKeys: () => ['bar'],
+    defaultColors: { bar: '#6B8CAE' },
+    supportsValues: true,
+  },
 };
 
 const COLOR_PRESETS = [
@@ -109,6 +125,7 @@ export function ChartCard({ data }: ChartCardProps) {
   const [colorOverrides, setColorOverrides] = useState<Record<string, string>>({});
   const [showValues, setShowValues] = useState(true);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [activeColorKey, setActiveColorKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -219,12 +236,35 @@ export function ChartCard({ data }: ChartCardProps) {
                       key={key}
                       label={key}
                       color={getCurrentColor(key, i)}
-                      onChange={(color) =>
-                        setColorOverrides((prev) => ({ ...prev, [key]: color }))
-                      }
+                      onChange={(color) => {
+                        setColorOverrides((prev) => ({ ...prev, [key]: color }));
+                        setActiveColorKey(null);
+                      }}
+                      active={activeColorKey === key}
+                      onToggle={() => setActiveColorKey(activeColorKey === key ? null : key)}
                     />
                   ))}
                 </div>
+                {/* Inline swatch palette */}
+                {activeColorKey !== null && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 rounded-lg border border-border/40 bg-muted/30 p-2">
+                    {COLOR_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => {
+                          setColorOverrides((prev) => ({ ...prev, [activeColorKey]: preset }));
+                          setActiveColorKey(null);
+                        }}
+                        className={`h-5 w-5 rounded-full border-2 transition-transform hover:scale-110 ${
+                          preset === getCurrentColor(activeColorKey, colorKeys.indexOf(activeColorKey))
+                            ? 'border-foreground'
+                            : 'border-transparent'
+                        }`}
+                        style={{ backgroundColor: preset }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Show values toggle */}
@@ -256,54 +296,31 @@ export function ChartCard({ data }: ChartCardProps) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Color picker popover                                                */
+/* Color picker — inline swatch selector                              */
 /* ------------------------------------------------------------------ */
 
 function ColorPicker({
   label,
   color,
   onChange,
+  active,
+  onToggle,
 }: {
   label: string;
   color: string;
   onChange: (color: string) => void;
+  active: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 rounded-md border border-border/40 px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-border"
-      >
-        <div className="h-3 w-3 rounded-full border border-border/30" style={{ backgroundColor: color }} />
-        <span className="max-w-[60px] truncate capitalize">{label}</span>
-      </button>
-
-      {open && (
-        <>
-          {/* Backdrop */}
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          {/* Popover */}
-          <div className="absolute left-0 top-full z-20 mt-1 rounded-lg border border-border bg-background p-2.5 shadow-md">
-            <div className="grid grid-cols-4 gap-2">
-              {COLOR_PRESETS.map((preset) => (
-                <button
-                  key={preset}
-                  onClick={() => {
-                    onChange(preset);
-                    setOpen(false);
-                  }}
-                  className={`h-6 w-6 rounded-full border-2 transition-transform hover:scale-110 ${
-                    preset === color ? 'border-foreground' : 'border-transparent'
-                  }`}
-                  style={{ backgroundColor: preset }}
-                />
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <button
+      onClick={onToggle}
+      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-border ${
+        active ? 'border-primary/50 bg-primary/5 text-foreground' : 'border-border/40'
+      }`}
+    >
+      <div className="h-3 w-3 rounded-full border border-border/30" style={{ backgroundColor: color }} />
+      <span className="max-w-[60px] truncate capitalize">{label}</span>
+    </button>
   );
 }

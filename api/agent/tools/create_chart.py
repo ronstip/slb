@@ -6,6 +6,8 @@ VALID_CHART_TYPES = {
     "sentiment_pie",
     "sentiment_bar",
     "volume_chart",
+    "line_chart",
+    "histogram",
     "theme_bar",
     "platform_bar",
     "content_type_donut",
@@ -30,6 +32,14 @@ def create_chart(chart_type: str, data: list[dict], title: str = "") -> dict:
 
             - volume_chart: Array of
               {post_date: str, platform: str, post_count: int}
+
+            - line_chart: Array of
+              {post_date: str, platform: str, post_count: int}
+              (same shape as volume_chart — use when trend line is more useful than bars)
+
+            - histogram: Array of
+              {bucket: str, count: int}
+              (use for numeric distributions: likes ranges, view counts, etc.)
 
             - theme_bar: Array of
               {theme: str, post_count: int, percentage: float}

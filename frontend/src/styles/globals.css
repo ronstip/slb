@@ -160,6 +160,14 @@
 }
 
 /* Agent prose refinements */
+.agent-prose p,
+.agent-prose li {
+  font-size: 14px;
+  line-height: 2;
+}
+.agent-prose h1 { font-size: 13px; }
+.agent-prose h2 { font-size: 12.5px; }
+.agent-prose h3 { font-size: 12px; }
 .agent-prose ul {
   padding-left: 1.25em;
   list-style-type: disc;
@@ -206,6 +214,11 @@
 .agent-prose blockquote {
   padding-left: 12px;
   border-left-width: 2px;
+}
+
+/* Shimmer animation for progress bars */
+@keyframes shimmer {
+  100% { transform: translateX(200%); }
 }
 
 /* Custom scrollbar */

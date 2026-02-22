@@ -10,10 +10,10 @@ import {
   Eye,
   EyeOff,
   Globe,
-  Lock,
   MoreHorizontal,
   Trash2,
   Users,
+  X,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button.tsx';
 import {
@@ -148,11 +148,7 @@ export function SourceCard({ source }: SourceCardProps) {
             <span className="truncate text-[13px] font-medium leading-tight text-foreground">
               {source.title}
             </span>
-            {isShared ? (
-              <Globe className="h-3 w-3 shrink-0 text-primary" />
-            ) : (
-              <Lock className="h-3 w-3 shrink-0 text-muted-foreground/50" />
-            )}
+            {isShared && <Globe className="h-3 w-3 shrink-0 text-primary" />}
           </div>
 
           {/* Meta row */}
@@ -185,7 +181,16 @@ export function SourceCard({ source }: SourceCardProps) {
         </div>
 
         {/* Actions — always visible, fixed width */}
-        <div className="ml-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="ml-1 flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+          {/* Remove from session */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => { e.stopPropagation(); toggleSelected(source.collectionId); }}
+          >
+            <X className="h-3 w-3" />
+          </Button>
           {isOwner && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

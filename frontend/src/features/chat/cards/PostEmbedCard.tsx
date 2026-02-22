@@ -34,8 +34,10 @@ export function PostEmbedCard({ data }: PostEmbedCardProps) {
     content_type: p.content_type as string | undefined,
   }));
 
+  const isSingle = posts.length === 1;
+
   return (
-    <div className={`space-y-2 ${posts.length > 3 ? 'max-h-[600px] overflow-y-auto' : ''}`}>
+    <div className={`${isSingle ? '' : 'grid grid-cols-2 gap-2'} ${posts.length > 4 ? 'max-h-[700px] overflow-y-auto' : ''}`}>
       {posts.map((post) => (
         <PostCard key={post.post_id} post={post} />
       ))}

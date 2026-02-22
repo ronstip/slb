@@ -1,37 +1,15 @@
-import { PanelLeftClose, PanelLeftOpen, Plus, ChevronDown, Loader2, Search, X, FolderOpen, Users, History } from 'lucide-react';
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { FolderOpen, Loader2, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
-import { useSessionStore } from '../../stores/session-store.ts';
-import { useAuth } from '../../auth/useAuth.ts';
-import { listCollections, getCollectionStatus } from '../../api/endpoints/collections.ts';
+import { listCollections } from '../../api/endpoints/collections.ts';
 import { SourceCard } from './SourceCard.tsx';
-import { SessionCard } from './SessionCard.tsx';
+import { CollectionPicker } from './CollectionPicker.tsx';
 import type { CollectionStatusResponse } from '../../api/types.ts';
 import { Button } from '../../components/ui/button.tsx';
-import { Input } from '../../components/ui/input.tsx';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu.tsx';
 import { ScrollArea } from '../../components/ui/scroll-area.tsx';
-
-function useSessions() {
-  const sessions = useSessionStore((s) => s.sessions);
-  const activeSessionId = useSessionStore((s) => s.activeSessionId);
-  const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
-  const fetchSessions = useSessionStore((s) => s.fetchSessions);
-
-  useEffect(() => {
-    fetchSessions();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pastSessions = sessions.filter((s) => s.session_id !== activeSessionId);
-  return { pastSessions, isLoadingSessions };
-}
+import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 
 function mapCollectionToSource(c: CollectionStatusResponse) {
   return {
@@ -59,29 +37,12 @@ function mapCollectionToSource(c: CollectionStatusResponse) {
 }
 
 export function SourcesPanel() {
-  const { profile } = useAuth();
   const collapsed = useUIStore((s) => s.sourcesPanelCollapsed);
   const toggle = useUIStore((s) => s.toggleSourcesPanel);
-  const openModal = useUIStore((s) => s.openCollectionModal);
   const sources = useSourcesStore((s) => s.sources);
-  const addSource = useSourcesStore((s) => s.addSource);
   const setSources = useSourcesStore((s) => s.setSources);
 
-  const { pastSessions, isLoadingSessions } = useSessions();
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [idInputOpen, setIdInputOpen] = useState(false);
-  const [collectionIdValue, setCollectionIdValue] = useState('');
-  const [idLoading, setIdLoading] = useState(false);
-  const [idError, setIdError] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Debounce search input to avoid filtering on every keystroke
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 200);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Fetch all collections and auto-populate the store
   const { data: allCollections, isLoading } = useQuery({
@@ -90,9 +51,6 @@ export function SourcesPanel() {
     staleTime: 30_000,
   });
 
-  // Auto-load collections into the store when data arrives.
-  // Read sources from getState() (not the render closure) to avoid stale
-  // selections when selectByIds runs between render and effect execution.
   useEffect(() => {
     if (!allCollections || allCollections.length === 0) return;
     const currentSources = useSourcesStore.getState().sources;
@@ -100,63 +58,14 @@ export function SourcesPanel() {
     const newCollections = allCollections.filter((c) => !existingIds.has(c.collection_id));
     if (newCollections.length === 0) return;
 
-    // Preserve existing sources (with their selected state), add new ones
     const newSources = newCollections.map(mapCollectionToSource);
     setSources([...currentSources, ...newSources]);
   }, [allCollections]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Split into My Collections vs Shared with me
-  const { myCollections, sharedCollections } = useMemo(() => {
-    const mine: typeof sources = [];
-    const shared: typeof sources = [];
-    for (const s of sources) {
-      if (!s.userId || s.userId === profile?.uid) {
-        mine.push(s);
-      } else {
-        shared.push(s);
-      }
-    }
-    return { myCollections: mine, sharedCollections: shared };
-  }, [sources, profile?.uid]);
+  // Only show collections that are active in this session
+  const sessionSources = sources.filter((s) => s.selected);
 
-  // Filter by debounced search query
-  const filterBySearch = (list: typeof sources) => {
-    if (!debouncedSearch.trim()) return list;
-    const q = debouncedSearch.toLowerCase();
-    return list.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.config.keywords.some((k) => k.toLowerCase().includes(q)) ||
-        s.config.platforms.some((p) => p.toLowerCase().includes(q)),
-    );
-  };
-
-  const filteredMine = filterBySearch(myCollections)
-    .slice()
-    .sort((a, b) => Number(b.selected) - Number(a.selected));
-  const filteredShared = filterBySearch(sharedCollections)
-    .slice()
-    .sort((a, b) => Number(b.selected) - Number(a.selected));
-
-  const handleAddById = async () => {
-    const id = collectionIdValue.trim();
-    if (!id) return;
-    setIdLoading(true);
-    setIdError(null);
-    try {
-      const c = await getCollectionStatus(id);
-      addSource({
-        ...mapCollectionToSource(c),
-        selected: true,
-      });
-      setCollectionIdValue('');
-      setIdInputOpen(false);
-    } catch {
-      setIdError('Collection not found');
-    } finally {
-      setIdLoading(false);
-    }
-  };
+  const isEmpty = sessionSources.length === 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -178,195 +87,66 @@ export function SourcesPanel() {
 
       {!collapsed && (
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Add Collection button */}
-          <div className="relative p-3 pb-0" ref={menuRef}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full gap-1.5 text-xs">
-                  <Plus className="h-3.5 w-3.5" />
-                  New Collection
-                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
-                <DropdownMenuItem onClick={() => openModal()}>
-                  Create Collection
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setIdInputOpen(true); setIdError(null); }}>
-                  Add by Collection ID
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Add by ID inline input */}
-          {idInputOpen && (
-            <div className="px-3 pt-2">
-              <div className="flex items-center gap-1.5">
-                <Input
-                  value={collectionIdValue}
-                  onChange={(e) => { setCollectionIdValue(e.target.value); setIdError(null); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddById(); }}
-                  placeholder="Paste collection ID..."
-                  autoFocus
-                  className="h-8 text-xs"
-                />
-                <Button
-                  size="sm"
-                  onClick={handleAddById}
-                  disabled={idLoading || !collectionIdValue.trim()}
-                  className="h-8 text-xs"
-                >
-                  {idLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Add'}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => { setIdInputOpen(false); setCollectionIdValue(''); setIdError(null); }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              {idError && (
-                <p className="mt-1 text-[10px] text-destructive">{idError}</p>
-              )}
-            </div>
-          )}
-
-          {/* Search bar */}
-          <div className="px-3 pt-2 pb-3">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search..."
-                className="h-8 pl-7 text-xs"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Collections — independently scrollable */}
-          <ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block">
-            <div className="px-3 pb-3">
-              {/* Loading state */}
-              {isLoading && sources.length === 0 && (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                </div>
-              )}
-
-              {/* Empty state */}
-              {!isLoading && sources.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <FolderOpen className="mb-2 h-8 w-8 text-muted-foreground/50" />
-                  <p className="text-xs text-muted-foreground">
-                    No collections yet
-                  </p>
-                  <p className="mt-1 text-[10px] text-muted-foreground/70">
-                    Create your first collection to start listening
-                  </p>
-                </div>
-              )}
-
-              {/* My Collections */}
-              {filteredMine.length > 0 && (
-                <div>
-                  <div className="mb-1.5 flex items-center gap-1.5 px-0.5 pt-1">
-                    <FolderOpen className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      My Collections
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/60">
-                      {filteredMine.length}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    {filteredMine.map((source) => (
-                      <SourceCard key={source.collectionId} source={source} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Shared with me */}
-              {filteredShared.length > 0 && (
-                <div className={filteredMine.length > 0 ? 'mt-3' : ''}>
-                  <div className="mb-1.5 flex items-center gap-1.5 px-0.5 pt-1">
-                    <Users className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Shared with me
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/60">
-                      {filteredShared.length}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    {filteredShared.map((source) => (
-                      <SourceCard key={source.collectionId} source={source} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* No search results */}
-              {searchQuery && filteredMine.length === 0 && filteredShared.length === 0 && sources.length > 0 && (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <p className="text-xs text-muted-foreground">
-                    No collections match "{searchQuery}"
-                  </p>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-
-          {/* Sessions — header pinned, cards scroll independently */}
-          {!searchQuery && (
-            <div className="flex min-h-0 flex-1 flex-col border-t border-border">
-              {/* Pinned header */}
-              <div className="flex items-center gap-1.5 px-3.5 pt-3 pb-1.5">
-                <History className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  My Sessions
-                </span>
-                {pastSessions.length > 0 && (
-                  <span className="text-[10px] text-muted-foreground/60">
-                    {pastSessions.length}
-                  </span>
-                )}
-              </div>
-              {/* Scrollable session cards */}
-              <ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block">
-                <div className="px-3 pb-3">
-                  {isLoadingSessions && pastSessions.length === 0 && (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                    </div>
-                  )}
-                  {!isLoadingSessions && pastSessions.length === 0 && (
-                    <p className="px-0.5 text-[10px] text-muted-foreground/60">
-                      No sessions yet
+          {isEmpty ? (
+            /* ── Empty state: centered "+ Add Collection" ── */
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-6">
+              {isLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/40" />
+              ) : (
+                <>
+                  <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 bg-transparent py-8 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Collection
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-0" align="center" side="bottom">
+                      <CollectionPicker onClose={() => setPickerOpen(false)} />
+                    </PopoverContent>
+                  </Popover>
+                  <div className="flex flex-col items-center gap-2">
+                    <FolderOpen className="h-8 w-8 text-muted-foreground/25" />
+                    <p className="text-center text-xs text-muted-foreground/60">
+                      No collections in this session
                     </p>
-                  )}
-                  {pastSessions.length > 0 && (
-                    <div className="flex flex-col gap-0.5">
-                      {pastSessions.map((session) => (
-                        <SessionCard key={session.session_id} session={session} />
-                      ))}
-                    </div>
-                  )}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            /* ── Has collections: button at top + card list ── */
+            <>
+              <div className="p-3 pb-2">
+                <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full gap-1.5 text-xs">
+                      <Plus className="h-3.5 w-3.5" />
+                      Add Collection
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="p-0"
+                    style={{ width: 'var(--radix-popover-trigger-width)' }}
+                    align="start"
+                    side="bottom"
+                  >
+                    <CollectionPicker onClose={() => setPickerOpen(false)} />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block">
+                <div className="flex flex-col gap-0.5 px-3 pb-3">
+                  {sessionSources.map((source) => (
+                    <SourceCard key={source.collectionId} source={source} />
+                  ))}
                 </div>
               </ScrollArea>
-            </div>
+            </>
           )}
         </div>
       )}
