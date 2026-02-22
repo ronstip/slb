@@ -32,3 +32,17 @@ export function isDataExportResult(
 ): result is Record<string, unknown> & DataExportResult {
   return toolName === 'export_data' && result?.status === 'success' && Array.isArray(result?.rows);
 }
+
+export function isChartResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'create_chart' && result?.status === 'success' && !!result?.chart_type;
+}
+
+export function isPostEmbedResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'display_posts' && result?.status === 'success' && Array.isArray(result?.posts);
+}

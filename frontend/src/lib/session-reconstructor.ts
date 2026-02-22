@@ -14,7 +14,40 @@ import {
   isInsightResult,
   isProgressResult,
   isDataExportResult,
+  isChartResult,
+  isPostEmbedResult,
 } from './event-parser.ts';
+
+/** Tools that produce thinking entries (mirrors THINKING_TOOLS in main.py). */
+const THINKING_TOOLS = new Set(['execute_sql', 'get_insights', 'get_table_info', 'list_table_ids']);
+
+function buildThinkingFromCall(toolName: string, args: Record<string, unknown>): string | null {
+  if (!THINKING_TOOLS.has(toolName)) return null;
+  if (toolName === 'execute_sql') {
+    const query = (args.query ?? args.sql ?? '') as string;
+    return query ? `Running SQL query:\n\`\`\`sql\n${query}\n\`\`\`` : 'Running SQL query...';
+  }
+  if (toolName === 'get_insights') {
+    const cid = (args.collection_id ?? '') as string;
+    return `Generating insight report for collection \`${cid}\`...`;
+  }
+  if (toolName === 'get_table_info') {
+    const table = (args.table_id ?? args.table_name ?? '') as string;
+    return `Inspecting schema for \`${table}\``;
+  }
+  if (toolName === 'list_table_ids') {
+    const dataset = (args.dataset_id ?? 'social_listening') as string;
+    return `Listing tables in \`${dataset}\``;
+  }
+  return null;
+}
+
+function buildThinkingFromResult(toolName: string): string | null {
+  if (!THINKING_TOOLS.has(toolName)) return null;
+  if (toolName === 'execute_sql') return 'Query completed';
+  if (toolName === 'get_insights') return 'Insight report generated';
+  return null;
+}
 
 export interface ReconstructedSession {
   messages: ChatMessage[];
@@ -90,6 +123,12 @@ export function reconstructSession(
           displayText: getToolDisplayText(part.function_call.name),
           resolved: false,
         });
+        // Reconstruct thinking entry from tool call args
+        const thinking = buildThinkingFromCall(
+          part.function_call.name,
+          (part.function_call.args ?? {}) as Record<string, unknown>,
+        );
+        if (thinking) msg.thinkingEntries.push(thinking);
         continue;
       }
 
@@ -105,9 +144,17 @@ export function reconstructSession(
           t.name === toolName && !t.resolved ? { ...t, resolved: true } : t,
         );
 
+        // Reconstruct thinking from tool result
+        const thinkResult = buildThinkingFromResult(toolName);
+        if (thinkResult) msg.thinkingEntries.push(thinkResult);
+
         // Create cards + artifacts (mirrors useSSEChat logic)
         if (isDesignResearchResult(toolName, result)) {
           msg.cards.push({ type: 'research_design', data: result });
+        } else if (isChartResult(toolName, result)) {
+          msg.cards.push({ type: 'chart', data: result });
+        } else if (isPostEmbedResult(toolName, result)) {
+          msg.cards.push({ type: 'post_embed', data: result });
         } else if (isInsightResult(toolName, result)) {
           msg.cards.push({ type: 'insight_summary', data: result });
           artifacts.push({

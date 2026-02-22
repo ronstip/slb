@@ -1,5 +1,6 @@
 export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   google_search: 'Searching the web',
+  google_search_agent: 'Searching the web',
   design_research: 'Designing research plan',
   start_collection: 'Starting data collection',
   get_progress: 'Checking collection progress',
@@ -9,8 +10,10 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   cancel_collection: 'Cancelling collection',
   export_data: 'Preparing data export',
   execute_sql: 'Querying data',
+  create_chart: 'Creating chart',
   get_table_info: 'Inspecting table schema',
   list_table_ids: 'Discovering tables',
+  display_posts: 'Preparing post display',
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {

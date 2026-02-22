@@ -12,7 +12,7 @@ export function ChatPanel() {
   return (
     <main className="flex min-w-[480px] flex-1 flex-col bg-background">
       {hasMessages ? (
-        <MessageList />
+        <MessageList onSendMessage={sendMessage} />
       ) : (
         <WelcomeScreen onPromptClick={sendMessage} />
       )}

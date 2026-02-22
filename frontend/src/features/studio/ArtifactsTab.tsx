@@ -1,4 +1,4 @@
-import { FileText, Table2, ChevronRight } from 'lucide-react';
+import { FileText, Table2, BarChart3, ChevronRight } from 'lucide-react';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { shortDate } from '../../lib/format.ts';
 import { InsightReport } from './InsightReport.tsx';
@@ -16,7 +16,11 @@ export function ArtifactsTab() {
     if (expandedArtifact.type === 'data_export') {
       return <DataExportView artifact={expandedArtifact as Extract<Artifact, { type: 'data_export' }>} />;
     }
-    return <InsightReport artifact={expandedArtifact as Extract<Artifact, { type: 'insight_report' }>} />;
+    if (expandedArtifact.type === 'insight_report') {
+      return <InsightReport artifact={expandedArtifact as Extract<Artifact, { type: 'insight_report' }>} />;
+    }
+    // Chart artifacts — collapse back (no expanded view yet)
+    useStudioStore.getState().collapseReport();
   }
 
   if (artifacts.length === 0) {
@@ -40,7 +44,9 @@ export function ArtifactsTab() {
           <div className="flex items-center gap-3">
             {artifact.type === 'data_export'
               ? <Table2 className="h-5 w-5 shrink-0 text-muted-foreground" />
-              : <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />}
+              : artifact.type === 'chart'
+                ? <BarChart3 className="h-5 w-5 shrink-0 text-muted-foreground" />
+                : <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">
                 {artifact.title}
@@ -48,7 +54,9 @@ export function ArtifactsTab() {
               <p className="text-xs text-muted-foreground/70">
                 {shortDate(artifact.createdAt)} · {artifact.type === 'data_export'
                   ? `${artifact.rowCount} posts`
-                  : `${artifact.sourceIds.length} sources`}
+                  : artifact.type === 'chart'
+                    ? artifact.chartType.replace(/_/g, ' ')
+                    : `${artifact.sourceIds.length} sources`}
               </p>
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/70" />

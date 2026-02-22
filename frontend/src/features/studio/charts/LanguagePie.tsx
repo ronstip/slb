@@ -1,8 +1,10 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import type { LanguageDistribution } from '../../../api/types.ts';
+import type { ChartOverrides } from './chart-overrides.ts';
 
 interface LanguagePieProps {
   data: LanguageDistribution[];
+  overrides?: ChartOverrides;
 }
 
 const COLORS = ['#6B8CAE', '#7BA589', '#B89A6A', '#A8788C', '#8B7EB8', '#7AABB8', '#9E9E9E', '#87876E'];
@@ -29,8 +31,24 @@ function getLanguageLabel(code: string): string {
   return LANGUAGE_LABELS[code.toLowerCase()] || code.toUpperCase();
 }
 
-export function LanguagePie({ data }: LanguagePieProps) {
+const RADIAN = Math.PI / 180;
+function renderPieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) {
+  if (percent < 0.05) return null;
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight={600}>
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+}
+
+export function LanguagePie({ data, overrides }: LanguagePieProps) {
   const top8 = data.slice(0, 8);
+
+  const getColor = (language: string, index: number) =>
+    overrides?.colorOverrides?.[language] || COLORS[index % COLORS.length];
 
   return (
     <div className="flex items-center gap-4">
@@ -44,9 +62,11 @@ export function LanguagePie({ data }: LanguagePieProps) {
             cy="50%"
             innerRadius={30}
             outerRadius={55}
+            label={overrides?.showValues ? renderPieLabel : false}
+            labelLine={false}
           >
-            {top8.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} />
+            {top8.map((entry, i) => (
+              <Cell key={i} fill={getColor(entry.language, i)} />
             ))}
           </Pie>
           <Tooltip
@@ -61,10 +81,13 @@ export function LanguagePie({ data }: LanguagePieProps) {
           <div key={item.language} className="flex items-center gap-2">
             <div
               className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: COLORS[i % COLORS.length] }}
+              style={{ backgroundColor: getColor(item.language, i) }}
             />
             <span className="text-xs text-muted-foreground">
               {getLanguageLabel(item.language)} ({item.percentage.toFixed(0)}%)
+              {overrides?.showValues && item.post_count != null && (
+                <span className="ml-1 font-medium text-foreground/70">{item.post_count}</span>
+              )}
             </span>
           </div>
         ))}

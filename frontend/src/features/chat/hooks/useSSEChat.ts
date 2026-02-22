@@ -5,7 +5,7 @@ import { useSessionStore } from '../../../stores/session-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isInsightResult, isProgressResult, isDataExportResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isInsightResult, isProgressResult, isDataExportResult, isChartResult, isPostEmbedResult } from '../../../lib/event-parser.ts';
 import type { InsightData, DataExportRow } from '../../../api/types.ts';
 
 export function useSSEChat() {
@@ -62,6 +62,10 @@ export function useSSEChat() {
               chatState.appendText(messageId, event.content);
               break;
 
+            case 'thinking':
+              chatState.appendThinking(messageId, event.content);
+              break;
+
             case 'tool_call': {
               const toolName = event.metadata.name;
               chatState.addToolCall(messageId, toolName, getToolDisplayText(toolName));
@@ -113,6 +117,16 @@ export function useSSEChat() {
                   sourceIds: selectedSources,
                   createdAt: new Date(),
                 });
+              } else if (isChartResult(toolName, result)) {
+                chatState.addCard(messageId, {
+                  type: 'chart',
+                  data: result!,
+                });
+              } else if (isPostEmbedResult(toolName, result)) {
+                chatState.addCard(messageId, {
+                  type: 'post_embed',
+                  data: result!,
+                });
               } else if (isProgressResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'progress',
@@ -123,6 +137,9 @@ export function useSSEChat() {
             }
 
             case 'done': {
+              if (event.suggestions?.length) {
+                chatState.setSuggestions(messageId, event.suggestions);
+              }
               chatState.setSessionId(event.session_id);
               chatState.finalizeMessage(messageId);
               const sessionStore = useSessionStore.getState();

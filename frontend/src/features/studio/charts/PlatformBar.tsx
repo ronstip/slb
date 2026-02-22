@@ -1,16 +1,21 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import { PLATFORM_COLORS, PLATFORM_LABELS } from '../../../lib/constants.ts';
+import type { ChartOverrides } from './chart-overrides.ts';
 
 interface PlatformBarProps {
   data: Array<{ platform: string; post_count: number }>;
+  overrides?: ChartOverrides;
 }
 
-export function PlatformBar({ data }: PlatformBarProps) {
+export function PlatformBar({ data, overrides }: PlatformBarProps) {
   const chartData = data.map((d) => ({
     name: PLATFORM_LABELS[d.platform] || d.platform,
     posts: d.post_count,
     platform: d.platform,
   }));
+
+  const getColor = (platform: string) =>
+    overrides?.colorOverrides?.[platform] || PLATFORM_COLORS[platform] || '#78716C';
 
   return (
     <ResponsiveContainer width="100%" height={Math.max(120, chartData.length * 28)}>
@@ -30,11 +35,11 @@ export function PlatformBar({ data }: PlatformBarProps) {
         />
         <Bar dataKey="posts" radius={[0, 2, 2, 0]} barSize={16}>
           {chartData.map((entry) => (
-            <Cell
-              key={entry.platform}
-              fill={PLATFORM_COLORS[entry.platform] || '#78716C'}
-            />
+            <Cell key={entry.platform} fill={getColor(entry.platform)} />
           ))}
+          {overrides?.showValues && (
+            <LabelList dataKey="posts" position="right" style={{ fontSize: 10 }} />
+          )}
         </Bar>
       </BarChart>
     </ResponsiveContainer>

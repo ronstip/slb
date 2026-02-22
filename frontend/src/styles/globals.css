@@ -160,9 +160,16 @@
 }
 
 /* Agent prose refinements */
-.agent-prose ul,
+.agent-prose ul {
+  padding-left: 1.25em;
+  list-style-type: disc;
+}
 .agent-prose ol {
   padding-left: 1.25em;
+  list-style-type: decimal;
+}
+.agent-prose ul ul {
+  list-style-type: circle;
 }
 .agent-prose li + li {
   margin-top: 0.15em;

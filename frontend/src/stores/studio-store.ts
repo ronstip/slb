@@ -24,7 +24,17 @@ interface DataExportArtifact {
   createdAt: Date;
 }
 
-export type Artifact = InsightReportArtifact | DataExportArtifact;
+interface ChartArtifact {
+  id: string;
+  type: 'chart';
+  title: string;
+  chartType: string;
+  data: unknown[];
+  colorOverrides?: Record<string, string>;
+  createdAt: Date;
+}
+
+export type Artifact = InsightReportArtifact | DataExportArtifact | ChartArtifact;
 
 interface StudioStore {
   activeTab: 'feed' | 'artifacts';

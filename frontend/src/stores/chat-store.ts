@@ -7,7 +7,7 @@ export interface ToolIndicator {
 }
 
 export interface MessageCard {
-  type: 'research_design' | 'progress' | 'insight_summary' | 'data_export';
+  type: 'research_design' | 'progress' | 'insight_summary' | 'data_export' | 'chart' | 'post_embed';
   data: Record<string, unknown>;
 }
 
@@ -19,6 +19,8 @@ export interface ChatMessage {
   isStreaming: boolean;
   toolIndicators: ToolIndicator[];
   cards: MessageCard[];
+  thinkingEntries: string[];
+  suggestions: string[];
   activeAgent?: string;
 }
 
@@ -34,6 +36,8 @@ interface ChatStore {
   addToolCall: (messageId: string, name: string, displayText: string) => void;
   resolveToolCall: (messageId: string, name: string, result?: Record<string, unknown>) => void;
   addCard: (messageId: string, card: MessageCard) => void;
+  appendThinking: (messageId: string, content: string) => void;
+  setSuggestions: (messageId: string, suggestions: string[]) => void;
   finalizeMessage: (messageId: string) => void;
   addSystemMessage: (text: string) => void;
   setSessionId: (id: string) => void;
@@ -65,6 +69,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           isStreaming: false,
           toolIndicators: [],
           cards: [],
+          thinkingEntries: [],
+          suggestions: [],
         },
       ],
     })),
@@ -82,6 +88,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           isStreaming: true,
           toolIndicators: [],
           cards: [],
+          thinkingEntries: [],
+          suggestions: [],
         },
       ],
       isAgentResponding: true,
@@ -141,10 +149,34 @@ export const useChatStore = create<ChatStore>((set) => ({
       ),
     })),
 
+  appendThinking: (messageId, content) =>
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId
+          ? { ...m, thinkingEntries: [...m.thinkingEntries, content] }
+          : m,
+      ),
+    })),
+
+  setSuggestions: (messageId, suggestions) =>
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId
+          ? { ...m, suggestions }
+          : m,
+      ),
+    })),
+
   finalizeMessage: (messageId) =>
     set((s) => ({
       messages: s.messages.map((m) =>
-        m.id === messageId ? { ...m, isStreaming: false } : m,
+        m.id === messageId
+          ? {
+              ...m,
+              isStreaming: false,
+              content: m.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd(),
+            }
+          : m,
       ),
       isAgentResponding: false,
     })),
@@ -161,6 +193,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           isStreaming: false,
           toolIndicators: [],
           cards: [],
+          thinkingEntries: [],
+          suggestions: [],
         },
       ],
     })),

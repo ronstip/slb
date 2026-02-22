@@ -19,7 +19,9 @@ from api.agent.prompts.collection_agent import COLLECTION_AGENT_PROMPT
 from api.agent.prompts.orchestrator import ORCHESTRATOR_PROMPT
 from api.agent.prompts.research_agent import RESEARCH_AGENT_PROMPT
 from api.agent.tools.cancel_collection import cancel_collection
+from api.agent.tools.create_chart import create_chart
 from api.agent.tools.design_research import design_research
+from api.agent.tools.display_posts import display_posts
 from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.get_insights import get_insights
@@ -103,7 +105,7 @@ def create_agent() -> LlmAgent:
             "exports, or asks questions about collected data."
         ),
         instruction=ANALYST_AGENT_PROMPT.format(project_id=settings.gcp_project_id),
-        tools=[get_insights, export_data, bq_toolset, memory_tool],
+        tools=[get_insights, export_data, create_chart, display_posts, bq_toolset, memory_tool],
         before_model_callback=inject_collection_context,
         after_tool_callback=log_tool_invocation,
     )

@@ -108,6 +108,10 @@ The platform consists of four primary layers that work together to deliver the h
 - Explain methodology and parameter choices in human terms
 - Synthesize raw data into narrative insights
 - Handle follow-up questions and iterative refinement
+- Narrate reasoning between tool calls — explain what it's doing and why
+- Visualize query results with standalone chart cards when appropriate
+- Offer contextual follow-up suggestions after insights and completions
+- Support side-by-side comparison analysis across segments
 
 **Key Technical Requirements:**
 
@@ -115,6 +119,9 @@ The platform consists of four primary layers that work together to deliver the h
 - Context window management for long conversations
 - Domain-specific training/prompting for social listening expertise
 - Quality guardrails to prevent hallucination in data interpretation
+- Thinking event stream for real-time operational transparency
+- Chart rendering via dedicated `create_chart` tool with typed schemas
+- Follow-up suggestion extraction via structured agent output convention
 
 ### 2. Research Design Engine
 
@@ -167,6 +174,8 @@ The platform consists of four primary layers that work together to deliver the h
 
 - Conversational summary (AI-generated narrative)
 - Interactive graphs (sentiment over time, volume trends, competitive comparison)
+- Standalone chart cards in chat (sentiment, volume, themes, platforms, entities, etc.)
+- Rich markdown narratives with headers, tables, and structured sections
 - Key metrics dashboard
 - Exportable one-pager (PDF/PPTX)
 - Raw data export option for power users
@@ -227,6 +236,14 @@ A critical moat-building component that creates network effects through usage.
 - No re-configuration needed
 - Natural graduation path from casual user to power user
 
+### 5. Expressive Communication
+
+- Agent uses rich markdown formatting (headers, tables, bold, bullets) for structured, scannable responses
+- Standalone chart visualizations rendered inline in conversation via `create_chart` tool
+- Reflective thinking shown in collapsible panels during long operations (SQL queries, insight generation)
+- Contextual follow-up suggestions offered as clickable chips when appropriate (after insights, completions, analyses)
+- Agent narrates its reasoning between tool calls, interpreting results rather than just reporting numbers
+
 ---
 
 ## Technical Requirements
@@ -235,6 +252,7 @@ A critical moat-building component that creates network effects through usage.
 
 - Query design and cost estimation: <30 seconds
 - Cached query results: <30 seconds
+- Insight report generation (get_insights): <60 seconds
 - New data collection: 10–30 minutes (depending on scope)
 - Real-time progress indicators throughout collection
 

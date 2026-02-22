@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -55,6 +56,9 @@ app.add_middleware(
 
 _runner: Runner | None = None
 _memory_service = None
+
+# Tools whose invocations are surfaced in the "thinking" panel
+THINKING_TOOLS = {"execute_sql", "get_insights", "get_table_info", "list_table_ids"}
 
 
 def get_runner() -> Runner:
@@ -163,6 +167,7 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
     session.state["message_count"] = session.state.get("message_count", 0) + 1
 
     async def event_stream():
+        text_emitted = False
         try:
             async for event in runner.run_async(
                 user_id=user_id, session_id=session_id, new_message=content
@@ -170,10 +175,42 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                 # Extract event data
                 event_data = _extract_event_data(event)
                 if event_data:
+                    et = event_data["event_type"]
+
+                    # Inject acknowledgment if first visible event is a tool_call
+                    if et == "tool_call" and not text_emitted:
+                        ack_text = _build_acknowledgment(event_data)
+                        yield {
+                            "event": "text",
+                            "data": json.dumps({
+                                "event_type": "text",
+                                "content": ack_text,
+                                "author": event_data.get("author", ""),
+                            }),
+                        }
+                        text_emitted = True
+
+                    if et == "text":
+                        text_emitted = True
+
                     yield {
-                        "event": event_data["event_type"],
+                        "event": et,
                         "data": json.dumps(event_data),
                     }
+
+                    # Emit a thinking event for analytical tools
+                    if et in ("tool_call", "tool_result"):
+                        tool_name = event_data.get("metadata", {}).get("name", "")
+                        thinking = _build_thinking_content(et, tool_name, event_data)
+                        if thinking:
+                            yield {
+                                "event": "thinking",
+                                "data": json.dumps({
+                                    "event_type": "thinking",
+                                    "content": thinking,
+                                    "author": event_data.get("author", ""),
+                                }),
+                            }
 
                 if event.is_final_response():
                     text = _extract_text(event)
@@ -182,16 +219,21 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                     # runs in the background so the client isn't blocked.
                     current_title = session.state.get("session_title", "New Session")
 
+                    # Extract follow-up suggestions if the agent embedded them
+                    _, suggestions = _extract_suggestions(text)
+
+                    done_payload: dict = {
+                        "event_type": "done",
+                        "session_id": session_id,
+                        "session_title": current_title,
+                        "content": text,
+                    }
+                    if suggestions:
+                        done_payload["suggestions"] = suggestions
+
                     yield {
                         "event": "done",
-                        "data": json.dumps(
-                            {
-                                "event_type": "done",
-                                "session_id": session_id,
-                                "session_title": current_title,
-                                "content": text,
-                            }
-                        ),
+                        "data": json.dumps(done_payload),
                     }
 
                     # Fire-and-forget background tasks
@@ -745,6 +787,82 @@ async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> 
         logger.exception("Failed to auto-name session %s", session_id)
 
     return "New Session"
+
+
+_SUGGESTIONS_RE = re.compile(
+    r"<!--\s*suggestions:\s*(\[.*?\])\s*-->",
+    re.DOTALL,
+)
+
+
+def _extract_suggestions(text: str) -> tuple[str, list[str]]:
+    """Parse <!-- suggestions: [...] --> from agent text.
+
+    Returns (cleaned_text, suggestions_list).
+    """
+    match = _SUGGESTIONS_RE.search(text)
+    if not match:
+        return text, []
+    try:
+        suggestions = json.loads(match.group(1))
+        if isinstance(suggestions, list):
+            cleaned = text[: match.start()] + text[match.end() :]
+            return cleaned.rstrip(), [s for s in suggestions if isinstance(s, str)]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return text, []
+
+
+_TOOL_ACKNOWLEDGMENTS = {
+    "google_search_agent": "Let me search for some context on that...",
+    "design_research": "Let me put together a research plan for you...",
+    "execute_sql": "Let me query the data...",
+    "get_insights": "Let me generate an insight report...",
+    "start_collection": "Let me start the collection...",
+    "get_progress": "Let me check on the progress...",
+    "export_data": "Let me prepare that export...",
+    "create_chart": "Let me create that visualization...",
+    "display_posts": "Let me pull up those posts...",
+}
+
+
+def _build_acknowledgment(event_data: dict) -> str:
+    """Generate a synthetic acknowledgment when no text has been emitted yet."""
+    tool_name = event_data.get("metadata", {}).get("name", "")
+    ack = _TOOL_ACKNOWLEDGMENTS.get(tool_name, "Let me look into that for you...")
+    return ack + "\n\n"
+
+
+def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -> str | None:
+    """Format a thinking entry for analytical tools."""
+    if tool_name not in THINKING_TOOLS:
+        return None
+
+    if event_type == "tool_call":
+        args = event_data.get("metadata", {}).get("args", {})
+        if tool_name == "execute_sql":
+            query = args.get("query", args.get("sql", ""))
+            if query:
+                return f"Running SQL query:\n```sql\n{query}\n```"
+            return "Running SQL query..."
+        if tool_name == "get_insights":
+            cid = args.get("collection_id", "")
+            return f"Generating insight report for collection `{cid}`..."
+        if tool_name == "get_table_info":
+            table = args.get("table_id", args.get("table_name", ""))
+            return f"Inspecting schema for `{table}`"
+        if tool_name == "list_table_ids":
+            dataset = args.get("dataset_id", "social_listening")
+            return f"Listing tables in `{dataset}`"
+    elif event_type == "tool_result":
+        result = event_data.get("metadata", {}).get("result", {})
+        if tool_name == "execute_sql":
+            # BQ toolset returns result as a dict; try to summarize
+            return "Query completed"
+        if tool_name == "get_insights":
+            status = result.get("status", "unknown")
+            return f"Insight report: {status}"
+    return None
 
 
 def _extract_event_data(event) -> dict | None:

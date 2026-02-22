@@ -4,7 +4,11 @@ import { UserMessage } from './UserMessage.tsx';
 import { AgentMessage } from './AgentMessage.tsx';
 import { SystemMessage } from './SystemMessage.tsx';
 
-export function MessageList() {
+interface MessageListProps {
+  onSendMessage?: (text: string) => void;
+}
+
+export function MessageList({ onSendMessage }: MessageListProps) {
   const messages = useChatStore((s) => s.messages);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -37,7 +41,7 @@ export function MessageList() {
             case 'user':
               return <UserMessage key={msg.id} message={msg} />;
             case 'agent':
-              return <AgentMessage key={msg.id} message={msg} />;
+              return <AgentMessage key={msg.id} message={msg} onSuggestionClick={onSendMessage} />;
             case 'system':
               return <SystemMessage key={msg.id} message={msg} />;
           }

@@ -230,7 +230,8 @@ export type SSEEvent =
   | { event_type: 'text'; content: string; author: string }
   | { event_type: 'tool_call'; content: string; metadata: ToolCallMeta; author: string }
   | { event_type: 'tool_result'; content: string; metadata: ToolResultMeta; author: string }
-  | { event_type: 'done'; session_id: string; session_title?: string; content: string }
+  | { event_type: 'thinking'; content: string; author?: string }
+  | { event_type: 'done'; session_id: string; session_title?: string; content: string; suggestions?: string[] }
   | { event_type: 'error'; content: string };
 
 // --- Insight Data (for charts) ---

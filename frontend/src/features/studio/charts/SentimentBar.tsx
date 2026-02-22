@@ -1,12 +1,17 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import type { SentimentBreakdown } from '../../../api/types.ts';
 import { SENTIMENT_COLORS } from '../../../lib/constants.ts';
+import type { ChartOverrides } from './chart-overrides.ts';
 
 interface SentimentBarProps {
   data: SentimentBreakdown[];
+  overrides?: ChartOverrides;
 }
 
-export function SentimentBar({ data }: SentimentBarProps) {
+export function SentimentBar({ data, overrides }: SentimentBarProps) {
+  const getColor = (sentiment: string) =>
+    overrides?.colorOverrides?.[sentiment] || SENTIMENT_COLORS[sentiment] || '#78716C';
+
   return (
     <ResponsiveContainer width="100%" height={120}>
       <BarChart data={data} layout="vertical" margin={{ left: 60, right: 20, top: 5, bottom: 5 }}>
@@ -23,11 +28,11 @@ export function SentimentBar({ data }: SentimentBarProps) {
         />
         <Bar dataKey="percentage" radius={[0, 4, 4, 0]}>
           {data.map((entry) => (
-            <Cell
-              key={entry.sentiment}
-              fill={SENTIMENT_COLORS[entry.sentiment] || '#78716C'}
-            />
+            <Cell key={entry.sentiment} fill={getColor(entry.sentiment)} />
           ))}
+          {overrides?.showValues && (
+            <LabelList dataKey="percentage" position="right" formatter={(v: number) => `${v.toFixed(0)}%`} style={{ fontSize: 10 }} />
+          )}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
