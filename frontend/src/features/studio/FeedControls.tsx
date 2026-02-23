@@ -1,5 +1,6 @@
 import { SlidersHorizontal } from 'lucide-react';
 import type { FeedParams } from '../../api/types.ts';
+import type { Source } from '../../stores/sources-store.ts';
 import { formatNumber } from '../../lib/format.ts';
 import {
   Select,
@@ -10,6 +11,7 @@ import {
 } from '../../components/ui/select.tsx';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -27,6 +29,9 @@ interface FeedControlsProps {
   onPlatformChange: (platform: string) => void;
   onSentimentChange: (sentiment: string) => void;
   totalCount: number;
+  activeSources: Source[];
+  collectionFilter: string[];
+  onCollectionFilterChange: (ids: string[]) => void;
 }
 
 export function FeedControls({
@@ -37,12 +42,37 @@ export function FeedControls({
   onPlatformChange,
   onSentimentChange,
   totalCount,
+  activeSources,
+  collectionFilter,
+  onCollectionFilterChange,
 }: FeedControlsProps) {
-  const hasActiveFilter = platform !== 'all' || sentiment !== 'all';
+  const hasActiveFilter =
+    platform !== 'all' || sentiment !== 'all' || collectionFilter.length > 0;
+
+  function isCollectionShown(id: string) {
+    return collectionFilter.length === 0 || collectionFilter.includes(id);
+  }
+
+  function toggleCollection(id: string) {
+    if (collectionFilter.length === 0) {
+      // Currently all shown — uncheck means show everyone except this one
+      onCollectionFilterChange(
+        activeSources.map((s) => s.collectionId).filter((cid) => cid !== id),
+      );
+    } else if (collectionFilter.includes(id)) {
+      const next = collectionFilter.filter((cid) => cid !== id);
+      // If last one unchecked, reset to all
+      onCollectionFilterChange(next.length === 0 ? [] : next);
+    } else {
+      const next = [...collectionFilter, id];
+      // If all are now checked, reset to all
+      onCollectionFilterChange(next.length === activeSources.length ? [] : next);
+    }
+  }
 
   return (
     <div className="flex items-center gap-1.5 border-b border-border px-3 py-1.5">
-      {/* Sort dropdown */}
+      {/* Sort */}
       <Select value={sort} onValueChange={(v) => onSortChange(v as FeedParams['sort'])}>
         <SelectTrigger className="h-6 w-auto min-w-0 gap-1 px-2 text-[11px]">
           <span className="text-muted-foreground/60">Sort:</span>
@@ -56,10 +86,14 @@ export function FeedControls({
         </SelectContent>
       </Select>
 
-      {/* Filter dropdown button */}
+      {/* Filter */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="relative h-6 gap-1 px-2 text-[11px] text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="relative h-6 gap-1 px-2 text-[11px] text-muted-foreground"
+          >
             <SlidersHorizontal className="h-3 w-3" />
             Filter
             {hasActiveFilter && (
@@ -67,7 +101,25 @@ export function FeedControls({
             )}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-44">
+        <DropdownMenuContent align="start" className="w-48">
+          {/* Collection filter — only when 2+ active */}
+          {activeSources.length >= 2 && (
+            <>
+              <DropdownMenuLabel className="text-[10px]">Collection</DropdownMenuLabel>
+              {activeSources.map((src) => (
+                <DropdownMenuCheckboxItem
+                  key={src.collectionId}
+                  checked={isCollectionShown(src.collectionId)}
+                  onCheckedChange={() => toggleCollection(src.collectionId)}
+                  className="text-[11px]"
+                >
+                  <span className="truncate">{src.title}</span>
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+            </>
+          )}
+
           <DropdownMenuLabel className="text-[10px]">Platform</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={platform} onValueChange={onPlatformChange}>
             <DropdownMenuRadioItem value="all">All Platforms</DropdownMenuRadioItem>

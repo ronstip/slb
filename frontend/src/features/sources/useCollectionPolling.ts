@@ -21,7 +21,13 @@ export function useCollectionPolling() {
   const activeSourceIds = useMemo(
     () =>
       sources
-        .filter((s) => s.status === 'pending' || s.status === 'collecting' || s.status === 'enriching')
+        .filter(
+          (s) =>
+            s.status === 'pending' ||
+            s.status === 'collecting' ||
+            s.status === 'enriching' ||
+            s.status === 'monitoring',
+        )
         .map((s) => s.collectionId),
     [sources],
   );
@@ -58,10 +64,13 @@ export function useCollectionPolling() {
         postsEnriched: data.posts_enriched,
         postsEmbedded: data.posts_embedded,
         errorMessage: data.error_message ?? undefined,
+        lastRunAt: data.last_run_at,
+        nextRunAt: data.next_run_at,
+        totalRuns: data.total_runs,
       });
 
-      // Auto-open Studio Feed when collection completes
-      if (prevStatus && prevStatus !== 'completed' && data.status === 'completed') {
+      // Auto-open Studio Feed when collection completes or enters monitoring
+      if (prevStatus && !['completed', 'monitoring'].includes(prevStatus) && ['completed', 'monitoring'].includes(data.status)) {
         setFeedSource(collectionId);
         setActiveTab('feed');
         if (studioPanelCollapsed) {

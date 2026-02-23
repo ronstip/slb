@@ -1,4 +1,5 @@
 import { LineChart as ReLineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { formatNumber } from '../../../lib/format.ts';
 import type { VolumeOverTime } from '../../../api/types.ts';
 import type { ChartOverrides } from './chart-overrides.ts';
 
@@ -26,7 +27,7 @@ export function LineChart({ data, overrides }: LineChartProps) {
       <ReLineChart data={chartData} margin={{ left: 10, right: 10, top: 5, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.4} />
         <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => d.slice(5)} />
-        <YAxis tick={{ fontSize: 10 }} width={30} />
+        <YAxis tick={{ fontSize: 10 }} width={38} tickFormatter={formatNumber} />
         <Tooltip contentStyle={{ fontSize: 12 }} />
         <Line
           type="monotone"

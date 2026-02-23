@@ -16,6 +16,13 @@ class CreateCollectionRequest(BaseModel):
     geo_scope: str = "global"
     max_calls: int = 2
     include_comments: bool = True
+    ongoing: bool = False
+    schedule: str | None = None  # "daily" | "weekly"
+
+
+class UpdateCollectionModeRequest(BaseModel):
+    ongoing: bool
+    schedule: str | None = None  # required when ongoing=True
 
 
 # --- Settings ---
@@ -38,3 +45,12 @@ class InviteMemberRequest(BaseModel):
 
 class UpdateMemberRoleRequest(BaseModel):
     role: str
+
+
+class MultiFeedRequest(BaseModel):
+    collection_ids: list[str]
+    sort: str = "views"
+    platform: str = "all"
+    sentiment: str = "all"
+    limit: int = 12
+    offset: int = 0

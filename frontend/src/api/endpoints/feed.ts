@@ -1,5 +1,5 @@
-import { apiGet } from '../client.ts';
-import type { FeedParams, FeedResponse } from '../types.ts';
+import { apiGet, apiPost } from '../client.ts';
+import type { FeedParams, FeedResponse, MultiFeedParams } from '../types.ts';
 
 export async function getPosts(
   collectionId: string,
@@ -13,4 +13,10 @@ export async function getPosts(
   if (params.offset) queryParams.offset = String(params.offset);
 
   return apiGet(`/collections/${collectionId}/posts`, queryParams);
+}
+
+export async function getMultiCollectionPosts(
+  params: MultiFeedParams,
+): Promise<FeedResponse> {
+  return apiPost('/feed', params);
 }

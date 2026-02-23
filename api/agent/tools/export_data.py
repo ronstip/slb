@@ -55,4 +55,5 @@ def export_data(collection_id: str) -> dict:
         "rows": rows,
         "row_count": len(rows),
         "column_names": column_names,
+        "collection_id": collection_id,
     }

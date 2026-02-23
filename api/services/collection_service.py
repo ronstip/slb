@@ -12,6 +12,11 @@ from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+SCHEDULE_INTERVALS: dict[str, timedelta] = {
+    "daily": timedelta(days=1),
+    "weekly": timedelta(weeks=1),
+}
+
 
 def create_collection_from_request(
     request: CreateCollectionRequest,
@@ -43,6 +48,8 @@ def create_collection_from_request(
         "max_calls": request.max_calls,
         "include_comments": request.include_comments,
         "geo_scope": request.geo_scope,
+        "ongoing": request.ongoing,
+        "schedule": request.schedule if request.ongoing else None,
     }
 
     # Insert collection record into BigQuery
@@ -86,6 +93,7 @@ def create_collection_from_request(
 
 def _run_pipeline(collection_id: str) -> None:
     """Run collection then enrichment as a single pipeline (dev mode)."""
+    from google.cloud.firestore_v1 import transforms
     from workers.collection.worker import run_collection
     from workers.enrichment.worker import run_enrichment
     from workers.shared.firestore_client import FirestoreClient
@@ -100,13 +108,139 @@ def _run_pipeline(collection_id: str) -> None:
     settings = get_settings()
     fs = FirestoreClient(settings)
     status = fs.get_collection_status(collection_id)
-    if status and status.get("status") == "completed":
-        try:
-            config = status.get("config") or {}
-            min_likes = config.get("min_likes", 0)
-            run_enrichment(collection_id, min_likes=min_likes)
-        except Exception:
-            logger.exception("Enrichment pipeline failed for %s", collection_id)
+    if not status or status.get("status") not in ("completed", "collecting"):
+        # cancelled or failed during collection
+        return
+
+    try:
+        config = status.get("config") or {}
+        min_likes = config.get("min_likes", 0)
+        run_enrichment(collection_id, min_likes=min_likes)
+    except Exception:
+        logger.exception("Enrichment pipeline failed for %s", collection_id)
+        return
+
+    # After enrichment, decide final status based on ongoing flag
+    status = fs.get_collection_status(collection_id)
+    config = (status or {}).get("config") or {}
+    if config.get("ongoing"):
+        schedule = config.get("schedule", "daily")
+        interval = SCHEDULE_INTERVALS.get(schedule, timedelta(days=1))
+        now = datetime.now(timezone.utc)
+        next_run_at = now + interval
+
+        # Build new run_history entry
+        run_entry = {
+            "run_at": now.isoformat(),
+            "posts_added": (status or {}).get("posts_collected", 0),
+            "status": "completed",
+        }
+        # Use Firestore ArrayUnion to append; cap is handled separately if needed
+        fs.update_collection_status(
+            collection_id,
+            status="monitoring",
+            last_run_at=now,
+            next_run_at=next_run_at,
+            total_runs=transforms.Increment(1),
+            run_history=transforms.ArrayUnion([run_entry]),
+        )
+        logger.info(
+            "Ongoing collection %s set to monitoring; next run at %s",
+            collection_id,
+            next_run_at.isoformat(),
+        )
+    else:
+        fs.update_collection_status(collection_id, status="completed")
+
+
+def trigger_collection_now(collection_id: str) -> None:
+    """Immediately trigger the next run of an ongoing collection."""
+    from workers.shared.firestore_client import FirestoreClient
+
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise ValueError(f"Collection {collection_id} not found")
+    if not status.get("ongoing"):
+        raise ValueError(f"Collection {collection_id} is not an ongoing collection")
+    if status.get("status") != "monitoring":
+        raise ValueError(
+            f"Collection {collection_id} is not in monitoring state (current: {status.get('status')})"
+        )
+
+    # Claim the collection before dispatching to prevent scheduler double-trigger
+    fs.update_collection_status(collection_id, status="collecting")
+
+    if settings.is_dev:
+        thread = threading.Thread(target=_run_pipeline, args=(collection_id,), daemon=True)
+        thread.start()
+    else:
+        _dispatch_cloud_task(settings, collection_id)
+
+    logger.info("Manually triggered run for ongoing collection %s", collection_id)
+
+
+def update_collection_mode(
+    collection_id: str,
+    ongoing: bool,
+    schedule: str | None,
+) -> None:
+    """Switch a collection between ongoing and normal mode."""
+    from workers.shared.firestore_client import FirestoreClient
+
+    settings = get_settings()
+    bq = get_bq()
+    fs = FirestoreClient(settings)
+
+    status_doc = fs.get_collection_status(collection_id)
+    if not status_doc:
+        raise ValueError(f"Collection {collection_id} not found")
+
+    # Update config in BigQuery
+    rows = bq.query(
+        "SELECT config FROM social_listening.collections WHERE collection_id = @collection_id",
+        {"collection_id": collection_id},
+    )
+    if not rows:
+        raise ValueError(f"Collection {collection_id} not found in BigQuery")
+
+    config = rows[0]["config"]
+    if isinstance(config, str):
+        config = json.loads(config)
+    config = dict(config)
+    config["ongoing"] = ongoing
+    config["schedule"] = schedule if ongoing else None
+
+    bq.query(
+        "UPDATE social_listening.collections SET config = @config WHERE collection_id = @collection_id",
+        {"collection_id": collection_id, "config": json.dumps(config)},
+    )
+
+    if ongoing:
+        interval = SCHEDULE_INTERVALS.get(schedule or "daily", timedelta(days=1))
+        now = datetime.now(timezone.utc)
+        next_run_at = now + interval
+        fs.update_collection_status(
+            collection_id,
+            ongoing=True,
+            status="monitoring",
+            next_run_at=next_run_at,
+        )
+        logger.info(
+            "Collection %s switched to ongoing (%s); next run at %s",
+            collection_id,
+            schedule,
+            next_run_at.isoformat(),
+        )
+    else:
+        fs.update_collection_status(
+            collection_id,
+            ongoing=False,
+            status="completed",
+            next_run_at=None,
+        )
+        logger.info("Collection %s switched to normal (monitoring stopped)", collection_id)
 
 
 def _dispatch_cloud_task(settings, collection_id: str) -> None:

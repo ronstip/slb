@@ -43,6 +43,27 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export async function apiGetBlob(path: string): Promise<Blob> {
+  const url = new URL(`${API_BASE}${path}`, window.location.origin);
+  const res = await fetch(url.toString(), { headers: await getHeaders() });
+  if (!res.ok) {
+    throw new ApiError(res.status, await res.text());
+  }
+  return res.blob();
+}
+
+export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PATCH',
+    headers: await getHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await res.text());
+  }
+  return res.json();
+}
+
 export async function apiDelete<T = void>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'DELETE',

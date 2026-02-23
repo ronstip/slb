@@ -14,6 +14,10 @@ class CollectionStatusResponse(BaseModel):
     created_at: str | None = None
     visibility: str = "private"
     user_id: str | None = None
+    ongoing: bool = False
+    last_run_at: str | None = None
+    next_run_at: str | None = None
+    total_runs: int = 0
 
 
 class FeedPostResponse(BaseModel):
@@ -38,6 +42,7 @@ class FeedPostResponse(BaseModel):
     entities: list[str] = []
     ai_summary: str | None = None
     content_type: str | None = None
+    collection_id: str | None = None
 
 
 class FeedResponse(BaseModel):
@@ -45,6 +50,37 @@ class FeedResponse(BaseModel):
     total: int
     offset: int
     limit: int
+
+
+class PlatformCount(BaseModel):
+    platform: str
+    count: int
+
+
+class SentimentCount(BaseModel):
+    sentiment: str
+    count: int
+
+
+class ThemeCount(BaseModel):
+    theme: str
+    count: int
+
+
+class EngagementStats(BaseModel):
+    avg_likes: float = 0
+    avg_views: float = 0
+    avg_comments: float = 0
+    total_posts_enriched: int = 0
+
+
+class CollectionStatsResponse(BaseModel):
+    total_posts: int
+    platform_breakdown: list[PlatformCount]
+    sentiment_breakdown: list[SentimentCount]
+    top_themes: list[ThemeCount]
+    engagement_summary: EngagementStats
+    date_range: dict
 
 
 # --- Settings ---

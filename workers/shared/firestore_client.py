@@ -32,6 +32,11 @@ class FirestoreClient:
                 "posts_embedded": 0,
                 "config": config,
                 "visibility": "private",
+                "ongoing": config.get("ongoing", False),
+                "last_run_at": None,
+                "next_run_at": None,
+                "total_runs": 0,
+                "run_history": [],
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
             }
@@ -51,10 +56,39 @@ class FirestoreClient:
             return None
         data = doc.to_dict()
         # Convert Firestore timestamps to ISO strings
-        for key in ("created_at", "updated_at"):
+        for key in ("created_at", "updated_at", "last_run_at", "next_run_at"):
             if key in data and hasattr(data[key], "isoformat"):
                 data[key] = data[key].isoformat()
         return data
+
+    def get_due_ongoing_collections(self) -> list[dict]:
+        """Return ongoing collections whose next_run_at is in the past and status is 'monitoring'."""
+        now = datetime.now(timezone.utc)
+        try:
+            docs = (
+                self._db.collection("collection_status")
+                .where("ongoing", "==", True)
+                .where("status", "==", "monitoring")
+                .stream()
+            )
+            due = []
+            for doc in docs:
+                data = doc.to_dict()
+                next_run_at = data.get("next_run_at")
+                if next_run_at is None:
+                    continue
+                # next_run_at may be a Firestore Timestamp or already a datetime
+                if hasattr(next_run_at, "isoformat"):
+                    # It's a datetime-like object; make timezone-aware if needed
+                    if getattr(next_run_at, "tzinfo", None) is None:
+                        next_run_at = next_run_at.replace(tzinfo=timezone.utc)
+                    if next_run_at <= now:
+                        data["collection_id"] = doc.id
+                        due.append(data)
+            return due
+        except Exception as e:
+            logger.warning("Failed to query due ongoing collections: %s", e)
+            return []
 
     def get_session(self, session_id: str) -> dict | None:
         doc_ref = self._db.collection("sessions").document(session_id)

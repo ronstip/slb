@@ -9,14 +9,23 @@ import { Badge } from '../../components/ui/badge.tsx';
 
 interface PostCardProps {
   post: FeedPost;
+  collectionTitle?: string;
 }
 
-export function PostCard({ post }: PostCardProps) {
+export function PostCard({ post, collectionTitle }: PostCardProps) {
   const sentimentColor = post.sentiment ? SENTIMENT_COLORS[post.sentiment] : undefined;
   const media = (post.media_refs ?? []).filter((m) => m?.original_url || m?.gcs_uri);
 
   return (
     <Card className="overflow-hidden">
+      {/* Collection label (multi-collection feed only) */}
+      {collectionTitle && (
+        <div className="border-b border-border/50 bg-muted/30 px-3 py-1">
+          <span className="text-[10px] text-muted-foreground truncate block">
+            {collectionTitle}
+          </span>
+        </div>
+      )}
       {/* Media */}
       {media.length > 0 && <PostMedia media={media} postUrl={post.post_url} />}
 

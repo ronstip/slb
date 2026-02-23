@@ -58,14 +58,23 @@ def display_posts(post_ids: list[str], collection_id: str = "") -> dict:
         ep.entities,
         ep.ai_summary,
         ep.content_type
-    FROM social_listening.posts p
-    LEFT JOIN social_listening.enriched_posts ep ON p.post_id = ep.post_id
+    FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+        FROM social_listening.posts
+        WHERE post_id IN ({placeholders})
+    ) p
+    LEFT JOIN (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+        FROM social_listening.enriched_posts
+    ) ep ON p.post_id = ep.post_id AND ep._rn = 1
     LEFT JOIN (
         SELECT post_id, likes, shares, comments_count, views, saves,
                ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
         FROM social_listening.post_engagements
     ) pe ON p.post_id = pe.post_id AND pe.rn = 1
-    WHERE p.post_id IN ({placeholders})
+    WHERE p._rn = 1
     """
 
     try:

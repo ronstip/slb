@@ -43,6 +43,14 @@ def run_collection(collection_id: str) -> None:
     if isinstance(config, str):
         config = json.loads(config)
 
+    # For ongoing collections on 2nd+ runs, use incremental window (since last run)
+    status_doc = fs.get_collection_status(collection_id)
+    last_run_at = status_doc.get("last_run_at") if status_doc else None
+    if last_run_at and config.get("ongoing"):
+        config = dict(config)
+        config["time_range"] = dict(config.get("time_range", {}))
+        config["time_range"]["start"] = last_run_at[:10]  # YYYY-MM-DD
+
     fs.update_collection_status(collection_id, status="collecting")
     logger.info("Starting collection %s", collection_id)
 
@@ -68,6 +76,23 @@ def run_collection(collection_id: str) -> None:
 
             new_channels = [c for c in batch.channels if c.channel_id not in seen_channel_ids]
             seen_channel_ids.update(c.channel_id for c in new_channels)
+
+            if not new_posts:
+                continue
+
+            # Cross-collection dedup: filter out post_ids already stored in BQ
+            # (handles cases where the same post is scraped across multiple collections or re-runs)
+            existing = bq.query(
+                "SELECT DISTINCT post_id FROM social_listening.posts WHERE post_id IN UNNEST(@post_ids)",
+                {"post_ids": [p.post_id for p in new_posts]},
+            )
+            existing_ids = {r["post_id"] for r in existing}
+            if existing_ids:
+                new_posts = [p for p in new_posts if p.post_id not in existing_ids]
+                logger.info(
+                    "Collection %s: cross-collection dedup removed %d already-stored posts",
+                    collection_id, len(existing_ids),
+                )
 
             if not new_posts:
                 continue

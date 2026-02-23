@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { X } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
 import type { CollectionConfig, CreateCollectionRequest } from '../../api/types.ts';
 import { createCollection } from '../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
@@ -10,6 +10,7 @@ import { Textarea } from '../../components/ui/textarea.tsx';
 import { Label } from '../../components/ui/label.tsx';
 import { Badge } from '../../components/ui/badge.tsx';
 import { Checkbox } from '../../components/ui/checkbox.tsx';
+import { Switch } from '../../components/ui/switch.tsx';
 import {
   Select,
   SelectContent,
@@ -49,6 +50,10 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
   const [geoScope, setGeoScope] = useState(prefill?.geo_scope || 'global');
   const [maxCalls, setMaxCalls] = useState(prefill?.max_calls || 2);
   const [includeComments, setIncludeComments] = useState(prefill?.include_comments ?? true);
+  const [ongoing, setOngoing] = useState(prefill?.ongoing ?? false);
+  const [schedule, setSchedule] = useState<'daily' | 'weekly'>(
+    (prefill?.schedule as 'daily' | 'weekly') || 'daily',
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,6 +111,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
         geo_scope: geoScope,
         max_calls: maxCalls,
         include_comments: includeComments,
+        ongoing,
+        schedule: ongoing ? schedule : undefined,
       };
 
       const result = await createCollection(req);
@@ -124,6 +131,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
           max_calls: maxCalls,
           include_comments: includeComments,
           geo_scope: geoScope,
+          ongoing,
+          schedule: ongoing ? schedule : undefined,
         },
         title: description || keywords.join(', ') || 'New Collection',
         postsCollected: 0,
@@ -282,7 +291,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
       </div>
 
       {/* Include Comments */}
-      <div className="mb-6">
+      <div className="mb-4">
         <label className="flex items-center gap-2">
           <Checkbox
             checked={includeComments}
@@ -290,6 +299,40 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
           />
           <span className="text-sm text-foreground">Include Comments</span>
         </label>
+      </div>
+
+      {/* Ongoing Monitoring */}
+      <div className="mb-6 rounded-lg border border-border bg-muted/30 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">Ongoing Monitoring</span>
+          </div>
+          <Switch checked={ongoing} onCheckedChange={setOngoing} />
+        </div>
+        {ongoing && (
+          <div className="mt-3">
+            <Label className="mb-1.5 text-xs text-muted-foreground">Refresh schedule</Label>
+            <div className="flex gap-2">
+              {(['daily', 'weekly'] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSchedule(s)}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-medium capitalize transition-all ${
+                    schedule === s
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'border border-border bg-card text-muted-foreground hover:border-primary/40'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              Time range above sets the initial backfill window. Subsequent runs collect only new posts.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Error */}

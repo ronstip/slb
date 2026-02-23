@@ -1,4 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { formatNumber } from '../../../lib/format.ts';
 import type { VolumeOverTime } from '../../../api/types.ts';
 
 interface VolumeChartProps {
@@ -22,7 +23,7 @@ export function VolumeChart({ data }: VolumeChartProps) {
     <ResponsiveContainer width="100%" height={150}>
       <BarChart data={chartData} margin={{ left: 10, right: 10, top: 5, bottom: 5 }}>
         <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => d.slice(5)} />
-        <YAxis tick={{ fontSize: 10 }} width={30} />
+        <YAxis tick={{ fontSize: 10 }} width={38} tickFormatter={formatNumber} />
         <Tooltip contentStyle={{ fontSize: 12 }} />
         <Bar dataKey="count" fill={BAR_COLOR} radius={[2, 2, 2, 2]} />
       </BarChart>

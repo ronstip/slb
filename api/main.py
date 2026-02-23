@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -30,15 +31,42 @@ from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs, get_gcs
 from api.routers import settings as settings_router
 from api.routers import billing as billing_router
+import csv
+import io
+
 from api.routers import sessions as sessions_router
-from api.schemas.requests import ChatRequest, CreateCollectionRequest
-from api.schemas.responses import CollectionStatusResponse, FeedPostResponse, FeedResponse
-from api.services.collection_service import create_collection_from_request
+from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionModeRequest
+from api.schemas.responses import (
+    CollectionStatsResponse,
+    CollectionStatusResponse,
+    EngagementStats,
+    FeedPostResponse,
+    FeedResponse,
+    PlatformCount,
+    SentimentCount,
+    ThemeCount,
+)
+from api.services.collection_service import (
+    create_collection_from_request,
+    trigger_collection_now,
+    update_collection_mode,
+)
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Social Listening Platform", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app_: FastAPI):
+    settings = get_settings()
+    if settings.is_dev:
+        from api.scheduler import OngoingScheduler
+        scheduler = OngoingScheduler()
+        scheduler.start()
+    yield
+
+
+app = FastAPI(title="Social Listening Platform", version="0.1.0", lifespan=lifespan)
 
 # Include routers
 app.include_router(settings_router.router)
@@ -172,9 +200,8 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
             async for event in runner.run_async(
                 user_id=user_id, session_id=session_id, new_message=content
             ):
-                # Extract event data
-                event_data = _extract_event_data(event)
-                if event_data:
+                # Extract all parts from this event (may be multiple per turn)
+                for event_data in _extract_event_data(event):
                     et = event_data["event_type"]
 
                     # Inject acknowledgment if first visible event is a tool_call
@@ -287,6 +314,51 @@ async def set_collection_visibility(
     return {"status": "updated", "visibility": visibility}
 
 
+@app.post("/collection/{collection_id}/trigger")
+async def trigger_collection(
+    collection_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Immediately trigger the next run of an ongoing collection. Owner only."""
+    fs = get_fs()
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if status.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the collection owner can trigger a run")
+    try:
+        trigger_collection_now(collection_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "collecting", "message": "Run triggered"}
+
+
+@app.patch("/collection/{collection_id}/mode")
+async def set_collection_mode(
+    collection_id: str,
+    request: UpdateCollectionModeRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Switch a collection between ongoing and normal mode. Owner only."""
+    if request.ongoing and not request.schedule:
+        raise HTTPException(status_code=400, detail="schedule is required when ongoing=true")
+    if request.ongoing and request.schedule not in ("daily", "weekly"):
+        raise HTTPException(status_code=400, detail="schedule must be 'daily' or 'weekly'")
+
+    fs = get_fs()
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if status.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the collection owner can change mode")
+
+    try:
+        update_collection_mode(collection_id, request.ongoing, request.schedule)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ongoing": request.ongoing, "schedule": request.schedule}
+
+
 @app.delete("/collection/{collection_id}")
 async def delete_collection(
     collection_id: str,
@@ -397,7 +469,7 @@ async def get_collection_posts(
 
     # Build query dynamically
     # Use unqualified 'social_listening.' refs — BQClient.query() auto-qualifies them
-    where_clauses = ["p.collection_id = @collection_id"]
+    where_clauses = ["p.collection_id = @collection_id", "p._rn = 1"]
     params: dict = {"collection_id": collection_id}
 
     if platform != "all":
@@ -448,8 +520,16 @@ async def get_collection_posts(
         ep.ai_summary,
         ep.content_type,
         COUNT(*) OVER() as _total
-    FROM social_listening.posts p
-    LEFT JOIN social_listening.enriched_posts ep ON p.post_id = ep.post_id
+    FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+        FROM social_listening.posts
+    ) p
+    LEFT JOIN (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+        FROM social_listening.enriched_posts
+    ) ep ON p.post_id = ep.post_id AND ep._rn = 1
     LEFT JOIN (
         SELECT post_id, likes, shares, comments_count, views, saves,
                ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
@@ -542,6 +622,343 @@ async def get_collection_status(
         visibility=status.get("visibility", "private"),
         user_id=status.get("user_id"),
     )
+
+
+@app.get("/collection/{collection_id}/stats", response_model=CollectionStatsResponse)
+async def get_collection_stats(
+    collection_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Lightweight descriptive stats for a collection (no AI)."""
+    fs = get_fs()
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if not _can_access_collection(user, status):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    bq = get_bq()
+
+    platform_sql = """
+    SELECT p.platform, COUNT(*) as count,
+           MIN(p.posted_at) as earliest, MAX(p.posted_at) as latest
+    FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+        FROM social_listening.posts
+    ) p
+    WHERE p.collection_id = @collection_id AND p._rn = 1
+    GROUP BY p.platform
+    ORDER BY count DESC
+    """
+
+    sentiment_sql = """
+    SELECT ep.sentiment, COUNT(*) as count
+    FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+        FROM social_listening.enriched_posts
+    ) ep
+    JOIN (
+        SELECT DISTINCT post_id FROM social_listening.posts
+        WHERE collection_id = @collection_id
+    ) p ON ep.post_id = p.post_id
+    WHERE ep._rn = 1 AND ep.sentiment IS NOT NULL
+    GROUP BY ep.sentiment
+    ORDER BY count DESC
+    """
+
+    themes_sql = """
+    SELECT theme, COUNT(*) as count
+    FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+        FROM social_listening.enriched_posts
+    ) ep
+    JOIN (
+        SELECT DISTINCT post_id FROM social_listening.posts
+        WHERE collection_id = @collection_id
+    ) p ON ep.post_id = p.post_id,
+    UNNEST(ep.themes) AS theme
+    WHERE ep._rn = 1
+    GROUP BY theme
+    ORDER BY count DESC
+    LIMIT 8
+    """
+
+    engagement_sql = """
+    SELECT
+        ROUND(AVG(COALESCE(pe.likes, 0)), 0) as avg_likes,
+        ROUND(AVG(COALESCE(pe.views, 0)), 0) as avg_views,
+        ROUND(AVG(COALESCE(pe.comments_count, 0)), 0) as avg_comments,
+        COUNT(ep.post_id) as total_posts_enriched
+    FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+        FROM social_listening.posts
+    ) p
+    LEFT JOIN (
+        SELECT post_id, likes, views, comments_count,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
+        FROM social_listening.post_engagements
+    ) pe ON p.post_id = pe.post_id AND pe.rn = 1
+    LEFT JOIN (
+        SELECT post_id,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+        FROM social_listening.enriched_posts
+    ) ep ON p.post_id = ep.post_id AND ep._rn = 1
+    WHERE p.collection_id = @collection_id AND p._rn = 1
+    """
+
+    params = {"collection_id": collection_id}
+    platform_rows, sentiment_rows, theme_rows, eng_rows = await asyncio.gather(
+        asyncio.to_thread(bq.query, platform_sql, params),
+        asyncio.to_thread(bq.query, sentiment_sql, params),
+        asyncio.to_thread(bq.query, themes_sql, params),
+        asyncio.to_thread(bq.query, engagement_sql, params),
+    )
+
+    # Platform breakdown + date range
+    platform_breakdown = [PlatformCount(platform=r["platform"], count=r["count"]) for r in platform_rows]
+    total_posts = sum(r["count"] for r in platform_rows)
+    earliest = min((str(r["earliest"]) for r in platform_rows if r.get("earliest")), default=None)
+    latest = max((str(r["latest"]) for r in platform_rows if r.get("latest")), default=None)
+
+    sentiment_breakdown = [SentimentCount(sentiment=r["sentiment"], count=r["count"]) for r in sentiment_rows]
+    top_themes = [ThemeCount(theme=r["theme"], count=r["count"]) for r in theme_rows]
+
+    eng = eng_rows[0] if eng_rows else {}
+    engagement_summary = EngagementStats(
+        avg_likes=float(eng.get("avg_likes") or 0),
+        avg_views=float(eng.get("avg_views") or 0),
+        avg_comments=float(eng.get("avg_comments") or 0),
+        total_posts_enriched=int(eng.get("total_posts_enriched") or 0),
+    )
+
+    return CollectionStatsResponse(
+        total_posts=total_posts,
+        platform_breakdown=platform_breakdown,
+        sentiment_breakdown=sentiment_breakdown,
+        top_themes=top_themes,
+        engagement_summary=engagement_summary,
+        date_range={"earliest": earliest, "latest": latest},
+    )
+
+
+@app.get("/collection/{collection_id}/download")
+async def download_collection(
+    collection_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Stream all posts for a collection as a CSV file."""
+    fs = get_fs()
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if not _can_access_collection(user, status):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Derive a safe filename from keywords
+    config = status.get("config") or {}
+    keywords = config.get("keywords", [])
+    title_slug = "_".join(keywords[:3]).replace(" ", "-")[:40] if keywords else collection_id[:8]
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"{title_slug}_{today}.csv"
+
+    bq = get_bq()
+
+    export_sql = """
+    SELECT
+        p.post_id, p.platform, p.channel_handle, p.channel_id,
+        p.title, p.content, p.post_url, p.posted_at, p.post_type,
+        COALESCE(pe.likes, 0) as likes,
+        COALESCE(pe.shares, 0) as shares,
+        COALESCE(pe.views, 0) as views,
+        COALESCE(pe.comments_count, 0) as comments_count,
+        COALESCE(pe.saves, 0) as saves,
+        ep.sentiment, ep.themes, ep.entities, ep.ai_summary, ep.content_type
+    FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+        FROM social_listening.posts
+    ) p
+    LEFT JOIN (
+        SELECT post_id, likes, shares, comments_count, views, saves,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
+        FROM social_listening.post_engagements
+    ) pe ON p.post_id = pe.post_id AND pe.rn = 1
+    LEFT JOIN (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+        FROM social_listening.enriched_posts
+    ) ep ON p.post_id = ep.post_id AND ep._rn = 1
+    WHERE p.collection_id = @collection_id AND p._rn = 1
+    ORDER BY COALESCE(pe.views, 0) DESC
+    """
+
+    rows = await asyncio.to_thread(bq.query, export_sql, {"collection_id": collection_id})
+
+    csv_columns = [
+        "post_id", "platform", "channel_handle", "channel_id",
+        "title", "content", "post_url", "posted_at", "post_type",
+        "likes", "shares", "views", "comments_count", "saves",
+        "sentiment", "themes", "entities", "ai_summary", "content_type",
+    ]
+
+    def generate_csv():
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=csv_columns, extrasaction="ignore")
+        writer.writeheader()
+        yield buf.getvalue()
+        buf.truncate(0)
+        buf.seek(0)
+
+        for row in rows:
+            # Serialize list fields as JSON strings
+            record = {k: row.get(k) for k in csv_columns}
+            for field in ("themes", "entities"):
+                val = record.get(field)
+                if isinstance(val, list):
+                    record[field] = json.dumps(val)
+                elif isinstance(val, str):
+                    pass  # already string
+            writer.writerow(record)
+            yield buf.getvalue()
+            buf.truncate(0)
+            buf.seek(0)
+
+    return StreamingResponse(
+        generate_csv(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/feed", response_model=FeedResponse)
+async def get_multi_collection_feed(
+    request: MultiFeedRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Unified feed across multiple collections, sorted by views desc."""
+    if not request.collection_ids:
+        return FeedResponse(posts=[], total=0, offset=request.offset, limit=request.limit)
+
+    # Verify access to all requested collections
+    fs = get_fs()
+    for cid in request.collection_ids:
+        status = fs.get_collection_status(cid)
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Collection {cid} not found")
+        if not _can_access_collection(user, status):
+            raise HTTPException(status_code=403, detail=f"Access denied for collection {cid}")
+
+    bq = get_bq()
+
+    where_clauses = ["p.collection_id IN UNNEST(@collection_ids)", "p._rn = 1"]
+    params: dict = {"collection_ids": request.collection_ids}
+
+    if request.platform != "all":
+        where_clauses.append("p.platform = @platform")
+        params["platform"] = request.platform
+
+    if request.sentiment != "all":
+        where_clauses.append("ep.sentiment = @sentiment")
+        params["sentiment"] = request.sentiment
+
+    where_sql = " AND ".join(where_clauses)
+
+    sort_map = {
+        "engagement": "COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) DESC",
+        "recent": "p.posted_at DESC",
+        "sentiment": "ep.sentiment ASC, p.posted_at DESC",
+        "views": "COALESCE(pe.views, 0) DESC, p.posted_at DESC",
+    }
+    order_sql = sort_map.get(request.sort, sort_map["views"])
+
+    params["limit"] = request.limit
+    params["offset"] = request.offset
+
+    multi_sql = f"""
+    SELECT
+        p.post_id, p.platform, p.channel_handle, p.channel_id,
+        p.title, p.content, p.post_url, p.posted_at, p.post_type, p.media_refs,
+        p.collection_id,
+        COALESCE(pe.likes, 0) as likes,
+        COALESCE(pe.shares, 0) as shares,
+        COALESCE(pe.views, 0) as views,
+        COALESCE(pe.comments_count, 0) as comments_count,
+        COALESCE(pe.saves, 0) as saves,
+        COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
+        ep.sentiment, ep.themes, ep.entities, ep.ai_summary, ep.content_type,
+        COUNT(*) OVER() as _total
+    FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+        FROM social_listening.posts
+    ) p
+    LEFT JOIN (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+        FROM social_listening.enriched_posts
+    ) ep ON p.post_id = ep.post_id AND ep._rn = 1
+    LEFT JOIN (
+        SELECT post_id, likes, shares, comments_count, views, saves,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
+        FROM social_listening.post_engagements
+    ) pe ON p.post_id = pe.post_id AND pe.rn = 1
+    WHERE {where_sql}
+    ORDER BY {order_sql}
+    LIMIT @limit OFFSET @offset
+    """
+
+    rows = await asyncio.to_thread(bq.query, multi_sql, params)
+    total = rows[0]["_total"] if rows else 0
+
+    posts = []
+    for row in rows:
+        themes = row.get("themes")
+        if isinstance(themes, str):
+            try:
+                themes = json.loads(themes)
+            except (json.JSONDecodeError, TypeError):
+                themes = []
+
+        entities = row.get("entities")
+        if isinstance(entities, str):
+            try:
+                entities = json.loads(entities)
+            except (json.JSONDecodeError, TypeError):
+                entities = []
+
+        media_refs = row.get("media_refs")
+        if isinstance(media_refs, str):
+            try:
+                media_refs = json.loads(media_refs)
+            except (json.JSONDecodeError, TypeError):
+                media_refs = []
+
+        posts.append(
+            FeedPostResponse(
+                post_id=row["post_id"],
+                platform=row["platform"],
+                channel_handle=row.get("channel_handle", ""),
+                channel_id=row.get("channel_id"),
+                title=row.get("title"),
+                content=row.get("content"),
+                post_url=row.get("post_url", ""),
+                posted_at=str(row.get("posted_at", "")),
+                post_type=row.get("post_type", ""),
+                media_refs=media_refs if isinstance(media_refs, list) else [],
+                likes=row.get("likes", 0),
+                shares=row.get("shares", 0),
+                views=row.get("views", 0),
+                comments_count=row.get("comments_count", 0),
+                saves=row.get("saves", 0),
+                total_engagement=row.get("total_engagement", 0),
+                sentiment=row.get("sentiment"),
+                themes=themes if isinstance(themes, list) else [],
+                entities=entities if isinstance(entities, list) else [],
+                ai_summary=row.get("ai_summary"),
+                content_type=row.get("content_type"),
+                collection_id=row.get("collection_id"),
+            )
+        )
+
+    return FeedResponse(posts=posts, total=int(total), offset=request.offset, limit=request.limit)
 
 
 # ---------------------------------------------------------------------------
@@ -865,22 +1282,46 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
     return None
 
 
-def _extract_event_data(event) -> dict | None:
-    """Extract structured data from an ADK event."""
-    if not event.content or not event.content.parts:
-        return None
+def _extract_event_data(event) -> list[dict]:
+    """Extract structured data from all parts of an ADK event.
 
+    An event may contain multiple parts (e.g. a text/thinking part followed by
+    a function_call in the same model turn). Previously only the first matching
+    part was returned, so function_call parts after a text part were silently
+    dropped — meaning SQL queries were never surfaced in the thinking panel.
+    Now all parts are processed and returned as a list.
+    """
+    if not event.content or not event.content.parts:
+        return []
+
+    results = []
     for part in event.content.parts:
         if part.text:
-            return {
-                "event_type": "text",
-                "content": part.text,
-                "author": event.author,
-            }
-        if part.function_call:
+            # Gemini thought parts (part.thought=True) are native model reasoning —
+            # route them directly to the thinking panel, not the chat body.
+            if getattr(part, "thought", False):
+                # Strip <!-- thinking: ... --> wrapper if the model wrote it in
+                # its thought tokens so we show only the clean content.
+                thought_text = re.sub(
+                    r"<!--\s*thinking:\s*([\s\S]*?)\s*-->",
+                    r"\1",
+                    part.text,
+                ).strip() or part.text.strip()
+                results.append({
+                    "event_type": "thinking",
+                    "content": thought_text,
+                    "author": event.author,
+                })
+            else:
+                results.append({
+                    "event_type": "text",
+                    "content": part.text,
+                    "author": event.author,
+                })
+        elif part.function_call:
             if part.function_call.name == "transfer_to_agent":
-                return None
-            return {
+                continue
+            results.append({
                 "event_type": "tool_call",
                 "content": part.function_call.name,
                 "metadata": {
@@ -888,18 +1329,17 @@ def _extract_event_data(event) -> dict | None:
                     "args": dict(part.function_call.args) if part.function_call.args else {},
                 },
                 "author": event.author,
-            }
-        if part.function_response:
+            })
+        elif part.function_response:
             if part.function_response.name == "transfer_to_agent":
-                return None
-            # Include the actual response data so frontend can render structured cards
+                continue
             response_data = {}
             if part.function_response.response:
                 try:
                     response_data = dict(part.function_response.response)
                 except (TypeError, ValueError):
                     response_data = {}
-            return {
+            results.append({
                 "event_type": "tool_result",
                 "content": part.function_response.name,
                 "metadata": {
@@ -907,8 +1347,8 @@ def _extract_event_data(event) -> dict | None:
                     "result": response_data,
                 },
                 "author": event.author,
-            }
-    return None
+            })
+    return results
 
 
 def _extract_text(event) -> str:

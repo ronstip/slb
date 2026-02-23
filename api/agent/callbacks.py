@@ -90,7 +90,13 @@ def collection_state_tracker(
 def _build_context_block(state: dict) -> Optional[str]:
     """Build a context block from session state, or None if no collection."""
     collection_id = state.get("active_collection_id")
-    if not collection_id:
+    selected_sources: list[str] = state.get("selected_sources") or []
+
+    # Fallback: use first selected source as active if none explicitly set
+    if not collection_id and selected_sources:
+        collection_id = selected_sources[0]
+
+    if not collection_id and not selected_sources:
         return None
 
     status = state.get("collection_status", "unknown")
@@ -107,6 +113,15 @@ def _build_context_block(state: dict) -> Optional[str]:
     ]
     if embedded:
         lines.append(f"- Posts embedded: {embedded}")
+
+    if selected_sources:
+        ids_fmt = ", ".join(f"`{sid}`" for sid in selected_sources)
+        lines.append(f"- All selected collections: {ids_fmt}")
+        if len(selected_sources) > 1:
+            lines.append(
+                "- IMPORTANT: Multiple collections are active. "
+                "Apply operations to ALL of them unless the user specifies one."
+            )
 
     lines.append("")
     lines.append(

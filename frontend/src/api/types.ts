@@ -126,6 +126,8 @@ export interface CreateCollectionRequest {
   geo_scope: string;
   max_calls: number;
   include_comments: boolean;
+  ongoing?: boolean;
+  schedule?: 'daily' | 'weekly';
 }
 
 export interface FeedParams {
@@ -143,6 +145,7 @@ export type CollectionStatus =
   | 'collecting'
   | 'enriching'
   | 'completed'
+  | 'monitoring'
   | 'failed'
   | 'cancelled';
 
@@ -154,6 +157,8 @@ export interface CollectionConfig {
   max_calls: number;
   include_comments: boolean;
   geo_scope: string;
+  ongoing?: boolean;
+  schedule?: string;
   video_params?: {
     fps: number;
     start_offset_sec: number;
@@ -173,6 +178,10 @@ export interface CollectionStatusResponse {
   created_at?: string;
   visibility?: 'private' | 'org';
   user_id?: string;
+  ongoing?: boolean;
+  last_run_at?: string;
+  next_run_at?: string;
+  total_runs?: number;
 }
 
 export interface MediaRef {
@@ -205,6 +214,7 @@ export interface FeedPost {
   entities?: string[];
   ai_summary?: string;
   content_type?: string;
+  collection_id?: string;
 }
 
 export interface FeedResponse {
@@ -212,6 +222,29 @@ export interface FeedResponse {
   total: number;
   offset: number;
   limit: number;
+}
+
+export interface MultiFeedParams {
+  collection_ids: string[];
+  sort?: 'engagement' | 'recent' | 'sentiment' | 'views';
+  platform?: string;
+  sentiment?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CollectionStats {
+  total_posts: number;
+  platform_breakdown: Array<{ platform: string; count: number }>;
+  sentiment_breakdown: Array<{ sentiment: string; count: number }>;
+  top_themes: Array<{ theme: string; count: number }>;
+  engagement_summary: {
+    avg_likes: number;
+    avg_views: number;
+    avg_comments: number;
+    total_posts_enriched: number;
+  };
+  date_range: { earliest: string | null; latest: string | null };
 }
 
 // --- SSE Events ---
@@ -373,4 +406,5 @@ export interface DataExportResult {
   rows: DataExportRow[];
   row_count: number;
   column_names: string[];
+  collection_id?: string;
 }

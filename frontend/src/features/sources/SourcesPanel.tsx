@@ -34,6 +34,9 @@ function mapCollectionToSource(c: CollectionStatusResponse) {
     errorMessage: c.error_message,
     visibility: (c.visibility as 'private' | 'org') ?? 'private',
     userId: c.user_id ?? undefined,
+    lastRunAt: c.last_run_at,
+    nextRunAt: c.next_run_at,
+    totalRuns: c.total_runs,
   };
 }
 

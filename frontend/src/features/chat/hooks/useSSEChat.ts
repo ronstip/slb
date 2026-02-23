@@ -40,7 +40,7 @@ export function useSSEChat() {
           {
             message: text,
             session_id: cs.sessionId ?? undefined,
-            selected_sources: selectedSources.length > 0 ? selectedSources : undefined,
+            selected_sources: selectedSources,
           },
           getToken,
           abortController.signal,

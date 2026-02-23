@@ -61,6 +61,9 @@ FROM (
             )
             AND COALESCE(eng.likes, 0) >= 10
             AND JSON_ARRAY_LENGTH(p.media_refs) > 0
+            -- Deduplicate: if the same post_id appears multiple times in this CQ window
+            -- (e.g. duplicate rows in posts table), process it only once
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY p.collected_at DESC) = 1
         ),
         STRUCT(0.2 AS temperature, 2048 AS max_output_tokens)
     ) AS result

@@ -1,4 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import { formatNumber } from '../../../lib/format.ts';
 import type { ChartOverrides } from './chart-overrides.ts';
 
 interface HistogramBucket {
@@ -20,7 +21,7 @@ export function Histogram({ data, overrides }: HistogramProps) {
     <ResponsiveContainer width="100%" height={160}>
       <BarChart data={data} margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
         <XAxis dataKey="bucket" tick={{ fontSize: 10 }} />
-        <YAxis tick={{ fontSize: 10 }} width={30} />
+        <YAxis tick={{ fontSize: 10 }} width={38} tickFormatter={formatNumber} />
         <Tooltip contentStyle={{ fontSize: 12 }} />
         <Bar dataKey="count" fill={barColor} radius={[2, 2, 0, 0]}>
           {overrides?.showValues && (

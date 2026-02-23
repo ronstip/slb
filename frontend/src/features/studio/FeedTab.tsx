@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useStudioStore } from '../../stores/studio-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { getPosts } from '../../api/endpoints/feed.ts';
+import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { PostCard } from './PostCard.tsx';
 import { FeedControls } from './FeedControls.tsx';
 import type { FeedParams, FeedPost } from '../../api/types.ts';
@@ -16,22 +15,35 @@ function splitColumns(posts: FeedPost[]): [FeedPost[], FeedPost[]] {
 }
 
 export function FeedTab() {
-  const feedSourceId = useStudioStore((s) => s.feedSourceId);
   const sources = useSourcesStore((s) => s.sources);
-  const selectedSources = sources.filter((s) => s.selected);
+  // All active (checkbox-checked) collections in session
+  const activeSources = sources.filter((s) => s.active && s.selected);
+  const activeIds = activeSources.map((s) => s.collectionId);
 
   const [sort, setSort] = useState<FeedParams['sort']>('views');
   const [platform, setPlatform] = useState('all');
   const [sentiment, setSentiment] = useState('all');
+  // Which of the active collections to show (empty = all)
+  const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
 
-  // Track container width to decide 1-col vs 2-col layout
+  // Keep collectionFilter in sync when activeSources change
+  useEffect(() => {
+    setCollectionFilter((prev) => {
+      const still = prev.filter((id) => activeIds.includes(id));
+      return still.length === 0 ? [] : still;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIds.join(',')]);
+
+  // Effective IDs to query (empty filter = use all active)
+  const effectiveIds = collectionFilter.length > 0 ? collectionFilter : activeIds;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [useTwoCols, setUseTwoCols] = useState(true);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    // Set initial value immediately so first render uses correct layout
     setUseTwoCols(el.getBoundingClientRect().width >= 380);
     const observer = new ResizeObserver(([entry]) => {
       setUseTwoCols(entry.contentRect.width >= 380);
@@ -40,22 +52,28 @@ export function FeedTab() {
     return () => observer.disconnect();
   }, []);
 
-  const activeSourceId = feedSourceId || selectedSources[0]?.collectionId;
-
   const { data, fetchNextPage, hasNextPage, isFetching, isLoading, isError } = useInfiniteQuery({
-    queryKey: ['feed', activeSourceId, sort, platform, sentiment],
+    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment],
     queryFn: ({ pageParam = 0 }) =>
-      getPosts(activeSourceId!, { sort, platform, sentiment, limit: 12, offset: pageParam }),
+      getMultiCollectionPosts({
+        collection_ids: effectiveIds,
+        sort,
+        platform,
+        sentiment,
+        limit: 12,
+        offset: pageParam,
+      }),
     getNextPageParam: (lastPage) => {
       const nextOffset = lastPage.offset + lastPage.limit;
       return nextOffset < lastPage.total ? nextOffset : undefined;
     },
     initialPageParam: 0,
-    enabled: !!activeSourceId,
+    enabled: effectiveIds.length > 0,
   });
 
   const allPosts = data?.pages.flatMap((p) => p.posts) ?? [];
   const totalCount = data?.pages[0]?.total ?? 0;
+  const showCollectionLabels = activeSources.length > 1;
 
   const handleScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
@@ -71,17 +89,21 @@ export function FeedTab() {
     [fetchNextPage, hasNextPage, isFetching],
   );
 
-  if (!activeSourceId) {
+  if (activeIds.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center px-4">
         <p className="text-sm text-muted-foreground">
-          Select a source to view its posts.
+          Check at least one collection in the Sources panel to see posts.
         </p>
       </div>
     );
   }
 
   const [colA, colB] = splitColumns(allPosts);
+
+  const collectionTitleMap = Object.fromEntries(
+    activeSources.map((s) => [s.collectionId, s.title]),
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -93,6 +115,9 @@ export function FeedTab() {
         onPlatformChange={setPlatform}
         onSentimentChange={setSentiment}
         totalCount={totalCount}
+        activeSources={activeSources}
+        collectionFilter={collectionFilter}
+        onCollectionFilterChange={setCollectionFilter}
       />
 
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>
@@ -111,16 +136,23 @@ export function FeedTab() {
             No posts found.
           </p>
         ) : useTwoCols ? (
-          /* Two-column masonry-style layout */
           <div className="grid grid-cols-2 gap-4 pt-4 items-start">
             <div className="flex flex-col gap-4">
               {colA.map((post) => (
-                <PostCard key={post.post_id} post={post} />
+                <PostCard
+                  key={post.post_id}
+                  post={post}
+                  collectionTitle={showCollectionLabels ? collectionTitleMap[post.collection_id ?? ''] : undefined}
+                />
               ))}
             </div>
             <div className="flex flex-col gap-4">
               {colB.map((post) => (
-                <PostCard key={post.post_id} post={post} />
+                <PostCard
+                  key={post.post_id}
+                  post={post}
+                  collectionTitle={showCollectionLabels ? collectionTitleMap[post.collection_id ?? ''] : undefined}
+                />
               ))}
             </div>
             {isFetching && (
@@ -130,10 +162,13 @@ export function FeedTab() {
             )}
           </div>
         ) : (
-          /* Single-column layout for narrower widths */
           <div className="flex flex-col gap-4 pt-4">
             {allPosts.map((post) => (
-              <PostCard key={post.post_id} post={post} />
+              <PostCard
+                key={post.post_id}
+                post={post}
+                collectionTitle={showCollectionLabels ? collectionTitleMap[post.collection_id ?? ''] : undefined}
+              />
             ))}
             {isFetching && (
               <div className="py-4 text-center text-xs text-muted-foreground/70">
