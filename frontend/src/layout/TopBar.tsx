@@ -146,7 +146,7 @@ export function TopBar() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white/10">
               <Avatar className="h-7 w-7">
-                <AvatarImage src={user?.photoURL || undefined} />
+                <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
                 <AvatarFallback className="bg-white/10 text-xs font-medium text-white">
                   {displayInitial}
                 </AvatarFallback>

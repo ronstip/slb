@@ -66,12 +66,20 @@ export function useSSEChat() {
                 chatState.appendThinking(messageId, thinkingMatch[1].trim());
               }
               const cleanText = event.content.replace(/<!--\s*thinking:\s*[\s\S]*?\s*-->/g, '').trimEnd();
-              if (cleanText) chatState.appendText(messageId, cleanText);
+              if (cleanText) {
+                // Clear status line once real text arrives
+                chatState.setStatusLine(messageId, null);
+                chatState.appendText(messageId, cleanText);
+              }
               break;
             }
 
             case 'thinking':
               chatState.appendThinking(messageId, event.content);
+              break;
+
+            case 'status':
+              chatState.setStatusLine(messageId, event.content);
               break;
 
             case 'tool_call': {

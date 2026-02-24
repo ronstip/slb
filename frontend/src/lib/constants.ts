@@ -17,10 +17,9 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {
-  orchestrator: 'Routing',
-  research_agent: 'Research',
-  collection_agent: 'Collection',
-  analyst_agent: 'Analyst',
+  research_agent: 'Understanding',
+  collection_agent: 'Collecting',
+  analyst_agent: 'Analyzing',
 };
 
 export const PLATFORM_COLORS: Record<string, string> = {
@@ -48,3 +47,33 @@ export const SENTIMENT_COLORS: Record<string, string> = {
 
 export const PLATFORMS = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'] as const;
 export type Platform = (typeof PLATFORMS)[number];
+
+export const SCHEDULE_UTC_TIMES = [
+  { label: '12:00 AM', value: '00:00' },
+  { label: '02:00 AM', value: '02:00' },
+  { label: '04:00 AM', value: '04:00' },
+  { label: '06:00 AM', value: '06:00' },
+  { label: '08:00 AM', value: '08:00' },
+  { label: '09:00 AM', value: '09:00' },
+  { label: '10:00 AM', value: '10:00' },
+  { label: '12:00 PM', value: '12:00' },
+  { label: '02:00 PM', value: '14:00' },
+  { label: '04:00 PM', value: '16:00' },
+  { label: '06:00 PM', value: '18:00' },
+  { label: '09:00 PM', value: '21:00' },
+] as const;
+
+/** Parse a schedule string ("daily", "weekly", or "Nd@HH:MM") → { days, time } */
+export function parseScheduleString(schedule?: string | null): { days: number; time: string } {
+  if (!schedule || schedule === 'daily') return { days: 1, time: '09:00' };
+  if (schedule === 'weekly') return { days: 7, time: '09:00' };
+  const m = schedule.match(/^(\d+)d@(\d{2}:\d{2})$/);
+  if (m) return { days: parseInt(m[1], 10), time: m[2] };
+  return { days: 1, time: '09:00' };
+}
+
+/** Format a schedule into human-readable text e.g. "Every day at 09:00 UTC" */
+export function formatSchedule(schedule?: string | null): string {
+  const { days, time } = parseScheduleString(schedule);
+  return `Every ${days === 1 ? 'day' : `${days} days`} at ${time} UTC`;
+}

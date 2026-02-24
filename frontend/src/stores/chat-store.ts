@@ -20,6 +20,7 @@ export interface ChatMessage {
   toolIndicators: ToolIndicator[];
   cards: MessageCard[];
   thinkingEntries: string[];
+  statusLine: string | null;
   suggestions: string[];
   activeAgent?: string;
 }
@@ -37,6 +38,7 @@ interface ChatStore {
   resolveToolCall: (messageId: string, name: string, result?: Record<string, unknown>) => void;
   addCard: (messageId: string, card: MessageCard) => void;
   appendThinking: (messageId: string, content: string) => void;
+  setStatusLine: (messageId: string, status: string | null) => void;
   setSuggestions: (messageId: string, suggestions: string[]) => void;
   finalizeMessage: (messageId: string) => void;
   addSystemMessage: (text: string) => void;
@@ -70,6 +72,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           toolIndicators: [],
           cards: [],
           thinkingEntries: [],
+          statusLine: null,
           suggestions: [],
         },
       ],
@@ -89,6 +92,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           toolIndicators: [],
           cards: [],
           thinkingEntries: [],
+          statusLine: null,
           suggestions: [],
         },
       ],
@@ -158,6 +162,13 @@ export const useChatStore = create<ChatStore>((set) => ({
       ),
     })),
 
+  setStatusLine: (messageId, status) =>
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId ? { ...m, statusLine: status } : m,
+      ),
+    })),
+
   setSuggestions: (messageId, suggestions) =>
     set((s) => ({
       messages: s.messages.map((m) =>
@@ -194,6 +205,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           toolIndicators: [],
           cards: [],
           thinkingEntries: [],
+          statusLine: null,
           suggestions: [],
         },
       ],

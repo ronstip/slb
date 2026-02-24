@@ -88,7 +88,10 @@ def collection_state_tracker(
 
 
 def _build_context_block(state: dict) -> Optional[str]:
-    """Build a context block from session state, or None if no collection."""
+    """Build a context block from session state, or None if nothing to inject."""
+    blocks: list[str] = []
+
+    # ── Collection context ──────────────────────────────────────────
     collection_id = state.get("active_collection_id")
     selected_sources: list[str] = state.get("selected_sources") or []
 
@@ -96,39 +99,52 @@ def _build_context_block(state: dict) -> Optional[str]:
     if not collection_id and selected_sources:
         collection_id = selected_sources[0]
 
-    if not collection_id and not selected_sources:
-        return None
+    if collection_id or selected_sources:
+        status = state.get("collection_status", "unknown")
+        posts = state.get("posts_collected", 0)
+        enriched = state.get("posts_enriched", 0)
+        embedded = state.get("posts_embedded", 0)
 
-    status = state.get("collection_status", "unknown")
-    posts = state.get("posts_collected", 0)
-    enriched = state.get("posts_enriched", 0)
-    embedded = state.get("posts_embedded", 0)
+        lines = [
+            "## Current Collection Context",
+            f"- Active collection: `{collection_id}`",
+            f"- Status: **{status}**",
+            f"- Posts collected: {posts}",
+            f"- Posts enriched: {enriched}",
+        ]
+        if embedded:
+            lines.append(f"- Posts embedded: {embedded}")
 
-    lines = [
-        "## Current Collection Context",
-        f"- Active collection: `{collection_id}`",
-        f"- Status: **{status}**",
-        f"- Posts collected: {posts}",
-        f"- Posts enriched: {enriched}",
-    ]
-    if embedded:
-        lines.append(f"- Posts embedded: {embedded}")
+        if selected_sources:
+            ids_fmt = ", ".join(f"`{sid}`" for sid in selected_sources)
+            lines.append(f"- All selected collections: {ids_fmt}")
+            if len(selected_sources) > 1:
+                lines.append(
+                    "- IMPORTANT: Multiple collections are active. "
+                    "Apply operations to ALL of them unless the user specifies one."
+                )
 
-    if selected_sources:
-        ids_fmt = ", ".join(f"`{sid}`" for sid in selected_sources)
-        lines.append(f"- All selected collections: {ids_fmt}")
-        if len(selected_sources) > 1:
-            lines.append(
-                "- IMPORTANT: Multiple collections are active. "
-                "Apply operations to ALL of them unless the user specifies one."
-            )
+        lines.append("")
+        lines.append(
+            "Use this context when the user references 'the collection' or "
+            "'my data' without specifying a collection ID."
+        )
+        blocks.append("\n".join(lines))
 
-    lines.append("")
-    lines.append(
-        "Use this context when the user references 'the collection' or "
-        "'my data' without specifying a collection ID."
-    )
-    return "\n".join(lines)
+    # ── Research brief ──────────────────────────────────────────────
+    # Stored by research_agent via output_key="research_brief".
+    # Gives collection_agent and analyst_agent the research framing,
+    # analysis plan, and key context without the user repeating it.
+    research_brief = state.get("research_brief")
+    if research_brief:
+        blocks.append(
+            "## Research Brief\n"
+            "The research agent produced the following brief. Use it to "
+            "understand the user's intent, the analysis plan, and key context.\n\n"
+            f"{research_brief}"
+        )
+
+    return "\n\n".join(blocks) if blocks else None
 
 
 def inject_collection_context(

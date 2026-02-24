@@ -12,10 +12,30 @@ from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-SCHEDULE_INTERVALS: dict[str, timedelta] = {
-    "daily": timedelta(days=1),
-    "weekly": timedelta(weeks=1),
-}
+def _parse_schedule(schedule: str | None) -> tuple[int, int, int]:
+    """Return (interval_days, hour_utc, minute_utc) for a schedule string.
+
+    Supported formats:
+      "daily"         → every 1 day  at 09:00 UTC  (legacy)
+      "weekly"        → every 7 days at 09:00 UTC  (legacy)
+      "Nd@HH:MM"      → every N days at HH:MM UTC  (e.g. "1d@04:00", "7d@09:30")
+    """
+    if not schedule or schedule == "daily":
+        return (1, 9, 0)
+    if schedule == "weekly":
+        return (7, 9, 0)
+    import re
+    m = re.match(r"^(\d+)d@(\d{2}):(\d{2})$", schedule)
+    if m:
+        return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return (1, 9, 0)
+
+
+def _compute_next_run_at(schedule: str | None, from_time: datetime) -> datetime:
+    """Return the next run datetime for the given schedule, starting from from_time."""
+    interval_days, hour, minute = _parse_schedule(schedule)
+    base = from_time + timedelta(days=interval_days)
+    return base.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 def create_collection_from_request(
@@ -125,9 +145,8 @@ def _run_pipeline(collection_id: str) -> None:
     config = (status or {}).get("config") or {}
     if config.get("ongoing"):
         schedule = config.get("schedule", "daily")
-        interval = SCHEDULE_INTERVALS.get(schedule, timedelta(days=1))
         now = datetime.now(timezone.utc)
-        next_run_at = now + interval
+        next_run_at = _compute_next_run_at(schedule, now)
 
         # Build new run_history entry
         run_entry = {
@@ -218,9 +237,8 @@ def update_collection_mode(
     )
 
     if ongoing:
-        interval = SCHEDULE_INTERVALS.get(schedule or "daily", timedelta(days=1))
         now = datetime.now(timezone.utc)
-        next_run_at = now + interval
+        next_run_at = _compute_next_run_at(schedule, now)
         fs.update_collection_status(
             collection_id,
             ongoing=True,

@@ -195,7 +195,6 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
     session.state["message_count"] = session.state.get("message_count", 0) + 1
 
     async def event_stream():
-        text_emitted = False
         try:
             async for event in runner.run_async(
                 user_id=user_id, session_id=session_id, new_message=content
@@ -203,22 +202,6 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                 # Extract all parts from this event (may be multiple per turn)
                 for event_data in _extract_event_data(event):
                     et = event_data["event_type"]
-
-                    # Inject acknowledgment if first visible event is a tool_call
-                    if et == "tool_call" and not text_emitted:
-                        ack_text = _build_acknowledgment(event_data)
-                        yield {
-                            "event": "text",
-                            "data": json.dumps({
-                                "event_type": "text",
-                                "content": ack_text,
-                                "author": event_data.get("author", ""),
-                            }),
-                        }
-                        text_emitted = True
-
-                    if et == "text":
-                        text_emitted = True
 
                     yield {
                         "event": et,
@@ -1230,25 +1213,6 @@ def _extract_suggestions(text: str) -> tuple[str, list[str]]:
     return text, []
 
 
-_TOOL_ACKNOWLEDGMENTS = {
-    "google_search_agent": "Let me search for some context on that...",
-    "design_research": "Let me put together a research plan for you...",
-    "execute_sql": "Let me query the data...",
-    "get_insights": "Let me generate an insight report...",
-    "start_collection": "Let me start the collection...",
-    "get_progress": "Let me check on the progress...",
-    "export_data": "Let me prepare that export...",
-    "create_chart": "Let me create that visualization...",
-    "display_posts": "Let me pull up those posts...",
-}
-
-
-def _build_acknowledgment(event_data: dict) -> str:
-    """Generate a synthetic acknowledgment when no text has been emitted yet."""
-    tool_name = event_data.get("metadata", {}).get("name", "")
-    ack = _TOOL_ACKNOWLEDGMENTS.get(tool_name, "Let me look into that for you...")
-    return ack + "\n\n"
-
 
 def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -> str | None:
     """Format a thinking entry for analytical tools."""
@@ -1313,11 +1277,36 @@ def _extract_event_data(event) -> list[dict]:
                     "author": event.author,
                 })
             else:
-                results.append({
-                    "event_type": "text",
-                    "content": part.text,
-                    "author": event.author,
-                })
+                raw = part.text
+
+                # Extract <!-- status: ... --> markers and emit as status events
+                for status_match in re.finditer(
+                    r"<!--\s*status:\s*([\s\S]*?)\s*-->", raw
+                ):
+                    results.append({
+                        "event_type": "status",
+                        "content": status_match.group(1).strip(),
+                        "author": event.author,
+                    })
+
+                # Extract <!-- thinking: ... --> markers and emit as thinking events
+                for think_match in re.finditer(
+                    r"<!--\s*thinking:\s*([\s\S]*?)\s*-->", raw
+                ):
+                    results.append({
+                        "event_type": "thinking",
+                        "content": think_match.group(1).strip(),
+                        "author": event.author,
+                    })
+
+                # Strip all comment markers from the visible text
+                clean = re.sub(r"<!--[\s\S]*?-->", "", raw).strip()
+                if clean:
+                    results.append({
+                        "event_type": "text",
+                        "content": clean,
+                        "author": event.author,
+                    })
         elif part.function_call:
             if part.function_call.name == "transfer_to_agent":
                 continue

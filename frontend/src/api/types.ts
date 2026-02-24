@@ -127,7 +127,7 @@ export interface CreateCollectionRequest {
   max_calls: number;
   include_comments: boolean;
   ongoing?: boolean;
-  schedule?: 'daily' | 'weekly';
+  schedule?: string;
 }
 
 export interface FeedParams {
@@ -264,6 +264,7 @@ export type SSEEvent =
   | { event_type: 'tool_call'; content: string; metadata: ToolCallMeta; author: string }
   | { event_type: 'tool_result'; content: string; metadata: ToolResultMeta; author: string }
   | { event_type: 'thinking'; content: string; author?: string }
+  | { event_type: 'status'; content: string; author?: string }
   | { event_type: 'done'; session_id: string; session_title?: string; content: string; suggestions?: string[] }
   | { event_type: 'error'; content: string };
 

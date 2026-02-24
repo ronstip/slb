@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Brain, ChevronDown, ChevronRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -6,6 +6,8 @@ import remarkGfm from 'remark-gfm';
 interface ThinkingBoxProps {
   entries: string[];
   isStreaming: boolean;
+  /** Whether main chat content (text) has arrived */
+  hasMainContent?: boolean;
 }
 
 function summarize(text: string, maxLen = 60): string {
@@ -13,11 +15,13 @@ function summarize(text: string, maxLen = 60): string {
   return first.length > maxLen ? first.slice(0, maxLen) + '...' : first;
 }
 
-export function ThinkingBox({ entries, isStreaming }: ThinkingBoxProps) {
+export function ThinkingBox({ entries, isStreaming, hasMainContent = false }: ThinkingBoxProps) {
   const [boxOpen, setBoxOpen] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  // Track whether we auto-opened so we can auto-close later
+  const autoOpenedRef = useRef(false);
 
-  // Auto-expand the latest step (but don't auto-open the box)
+  // Auto-expand the latest step
   useEffect(() => {
     if (entries.length > 0) {
       const latest = entries.length - 1;
@@ -28,6 +32,22 @@ export function ThinkingBox({ entries, isStreaming }: ThinkingBoxProps) {
       });
     }
   }, [entries.length]);
+
+  // Auto-open: when streaming, entries arrive, and no main content yet
+  useEffect(() => {
+    if (isStreaming && entries.length > 0 && !hasMainContent && !boxOpen) {
+      setBoxOpen(true);
+      autoOpenedRef.current = true;
+    }
+  }, [isStreaming, entries.length, hasMainContent, boxOpen]);
+
+  // Auto-close: when main content arrives (only if we auto-opened)
+  useEffect(() => {
+    if (hasMainContent && autoOpenedRef.current) {
+      setBoxOpen(false);
+      autoOpenedRef.current = false;
+    }
+  }, [hasMainContent]);
 
   if (entries.length === 0) return null;
 
@@ -47,7 +67,11 @@ export function ThinkingBox({ entries, isStreaming }: ThinkingBoxProps) {
     <div className="mb-2 rounded-md border border-dashed border-border/60 bg-muted/30">
       {/* Master header */}
       <button
-        onClick={() => setBoxOpen(!boxOpen)}
+        onClick={() => {
+          setBoxOpen(!boxOpen);
+          // Manual toggle overrides auto behavior
+          autoOpenedRef.current = false;
+        }}
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
       >
         <Brain className="h-3 w-3 text-muted-foreground/60" />

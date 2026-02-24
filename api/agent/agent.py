@@ -1,8 +1,10 @@
 import logging
+from datetime import datetime, timezone
 
 from google.adk.agents import LlmAgent
 from google.adk.memory import InMemoryMemoryService, VertexAiMemoryBankService
 from google.adk.runners import Runner
+from google.adk.tools.agent_tool import AgentTool
 from google.adk.tools.bigquery import BigQueryToolset
 from google.adk.tools.bigquery.config import BigQueryToolConfig, WriteMode
 from google.adk.tools.google_search_tool import GoogleSearchTool
@@ -26,6 +28,7 @@ from api.agent.tools.display_posts import display_posts
 from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.get_insights import get_insights
+from api.agent.tools.get_past_collections import get_past_collections
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
 from api.agent.tools.run_analysis_flow import run_analysis_flow
@@ -42,36 +45,45 @@ def create_agent() -> LlmAgent:
     settings = get_settings()
     memory_tool = PreloadMemoryTool()
 
-    # --- Research Agent ---
-    research_tools = [design_research]
+    # ─── Research Agent ───────────────────────────────────────────────
+    # The thinker. Understands problems, gathers context, designs research.
+    # output_key stores its final response in session.state["research_brief"]
+    # so downstream agents can read it via inject_collection_context.
+    research_tools = [design_research, get_past_collections]
     if settings.enable_search_grounding:
         research_tools.insert(0, GoogleSearchTool(bypass_multi_tools_limit=True))
     research_tools.append(memory_tool)
+
+    current_date = datetime.now(timezone.utc).strftime("%B %d, %Y")
+    research_prompt = RESEARCH_AGENT_PROMPT.replace("{{current_date}}", current_date)
 
     research_agent = LlmAgent(
         model=settings.research_model,
         name="research_agent",
         description=(
-            "Designs social media research experiments. Handles research "
-            "planning, keyword selection, platform choices, and uses web "
-            "search for brand context. Transfer here when the user asks "
-            "a new research question or wants to modify a research design."
+            "Research architect: designs research experiments, selects keywords "
+            "and platforms, uses web search for brand/event context, and checks "
+            "past collections. Call as a tool when you need factual lookups "
+            "(event dates, brand context, competitor names, channel handles) "
+            "or to understand real-world context behind a data pattern."
         ),
-        instruction=RESEARCH_AGENT_PROMPT + FORMATTING_INSTRUCTIONS,
+        instruction=research_prompt + FORMATTING_INSTRUCTIONS,
         tools=research_tools,
+        output_key="research_brief",
         after_tool_callback=log_tool_invocation,
     )
 
-    # --- Collection Agent ---
+    # ─── Collection Agent ─────────────────────────────────────────────
+    # The builder. Manages the full collection lifecycle.
+    # Has research_agent as a tool for factual resolution during setup.
     collection_agent = LlmAgent(
         model=settings.collection_model,
         name="collection_agent",
         description=(
-            "Manages the full data collection lifecycle including enrichment. "
-            "Starts, monitors, cancels collections, runs AI enrichment on "
-            "collected posts, and refreshes engagement data. Transfer here "
-            "when the user approves a research design, asks about progress, "
-            "or wants to manage an existing collection."
+            "Collection manager: starts, monitors, cancels collections, runs "
+            "AI enrichment, and refreshes engagement data. Call as a tool when "
+            "you need to check collection status, trigger enrichment, expand a "
+            "collection, or refresh stale engagement metrics."
         ),
         instruction=COLLECTION_AGENT_PROMPT + FORMATTING_INSTRUCTIONS,
         tools=[
@@ -80,13 +92,17 @@ def create_agent() -> LlmAgent:
             get_progress,
             refresh_engagements,
             enrich_collection,
+            AgentTool(agent=research_agent),
             memory_tool,
         ],
         before_model_callback=inject_collection_context,
         after_tool_callback=[collection_state_tracker, log_tool_invocation],
     )
 
-    # --- Analyst Agent ---
+    # ─── Analyst Agent ────────────────────────────────────────────────
+    # The analyst. Turns raw data into insights.
+    # Has research_agent as a tool for real-world context during analysis.
+    # Has collection_agent as a tool for data operations (refresh, expand).
     bq_toolset = BigQueryToolset(
         bigquery_tool_config=BigQueryToolConfig(
             write_mode=WriteMode.BLOCKED,
@@ -101,21 +117,34 @@ def create_agent() -> LlmAgent:
         model=settings.analyst_model,
         name="analyst_agent",
         description=(
-            "Generates insight reports, exports data as CSV, and answers "
-            "custom analytical questions by querying BigQuery directly. "
-            "Transfer here when the user wants results, insights, data "
-            "exports, or asks questions about collected data."
+            "Senior analyst: generates insight reports, runs SQL analytics, "
+            "creates charts, displays posts, and exports data. Transfer here "
+            "when the user wants results, insights, data exports, or asks "
+            "questions about collected data."
         ),
         instruction=ANALYST_AGENT_PROMPT.format(project_id=settings.gcp_project_id) + FORMATTING_INSTRUCTIONS,
-        tools=[run_analysis_flow, get_insights, export_data, create_chart, display_posts, bq_toolset, memory_tool],
+        tools=[
+            run_analysis_flow,
+            get_insights,
+            export_data,
+            create_chart,
+            display_posts,
+            bq_toolset,
+            AgentTool(agent=research_agent),
+            AgentTool(agent=collection_agent),
+            memory_tool,
+        ],
         before_model_callback=inject_collection_context,
         after_tool_callback=log_tool_invocation,
     )
 
-    # --- Orchestrator (root agent) ---
-    # Disable thinking and cap output — orchestrator only routes, never reasons.
-    # PreloadMemoryTool gives the orchestrator past conversation context
-    # so it can make informed routing decisions and handle recall questions.
+    # ─── Cross-agent tool: research → analyst ─────────────────────────
+    # Research can query the analyst to check if similar data already exists
+    # before designing a new collection (e.g., "any existing Nike data?").
+    research_agent.tools.append(AgentTool(agent=analyst_agent))
+
+    # ─── Orchestrator (root agent) ────────────────────────────────────
+    # Pure router. No thinking. Routes to the right specialist immediately.
     orchestrator = LlmAgent(
         model=settings.orchestrator_model,
         name="orchestrator",

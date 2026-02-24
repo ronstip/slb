@@ -4,7 +4,7 @@ import type { CollectionConfig, CreateCollectionRequest } from '../../api/types.
 import { createCollection } from '../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useChatStore } from '../../stores/chat-store.ts';
-import { PLATFORMS, PLATFORM_LABELS } from '../../lib/constants.ts';
+import { PLATFORMS, PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString } from '../../lib/constants.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Textarea } from '../../components/ui/textarea.tsx';
 import { Label } from '../../components/ui/label.tsx';
@@ -51,14 +51,18 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
   const [maxCalls, setMaxCalls] = useState(prefill?.max_calls || 2);
   const [includeComments, setIncludeComments] = useState(prefill?.include_comments ?? true);
   const [ongoing, setOngoing] = useState(prefill?.ongoing ?? false);
-  const [schedule, setSchedule] = useState<'daily' | 'weekly'>(
-    (prefill?.schedule as 'daily' | 'weekly') || 'daily',
-  );
+
+  const parsed = parseScheduleString(prefill?.schedule);
+  const [scheduleIntervalDays, setScheduleIntervalDays] = useState(parsed.days);
+  const [scheduleTimeUtc, setScheduleTimeUtc] = useState(parsed.time);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const addSource = useSourcesStore((s) => s.addSource);
   const addSystemMessage = useChatStore((s) => s.addSystemMessage);
+
+  const scheduleStr = `${scheduleIntervalDays}d@${scheduleTimeUtc}`;
 
   const togglePlatform = (p: string) => {
     setPlatforms((prev) =>
@@ -112,7 +116,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
         max_calls: maxCalls,
         include_comments: includeComments,
         ongoing,
-        schedule: ongoing ? schedule : undefined,
+        schedule: ongoing ? scheduleStr : undefined,
       };
 
       const result = await createCollection(req);
@@ -132,7 +136,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
           include_comments: includeComments,
           geo_scope: geoScope,
           ongoing,
-          schedule: ongoing ? schedule : undefined,
+          schedule: ongoing ? scheduleStr : undefined,
         },
         title: description || keywords.join(', ') || 'New Collection',
         postsCollected: 0,
@@ -160,6 +164,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
 
   return (
     <div className={`overflow-y-auto px-6 py-4 ${variant === 'modal' ? 'max-h-[70vh]' : ''}`}>
+
       {/* Description */}
       <div className="mb-4">
         <Label className="mb-1.5">Description</Label>
@@ -302,31 +307,43 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
       </div>
 
       {/* Ongoing Monitoring */}
-      <div className="mb-6 rounded-lg border border-border bg-muted/30 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Ongoing Monitoring</span>
-          </div>
+      <div className={`mb-5 rounded-lg border px-4 py-3 transition-colors ${ongoing ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-muted/30'}`}>
+        <div className="flex items-center gap-3">
           <Switch checked={ongoing} onCheckedChange={setOngoing} />
+          <div className="flex items-center gap-2">
+            <RefreshCw className={`h-3.5 w-3.5 ${ongoing ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+            <span className={`text-sm font-medium ${ongoing ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground'}`}>
+              Ongoing Monitoring
+            </span>
+          </div>
         </div>
         {ongoing && (
           <div className="mt-3">
-            <Label className="mb-1.5 text-xs text-muted-foreground">Refresh schedule</Label>
-            <div className="flex gap-2">
-              {(['daily', 'weekly'] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSchedule(s)}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-medium capitalize transition-all ${
-                    schedule === s
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'border border-border bg-card text-muted-foreground hover:border-primary/40'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+            <Label className="mb-2 text-xs text-muted-foreground">Refresh schedule</Label>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Every</span>
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={scheduleIntervalDays}
+                onChange={(e) => setScheduleIntervalDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+                className="w-14 rounded border border-input bg-card px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <span className="text-muted-foreground">
+                {scheduleIntervalDays === 1 ? 'day' : 'days'} at
+              </span>
+              <Select value={scheduleTimeUtc} onValueChange={setScheduleTimeUtc}>
+                <SelectTrigger className="w-28 h-7 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">UTC</span>
             </div>
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               Time range above sets the initial backfill window. Subsequent runs collect only new posts.
