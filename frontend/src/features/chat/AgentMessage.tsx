@@ -9,10 +9,13 @@ import { ThinkingBox } from './ThinkingBox.tsx';
 import { StatusLine } from './StatusLine.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
 import { ProgressCard } from './cards/ProgressCard.tsx';
-import { InsightSummaryCard } from './cards/InsightSummaryCard.tsx';
 import { DataExportCard } from './cards/DataExportCard.tsx';
 import { ChartCard } from './cards/ChartCard.tsx';
 import { PostEmbedCard } from './cards/PostEmbedCard.tsx';
+import { DecisionCard } from './cards/DecisionCard.tsx';
+import { FindingChip } from './cards/FindingChip.tsx';
+import { PlanCard } from './cards/PlanCard.tsx';
+import { InsightReportCard } from './cards/InsightReportCard.tsx';
 import { FollowUpChips } from './FollowUpChips.tsx';
 import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
 
@@ -22,7 +25,6 @@ interface AgentMessageProps {
 }
 
 export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) {
-  const hasInsightCard = message.cards.some((c) => c.type === 'insight_summary');
   const agentLabel = message.activeAgent
     ? AGENT_DISPLAY_NAMES[message.activeAgent] || message.activeAgent
     : null;
@@ -32,7 +34,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
   const isThinking = message.isStreaming && !hasActivity && !message.statusLine;
 
   return (
-    <div className={`flex gap-3 overflow-hidden ${hasInsightCard ? 'max-w-full' : 'max-w-[90%]'}`}>
+    <div className="flex gap-3 overflow-hidden max-w-[90%]">
       {/* Avatar */}
       <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5">
         <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -99,14 +101,20 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               return <ResearchDesignCard key={i} data={card.data as unknown as DesignResearchResult} />;
             case 'progress':
               return <ProgressCard key={i} data={card.data} />;
-            case 'insight_summary':
-              return <InsightSummaryCard key={i} data={card.data} />;
             case 'data_export':
               return <DataExportCard key={i} data={card.data} />;
             case 'chart':
               return <ChartCard key={i} data={card.data} />;
             case 'post_embed':
               return <PostEmbedCard key={i} data={card.data} />;
+            case 'decision':
+              return <DecisionCard key={i} data={card.data} onSelect={onSuggestionClick} />;
+            case 'finding':
+              return <FindingChip key={i} data={card.data} />;
+            case 'plan':
+              return <PlanCard key={i} data={card.data} onSelect={onSuggestionClick} />;
+            case 'insight_report':
+              return <InsightReportCard key={i} data={card.data} />;
             default:
               return null;
           }

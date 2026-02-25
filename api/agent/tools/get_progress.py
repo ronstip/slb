@@ -77,7 +77,7 @@ def _format_message(status: dict) -> str:
             skipped = enrich_log.get("total_skipped")
             if skipped:
                 msg += f" ({skipped} posts skipped below {enrich_log.get('min_likes_threshold', 0)} likes threshold.)"
-            msg += " Ready for insights — use get_insights."
+            msg += " Ready for analysis — ask a question about the data or request a full analysis."
         else:
             msg += " Enrichment has not run yet. Use enrich_collection to run AI enrichment before generating insights."
         return msg

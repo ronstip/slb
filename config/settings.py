@@ -12,10 +12,8 @@ class Settings(BaseSettings):
     gcs_exports_bucket: str = ""
     cloud_tasks_queue: str = "worker-queue"
     gemini_model: str = "gemini-3-flash-preview"
-    orchestrator_model: str = "gemini-3-flash-preview"
-    research_model: str = "gemini-3-flash-preview"
-    collection_model: str = "gemini-3-flash-preview"
-    analyst_model: str = "gemini-3-pro-preview"
+    meta_agent_model: str = "gemini-3-pro-preview"
+    research_model: str = "gemini-3-flash-preview"  # kept for potential future worker
     enrichment_model: str = "gemini-3-flash-preview"
     embedding_model: str = "text-embedding-005"
     vetric_api_key_twitter: str = ""

@@ -6,30 +6,26 @@
 
 import type { ChatMessage, MessageCard } from '../stores/chat-store.ts';
 import type { Artifact } from '../stores/studio-store.ts';
-import type { InsightData, DataExportRow } from '../api/types.ts';
+import type { DataExportRow, ReportCard } from '../api/types.ts';
 import type { RawADKEvent } from '../api/endpoints/sessions.ts';
 import {
   getToolDisplayText,
   isDesignResearchResult,
-  isInsightResult,
   isProgressResult,
   isDataExportResult,
   isChartResult,
   isPostEmbedResult,
+  isReportResult,
 } from './event-parser.ts';
 
 /** Tools that produce thinking entries (mirrors THINKING_TOOLS in main.py). */
-const THINKING_TOOLS = new Set(['execute_sql', 'get_insights', 'get_table_info', 'list_table_ids']);
+const THINKING_TOOLS = new Set(['execute_sql', 'get_table_info', 'list_table_ids']);
 
 function buildThinkingFromCall(toolName: string, args: Record<string, unknown>): string | null {
   if (!THINKING_TOOLS.has(toolName)) return null;
   if (toolName === 'execute_sql') {
     const query = (args.query ?? args.sql ?? '') as string;
     return query ? `Running SQL query:\n\`\`\`sql\n${query}\n\`\`\`` : 'Running SQL query...';
-  }
-  if (toolName === 'get_insights') {
-    const cid = (args.collection_id ?? '') as string;
-    return `Generating insight report for collection \`${cid}\`...`;
   }
   if (toolName === 'get_table_info') {
     const table = (args.table_id ?? args.table_name ?? '') as string;
@@ -45,7 +41,6 @@ function buildThinkingFromCall(toolName: string, args: Record<string, unknown>):
 function buildThinkingFromResult(toolName: string): string | null {
   if (!THINKING_TOOLS.has(toolName)) return null;
   if (toolName === 'execute_sql') return 'Query completed';
-  if (toolName === 'get_insights') return 'Insight report generated';
   return null;
 }
 
@@ -155,17 +150,6 @@ export function reconstructSession(
           msg.cards.push({ type: 'chart', data: result });
         } else if (isPostEmbedResult(toolName, result)) {
           msg.cards.push({ type: 'post_embed', data: result });
-        } else if (isInsightResult(toolName, result)) {
-          msg.cards.push({ type: 'insight_summary', data: result });
-          artifacts.push({
-            id: `artifact-restored-${artifacts.length}`,
-            type: 'insight_report',
-            title: 'Insight Report',
-            narrative: result.narrative as string,
-            data: result.data as InsightData,
-            sourceIds: (state.selected_sources as string[]) || [],
-            createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
-          });
         } else if (isDataExportResult(toolName, result)) {
           msg.cards.push({ type: 'data_export', data: result });
           artifacts.push({
@@ -180,6 +164,18 @@ export function reconstructSession(
           });
         } else if (isProgressResult(toolName, result)) {
           msg.cards.push({ type: 'progress', data: result });
+        } else if (isReportResult(toolName, result)) {
+          msg.cards.push({ type: 'insight_report', data: result });
+          artifacts.push({
+            id: (result.report_id as string) || `report-restored-${artifacts.length}`,
+            type: 'insight_report',
+            title: result.title as string,
+            collectionId: result.collection_id as string,
+            dateFrom: result.date_from as string | undefined,
+            dateTo: result.date_to as string | undefined,
+            cards: result.cards as ReportCard[],
+            createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
+          });
         }
         continue;
       }

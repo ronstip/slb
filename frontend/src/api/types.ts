@@ -336,33 +336,90 @@ export interface EntitySummary {
   total_likes: number;
 }
 
-export interface InsightData {
-  quantitative: {
-    total_posts: Array<{ platform: string; post_count: number }>;
-    sentiment_breakdown: SentimentBreakdown[];
-    volume_over_time: VolumeOverTime[];
-    engagement_summary: EngagementSummary[];
-    channel_summary: ChannelSummary[];
-  };
-  qualitative: {
-    top_posts: FeedPost[];
-    theme_distribution: ThemeDistribution[];
-    content_type_breakdown: ContentTypeBreakdown[];
-    entity_co_occurrence: EntityCoOccurrence[];
-    language_distribution: LanguageDistribution[];
-    entity_summary: EntitySummary[];
+// ─── Meta-agent communication event payloads ─────────────────────────
+
+export interface DecisionOption {
+  label: string;
+  description: string;
+}
+
+export interface NeedsDecisionPayload {
+  question: string;
+  options: DecisionOption[];
+  context: string;
+  impact: 'high' | 'low';
+}
+
+export interface FindingPayload {
+  summary: string;
+  significance: 'notable' | 'surprising' | 'expected';
+}
+
+export interface PlanStep {
+  description: string;
+  tool: string;
+}
+
+export interface PlanPayload {
+  objective: string;
+  steps: PlanStep[];
+  estimated_queries: number;
+}
+
+// ─── Insight Report types ────────────────────────────────────────────
+
+export type ReportCardType =
+  // New report-specific types
+  | 'kpi_grid'
+  | 'narrative'
+  | 'key_finding'
+  | 'highlight_post'
+  // Existing chart types (reused)
+  | 'sentiment_pie'
+  | 'sentiment_bar'
+  | 'volume_chart'
+  | 'line_chart'
+  | 'histogram'
+  | 'theme_bar'
+  | 'platform_bar'
+  | 'content_type_donut'
+  | 'language_pie'
+  | 'engagement_metrics'
+  | 'channel_table'
+  | 'entity_table';
+
+export interface ReportCard {
+  id: string;
+  card_type: ReportCardType;
+  title?: string;
+  data: Record<string, unknown>;
+  layout?: {
+    width?: 'full' | 'half';
+    zone?: 'header' | 'body' | 'footer';
   };
 }
 
-export interface InsightResult {
-  status: string;
-  narrative: string;
-  collection_name: string;
-  date_from: string | null;
-  date_to: string | null;
-  data: InsightData;
-  message: string;
+export interface KpiItem {
+  label: string;
+  value: string | number;
+  change?: string;
+  sentiment?: 'positive' | 'negative' | 'neutral';
 }
+
+export interface InsightReportPayload {
+  status: string;
+  report_id: string;
+  title: string;
+  collection_id: string;
+  collection_name?: string;
+  date_from?: string;
+  date_to?: string;
+  generated_at: string;
+  cards: ReportCard[];
+  message?: string;
+}
+
+// ─── Tool result types ───────────────────────────────────────────────
 
 export interface DesignResearchResult {
   status: string;

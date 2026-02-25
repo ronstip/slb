@@ -28,7 +28,7 @@ def refresh_engagements(collection_id: str) -> dict:
             _refresh({"input_type": "collection_id", "collection_id": collection_id})
             return {
                 "status": "success",
-                "message": f"Engagement data refreshed for collection {collection_id}. Use get_insights to see updated results.",
+                "message": f"Engagement data refreshed for collection {collection_id}. Run queries to see updated results.",
             }
         except Exception as e:
             logger.exception("Inline engagement refresh failed for %s", collection_id)

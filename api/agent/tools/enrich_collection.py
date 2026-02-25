@@ -20,7 +20,7 @@ def enrich_collection(
 
     Enrichment uses BQ integrated LLMs (AI.GENERATE_TEXT and AI.GENERATE_EMBEDDING).
     Posts are filtered by min_likes (default 0 = enrich all). This is required before
-    get_insights can return sentiment, theme, and entity data.
+    Analysis queries can then return sentiment, theme, and entity data.
 
     Args:
         collection_id: The collection ID to enrich. Provide this OR post_ids.
@@ -81,7 +81,7 @@ def enrich_collection(
                 "message": (
                     f"Enrichment started for collection {collection_id}. "
                     "Use get_progress to check enrichment status. "
-                    "Once complete, use get_insights for full analysis."
+                    "Once complete, run queries to analyze the data."
                 ),
             }
     else:

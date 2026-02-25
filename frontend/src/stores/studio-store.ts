@@ -1,17 +1,5 @@
 import { create } from 'zustand';
-import type { InsightData, DataExportRow } from '../api/types.ts';
-
-interface InsightReportArtifact {
-  id: string;
-  type: 'insight_report';
-  title: string;
-  narrative: string;
-  data: InsightData;
-  dateFrom: string | null;
-  dateTo: string | null;
-  sourceIds: string[];
-  createdAt: Date;
-}
+import type { DataExportRow, ReportCard } from '../api/types.ts';
 
 interface DataExportArtifact {
   id: string;
@@ -34,7 +22,18 @@ interface ChartArtifact {
   createdAt: Date;
 }
 
-export type Artifact = InsightReportArtifact | DataExportArtifact | ChartArtifact;
+interface InsightReportArtifact {
+  id: string;
+  type: 'insight_report';
+  title: string;
+  collectionId: string;
+  dateFrom?: string;
+  dateTo?: string;
+  cards: ReportCard[];
+  createdAt: Date;
+}
+
+export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact;
 
 interface StudioStore {
   activeTab: 'feed' | 'artifacts';

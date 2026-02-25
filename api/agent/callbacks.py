@@ -1,12 +1,12 @@
-"""ADK callbacks for the social listening multi-agent system.
+"""ADK callbacks for the social listening meta-agent.
 
-Callbacks are registered on individual agents in agent.py. This module
+Callbacks are registered on the meta-agent in agent.py. This module
 keeps callback logic separate from agent construction.
 
 Three categories:
-1. State tracking   — after_tool_callback on collection_agent
-2. Context injection — before_model_callback on collection_agent & analyst_agent
-3. Observability     — after_tool_callback shared across all agents
+1. State tracking   — after_tool_callback captures collection state
+2. Context injection — before_model_callback prepends collection context
+3. Observability     — after_tool_callback logs all tool invocations
 """
 
 import logging
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# 1. State tracking — after_tool_callback for collection_agent
+# 1. State tracking — after_tool_callback for meta_agent
 # ---------------------------------------------------------------------------
 
 
@@ -35,9 +35,8 @@ def collection_state_tracker(
 ) -> None:
     """Capture key collection data into session state after tool execution.
 
-    Enables cross-agent context sharing: when analyst_agent runs it can
-    read active_collection_id, collection_status, etc. from state without
-    the user having to repeat this information.
+    The meta-agent calls collection tools directly. This callback captures
+    results so inject_collection_context can prepend them to future turns.
     """
     tool_name = tool.name
 
@@ -131,19 +130,6 @@ def _build_context_block(state: dict) -> Optional[str]:
         )
         blocks.append("\n".join(lines))
 
-    # ── Research brief ──────────────────────────────────────────────
-    # Stored by research_agent via output_key="research_brief".
-    # Gives collection_agent and analyst_agent the research framing,
-    # analysis plan, and key context without the user repeating it.
-    research_brief = state.get("research_brief")
-    if research_brief:
-        blocks.append(
-            "## Research Brief\n"
-            "The research agent produced the following brief. Use it to "
-            "understand the user's intent, the analysis plan, and key context.\n\n"
-            f"{research_brief}"
-        )
-
     return "\n\n".join(blocks) if blocks else None
 
 
@@ -153,8 +139,8 @@ def inject_collection_context(
 ) -> Optional[LlmResponse]:
     """Prepend active collection context to the system instruction.
 
-    Used on collection_agent and analyst_agent so they automatically know
-    which collection the user is working with and its current state.
+    Injects collection ID, status, and post counts so the meta-agent
+    knows which collection the user is working with.
     """
     context_block = _build_context_block(callback_context.state)
     if not context_block:
@@ -179,7 +165,7 @@ def inject_collection_context(
 
 
 # ---------------------------------------------------------------------------
-# 3. Observability logging — after_tool_callback shared across agents
+# 3. Observability logging — after_tool_callback
 # ---------------------------------------------------------------------------
 
 

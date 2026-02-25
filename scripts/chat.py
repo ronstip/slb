@@ -8,7 +8,7 @@ Supports the full product cycle:
   2. Approve config -> agent calls start_collection
   3. Worker runs inline (mock data, no Cloud Tasks needed)
   4. Check progress -> agent calls get_progress
-  5. Get insights -> agent calls get_insights, returns narrative + data
+  5. Get insights -> agent runs dynamic SQL queries and synthesizes analysis
   6. Refresh engagements -> agent calls refresh_engagements
 
 Type 'quit' or 'exit' to end the session.

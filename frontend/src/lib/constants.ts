@@ -4,7 +4,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   design_research: 'Designing research plan',
   start_collection: 'Starting data collection',
   get_progress: 'Checking collection progress',
-  get_insights: 'Generating insight report',
+  get_past_collections: 'Checking past collections',
   enrich_collection: 'Running AI enrichment',
   refresh_engagements: 'Refreshing engagement metrics',
   cancel_collection: 'Cancelling collection',
@@ -14,12 +14,11 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   get_table_info: 'Inspecting table schema',
   list_table_ids: 'Discovering tables',
   display_posts: 'Preparing post display',
+  generate_report: 'Generating insight report',
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {
-  research_agent: 'Understanding',
-  collection_agent: 'Collecting',
-  analyst_agent: 'Analyzing',
+  meta_agent: '',
 };
 
 export const PLATFORM_COLORS: Record<string, string> = {

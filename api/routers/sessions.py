@@ -24,6 +24,75 @@ def _get_session_service() -> FirestoreSessionService:
     return _session_service
 
 
+def _extract_event_fallback(event) -> dict | None:
+    """Extract essential fields from an ADK event when model_dump fails.
+
+    This handles events with non-serializable metadata (e.g. Google Search
+    grounding protobuf objects) by manually pulling out the fields the
+    frontend reconstructor needs: author, content.role, content.parts, timestamp.
+    """
+    content = getattr(event, "content", None)
+    if content is None:
+        return None
+
+    role = getattr(content, "role", None)
+    raw_parts = getattr(content, "parts", None) or []
+
+    parts = []
+    for part in raw_parts:
+        # Text part
+        text = getattr(part, "text", None)
+        if text:
+            parts.append({"text": text})
+            continue
+
+        # Function call part
+        fc = getattr(part, "function_call", None)
+        if fc:
+            try:
+                parts.append({
+                    "function_call": {
+                        "name": getattr(fc, "name", ""),
+                        "args": dict(getattr(fc, "args", {}) or {}),
+                    }
+                })
+            except Exception:
+                pass
+            continue
+
+        # Function response part
+        fr = getattr(part, "function_response", None)
+        if fr:
+            try:
+                resp = getattr(fr, "response", {}) or {}
+                parts.append({
+                    "function_response": {
+                        "name": getattr(fr, "name", ""),
+                        "response": json.loads(json.dumps(dict(resp), default=str)),
+                    }
+                })
+            except Exception:
+                pass
+            continue
+
+    if not parts:
+        return None
+
+    result: dict = {"content": {"parts": parts}}
+    if role:
+        result["content"]["role"] = role
+    author = getattr(event, "author", None)
+    if author:
+        result["author"] = author
+    ts = getattr(event, "timestamp", None)
+    if ts is not None:
+        try:
+            result["timestamp"] = float(ts)
+        except (TypeError, ValueError):
+            pass
+    return result
+
+
 @router.get("/sessions", response_model=list[SessionListItem])
 async def list_sessions(user: CurrentUser = Depends(get_current_user)):
     """List all sessions for the authenticated user (metadata only, no events)."""
@@ -59,14 +128,35 @@ async def get_session(session_id: str, user: CurrentUser = Depends(get_current_u
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Serialize events to JSON-safe dicts
+    # Serialize events to JSON-safe dicts.
+    # Some events (especially those with Google Search grounding metadata)
+    # may fail model_dump. Fall back to manual extraction of essential fields
+    # so we never lose agent text responses.
     events = []
     for event in session.events:
         try:
             dumped = event.model_dump(mode="json", exclude_none=True)
             events.append(json.loads(json.dumps(dumped, default=str)))
         except Exception:
-            logger.warning("Failed to serialize event in session %s, skipping", session_id)
+            # Fallback: manually extract the fields the frontend needs
+            try:
+                fallback = _extract_event_fallback(event)
+                if fallback:
+                    events.append(fallback)
+                    logger.info(
+                        "Used fallback serialization for event in session %s",
+                        session_id,
+                    )
+                else:
+                    logger.warning(
+                        "Failed to serialize event in session %s, skipping",
+                        session_id,
+                    )
+            except Exception:
+                logger.warning(
+                    "Failed to serialize event in session %s (fallback also failed), skipping",
+                    session_id,
+                )
 
     state = session.state or {}
     return SessionDetailResponse(

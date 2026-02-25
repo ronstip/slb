@@ -1,8 +1,8 @@
-import { FileText, Table2, BarChart3, ChevronRight } from 'lucide-react';
+import { Table2, BarChart3, FileText, ChevronRight } from 'lucide-react';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { shortDate } from '../../lib/format.ts';
-import { InsightReport } from './InsightReport.tsx';
 import { DataExportView } from './DataExportView.tsx';
+import { InsightReportView } from './InsightReportView.tsx';
 import { Card } from '../../components/ui/card.tsx';
 
 export function ArtifactsTab() {
@@ -17,7 +17,7 @@ export function ArtifactsTab() {
       return <DataExportView artifact={expandedArtifact as Extract<Artifact, { type: 'data_export' }>} />;
     }
     if (expandedArtifact.type === 'insight_report') {
-      return <InsightReport artifact={expandedArtifact as Extract<Artifact, { type: 'insight_report' }>} />;
+      return <InsightReportView artifact={expandedArtifact as Extract<Artifact, { type: 'insight_report' }>} />;
     }
     // Chart artifacts — collapse back (no expanded view yet)
     useStudioStore.getState().collapseReport();
@@ -27,7 +27,7 @@ export function ArtifactsTab() {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center px-4">
         <p className="text-sm text-muted-foreground">
-          Generate insights to create your first artifact.
+          Artifacts from your analysis will appear here.
         </p>
       </div>
     );
@@ -44,9 +44,9 @@ export function ArtifactsTab() {
           <div className="flex items-center gap-3">
             {artifact.type === 'data_export'
               ? <Table2 className="h-5 w-5 shrink-0 text-muted-foreground" />
-              : artifact.type === 'chart'
-                ? <BarChart3 className="h-5 w-5 shrink-0 text-muted-foreground" />
-                : <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />}
+              : artifact.type === 'insight_report'
+                ? <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+                : <BarChart3 className="h-5 w-5 shrink-0 text-muted-foreground" />}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">
                 {artifact.title}
@@ -54,9 +54,9 @@ export function ArtifactsTab() {
               <p className="text-xs text-muted-foreground/70">
                 {shortDate(artifact.createdAt)} · {artifact.type === 'data_export'
                   ? `${artifact.rowCount} posts`
-                  : artifact.type === 'chart'
-                    ? artifact.chartType.replace(/_/g, ' ')
-                    : `${artifact.sourceIds.length} sources`}
+                  : artifact.type === 'insight_report'
+                    ? `${artifact.cards.length} cards`
+                    : artifact.chartType.replace(/_/g, ' ')}
               </p>
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/70" />

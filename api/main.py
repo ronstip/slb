@@ -22,6 +22,7 @@ import requests as http_requests
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.genai import types
 from sse_starlette.sse import EventSourceResponse
@@ -86,7 +87,12 @@ _runner: Runner | None = None
 _memory_service = None
 
 # Tools whose invocations are surfaced in the "thinking" panel
-THINKING_TOOLS = {"execute_sql", "get_insights", "get_table_info", "list_table_ids"}
+THINKING_TOOLS = {
+    "execute_sql", "get_table_info", "list_table_ids",
+    "google_search", "design_research", "start_collection",
+    "get_progress", "enrich_collection", "display_posts",
+    "get_past_collections", "generate_report",
+}
 
 
 def get_runner() -> Runner:
@@ -196,11 +202,52 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
 
     async def event_stream():
         try:
+            run_config = RunConfig(streaming_mode=StreamingMode.SSE)
+            streamed_text = False  # Track if text was streamed via partial events
+
             async for event in runner.run_async(
-                user_id=user_id, session_id=session_id, new_message=content
+                user_id=user_id, session_id=session_id, new_message=content,
+                run_config=run_config,
             ):
-                # Extract all parts from this event (may be multiple per turn)
-                for event_data in _extract_event_data(event):
+                is_partial = getattr(event, "partial", None) is True
+
+                if is_partial:
+                    # Streaming chunk — emit text parts for typewriter effect
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if part.text and getattr(part, "thought", False):
+                                # Thought tokens → thinking panel
+                                thought_text = re.sub(
+                                    r"<!--\s*thinking:\s*([\s\S]*?)\s*-->",
+                                    r"\1", part.text,
+                                ).strip()
+                                if thought_text:
+                                    yield {
+                                        "event": "thinking",
+                                        "data": json.dumps({
+                                            "event_type": "thinking",
+                                            "content": thought_text,
+                                            "author": event.author,
+                                        }),
+                                    }
+                            elif part.text:
+                                # Regular text → stream to frontend
+                                streamed_text = True
+                                yield {
+                                    "event": "partial_text",
+                                    "data": json.dumps({
+                                        "event_type": "partial_text",
+                                        "content": part.text,
+                                        "author": event.author,
+                                    }),
+                                }
+                    continue  # Skip _extract_event_data for partial events
+
+                # Non-partial event — process normally (tool calls, results,
+                # final aggregated text with full marker extraction).
+                # If text was already streamed, suppress the text event from
+                # the aggregated final to avoid duplication.
+                for event_data in _extract_event_data(event, suppress_text=streamed_text):
                     et = event_data["event_type"]
 
                     yield {
@@ -221,6 +268,11 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                                     "author": event_data.get("author", ""),
                                 }),
                             }
+
+                    # Reset streaming flag after tool results so the next
+                    # text segment (post-tool) streams fresh
+                    if et == "tool_result":
+                        streamed_text = False
 
                 if event.is_final_response():
                     text = _extract_text(event)
@@ -1119,18 +1171,96 @@ async def proxy_media(url: str = Query(...)):
 
 
 async def _save_to_memory(runner: Runner, user_id: str, session_id: str):
-    """Fire-and-forget: save session events to memory bank."""
+    """Fire-and-forget: summarise session, persist summary to state, then save to memory bank."""
     try:
         if _memory_service is None:
             return
         session = await runner.session_service.get_session(
             app_name=APP_NAME, user_id=user_id, session_id=session_id
         )
-        if session:
-            await _memory_service.add_session_to_memory(session)
-            logger.info("Saved session %s to memory bank", session_id)
+        if not session:
+            return
+
+        # Generate a structured session summary via a lightweight LLM call
+        try:
+            await _write_session_summary(runner, session)
+        except Exception:
+            logger.warning("Session summary generation failed for %s — saving without summary", session_id)
+
+        await _memory_service.add_session_to_memory(session)
+        logger.info("Saved session %s to memory bank", session_id)
     except Exception:
         logger.exception("Failed to save session %s to memory", session_id)
+
+
+async def _write_session_summary(runner: Runner, session) -> None:
+    """Generate a structured session summary and write it to session state.
+
+    Uses Gemini Flash for a fast, cheap summary of the conversation so far.
+    The summary is persisted in ``session.state["session_summary"]`` and will
+    be included next time the session is loaded into the memory bank.
+    """
+    # Skip if already summarised this turn (idempotent)
+    if session.state.get("session_summary"):
+        return
+
+    # Build a compact transcript from session events
+    turns: list[str] = []
+    for event in session.events:
+        role = getattr(event, "author", "system")
+        # Only include user and agent text turns (skip tool internals)
+        parts_text = ""
+        for part in getattr(event, "content", None) or []:
+            text = getattr(part, "text", None)
+            if text:
+                parts_text += text
+        if parts_text.strip():
+            turns.append(f"[{role}] {parts_text[:500]}")
+
+    if not turns:
+        return
+
+    transcript = "\n".join(turns[-30:])  # last 30 turns max
+
+    from google import genai
+
+    settings = get_settings()
+    client = genai.Client(
+        vertexai=True,
+        project=settings.gcp_project_id,
+        location=settings.gemini_location,
+    )
+
+    response = client.models.generate_content(
+        model=settings.gemini_model,  # Flash — fast and cheap
+        contents=(
+            "You are summarising a social-listening research session. "
+            "Write a concise structured summary in JSON with these fields:\n"
+            '  "topics": list of 1-5 research topics discussed,\n'
+            '  "collections": list of collection names created or referenced,\n'
+            '  "key_findings": list of 1-5 key findings or insights discovered,\n'
+            '  "actions_taken": list of 1-5 actions the agent performed (e.g. "collected 120 posts from Reddit"),\n'
+            '  "open_threads": list of 0-3 unresolved questions or next steps.\n'
+            "Reply with ONLY valid JSON, nothing else.\n\n"
+            f"Session transcript:\n{transcript}"
+        ),
+    )
+
+    raw = response.text.strip()
+    # Strip markdown code fences if present
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+
+    try:
+        summary = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse session summary JSON: %s", raw[:200])
+        return
+
+    session.state["session_summary"] = summary
+    runner.session_service._write_session(session)
+    logger.info("Wrote session summary for %s: %d topics, %d findings",
+                session.id, len(summary.get("topics", [])), len(summary.get("key_findings", [])))
 
 
 async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> str:
@@ -1226,27 +1356,53 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
             if query:
                 return f"Running SQL query:\n```sql\n{query}\n```"
             return "Running SQL query..."
-        if tool_name == "get_insights":
-            cid = args.get("collection_id", "")
-            return f"Generating insight report for collection `{cid}`..."
         if tool_name == "get_table_info":
             table = args.get("table_id", args.get("table_name", ""))
             return f"Inspecting schema for `{table}`"
         if tool_name == "list_table_ids":
             dataset = args.get("dataset_id", "social_listening")
             return f"Listing tables in `{dataset}`"
+        if tool_name == "google_search":
+            query = args.get("query", "")
+            return f"Searching: *{query}*" if query else "Searching the web..."
+        if tool_name == "design_research":
+            q = args.get("question", args.get("research_question", ""))
+            return f"Designing research: *{q[:80]}*" if q else "Designing research plan..."
+        if tool_name == "start_collection":
+            return "Starting data collection..."
+        if tool_name == "get_progress":
+            cid = args.get("collection_id", "")
+            return f"Checking progress for `{cid}`" if cid else "Checking collection progress..."
+        if tool_name == "enrich_collection":
+            cid = args.get("collection_id", "")
+            return f"Running AI enrichment on `{cid}`" if cid else "Running AI enrichment..."
+        if tool_name == "display_posts":
+            count = len(args.get("post_ids", []))
+            return f"Loading {count} posts for display"
+        if tool_name == "get_past_collections":
+            return "Checking for existing collections..."
     elif event_type == "tool_result":
         result = event_data.get("metadata", {}).get("result", {})
         if tool_name == "execute_sql":
-            # BQ toolset returns result as a dict; try to summarize
             return "Query completed"
-        if tool_name == "get_insights":
-            status = result.get("status", "unknown")
-            return f"Insight report: {status}"
+        if tool_name == "google_search":
+            return "Search results received"
+        if tool_name == "design_research":
+            return "Research design complete"
+        if tool_name == "start_collection":
+            return "Collection started"
+        if tool_name == "get_progress":
+            return "Progress retrieved"
+        if tool_name == "enrich_collection":
+            return "Enrichment complete"
+        if tool_name == "display_posts":
+            return "Posts loaded"
+        if tool_name == "get_past_collections":
+            return "Past collections retrieved"
     return None
 
 
-def _extract_event_data(event) -> list[dict]:
+def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
     """Extract structured data from all parts of an ADK event.
 
     An event may contain multiple parts (e.g. a text/thinking part followed by
@@ -1254,6 +1410,13 @@ def _extract_event_data(event) -> list[dict]:
     part was returned, so function_call parts after a text part were silently
     dropped — meaning SQL queries were never surfaced in the thinking panel.
     Now all parts are processed and returned as a list.
+
+    Args:
+        event: The ADK event to process.
+        suppress_text: If True, skip emitting 'text' events (used when text
+            was already streamed via partial events to avoid duplication).
+            Structured events (status, thinking, finding, etc.) are still
+            extracted and emitted.
     """
     if not event.content or not event.content.parts:
         return []
@@ -1299,9 +1462,54 @@ def _extract_event_data(event) -> list[dict]:
                         "author": event.author,
                     })
 
+                # Extract <!-- needs_decision: {...} --> markers
+                for decision_match in re.finditer(
+                    r"<!--\s*needs_decision:\s*(\{[\s\S]*?\})\s*-->", raw
+                ):
+                    try:
+                        payload = json.loads(decision_match.group(1))
+                        results.append({
+                            "event_type": "needs_decision",
+                            "content": payload.get("question", ""),
+                            "metadata": payload,
+                            "author": event.author,
+                        })
+                    except json.JSONDecodeError:
+                        pass
+
+                # Extract <!-- finding: {...} --> markers
+                for finding_match in re.finditer(
+                    r"<!--\s*finding:\s*(\{[\s\S]*?\})\s*-->", raw
+                ):
+                    try:
+                        payload = json.loads(finding_match.group(1))
+                        results.append({
+                            "event_type": "finding",
+                            "content": payload.get("summary", ""),
+                            "metadata": payload,
+                            "author": event.author,
+                        })
+                    except json.JSONDecodeError:
+                        pass
+
+                # Extract <!-- plan: {...} --> markers
+                for plan_match in re.finditer(
+                    r"<!--\s*plan:\s*(\{[\s\S]*?\})\s*-->", raw
+                ):
+                    try:
+                        payload = json.loads(plan_match.group(1))
+                        results.append({
+                            "event_type": "plan",
+                            "content": payload.get("objective", ""),
+                            "metadata": payload,
+                            "author": event.author,
+                        })
+                    except json.JSONDecodeError:
+                        pass
+
                 # Strip all comment markers from the visible text
                 clean = re.sub(r"<!--[\s\S]*?-->", "", raw).strip()
-                if clean:
+                if clean and not suppress_text:
                     results.append({
                         "event_type": "text",
                         "content": clean,
