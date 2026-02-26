@@ -83,24 +83,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_runner: Runner | None = None
+_runners: dict[str, Runner] = {}
 _memory_service = None
+_session_service = None
+
+# Model aliases for the ChatRequest.model field
+MODEL_ALIASES: dict[str, str] = {
+    "pro": "gemini-3-pro-preview",
+}
 
 # Tools whose invocations are surfaced in the "thinking" panel
 THINKING_TOOLS = {
     "execute_sql", "get_table_info", "list_table_ids",
     "google_search", "design_research", "start_collection",
     "get_progress", "enrich_collection", "display_posts",
-    "get_past_collections", "generate_report",
+    "get_past_collections", "generate_report", "get_sql_reference",
 }
 
 
-def get_runner() -> Runner:
-    global _runner, _memory_service
-    if _runner is None:
-        _memory_service = create_memory_service()
-        _runner = create_runner(memory_service=_memory_service)
-    return _runner
+def get_runner(model: str | None = None) -> Runner:
+    """Return a cached Runner for the given model (or default)."""
+    global _memory_service, _session_service
+    from api.auth.session_service import FirestoreSessionService
+
+    model_key = model or "default"
+    if model_key not in _runners:
+        if _session_service is None:
+            _session_service = FirestoreSessionService()
+        if _memory_service is None:
+            _memory_service = create_memory_service()
+        _runners[model_key] = create_runner(
+            model_override=model if model != "default" else None,
+            session_service=_session_service,
+            memory_service=_memory_service,
+        )
+    return _runners[model_key]
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +175,8 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
 @app.post("/chat")
 async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """SSE endpoint — streams agent events to the client."""
-    runner = get_runner()
+    model_override = MODEL_ALIASES.get(request.model) if request.model else None
+    runner = get_runner(model=model_override)
     user_id = user.uid
     session_id = request.session_id or str(uuid4())
 

@@ -3,10 +3,11 @@
 Callbacks are registered on the meta-agent in agent.py. This module
 keeps callback logic separate from agent construction.
 
-Three categories:
+Four categories:
 1. State tracking   — after_tool_callback captures collection state
 2. Context injection — before_model_callback prepends collection context
-3. Observability     — after_tool_callback logs all tool invocations
+3. Tool reordering  — before_model_callback prioritizes relevant tools
+4. Observability     — after_tool_callback logs all tool invocations
 """
 
 import logging
@@ -20,6 +21,14 @@ from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
+
+# ─── Tool priority groups for phase-based reordering ─────────────────
+# Tools listed first in the schema are naturally favoured by the model.
+
+CORE_TOOLS = {"execute_sql", "get_table_info", "list_table_ids", "create_chart", "display_posts"}
+RESEARCH_TOOLS = {"design_research", "get_past_collections", "google_search", "get_sql_reference"}
+COLLECTION_TOOLS = {"start_collection", "cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
+OUTPUT_TOOLS = {"export_data", "generate_report"}
 
 
 # ---------------------------------------------------------------------------
@@ -133,33 +142,75 @@ def _build_context_block(state: dict) -> Optional[str]:
     return "\n\n".join(blocks) if blocks else None
 
 
+def _get_phase_priority(state: dict) -> list[set[str]]:
+    """Return tool groups ordered by relevance for the current session phase."""
+    collection_status = state.get("collection_status")
+    has_collection = bool(
+        state.get("active_collection_id") or state.get("selected_sources")
+    )
+
+    if not has_collection:
+        # Research phase — prioritize research + collection start tools
+        return [RESEARCH_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS]
+    elif collection_status in ("collecting", "enriching"):
+        # Collection in progress — management tools first
+        return [COLLECTION_TOOLS, CORE_TOOLS, RESEARCH_TOOLS, OUTPUT_TOOLS]
+    else:
+        # Collection complete (or unknown) — analysis + output first
+        return [CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_TOOLS]
+
+
+def _tool_sort_key(tool_obj, priority_order: list[set[str]]) -> int:
+    """Return a sort key for a Tool object based on its function names."""
+    names: set[str] = set()
+    if hasattr(tool_obj, "function_declarations") and tool_obj.function_declarations:
+        for fd in tool_obj.function_declarations:
+            if hasattr(fd, "name") and fd.name:
+                names.add(fd.name)
+
+    # Find the earliest priority group that contains any of this tool's functions
+    for i, group in enumerate(priority_order):
+        if names & group:
+            return i
+    return len(priority_order)  # Unknown tools go last
+
+
+def _reorder_tools(tools: list, priority_order: list[set[str]]) -> list:
+    """Reorder tool declarations so higher-priority tools appear first."""
+    return sorted(tools, key=lambda t: _tool_sort_key(t, priority_order))
+
+
 def inject_collection_context(
     callback_context: CallbackContext,
     llm_request: LlmRequest,
 ) -> Optional[LlmResponse]:
-    """Prepend active collection context to the system instruction.
-
-    Injects collection ID, status, and post counts so the meta-agent
-    knows which collection the user is working with.
+    """Prepend active collection context to the system instruction and
+    reorder tools based on session phase.
     """
-    context_block = _build_context_block(callback_context.state)
-    if not context_block:
-        return None
+    state = callback_context.state
 
-    existing = llm_request.config.system_instruction or ""
-    if isinstance(existing, str):
-        llm_request.config.system_instruction = context_block + "\n\n" + existing
-    else:
-        # system_instruction could be a Content object — prepend as text
-        from google.genai import types
-
-        context_part = types.Part.from_text(text=context_block)
-        if hasattr(existing, "parts"):
-            existing.parts.insert(0, context_part)
+    # ── Context injection ─────────────────────────────────────────
+    context_block = _build_context_block(state)
+    if context_block:
+        existing = llm_request.config.system_instruction or ""
+        if isinstance(existing, str):
+            llm_request.config.system_instruction = context_block + "\n\n" + existing
         else:
-            llm_request.config.system_instruction = (
-                context_block + "\n\n" + str(existing)
-            )
+            # system_instruction could be a Content object — prepend as text
+            from google.genai import types
+
+            context_part = types.Part.from_text(text=context_block)
+            if hasattr(existing, "parts"):
+                existing.parts.insert(0, context_part)
+            else:
+                llm_request.config.system_instruction = (
+                    context_block + "\n\n" + str(existing)
+                )
+
+    # ── Tool reordering (soft filter) ─────────────────────────────
+    if llm_request.config.tools:
+        priority = _get_phase_priority(state)
+        llm_request.config.tools = _reorder_tools(llm_request.config.tools, priority)
 
     return None
 

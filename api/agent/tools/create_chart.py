@@ -19,9 +19,22 @@ VALID_CHART_TYPES = {
 
 
 def create_chart(chart_type: str, data: list[dict], title: str = "") -> dict:
-    """Render a standalone chart card in the chat. Use this after running
-    execute_sql to visualize results, or when the user asks for a specific
-    chart type.
+    """Render a standalone chart card in the chat. ALWAYS call this after
+    execute_sql when results map to a chart type. Do not describe chart-worthy
+    data in prose alone.
+
+    Data shape → chart type mapping:
+    - Sentiment counts by label → sentiment_pie or sentiment_bar
+    - Post counts by date (trend) → line_chart
+    - Post counts by date (bars) → volume_chart
+    - Theme/topic counts → theme_bar
+    - Post counts by platform → platform_bar
+    - Content type distribution → content_type_donut
+    - Language distribution → language_pie
+    - Engagement totals/averages → engagement_metrics
+    - Channel-level stats → channel_table
+    - Entity mention counts → entity_table
+    - Numeric distribution (likes, views) → histogram
 
     Args:
         chart_type: One of the supported chart types. Each expects a specific

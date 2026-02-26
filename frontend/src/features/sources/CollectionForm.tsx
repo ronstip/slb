@@ -27,6 +27,7 @@ interface CollectionFormProps {
 }
 
 const TIME_RANGES = [
+  { label: '24 hours', value: 1 },
   { label: '7 days', value: 7 },
   { label: '30 days', value: 30 },
   { label: '90 days', value: 90 },
@@ -149,7 +150,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
 
       const platformNames = platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ');
       addSystemMessage(
-        `Collection started: ${description || keywords.join(', ')} on ${platformNames} — ${keywords.length} keywords, last ${timeRangeDays} days.`,
+        `Collection started: ${description || keywords.join(', ')} on ${platformNames} — ${keywords.length} keywords, last ${timeRangeDays === 1 ? '24 hours' : `${timeRangeDays} days`}.`,
       );
 
       onClose();

@@ -20,7 +20,11 @@
       "Bash(git -C /Users/ronneeman/slb diff --cached --stat)",
       "Bash(git -C /Users/ronneeman/slb commit -m \"$\\(cat <<''EOF''\nFix collection pipeline bugs: Instagram parsing, media parallelism, enrichment trigger\n\n- Fix flatten_instagram_top_serp dropping ~80% of posts by not parsing\n  fill_items \\(list values in layout_content were silently skipped\\)\n- Parallelize media downloads with ThreadPoolExecutor \\(10 workers\\) instead\n  of sequential per-post loop, ~10x speedup for media-heavy collections\n- Fix missing FirestoreClient import in collection_service._run_pipeline\n  that silently prevented auto-enrichment for frontend-created collections\n- Add missing thinkingEntries/suggestions fields in session-reconstructor\n  to fix crash when restoring previous sessions\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(gcloud alpha services quota list:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(python3:*)",
+      "Bash(uv pip show:*)",
+      "Bash(pip show:*)",
+      "Bash(uv run python:*)"
     ]
   }
 }

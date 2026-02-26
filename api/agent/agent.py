@@ -2,6 +2,8 @@ import logging
 from datetime import datetime, timezone
 
 from google.adk.agents import LlmAgent
+from google.adk.agents.context_cache_config import ContextCacheConfig
+from google.adk.apps.app import App
 from google.adk.memory import InMemoryMemoryService, VertexAiMemoryBankService
 from google.adk.runners import Runner
 from google.adk.tools.bigquery import BigQueryToolset
@@ -14,7 +16,10 @@ from api.agent.callbacks import (
     inject_collection_context,
     log_tool_invocation,
 )
-from api.agent.prompts.meta_agent import META_AGENT_PROMPT
+from api.agent.prompts.meta_agent import (
+    META_AGENT_DYNAMIC_PROMPT,
+    META_AGENT_STATIC_PROMPT,
+)
 from api.agent.tools.cancel_collection import cancel_collection
 from api.agent.tools.create_chart import create_chart
 from api.agent.tools.design_research import design_research
@@ -23,6 +28,7 @@ from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_report import generate_report
 from api.agent.tools.get_past_collections import get_past_collections
+from api.agent.tools.get_sql_reference import get_sql_reference
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
 from api.agent.tools.start_collection import start_collection
@@ -34,8 +40,9 @@ logger = logging.getLogger(__name__)
 APP_NAME = "social_listening"
 
 
-def create_agent() -> LlmAgent:
+def create_agent(model_override: str | None = None) -> LlmAgent:
     settings = get_settings()
+    model_name = model_override or settings.meta_agent_model
     memory_tool = PreloadMemoryTool()
 
     # ─── BigQuery Toolset ────────────────────────────────────────────
@@ -55,6 +62,7 @@ def create_agent() -> LlmAgent:
         design_research,
         get_past_collections,
         # Data & analysis
+        get_sql_reference,
         bq_toolset,
         # Collection lifecycle
         start_collection,
@@ -75,28 +83,44 @@ def create_agent() -> LlmAgent:
     if settings.enable_search_grounding:
         tools.insert(0, GoogleSearchTool(bypass_multi_tools_limit=True))
 
+    # ─── Dynamic instruction (template-substituted per runner) ─────
+    current_date = datetime.now(timezone.utc).strftime("%B %d, %Y")
+    dynamic_prompt = META_AGENT_DYNAMIC_PROMPT.replace("{{current_date}}", current_date)
+    dynamic_prompt = dynamic_prompt.replace("{project_id}", settings.gcp_project_id)
+
     # ─── Meta-Agent (single brain) ───────────────────────────────────
     # One agent handles the full lifecycle: research → collection → analysis.
     # No routing, no sub-agents, no handoffs. ReAct loop with direct tool access.
-    current_date = datetime.now(timezone.utc).strftime("%B %d, %Y")
-    meta_prompt = META_AGENT_PROMPT.replace("{{current_date}}", current_date)
-    meta_prompt = meta_prompt.replace("{project_id}", settings.gcp_project_id)
-
     meta_agent = LlmAgent(
-        model=settings.meta_agent_model,
+        model=model_name,
         name="meta_agent",
         description=(
             "Social listening research assistant that helps users "
             "understand brand perception, competitor analysis, and "
             "sentiment trends across social media."
         ),
-        instruction=meta_prompt,
+        static_instruction=META_AGENT_STATIC_PROMPT,
+        instruction=dynamic_prompt,
         tools=tools,
         before_model_callback=inject_collection_context,
         after_tool_callback=[collection_state_tracker, log_tool_invocation],
     )
 
     return meta_agent
+
+
+def create_app(model_override: str | None = None) -> App:
+    """Create an App with context caching for the meta-agent."""
+    agent = create_agent(model_override)
+    return App(
+        name=APP_NAME,
+        root_agent=agent,
+        context_cache_config=ContextCacheConfig(
+            cache_intervals=10,   # Reuse cache for 10 invocations
+            ttl_seconds=3600,     # 1 hour TTL
+            min_tokens=0,         # Attempt caching regardless of size
+        ),
+    )
 
 
 def create_memory_service():
@@ -116,13 +140,16 @@ def create_memory_service():
     )
 
 
-def create_runner(session_service=None, memory_service=None) -> Runner:
-    agent = create_agent()
+def create_runner(
+    model_override: str | None = None,
+    session_service=None,
+    memory_service=None,
+) -> Runner:
+    app = create_app(model_override)
     if session_service is None:
         session_service = FirestoreSessionService()
     return Runner(
-        agent=agent,
-        app_name=APP_NAME,
+        app=app,
         session_service=session_service,
         memory_service=memory_service,
     )

@@ -5,6 +5,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
     selected_sources: list[str] | None = None
+    model: str | None = None  # "flash" (default) or "pro"
 
 
 class CreateCollectionRequest(BaseModel):
