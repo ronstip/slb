@@ -8,7 +8,7 @@ interface LineChartProps {
   overrides?: ChartOverrides;
 }
 
-const DEFAULT_LINE_COLOR = '#5A7A9E';
+const DEFAULT_LINE_COLOR = '#4F46E5';
 
 export function LineChart({ data, overrides }: LineChartProps) {
   const lineColor = overrides?.colorOverrides?.['line'] || DEFAULT_LINE_COLOR;

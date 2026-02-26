@@ -7,7 +7,7 @@ interface LanguagePieProps {
   overrides?: ChartOverrides;
 }
 
-const COLORS = ['#6B8CAE', '#7BA589', '#B89A6A', '#A8788C', '#8B7EB8', '#7AABB8', '#9E9E9E', '#87876E'];
+const COLORS = ['#4F46E5', '#2DB87A', '#D4A030', '#C13584', '#7C3AED', '#1DA1F2', '#8B8B8B', '#A09020'];
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: 'English',

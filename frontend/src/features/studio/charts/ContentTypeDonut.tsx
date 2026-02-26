@@ -7,7 +7,7 @@ interface ContentTypeDonutProps {
   overrides?: ChartOverrides;
 }
 
-const COLORS = ['#6B7B9E', '#7BA589', '#B89A6A', '#A87878', '#8E8E93', '#A8788C', '#6A9AB8'];
+const COLORS = ['#4F46E5', '#2DB87A', '#D4A030', '#E05555', '#8B8B8B', '#C13584', '#1DA1F2'];
 
 const RADIAN = Math.PI / 180;
 function renderPieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) {

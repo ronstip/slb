@@ -22,11 +22,11 @@ export const AGENT_DISPLAY_NAMES: Record<string, string> = {
 };
 
 export const PLATFORM_COLORS: Record<string, string> = {
-  instagram: '#A8677A',
+  instagram: '#C13584',
   tiktok: '#57534E',
-  twitter: '#6A9AB8',
-  reddit: '#B87845',
-  youtube: '#B85C5C',
+  twitter: '#1DA1F2',
+  reddit: '#E05A00',
+  youtube: '#E03030',
 };
 
 export const PLATFORM_LABELS: Record<string, string> = {
@@ -38,10 +38,10 @@ export const PLATFORM_LABELS: Record<string, string> = {
 };
 
 export const SENTIMENT_COLORS: Record<string, string> = {
-  positive: '#5A9E7E',
-  negative: '#C07070',
-  neutral: '#8E8E93',
-  mixed: '#B89A5A',
+  positive: '#2DB87A',
+  negative: '#E05555',
+  neutral: '#7C7C84',
+  mixed: '#D4A030',
 };
 
 export const PLATFORMS = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'] as const;

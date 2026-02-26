@@ -10,23 +10,23 @@
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
   /* Sentiment (app-specific) */
-  --color-sentiment-positive: #5A9E7E;
-  --color-sentiment-negative: #C07070;
-  --color-sentiment-neutral: #8E8E93;
-  --color-sentiment-mixed: #B89A5A;
+  --color-sentiment-positive: #2DB87A;
+  --color-sentiment-negative: #E05555;
+  --color-sentiment-neutral: #7C7C84;
+  --color-sentiment-mixed: #D4A030;
 
   /* Status (app-specific) */
-  --color-status-active: #5A7A9E;
-  --color-status-complete: #5A9E7E;
-  --color-status-warning: #B89A5A;
-  --color-status-error: #C07070;
+  --color-status-active: #3B7DD8;
+  --color-status-complete: #2DB87A;
+  --color-status-warning: #D4A030;
+  --color-status-error: #E05555;
 
   /* Platforms (app-specific) */
-  --color-platform-instagram: #A8677A;
+  --color-platform-instagram: #C13584;
   --color-platform-tiktok: #57534E;
-  --color-platform-twitter: #6A9AB8;
-  --color-platform-reddit: #B87845;
-  --color-platform-youtube: #B85C5C;
+  --color-platform-twitter: #1DA1F2;
+  --color-platform-reddit: #E05A00;
+  --color-platform-youtube: #E03030;
 }
 
 @theme inline {
@@ -73,72 +73,72 @@
 /* ---------- Light Mode (Navy + Warm Stone) ---------- */
 :root {
   --radius: 0.375rem;
-  --background: #FAFAF9;
-  --foreground: #1C1917;
+  --background: #F5F5F3;
+  --foreground: #18150F;
   --card: #FFFFFF;
-  --card-foreground: #1C1917;
+  --card-foreground: #18150F;
   --popover: #FFFFFF;
-  --popover-foreground: #1C1917;
-  --primary: #1E40AF;
+  --popover-foreground: #18150F;
+  --primary: #4F46E5;
   --primary-foreground: #FFFFFF;
-  --secondary: #F5F5F4;
-  --secondary-foreground: #1C1917;
-  --muted: #F5F5F4;
-  --muted-foreground: #78716C;
-  --accent: #EFF6FF;
-  --accent-foreground: #1E3A8A;
+  --secondary: #EEECEA;
+  --secondary-foreground: #18150F;
+  --muted: #EEECEA;
+  --muted-foreground: #64605A;
+  --accent: #EDE9FE;
+  --accent-foreground: #4338CA;
   --destructive: #DC2626;
-  --border: #E7E5E4;
-  --input: #E7E5E4;
-  --ring: #1E40AF;
-  --chart-1: #5A7A9E;
-  --chart-2: #5A9E7E;
-  --chart-3: #B89A5A;
-  --chart-4: #A8677A;
-  --chart-5: #6A9AB8;
+  --border: #D6D3D1;
+  --input: #D6D3D1;
+  --ring: #4F46E5;
+  --chart-1: #4F46E5;
+  --chart-2: #2DB87A;
+  --chart-3: #D4A030;
+  --chart-4: #C13584;
+  --chart-5: #1DA1F2;
   --sidebar: #FFFFFF;
-  --sidebar-foreground: #1C1917;
-  --sidebar-primary: #1E40AF;
+  --sidebar-foreground: #18150F;
+  --sidebar-primary: #4F46E5;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #EFF6FF;
-  --sidebar-accent-foreground: #1E3A8A;
-  --sidebar-border: #E7E5E4;
-  --sidebar-ring: #1E40AF;
+  --sidebar-accent: #EDE9FE;
+  --sidebar-accent-foreground: #4338CA;
+  --sidebar-border: #D6D3D1;
+  --sidebar-ring: #4F46E5;
 }
 
 /* ---------- Dark Mode (Dark Stone) ---------- */
 .dark {
   --background: #0C0A09;
-  --foreground: #FAFAF9;
+  --foreground: #F5F5F3;
   --card: #1C1917;
-  --card-foreground: #FAFAF9;
+  --card-foreground: #F5F5F3;
   --popover: #1C1917;
-  --popover-foreground: #FAFAF9;
-  --primary: #60A5FA;
+  --popover-foreground: #F5F5F3;
+  --primary: #818CF8;
   --primary-foreground: #0C0A09;
-  --secondary: #292524;
-  --secondary-foreground: #FAFAF9;
-  --muted: #292524;
-  --muted-foreground: #A8A29E;
-  --accent: #1E293B;
-  --accent-foreground: #93C5FD;
+  --secondary: #302C28;
+  --secondary-foreground: #F5F5F3;
+  --muted: #302C28;
+  --muted-foreground: #B0AAA2;
+  --accent: #252050;
+  --accent-foreground: #A5B4FC;
   --destructive: #EF4444;
-  --border: #44403C;
-  --input: #44403C;
-  --ring: #60A5FA;
-  --chart-1: #7A9DBE;
-  --chart-2: #7ABE9E;
-  --chart-3: #C8AA6A;
-  --chart-4: #B8879A;
-  --chart-5: #7AABB8;
+  --border: #504A44;
+  --input: #504A44;
+  --ring: #818CF8;
+  --chart-1: #818CF8;
+  --chart-2: #4ADE80;
+  --chart-3: #FBBF24;
+  --chart-4: #F472B6;
+  --chart-5: #38BDF8;
   --sidebar: #1C1917;
-  --sidebar-foreground: #FAFAF9;
-  --sidebar-primary: #60A5FA;
+  --sidebar-foreground: #F5F5F3;
+  --sidebar-primary: #818CF8;
   --sidebar-primary-foreground: #0C0A09;
-  --sidebar-accent: #1E293B;
-  --sidebar-accent-foreground: #93C5FD;
-  --sidebar-border: #44403C;
-  --sidebar-ring: #60A5FA;
+  --sidebar-accent: #252050;
+  --sidebar-accent-foreground: #A5B4FC;
+  --sidebar-border: #504A44;
+  --sidebar-ring: #818CF8;
 
   /* Dark mode overrides for status */
   --color-status-active: #60A5FA;

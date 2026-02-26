@@ -7,7 +7,7 @@ interface ThemeBarProps {
   overrides?: ChartOverrides;
 }
 
-const DEFAULT_BAR_COLOR = '#6B8CAE';
+const DEFAULT_BAR_COLOR = '#4F46E5';
 
 export function ThemeBar({ data, overrides }: ThemeBarProps) {
   const top10 = data.slice(0, 10);

@@ -12,7 +12,7 @@ interface HistogramProps {
   overrides?: ChartOverrides;
 }
 
-const DEFAULT_BAR_COLOR = '#6B8CAE';
+const DEFAULT_BAR_COLOR = '#4F46E5';
 
 export function Histogram({ data, overrides }: HistogramProps) {
   const barColor = overrides?.colorOverrides?.['bar'] || DEFAULT_BAR_COLOR;
