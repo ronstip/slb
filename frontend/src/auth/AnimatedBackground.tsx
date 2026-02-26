@@ -123,13 +123,13 @@ export function AnimatedBackground() {
       );
 
       if (isDark) {
-        gradient.addColorStop(0, '#0B0D14');
-        gradient.addColorStop(0.4, '#12141F');
-        gradient.addColorStop(1, '#1A1D2E');
+        gradient.addColorStop(0, '#0E0C0A');
+        gradient.addColorStop(0.4, '#14120F');
+        gradient.addColorStop(1, '#1A1720');
       } else {
-        gradient.addColorStop(0, '#F8F9FC');
-        gradient.addColorStop(0.4, '#F1F3F9');
-        gradient.addColorStop(1, '#EEF2FF');
+        gradient.addColorStop(0, '#F8F6F2');
+        gradient.addColorStop(0.4, '#F2EFE9');
+        gradient.addColorStop(1, '#EDE9FE');
       }
 
       ctx.fillStyle = gradient;

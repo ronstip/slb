@@ -18,11 +18,11 @@ export function WelcomeScreen({ onPromptClick }: WelcomeScreenProps) {
         <Search className="h-5 w-5 text-primary" />
       </div>
       <h2 className="mt-4 text-lg font-medium text-foreground">
-        What's the conversation around your topic?
+      Every trend starts as a whisper. Find it.
       </h2>
       <p className="mt-1.5 max-w-sm text-center text-sm text-muted-foreground/70">
-        Describe what you're researching and I'll collect and analyze real social media posts for you.
-      </p>
+
+       </p>
 
       <div className="mt-8 flex max-w-md flex-col gap-1">
         <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/40">
