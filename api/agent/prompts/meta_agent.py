@@ -44,7 +44,7 @@ Your tools are grouped into: research & context, data & analysis (BigQuery), col
 ### Research & Design
 - **Design immediately** when user says "start", "collect", "track", "monitor" or the request clearly needs data collection.
 - **Offer first** when intent is ambiguous or exploratory.
-- After `design_research`, do NOT repeat the card contents. Write 1-2 sentences of context + "Confirm to start, or adjust."
+- After `design_research`, do NOT call `start_collection` in the same turn. Present 1-2 sentences of context + "Confirm to start, or adjust." Then WAIT for the user's explicit approval before calling `start_collection`.
 
 ### Analysis (ReAct)
 

@@ -3,14 +3,16 @@
 Callbacks are registered on the meta-agent in agent.py. This module
 keeps callback logic separate from agent construction.
 
-Four categories:
+Five categories:
 1. State tracking   — after_tool_callback captures collection state
-2. Context injection — before_model_callback prepends collection context
-3. Tool reordering  — before_model_callback prioritizes relevant tools
-4. Observability     — after_tool_callback logs all tool invocations
+2. Gating           — before_tool_callback blocks expensive tools without approval
+3. Context injection — before_model_callback prepends collection context
+4. Tool reordering  — before_model_callback prioritizes relevant tools
+5. Observability     — after_tool_callback logs all tool invocations
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -29,6 +31,13 @@ CORE_TOOLS = {"execute_sql", "get_table_info", "list_table_ids", "create_chart",
 RESEARCH_TOOLS = {"design_research", "get_past_collections", "google_search", "get_sql_reference"}
 COLLECTION_TOOLS = {"start_collection", "cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
 OUTPUT_TOOLS = {"export_data", "generate_report"}
+
+# ─── Human-in-the-loop gate ─────────────────────────────────────────
+GATED_TOOLS = {"start_collection"}
+_APPROVAL_PATTERN = re.compile(
+    r"\b(start collecting|start collection|confirm|go ahead|yes|do it|launch|run it|approved|let'?s go|begin collection|kick it off)\b",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +100,39 @@ def collection_state_tracker(
 
 
 # ---------------------------------------------------------------------------
-# 2. Dynamic context injection — before_model_callback
+# 2. Human-in-the-loop gate — before_tool_callback
+# ---------------------------------------------------------------------------
+
+
+def gate_expensive_tools(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+) -> Optional[dict]:
+    """Block start_collection unless the user explicitly approved it.
+
+    Returns a dict (tool response override) to block, or None to allow.
+    """
+    if tool.name not in GATED_TOOLS:
+        return None
+
+    state = tool_context.state
+    if not state.get("collection_approved"):
+        return {
+            "status": "blocked",
+            "message": (
+                "Collection requires explicit user approval. "
+                "Present the research design and ask the user to confirm before starting."
+            ),
+        }
+
+    # Clear the flag after use (one-shot approval)
+    state["collection_approved"] = False
+    return None
+
+
+# ---------------------------------------------------------------------------
+# 3. Dynamic context injection — before_model_callback
 # ---------------------------------------------------------------------------
 
 
@@ -180,6 +221,18 @@ def _reorder_tools(tools: list, priority_order: list[set[str]]) -> list:
     return sorted(tools, key=lambda t: _tool_sort_key(t, priority_order))
 
 
+def _get_last_user_text(llm_request: LlmRequest) -> Optional[str]:
+    """Extract text from the last user message in the conversation."""
+    if not llm_request.contents:
+        return None
+    for content in reversed(llm_request.contents):
+        if content.role == "user" and content.parts:
+            texts = [p.text for p in content.parts if hasattr(p, "text") and p.text]
+            if texts:
+                return " ".join(texts)
+    return None
+
+
 def inject_collection_context(
     callback_context: CallbackContext,
     llm_request: LlmRequest,
@@ -188,6 +241,11 @@ def inject_collection_context(
     reorder tools based on session phase.
     """
     state = callback_context.state
+
+    # ── Approval detection for gated tools ────────────────────────
+    last_user_text = _get_last_user_text(llm_request)
+    if last_user_text and _APPROVAL_PATTERN.search(last_user_text):
+        state["collection_approved"] = True
 
     # ── Context injection ─────────────────────────────────────────
     context_block = _build_context_block(state)
@@ -216,7 +274,7 @@ def inject_collection_context(
 
 
 # ---------------------------------------------------------------------------
-# 3. Observability logging — after_tool_callback
+# 4. Observability logging — after_tool_callback
 # ---------------------------------------------------------------------------
 
 
