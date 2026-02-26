@@ -9,12 +9,31 @@ import { cn } from '../../lib/utils.ts';
 
 interface MessageInputProps {
   onSend: (text: string) => void;
+  centered?: boolean;
 }
 
-export function MessageInput({ onSend }: MessageInputProps) {
+const CYCLING_PLACEHOLDERS = [
+  'What is TikTok saying about Ozempic right now?',
+  'Compare brand sentiment: Nike vs Adidas on Instagram',
+  'Find trending topics in the beauty community this week',
+  'Who are the top creators talking about AI on YouTube?',
+  'How do people feel about electric vehicles on Reddit?',
+];
+
+export function MessageInput({ onSend, centered = false }: MessageInputProps) {
   const [text, setText] = useState('');
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
+
+  // Cycle placeholder text in centered/welcome mode
+  useEffect(() => {
+    if (!centered || text) return;
+    const interval = setInterval(() => {
+      setPlaceholderIndex((i) => (i + 1) % CYCLING_PLACEHOLDERS.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [centered, text]);
   const sources = useSourcesStore((s) => s.sources);
   const sourcesPanelCollapsed = useUIStore((s) => s.sourcesPanelCollapsed);
   const toggleSourcesPanel = useUIStore((s) => s.toggleSourcesPanel);
@@ -49,17 +68,23 @@ export function MessageInput({ onSend }: MessageInputProps) {
   };
 
   return (
-    <div className="px-6 pb-5 pt-2">
-      <div className="flex items-end gap-2 rounded-2xl border border-border bg-card px-4 py-2.5 shadow-md transition-shadow focus-within:border-primary/50 focus-within:shadow-lg">
+    <div className={cn(centered ? 'w-full max-w-2xl px-4' : 'px-6 pb-5 pt-2')}>
+      <div className={cn(
+        'flex items-end gap-2 rounded-2xl border border-border bg-card shadow-md transition-shadow focus-within:border-primary/50 focus-within:shadow-lg',
+        centered ? 'px-5 py-4' : 'px-4 py-2.5',
+      )}>
         <textarea
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask me about anything on TikTok, Instagram, X,  YouTube..."
+          placeholder={centered ? CYCLING_PLACEHOLDERS[placeholderIndex] : 'Ask me anything on TikTok, Instagram, X, YouTube...'}
           disabled={isAgentResponding}
-          rows={1}
-          className="max-h-36 flex-1 resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50"
+          rows={centered ? 2 : 1}
+          className={cn(
+            'flex-1 resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50',
+            centered ? 'max-h-48 text-base' : 'max-h-36 text-sm',
+          )}
         />
         <Button
           variant="ghost"
@@ -72,8 +97,8 @@ export function MessageInput({ onSend }: MessageInputProps) {
         </Button>
       </div>
 
-      {/* Context indicator */}
-      <div className="mt-1.5 flex min-h-[20px] flex-wrap items-center gap-1.5 px-1">
+      {/* Context indicator — hidden in centered/welcome mode */}
+      {!centered && <div className="mt-1.5 flex min-h-[20px] flex-wrap items-center gap-1.5 px-1">
         {isAgentResponding && (
           <div className="flex items-center gap-2">
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
@@ -123,7 +148,7 @@ export function MessageInput({ onSend }: MessageInputProps) {
             })}
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

@@ -1,42 +1,67 @@
-import { Search, ArrowRight } from 'lucide-react';
+import { BarChart3, Users, TrendingUp, MessageCircle } from 'lucide-react';
+import { Logo } from '../../components/Logo.tsx';
+import { MessageInput } from './MessageInput.tsx';
 
 interface WelcomeScreenProps {
   onPromptClick: (text: string) => void;
+  onSend: (text: string) => void;
 }
 
-const SUGGESTIONS = [
-  'What is TikTok saying about Ozempic right now?',
-  'Show me how people feel about Tesla on Reddit and Twitter',
-  'Who are the top voices in sustainable fashion on Instagram?',
-  'What topics are blowing up in the gaming community this week?',
+const USE_CASES = [
+  {
+    icon: BarChart3,
+    label: 'Brand Sentiment',
+    prompt: 'Analyze the overall sentiment around our brand across TikTok and Instagram this week',
+  },
+  {
+    icon: Users,
+    label: 'Competitor Analysis',
+    prompt: 'Compare how people talk about Tesla vs Rivian on Reddit and Twitter',
+  },
+  {
+    icon: TrendingUp,
+    label: 'Trending Topics',
+    prompt: 'What topics are blowing up in the gaming community this week?',
+  },
+  {
+    icon: MessageCircle,
+    label: 'Audience Insights',
+    prompt: 'Who are the top voices in sustainable fashion on Instagram?',
+  },
 ];
 
-export function WelcomeScreen({ onPromptClick }: WelcomeScreenProps) {
+export function WelcomeScreen({ onPromptClick, onSend }: WelcomeScreenProps) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-        <Search className="h-5 w-5 text-primary" />
+      {/* Animated logo with pulsing rings */}
+      <div className="relative flex items-center justify-center">
+        <div className="pulse-ring-1 absolute h-24 w-24 rounded-full border border-primary/20" />
+        <div className="pulse-ring-2 absolute h-36 w-36 rounded-full border border-primary/10" />
+        <div className="pulse-ring-3 absolute h-48 w-48 rounded-full border border-primary/5" />
+        <Logo size="lg" showText={false} />
       </div>
-      <h2 className="mt-4 text-lg font-medium text-foreground">
-      Every trend starts as a whisper. Find it.
+
+      <h2 className="mt-6 text-2xl font-semibold tracking-tight text-foreground">
+        Every trend starts with a whisper. Find It.
       </h2>
-      <p className="mt-1.5 max-w-sm text-center text-sm text-muted-foreground/70">
+      <p className="mt-1.5 text-sm text-muted-foreground/60">
+        Real-time social intelligence across every platform
+      </p>
 
-       </p>
+      <div className="mt-10 w-full max-w-2xl">
+        <MessageInput onSend={onSend} centered />
+      </div>
 
-      <div className="mt-8 flex max-w-md flex-col gap-1">
-        <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/40">
-          Try asking
-        </p>
-        {SUGGESTIONS.map((prompt) => (
+      <div className="mt-8 flex flex-wrap justify-center gap-2.5">
+        {USE_CASES.map(({ icon: Icon, label, prompt }) => (
           <button
-            key={prompt}
+            key={label}
             type="button"
             onClick={() => onPromptClick(prompt)}
-            className="group flex items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-muted-foreground/70 transition-colors hover:bg-secondary/60 hover:text-foreground"
+            className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground/70 transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-foreground hover:shadow-sm"
           >
-            <ArrowRight className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-60" />
-            <span className="-ml-5 transition-[margin] group-hover:ml-0">{prompt}</span>
+            <Icon className="h-3.5 w-3.5 text-primary/50" />
+            {label}
           </button>
         ))}
       </div>
