@@ -61,6 +61,43 @@ class FirestoreClient:
                 data[key] = data[key].isoformat()
         return data
 
+    # --- Statistical Signature methods ---
+
+    def add_statistical_signature(self, collection_id: str, data: dict) -> str:
+        """Add an immutable statistical signature doc to the sub-collection.
+
+        Doc ID is a unix millisecond timestamp so the latest is always the
+        lexicographically largest ID — no extra index needed.
+        """
+        import time
+
+        doc_id = str(int(time.time() * 1000))
+        doc_ref = (
+            self._db.collection("collection_status")
+            .document(collection_id)
+            .collection("statistical_signatures")
+            .document(doc_id)
+        )
+        doc_ref.set(data)
+        logger.debug("Saved statistical_signature %s for collection %s", doc_id, collection_id)
+        return doc_id
+
+    def get_latest_statistical_signature(self, collection_id: str) -> dict | None:
+        """Return the most recent statistical signature, or None if none exist."""
+        docs = (
+            self._db.collection("collection_status")
+            .document(collection_id)
+            .collection("statistical_signatures")
+            .order_by("computed_at", direction=firestore.Query.DESCENDING)
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            data["_signature_id"] = doc.id
+            return data
+        return None
+
     def get_due_ongoing_collections(self) -> list[dict]:
         """Return ongoing collections whose next_run_at is in the past and status is 'monitoring'."""
         now = datetime.now(timezone.utc)

@@ -233,18 +233,41 @@ export interface MultiFeedParams {
   offset?: number;
 }
 
+export interface BreakdownItem {
+  value: string;
+  post_count: number;
+  view_count: number;
+  like_count: number;
+}
+
 export interface CollectionStats {
+  computed_at: string | null;
+  collection_status_at_compute: 'collecting' | 'completed' | null;
   total_posts: number;
-  platform_breakdown: Array<{ platform: string; count: number }>;
-  sentiment_breakdown: Array<{ sentiment: string; count: number }>;
-  top_themes: Array<{ theme: string; count: number }>;
+  total_unique_channels: number;
+  date_range: { earliest: string | null; latest: string | null };
+  platform_breakdown: BreakdownItem[];
+  sentiment_breakdown: BreakdownItem[];
+  top_themes: BreakdownItem[];
+  top_entities: BreakdownItem[];
+  language_breakdown: BreakdownItem[];
+  content_type_breakdown: BreakdownItem[];
+  negative_sentiment_pct: number | null;
+  total_posts_enriched: number;
   engagement_summary: {
+    total_likes: number;
+    total_views: number;
+    total_comments: number;
+    total_shares: number;
     avg_likes: number;
     avg_views: number;
     avg_comments: number;
-    total_posts_enriched: number;
+    avg_shares: number;
+    max_likes: number;
+    max_views: number;
+    median_likes: number;
+    median_views: number;
   };
-  date_range: { earliest: string | null; latest: string | null };
 }
 
 // --- SSE Events ---

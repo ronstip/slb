@@ -24,7 +24,8 @@
       "Bash(python3:*)",
       "Bash(uv pip show:*)",
       "Bash(pip show:*)",
-      "Bash(uv run python:*)"
+      "Bash(uv run python:*)",
+      "Bash(curl -s http://localhost:8000/openapi.json)"
     ]
   }
 }

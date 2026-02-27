@@ -140,6 +140,15 @@ def _run_pipeline(collection_id: str) -> None:
         logger.exception("Enrichment pipeline failed for %s", collection_id)
         return
 
+    # Compute and persist statistical signature (non-fatal)
+    try:
+        from api.services.statistical_signature_service import refresh_statistical_signature
+
+        bq = get_bq()
+        refresh_statistical_signature(collection_id, bq, fs)
+    except Exception:
+        logger.exception("Statistical signature computation failed for %s", collection_id)
+
     # After enrichment, decide final status based on ongoing flag
     status = fs.get_collection_status(collection_id)
     config = (status or {}).get("config") or {}

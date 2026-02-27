@@ -40,6 +40,12 @@ export async function getCollectionStats(
   return apiGet(`/collection/${collectionId}/stats`);
 }
 
+export async function refreshCollectionStats(
+  collectionId: string,
+): Promise<CollectionStats> {
+  return apiPost(`/collection/${collectionId}/stats/refresh`, {});
+}
+
 export async function triggerCollection(
   collectionId: string,
 ): Promise<{ status: string; message: string }> {

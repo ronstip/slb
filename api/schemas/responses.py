@@ -52,35 +52,43 @@ class FeedResponse(BaseModel):
     limit: int
 
 
-class PlatformCount(BaseModel):
-    platform: str
-    count: int
-
-
-class SentimentCount(BaseModel):
-    sentiment: str
-    count: int
-
-
-class ThemeCount(BaseModel):
-    theme: str
-    count: int
+class BreakdownItem(BaseModel):
+    value: str
+    post_count: int = 0
+    view_count: int = 0
+    like_count: int = 0
 
 
 class EngagementStats(BaseModel):
+    total_likes: int = 0
+    total_views: int = 0
+    total_comments: int = 0
+    total_shares: int = 0
     avg_likes: float = 0
     avg_views: float = 0
     avg_comments: float = 0
-    total_posts_enriched: int = 0
+    avg_shares: float = 0
+    max_likes: float = 0
+    max_views: float = 0
+    median_likes: float = 0
+    median_views: float = 0
 
 
 class CollectionStatsResponse(BaseModel):
+    computed_at: str | None = None
+    collection_status_at_compute: str | None = None
     total_posts: int
-    platform_breakdown: list[PlatformCount]
-    sentiment_breakdown: list[SentimentCount]
-    top_themes: list[ThemeCount]
-    engagement_summary: EngagementStats
+    total_unique_channels: int = 0
     date_range: dict
+    platform_breakdown: list[BreakdownItem]
+    sentiment_breakdown: list[BreakdownItem]
+    top_themes: list[BreakdownItem]
+    top_entities: list[BreakdownItem] = []
+    language_breakdown: list[BreakdownItem] = []
+    content_type_breakdown: list[BreakdownItem] = []
+    negative_sentiment_pct: float | None = None
+    total_posts_enriched: int = 0
+    engagement_summary: EngagementStats
 
 
 # --- Settings ---

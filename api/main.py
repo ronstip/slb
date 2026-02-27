@@ -38,14 +38,12 @@ import io
 from api.routers import sessions as sessions_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionModeRequest
 from api.schemas.responses import (
+    BreakdownItem,
     CollectionStatsResponse,
     CollectionStatusResponse,
     EngagementStats,
     FeedPostResponse,
     FeedResponse,
-    PlatformCount,
-    SentimentCount,
-    ThemeCount,
 )
 from api.services.collection_service import (
     create_collection_from_request,
@@ -673,12 +671,61 @@ async def get_collection_status(
     )
 
 
+def _signature_to_response(data: dict) -> CollectionStatsResponse:
+    """Convert a raw statistical signature dict to CollectionStatsResponse."""
+    eng = data.get("engagement_summary") or {}
+    return CollectionStatsResponse(
+        computed_at=data.get("computed_at"),
+        collection_status_at_compute=data.get("collection_status_at_compute"),
+        total_posts=data.get("total_posts", 0),
+        total_unique_channels=data.get("total_unique_channels", 0),
+        date_range=data.get("date_range", {}),
+        platform_breakdown=[BreakdownItem(**x) for x in data.get("platform_breakdown", [])],
+        sentiment_breakdown=[BreakdownItem(**x) for x in data.get("sentiment_breakdown", [])],
+        top_themes=[BreakdownItem(**x) for x in data.get("top_themes", [])],
+        top_entities=[BreakdownItem(**x) for x in data.get("top_entities", [])],
+        language_breakdown=[BreakdownItem(**x) for x in data.get("language_breakdown", [])],
+        content_type_breakdown=[BreakdownItem(**x) for x in data.get("content_type_breakdown", [])],
+        negative_sentiment_pct=data.get("negative_sentiment_pct"),
+        total_posts_enriched=data.get("total_posts_enriched", 0),
+        engagement_summary=EngagementStats(**eng) if eng else EngagementStats(),
+    )
+
+
 @app.get("/collection/{collection_id}/stats", response_model=CollectionStatsResponse)
 async def get_collection_stats(
     collection_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Lightweight descriptive stats for a collection (no AI)."""
+    """Return statistical signature — from Firestore cache if available, else compute fresh."""
+    from api.services.statistical_signature_service import refresh_statistical_signature
+
+    fs = get_fs()
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if not _can_access_collection(user, status):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Fast path: serve cached signature from Firestore (no BQ)
+    cached = fs.get_latest_statistical_signature(collection_id)
+    if cached:
+        return _signature_to_response(cached)
+
+    # Slow path: compute, persist, return
+    bq = get_bq()
+    data = await asyncio.to_thread(refresh_statistical_signature, collection_id, bq, fs)
+    return _signature_to_response(data)
+
+
+@app.post("/collection/{collection_id}/stats/refresh", response_model=CollectionStatsResponse)
+async def refresh_collection_stats(
+    collection_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Force-recompute the statistical signature and persist a new immutable snapshot."""
+    from api.services.statistical_signature_service import refresh_statistical_signature
+
     fs = get_fs()
     status = fs.get_collection_status(collection_id)
     if not status:
@@ -687,107 +734,8 @@ async def get_collection_stats(
         raise HTTPException(status_code=403, detail="Access denied")
 
     bq = get_bq()
-
-    platform_sql = """
-    SELECT p.platform, COUNT(*) as count,
-           MIN(p.posted_at) as earliest, MAX(p.posted_at) as latest
-    FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
-        FROM social_listening.posts
-    ) p
-    WHERE p.collection_id = @collection_id AND p._rn = 1
-    GROUP BY p.platform
-    ORDER BY count DESC
-    """
-
-    sentiment_sql = """
-    SELECT ep.sentiment, COUNT(*) as count
-    FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-        FROM social_listening.enriched_posts
-    ) ep
-    JOIN (
-        SELECT DISTINCT post_id FROM social_listening.posts
-        WHERE collection_id = @collection_id
-    ) p ON ep.post_id = p.post_id
-    WHERE ep._rn = 1 AND ep.sentiment IS NOT NULL
-    GROUP BY ep.sentiment
-    ORDER BY count DESC
-    """
-
-    themes_sql = """
-    SELECT theme, COUNT(*) as count
-    FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-        FROM social_listening.enriched_posts
-    ) ep
-    JOIN (
-        SELECT DISTINCT post_id FROM social_listening.posts
-        WHERE collection_id = @collection_id
-    ) p ON ep.post_id = p.post_id,
-    UNNEST(ep.themes) AS theme
-    WHERE ep._rn = 1
-    GROUP BY theme
-    ORDER BY count DESC
-    LIMIT 8
-    """
-
-    engagement_sql = """
-    SELECT
-        ROUND(AVG(COALESCE(pe.likes, 0)), 0) as avg_likes,
-        ROUND(AVG(COALESCE(pe.views, 0)), 0) as avg_views,
-        ROUND(AVG(COALESCE(pe.comments_count, 0)), 0) as avg_comments,
-        COUNT(ep.post_id) as total_posts_enriched
-    FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
-        FROM social_listening.posts
-    ) p
-    LEFT JOIN (
-        SELECT post_id, likes, views, comments_count,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-        FROM social_listening.post_engagements
-    ) pe ON p.post_id = pe.post_id AND pe.rn = 1
-    LEFT JOIN (
-        SELECT post_id,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-        FROM social_listening.enriched_posts
-    ) ep ON p.post_id = ep.post_id AND ep._rn = 1
-    WHERE p.collection_id = @collection_id AND p._rn = 1
-    """
-
-    params = {"collection_id": collection_id}
-    platform_rows, sentiment_rows, theme_rows, eng_rows = await asyncio.gather(
-        asyncio.to_thread(bq.query, platform_sql, params),
-        asyncio.to_thread(bq.query, sentiment_sql, params),
-        asyncio.to_thread(bq.query, themes_sql, params),
-        asyncio.to_thread(bq.query, engagement_sql, params),
-    )
-
-    # Platform breakdown + date range
-    platform_breakdown = [PlatformCount(platform=r["platform"], count=r["count"]) for r in platform_rows]
-    total_posts = sum(r["count"] for r in platform_rows)
-    earliest = min((str(r["earliest"]) for r in platform_rows if r.get("earliest")), default=None)
-    latest = max((str(r["latest"]) for r in platform_rows if r.get("latest")), default=None)
-
-    sentiment_breakdown = [SentimentCount(sentiment=r["sentiment"], count=r["count"]) for r in sentiment_rows]
-    top_themes = [ThemeCount(theme=r["theme"], count=r["count"]) for r in theme_rows]
-
-    eng = eng_rows[0] if eng_rows else {}
-    engagement_summary = EngagementStats(
-        avg_likes=float(eng.get("avg_likes") or 0),
-        avg_views=float(eng.get("avg_views") or 0),
-        avg_comments=float(eng.get("avg_comments") or 0),
-        total_posts_enriched=int(eng.get("total_posts_enriched") or 0),
-    )
-
-    return CollectionStatsResponse(
-        total_posts=total_posts,
-        platform_breakdown=platform_breakdown,
-        sentiment_breakdown=sentiment_breakdown,
-        top_themes=top_themes,
-        engagement_summary=engagement_summary,
-        date_range={"earliest": earliest, "latest": latest},
-    )
+    data = await asyncio.to_thread(refresh_statistical_signature, collection_id, bq, fs)
+    return _signature_to_response(data)
 
 
 @app.get("/collection/{collection_id}/download")
