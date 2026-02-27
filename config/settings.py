@@ -26,12 +26,15 @@ class Settings(BaseSettings):
     agent_engine_id: str = ""  # Vertex AI Agent Engine ID for Memory Bank (prod only)
     google_genai_use_vertexai: bool = True
 
-    # Frontend URL for Stripe redirect callbacks
     frontend_url: str = "http://localhost:5173"
 
-    # Stripe billing (optional — billing features disabled if not set)
-    stripe_secret_key: str = ""
-    stripe_webhook_secret: str = ""
+    # Lemon Squeezy billing (optional — billing features disabled if not set)
+    lemonsqueezy_api_key: str = ""
+    lemonsqueezy_store_id: str = ""
+    lemonsqueezy_webhook_secret: str = ""
+
+    # Super admin — comma-separated emails with platform-wide admin access
+    super_admin_emails: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

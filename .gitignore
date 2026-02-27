@@ -57,3 +57,6 @@ frontend/.turbo/
 frontend/.next/
 frontend/out/
 frontend/build/
+
+# Memory Bank - dev-specific context
+memory-bank/active-context.md

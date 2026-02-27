@@ -64,6 +64,10 @@ def start_collection(
     # Create Firestore status document
     fs.create_collection_status(collection_id, user_id, config, org_id=resolved_org_id)
 
+    # Track usage
+    from api.services.usage_service import track_collection_created
+    track_collection_created(user_id, resolved_org_id, collection_id, session_id)
+
     # Dispatch worker
     if settings.is_dev:
         logger.info("DEV MODE: Running collection pipeline in background thread for %s", collection_id)

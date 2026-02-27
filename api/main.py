@@ -19,9 +19,12 @@ init_firebase()
 
 import requests as http_requests
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.genai import types
@@ -32,6 +35,7 @@ from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs, get_gcs
 from api.routers import settings as settings_router
 from api.routers import billing as billing_router
+from api.routers import admin as admin_router
 import csv
 import io
 
@@ -55,6 +59,19 @@ from config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
+def _rate_limit_key(request: Request) -> str:
+    """Key rate limiter by auth token hash (per-user) or IP (unauthenticated)."""
+    import hashlib
+
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        return hashlib.sha256(auth[7:].encode()).hexdigest()[:16]
+    return request.client.host if request.client else "unknown"
+
+
+limiter = Limiter(key_func=_rate_limit_key)
+
+
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
     settings = get_settings()
@@ -67,10 +84,16 @@ async def lifespan(app_: FastAPI):
 
 app = FastAPI(title="Social Listening Platform", version="0.1.0", lifespan=lifespan)
 
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 # Include routers
 app.include_router(settings_router.router)
 app.include_router(billing_router.router)
 app.include_router(sessions_router.router)
+app.include_router(admin_router.router)
 
 # CORS middleware — allow frontend dev server and production domains
 app.add_middleware(
@@ -147,6 +170,7 @@ def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
 async def get_me(user: CurrentUser = Depends(get_current_user)):
     """Return the current user's profile."""
     fs = get_fs()
+    settings = get_settings()
 
     org_name = None
     if user.org_id:
@@ -155,6 +179,10 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
             org_name = org.get("name")
 
     user_doc = fs.get_user(user.uid)
+
+    # Check super admin status
+    admin_emails = [e.strip().lower() for e in settings.super_admin_emails.split(",") if e.strip()]
+    is_super_admin = user.email.lower() in admin_emails if admin_emails else False
 
     return {
         "uid": user.uid,
@@ -167,16 +195,18 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
         "preferences": user_doc.get("preferences") if user_doc else None,
         "subscription_plan": user_doc.get("subscription_plan") if user_doc else None,
         "subscription_status": user_doc.get("subscription_status") if user_doc else None,
+        "is_super_admin": is_super_admin,
     }
 
 
 @app.post("/chat")
-async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
+@limiter.limit("20/minute")
+async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """SSE endpoint — streams agent events to the client."""
-    model_override = MODEL_ALIASES.get(request.model) if request.model else None
+    model_override = MODEL_ALIASES.get(chat_request.model) if chat_request.model else None
     runner = get_runner(model=model_override)
     user_id = user.uid
-    session_id = request.session_id or str(uuid4())
+    session_id = chat_request.session_id or str(uuid4())
 
     # Get or create session
     try:
@@ -195,7 +225,7 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                 "user_id": user_id,
                 "org_id": user.org_id,
                 "session_id": session_id,
-                "selected_sources": request.selected_sources or [],
+                "selected_sources": chat_request.selected_sources or [],
                 "session_title": "New Session",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "message_count": 0,
@@ -204,17 +234,21 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
         )
     else:
         # Update selected_sources in session state
-        if request.selected_sources is not None:
-            session.state["selected_sources"] = request.selected_sources
+        if chat_request.selected_sources is not None:
+            session.state["selected_sources"] = chat_request.selected_sources
 
     content = types.Content(
-        role="user", parts=[types.Part.from_text(text=request.message)]
+        role="user", parts=[types.Part.from_text(text=chat_request.message)]
     )
 
     # Track first message for session naming
     if not session.state.get("first_message"):
-        session.state["first_message"] = request.message
+        session.state["first_message"] = chat_request.message
     session.state["message_count"] = session.state.get("message_count", 0) + 1
+
+    # Track usage
+    from api.services.usage_service import track_query
+    track_query(user_id, user.org_id, session_id)
 
     async def event_stream():
         try:
@@ -328,12 +362,14 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
 
 
 @app.post("/collections")
+@limiter.limit("5/minute")
 async def create_collection(
-    request: CreateCollectionRequest,
+    request: Request,
+    body: CreateCollectionRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
     """Create a collection directly from the frontend modal (bypasses agent)."""
-    result = create_collection_from_request(request, user_id=user.uid, org_id=user.org_id)
+    result = create_collection_from_request(body, user_id=user.uid, org_id=user.org_id)
     return result
 
 
@@ -362,7 +398,9 @@ async def set_collection_visibility(
 
 
 @app.post("/collection/{collection_id}/trigger")
+@limiter.limit("5/minute")
 async def trigger_collection(
+    request: Request,
     collection_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):

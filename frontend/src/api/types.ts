@@ -28,6 +28,7 @@ export interface UserProfile {
   preferences: UserPreferences | null;
   subscription_plan: string | null;
   subscription_status: string | null;
+  is_super_admin?: boolean;
 }
 
 export interface OrgMember {
@@ -488,4 +489,90 @@ export interface DataExportResult {
   row_count: number;
   column_names: string[];
   collection_id?: string;
+}
+
+// --- Admin types ---
+
+export interface AdminOverview {
+  total_users: number;
+  total_orgs: number;
+  active_users_30d: number;
+  total_queries: number;
+  total_collections: number;
+  total_posts: number;
+  total_revenue_cents: number;
+  total_credits_purchased: number;
+  credits_outstanding: number;
+}
+
+export interface AdminUser {
+  uid: string;
+  email: string;
+  display_name: string | null;
+  photo_url: string | null;
+  org_id: string | null;
+  org_role: string | null;
+  created_at: string;
+  last_login_at: string | null;
+  queries_used: number;
+  collections_created: number;
+  posts_collected: number;
+  credits_remaining: number;
+}
+
+export interface AdminUserList {
+  users: AdminUser[];
+  total: number;
+}
+
+export interface AdminEvent {
+  event_id: string;
+  event_type: string;
+  session_id: string | null;
+  collection_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AdminUserDetail extends AdminUser {
+  recent_events: AdminEvent[];
+  usage_trend: { date: string; queries: number; collections: number; posts: number }[];
+}
+
+export interface AdminActivityPoint {
+  date: string;
+  event_type: string;
+  count: number;
+}
+
+export interface AdminActivity {
+  points: AdminActivityPoint[];
+}
+
+export interface AdminCollection {
+  collection_id: string;
+  user_id: string;
+  user_email: string;
+  org_id: string | null;
+  original_question: string;
+  status: string;
+  posts_collected: number;
+  posts_enriched: number;
+  platforms: string[];
+  ongoing: boolean;
+  created_at: string;
+  error_message: string | null;
+}
+
+export interface AdminCollectionList {
+  collections: AdminCollection[];
+  total: number;
+}
+
+export interface AdminRevenue {
+  total_revenue_cents: number;
+  total_purchases: number;
+  avg_purchase_cents: number;
+  daily_revenue: { date: string; revenue_cents: number; purchases: number }[];
+  recent_purchases: CreditPurchaseHistoryItem[];
 }

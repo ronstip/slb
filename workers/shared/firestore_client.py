@@ -196,6 +196,73 @@ class FirestoreClient:
             members.append(data)
         return members
 
+    def list_all_users(self) -> list[dict]:
+        """List all users in the platform (admin use only)."""
+        docs = self._db.collection("users").stream()
+        users = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["uid"] = doc.id
+            # Convert Firestore timestamps to ISO strings
+            for key in ("created_at", "last_login_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            users.append(data)
+        return users
+
+    def list_all_orgs(self) -> list[dict]:
+        """List all organizations in the platform (admin use only)."""
+        docs = self._db.collection("organizations").stream()
+        orgs = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["org_id"] = doc.id
+            orgs.append(data)
+        return orgs
+
+    def list_all_collection_statuses(self, limit: int = 100) -> list[dict]:
+        """List collection statuses platform-wide, most recent first (admin use only)."""
+        try:
+            docs = (
+                self._db.collection("collection_status")
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+                .limit(limit)
+                .stream()
+            )
+        except Exception:
+            # Fallback if index is missing
+            docs = self._db.collection("collection_status").limit(limit).stream()
+
+        results = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["collection_id"] = doc.id
+            for key in ("created_at", "updated_at", "last_run_at", "next_run_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            results.append(data)
+        return results
+
+    def get_all_credit_purchases(self, limit: int = 200) -> list[dict]:
+        """Get all credit purchases platform-wide (admin use only)."""
+        try:
+            try:
+                docs = (
+                    self._db.collection("credit_purchases")
+                    .order_by("purchased_at", direction="DESCENDING")
+                    .limit(limit)
+                    .stream()
+                )
+                return [{"purchase_id": doc.id, **doc.to_dict()} for doc in docs]
+            except Exception:
+                docs = self._db.collection("credit_purchases").limit(limit).stream()
+                results = [{"purchase_id": doc.id, **doc.to_dict()} for doc in docs]
+                results.sort(key=lambda x: x.get("purchased_at", ""), reverse=True)
+                return results
+        except Exception as e:
+            logger.warning("Failed to fetch all credit purchases: %s", e)
+            return []
+
     def update_org(self, org_id: str, **fields) -> None:
         """Update organization fields."""
         self._db.collection("organizations").document(org_id).update(fields)

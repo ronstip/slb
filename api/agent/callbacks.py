@@ -301,4 +301,16 @@ def log_tool_invocation(
         datetime.now(timezone.utc).isoformat(),
     )
 
+    # Track in BigQuery event log
+    state = tool_context.state
+    from api.services.usage_service import track_tool_call
+    track_tool_call(
+        user_id=state.get("user_id", ""),
+        org_id=state.get("org_id"),
+        session_id=state.get("session_id"),
+        collection_id=state.get("active_collection_id"),
+        tool_name=tool_name,
+        status=status,
+    )
+
     return None

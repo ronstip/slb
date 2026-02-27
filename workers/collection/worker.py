@@ -45,6 +45,8 @@ def run_collection(collection_id: str) -> None:
 
     # For ongoing collections on 2nd+ runs, use incremental window (since last run)
     status_doc = fs.get_collection_status(collection_id)
+    owner_user_id = status_doc.get("user_id") if status_doc else None
+    owner_org_id = status_doc.get("org_id") if status_doc else None
     last_run_at = status_doc.get("last_run_at") if status_doc else None
     if last_run_at and config.get("ongoing"):
         config = dict(config)
@@ -121,6 +123,9 @@ def run_collection(collection_id: str) -> None:
             fs.update_collection_status(
                 collection_id, posts_collected=total_posts
             )
+            # Track usage for billing
+            if owner_user_id and len(new_posts) > 0:
+                fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", len(new_posts))
             logger.info("Collection %s: %d posts so far (%d dupes skipped)", collection_id, total_posts, dupes_in_batch)
 
         # Build run_log with platform stats and timing

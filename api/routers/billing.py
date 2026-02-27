@@ -1,8 +1,11 @@
-"""Billing router — Credit-based pay-as-you-go system via Stripe."""
+"""Billing router — Credit-based pay-as-you-go system via Lemon Squeezy."""
 
+import hashlib
+import hmac
 import logging
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth.dependencies import CurrentUser, get_current_user
@@ -14,35 +17,15 @@ from api.schemas.responses import (
 )
 from api.deps import get_fs
 from config.settings import get_settings
-from workers.shared.firestore_client import FirestoreClient
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing")
 
-# Stripe is optional — gracefully degrade if not configured
-try:
-    import stripe as stripe_lib
-
-    _stripe_available = True
-except ImportError:
-    _stripe_available = False
-    stripe_lib = None
-
-
-def _get_stripe():
-    """Return configured stripe module or raise if unavailable."""
-    if not _stripe_available:
-        raise HTTPException(status_code=501, detail="Stripe is not installed")
-    settings = get_settings()
-    if not getattr(settings, "stripe_secret_key", ""):
-        raise HTTPException(status_code=501, detail="Stripe is not configured")
-    stripe_lib.api_key = settings.stripe_secret_key
-    return stripe_lib
-
+LEMONSQUEEZY_API_BASE = "https://api.lemonsqueezy.com/v1"
 
 # ---------------------------------------------------------------------------
-# Credit packs configuration
+# Credit packs — variant_id comes from the Lemon Squeezy dashboard
 # ---------------------------------------------------------------------------
 
 CREDIT_PACKS = [
@@ -52,6 +35,7 @@ CREDIT_PACKS = [
         "credits": 100,
         "price_cents": 999,
         "popular": False,
+        "variant_id": "",  # TODO: set from Lemon Squeezy dashboard
     },
     {
         "pack_id": "growth",
@@ -59,6 +43,7 @@ CREDIT_PACKS = [
         "credits": 500,
         "price_cents": 3999,
         "popular": True,
+        "variant_id": "",  # TODO: set from Lemon Squeezy dashboard
     },
     {
         "pack_id": "scale",
@@ -66,6 +51,7 @@ CREDIT_PACKS = [
         "credits": 2000,
         "price_cents": 12999,
         "popular": False,
+        "variant_id": "",  # TODO: set from Lemon Squeezy dashboard
     },
     {
         "pack_id": "enterprise",
@@ -73,34 +59,9 @@ CREDIT_PACKS = [
         "credits": 10000,
         "price_cents": 49999,
         "popular": False,
+        "variant_id": "",  # TODO: set from Lemon Squeezy dashboard
     },
 ]
-
-
-def _get_or_create_customer(stripe, fs: FirestoreClient, user: CurrentUser) -> str:
-    """Get or create a Stripe customer for the user or their org."""
-    if user.org_id:
-        org = fs.get_org(user.org_id)
-        if org and org.get("stripe_customer_id"):
-            return org["stripe_customer_id"]
-        customer = stripe.Customer.create(
-            email=user.email,
-            name=org.get("name") if org else None,
-            metadata={"org_id": user.org_id, "created_by": user.uid},
-        )
-        fs.update_org(user.org_id, stripe_customer_id=customer.id)
-        return customer.id
-    else:
-        user_doc = fs.get_user(user.uid)
-        if user_doc and user_doc.get("stripe_customer_id"):
-            return user_doc["stripe_customer_id"]
-        customer = stripe.Customer.create(
-            email=user.email,
-            name=user.display_name,
-            metadata={"user_id": user.uid},
-        )
-        fs.update_user(user.uid, stripe_customer_id=customer.id)
-        return customer.id
 
 
 # ---------------------------------------------------------------------------
@@ -138,60 +99,85 @@ async def get_credit_balance(user: CurrentUser = Depends(get_current_user)):
 @router.get("/credit-packs", response_model=list[CreditPackResponse])
 async def get_credit_packs(user: CurrentUser = Depends(get_current_user)):
     """Get available credit packs for purchase."""
-    return [CreditPackResponse(**pack) for pack in CREDIT_PACKS]
+    return [
+        CreditPackResponse(**{k: v for k, v in pack.items() if k != "variant_id"})
+        for pack in CREDIT_PACKS
+    ]
 
 
 @router.post("/purchase-credits")
 async def purchase_credits(
-    request: dict,
+    request: Request,
+    body: dict,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Create a Stripe Checkout Session for a credit pack purchase."""
+    """Create a Lemon Squeezy checkout for a credit pack purchase."""
     if user.org_id:
         require_org_role(user, "admin")
 
-    pack_id = request.get("pack_id")
+    settings = get_settings()
+    if not settings.lemonsqueezy_api_key:
+        raise HTTPException(status_code=501, detail="Billing is not configured")
+
+    pack_id = body.get("pack_id")
     pack = next((p for p in CREDIT_PACKS if p["pack_id"] == pack_id), None)
     if not pack:
         raise HTTPException(status_code=400, detail="Invalid credit pack")
+    if not pack["variant_id"]:
+        raise HTTPException(status_code=501, detail="Credit pack not yet configured in Lemon Squeezy")
 
-    stripe = _get_stripe()
-    settings = get_settings()
-    fs = get_fs()
-
-    customer_id = _get_or_create_customer(stripe, fs, user)
-
-    frontend_url = getattr(settings, "frontend_url", "http://localhost:5173")
-    success_url = f"{frontend_url}/?billing=success"
-    cancel_url = f"{frontend_url}/?billing=cancel"
-
-    session = stripe.checkout.Session.create(
-        customer=customer_id,
-        mode="payment",
-        line_items=[
-            {
-                "price_data": {
-                    "currency": "usd",
-                    "unit_amount": pack["price_cents"],
-                    "product_data": {
-                        "name": f"{pack['name']} Credit Pack — {pack['credits']} credits",
+    checkout_payload = {
+        "data": {
+            "type": "checkouts",
+            "attributes": {
+                "checkout_data": {
+                    "email": user.email,
+                    "custom": {
+                        "user_id": user.uid,
+                        "org_id": user.org_id or "",
+                        "pack_id": pack["pack_id"],
+                        "credits": str(pack["credits"]),
                     },
                 },
-                "quantity": 1,
-            }
-        ],
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={
-            "type": "credit_purchase",
-            "user_id": user.uid,
-            "org_id": user.org_id or "",
-            "pack_id": pack["pack_id"],
-            "credits": str(pack["credits"]),
-        },
-    )
+                "product_options": {
+                    "redirect_url": f"{settings.frontend_url}/?billing=success",
+                },
+            },
+            "relationships": {
+                "store": {
+                    "data": {
+                        "type": "stores",
+                        "id": settings.lemonsqueezy_store_id,
+                    }
+                },
+                "variant": {
+                    "data": {
+                        "type": "variants",
+                        "id": pack["variant_id"],
+                    }
+                },
+            },
+        }
+    }
 
-    return {"url": session.url}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{LEMONSQUEEZY_API_BASE}/checkouts",
+            json=checkout_payload,
+            headers={
+                "Authorization": f"Bearer {settings.lemonsqueezy_api_key}",
+                "Accept": "application/vnd.api+json",
+                "Content-Type": "application/vnd.api+json",
+            },
+            timeout=15.0,
+        )
+
+    if resp.status_code not in (200, 201):
+        logger.error("Lemon Squeezy checkout error: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=502, detail="Failed to create checkout session")
+
+    checkout_url = resp.json()["data"]["attributes"]["url"]
+    return {"url": checkout_url}
 
 
 @router.get("/credit-history", response_model=list[CreditPurchaseHistoryItem])
@@ -217,34 +203,32 @@ async def get_credit_history(user: CurrentUser = Depends(get_current_user)):
 
 
 @router.post("/webhook")
-async def stripe_webhook(request: Request):
-    """Handle Stripe webhook events. No auth — verified by Stripe signature."""
-    stripe = _get_stripe()
+async def lemonsqueezy_webhook(request: Request):
+    """Handle Lemon Squeezy webhook events. No auth — verified by HMAC signature."""
     settings = get_settings()
-    webhook_secret = getattr(settings, "stripe_webhook_secret", "")
+    webhook_secret = settings.lemonsqueezy_webhook_secret
 
     if not webhook_secret:
         raise HTTPException(status_code=501, detail="Webhook secret not configured")
 
     body = await request.body()
-    sig_header = request.headers.get("stripe-signature", "")
+    signature = request.headers.get("x-signature", "")
 
-    try:
-        event = stripe.Webhook.construct_event(body, sig_header, webhook_secret)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.error.SignatureVerificationError:
+    # Verify HMAC-SHA256 signature
+    expected = hmac.new(
+        webhook_secret.encode(), body, hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    fs = get_fs()
+    payload = await request.json()
+    event_name = payload.get("meta", {}).get("event_name", "")
 
-    match event["type"]:
-        case "checkout.session.completed":
-            session = event["data"]["object"]
-            _handle_credit_purchase(fs, session)
-
-        case _:
-            logger.info("Unhandled Stripe event: %s", event["type"])
+    if event_name == "order_created":
+        _handle_credit_purchase(payload)
+    else:
+        logger.info("Unhandled Lemon Squeezy event: %s", event_name)
 
     return {"status": "ok"}
 
@@ -254,27 +238,24 @@ async def stripe_webhook(request: Request):
 # ---------------------------------------------------------------------------
 
 
-def _handle_credit_purchase(fs: FirestoreClient, session: dict):
+def _handle_credit_purchase(payload: dict):
     """Add credits after a successful credit pack purchase."""
-    metadata = session.get("metadata", {})
+    custom_data = payload.get("meta", {}).get("custom_data", {})
 
-    if metadata.get("type") != "credit_purchase":
-        logger.info("Ignoring non-credit checkout session")
+    user_id = custom_data.get("user_id")
+    org_id = custom_data.get("org_id") or None
+    credits = int(custom_data.get("credits", 0))
+    pack_id = custom_data.get("pack_id", "")
+
+    if not credits or not user_id:
+        logger.warning("Webhook missing credits or user_id in custom_data: %s", custom_data)
         return
 
-    org_id = metadata.get("org_id") or None
-    user_id = metadata.get("user_id")
-    credits = int(metadata.get("credits", 0))
-    pack_id = metadata.get("pack_id", "")
-
-    if not credits:
-        return
-
-    # Find pack for price info
     pack = next((p for p in CREDIT_PACKS if p["pack_id"] == pack_id), None)
     amount_cents = pack["price_cents"] if pack else 0
 
     now = datetime.now(timezone.utc).isoformat()
+    fs = get_fs()
 
     if org_id:
         fs.add_credits(org_id=org_id, credits=credits)
@@ -285,7 +266,7 @@ def _handle_credit_purchase(fs: FirestoreClient, session: dict):
             amount_cents=amount_cents,
             purchased_at=now,
         )
-    elif user_id:
+    else:
         fs.add_credits(user_id=user_id, credits=credits)
         fs.record_credit_purchase(
             user_id=user_id,
@@ -293,3 +274,9 @@ def _handle_credit_purchase(fs: FirestoreClient, session: dict):
             amount_cents=amount_cents,
             purchased_at=now,
         )
+
+    # Track in BigQuery event log
+    from api.services.usage_service import track_credit_purchase
+    track_credit_purchase(user_id, org_id, credits, amount_cents, pack_id)
+
+    logger.info("Added %d credits for user=%s org=%s pack=%s", credits, user_id, org_id, pack_id)

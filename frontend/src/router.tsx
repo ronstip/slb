@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate, useParams } from 'react-router';
 import { AppShell } from './layout/AppShell.tsx';
 import { SignInPage } from './auth/SignInPage.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
+import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
 
 // Route guard wrapper for authenticated routes
@@ -66,6 +67,14 @@ export function createRouter(user: any, loading: boolean, devMode: boolean) {
     {
       path: '/settings',
       element: <Navigate to="/settings/account" replace />,
+    },
+    {
+      path: '/admin/:section?',
+      element: (
+        <ProtectedRoute user={user} loading={loading} devMode={devMode}>
+          <AdminPage />
+        </ProtectedRoute>
+      ),
     },
     {
       path: '/collection/:id',

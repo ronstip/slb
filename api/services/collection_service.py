@@ -90,6 +90,10 @@ def create_collection_from_request(
     # Create Firestore status document
     fs.create_collection_status(collection_id, user_id, config, org_id=org_id)
 
+    # Track usage
+    from api.services.usage_service import track_collection_created
+    track_collection_created(user_id, org_id, collection_id)
+
     # Dispatch worker
     if settings.is_dev:
         logger.info(

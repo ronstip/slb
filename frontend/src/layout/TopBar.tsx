@@ -1,4 +1,4 @@
-import { Building2, History, Loader2, LogOut, Moon, Plus, Settings, Sun } from 'lucide-react';
+import { Building2, History, Loader2, LogOut, Moon, Plus, Settings, ShieldCheck, Sun } from 'lucide-react';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../auth/useAuth.ts';
@@ -173,6 +173,12 @@ export function TopBar() {
               <Settings className="mr-2 h-3.5 w-3.5" />
               Settings
             </DropdownMenuItem>
+            {profile?.is_super_admin && (
+              <DropdownMenuItem onClick={() => navigate('/admin')}>
+                <ShieldCheck className="mr-2 h-3.5 w-3.5" />
+                Admin Dashboard
+              </DropdownMenuItem>
+            )}
             {!devMode && (
               <DropdownMenuItem onClick={signOut}>
                 <LogOut className="mr-2 h-3.5 w-3.5" />
