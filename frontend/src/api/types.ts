@@ -429,7 +429,7 @@ export interface DesignResearchResult {
     platforms: string[];
     keywords: string[];
     time_range: string;
-    estimated_posts: number;
+    estimated_api_calls: number;
     estimated_time_minutes: number;
     include_comments: boolean;
   };

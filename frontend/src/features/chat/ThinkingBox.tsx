@@ -21,15 +21,11 @@ export function ThinkingBox({ entries, isStreaming, hasMainContent = false }: Th
   // Track whether we auto-opened so we can auto-close later
   const autoOpenedRef = useRef(false);
 
-  // Auto-expand the latest step
+  // Auto-expand only the latest step (collapse previous ones during streaming)
   useEffect(() => {
     if (entries.length > 0) {
       const latest = entries.length - 1;
-      setExpandedSteps((prev) => {
-        const next = new Set(prev);
-        next.add(latest);
-        return next;
-      });
+      setExpandedSteps(new Set([latest]));
     }
   }, [entries.length]);
 

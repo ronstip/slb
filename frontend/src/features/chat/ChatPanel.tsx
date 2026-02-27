@@ -6,7 +6,7 @@ import { WelcomeScreen } from './WelcomeScreen.tsx';
 
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
-  const { sendMessage } = useSSEChat();
+  const { sendMessage, cancelStream } = useSSEChat();
   const hasMessages = messages.length > 0;
 
   return (
@@ -14,7 +14,7 @@ export function ChatPanel() {
       {hasMessages ? (
         <>
           <MessageList onSendMessage={sendMessage} />
-          <MessageInput onSend={sendMessage} />
+          <MessageInput onSend={sendMessage} onCancel={cancelStream} />
         </>
       ) : (
         <WelcomeScreen onPromptClick={sendMessage} onSend={sendMessage} />

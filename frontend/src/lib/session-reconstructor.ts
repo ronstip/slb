@@ -145,6 +145,7 @@ export function reconstructSession(
 
         // Create cards + artifacts (mirrors useSSEChat logic)
         if (isDesignResearchResult(toolName, result)) {
+          console.debug('[reconstruct] research_design card created from', toolName);
           msg.cards.push({ type: 'research_design', data: result });
         } else if (isChartResult(toolName, result)) {
           msg.cards.push({ type: 'chart', data: result });
@@ -183,7 +184,14 @@ export function reconstructSession(
       // --- Agent text ---
       if (part.text && event.content.role !== 'user') {
         const msg = ensureAgentMsg(event.timestamp);
-        msg.content += part.text;
+        // Extract thinking markers and strip them from visible text
+        const thinkingRe = /<!--\s*thinking:\s*([\s\S]*?)\s*-->/g;
+        let thinkingMatch;
+        while ((thinkingMatch = thinkingRe.exec(part.text)) !== null) {
+          msg.thinkingEntries.push(thinkingMatch[1].trim());
+        }
+        const cleanText = part.text.replace(/<!--\s*thinking:\s*[\s\S]*?\s*-->/g, '');
+        msg.content += cleanText;
       }
     }
   }

@@ -1,4 +1,5 @@
-import { ListChecks } from 'lucide-react';
+import { useState } from 'react';
+import { ListChecks, Check } from 'lucide-react';
 import { Card } from '../../../components/ui/card.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import type { PlanPayload } from '../../../api/types.ts';
@@ -10,6 +11,13 @@ interface PlanCardProps {
 
 export function PlanCard({ data, onSelect }: PlanCardProps) {
   const payload = data as unknown as PlanPayload;
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const handleSelect = (action: string, message: string) => {
+    if (selected) return;
+    setSelected(action);
+    onSelect?.(message);
+  };
 
   return (
     <Card className="mt-3 overflow-hidden">
@@ -42,17 +50,21 @@ export function PlanCard({ data, onSelect }: PlanCardProps) {
         <div className="flex gap-2 pt-1">
           <Button
             size="sm"
-            className="h-7 text-xs"
-            onClick={() => onSelect?.('Go ahead with this plan')}
+            className={`h-7 text-xs ${selected === 'adjust' ? 'opacity-40' : ''}`}
+            disabled={!!selected}
+            onClick={() => handleSelect('go', 'Go ahead with this plan')}
           >
-            Go
+            {selected === 'go' && <Check className="mr-1 h-3 w-3" />}
+            {selected === 'go' ? 'Approved' : 'Go'}
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs"
-            onClick={() => onSelect?.('I want to adjust the plan')}
+            className={`h-7 text-xs ${selected === 'go' ? 'opacity-40' : ''}`}
+            disabled={!!selected}
+            onClick={() => handleSelect('adjust', 'I want to adjust the plan')}
           >
+            {selected === 'adjust' && <Check className="mr-1 h-3 w-3" />}
             Adjust
           </Button>
         </div>

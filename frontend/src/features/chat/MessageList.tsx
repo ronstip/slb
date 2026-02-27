@@ -25,13 +25,18 @@ export function MessageList({ onSendMessage }: MessageListProps) {
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Auto-scroll only when stuck to bottom
+  // Auto-scroll when content changes (via MutationObserver instead of messages ref)
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && stickToBottom.current) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    }
-  }, [messages]);
+    if (!el) return;
+    const observer = new MutationObserver(() => {
+      if (stickToBottom.current) {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      }
+    });
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">

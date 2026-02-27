@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Square } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
@@ -9,6 +9,7 @@ import { cn } from '../../lib/utils.ts';
 
 interface MessageInputProps {
   onSend: (text: string) => void;
+  onCancel?: () => void;
   centered?: boolean;
 }
 
@@ -20,7 +21,7 @@ const CYCLING_PLACEHOLDERS = [
   'How do people feel about electric vehicles on Reddit?',
 ];
 
-export function MessageInput({ onSend, centered = false }: MessageInputProps) {
+export function MessageInput({ onSend, onCancel, centered = false }: MessageInputProps) {
   const [text, setText] = useState('');
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -86,15 +87,27 @@ export function MessageInput({ onSend, centered = false }: MessageInputProps) {
             centered ? 'max-h-48 text-base' : 'max-h-36 text-sm',
           )}
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleSend}
-          disabled={!text.trim() || isAgentResponding}
-          className="h-8 w-8 shrink-0 rounded-xl text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-30"
-        >
-          <Send className="h-4 w-4" />
-        </Button>
+        {isAgentResponding ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onCancel}
+            className="h-8 w-8 shrink-0 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            title="Stop response"
+          >
+            <Square className="h-3.5 w-3.5 fill-current" />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleSend}
+            disabled={!text.trim()}
+            className="h-8 w-8 shrink-0 rounded-xl text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-30"
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* Context indicator — hidden in centered/welcome mode */}

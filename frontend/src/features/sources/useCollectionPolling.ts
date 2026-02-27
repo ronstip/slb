@@ -55,7 +55,9 @@ export function useCollectionPolling() {
       const fingerprint = `${data.status}:${data.posts_collected}:${data.posts_enriched}:${data.posts_embedded}`;
       if (prevDataRef.current.get(collectionId) === fingerprint) continue;
 
-      const prevStatus = prevDataRef.current.get(collectionId)?.split(':')[0];
+      const prevFingerprint = prevDataRef.current.get(collectionId);
+      const prevStatus = prevFingerprint?.split(':')[0];
+      const prevPostCount = Number(prevFingerprint?.split(':')[1] ?? 0) || 0;
       prevDataRef.current.set(collectionId, fingerprint);
 
       updateSource(collectionId, {
@@ -69,8 +71,11 @@ export function useCollectionPolling() {
         totalRuns: data.total_runs,
       });
 
-      // Auto-open Studio Feed when collection completes or enters monitoring
-      if (prevStatus && !['completed', 'monitoring'].includes(prevStatus) && ['completed', 'monitoring'].includes(data.status)) {
+      // Auto-open Studio Feed when first posts arrive (not waiting for completion)
+      const isNewlyCollecting = prevStatus && ['pending', 'collecting'].includes(prevStatus) && data.posts_collected > 0 && prevPostCount === 0;
+      const isNewlyComplete = prevStatus && !['completed', 'monitoring'].includes(prevStatus) && ['completed', 'monitoring'].includes(data.status);
+
+      if (isNewlyCollecting || isNewlyComplete) {
         setFeedSource(collectionId);
         setActiveTab('feed');
         if (studioPanelCollapsed) {

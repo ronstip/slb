@@ -205,7 +205,10 @@ export function useSSEChat() {
           }
         }
         // If stream ends without a 'done' event, finalize anyway
-        useChatStore.getState().finalizeMessage(messageId);
+        const msg = useChatStore.getState().messages.find((m) => m.id === messageId);
+        if (msg?.isStreaming) {
+          useChatStore.getState().finalizeMessage(messageId);
+        }
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           const detail = err instanceof Error ? err.message : 'Unknown error';

@@ -228,6 +228,12 @@
   100% { transform: translateX(200%); }
 }
 
+/* Blinking cursor for streaming indicator */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 5px;

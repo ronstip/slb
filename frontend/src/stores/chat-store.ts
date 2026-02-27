@@ -132,16 +132,21 @@ export const useChatStore = create<ChatStore>((set) => ({
 
   resolveToolCall: (messageId, name, _result) =>
     set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? {
-              ...m,
-              toolIndicators: m.toolIndicators.map((t) =>
-                t.name === name ? { ...t, resolved: true } : t,
-              ),
+      messages: s.messages.map((m) => {
+        if (m.id !== messageId) return m;
+        // Resolve only the first unresolved indicator matching the name
+        let resolved = false;
+        return {
+          ...m,
+          toolIndicators: m.toolIndicators.map((t) => {
+            if (!resolved && t.name === name && !t.resolved) {
+              resolved = true;
+              return { ...t, resolved: true };
             }
-          : m,
-      ),
+            return t;
+          }),
+        };
+      }),
     })),
 
   addCard: (messageId, card) =>
@@ -185,6 +190,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           ? {
               ...m,
               isStreaming: false,
+              statusLine: null,
               content: m.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd(),
             }
           : m,

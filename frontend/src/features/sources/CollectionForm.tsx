@@ -23,7 +23,8 @@ interface CollectionFormProps {
   prefill?: CollectionConfig;
   onClose: () => void;
   variant?: 'modal' | 'inline';
-  onSubmitSuccess?: () => void;
+  onSubmitStart?: () => void;
+  onSubmitSuccess?: (collectionId: string) => void;
 }
 
 const TIME_RANGES = [
@@ -36,7 +37,7 @@ const TIME_RANGES = [
 
 const MAX_CALLS_OPTIONS = [1, 2, 3, 5];
 
-export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSuccess }: CollectionFormProps) {
+export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitStart, onSubmitSuccess }: CollectionFormProps) {
   const [description, setDescription] = useState(prefill?.keywords?.join(', ') || '');
   const [platforms, setPlatforms] = useState<string[]>(prefill?.platforms || ['instagram', 'tiktok']);
   const [keywords, setKeywords] = useState<string[]>(prefill?.keywords || []);
@@ -105,6 +106,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
     if (platforms.length === 0) return;
     setSubmitting(true);
     setError(null);
+    onSubmitStart?.();
 
     try {
       const req: CreateCollectionRequest = {
@@ -154,7 +156,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSu
       );
 
       onClose();
-      onSubmitSuccess?.();
+      onSubmitSuccess?.(result.collection_id);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create collection';
       setError(message);

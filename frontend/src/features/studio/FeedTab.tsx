@@ -18,6 +18,8 @@ export function FeedTab() {
   const sources = useSourcesStore((s) => s.sources);
   // All active (checkbox-checked) collections in session
   const activeSources = sources.filter((s) => s.active && s.selected);
+  // Auto-refetch while any active collection is still collecting/enriching
+  const isAnyCollecting = activeSources.some((s) => s.status === 'collecting' || s.status === 'enriching');
   const activeIds = activeSources.map((s) => s.collectionId);
 
   const [sort, setSort] = useState<FeedParams['sort']>('views');
@@ -69,6 +71,7 @@ export function FeedTab() {
     },
     initialPageParam: 0,
     enabled: effectiveIds.length > 0,
+    refetchInterval: isAnyCollecting ? 5000 : false,
   });
 
   const allPosts = data?.pages.flatMap((p) => p.posts) ?? [];

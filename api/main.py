@@ -295,9 +295,8 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                 if event.is_final_response():
                     text = _extract_text(event)
 
-                    # Yield "done" immediately with current title — naming
-                    # runs in the background so the client isn't blocked.
-                    current_title = session.state.get("session_title", "New Session")
+                    # Generate session title before sending done event
+                    session_title = await _maybe_name_session(runner, user_id, session_id)
 
                     # Extract follow-up suggestions if the agent embedded them
                     _, suggestions = _extract_suggestions(text)
@@ -305,7 +304,7 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                     done_payload: dict = {
                         "event_type": "done",
                         "session_id": session_id,
-                        "session_title": current_title,
+                        "session_title": session_title,
                         "content": text,
                     }
                     if suggestions:
@@ -317,9 +316,6 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
                     }
 
                     # Fire-and-forget background tasks
-                    asyncio.create_task(
-                        _maybe_name_session(runner, user_id, session_id)
-                    )
                     asyncio.create_task(
                         _save_to_memory(runner, user_id, session_id)
                     )
