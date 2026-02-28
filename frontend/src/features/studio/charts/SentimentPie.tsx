@@ -21,9 +21,16 @@ function renderPieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }:
   );
 }
 
+function resolveSentimentColor(sentiment: string): string {
+  const lower = sentiment.toLowerCase();
+  return SENTIMENT_COLORS[lower]
+    ?? Object.entries(SENTIMENT_COLORS).find(([key]) => lower.startsWith(key))?.[1]
+    ?? '#78716C';
+}
+
 export function SentimentPie({ data, overrides }: SentimentPieProps) {
   const getColor = (sentiment: string) =>
-    overrides?.colorOverrides?.[sentiment] || SENTIMENT_COLORS[sentiment] || '#78716C';
+    overrides?.colorOverrides?.[sentiment] || resolveSentimentColor(sentiment);
 
   return (
     <div className="flex items-center gap-4">

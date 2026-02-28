@@ -16,8 +16,8 @@ const SOURCES_MAX = 420;
 const SOURCES_DEFAULT = 320;
 const STUDIO_MIN = 300;
 const STUDIO_MAX = 700;
-const STUDIO_DEFAULT = 320;
-const STUDIO_FEED_W = 440;
+const STUDIO_DEFAULT = 800;
+const STUDIO_FEED_W = 800;
 const COLLAPSED_W = 48;
 
 export function AppShell() {

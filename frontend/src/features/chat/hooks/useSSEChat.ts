@@ -4,6 +4,7 @@ import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
+import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
 import { getToolDisplayText, isDesignResearchResult, isProgressResult, isDataExportResult, isChartResult, isPostEmbedResult, isReportResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard } from '../../../api/types.ts';
@@ -131,13 +132,14 @@ export function useSSEChat() {
                   data: result,
                 });
               } else if (isDataExportResult(toolName, result)) {
+                const exportId = `artifact-${Date.now()}`;
                 chatState.addCard(messageId, {
                   type: 'data_export',
-                  data: result,
+                  data: { ...result, _artifactId: exportId },
                 });
-                // Save to artifacts
+                // Auto-save to artifacts
                 useStudioStore.getState().addArtifact({
-                  id: `artifact-${Date.now()}`,
+                  id: exportId,
                   type: 'data_export',
                   title: 'Data Export',
                   rows: result.rows as DataExportRow[],
@@ -146,11 +148,29 @@ export function useSSEChat() {
                   sourceIds: selectedSources,
                   createdAt: new Date(),
                 });
+                // Open studio panel, switch to artifacts, expand the export
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
+                useStudioStore.getState().expandReport(exportId);
               } else if (isChartResult(toolName, result)) {
+                const chartId = `chart-${Date.now()}`;
                 chatState.addCard(messageId, {
                   type: 'chart',
-                  data: result!,
+                  data: { ...result, _artifactId: chartId },
                 });
+                // Auto-save chart as artifact
+                useStudioStore.getState().addArtifact({
+                  id: chartId,
+                  type: 'chart',
+                  title: (result?.title as string) || 'Chart',
+                  chartType: result?.chart_type as string,
+                  data: result?.data as unknown[],
+                  createdAt: new Date(),
+                });
+                // Open studio panel, switch to artifacts, expand the chart
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
+                useStudioStore.getState().expandReport(chartId);
               } else if (isPostEmbedResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'post_embed',

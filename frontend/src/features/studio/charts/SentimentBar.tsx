@@ -8,9 +8,17 @@ interface SentimentBarProps {
   overrides?: ChartOverrides;
 }
 
+function resolveSentimentColor(sentiment: string): string {
+  const lower = sentiment.toLowerCase();
+  // Exact match first, then prefix match (handles "positive (by views)" etc.)
+  return SENTIMENT_COLORS[lower]
+    ?? Object.entries(SENTIMENT_COLORS).find(([key]) => lower.startsWith(key))?.[1]
+    ?? '#78716C';
+}
+
 export function SentimentBar({ data, overrides }: SentimentBarProps) {
   const getColor = (sentiment: string) =>
-    overrides?.colorOverrides?.[sentiment] || SENTIMENT_COLORS[sentiment] || '#78716C';
+    overrides?.colorOverrides?.[sentiment] || resolveSentimentColor(sentiment);
 
   return (
     <ResponsiveContainer width="100%" height={120}>

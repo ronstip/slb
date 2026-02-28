@@ -1,20 +1,28 @@
-import { useState } from 'react';
-import { Download, Table2, Eye } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Table2, Download, ExternalLink } from 'lucide-react';
+import { Card } from '../../../components/ui/card.tsx';
 import type { DataExportResult } from '../../../api/types.ts';
 import { downloadCollection } from '../../../api/endpoints/collections.ts';
-import { ExportTableModal } from './ExportTableModal.tsx';
+import { useStudioStore } from '../../../stores/studio-store.ts';
+import { useUIStore } from '../../../stores/ui-store.ts';
 
 interface DataExportCardProps {
   data: Record<string, unknown>;
 }
 
 export function DataExportCard({ data }: DataExportCardProps) {
-  const exportData = data as unknown as DataExportResult;
-  const { rows, row_count, message, collection_id } = exportData;
-  const [tableOpen, setTableOpen] = useState(false);
+  const exportData = data as unknown as DataExportResult & { _artifactId?: string };
+  const { row_count, message, collection_id, _artifactId } = exportData;
   const [downloading, setDownloading] = useState(false);
 
-  const handleDownload = async () => {
+  const handleView = useCallback(() => {
+    if (!_artifactId) return;
+    useUIStore.getState().expandStudioPanel();
+    useStudioStore.getState().setActiveTab('artifacts');
+    useStudioStore.getState().expandReport(_artifactId);
+  }, [_artifactId]);
+
+  const handleDownload = useCallback(async () => {
     if (!collection_id) return;
     setDownloading(true);
     try {
@@ -22,7 +30,7 @@ export function DataExportCard({ data }: DataExportCardProps) {
     } finally {
       setDownloading(false);
     }
-  };
+  }, [collection_id]);
 
   if (row_count === 0) {
     return (
@@ -33,46 +41,39 @@ export function DataExportCard({ data }: DataExportCardProps) {
   }
 
   return (
-    <>
-      <div className="mt-3 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/5 to-background shadow-sm">
-        <div className="flex items-center justify-between px-5 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-              <Table2 className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h4 className="text-sm font-semibold text-foreground">Data Export</h4>
-              <p className="text-xs text-muted-foreground">{row_count} posts</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
+    <Card className="mt-3 overflow-hidden rounded-md">
+      <div className="flex items-center gap-3 p-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+          <Table2 className="h-5 w-5 text-primary" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">Data Export</p>
+          <p className="text-xs text-muted-foreground/70">
+            {row_count} posts · saved to artifacts
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {_artifactId && (
             <button
-              onClick={() => setTableOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              onClick={handleView}
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <Eye className="h-3.5 w-3.5" />
-              View Table
+              <ExternalLink className="h-3 w-3" />
+              View
             </button>
-            {collection_id && (
-              <button
-                onClick={handleDownload}
-                disabled={downloading}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {downloading ? 'Downloading…' : 'Download CSV'}
-              </button>
-            )}
-          </div>
+          )}
+          {collection_id && (
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+            >
+              <Download className="h-3 w-3" />
+              {downloading ? 'Downloading…' : 'Download'}
+            </button>
+          )}
         </div>
       </div>
-
-      <ExportTableModal
-        rows={rows}
-        title="Data Export"
-        open={tableOpen}
-        onClose={() => setTableOpen(false)}
-      />
-    </>
+    </Card>
   );
 }

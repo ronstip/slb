@@ -6,7 +6,7 @@ import type { ReportCard, ReportCardType } from '../../../api/types.ts';
 import { KpiGrid } from './report/KpiGrid.tsx';
 import { NarrativeSection } from './report/NarrativeSection.tsx';
 import { KeyFindingCard } from './report/KeyFindingCard.tsx';
-import { HighlightPostCard } from './report/HighlightPostCard.tsx';
+import { TopPostsTable } from './report/TopPostsTable.tsx';
 
 // Existing chart components (reused from studio/charts)
 import { SentimentPie } from '../../studio/charts/SentimentPie.tsx';
@@ -33,7 +33,7 @@ const REPORT_CARD_COMPONENTS: Partial<Record<ReportCardType, React.ComponentType
   kpi_grid: KpiGrid,
   narrative: NarrativeSection,
   key_finding: KeyFindingCard,
-  highlight_post: HighlightPostCard,
+  top_posts_table: TopPostsTable,
   // Chart types — wrap to pass data.data (the chart data array)
   sentiment_pie: ({ data }) => <SentimentPie data={data.data ?? data} />,
   sentiment_bar: ({ data }) => <SentimentBar data={data.data ?? data} />,
@@ -100,15 +100,15 @@ export function InsightReportCard({ data }: InsightReportCardProps) {
   const footerCards = cards.filter((c) => c.layout?.zone === 'footer');
 
   return (
-    <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+    <div className="mt-3 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/5 to-background shadow-sm">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center justify-between px-5 py-3.5 transition-colors hover:bg-muted/50"
       >
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted">
-            <BarChart3 className="h-4 w-4 text-foreground" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+            <BarChart3 className="h-4 w-4 text-primary" />
           </div>
           <div className="flex flex-col items-start">
             <h4 className="text-sm font-semibold text-foreground">{title}</h4>
@@ -221,7 +221,7 @@ function ReportCardRenderer({ card }: { card: ReportCard }) {
     card.card_type === 'kpi_grid' ||
     card.card_type === 'narrative' ||
     card.card_type === 'key_finding' ||
-    card.card_type === 'highlight_post'
+    card.card_type === 'top_posts_table'
   );
 
   if (isChart) {

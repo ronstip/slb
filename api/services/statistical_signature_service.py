@@ -101,6 +101,7 @@ FROM base WHERE content_type IS NOT NULL GROUP BY content_type
 )
 
 # Query 3: array-field breakdowns via UNNEST + UNION ALL, top 30 each
+
 _ARRAY_SQL = (
     _BASE_CTE
     + """,
@@ -126,6 +127,56 @@ SELECT 'entity' AS dim, * FROM entity_counts
 """
 )
 
+# Query 4: daily post volume per platform (time series)
+_DAILY_VOLUME_SQL = """
+WITH deduped_posts AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+    FROM social_listening.posts
+    WHERE collection_id = @collection_id
+)
+SELECT
+    FORMAT_DATE('%Y-%m-%d', DATE(posted_at)) AS post_date,
+    platform,
+    COUNT(*) AS post_count
+FROM deduped_posts
+WHERE _rn = 1 AND posted_at IS NOT NULL
+GROUP BY post_date, platform
+ORDER BY post_date ASC
+"""
+
+# Query 5: top channels with subscriber counts and engagement
+_TOP_CHANNELS_SQL = """
+WITH latest_channels AS (
+    SELECT channel_handle, platform, subscribers, channel_url,
+           ROW_NUMBER() OVER (PARTITION BY platform, channel_handle ORDER BY observed_at DESC) AS rn
+    FROM social_listening.channels
+    WHERE collection_id = @collection_id
+),
+channel_engagement AS (
+    SELECT p.channel_handle, p.platform,
+           COUNT(DISTINCT p.post_id) AS collected_posts,
+           ROUND(AVG(COALESCE(e.likes, 0)), 1) AS avg_likes,
+           ROUND(AVG(COALESCE(e.views, 0)), 1) AS avg_views
+    FROM social_listening.posts p
+    LEFT JOIN (
+        SELECT post_id, likes, views,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn
+        FROM social_listening.post_engagements
+    ) e ON e.post_id = p.post_id AND e.rn = 1
+    WHERE p.collection_id = @collection_id
+    GROUP BY p.channel_handle, p.platform
+)
+SELECT lc.channel_handle, lc.platform, lc.subscribers, lc.channel_url,
+       ce.collected_posts, ce.avg_likes, ce.avg_views
+FROM latest_channels lc
+JOIN channel_engagement ce
+     ON ce.channel_handle = lc.channel_handle AND ce.platform = lc.platform
+WHERE lc.rn = 1
+ORDER BY ce.collected_posts DESC
+LIMIT 20
+"""
+
 
 # ---------------------------------------------------------------------------
 # Core functions
@@ -133,16 +184,20 @@ SELECT 'entity' AS dim, * FROM entity_counts
 
 
 def compute_statistical_signature(collection_id: str, bq, fs) -> dict:
-    """Run 3 parallel BQ queries and assemble the signature dict (does not save)."""
+    """Run 5 parallel BQ queries and assemble the signature dict (does not save)."""
     params = {"collection_id": collection_id}
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         f_summary = executor.submit(bq.query, _SUMMARY_SQL, params)
         f_categorical = executor.submit(bq.query, _CATEGORICAL_SQL, params)
         f_array = executor.submit(bq.query, _ARRAY_SQL, params)
+        f_daily_volume = executor.submit(bq.query, _DAILY_VOLUME_SQL, params)
+        f_channels = executor.submit(bq.query, _TOP_CHANNELS_SQL, params)
         summary_rows = f_summary.result()
         categorical_rows = f_categorical.result()
         array_rows = f_array.result()
+        daily_volume_rows = f_daily_volume.result()
+        channel_rows = f_channels.result()
 
     s = summary_rows[0] if summary_rows else {}
 
@@ -188,6 +243,30 @@ def compute_statistical_signature(collection_id: str, bq, fs) -> dict:
         elif row["dim"] == "entity":
             top_entities.append(item)
 
+    # Daily volume
+    daily_volume: list[dict] = [
+        {
+            "post_date": row["post_date"],
+            "platform": row["platform"],
+            "post_count": int(row["post_count"] or 0),
+        }
+        for row in daily_volume_rows
+    ]
+
+    # Top channels
+    top_channels: list[dict] = [
+        {
+            "channel_handle": row["channel_handle"],
+            "platform": row["platform"],
+            "subscribers": int(row["subscribers"] or 0),
+            "channel_url": row.get("channel_url") or "",
+            "collected_posts": int(row["collected_posts"] or 0),
+            "avg_likes": float(row["avg_likes"] or 0),
+            "avg_views": float(row["avg_views"] or 0),
+        }
+        for row in channel_rows
+    ]
+
     # Negative sentiment convenience field
     total_posts = int(s.get("total_posts") or 0)
     neg = next((r for r in sentiment_breakdown if r["value"] == "negative"), None)
@@ -211,6 +290,8 @@ def compute_statistical_signature(collection_id: str, bq, fs) -> dict:
         "top_entities": top_entities,
         "negative_sentiment_pct": negative_sentiment_pct,
         "total_posts_enriched": int(s.get("total_posts_enriched") or 0),
+        "daily_volume": daily_volume,
+        "top_channels": top_channels,
         "engagement_summary": {
             "total_likes": int(s.get("total_likes") or 0),
             "total_views": int(s.get("total_views") or 0),
