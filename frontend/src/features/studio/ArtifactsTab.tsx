@@ -3,6 +3,7 @@ import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { shortDate } from '../../lib/format.ts';
 import { DataExportView } from './DataExportView.tsx';
 import { InsightReportView } from './InsightReportView.tsx';
+import { ChartArtifactView } from './ChartArtifactView.tsx';
 import { Card } from '../../components/ui/card.tsx';
 
 export function ArtifactsTab() {
@@ -19,8 +20,9 @@ export function ArtifactsTab() {
     if (expandedArtifact.type === 'insight_report') {
       return <InsightReportView artifact={expandedArtifact as Extract<Artifact, { type: 'insight_report' }>} />;
     }
-    // Chart artifacts — collapse back (no expanded view yet)
-    useStudioStore.getState().collapseReport();
+    if (expandedArtifact.type === 'chart') {
+      return <ChartArtifactView artifact={expandedArtifact as Extract<Artifact, { type: 'chart' }>} />;
+    }
   }
 
   if (artifacts.length === 0) {

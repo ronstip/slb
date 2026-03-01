@@ -393,11 +393,11 @@ export interface PlanPayload {
 // ─── Insight Report types ────────────────────────────────────────────
 
 export type ReportCardType =
-  // New report-specific types
+  // Report-specific types
   | 'kpi_grid'
   | 'narrative'
   | 'key_finding'
-  | 'highlight_post'
+  | 'top_posts_table'
   // Existing chart types (reused)
   | 'sentiment_pie'
   | 'sentiment_bar'

@@ -1,5 +1,4 @@
-import { Building2, History, Loader2, LogOut, Moon, Plus, Settings, ShieldCheck, Sun } from 'lucide-react';
-import { useEffect } from 'react';
+import { Building2, LogOut, Moon, Plus, Settings, ShieldCheck, Sun } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from '../components/theme-provider.tsx';
@@ -17,26 +16,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar.tsx
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip.tsx';
 import { Separator } from '../components/ui/separator.tsx';
 import { Logo } from '../components/Logo.tsx';
-import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover.tsx';
-import { ScrollArea } from '../components/ui/scroll-area.tsx';
-import { SessionCard } from '../features/sources/SessionCard.tsx';
 
 export function TopBar() {
   const navigate = useNavigate();
   const { user, profile, signOut, devMode } = useAuth();
   const { theme, setTheme } = useTheme();
   const activeSessionTitle = useSessionStore((s) => s.activeSessionTitle);
-  const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const startNewSession = useSessionStore((s) => s.startNewSession);
-  const sessions = useSessionStore((s) => s.sessions);
-  const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
-  const fetchSessions = useSessionStore((s) => s.fetchSessions);
-
-  useEffect(() => {
-    fetchSessions();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pastSessions = sessions.filter((s) => s.session_id !== activeSessionId);
 
   const displayInitial = user?.displayName?.[0] || profile?.display_name?.[0] || '?';
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -66,52 +52,6 @@ export function TopBar() {
           <Plus className="h-3.5 w-3.5" />
           New Session
         </Button>
-
-        {/* Session history */}
-        <Popover>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 border-white/20 text-white/70 hover:bg-white/10 hover:text-white"
-                >
-                  <History className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-            </TooltipTrigger>
-            <TooltipContent>Session history</TooltipContent>
-          </Tooltip>
-          <PopoverContent align="end" className="w-80 p-0">
-            <div className="border-b border-border px-3 py-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Session History
-              </p>
-            </div>
-            <ScrollArea className="h-[420px]">
-              <div className="p-2">
-                {isLoadingSessions && pastSessions.length === 0 && (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  </div>
-                )}
-                {!isLoadingSessions && pastSessions.length === 0 && (
-                  <div className="py-6 text-center">
-                    <p className="text-xs text-muted-foreground">No past sessions</p>
-                  </div>
-                )}
-                {pastSessions.length > 0 && (
-                  <div className="flex flex-col gap-0.5">
-                    {pastSessions.map((session) => (
-                      <SessionCard key={session.session_id} session={session} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-          </PopoverContent>
-        </Popover>
 
         <Tooltip>
           <TooltipTrigger asChild>

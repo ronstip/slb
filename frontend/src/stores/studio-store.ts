@@ -33,15 +33,16 @@ interface InsightReportArtifact {
   createdAt: Date;
 }
 
+export type StudioTab = 'feed' | 'artifacts' | 'data';
 export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact;
 
 interface StudioStore {
-  activeTab: 'feed' | 'artifacts';
+  activeTab: StudioTab;
   artifacts: Artifact[];
   expandedReportId: string | null;
   feedSourceId: string | null;
 
-  setActiveTab: (tab: 'feed' | 'artifacts') => void;
+  setActiveTab: (tab: StudioTab) => void;
   addArtifact: (artifact: Artifact) => void;
   expandReport: (id: string) => void;
   collapseReport: () => void;

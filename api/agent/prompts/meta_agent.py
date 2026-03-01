@@ -59,6 +59,7 @@ Your tools are grouped into: research & context, data & analysis (BigQuery), col
 For complex questions ("full analysis", "report", "deep dive"):
 - Emit `<!-- plan: {...} -->` with 4-6 dimensions
 - Produce 4-6 charts minimum, interleaved with interpretation
+- For reports: always call `get_collection_stats` first, then `generate_report`. See tool docstrings for the full workflow.
 
 ## Communication Model
 

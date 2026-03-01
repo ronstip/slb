@@ -10,7 +10,7 @@ import { downloadReportPdf } from '../../lib/download-pdf.ts';
 import { KpiGrid } from '../chat/cards/report/KpiGrid.tsx';
 import { NarrativeSection } from '../chat/cards/report/NarrativeSection.tsx';
 import { KeyFindingCard } from '../chat/cards/report/KeyFindingCard.tsx';
-import { HighlightPostCard } from '../chat/cards/report/HighlightPostCard.tsx';
+import { TopPostsTable } from '../chat/cards/report/TopPostsTable.tsx';
 
 // Chart components
 import { SentimentPie } from './charts/SentimentPie.tsx';
@@ -31,7 +31,7 @@ const REPORT_CARD_COMPONENTS: Partial<Record<ReportCardType, React.ComponentType
   kpi_grid: KpiGrid,
   narrative: NarrativeSection,
   key_finding: KeyFindingCard,
-  highlight_post: HighlightPostCard,
+  top_posts_table: TopPostsTable,
   sentiment_pie: ({ data }) => <SentimentPie data={data.data ?? data} />,
   sentiment_bar: ({ data }) => <SentimentBar data={data.data ?? data} />,
   volume_chart: ({ data }) => <VolumeChart data={data.data ?? data} />,
@@ -154,7 +154,7 @@ function CardRenderer({ card }: { card: ReportCard }) {
     card.card_type === 'kpi_grid' ||
     card.card_type === 'narrative' ||
     card.card_type === 'key_finding' ||
-    card.card_type === 'highlight_post'
+    card.card_type === 'top_posts_table'
   );
 
   if (isChart) {

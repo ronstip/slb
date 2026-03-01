@@ -21,6 +21,7 @@ interface UIStore {
 
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
+  expandStudioPanel: () => void;
   openCollectionModal: (prefill?: CollectionConfig) => void;
   closeCollectionModal: () => void;
   showPoll: (poll: PollData) => void;
@@ -54,6 +55,15 @@ export const useUIStore = create<UIStore>((set) => ({
       const next = !s.studioPanelCollapsed;
       localStorage.setItem('studio-collapsed', String(next));
       return { studioPanelCollapsed: next };
+    }),
+
+  expandStudioPanel: () =>
+    set((s) => {
+      if (s.studioPanelCollapsed) {
+        localStorage.setItem('studio-collapsed', 'false');
+        return { studioPanelCollapsed: false };
+      }
+      return s;
     }),
 
   openCollectionModal: (prefill) =>

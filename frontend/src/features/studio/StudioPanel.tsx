@@ -4,6 +4,7 @@ import { useStudioStore } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { FeedTab } from './FeedTab.tsx';
 import { ArtifactsTab } from './ArtifactsTab.tsx';
+import { DataTab } from './DataTab.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip.tsx';
@@ -67,7 +68,7 @@ export function StudioPanel() {
           </div>
 
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'feed' | 'artifacts')} className="flex flex-1 flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'feed' | 'artifacts' | 'data')} className="flex flex-1 flex-col overflow-hidden">
             <TabsList className="w-full rounded-none border-b border-border bg-transparent p-0">
               <TabsTrigger
                 value="feed"
@@ -81,11 +82,19 @@ export function StudioPanel() {
               >
                 Artifacts
               </TabsTrigger>
+              <TabsTrigger
+                value="data"
+                className="flex-1 rounded-none border-b-2 border-transparent py-2 text-xs data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:shadow-none"
+              >
+                Data
+              </TabsTrigger>
             </TabsList>
 
             {/* Tab content */}
             <div className="flex-1 overflow-y-auto">
-              {activeTab === 'feed' ? <FeedTab /> : <ArtifactsTab />}
+              {activeTab === 'feed' && <FeedTab />}
+              {activeTab === 'artifacts' && <ArtifactsTab />}
+              {activeTab === 'data' && <DataTab />}
             </div>
           </Tabs>
         </div>

@@ -28,6 +28,7 @@ from api.agent.tools.display_posts import display_posts
 from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_report import generate_report
+from api.agent.tools.get_collection_stats import get_collection_stats
 from api.agent.tools.get_past_collections import get_past_collections
 from api.agent.tools.get_sql_reference import get_sql_reference
 from api.agent.tools.get_progress import get_progress
@@ -75,6 +76,7 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         create_chart,
         display_posts,
         export_data,
+        get_collection_stats,
         generate_report,
         # Memory
         memory_tool,
