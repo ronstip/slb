@@ -7,8 +7,10 @@ Usage:
 import json
 import logging
 import sys
+import threading
 import time
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from config.settings import get_settings
 from workers.collection.media_downloader import download_media_batch
@@ -123,9 +125,23 @@ def run_collection(collection_id: str) -> None:
             fs.update_collection_status(
                 collection_id, posts_collected=total_posts
             )
-            # Track usage for billing
+            # Track usage for billing + analytics
             if owner_user_id and len(new_posts) > 0:
                 fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", len(new_posts))
+                # Fire-and-forget BQ event log for admin activity dashboard
+                def _log_posts_event(uid=owner_user_id, oid=owner_org_id, cid=collection_id, cnt=len(new_posts)):
+                    try:
+                        bq.insert_rows("usage_events", [{
+                            "event_id": str(uuid4()),
+                            "event_type": "posts_collected",
+                            "user_id": uid,
+                            "org_id": oid,
+                            "collection_id": cid,
+                            "metadata": json.dumps({"count": cnt}),
+                        }])
+                    except Exception:
+                        logger.warning("Failed to log posts_collected event to BQ", exc_info=True)
+                threading.Thread(target=_log_posts_event, daemon=True).start()
             logger.info("Collection %s: %d posts so far (%d dupes skipped)", collection_id, total_posts, dupes_in_batch)
 
         # Build run_log with platform stats and timing

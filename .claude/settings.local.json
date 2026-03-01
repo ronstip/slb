@@ -42,7 +42,8 @@
       "Bash(/c/Python314/Scripts/pip.exe install --target=/c/Users/sahar/SLB/slb/.venv/Lib/site-packages slowapi)",
       "Bash(/c/Users/sahar/SLB/slb/.venv/Scripts/python.exe -c \"import slowapi; print\\(''slowapi'', slowapi.__version__\\)\")",
       "Bash(/c/Users/sahar/SLB/slb/.venv/Scripts/python.exe -c \"from slowapi import Limiter; print\\(''slowapi OK''\\)\")",
-      "Bash(xargs grep -l \"firestore\\\\|Firestore\")"
+      "Bash(xargs grep -l \"firestore\\\\|Firestore\")",
+      "Bash(.venv/Scripts/python.exe -c \"import py_compile; py_compile.compile\\(''api/routers/admin.py'', doraise=True\\); py_compile.compile\\(''workers/collection/worker.py'', doraise=True\\); print\\(''OK''\\)\")"
     ]
   }
 }

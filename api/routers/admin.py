@@ -129,9 +129,21 @@ async def admin_users(
     """List all platform users with their usage counters."""
     fs = get_fs()
 
-    all_users = await asyncio.to_thread(fs.list_all_users)
+    all_users, all_collections_fs = await asyncio.gather(
+        asyncio.to_thread(fs.list_all_users),
+        asyncio.to_thread(fs.list_all_collection_statuses, 1000),
+    )
 
-    # Fetch usage counters for all users in parallel
+    # Build per-user posts/collections counts from collection_status (source of truth)
+    user_posts_map: dict[str, int] = {}
+    user_collections_map: dict[str, int] = {}
+    for c in all_collections_fs:
+        uid = c.get("user_id", "")
+        if uid:
+            user_posts_map[uid] = user_posts_map.get(uid, 0) + c.get("posts_collected", 0)
+            user_collections_map[uid] = user_collections_map.get(uid, 0) + 1
+
+    # Fetch usage counters for query counts
     async def _get_user_usage(uid: str) -> tuple[str, dict]:
         try:
             usage = await asyncio.to_thread(fs.get_usage, uid)
@@ -147,9 +159,10 @@ async def admin_users(
     # Merge usage into user records
     users = []
     for u in all_users:
-        usage = usage_map.get(u["uid"], {})
+        uid = u["uid"]
+        usage = usage_map.get(uid, {})
         users.append({
-            "uid": u["uid"],
+            "uid": uid,
             "email": u.get("email", ""),
             "display_name": u.get("display_name"),
             "photo_url": u.get("photo_url"),
@@ -158,8 +171,8 @@ async def admin_users(
             "created_at": u.get("created_at", ""),
             "last_login_at": u.get("last_login_at", ""),
             "queries_used": usage.get("queries_used", 0),
-            "collections_created": usage.get("collections_created", 0),
-            "posts_collected": usage.get("posts_collected", 0),
+            "collections_created": user_collections_map.get(uid, 0),
+            "posts_collected": user_posts_map.get(uid, 0),
             "credits_remaining": u.get("credits_remaining", 0),
         })
 
@@ -191,14 +204,23 @@ async def admin_user_detail(
     fs = get_fs()
     bq = get_bq()
 
-    user_doc, usage = await asyncio.gather(
+    user_doc, usage, user_collections = await asyncio.gather(
         asyncio.to_thread(fs.get_user, user_id),
         asyncio.to_thread(fs.get_usage, user_id),
+        asyncio.to_thread(fs.list_all_collection_statuses, 1000),
     )
 
     if not user_doc:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Aggregate posts/collections from collection_status (source of truth)
+    user_total_posts = sum(
+        c.get("posts_collected", 0) for c in user_collections if c.get("user_id") == user_id
+    )
+    user_total_collections = sum(
+        1 for c in user_collections if c.get("user_id") == user_id
+    )
 
     # Convert timestamps
     for key in ("created_at", "last_login_at"):
@@ -260,8 +282,8 @@ async def admin_user_detail(
         "created_at": user_doc.get("created_at", ""),
         "last_login_at": user_doc.get("last_login_at", ""),
         "queries_used": usage.get("queries_used", 0),
-        "collections_created": usage.get("collections_created", 0),
-        "posts_collected": usage.get("posts_collected", 0),
+        "collections_created": user_total_collections,
+        "posts_collected": user_total_posts,
         "credits_remaining": credits_remaining,
         "recent_events": recent_events,
         "usage_trend": trend,
