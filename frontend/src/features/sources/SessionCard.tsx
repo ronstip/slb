@@ -65,11 +65,11 @@ export function SessionCard({ session }: SessionCardProps) {
 
           {/* Meta row */}
           <div className="mt-0.5 flex items-center gap-x-1.5 text-[10px] text-muted-foreground">
-            {session.updated_at && (
+            {(session.updated_at || session.created_at) && (
               <>
-                <span className="whitespace-nowrap">{shortDate(session.updated_at)}</span>
+                <span className="whitespace-nowrap">{shortDate((session.updated_at || session.created_at)!)}</span>
                 <span className="text-border">·</span>
-                <span className="whitespace-nowrap">{timeAgo(session.updated_at)}</span>
+                <span className="whitespace-nowrap">{timeAgo((session.updated_at || session.created_at)!)}</span>
               </>
             )}
             {session.message_count > 0 && (
@@ -83,12 +83,6 @@ export function SessionCard({ session }: SessionCardProps) {
             )}
           </div>
 
-          {/* Preview */}
-          {session.preview && (
-            <p className="mt-0.5 truncate text-[10px] text-muted-foreground/70">
-              {session.preview}
-            </p>
-          )}
         </div>
 
         {/* Delete button on hover */}

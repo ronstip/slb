@@ -35,18 +35,18 @@ SELECT p.post_id, p.platform, p.channel_handle, p.title, p.post_url,
 FROM social_listening.posts p
 LEFT JOIN latest_engagement e ON e.post_id = p.post_id AND e.rn = 1
 LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id
-WHERE p.collection_id = @collection_id
+WHERE p.collection_id IN UNNEST(@collection_ids)
 ORDER BY total_engagement DESC
 LIMIT 10
 """
 
 _META_SQL = (
-    "SELECT c.original_question, "
+    "SELECT c.collection_id, c.original_question, "
     "MIN(p.posted_at) AS date_from, MAX(p.posted_at) AS date_to "
     "FROM social_listening.collections c "
     "LEFT JOIN social_listening.posts p ON p.collection_id = c.collection_id "
-    "WHERE c.collection_id = @collection_id "
-    "GROUP BY c.original_question"
+    "WHERE c.collection_id IN UNNEST(@collection_ids) "
+    "GROUP BY c.collection_id, c.original_question"
 )
 
 # Valid chart types — same set as create_chart
@@ -248,23 +248,27 @@ def _build_top_posts_card(top_posts: list[dict]) -> dict | None:
 # ─── Main tool function ──────────────────────────────────────────────────────
 
 def generate_report(
-    collection_id: str,
+    collection_ids: list[str],
     title: str = "",
     narrative: str = "",
     custom_charts: list[dict] | None = None,
 ) -> dict:
-    """Generate a structured insight report for a collection.
+    """Generate a structured insight report for one or more collections.
 
     Always call get_collection_stats first to read the pre-computed stats, then
     write the narrative and decide on optional custom charts before calling this.
 
-    Fetches the statistical signature from Firestore (instant) and runs only 2 BQ
-    queries (per-platform engagement + top posts), then assembles a modular report
-    with KPI cards, chart data, key findings, highlight posts, and the agent narrative.
+    Fetches the statistical signature from Firestore (instant for single collection)
+    and runs only 2 BQ queries (top posts + metadata), then assembles a modular
+    report with KPI cards, chart data, key findings, highlight posts, and the
+    agent narrative.
+
+    For multi-collection reports, pass multiple IDs to get a combined report that
+    aggregates data across all supplied collections.
 
     Args:
-        collection_id: The collection ID to analyze.
-        title: Optional report title. Auto-generated from collection name if omitted.
+        collection_ids: One or more collection IDs to analyze.
+        title: Optional report title. Auto-generated from collection name(s) if omitted.
         narrative: Agent-written markdown narrative (3-5 bullet insights with numbers).
                    Leave empty only if there are genuinely no meaningful observations.
         custom_charts: Optional list of 0-2 additional chart cards chosen by the agent.
@@ -278,18 +282,20 @@ def generate_report(
     t0 = time.monotonic()
     fs = get_fs()
     bq = get_bq()
-    params = {"collection_id": collection_id}
+    params = {"collection_ids": collection_ids}
 
-    # ── Fetch signature (Firestore, instant) ──────────────────────────────
-    sig = fs.get_latest_statistical_signature(collection_id)
+    # ── Fetch signature ───────────────────────────────────────────────────
+    sig = None
+    if len(collection_ids) == 1:
+        sig = fs.get_latest_statistical_signature(collection_ids[0])
     if sig is None:
-        logger.info("generate_report: no signature cached for %s — computing fresh", collection_id)
+        logger.info("generate_report: computing signature for %s", collection_ids)
         from api.services.statistical_signature_service import compute_statistical_signature
-        sig = compute_statistical_signature(collection_id, bq, fs)
+        sig = compute_statistical_signature(collection_ids, bq, fs)
 
     # ── Run 2 remaining BQ queries in parallel ────────────────────────────
     top_posts: list[dict] = []
-    collection_name = ""
+    collection_names: list[str] = []
     date_from = None
     date_to = None
 
@@ -303,10 +309,16 @@ def generate_report(
                 if label == "top_posts":
                     top_posts = result
                 else:
-                    if result:
-                        collection_name = result[0].get("original_question", "")
-                        date_from = result[0].get("date_from")
-                        date_to = result[0].get("date_to")
+                    for row in (result or []):
+                        name = row.get("original_question", "")
+                        if name:
+                            collection_names.append(name)
+                        row_from = row.get("date_from")
+                        row_to = row.get("date_to")
+                        if row_from and (date_from is None or row_from < date_from):
+                            date_from = row_from
+                        if row_to and (date_to is None or row_to > date_to):
+                            date_to = row_to
             except Exception as e:
                 logger.warning("generate_report query %s failed: %s", label, e)
 
@@ -316,10 +328,10 @@ def generate_report(
     if not sig.get("total_posts") and not sig.get("platform_breakdown"):
         return {
             "status": "success",
-            "message": "No data found for this collection. It may still be in progress.",
+            "message": "No data found for these collections. They may still be in progress.",
             "report_id": f"report-{uuid.uuid4().hex[:8]}",
             "title": title or "Insight Report",
-            "collection_id": collection_id,
+            "collection_ids": collection_ids,
             "cards": [],
         }
 
@@ -397,7 +409,14 @@ def generate_report(
         "layout": {"width": "full", "zone": "footer"},
     })
 
-    report_title = title or (f"Insight Report: {collection_name}" if collection_name else "Insight Report")
+    if title:
+        report_title = title
+    elif len(collection_names) == 1:
+        report_title = f"Insight Report: {collection_names[0]}"
+    elif collection_names:
+        report_title = f"Combined Report: {len(collection_ids)} collections"
+    else:
+        report_title = "Insight Report"
 
     logger.info(
         "generate_report assembled %d cards in %.1fs total",
@@ -408,8 +427,11 @@ def generate_report(
         "status": "success",
         "report_id": f"report-{uuid.uuid4().hex[:8]}",
         "title": report_title,
-        "collection_id": collection_id,
-        "collection_name": collection_name,
+        "collection_ids": collection_ids,
+        "collection_names": collection_names,
+        # Backward compat — single-collection consumers
+        "collection_id": collection_ids[0] if len(collection_ids) == 1 else None,
+        "collection_name": collection_names[0] if len(collection_names) == 1 else None,
         "date_from": str(date_from) if date_from else None,
         "date_to": str(date_to) if date_to else None,
         "generated_at": datetime.now(timezone.utc).isoformat(),

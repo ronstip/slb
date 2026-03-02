@@ -10,8 +10,6 @@ import logging
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
-
 import requests
 
 from config.settings import get_settings
@@ -122,7 +120,6 @@ class VetricAdapter(DataProviderAdapter):
         keywords = config.get("keywords", [])
         channel_urls = config.get("channel_urls", [])
         max_calls = config.get("max_calls", 2)
-        time_range = config.get("time_range", {})
 
         # Build task list: (task_type, target)
         tasks: list[tuple[str, str]] = []
@@ -140,7 +137,7 @@ class VetricAdapter(DataProviderAdapter):
         all_batches: list[Batch] = []
         with ThreadPoolExecutor(max_workers=min(len(tasks), _MAX_WORKERS_KEYWORDS)) as pool:
             futures = {
-                pool.submit(self._ig_task, task_type, target, time_range, max_calls): (task_type, target)
+                pool.submit(self._ig_task, task_type, target, max_calls): (task_type, target)
                 for task_type, target in tasks
             }
             for future in as_completed(futures):
@@ -154,23 +151,23 @@ class VetricAdapter(DataProviderAdapter):
 
         return all_batches
 
-    def _ig_task(self, task_type: str, target: str, time_range: dict, max_calls: int) -> list[Batch]:
+    def _ig_task(self, task_type: str, target: str, max_calls: int) -> list[Batch]:
         if task_type == "top_serp":
-            return self._ig_top_serp(target, time_range, max_calls)
+            return self._ig_top_serp(target, max_calls)
         elif task_type == "reels":
-            return self._ig_reels(target, time_range, max_calls)
+            return self._ig_reels(target, max_calls)
         else:  # feed
-            return self._ig_feed(target, time_range, max_calls)
+            return self._ig_feed(target, max_calls)
 
-    def _ig_top_serp(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+    def _ig_top_serp(self, keyword: str, max_calls: int) -> list[Batch]:
         all_posts: list[Post] = []
         all_channels: dict[str, Channel] = {}
-        next_max_id = None
+        cursor: str | None = None
 
         for call_num in range(max_calls):
             params: dict = {"query": keyword}
-            if next_max_id:
-                params["next_max_id"] = next_max_id
+            if cursor:
+                params["cursor"] = cursor
             resp = self._client.get("instagram", "fbsearch/top_serp/", params)
 
             if call_num == 0:
@@ -183,34 +180,34 @@ class VetricAdapter(DataProviderAdapter):
             if not items:
                 break
 
-            posts, channels = self._parse_instagram_items(items, time_range)
+            posts, channels = self._parse_instagram_items(items)
             all_posts.extend(posts)
             for ch in channels:
                 if ch.channel_handle not in all_channels:
                     all_channels[ch.channel_handle] = ch
 
-            # Try pagination: check top-level and media_grid-level cursors
-            next_max_id = resp.get("next_max_id")
-            if not next_max_id:
+            # Cursor-based pagination (modern API)
+            cursor = resp.get("cursor")
+            if not cursor:
                 media_grid = resp.get("media_grid") or {}
-                next_max_id = media_grid.get("next_max_id")
-            if not next_max_id or not resp.get("more_available", resp.get("has_more", False)):
+                cursor = media_grid.get("cursor")
+            if not cursor:
                 break
 
         if all_posts:
             return [Batch(posts=all_posts, channels=list(all_channels.values()))]
         return []
 
-    def _ig_reels(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+    def _ig_reels(self, keyword: str, max_calls: int) -> list[Batch]:
         all_posts: list[Post] = []
         all_channels: dict[str, Channel] = {}
-        next_max_id = None
+        cursor: str | None = None
 
         for call_num in range(max_calls):
             params: dict = {"q": keyword}
-            if next_max_id:
-                params["next_max_id"] = next_max_id
-            resp = self._client.get("instagram", "search/reels", params)
+            if cursor:
+                params["cursor"] = cursor
+            resp = self._client.get("instagram", "search/reels", params, extra_headers={"x-version": "2026-1"})
 
             if call_num == 0:
                 logger.debug(
@@ -223,21 +220,22 @@ class VetricAdapter(DataProviderAdapter):
             if not unwrapped:
                 break
 
-            posts, channels = self._parse_instagram_items(unwrapped, time_range)
+            posts, channels = self._parse_instagram_items(unwrapped)
             all_posts.extend(posts)
             for ch in channels:
                 if ch.channel_handle not in all_channels:
                     all_channels[ch.channel_handle] = ch
 
-            next_max_id = resp.get("next_max_id") or resp.get("paging_token")
-            if not next_max_id or not resp.get("more_available", resp.get("has_more", False)):
+            # Cursor-based pagination
+            cursor = resp.get("cursor") or resp.get("paging_token")
+            if not cursor:
                 break
 
         if all_posts:
             return [Batch(posts=all_posts, channels=list(all_channels.values()))]
         return []
 
-    def _ig_feed(self, username: str, time_range: dict, max_calls: int) -> list[Batch]:
+    def _ig_feed(self, username: str, max_calls: int) -> list[Batch]:
         user_info = self._client.get("instagram", f"users/{username}/usernameinfo")
         user = user_info.get("user") or {}
         user_id = user.get("pk") or user.get("id")
@@ -261,8 +259,7 @@ class VetricAdapter(DataProviderAdapter):
             posts: list[Post] = []
             for item in items:
                 post = parse_instagram_post(item)
-                if _in_time_range(post.posted_at, time_range):
-                    posts.append(post)
+                posts.append(post)
 
             if posts:
                 batches.append(Batch(posts=posts, channels=[channel] if not batches else []))
@@ -274,14 +271,12 @@ class VetricAdapter(DataProviderAdapter):
         return batches
 
     def _parse_instagram_items(
-        self, items: list[dict], time_range: dict
+        self, items: list[dict]
     ) -> tuple[list[Post], list[Channel]]:
         posts: list[Post] = []
         channels_seen: dict[str, Channel] = {}
         for item in items:
             post = parse_instagram_post(item)
-            if not _in_time_range(post.posted_at, time_range):
-                continue
             posts.append(post)
             user = item.get("user") or {}
             handle = user.get("username", "")
@@ -296,7 +291,6 @@ class VetricAdapter(DataProviderAdapter):
     def _collect_tiktok(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
         max_calls = config.get("max_calls", 2)
-        time_range = config.get("time_range", {})
 
         if not keywords:
             return []
@@ -304,7 +298,7 @@ class VetricAdapter(DataProviderAdapter):
         all_batches: list[Batch] = []
         with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
             futures = {
-                pool.submit(self._tiktok_search, kw, time_range, max_calls): kw
+                pool.submit(self._tiktok_search, kw, max_calls): kw
                 for kw in keywords
             }
             for future in as_completed(futures):
@@ -318,7 +312,7 @@ class VetricAdapter(DataProviderAdapter):
 
         return all_batches
 
-    def _tiktok_search(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+    def _tiktok_search(self, keyword: str, max_calls: int) -> list[Batch]:
         batches: list[Batch] = []
         cursor: str | int | None = None
 
@@ -336,8 +330,6 @@ class VetricAdapter(DataProviderAdapter):
             channels_seen: dict[str, Channel] = {}
             for item in items:
                 post = parse_tiktok_post(item)
-                if not _in_time_range(post.posted_at, time_range):
-                    continue
                 posts.append(post)
                 author = item.get("author") or {}
                 handle = author.get("username", "")
@@ -363,7 +355,6 @@ class VetricAdapter(DataProviderAdapter):
     def _collect_twitter(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
         max_calls = config.get("max_calls", 2)
-        time_range = config.get("time_range", {})
 
         if not keywords:
             return []
@@ -377,7 +368,7 @@ class VetricAdapter(DataProviderAdapter):
         all_batches: list[Batch] = []
         with ThreadPoolExecutor(max_workers=min(len(tasks), _MAX_WORKERS_KEYWORDS)) as pool:
             futures = {
-                pool.submit(self._twitter_search, search_type, kw, time_range, max_calls): (search_type, kw)
+                pool.submit(self._twitter_search, search_type, kw, max_calls): (search_type, kw)
                 for search_type, kw in tasks
             }
             for future in as_completed(futures):
@@ -391,7 +382,7 @@ class VetricAdapter(DataProviderAdapter):
 
         return all_batches
 
-    def _twitter_search(self, search_type: str, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+    def _twitter_search(self, search_type: str, keyword: str, max_calls: int) -> list[Batch]:
         batches: list[Batch] = []
         cursor: str | None = None
 
@@ -409,8 +400,6 @@ class VetricAdapter(DataProviderAdapter):
             channels_seen: dict[str, Channel] = {}
             for item in tweets:
                 post = parse_twitter_post(item)
-                if not _in_time_range(post.posted_at, time_range):
-                    continue
                 posts.append(post)
                 user_details = (item.get("tweet") or item).get("user_details") or {}
                 handle = user_details.get("screen_name", "")
@@ -433,7 +422,6 @@ class VetricAdapter(DataProviderAdapter):
     def _collect_reddit(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
         max_calls = config.get("max_calls", 2)
-        time_range = config.get("time_range", {})
 
         if not keywords:
             return []
@@ -441,7 +429,7 @@ class VetricAdapter(DataProviderAdapter):
         all_batches: list[Batch] = []
         with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
             futures = {
-                pool.submit(self._reddit_search, kw, time_range, max_calls): kw
+                pool.submit(self._reddit_search, kw, max_calls): kw
                 for kw in keywords
             }
             for future in as_completed(futures):
@@ -455,7 +443,7 @@ class VetricAdapter(DataProviderAdapter):
 
         return all_batches
 
-    def _reddit_search(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+    def _reddit_search(self, keyword: str, max_calls: int) -> list[Batch]:
         batches: list[Batch] = []
         query = keyword[:256]  # Reddit max query 256 chars
         cursor: str | None = None
@@ -474,8 +462,6 @@ class VetricAdapter(DataProviderAdapter):
             channels_seen: dict[str, Channel] = {}
             for item in items:
                 post = parse_reddit_post(item)
-                if not _in_time_range(post.posted_at, time_range):
-                    continue
                 posts.append(post)
                 sub = post.channel_id
                 if sub and sub not in channels_seen:
@@ -500,7 +486,6 @@ class VetricAdapter(DataProviderAdapter):
     def _collect_youtube(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", [])
         max_calls = config.get("max_calls", 2)
-        time_range = config.get("time_range", {})
 
         if not keywords:
             return []
@@ -508,7 +493,7 @@ class VetricAdapter(DataProviderAdapter):
         all_batches: list[Batch] = []
         with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
             futures = {
-                pool.submit(self._youtube_search, kw, time_range, max_calls): kw
+                pool.submit(self._youtube_search, kw, max_calls): kw
                 for kw in keywords
             }
             for future in as_completed(futures):
@@ -522,7 +507,7 @@ class VetricAdapter(DataProviderAdapter):
 
         return all_batches
 
-    def _youtube_search(self, keyword: str, time_range: dict, max_calls: int) -> list[Batch]:
+    def _youtube_search(self, keyword: str, max_calls: int) -> list[Batch]:
         batches: list[Batch] = []
         cursor: str | None = None
 
@@ -540,8 +525,6 @@ class VetricAdapter(DataProviderAdapter):
             channels_seen: dict[str, Channel] = {}
             for item in items:
                 post = parse_youtube_post(item)
-                if not _in_time_range(post.posted_at, time_range):
-                    continue
                 posts.append(post)
                 ch = item.get("channel") or {}
                 ch_name = ch.get("name", "")
@@ -624,7 +607,30 @@ class VetricAdapter(DataProviderAdapter):
                 "comments": [],
             }
 
-        # Instagram, Reddit, TikTok: limited or no engagement refresh support
+        if platform == "instagram":
+            post_id = _extract_instagram_post_id(url)
+            if not post_id:
+                return None
+            try:
+                resp = self._client.get("instagram", f"media/{post_id}/info")
+                items = resp.get("items") or []
+                if not items:
+                    logger.debug("IG media/%s/info returned no items", post_id)
+                    return None
+                item = items[0]
+                return {
+                    "likes": item.get("like_count"),
+                    "shares": None,
+                    "comments_count": item.get("comment_count"),
+                    "views": item.get("play_count"),
+                    "saves": None,
+                    "comments": [],
+                }
+            except VetricAPIError as e:
+                logger.warning("Instagram engagement refresh failed for %s: %s", post_id, e)
+                return None
+
+        # Reddit, TikTok: limited or no engagement refresh support
         return None
 
 
@@ -632,25 +638,39 @@ class VetricAdapter(DataProviderAdapter):
 # Utility functions
 # ---------------------------------------------------------------------------
 
-def _in_time_range(posted_at: datetime, time_range: dict) -> bool:
-    if not time_range:
-        return True
-    start_str = time_range.get("start")
-    end_str = time_range.get("end")
-    if start_str:
-        start = datetime.fromisoformat(start_str).replace(tzinfo=timezone.utc)
-        if posted_at < start:
-            return False
-    if end_str:
-        end = datetime.fromisoformat(end_str).replace(tzinfo=timezone.utc)
-        if posted_at > end:
-            return False
-    return True
-
-
 def _extract_instagram_username(url: str) -> str | None:
     match = re.search(r"instagram\.com/([^/?#]+)", url)
     return match.group(1) if match else None
+
+
+def _extract_instagram_post_id(url: str) -> str | None:
+    """Extract Instagram shortcode from URL, then convert to media PK.
+
+    URLs look like: https://www.instagram.com/p/ABC123/
+    or: https://www.instagram.com/reel/ABC123/
+    """
+    match = re.search(r"instagram\.com/(?:p|reel|reels)/([^/?#]+)", url)
+    if not match:
+        return None
+    shortcode = match.group(1)
+    # Convert shortcode to numeric media ID (Instagram base64 encoding)
+    try:
+        return str(_shortcode_to_pk(shortcode))
+    except Exception:
+        return shortcode
+
+
+def _shortcode_to_pk(shortcode: str) -> int:
+    """Convert an Instagram shortcode to its numeric PK (media_id).
+
+    Instagram uses a base64-like encoding with the alphabet:
+    ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_
+    """
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    pk = 0
+    for char in shortcode:
+        pk = pk * 64 + alphabet.index(char)
+    return pk
 
 
 def _extract_twitter_id(url: str) -> str | None:

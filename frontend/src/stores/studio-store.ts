@@ -26,7 +26,9 @@ interface InsightReportArtifact {
   id: string;
   type: 'insight_report';
   title: string;
-  collectionId: string;
+  collectionIds?: string[];
+  /** @deprecated Use collectionIds */
+  collectionId?: string;
   dateFrom?: string;
   dateTo?: string;
   cards: ReportCard[];

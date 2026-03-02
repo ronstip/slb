@@ -5,9 +5,12 @@ different schemas per platform. All parsers use defensive .get()
 with defaults so missing fields produce valid objects, never crashes.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from workers.collection.models import Channel, Post
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -26,8 +29,20 @@ def parse_instagram_post(item: dict) -> Post:
     post_type_map = {1: "image", 2: "video", 8: "carousel"}
     code = item.get("code", "")
 
+    likes = item.get("like_count")
+    comments_count = item.get("comment_count")
+    views = item.get("play_count")
+    post_id = str(item.get("pk", item.get("id", "")))
+
+    if likes is None and comments_count is None:
+        logger.debug(
+            "IG post %s missing engagement — available keys: %s",
+            post_id,
+            [k for k in item.keys() if "count" in k.lower() or "like" in k.lower()],
+        )
+
     return Post(
-        post_id=str(item.get("pk", item.get("id", ""))),
+        post_id=post_id,
         platform="instagram",
         channel_handle=user.get("username", ""),
         channel_id=str(user.get("pk", user.get("id", ""))),
@@ -39,10 +54,10 @@ def parse_instagram_post(item: dict) -> Post:
         parent_post_id=None,
         media_urls=_extract_instagram_media(item),
         media_refs=[],
-        likes=item.get("like_count"),
+        likes=likes,
         shares=None,
-        comments_count=item.get("comment_count"),
-        views=item.get("play_count"),
+        comments_count=comments_count,
+        views=views,
         saves=None,
         comments=[],
         platform_metadata={

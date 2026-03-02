@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -107,14 +108,18 @@ async def list_sessions(user: CurrentUser = Depends(get_current_user)):
                 session_id=session.id,
                 title=state.get("session_title", "New Session"),
                 created_at=state.get("created_at"),
-                updated_at=str(session.last_update_time) if session.last_update_time else None,
+                updated_at=(
+                    datetime.fromtimestamp(session.last_update_time, tz=timezone.utc).isoformat()
+                    if session.last_update_time
+                    else None
+                ),
                 message_count=state.get("message_count", 0),
                 preview=state.get("first_message", "")[:120] if state.get("first_message") else None,
             )
         )
 
-    # Sort newest first by last_update_time
-    items.sort(key=lambda s: s.updated_at or "", reverse=True)
+    # Sort newest first, preferring updated_at then falling back to created_at
+    items.sort(key=lambda s: s.updated_at or s.created_at or "", reverse=True)
     return items
 
 

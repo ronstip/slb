@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -162,6 +163,8 @@ class FirestoreSessionService(BaseSessionService):
                 events_safe.append(json.loads(json.dumps(dumped, default=str)))
             except Exception:
                 logger.warning("Failed to serialize event, skipping")
+
+        session.last_update_time = time.time()
 
         data = {
             "session_id": session.id,

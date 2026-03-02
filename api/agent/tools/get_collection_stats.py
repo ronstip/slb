@@ -7,8 +7,12 @@ from api.deps import get_bq, get_fs
 logger = logging.getLogger(__name__)
 
 
-def get_collection_stats(collection_id: str) -> dict:
-    """Return the pre-computed statistical snapshot for a collection (instant Firestore read).
+def get_collection_stats(collection_ids: list[str]) -> dict:
+    """Return the statistical snapshot for one or more collections.
+
+    Accepts a list of collection IDs. For a single collection the pre-computed
+    Firestore cache is used (instant). For multiple collections a fresh
+    aggregation is computed from BigQuery (a few seconds).
 
     Call this as the FIRST step when generating a report. After reading the stats,
     follow this sequence:
@@ -44,7 +48,7 @@ def get_collection_stats(collection_id: str) -> dict:
        - Platform data → platform_bar (uses platform-specific colors)
        - Do NOT use platform_bar for sentiment data — colors will be wrong.
 
-    4. Call generate_report(collection_id, narrative="...", custom_charts=[...])
+    4. Call generate_report(collection_ids=[...], narrative="...", custom_charts=[...])
        Do NOT echo the report — the UI renders it automatically.
 
     Custom chart data schemas (identical to create_chart schemas):
@@ -63,7 +67,7 @@ def get_collection_stats(collection_id: str) -> dict:
       histogram:         [{bucket, count}]
 
     Args:
-        collection_id: The collection to fetch stats for.
+        collection_ids: One or more collection IDs to fetch/aggregate stats for.
 
     Returns:
         Statistical snapshot with total_posts, date_range, platform_breakdown,
@@ -72,15 +76,25 @@ def get_collection_stats(collection_id: str) -> dict:
         negative_sentiment_pct, total_posts_enriched.
     """
     fs = get_fs()
-    sig = fs.get_latest_statistical_signature(collection_id)
-    if sig:
-        logger.info("get_collection_stats: served from Firestore cache for %s", collection_id)
-        sig.pop("_signature_id", None)
-        return {"status": "success", "collection_id": collection_id, **sig}
 
-    # Slow path: no signature yet, compute fresh (does not persist)
-    logger.info("get_collection_stats: no cached signature for %s — computing fresh", collection_id)
+    # Single-collection fast path: use Firestore cache
+    if len(collection_ids) == 1:
+        cid = collection_ids[0]
+        sig = fs.get_latest_statistical_signature(cid)
+        if sig:
+            logger.info("get_collection_stats: served from Firestore cache for %s", cid)
+            sig.pop("_signature_id", None)
+            return {"status": "success", "collection_ids": collection_ids, **sig}
+
+        logger.info("get_collection_stats: no cached signature for %s — computing fresh", cid)
+        bq = get_bq()
+        from api.services.statistical_signature_service import compute_statistical_signature
+        data = compute_statistical_signature(collection_ids, bq, fs)
+        return {"status": "success", "collection_ids": collection_ids, **data}
+
+    # Multi-collection: always compute fresh from BQ
+    logger.info("get_collection_stats: computing fresh multi-collection signature for %s", collection_ids)
     bq = get_bq()
     from api.services.statistical_signature_service import compute_statistical_signature
-    data = compute_statistical_signature(collection_id, bq, fs)
-    return {"status": "success", "collection_id": collection_id, **data}
+    data = compute_statistical_signature(collection_ids, bq, fs)
+    return {"status": "success", "collection_ids": collection_ids, **data}
