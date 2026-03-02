@@ -3,12 +3,13 @@
 Callbacks are registered on the meta-agent in agent.py. This module
 keeps callback logic separate from agent construction.
 
-Five categories:
+Six categories:
 1. State tracking   — after_tool_callback captures collection state
 2. Gating           — before_tool_callback blocks expensive tools without approval
-3. Context injection — before_model_callback prepends collection context
-4. Tool reordering  — before_model_callback prioritizes relevant tools
-5. Observability     — after_tool_callback logs all tool invocations
+3. Access control   — before_tool_callback enforces user-scoped collection access
+4. Context injection — before_model_callback prepends collection context
+5. Tool reordering  — before_model_callback prioritizes relevant tools
+6. Observability     — after_tool_callback logs all tool invocations
 """
 
 import logging
@@ -38,6 +39,19 @@ _APPROVAL_PATTERN = re.compile(
     r"\b(start collecting|start collection|confirm|go ahead|yes|do it|launch|run it|approved|let'?s go|begin collection|kick it off)\b",
     re.IGNORECASE,
 )
+
+# ─── Collection access enforcement ─────────────────────────────────
+# Tools whose `collection_id` (single) or `collection_ids` (list) args
+# must be validated against the authenticated user's ownership / org access.
+
+TOOLS_WITH_COLLECTION_ID = {
+    "enrich_collection", "get_progress", "cancel_collection",
+    "refresh_engagements", "export_data", "display_posts",
+}
+TOOLS_WITH_COLLECTION_IDS = {
+    "get_collection_stats", "generate_report", "set_working_collections",
+    "export_data", "display_posts",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +110,12 @@ def collection_state_tracker(
         if tool_response.get("status") == "success":
             tool_context.state["collection_status"] = "cancelled"
 
+    elif tool_name == "set_working_collections":
+        if tool_response.get("status") == "success":
+            tool_context.state["agent_selected_sources"] = (
+                tool_response.get("active_collections") or []
+            )
+
     return None
 
 
@@ -132,7 +152,70 @@ def gate_expensive_tools(
 
 
 # ---------------------------------------------------------------------------
-# 3. Dynamic context injection — before_model_callback
+# 3. Access control — before_tool_callback
+# ---------------------------------------------------------------------------
+
+
+def enforce_collection_access(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+) -> Optional[dict]:
+    """Validate that collection IDs in tool args belong to the current user.
+
+    Reads the real user_id/org_id from session state (not from agent-supplied
+    args) to prevent the agent from hallucinating credentials. Also force-
+    overwrites user_id/org_id args when present.
+
+    Returns a dict (error response) to block, or None to allow.
+    """
+    state = tool_context.state
+    user_id = state.get("user_id", "")
+    org_id = state.get("org_id")
+    tool_name = tool.name
+
+    # Force-overwrite identity args to prevent agent hallucination
+    if "user_id" in args:
+        args["user_id"] = user_id
+    if "org_id" in args:
+        args["org_id"] = org_id or ""
+
+    # Collect collection IDs to validate
+    ids_to_check: list[str] = []
+
+    if tool_name in TOOLS_WITH_COLLECTION_ID:
+        cid = args.get("collection_id")
+        if cid:
+            ids_to_check.append(cid)
+
+    if tool_name in TOOLS_WITH_COLLECTION_IDS:
+        cids = args.get("collection_ids")
+        if cids:
+            ids_to_check.extend(cids)
+
+    if not ids_to_check:
+        return None
+
+    # Validate access
+    from api.agent.tools._access import validate_collection_access
+
+    try:
+        validate_collection_access(ids_to_check, user_id, org_id)
+    except ValueError as e:
+        logger.warning(
+            "Access denied: tool=%s user=%s ids=%s reason=%s",
+            tool_name, user_id, ids_to_check, e,
+        )
+        return {
+            "status": "error",
+            "message": str(e),
+        }
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# 4. Dynamic context injection — before_model_callback
 # ---------------------------------------------------------------------------
 
 
@@ -142,13 +225,17 @@ def _build_context_block(state: dict) -> Optional[str]:
 
     # ── Collection context ──────────────────────────────────────────
     collection_id = state.get("active_collection_id")
-    selected_sources: list[str] = state.get("selected_sources") or []
+    ui_sources: list[str] = state.get("selected_sources") or []
+    agent_sources: list[str] = state.get("agent_selected_sources") or []
 
-    # Fallback: use first selected source as active if none explicitly set
-    if not collection_id and selected_sources:
-        collection_id = selected_sources[0]
+    # Merge: UI-forced first, then agent-chosen, deduplicated
+    effective_sources = list(dict.fromkeys(ui_sources + agent_sources))
 
-    if collection_id or selected_sources:
+    # Fallback: use first effective source as active if none explicitly set
+    if not collection_id and effective_sources:
+        collection_id = effective_sources[0]
+
+    if collection_id or effective_sources:
         status = state.get("collection_status", "unknown")
         posts = state.get("posts_collected", 0)
         enriched = state.get("posts_enriched", 0)
@@ -164,10 +251,18 @@ def _build_context_block(state: dict) -> Optional[str]:
         if embedded:
             lines.append(f"- Posts embedded: {embedded}")
 
-        if selected_sources:
-            ids_fmt = ", ".join(f"`{sid}`" for sid in selected_sources)
-            lines.append(f"- All selected collections: {ids_fmt}")
-            if len(selected_sources) > 1:
+        if ui_sources:
+            ids_fmt = ", ".join(f"`{sid}`" for sid in ui_sources)
+            lines.append(f"- User-selected (forced): {ids_fmt}")
+
+        if agent_sources:
+            ids_fmt = ", ".join(f"`{sid}`" for sid in agent_sources)
+            lines.append(f"- Agent-selected: {ids_fmt}")
+
+        if effective_sources:
+            ids_fmt = ", ".join(f"`{sid}`" for sid in effective_sources)
+            lines.append(f"- Effective working set: {ids_fmt}")
+            if len(effective_sources) > 1:
                 lines.append(
                     "- IMPORTANT: Multiple collections are active. "
                     "Apply operations to ALL of them unless the user specifies one."
@@ -176,7 +271,8 @@ def _build_context_block(state: dict) -> Optional[str]:
         lines.append("")
         lines.append(
             "Use this context when the user references 'the collection' or "
-            "'my data' without specifying a collection ID."
+            "'my data' without specifying a collection ID. "
+            "User-forced collections cannot be removed from the working set."
         )
         blocks.append("\n".join(lines))
 
@@ -187,7 +283,9 @@ def _get_phase_priority(state: dict) -> list[set[str]]:
     """Return tool groups ordered by relevance for the current session phase."""
     collection_status = state.get("collection_status")
     has_collection = bool(
-        state.get("active_collection_id") or state.get("selected_sources")
+        state.get("active_collection_id")
+        or state.get("selected_sources")
+        or state.get("agent_selected_sources")
     )
 
     if not has_collection:

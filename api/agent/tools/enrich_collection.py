@@ -12,15 +12,20 @@ def enrich_collection(
     post_ids: str = "",
     min_likes: int = 0,
 ) -> dict:
-    """Run AI enrichment on collected posts to extract sentiment, themes, and generate embeddings.
+    """Run AI enrichment on collected posts to extract sentiment, emotion, themes, entities, and more.
 
     Supports two input modes:
     - Provide collection_id to enrich all qualifying posts in a collection.
     - Provide post_ids (comma-separated) to enrich specific posts.
 
-    Enrichment uses BQ integrated LLMs (AI.GENERATE_TEXT and AI.GENERATE_EMBEDDING).
+    Enrichment uses Gemini (multimodal — analyzes text, images, and video).
     Posts are filtered by min_likes (default 0 = enrich all). This is required before
-    Analysis queries can then return sentiment, theme, and entity data.
+    analysis queries can return sentiment, theme, and entity data.
+
+    If the collection has custom_fields defined in its config, those are extracted
+    alongside the standard fields and stored in the custom_fields JSON column.
+
+    IMPORTANT: Always get explicit user approval before running enrichment.
 
     Args:
         collection_id: The collection ID to enrich. Provide this OR post_ids.
@@ -56,7 +61,7 @@ def enrich_collection(
             thread = threading.Thread(
                 target=run_enrichment_for_posts,
                 args=(ids,),
-                kwargs={"min_likes": min_likes},
+                kwargs={"min_likes": min_likes, "collection_id": collection_id},
                 daemon=True,
             )
             thread.start()
@@ -85,14 +90,14 @@ def enrich_collection(
                 ),
             }
     else:
-        _dispatch_enrichment_task(settings, collection_id, post_ids)
+        _dispatch_enrichment_task(settings, collection_id, post_ids, min_likes)
         return {
             "status": "success",
             "message": "Enrichment task dispatched.",
         }
 
 
-def _dispatch_enrichment_task(settings, collection_id: str, post_ids: str) -> None:
+def _dispatch_enrichment_task(settings, collection_id: str, post_ids: str, min_likes: int = 0) -> None:
     """Dispatch enrichment worker via Cloud Tasks."""
     import json
     from google.cloud import tasks_v2
@@ -103,7 +108,7 @@ def _dispatch_enrichment_task(settings, collection_id: str, post_ids: str) -> No
         settings.gcp_region,
         settings.cloud_tasks_queue,
     )
-    payload = {"collection_id": collection_id}
+    payload = {"collection_id": collection_id, "min_likes": min_likes}
     if post_ids:
         payload["post_ids"] = [p.strip() for p in post_ids.split(",") if p.strip()]
 

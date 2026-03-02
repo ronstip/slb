@@ -115,36 +115,116 @@ def create_collection_from_request(
     }
 
 
+def _post_to_enrichment_data(post):
+    """Convert a collection Post model to enrichment PostData (in-memory, no BQ read)."""
+    from workers.enrichment.schema import MediaRef, PostData
+
+    media_refs = []
+    for ref in (post.media_refs or []):
+        if isinstance(ref, dict) and ref.get("gcs_uri"):
+            media_refs.append(MediaRef(
+                gcs_uri=ref["gcs_uri"],
+                media_type=ref.get("media_type", "image"),
+                content_type=ref.get("content_type", "application/octet-stream"),
+            ))
+
+    return PostData(
+        post_id=post.post_id,
+        platform=post.platform,
+        channel_handle=post.channel_handle,
+        posted_at=post.posted_at.isoformat() if post.posted_at else None,
+        title=post.title,
+        content=post.content,
+        media_refs=media_refs,
+    )
+
+
 def _run_pipeline(collection_id: str) -> None:
-    """Run collection then enrichment as a single pipeline (dev mode)."""
+    """Run collection + parallel enrichment + embedding pipeline."""
+    from concurrent.futures import ThreadPoolExecutor
+
     from google.cloud.firestore_v1 import transforms
+
     from workers.collection.worker import run_collection
-    from workers.enrichment.worker import run_enrichment
+    from workers.enrichment.worker import (
+        run_enrichment_inline,
+        update_enrichment_counts,
+    )
     from workers.shared.firestore_client import FirestoreClient
 
-    try:
-        run_collection(collection_id)
-    except Exception:
-        logger.exception("Collection pipeline failed for %s", collection_id)
-        return
+    from workers.enrichment.schema import CustomFieldDef
 
-    # Auto-trigger enrichment after successful collection
     settings = get_settings()
     fs = FirestoreClient(settings)
+
+    # Load custom field definitions from collection config
+    status_doc = fs.get_collection_status(collection_id)
+    custom_fields_defs = None
+    if status_doc:
+        config = status_doc.get("config") or {}
+        raw_cf = config.get("custom_fields")
+        if raw_cf:
+            custom_fields_defs = [CustomFieldDef(**f) for f in raw_cf]
+
+    # Thread pool for parallel enrichment batches
+    enrichment_executor = ThreadPoolExecutor(max_workers=3)
+    enrichment_futures = []
+
+    def on_batch_complete(new_posts):
+        """Callback from collection worker — fire enrichment for this batch."""
+        post_data = [_post_to_enrichment_data(p) for p in new_posts]
+        future = enrichment_executor.submit(
+            run_enrichment_inline, post_data, collection_id, custom_fields_defs,
+        )
+        enrichment_futures.append(future)
+
+    # Step 1: Collection (enrichment fires in parallel per batch via callback)
+    try:
+        run_collection(collection_id, on_batch_complete=on_batch_complete)
+    except Exception:
+        logger.exception("Collection pipeline failed for %s", collection_id)
+        enrichment_executor.shutdown(wait=False)
+        return
+
+    # Check if collection was cancelled
     status = fs.get_collection_status(collection_id)
     if not status or status.get("status") not in ("completed", "collecting"):
-        # cancelled or failed during collection
+        enrichment_executor.shutdown(wait=False)
         return
 
+    # Step 2: Wait for all enrichment batches to complete
+    enrichment_failed = False
+    for future in enrichment_futures:
+        try:
+            future.result()
+        except Exception:
+            logger.exception("Enrichment batch failed for %s", collection_id)
+            enrichment_failed = True
+    enrichment_executor.shutdown()
+
+    if enrichment_failed:
+        fs.update_collection_status(
+            collection_id, status="failed", error_message="One or more enrichment batches failed",
+        )
+        return
+
+    # Step 3: Update enrichment counts in Firestore
     try:
-        config = status.get("config") or {}
-        min_likes = config.get("min_likes", 0)
-        run_enrichment(collection_id, min_likes=min_likes)
+        update_enrichment_counts(collection_id)
     except Exception:
-        logger.exception("Enrichment pipeline failed for %s", collection_id)
-        return
+        logger.exception("Failed to update enrichment counts for %s", collection_id)
 
-    # Compute and persist statistical signature (non-fatal)
+    # Step 4: Embedding (BQ-native, unchanged)
+    try:
+        bq = get_bq()
+        bq.query_from_file("batch_queries/batch_embed.sql", {
+            "collection_id": collection_id,
+            "post_ids": [],
+        })
+    except Exception:
+        logger.exception("Embedding failed for %s", collection_id)
+
+    # Step 5: Compute and persist statistical signature (non-fatal)
     try:
         from api.services.statistical_signature_service import refresh_statistical_signature
 
@@ -153,7 +233,7 @@ def _run_pipeline(collection_id: str) -> None:
     except Exception:
         logger.exception("Statistical signature computation failed for %s", collection_id)
 
-    # After enrichment, decide final status based on ongoing flag
+    # Step 6: Decide final status based on ongoing flag
     status = fs.get_collection_status(collection_id)
     config = (status or {}).get("config") or {}
     if config.get("ongoing"):
@@ -161,13 +241,11 @@ def _run_pipeline(collection_id: str) -> None:
         now = datetime.now(timezone.utc)
         next_run_at = _compute_next_run_at(schedule, now)
 
-        # Build new run_history entry
         run_entry = {
             "run_at": now.isoformat(),
             "posts_added": (status or {}).get("posts_collected", 0),
             "status": "completed",
         }
-        # Use Firestore ArrayUnion to append; cap is handled separately if needed
         fs.update_collection_status(
             collection_id,
             status="monitoring",

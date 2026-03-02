@@ -41,7 +41,7 @@ base AS (
         COALESCE(pe.views, 0)          AS views,
         COALESCE(pe.comments_count, 0) AS comments,
         COALESCE(pe.shares, 0)         AS shares,
-        ep.sentiment, ep.language, ep.content_type, ep.themes, ep.entities,
+        ep.sentiment, ep.emotion, ep.language, ep.content_type, ep.themes, ep.entities,
         ep.post_id                     AS enriched_post_id
     FROM deduped_posts p
     LEFT JOIN deduped_engagements pe ON p.post_id = pe.post_id AND pe._rn = 1

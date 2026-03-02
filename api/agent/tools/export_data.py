@@ -5,26 +5,43 @@ from api.deps import get_bq
 logger = logging.getLogger(__name__)
 
 
-def export_data(collection_id: str) -> dict:
-    """Export all posts and enrichment data for a collection as structured rows.
+def export_data(
+    collection_ids: list[str] = None,
+    collection_id: str = "",
+) -> dict:
+    """Export all posts and enrichment data for one or more collections as structured rows.
 
     Call this tool when the user wants to export or download their collected data
     as a CSV or spreadsheet. Returns all posts with engagement metrics and
     enrichment data (sentiment, themes, entities, AI summary).
 
+    Supports multi-collection exports — the output includes a `collection_id`
+    column for attribution when exporting across multiple collections.
+
     Args:
-        collection_id: The collection ID to export.
+        collection_ids: List of collection IDs to export. Preferred parameter.
+        collection_id: Single collection ID (deprecated — use collection_ids).
 
     Returns:
         A dictionary with status, rows (list of dicts), row_count, and column_names.
     """
+    # Normalize to list
+    ids = collection_ids or ([collection_id] if collection_id else [])
+    if not ids:
+        return {
+            "status": "error",
+            "message": "No collection ID(s) provided.",
+            "rows": [],
+            "row_count": 0,
+        }
+
     bq = get_bq()
-    params = {"collection_id": collection_id}
+    params = {"collection_ids": ids}
 
     try:
         rows = bq.query_from_file("export_queries/export_posts.sql", params)
     except Exception as e:
-        logger.exception("Export query failed for collection %s", collection_id)
+        logger.exception("Export query failed for collections %s", ids)
         return {
             "status": "error",
             "message": f"Failed to export data: {e}",
@@ -35,7 +52,7 @@ def export_data(collection_id: str) -> dict:
     if not rows:
         return {
             "status": "success",
-            "message": "No data found for this collection. The collection may still be in progress.",
+            "message": "No data found for these collection(s). They may still be in progress.",
             "rows": [],
             "row_count": 0,
         }
@@ -55,5 +72,5 @@ def export_data(collection_id: str) -> dict:
         "rows": rows,
         "row_count": len(rows),
         "column_names": column_names,
-        "collection_id": collection_id,
+        "collection_ids": ids,
     }

@@ -16,6 +16,18 @@ class Settings(BaseSettings):
     research_model: str = "gemini-3-flash-preview"  # kept for potential future worker
     enrichment_model: str = "gemini-3-flash-preview"
     embedding_model: str = "text-embedding-005"
+
+    # Enrichment worker config
+    enrichment_concurrency: int = 30
+    enrichment_search: bool = False
+    enrichment_temperature: float = 0.2
+    enrichment_max_output_tokens: int = 2048
+    enrichment_media_resolution: str = "medium"  # low, medium, high
+    enrichment_thinking_level: str = "low"  # minimal, low, medium, high
+    enrichment_max_media_per_post: int = 5
+    enrichment_video_start_offset: str = "0s"
+    enrichment_video_end_offset: str = "120s"
+    enrichment_video_fps: int = 1
     vetric_api_key_twitter: str = ""
     vetric_api_key_instagram: str = ""
     vetric_api_key_tiktok: str = ""

@@ -1,145 +1,315 @@
-"""Enrichment Worker — enriches posts using BQ integrated LLMs.
+"""Enrichment Worker — enriches posts using Gemini API (multimodal).
 
-Runs batch SQL queries that use AI.GENERATE_TEXT() and AI.GENERATE_EMBEDDING()
-with the remote models configured in BigQuery.
+Two modes:
+  - Inline: receives PostData directly from collection pipeline (no BQ read)
+  - Standalone: reads posts from BQ, for manual/re-enrichment via agent tool
 
 Usage:
     python -m workers.enrichment.worker <collection_id>
     python -m workers.enrichment.worker --post-ids id1,id2,id3
 """
 
+import json
 import logging
 import sys
 import time
 from datetime import datetime, timezone
 
 from config.settings import get_settings
+from workers.enrichment.enricher import enrich_posts
+from workers.enrichment.schema import CustomFieldDef, EnrichmentResult, MediaRef, PostData
 from workers.shared.bq_client import BQClient
 from workers.shared.firestore_client import FirestoreClient
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# BQ write: MERGE enrichment results into enriched_posts
+# ---------------------------------------------------------------------------
+
+def _write_results_to_bq(
+    bq: BQClient,
+    results: list[tuple[str, EnrichmentResult]],
+) -> None:
+    """Write enrichment results to BQ via MERGE (idempotent, supports re-enrichment)."""
+    if not results:
+        return
+    _write_results_via_values(bq, results)
+
+
+def _write_results_via_values(
+    bq: BQClient,
+    results: list[tuple[str, EnrichmentResult]],
+) -> None:
+    """Write results using a MERGE with inline VALUES (works around BQ param limitations)."""
+    if not results:
+        return
+
+    # Build a UNION ALL of SELECT statements for each row
+    selects = []
+    for post_id, r in results:
+        entities_arr = ", ".join(f"'{_esc(e)}'" for e in r.entities)
+        themes_arr = ", ".join(f"'{_esc(t)}'" for t in r.themes)
+        quotes_arr = ", ".join(f"'{_esc(q)}'" for q in r.key_quotes)
+
+        custom_json = json.dumps(r.custom_fields) if r.custom_fields else None
+        custom_sql = f"PARSE_JSON('{_esc(custom_json)}')" if custom_json else "NULL"
+
+        selects.append(
+            f"SELECT '{_esc(post_id)}' AS post_id, "
+            f"'{_esc(r.sentiment)}' AS sentiment, "
+            f"'{_esc(r.emotion)}' AS emotion, "
+            f"[{entities_arr}] AS entities, "
+            f"[{themes_arr}] AS themes, "
+            f"'{_esc(r.ai_summary)}' AS ai_summary, "
+            f"'{_esc(r.language)}' AS language, "
+            f"'{_esc(r.content_type)}' AS content_type, "
+            f"[{quotes_arr}] AS key_quotes, "
+            f"{custom_sql} AS custom_fields"
+        )
+
+    source_sql = " UNION ALL\n".join(selects)
+
+    merge_sql = f"""\
+MERGE social_listening.enriched_posts AS target
+USING (
+    {source_sql}
+) AS source
+ON target.post_id = source.post_id
+WHEN NOT MATCHED THEN
+    INSERT (post_id, sentiment, emotion, entities, themes, ai_summary, language, content_type, key_quotes, custom_fields, enriched_at)
+    VALUES (source.post_id, source.sentiment, source.emotion, source.entities, source.themes, source.ai_summary, source.language, source.content_type, source.key_quotes, source.custom_fields, CURRENT_TIMESTAMP())
+WHEN MATCHED THEN
+    UPDATE SET
+        sentiment     = source.sentiment,
+        emotion       = source.emotion,
+        entities      = source.entities,
+        themes        = source.themes,
+        ai_summary    = source.ai_summary,
+        language      = source.language,
+        content_type  = source.content_type,
+        key_quotes    = source.key_quotes,
+        custom_fields = source.custom_fields,
+        enriched_at   = CURRENT_TIMESTAMP();"""
+
+    bq.query(merge_sql)
+    logger.info("Wrote %d enrichment results to BQ", len(results))
+
+
+def _esc(s: str) -> str:
+    """Escape single quotes for BQ SQL string literals."""
+    return s.replace("\\", "\\\\").replace("'", "\\'")
+
+
+# ---------------------------------------------------------------------------
+# BQ read: load posts for standalone mode
+# ---------------------------------------------------------------------------
+
+def _read_posts_from_bq(
+    bq: BQClient,
+    collection_id: str,
+    min_likes: int = 0,
+) -> list[PostData]:
+    """Read posts from BQ for a collection, filtered by engagement threshold."""
+    rows = bq.query(
+        "SELECT p.post_id, p.platform, p.channel_handle, "
+        "  CAST(p.posted_at AS STRING) AS posted_at, p.title, p.content, p.media_refs "
+        "FROM social_listening.posts p "
+        "LEFT JOIN ("
+        "  SELECT post_id, likes, "
+        "    ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn "
+        "  FROM social_listening.post_engagements"
+        ") eng ON eng.post_id = p.post_id AND eng.rn = 1 "
+        "LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id "
+        "WHERE p.collection_id = @collection_id "
+        "  AND COALESCE(eng.likes, 0) >= @min_likes "
+        "  AND ep.post_id IS NULL",  # skip already-enriched
+        {"collection_id": collection_id, "min_likes": min_likes},
+    )
+    return [_row_to_post_data(r) for r in rows]
+
+
+def _read_posts_from_bq_by_ids(bq: BQClient, post_ids: list[str]) -> list[PostData]:
+    """Read specific posts from BQ by ID."""
+    rows = bq.query(
+        "SELECT p.post_id, p.platform, p.channel_handle, "
+        "  CAST(p.posted_at AS STRING) AS posted_at, p.title, p.content, p.media_refs "
+        "FROM social_listening.posts p "
+        "WHERE p.post_id IN UNNEST(@post_ids)",
+        {"post_ids": post_ids},
+    )
+    return [_row_to_post_data(r) for r in rows]
+
+
+def _row_to_post_data(row: dict) -> PostData:
+    """Convert a BQ row dict to PostData."""
+    media_refs = []
+    raw_refs = row.get("media_refs")
+    if raw_refs:
+        if isinstance(raw_refs, str):
+            raw_refs = json.loads(raw_refs)
+        for ref in (raw_refs or []):
+            if isinstance(ref, dict) and ref.get("gcs_uri"):
+                media_refs.append(MediaRef(
+                    gcs_uri=ref["gcs_uri"],
+                    media_type=ref.get("media_type", "image"),
+                    content_type=ref.get("content_type", "application/octet-stream"),
+                ))
+
+    return PostData(
+        post_id=row["post_id"],
+        platform=row["platform"],
+        channel_handle=row.get("channel_handle"),
+        posted_at=row.get("posted_at"),
+        title=row.get("title"),
+        content=row.get("content"),
+        media_refs=media_refs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public entry points
+# ---------------------------------------------------------------------------
+
+def run_enrichment_inline(
+    posts: list[PostData],
+    collection_id: str = "",
+    custom_fields: list[CustomFieldDef] | None = None,
+) -> list[tuple[str, EnrichmentResult]]:
+    """Enrich posts from in-memory data. Used by parallel pipeline callback.
+
+    No BQ read needed — post data is passed directly from collection.
+    custom_fields: per-collection custom field definitions from config.
+    """
+    if not posts:
+        return []
+
+    settings = get_settings()
+    bq = BQClient(settings)
+
+    logger.info(
+        "Enriching %d posts inline%s",
+        len(posts),
+        f" for collection {collection_id}" if collection_id else "",
+    )
+    start = time.monotonic()
+
+    results = enrich_posts(posts, custom_fields=custom_fields)
+    _write_results_to_bq(bq, results)
+
+    duration = round(time.monotonic() - start, 1)
+    logger.info("Inline enrichment: %d/%d posts in %.1fs", len(results), len(posts), duration)
+    return results
+
+
+def _load_custom_fields(fs: FirestoreClient, collection_id: str) -> list[CustomFieldDef] | None:
+    """Load custom field definitions from collection config in Firestore."""
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        return None
+    config = status.get("config") or {}
+    raw_fields = config.get("custom_fields")
+    if not raw_fields:
+        return None
+    return [CustomFieldDef(**f) for f in raw_fields]
+
+
 def run_enrichment(collection_id: str, min_likes: int = 0) -> None:
-    """Enrich all qualifying posts in a collection."""
-    _run(collection_id=collection_id, post_ids=[], min_likes=min_likes)
-
-
-def run_enrichment_for_posts(post_ids: list[str], min_likes: int = 0) -> None:
-    """Enrich specific posts by ID."""
-    _run(collection_id="", post_ids=post_ids, min_likes=min_likes)
-
-
-def _run(collection_id: str, post_ids: list[str], min_likes: int = 0) -> None:
+    """Enrich all qualifying posts in a collection. Reads from BQ (standalone mode)."""
     settings = get_settings()
     bq = BQClient(settings)
     fs = FirestoreClient(settings)
 
-    params = {"collection_id": collection_id, "post_ids": post_ids, "min_likes": min_likes}
-
-    # Update status if collection-level enrichment
-    if collection_id:
-        fs.update_collection_status(collection_id, status="enriching")
+    fs.update_collection_status(collection_id, status="enriching")
+    custom_fields = _load_custom_fields(fs, collection_id)
 
     try:
-        # Pre-enrichment stats: count eligible vs skipped posts
-        enrich_stats: dict = {"min_likes_threshold": min_likes}
-        if collection_id:
-            pre_result = bq.query(
-                "SELECT "
-                "  COUNT(*) AS total, "
-                "  COUNTIF(COALESCE(eng.likes, 0) >= @min_likes) AS eligible, "
-                "  COUNTIF(ep.post_id IS NOT NULL) AS already_enriched "
-                "FROM social_listening.posts p "
-                "LEFT JOIN ("
-                "  SELECT post_id, likes, "
-                "    ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn "
-                "  FROM social_listening.post_engagements"
-                ") eng ON eng.post_id = p.post_id AND eng.rn = 1 "
-                "LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id "
-                "WHERE p.collection_id = @collection_id",
-                {"collection_id": collection_id, "min_likes": min_likes},
-            )
-            if pre_result:
-                row = pre_result[0]
-                enrich_stats["total_posts"] = row["total"]
-                enrich_stats["total_eligible"] = row["eligible"]
-                enrich_stats["total_already_enriched"] = row["already_enriched"]
-                enrich_stats["total_skipped"] = row["total"] - row["eligible"]
-                logger.info(
-                    "Enrichment filter: %d total, %d eligible (>=%d likes), %d already enriched, %d skipped",
-                    row["total"], row["eligible"], min_likes, row["already_enriched"],
-                    row["total"] - row["eligible"],
-                )
+        posts = _read_posts_from_bq(bq, collection_id, min_likes)
+        logger.info("Standalone enrichment: %d posts for collection %s", len(posts), collection_id)
 
-        # Step 1: Enrich posts via BQ AI.GENERATE_TEXT()
-        logger.info("Running batch enrichment for %s", collection_id or f"posts {post_ids}")
-        enrich_start = time.monotonic()
-        bq.query_from_file("batch_queries/batch_enrich.sql", params)
-        enrich_duration = round(time.monotonic() - enrich_start, 1)
+        start = time.monotonic()
+        results = enrich_posts(posts, custom_fields=custom_fields)
+        _write_results_to_bq(bq, results)
+        duration = round(time.monotonic() - start, 1)
 
-        # Count enriched posts
-        if collection_id:
-            result = bq.query(
-                "SELECT COUNT(*) AS cnt FROM social_listening.enriched_posts ep "
-                "JOIN social_listening.posts p ON p.post_id = ep.post_id "
-                "WHERE p.collection_id = @collection_id",
-                {"collection_id": collection_id},
-            )
-            enriched_count = result[0]["cnt"] if result else 0
-            fs.update_collection_status(collection_id, posts_enriched=enriched_count)
-            logger.info("Enriched %d posts for collection %s in %.1fs", enriched_count, collection_id, enrich_duration)
+        # Count total enriched posts for this collection
+        count_result = bq.query(
+            "SELECT COUNT(*) AS cnt FROM social_listening.enriched_posts ep "
+            "JOIN social_listening.posts p ON p.post_id = ep.post_id "
+            "WHERE p.collection_id = @collection_id",
+            {"collection_id": collection_id},
+        )
+        enriched_count = count_result[0]["cnt"] if count_result else 0
 
-        # Check for cancellation before embeddings
-        if collection_id:
-            status = fs.get_collection_status(collection_id)
-            if status and status.get("status") == "cancelled":
-                logger.info("Enrichment cancelled for %s", collection_id)
-                return
+        now_iso = datetime.now(timezone.utc).isoformat()
+        existing_status = fs.get_collection_status(collection_id)
+        run_log = (existing_status or {}).get("run_log") or {}
+        run_log["enrichment"] = {
+            "min_likes_threshold": min_likes,
+            "total_posts": len(posts),
+            "enriched": len(results),
+            "failed": len(posts) - len(results),
+            "completed_at": now_iso,
+            "duration_sec": duration,
+        }
 
-        # Step 2: Generate embeddings via BQ AI.GENERATE_EMBEDDING()
-        logger.info("Running batch embedding for %s", collection_id or f"posts {post_ids}")
-        embed_start = time.monotonic()
-        bq.query_from_file("batch_queries/batch_embed.sql", params)
-        embed_duration = round(time.monotonic() - embed_start, 1)
-
-        # Count embeddings and update run_log
-        if collection_id:
-            result = bq.query(
-                "SELECT COUNT(*) AS cnt FROM social_listening.post_embeddings pe "
-                "JOIN social_listening.enriched_posts ep ON ep.post_id = pe.post_id "
-                "JOIN social_listening.posts p ON p.post_id = ep.post_id "
-                "WHERE p.collection_id = @collection_id",
-                {"collection_id": collection_id},
-            )
-            embedded_count = result[0]["cnt"] if result else 0
-
-            # Merge enrichment + embedding stats into run_log
-            now_iso = datetime.now(timezone.utc).isoformat()
-            existing_status = fs.get_collection_status(collection_id)
-            run_log = (existing_status or {}).get("run_log") or {}
-            run_log["enrichment"] = {
-                **enrich_stats,
-                "completed_at": now_iso,
-                "duration_sec": enrich_duration,
-            }
-            run_log["embedding"] = {
-                "completed_at": now_iso,
-                "duration_sec": embed_duration,
-            }
-
-            fs.update_collection_status(
-                collection_id, posts_embedded=embedded_count, status="completed", run_log=run_log,
-            )
-            logger.info("Generated %d embeddings for collection %s in %.1fs", embedded_count, collection_id, embed_duration)
+        fs.update_collection_status(
+            collection_id,
+            posts_enriched=enriched_count,
+            status="completed",
+            run_log=run_log,
+        )
+        logger.info("Standalone enrichment done: %d posts in %.1fs", len(results), duration)
 
     except Exception as e:
-        logger.exception("Enrichment failed for %s", collection_id or post_ids)
-        if collection_id:
-            fs.update_collection_status(
-                collection_id, status="failed", error_message=f"Enrichment error: {e}"
-            )
+        logger.exception("Enrichment failed for %s", collection_id)
+        fs.update_collection_status(
+            collection_id, status="failed", error_message=f"Enrichment error: {e}"
+        )
         raise
+
+
+def run_enrichment_for_posts(
+    post_ids: list[str],
+    min_likes: int = 0,
+    collection_id: str = "",
+) -> None:
+    """Enrich specific posts by ID. Reads from BQ (standalone mode).
+
+    If collection_id is provided, loads custom field definitions from config.
+    """
+    settings = get_settings()
+    bq = BQClient(settings)
+
+    custom_fields = None
+    if collection_id:
+        fs = FirestoreClient(settings)
+        custom_fields = _load_custom_fields(fs, collection_id)
+
+    posts = _read_posts_from_bq_by_ids(bq, post_ids)
+    logger.info("Enriching %d posts by ID", len(posts))
+
+    results = enrich_posts(posts, custom_fields=custom_fields)
+    _write_results_to_bq(bq, results)
+    logger.info("Enriched %d/%d posts by ID", len(results), len(posts))
+
+
+def update_enrichment_counts(collection_id: str) -> None:
+    """Update Firestore with final enrichment counts. Called after parallel pipeline completes."""
+    settings = get_settings()
+    bq = BQClient(settings)
+    fs = FirestoreClient(settings)
+
+    result = bq.query(
+        "SELECT COUNT(*) AS cnt FROM social_listening.enriched_posts ep "
+        "JOIN social_listening.posts p ON p.post_id = ep.post_id "
+        "WHERE p.collection_id = @collection_id",
+        {"collection_id": collection_id},
+    )
+    enriched_count = result[0]["cnt"] if result else 0
+    fs.update_collection_status(collection_id, posts_enriched=enriched_count)
+    logger.info("Updated enrichment count for %s: %d posts", collection_id, enriched_count)
 
 
 if __name__ == "__main__":

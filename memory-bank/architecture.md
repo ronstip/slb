@@ -29,7 +29,9 @@ User ↔ React Frontend ↔ FastAPI Backend ↔ Google ADK Meta-Agent (Gemini)
 
 ## Backend Architecture
 
-- **Single meta-agent:** One `LlmAgent` with 11 custom tools + BigQueryToolset + optional GoogleSearchTool
+- **Single meta-agent:** One `LlmAgent` with 12 custom tools + BigQueryToolset + optional GoogleSearchTool
+- **Access control:** `enforce_collection_access` before_tool_callback validates collection ownership on every tool call. `_access.py` utility does batch Firestore reads.
+- **Agent context autonomy:** Agent can call `set_working_collections` to manage its own analytical scope. Context injection merges UI-forced (`selected_sources`) + agent-chosen (`agent_selected_sources`). SSE `context_update` event syncs frontend.
 - **Agent framework:** Google ADK with Gemini (2.5-flash / 2.5-pro)
 - **Streaming:** SSE via `sse-starlette`
 - **Auth:** Firebase token validation (Google + Microsoft Sign-In)
@@ -38,8 +40,8 @@ User ↔ React Frontend ↔ FastAPI Backend ↔ Google ADK Meta-Agent (Gemini)
 
 ## Worker Architecture
 
-- **Collection worker:** Vetric API → platform adapters → normalize → BigQuery + GCS media
-- **Enrichment worker:** BigQuery AI.GENERATE_TEXT() for sentiment/themes/entities/summary
+- **Collection worker:** Vetric API → platform adapters → normalize → BigQuery + GCS media. Supports `on_batch_complete` callback for parallel enrichment.
+- **Enrichment worker:** Gemini API (multimodal — text, images, video) for sentiment/emotion/themes/entities/summary/key_quotes. Structured output via Pydantic `EnrichmentResult` schema. Two modes: inline (in-memory from pipeline) and standalone (reads from BQ).
 - **Engagement worker:** Re-fetches engagement metrics for existing posts
 - **Pattern:** Cloud Tasks queue → worker process → BigQuery write
 - **Adapters:** `VetricAdapter` (prod), `MockAdapter` (dev), `BrightDataAdapter` (stub — not implemented)
@@ -47,10 +49,14 @@ User ↔ React Frontend ↔ FastAPI Backend ↔ Google ADK Meta-Agent (Gemini)
 ## Data Flow
 
 ```
-Collection: Vetric API → workers/collection → BigQuery (posts, channels, engagements)
-Enrichment: BigQuery posts → workers/enrichment → BigQuery (enriched_posts)
-Embedding:  BigQuery posts → Vertex AI → BigQuery (post_embeddings)
-Insights:   BigQuery → Agent execute_sql + generate_report → Chat response
+Collection + Enrichment run in PARALLEL (per-batch):
+  Collection: Vetric API → workers/collection → BigQuery (posts, channels, engagements)
+    ↳ on_batch_complete callback fires enrichment per batch (ThreadPoolExecutor)
+  Enrichment: Post data (in-memory) → Gemini API → MERGE into BigQuery (enriched_posts)
+After all complete:
+  Embedding:  BigQuery enriched_posts → BQ AI.GENERATE_EMBEDDING → BigQuery (post_embeddings)
+  Stats:      BigQuery → statistical_signature_service → Firestore
+  Insights:   BigQuery → Agent execute_sql + generate_report → Chat response
 ```
 
 ## BigQuery Tables (7)

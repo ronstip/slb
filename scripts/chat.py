@@ -64,7 +64,7 @@ async def run_chat():
     from api.agent.agent import APP_NAME, create_runner
 
     runner = create_runner()
-    user_id = "default_user"
+    user_id = os.environ.get("SL_USER_ID", "KOgG5dtZDsaU7a96CqNK6tc0nRD2")
     session_id = str(uuid4())
 
     # Create session

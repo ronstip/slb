@@ -10,6 +10,7 @@ WITH latest_engagement AS (
     FROM social_listening.post_engagements
 )
 SELECT
+    p.collection_id,
     p.post_id,
     p.platform,
     p.channel_handle,
@@ -32,5 +33,5 @@ SELECT
 FROM social_listening.posts p
 LEFT JOIN latest_engagement e ON e.post_id = p.post_id AND e.rn = 1
 LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id
-WHERE p.collection_id = @collection_id
+WHERE p.collection_id IN UNNEST(@collection_ids)
 ORDER BY p.posted_at DESC;

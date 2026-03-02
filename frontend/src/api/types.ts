@@ -166,6 +166,7 @@ export interface CollectionConfig {
     end_offset_sec: number;
   };
   reasoning_level?: string;
+  custom_fields?: { name: string; description: string; type: string }[];
 }
 
 export interface CollectionStatusResponse {
@@ -211,10 +212,13 @@ export interface FeedPost {
   saves?: number;
   total_engagement: number;
   sentiment?: string;
+  emotion?: string;
   themes?: string[];
   entities?: string[];
   ai_summary?: string;
   content_type?: string;
+  key_quotes?: string[];
+  custom_fields?: Record<string, unknown> | null;
   collection_id?: string;
 }
 
@@ -293,6 +297,7 @@ export type SSEEvent =
   | { event_type: 'needs_decision'; content: string; metadata: Record<string, unknown>; author?: string }
   | { event_type: 'finding'; content: string; metadata: Record<string, unknown>; author?: string }
   | { event_type: 'plan'; content: string; metadata: Record<string, unknown>; author?: string }
+  | { event_type: 'context_update'; agent_selected_sources: string[]; reason?: string }
   | { event_type: 'done'; session_id: string; session_title?: string; content: string; suggestions?: string[] }
   | { event_type: 'error'; content: string };
 
@@ -484,10 +489,13 @@ export interface DataExportRow {
   saves: number | null;
   total_engagement: number;
   sentiment: string | null;
+  emotion: string | null;
   themes: string | null;
   entities: string | null;
   ai_summary: string | null;
   content_type: string | null;
+  key_quotes: string[] | null;
+  custom_fields?: Record<string, unknown> | null;
 }
 
 export interface DataExportResult {

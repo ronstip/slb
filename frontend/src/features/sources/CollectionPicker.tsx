@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Check, FolderOpen, Loader2, Plus, Search, Users, X } from 'lucide-react';
+import { Check, FolderOpen, Info, Loader2, Plus, Search, Users, X } from 'lucide-react';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useAuth } from '../../auth/useAuth.ts';
@@ -170,6 +170,12 @@ export function CollectionPicker({ onClose }: CollectionPickerProps) {
 
   return (
     <div className="flex flex-col">
+      {/* Info banner */}
+      <div className="flex items-start gap-1.5 border-b px-2.5 py-1.5 text-[10px] text-muted-foreground">
+        <Info className="mt-0.5 h-3 w-3 shrink-0" />
+        <span>Collections you select are always included in the agent's analysis.</span>
+      </div>
+
       {/* Search */}
       <div className="p-2">
         <div className="relative">

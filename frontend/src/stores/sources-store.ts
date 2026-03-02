@@ -26,6 +26,8 @@ interface SourcesStore {
   sources: Source[];
   selectedSourceIds: string[];
   pendingSelectedIds: string[] | null;
+  /** Collection IDs autonomously selected by the agent */
+  agentSelectedIds: string[];
 
   addSource: (source: Source) => void;
   updateSource: (id: string, updates: Partial<Source>) => void;
@@ -40,6 +42,8 @@ interface SourcesStore {
   removeSource: (id: string) => void;
   selectByIds: (ids: string[]) => void;
   setSources: (sources: Source[]) => void;
+  /** Update agent-selected collections (from SSE context_update event) */
+  setAgentSelectedSources: (ids: string[]) => void;
   reset: () => void;
 }
 
@@ -49,6 +53,7 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
     return get().sources.filter((s) => s.selected).map((s) => s.collectionId);
   },
   pendingSelectedIds: null,
+  agentSelectedIds: [],
 
   addSource: (source) =>
     set((s) => ({ sources: [source, ...s.sources] })),
@@ -128,5 +133,20 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
       return { sources };
     }),
 
-  reset: () => set({ sources: [], pendingSelectedIds: null }),
+  setAgentSelectedSources: (ids) =>
+    set((s) => {
+      const idSet = new Set(ids);
+      return {
+        agentSelectedIds: ids,
+        sources: s.sources.map((src) => {
+          // If agent selected this source and it's not already in session, add it
+          if (idSet.has(src.collectionId) && !src.selected) {
+            return { ...src, selected: true, active: true };
+          }
+          return src;
+        }),
+      };
+    }),
+
+  reset: () => set({ sources: [], pendingSelectedIds: null, agentSelectedIds: [] }),
 }));

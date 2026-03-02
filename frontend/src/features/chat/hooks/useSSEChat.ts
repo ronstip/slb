@@ -114,6 +114,12 @@ export function useSSEChat() {
               });
               break;
 
+            case 'context_update': {
+              // Agent changed its working collection set
+              useSourcesStore.getState().setAgentSelectedSources(event.agent_selected_sources);
+              break;
+            }
+
             case 'tool_call': {
               const toolName = event.metadata.name;
               chatState.addToolCall(messageId, toolName, getToolDisplayText(toolName));

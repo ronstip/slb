@@ -92,29 +92,9 @@ def start_collection(
 
 
 def _run_pipeline(collection_id: str) -> None:
-    """Run collection then enrichment as a single pipeline (dev mode)."""
-    from workers.collection.worker import run_collection
-    from workers.shared.firestore_client import FirestoreClient
-    from config.settings import get_settings
-
-    try:
-        run_collection(collection_id)
-    except Exception:
-        logger.exception("Collection pipeline failed for %s", collection_id)
-        return
-
-    # Auto-trigger enrichment after successful collection
-    settings = get_settings()
-    fs = FirestoreClient(settings)
-    status = fs.get_collection_status(collection_id)
-    if status and status.get("status") == "completed":
-        try:
-            from workers.enrichment.worker import run_enrichment
-            config = status.get("config") or {}
-            min_likes = config.get("min_likes", 0)
-            run_enrichment(collection_id, min_likes=min_likes)
-        except Exception:
-            logger.exception("Enrichment pipeline failed for %s", collection_id)
+    """Delegate to the shared pipeline in collection_service."""
+    from api.services.collection_service import _run_pipeline as shared_pipeline
+    shared_pipeline(collection_id)
 
 
 def _dispatch_cloud_task(settings, collection_id: str) -> None:

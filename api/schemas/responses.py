@@ -38,10 +38,13 @@ class FeedPostResponse(BaseModel):
     saves: int = 0
     total_engagement: int = 0
     sentiment: str | None = None
+    emotion: str | None = None
     themes: list[str] = []
     entities: list[str] = []
     ai_summary: str | None = None
     content_type: str | None = None
+    key_quotes: list[str] = []
+    custom_fields: dict | None = None
     collection_id: str | None = None
 
 

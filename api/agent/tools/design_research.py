@@ -17,6 +17,7 @@ def design_research(
     video_end_offset_sec: int = 120,
     reasoning_level: str = "standard",
     min_likes: int = 0,
+    custom_fields: str = "",
 ) -> dict:
     """Convert a user's research question into a data collection configuration.
 
@@ -41,6 +42,10 @@ def design_research(
             "standard", or "deep".
         min_likes: Minimum likes threshold for enrichment eligibility. Default 0
             (enrich all posts). Set higher to enrich only popular posts.
+        custom_fields: Pipe-separated custom enrichment fields. Each field is
+            "name:type:description". Supported types: str, bool, int, float, list[str].
+            Example: "purchase_intent:str:Whether intent to buy|is_sponsored:bool:Appears sponsored".
+            These are extracted by Gemini alongside the standard enrichment fields.
 
     Returns:
         A dictionary with the collection config and estimated scope.
@@ -50,6 +55,25 @@ def design_research(
 
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=time_range_days)
+
+    # Parse custom fields: "name:type:description|name:type:description"
+    custom_fields_list = []
+    if custom_fields:
+        for entry in custom_fields.split("|"):
+            parts = entry.strip().split(":", 2)
+            if len(parts) == 3:
+                custom_fields_list.append({
+                    "name": parts[0].strip(),
+                    "type": parts[1].strip(),
+                    "description": parts[2].strip(),
+                })
+            elif len(parts) == 2:
+                # Default type to str if omitted
+                custom_fields_list.append({
+                    "name": parts[0].strip(),
+                    "type": "str",
+                    "description": parts[1].strip(),
+                })
 
     config = {
         "platforms": platform_list,
@@ -70,6 +94,8 @@ def design_research(
         "reasoning_level": reasoning_level,
         "min_likes": min_likes,
     }
+    if custom_fields_list:
+        config["custom_fields"] = custom_fields_list
 
     # Each keyword generates multiple search tasks per platform; each task paginates up to max_calls pages
     num_keywords = max(len(keyword_list), 1)

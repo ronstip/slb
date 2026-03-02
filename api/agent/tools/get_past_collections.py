@@ -5,14 +5,19 @@ from api.deps import get_fs
 logger = logging.getLogger(__name__)
 
 
-def get_past_collections(limit: int = 10) -> dict:
-    """Retrieve recent past collections and their configurations.
+def get_past_collections(user_id: str, org_id: str = "", limit: int = 10) -> dict:
+    """Retrieve recent past collections for the current user.
+
+    Returns the user's own collections plus any org-shared collections
+    (visibility='org') within the same organization.
 
     Use this to check if a similar collection already exists before designing
     a new one, or to reference a prior research design when the user says
     something like "do the same thing for Red Bull" or "reuse the last setup."
 
     Args:
+        user_id: The authenticated user's ID (from session context).
+        org_id: The user's organization ID. Empty string if none.
         limit: Maximum number of recent collections to return. Default 10.
 
     Returns:
@@ -23,15 +28,39 @@ def get_past_collections(limit: int = 10) -> dict:
     db = fs._db
 
     try:
-        docs = (
+        # User's own collections
+        own_docs = list(
             db.collection("collection_status")
+            .where("user_id", "==", user_id)
             .order_by("created_at", direction="DESCENDING")
             .limit(limit)
             .stream()
         )
 
+        seen_ids = {doc.id for doc in own_docs}
+        all_docs = list(own_docs)
+
+        # Org-shared collections (if user belongs to an org)
+        if org_id:
+            try:
+                org_docs = list(
+                    db.collection("collection_status")
+                    .where("org_id", "==", org_id)
+                    .order_by("created_at", direction="DESCENDING")
+                    .limit(limit)
+                    .stream()
+                )
+                for doc in org_docs:
+                    if doc.id not in seen_ids:
+                        data = doc.to_dict()
+                        if data.get("visibility") == "org":
+                            all_docs.append(doc)
+                            seen_ids.add(doc.id)
+            except Exception as e:
+                logger.error("Org collections query failed: %s", e)
+
         collections = []
-        for doc in docs:
+        for doc in all_docs:
             data = doc.to_dict()
             created_at = data.get("created_at")
             if hasattr(created_at, "isoformat"):
@@ -45,7 +74,12 @@ def get_past_collections(limit: int = 10) -> dict:
                 "posts_collected": data.get("posts_collected", 0),
                 "posts_enriched": data.get("posts_enriched", 0),
                 "created_at": created_at,
+                "is_own": data.get("user_id") == user_id,
             })
+
+        # Sort by created_at descending and trim to limit
+        collections.sort(key=lambda c: c.get("created_at") or "", reverse=True)
+        collections = collections[:limit]
 
         if not collections:
             return {
@@ -57,7 +91,7 @@ def get_past_collections(limit: int = 10) -> dict:
         return {
             "status": "success",
             "collections": collections,
-            "message": f"Found {len(collections)} recent collection(s).",
+            "message": f"Found {len(collections)} collection(s).",
         }
 
     except Exception as e:

@@ -27,7 +27,7 @@ from workers.shared.gcs_client import GCSClient
 logger = logging.getLogger(__name__)
 
 
-def run_collection(collection_id: str) -> None:
+def run_collection(collection_id: str, on_batch_complete=None) -> None:
     settings = get_settings()
     bq = BQClient(settings)
     fs = FirestoreClient(settings)
@@ -142,6 +142,10 @@ def run_collection(collection_id: str) -> None:
                     except Exception:
                         logger.warning("Failed to log posts_collected event to BQ", exc_info=True)
                 threading.Thread(target=_log_posts_event, daemon=True).start()
+            # Notify callback (e.g., for parallel enrichment)
+            if on_batch_complete and new_posts:
+                on_batch_complete(new_posts)
+
             logger.info("Collection %s: %d posts so far (%d dupes skipped)", collection_id, total_posts, dupes_in_batch)
 
         # Build run_log with platform stats and timing

@@ -321,6 +321,22 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                                 }),
                             }
 
+                        # Emit context_update when agent changes its working set
+                        if (
+                            et == "tool_result"
+                            and tool_name == "set_working_collections"
+                        ):
+                            result = event_data.get("metadata", {}).get("result", {})
+                            if result.get("status") == "success":
+                                yield {
+                                    "event": "context_update",
+                                    "data": json.dumps({
+                                        "event_type": "context_update",
+                                        "agent_selected_sources": result.get("active_collections", []),
+                                        "reason": result.get("reason", ""),
+                                    }),
+                                }
+
                     # Reset streaming flag after tool results so the next
                     # text segment (post-tool) streams fresh
                     if et == "tool_result":
@@ -602,10 +618,13 @@ async def get_collection_posts(
         COALESCE(pe.saves, 0) as saves,
         COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
         ep.sentiment,
+        ep.emotion,
         ep.themes,
         ep.entities,
         ep.ai_summary,
         ep.content_type,
+        ep.key_quotes,
+        ep.custom_fields,
         COUNT(*) OVER() as _total
     FROM (
         SELECT *,
@@ -809,7 +828,7 @@ async def download_collection(
         COALESCE(pe.views, 0) as views,
         COALESCE(pe.comments_count, 0) as comments_count,
         COALESCE(pe.saves, 0) as saves,
-        ep.sentiment, ep.themes, ep.entities, ep.ai_summary, ep.content_type
+        ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.key_quotes, ep.custom_fields
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
         FROM social_listening.posts
@@ -921,7 +940,8 @@ async def get_multi_collection_feed(
         COALESCE(pe.comments_count, 0) as comments_count,
         COALESCE(pe.saves, 0) as saves,
         COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
-        ep.sentiment, ep.themes, ep.entities, ep.ai_summary, ep.content_type,
+        ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.key_quotes, ep.custom_fields,
+        ep.custom_fields,
         COUNT(*) OVER() as _total
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn

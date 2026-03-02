@@ -13,6 +13,7 @@ from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
 from api.agent.callbacks import (
     collection_state_tracker,
+    enforce_collection_access,
     gate_expensive_tools,
     inject_collection_context,
     log_tool_invocation,
@@ -33,6 +34,7 @@ from api.agent.tools.get_past_collections import get_past_collections
 from api.agent.tools.get_sql_reference import get_sql_reference
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
+from api.agent.tools.set_working_collections import set_working_collections
 from api.agent.tools.start_collection import start_collection
 from api.auth.session_service import FirestoreSessionService
 from config.settings import get_settings
@@ -78,6 +80,8 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         export_data,
         get_collection_stats,
         generate_report,
+        # Context management
+        set_working_collections,
         # Memory
         memory_tool,
     ]
@@ -105,7 +109,7 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         static_instruction=META_AGENT_STATIC_PROMPT,
         instruction=dynamic_prompt,
         tools=tools,
-        before_tool_callback=gate_expensive_tools,
+        before_tool_callback=[enforce_collection_access, gate_expensive_tools],
         before_model_callback=inject_collection_context,
         after_tool_callback=[collection_state_tracker, log_tool_invocation],
     )
