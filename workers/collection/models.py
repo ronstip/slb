@@ -23,6 +23,8 @@ class Post:
     saves: int | None = None
     comments: list[dict] = field(default_factory=list)
     platform_metadata: dict | None = None
+    crawl_provider: str | None = None
+    search_keyword: str | None = None
 
 
 @dataclass

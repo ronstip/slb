@@ -434,7 +434,11 @@ export interface InsightReportPayload {
   status: string;
   report_id: string;
   title: string;
-  collection_id: string;
+  collection_ids?: string[];
+  collection_names?: string[];
+  /** @deprecated Use collection_ids — kept for backward compat */
+  collection_id?: string;
+  /** @deprecated Use collection_names — kept for backward compat */
   collection_name?: string;
   date_from?: string;
   date_to?: string;

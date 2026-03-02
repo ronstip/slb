@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _BASE_CTE = """WITH deduped_posts AS (
     SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
     FROM social_listening.posts
-    WHERE collection_id = @collection_id
+    WHERE collection_id IN UNNEST(@collection_ids)
 ),
 deduped_enriched AS (
     SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
@@ -133,7 +133,7 @@ WITH deduped_posts AS (
     SELECT *,
            ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
     FROM social_listening.posts
-    WHERE collection_id = @collection_id
+    WHERE collection_id IN UNNEST(@collection_ids)
 )
 SELECT
     FORMAT_DATE('%Y-%m-%d', DATE(posted_at)) AS post_date,
@@ -151,7 +151,7 @@ WITH latest_channels AS (
     SELECT channel_handle, platform, subscribers, channel_url,
            ROW_NUMBER() OVER (PARTITION BY platform, channel_handle ORDER BY observed_at DESC) AS rn
     FROM social_listening.channels
-    WHERE collection_id = @collection_id
+    WHERE collection_id IN UNNEST(@collection_ids)
 ),
 channel_engagement AS (
     SELECT p.channel_handle, p.platform,
@@ -164,7 +164,7 @@ channel_engagement AS (
                ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn
         FROM social_listening.post_engagements
     ) e ON e.post_id = p.post_id AND e.rn = 1
-    WHERE p.collection_id = @collection_id
+    WHERE p.collection_id IN UNNEST(@collection_ids)
     GROUP BY p.channel_handle, p.platform
 )
 SELECT lc.channel_handle, lc.platform, lc.subscribers, lc.channel_url,
@@ -183,9 +183,13 @@ LIMIT 20
 # ---------------------------------------------------------------------------
 
 
-def compute_statistical_signature(collection_id: str, bq, fs) -> dict:
-    """Run 5 parallel BQ queries and assemble the signature dict (does not save)."""
-    params = {"collection_id": collection_id}
+def compute_statistical_signature(collection_ids: list[str], bq, fs) -> dict:
+    """Run 5 parallel BQ queries and assemble the signature dict (does not save).
+
+    Accepts one or more collection IDs — queries use IN UNNEST to aggregate
+    across all supplied collections in a single pass.
+    """
+    params = {"collection_ids": collection_ids}
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         f_summary = executor.submit(bq.query, _SUMMARY_SQL, params)
@@ -322,7 +326,7 @@ def refresh_statistical_signature(collection_id: str, bq, fs) -> dict:
         "completed" if fs_status in ("completed", "monitoring") else "collecting"
     )
 
-    data = compute_statistical_signature(collection_id, bq, fs)
+    data = compute_statistical_signature([collection_id], bq, fs)
     data["collection_status_at_compute"] = status_at_compute
 
     fs.add_statistical_signature(collection_id, data)

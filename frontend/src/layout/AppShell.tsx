@@ -13,25 +13,30 @@ import { useCollectionPolling } from '../features/sources/useCollectionPolling.t
 
 const SOURCES_MIN = 220;
 const SOURCES_MAX = 420;
-const SOURCES_DEFAULT = 320;
+const SOURCES_DEFAULT = 300;
 const STUDIO_MIN = 300;
 const STUDIO_MAX = 700;
-const STUDIO_DEFAULT = 800;
-const STUDIO_FEED_W = 800;
+const STUDIO_DEFAULT = 300;
 const COLLAPSED_W = 48;
+const CHAT_MIN_W = 480;
+const HANDLE_W = 8; // 2 resize handles × 4px
 
 export function AppShell() {
   const params = useParams<{ id?: string }>();
   const {
     sourcesPanelCollapsed,
     studioPanelCollapsed,
+    layoutMode,
     collectionModalOpen,
   } = useUIStore();
+  const setStudioFocus = useUIStore((s) => s.setStudioFocus);
 
   const activeTab = useStudioStore((s) => s.activeTab);
   const feedSourceId = useStudioStore((s) => s.feedSourceId);
   const setFeedSource = useStudioStore((s) => s.setFeedSource);
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
+  const artifacts = useStudioStore((s) => s.artifacts);
+  const expandedReportId = useStudioStore((s) => s.expandedReportId);
   const sources = useSourcesStore((s) => s.sources);
   const addToSession = useSourcesStore((s) => s.addToSession);
   const hasSelectedSource = sources.some((s) => s.selected);
@@ -39,7 +44,7 @@ export function AppShell() {
 
   const [sourcesW, setSourcesW] = useState(SOURCES_DEFAULT);
   const [studioW, setStudioW] = useState(STUDIO_DEFAULT);
-  const userResizedStudio = useRef(false);
+  const [isResizing, setIsResizing] = useState(false);
   const dragging = useRef<'sources' | 'studio' | null>(null);
   const startX = useRef(0);
   const startW = useRef(0);
@@ -73,17 +78,23 @@ export function AppShell() {
     }
   }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-adjust studio width when feed state changes (unless user manually resized)
+  // Auto-switch to studio-focus mode when feed has content or artifact is opened
+  const hasArtifactContent = (activeTab === 'artifacts' && artifacts.length > 0) || expandedReportId !== null;
   useEffect(() => {
-    if (userResizedStudio.current) return;
-    setStudioW(feedHasPosts ? STUDIO_FEED_W : STUDIO_DEFAULT);
-  }, [feedHasPosts]);
+    const shouldFocus = feedHasPosts || hasArtifactContent;
+    if (shouldFocus && layoutMode === 'balanced') {
+      setStudioFocus();
+      const focusW = Math.min(STUDIO_MAX, Math.floor((window.innerWidth - COLLAPSED_W) / 2));
+      setStudioW(focusW);
+    }
+  }, [feedHasPosts, hasArtifactContent, layoutMode, setStudioFocus]);
 
   const onMouseDown = useCallback((panel: 'sources' | 'studio', e: React.MouseEvent) => {
     e.preventDefault();
     dragging.current = panel;
     startX.current = e.clientX;
     startW.current = panel === 'sources' ? sourcesW : studioW;
+    setIsResizing(true);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
   }, [sourcesW, studioW]);
@@ -92,16 +103,26 @@ export function AppShell() {
     const onMouseMove = (e: MouseEvent) => {
       if (!dragging.current) return;
       const dx = e.clientX - startX.current;
+
+      // Viewport-aware clamping: ensure chat keeps at least CHAT_MIN_W
+      const { sourcesPanelCollapsed: srcCol, studioPanelCollapsed: stdCol } = useUIStore.getState();
+
       if (dragging.current === 'sources') {
-        setSourcesW(Math.max(SOURCES_MIN, Math.min(SOURCES_MAX, startW.current + dx)));
+        const otherW = stdCol ? COLLAPSED_W : studioW;
+        const maxAvailable = window.innerWidth - otherW - CHAT_MIN_W - HANDLE_W;
+        const max = Math.min(SOURCES_MAX, maxAvailable);
+        setSourcesW(Math.max(SOURCES_MIN, Math.min(max, startW.current + dx)));
       } else {
-        userResizedStudio.current = true;
-        setStudioW(Math.max(STUDIO_MIN, Math.min(STUDIO_MAX, startW.current - dx)));
+        const otherW = srcCol ? COLLAPSED_W : sourcesW;
+        const maxAvailable = window.innerWidth - otherW - CHAT_MIN_W - HANDLE_W;
+        const max = Math.min(STUDIO_MAX, maxAvailable);
+        setStudioW(Math.max(STUDIO_MIN, Math.min(max, startW.current - dx)));
       }
     };
     const onMouseUp = () => {
       if (dragging.current) {
         dragging.current = null;
+        setIsResizing(false);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       }
@@ -112,7 +133,9 @@ export function AppShell() {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, []);
+  }, [sourcesW, studioW]);
+
+  const transitionStyle = isResizing ? undefined : { transition: 'width 200ms ease' };
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -121,7 +144,10 @@ export function AppShell() {
         {/* Sessions Panel */}
         <aside
           className="shrink-0 overflow-hidden bg-card"
-          style={{ width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW }}
+          style={{
+            width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW,
+            ...transitionStyle,
+          }}
         >
           <SessionsPanel />
         </aside>
@@ -152,7 +178,10 @@ export function AppShell() {
         {/* Studio Panel */}
         <aside
           className="shrink-0 bg-card"
-          style={{ width: studioPanelCollapsed ? COLLAPSED_W : studioW }}
+          style={{
+            width: studioPanelCollapsed ? COLLAPSED_W : studioW,
+            ...transitionStyle,
+          }}
         >
           <StudioPanel />
         </aside>

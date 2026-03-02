@@ -148,7 +148,16 @@ export function reconstructSession(
           console.debug('[reconstruct] research_design card created from', toolName);
           msg.cards.push({ type: 'research_design', data: result });
         } else if (isChartResult(toolName, result)) {
-          msg.cards.push({ type: 'chart', data: result });
+          const chartId = `chart-restored-${artifacts.length}`;
+          msg.cards.push({ type: 'chart', data: { ...result, _artifactId: chartId } });
+          artifacts.push({
+            id: chartId,
+            type: 'chart',
+            title: (result.title as string) || 'Chart',
+            chartType: result.chart_type as string,
+            data: result.data as unknown[],
+            createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
+          });
         } else if (isPostEmbedResult(toolName, result)) {
           msg.cards.push({ type: 'post_embed', data: result });
         } else if (isDataExportResult(toolName, result)) {
@@ -171,7 +180,8 @@ export function reconstructSession(
             id: (result.report_id as string) || `report-restored-${artifacts.length}`,
             type: 'insight_report',
             title: result.title as string,
-            collectionId: result.collection_id as string,
+            collectionIds: (result.collection_ids as string[] | undefined) ?? (result.collection_id ? [result.collection_id as string] : undefined),
+            collectionId: result.collection_id as string | undefined,
             dateFrom: result.date_from as string | undefined,
             dateTo: result.date_to as string | undefined,
             cards: result.cards as ReportCard[],

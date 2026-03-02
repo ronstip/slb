@@ -191,12 +191,17 @@ export function useSSEChat() {
                   id: result.report_id as string,
                   type: 'insight_report',
                   title: result.title as string,
-                  collectionId: result.collection_id as string,
+                  collectionIds: (result.collection_ids as string[] | undefined) ?? (result.collection_id ? [result.collection_id as string] : undefined),
+                  collectionId: result.collection_id as string | undefined,
                   dateFrom: result.date_from as string | undefined,
                   dateTo: result.date_to as string | undefined,
                   cards: result.cards as ReportCard[],
                   createdAt: new Date(),
                 });
+                // Open studio panel, switch to artifacts, expand the report
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
+                useStudioStore.getState().expandReport(result.report_id as string);
               }
               break;
             }

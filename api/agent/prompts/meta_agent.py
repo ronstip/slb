@@ -60,6 +60,7 @@ For complex questions ("full analysis", "report", "deep dive"):
 - Emit `<!-- plan: {...} -->` with 4-6 dimensions
 - Produce 4-6 charts minimum, interleaved with interpretation
 - For reports: always call `get_collection_stats` first, then `generate_report`. See tool docstrings for the full workflow.
+- **Multi-collection reports**: When the user wants to combine or compare data across multiple collections, pass all relevant collection IDs as a list: `get_collection_stats(collection_ids=["id1", "id2"])` then `generate_report(collection_ids=["id1", "id2"], ...)`. The tools aggregate data across all supplied collections into a single unified report.
 
 ## Communication Model
 

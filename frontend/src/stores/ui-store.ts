@@ -12,9 +12,12 @@ export interface PollData {
   type: 'single' | 'multi' | 'confirm';
 }
 
+export type LayoutMode = 'balanced' | 'studio-focus';
+
 interface UIStore {
   sourcesPanelCollapsed: boolean;
   studioPanelCollapsed: boolean;
+  layoutMode: LayoutMode;
   collectionModalOpen: boolean;
   collectionModalPrefill: CollectionConfig | null;
   activePoll: PollData | null;
@@ -22,6 +25,7 @@ interface UIStore {
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
   expandStudioPanel: () => void;
+  setStudioFocus: () => void;
   openCollectionModal: (prefill?: CollectionConfig) => void;
   closeCollectionModal: () => void;
   showPoll: (poll: PollData) => void;
@@ -39,6 +43,7 @@ const loadCollapsed = (key: string): boolean => {
 export const useUIStore = create<UIStore>((set) => ({
   sourcesPanelCollapsed: loadCollapsed('sources-collapsed'),
   studioPanelCollapsed: loadCollapsed('studio-collapsed'),
+  layoutMode: 'balanced' as LayoutMode,
   collectionModalOpen: false,
   collectionModalPrefill: null,
   activePoll: null,
@@ -64,6 +69,15 @@ export const useUIStore = create<UIStore>((set) => ({
         return { studioPanelCollapsed: false };
       }
       return s;
+    }),
+
+  setStudioFocus: () =>
+    set(() => {
+      localStorage.setItem('sources-collapsed', 'true');
+      return {
+        layoutMode: 'studio-focus' as LayoutMode,
+        sourcesPanelCollapsed: true,
+      };
     }),
 
   openCollectionModal: (prefill) =>

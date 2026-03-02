@@ -26,13 +26,26 @@ class BQClient:
     def table_ref(self, table: str) -> str:
         return f"{self.dataset}.{table}"
 
-    def insert_rows(self, table: str, rows: list[dict]) -> None:
+    def insert_rows(self, table: str, rows: list[dict]) -> int:
+        """Insert rows via streaming API. Returns count of failed rows (0 = all succeeded).
+
+        Raises RuntimeError only if ALL rows fail (likely a connectivity/auth issue).
+        Partial failures are logged as warnings — successfully inserted rows are kept.
+        """
         table_ref = self.table_ref(table)
         errors = self._client.insert_rows_json(table_ref, rows)
         if errors:
-            logger.error("BQ insert errors for %s: %s", table_ref, errors)
-            raise RuntimeError(f"BigQuery insert failed: {errors}")
+            failed = len(errors)
+            if failed >= len(rows):
+                logger.error("BQ insert fully failed for %s: %s", table_ref, errors)
+                raise RuntimeError(f"BigQuery insert fully failed: {errors}")
+            logger.warning(
+                "BQ insert: %d/%d rows failed for %s: %s",
+                failed, len(rows), table_ref, errors,
+            )
+            return failed
         logger.info("Inserted %d rows into %s", len(rows), table_ref)
+        return 0
 
     def query(self, sql: str, params: dict | None = None) -> list[dict]:
         job_config = bigquery.QueryJobConfig()

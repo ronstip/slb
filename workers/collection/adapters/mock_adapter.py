@@ -212,6 +212,9 @@ class MockAdapter(DataProviderAdapter):
                         seen_handles.add(handle)
                         channels.append(self._generate_channel(platform, handle))
 
+                for post in posts:
+                    post.crawl_provider = "mock"
+                    post.search_keyword = random.choice(keywords) if keywords else None
                 all_batches.append(Batch(posts=posts, channels=channels))
                 posts_generated += len(posts)
 

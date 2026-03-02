@@ -83,17 +83,27 @@ class VetricClient:
                 time.sleep(self._min_interval - elapsed)
             self._last_request_times[platform] = time.monotonic()
 
-    def get(self, platform: str, path: str, params: dict[str, Any] | None = None) -> dict:
+    def _platform_headers(self, _platform: str) -> dict[str, str]:
+        """Return default headers required for a specific platform."""
+        return {}
+
+    def get(self, platform: str, path: str, params: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None) -> dict:
         url = f"{_BASE_URLS[platform]}/{path.lstrip('/')}"
         self._throttle(platform)
         headers = {"x-api-key": self._get_api_key(platform)}
+        headers.update(self._platform_headers(platform))
+        if extra_headers:
+            headers.update(extra_headers)
         resp = self._session.get(url, params=params, headers=headers, timeout=_REQUEST_TIMEOUT)
         return self._handle_response(resp, url)
 
-    def post(self, platform: str, path: str, body: dict[str, Any] | None = None) -> dict:
+    def post(self, platform: str, path: str, body: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None) -> dict:
         url = f"{_BASE_URLS[platform]}/{path.lstrip('/')}"
         self._throttle(platform)
         headers = {"x-api-key": self._get_api_key(platform)}
+        headers.update(self._platform_headers(platform))
+        if extra_headers:
+            headers.update(extra_headers)
         resp = self._session.post(url, json=body, headers=headers, timeout=_REQUEST_TIMEOUT)
         return self._handle_response(resp, url)
 

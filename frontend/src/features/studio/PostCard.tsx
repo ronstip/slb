@@ -196,7 +196,7 @@ function PostMedia({ media, postUrl }: { media: MediaRef[]; postUrl: string }) {
 
   // Images only
   if (images.length === 1) {
-    return <MediaImage media={images[0]} className="w-full max-h-64 object-cover" />;
+    return <MediaImage media={images[0]} className="w-full aspect-[4/3]" />;
   }
 
   if (images.length === 2) {
@@ -251,7 +251,7 @@ function MediaImage({ media, className }: { media: MediaRef; className?: string 
   }
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative overflow-hidden ${className}`}>
       {!loaded && (
         <div className="absolute inset-0 animate-pulse bg-secondary" />
       )}
@@ -268,7 +268,7 @@ function MediaImage({ media, className }: { media: MediaRef; className?: string 
             setFailed(true);
           }
         }}
-        className={`h-full w-full ${loaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200 object-cover`}
+        className={`absolute inset-0 h-full w-full ${loaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200 object-cover`}
       />
     </div>
   );
