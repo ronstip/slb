@@ -259,7 +259,7 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
 function ColorPicker({
   label,
   color,
-  onChange,
+  onChange: _onChange,
   active,
   onToggle,
 }: {

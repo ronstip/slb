@@ -24,13 +24,10 @@ export function InviteHandler({ inviteCode }: { inviteCode: string }) {
   const { refreshProfile } = useAuth();
   const [state, setState] = useState<InviteState>('joining');
   const [error, setError] = useState('');
-  const [orgId, setOrgId] = useState('');
-
   useEffect(() => {
     const doJoin = async () => {
       try {
-        const result = await joinOrg(inviteCode);
-        setOrgId(result.org_id);
+        await joinOrg(inviteCode);
         await refreshProfile();
         setState('success');
       } catch (e: unknown) {

@@ -103,7 +103,7 @@ export function RevenueSection() {
                     borderRadius: '6px',
                     fontSize: 12,
                   }}
-                  formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']}
+                  formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Revenue']}
                 />
                 <Bar dataKey="Revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>

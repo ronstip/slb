@@ -4,7 +4,7 @@
  * operates on the persisted event format instead of live SSE events.
  */
 
-import type { ChatMessage, MessageCard } from '../stores/chat-store.ts';
+import type { ChatMessage } from '../stores/chat-store.ts';
 import type { Artifact } from '../stores/studio-store.ts';
 import type { DataExportRow, ReportCard } from '../api/types.ts';
 import type { RawADKEvent } from '../api/endpoints/sessions.ts';
@@ -82,10 +82,11 @@ export function reconstructSession(
         toolIndicators: [],
         cards: [],
         thinkingEntries: [],
+        statusLine: null,
         suggestions: [],
       };
     }
-    return currentAgentMsg;
+    return currentAgentMsg!;
   }
 
   for (const event of events) {
@@ -104,6 +105,7 @@ export function reconstructSession(
           toolIndicators: [],
           cards: [],
           thinkingEntries: [],
+          statusLine: null,
           suggestions: [],
         });
         continue;

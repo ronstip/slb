@@ -39,7 +39,7 @@ export function SentimentBar({ data, overrides }: SentimentBarProps) {
             <Cell key={entry.sentiment} fill={getColor(entry.sentiment)} />
           ))}
           {overrides?.showValues && (
-            <LabelList dataKey="percentage" position="right" formatter={(v: number) => `${v.toFixed(0)}%`} style={{ fontSize: 10 }} />
+            <LabelList dataKey="percentage" position="right" formatter={(v) => `${Number(v).toFixed(0)}%`} style={{ fontSize: 10 }} />
           )}
         </Bar>
       </BarChart>

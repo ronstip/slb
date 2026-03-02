@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../../components/ui/select.tsx';
-import { Building2, Copy, Link, LogOut, Plus, Trash2, UserPlus } from 'lucide-react';
+import { Building2, Copy, LogOut, Plus, Trash2, UserPlus } from 'lucide-react';
 import {
   Dialog,
   DialogContent,

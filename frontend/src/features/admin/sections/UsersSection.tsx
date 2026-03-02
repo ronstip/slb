@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, ArrowUpDown } from 'lucide-react';
 import { Input } from '../../../components/ui/input.tsx';
-import { Button } from '../../../components/ui/button.tsx';
 import { Badge } from '../../../components/ui/badge.tsx';
 import { getAdminUsers } from '../../../api/endpoints/admin.ts';
 
