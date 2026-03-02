@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS social_listening.posts (
     parent_post_id STRING,
     media_refs JSON,
     platform_metadata JSON,
+    crawl_provider STRING,
+    search_keyword STRING,
     collected_at TIMESTAMP
 )
 PARTITION BY DATE(collected_at)

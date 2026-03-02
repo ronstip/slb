@@ -20,6 +20,8 @@ def post_to_bq_row(post: Post, collection_id: str) -> dict:
         "parent_post_id": post.parent_post_id,
         "media_refs": json.dumps(post.media_refs) if post.media_refs else "[]",
         "platform_metadata": json.dumps(post.platform_metadata) if post.platform_metadata else None,
+        "crawl_provider": post.crawl_provider,
+        "search_keyword": post.search_keyword,
         "collected_at": datetime.now(timezone.utc).isoformat(),
     }
 

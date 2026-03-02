@@ -195,6 +195,7 @@ class VetricAdapter(DataProviderAdapter):
                 break
 
         if all_posts:
+            self._stamp_posts(all_posts, keyword)
             return [Batch(posts=all_posts, channels=list(all_channels.values()))]
         return []
 
@@ -232,6 +233,7 @@ class VetricAdapter(DataProviderAdapter):
                 break
 
         if all_posts:
+            self._stamp_posts(all_posts, keyword)
             return [Batch(posts=all_posts, channels=list(all_channels.values()))]
         return []
 
@@ -262,6 +264,7 @@ class VetricAdapter(DataProviderAdapter):
                 posts.append(post)
 
             if posts:
+                self._stamp_posts(posts, None)
                 batches.append(Batch(posts=posts, channels=[channel] if not batches else []))
 
             next_max_id = resp.get("next_max_id")
@@ -269,6 +272,13 @@ class VetricAdapter(DataProviderAdapter):
                 break
 
         return batches
+
+    @staticmethod
+    def _stamp_posts(posts: list[Post], keyword: str | None) -> None:
+        """Set crawl_provider and search_keyword on parsed posts."""
+        for post in posts:
+            post.crawl_provider = "vetric"
+            post.search_keyword = keyword
 
     def _parse_instagram_items(
         self, items: list[dict]
@@ -337,6 +347,7 @@ class VetricAdapter(DataProviderAdapter):
                     channels_seen[handle] = parse_tiktok_channel(author)
 
             if posts:
+                self._stamp_posts(posts, keyword)
                 batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
 
             pagination = resp.get("pagination") or {}
@@ -407,6 +418,7 @@ class VetricAdapter(DataProviderAdapter):
                     channels_seen[handle] = parse_twitter_channel(user_details)
 
             if posts:
+                self._stamp_posts(posts, keyword)
                 batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
 
             cursor = resp.get("cursor_bottom")
@@ -468,6 +480,7 @@ class VetricAdapter(DataProviderAdapter):
                     channels_seen[sub] = parse_reddit_channel(item)
 
             if posts:
+                self._stamp_posts(posts, keyword)
                 batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
 
             page_info = resp.get("pageInfo") or {}
@@ -532,6 +545,7 @@ class VetricAdapter(DataProviderAdapter):
                     channels_seen[ch_name] = parse_youtube_channel(ch)
 
             if posts:
+                self._stamp_posts(posts, keyword)
                 batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
 
             cursor = resp.get("cursor")
