@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
@@ -13,6 +14,7 @@ export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
+  const navigate = useNavigate();
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -224,8 +226,13 @@ export function useSSEChat() {
               if (event.session_title) {
                 sessionStore.setActiveSessionTitle(event.session_title);
               }
-              // Only fetch full sessions list when this is a brand-new session
-              if (isNew) sessionStore.fetchSessions();
+              // Update sorting timestamp so this session floats to the top
+              sessionStore.touchSession(event.session_id);
+              if (isNew) {
+                // New session created — fetch list and update URL
+                sessionStore.fetchSessions();
+                navigate(`/session/${event.session_id}`, { replace: true });
+              }
               break;
             }
 
@@ -248,7 +255,7 @@ export function useSSEChat() {
         useChatStore.getState().finalizeMessage(messageId);
       }
     },
-    [getToken],
+    [getToken, navigate],
   );
 
   const cancelStream = useCallback(() => {

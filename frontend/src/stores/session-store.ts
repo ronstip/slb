@@ -10,8 +10,6 @@ import { useChatStore } from './chat-store.ts';
 import { useStudioStore } from './studio-store.ts';
 import { useSourcesStore } from './sources-store.ts';
 
-const ACTIVE_SESSION_KEY = 'slp-active-session';
-
 interface SessionStore {
   sessions: SessionListItem[];
   activeSessionId: string | null;
@@ -24,33 +22,14 @@ interface SessionStore {
   startNewSession: () => void;
   setActiveSession: (id: string) => void;
   setActiveSessionTitle: (title: string) => void;
+  touchSession: (id: string) => void;
   removeSession: (id: string) => Promise<void>;
   reset: () => void;
 }
 
-function getStoredSessionId(): string | null {
-  try {
-    return localStorage.getItem(ACTIVE_SESSION_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function persistSessionId(id: string | null) {
-  try {
-    if (id) {
-      localStorage.setItem(ACTIVE_SESSION_KEY, id);
-    } else {
-      localStorage.removeItem(ACTIVE_SESSION_KEY);
-    }
-  } catch {
-    // localStorage unavailable
-  }
-}
-
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
-  activeSessionId: getStoredSessionId(),
+  activeSessionId: null,
   activeSessionTitle: 'New Session',
   isRestoring: false,
   isLoadingSessions: false,
@@ -85,9 +64,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         activeSessionTitle: detail.title || 'New Session',
         isRestoring: false,
       });
-      persistSessionId(id);
     } catch {
       set({ isRestoring: false });
+      throw new Error('Session not found');
     }
   },
 
@@ -100,7 +79,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       activeSessionId: null,
       activeSessionTitle: 'New Session',
     });
-    persistSessionId(null);
 
     // Re-fetch sessions so the one we just left appears in the list
     get().fetchSessions();
@@ -108,7 +86,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   setActiveSession: (id: string) => {
     set({ activeSessionId: id });
-    persistSessionId(id);
   },
 
   setActiveSessionTitle: (title: string) => {
@@ -121,23 +98,30 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }));
   },
 
+  touchSession: (id: string) => {
+    // Update updated_at locally so the session sorts to the top of the list
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.session_id === id
+          ? { ...sess, updated_at: new Date().toISOString() }
+          : sess,
+      ),
+    }));
+  },
+
   removeSession: async (id: string) => {
     try {
       await deleteSession(id);
       set((s) => ({
         sessions: s.sessions.filter((sess) => sess.session_id !== id),
       }));
-      // If we deleted the active session, reset state
-      if (get().activeSessionId === id) {
-        get().startNewSession();
-      }
+      // If the active session was deleted, the caller (SessionCard) handles navigation to `/`
     } catch {
       // Deletion failed — leave list unchanged
     }
   },
 
   reset: () => {
-    persistSessionId(null);
     set({
       sessions: [],
       activeSessionId: null,

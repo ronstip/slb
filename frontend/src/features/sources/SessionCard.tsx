@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useSessionStore } from '../../stores/session-store.ts';
 import { timeAgo, shortDate } from '../../lib/format.ts';
 import { MessageSquare, Trash2 } from 'lucide-react';
@@ -19,9 +20,9 @@ interface SessionCardProps {
 
 export function SessionCard({ session }: SessionCardProps) {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
-  const restoreSession = useSessionStore((s) => s.restoreSession);
   const removeSession = useSessionStore((s) => s.removeSession);
   const isRestoring = useSessionStore((s) => s.isRestoring);
+  const navigate = useNavigate();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -30,14 +31,20 @@ export function SessionCard({ session }: SessionCardProps) {
 
   const handleClick = () => {
     if (isActive || isRestoring) return;
-    restoreSession(session.session_id);
+    // Navigate to the session URL — AppShell URL effect handles restore
+    navigate(`/session/${session.session_id}`);
   };
 
   const handleDelete = async () => {
     setDeleting(true);
     try {
+      const wasActive = session.session_id === activeSessionId;
       await removeSession(session.session_id);
       setDeleteDialogOpen(false);
+      // If we deleted the active session, navigate to home (new session)
+      if (wasActive) {
+        navigate('/');
+      }
     } catch {
       // deletion failed
     } finally {

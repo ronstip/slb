@@ -1,5 +1,6 @@
 import { Loader2, MessageSquareText, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
-import { useEffect } from 'react';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
 import { SessionCard } from '../sources/SessionCard.tsx';
@@ -10,16 +11,19 @@ export function SessionsPanel() {
   const collapsed = useUIStore((s) => s.sourcesPanelCollapsed);
   const toggle = useUIStore((s) => s.toggleSourcesPanel);
   const sessions = useSessionStore((s) => s.sessions);
-  const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
-  const startNewSession = useSessionStore((s) => s.startNewSession);
-  const fetchSessions = useSessionStore((s) => s.fetchSessions);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchSessions();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pastSessions = sessions.filter((s) => s.session_id !== activeSessionId);
+  // Sort sessions by most recently updated (like ChatGPT)
+  const sortedSessions = useMemo(
+    () =>
+      [...sessions].sort((a, b) => {
+        const aDate = a.updated_at || a.created_at || '';
+        const bDate = b.updated_at || b.created_at || '';
+        return bDate.localeCompare(aDate);
+      }),
+    [sessions],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -46,7 +50,7 @@ export function SessionsPanel() {
             <Button
               variant="outline"
               className="w-full gap-1.5 text-xs"
-              onClick={startNewSession}
+              onClick={() => navigate('/')}
             >
               <Plus className="h-3.5 w-3.5" />
               New Session
@@ -54,11 +58,11 @@ export function SessionsPanel() {
           </div>
 
           {/* Session list */}
-          {isLoadingSessions && pastSessions.length === 0 ? (
+          {isLoadingSessions && sortedSessions.length === 0 ? (
             <div className="flex flex-1 items-center justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" />
             </div>
-          ) : pastSessions.length === 0 ? (
+          ) : sortedSessions.length === 0 ? (
             <div className="flex flex-1 flex-col items-center px-4">
               <div className="flex-[3]" />
               <div className="flex flex-col items-center gap-2">
@@ -72,7 +76,7 @@ export function SessionsPanel() {
           ) : (
             <ScrollArea className="min-h-0 flex-1">
               <div className="flex flex-col gap-0.5 px-3 pb-3">
-                {pastSessions.map((session) => (
+                {sortedSessions.map((session) => (
                   <SessionCard key={session.session_id} session={session} />
                 ))}
               </div>

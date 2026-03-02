@@ -1,4 +1,4 @@
-import { Building2, LogOut, Moon, Plus, Settings, ShieldCheck, Sun } from 'lucide-react';
+import { Building2, LogOut, Moon, Settings, ShieldCheck, Sun } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from '../components/theme-provider.tsx';
@@ -22,17 +22,21 @@ export function TopBar() {
   const { user, profile, signOut, devMode } = useAuth();
   const { theme, setTheme } = useTheme();
   const activeSessionTitle = useSessionStore((s) => s.activeSessionTitle);
-  const startNewSession = useSessionStore((s) => s.startNewSession);
 
   const displayInitial = user?.displayName?.[0] || profile?.display_name?.[0] || '?';
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   return (
     <header className="flex h-12 shrink-0 items-center bg-gradient-to-r from-[#0F172A] to-[#1E293B] px-4">
-      {/* Logo */}
-      <button onClick={() => navigate('/')} className="focus:outline-none">
-        <Logo size="sm" inverted />
-      </button>
+      {/* Logo — clicking starts a new session (like ChatGPT) */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button onClick={() => navigate('/')} className="focus:outline-none">
+            <Logo size="sm" inverted />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>New Session</TooltipContent>
+      </Tooltip>
 
       {/* Session title */}
       <Separator orientation="vertical" className="mx-4 h-5 bg-white/20" />
@@ -43,16 +47,6 @@ export function TopBar() {
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 gap-1.5 border-white/20 bg-transparent text-xs text-white hover:bg-white/10 hover:text-white"
-          onClick={startNewSession}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New Session
-        </Button>
-
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

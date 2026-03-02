@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { TopBar } from './TopBar.tsx';
 import { useUIStore } from '../stores/ui-store.ts';
 import { useStudioStore } from '../stores/studio-store.ts';
@@ -22,7 +22,8 @@ const CHAT_MIN_W = 480;
 const HANDLE_W = 8; // 2 resize handles × 4px
 
 export function AppShell() {
-  const params = useParams<{ id?: string }>();
+  const params = useParams<{ sessionId?: string }>();
+  const navigate = useNavigate();
   const {
     sourcesPanelCollapsed,
     studioPanelCollapsed,
@@ -33,12 +34,9 @@ export function AppShell() {
 
   const activeTab = useStudioStore((s) => s.activeTab);
   const feedSourceId = useStudioStore((s) => s.feedSourceId);
-  const setFeedSource = useStudioStore((s) => s.setFeedSource);
-  const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const artifacts = useStudioStore((s) => s.artifacts);
   const expandedReportId = useStudioStore((s) => s.expandedReportId);
   const sources = useSourcesStore((s) => s.sources);
-  const addToSession = useSourcesStore((s) => s.addToSession);
   const hasSelectedSource = sources.some((s) => s.selected);
   const feedHasPosts = activeTab === 'feed' && !!(feedSourceId || hasSelectedSource);
 
@@ -51,32 +49,31 @@ export function AppShell() {
 
   useCollectionPolling();
 
-  // Restore active session on mount (page refresh)
+  // Fetch sessions list on mount
   useEffect(() => {
-    const sessionStore = useSessionStore.getState();
-    const storedId = sessionStore.activeSessionId;
-    if (storedId) {
-      sessionStore.restoreSession(storedId);
-    }
-    sessionStore.fetchSessions();
+    useSessionStore.getState().fetchSessions();
   }, []);
 
-  // Sync URL params with studio store (for page refresh/direct links)
-  // URL controls feedSourceId only — session membership (selected) is managed separately.
-  // Only depends on params.id to avoid fighting user's checkbox interactions.
+  // Sync URL ↔ session state: URL is the source of truth for active session
   useEffect(() => {
-    if (params.id) {
-      setFeedSource(params.id);
-      setActiveTab('feed');
-      // Ensure the collection is in session (for direct links / page refresh)
-      const source = useSourcesStore.getState().sources.find((s) => s.collectionId === params.id);
-      if (source && !source.selected) {
-        addToSession(params.id);
+    const sessionStore = useSessionStore.getState();
+    const currentActiveId = sessionStore.activeSessionId;
+
+    if (params.sessionId) {
+      // URL has a session ID — restore it if it's different from the current active session
+      if (currentActiveId !== params.sessionId) {
+        sessionStore.restoreSession(params.sessionId).catch(() => {
+          // Session not found (deleted or invalid) — redirect to home
+          navigate('/', { replace: true });
+        });
       }
     } else {
-      setFeedSource(null);
+      // URL is root `/` — start a fresh session if we had one active
+      if (currentActiveId) {
+        sessionStore.startNewSession();
+      }
     }
-  }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [params.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-switch to studio-focus mode when feed has content or artifact is opened
   const hasArtifactContent = (activeTab === 'artifacts' && artifacts.length > 0) || expandedReportId !== null;
