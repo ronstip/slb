@@ -67,6 +67,14 @@ async def get_current_user(request: Request) -> CurrentUser:
         raise HTTPException(status_code=401, detail="Invalid auth token")
 
     uid = decoded["uid"]
+    email = decoded.get("email", "")
+
+    # Email allowlist — if set, reject anyone not on the list
+    if settings.allowed_emails:
+        allowed = {e.strip().lower() for e in settings.allowed_emails.split(",") if e.strip()}
+        if email.lower() not in allowed:
+            logger.warning("Email not in allowlist: %s", email)
+            raise HTTPException(status_code=403, detail="Access restricted to approved users")
 
     # Check in-memory cache first
     now = time.monotonic()

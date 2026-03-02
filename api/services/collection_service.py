@@ -284,10 +284,11 @@ def _dispatch_cloud_task(settings, collection_id: str) -> None:
         settings.gcp_region,
         settings.cloud_tasks_queue,
     )
+    worker_url = settings.worker_service_url.rstrip("/")
     task = {
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
-            "url": f"https://collection-worker-{settings.gcp_project_id}.run.app/run",
+            "url": f"{worker_url}/collection/run",
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps({"collection_id": collection_id}).encode(),
         }

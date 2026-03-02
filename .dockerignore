@@ -1,0 +1,13 @@
+.venv/
+.git/
+.github/
+frontend/
+memory-bank/
+.env
+.env.*
+*.md
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+.claude/

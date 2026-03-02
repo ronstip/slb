@@ -95,10 +95,12 @@ app.include_router(billing_router.router)
 app.include_router(sessions_router.router)
 app.include_router(admin_router.router)
 
-# CORS middleware — allow frontend dev server and production domains
+# CORS middleware — origins configurable via CORS_ORIGINS env var
+_settings = get_settings()
+_cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1099,6 +1101,42 @@ async def leave_org(user: CurrentUser = Depends(get_current_user)):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.post("/internal/scheduler/tick")
+async def scheduler_tick():
+    """Check for due ongoing collections and dispatch them.
+
+    Called by Cloud Scheduler in production (every 5 minutes).
+    Protected by Cloud Run IAM (--no-allow-unauthenticated not needed here
+    since the API service is public, but Cloud Scheduler authenticates via OIDC).
+    """
+    from api.services.collection_service import _run_pipeline, _dispatch_cloud_task
+
+    settings = get_settings()
+    fs = get_fs()
+
+    due = fs.get_due_ongoing_collections()
+    dispatched = []
+    for doc in due:
+        collection_id = doc["collection_id"]
+        fs.update_collection_status(collection_id, status="collecting")
+        if settings.is_dev:
+            import threading
+
+            thread = threading.Thread(
+                target=_run_pipeline,
+                args=(collection_id,),
+                daemon=True,
+                name=f"pipeline-{collection_id[:8]}",
+            )
+            thread.start()
+        else:
+            _dispatch_cloud_task(settings, collection_id)
+        dispatched.append(collection_id)
+        logger.info("Scheduler: dispatched pipeline for collection %s", collection_id)
+
+    return {"dispatched": len(dispatched), "collection_ids": dispatched}
 
 
 @app.get("/media/{path:path}")

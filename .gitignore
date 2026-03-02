@@ -23,9 +23,13 @@ uv.lock
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
+
+# Firebase cache
+.firebase/
 
 # GCP - ignore credential files but allow config files
 service-account*.json

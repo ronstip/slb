@@ -28,6 +28,15 @@ class Settings(BaseSettings):
 
     frontend_url: str = "http://localhost:5173"
 
+    # CORS — comma-separated allowed origins
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    # Worker service URL for Cloud Tasks dispatch (set in prod, e.g. https://sl-worker-xxx.run.app)
+    worker_service_url: str = ""
+
+    # Comma-separated allowlist of emails. Empty = anyone can sign in.
+    allowed_emails: str = ""
+
     # Lemon Squeezy billing (optional — billing features disabled if not set)
     lemonsqueezy_api_key: str = ""
     lemonsqueezy_store_id: str = ""

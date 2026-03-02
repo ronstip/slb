@@ -1,0 +1,128 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: social-listening-pl
+  GCP_REGION: us-central1
+
+jobs:
+  # ──────────────── Frontend ────────────────
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type-check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+        run: npm run build
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: social-listening-pl
+
+  # ──────────────── Backend API ────────────────
+  deploy-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build & push API image
+        run: |
+          gcloud builds submit \
+            --config cloudbuild-api.yaml \
+            --substitutions _TAG=gcr.io/$GCP_PROJECT_ID/sl-api:${{ github.sha }} \
+            --timeout 600 .
+
+      - name: Deploy API to Cloud Run
+        run: |
+          API_URL=$(gcloud run services describe sl-api --region=$GCP_REGION --format='value(status.url)' 2>/dev/null || echo "")
+          WORKER_URL=$(gcloud run services describe sl-worker --region=$GCP_REGION --format='value(status.url)' 2>/dev/null || echo "")
+          gcloud run deploy sl-api \
+            --image gcr.io/$GCP_PROJECT_ID/sl-api:${{ github.sha }} \
+            --region $GCP_REGION \
+            --platform managed \
+            --service-account sl-api@$GCP_PROJECT_ID.iam.gserviceaccount.com \
+            --set-env-vars "^||^ENVIRONMENT=production||GCP_PROJECT_ID=$GCP_PROJECT_ID||GCP_REGION=$GCP_REGION||CORS_ORIGINS=https://social-listening-pl.web.app||FRONTEND_URL=https://social-listening-pl.web.app||WORKER_SERVICE_URL=$WORKER_URL||ALLOWED_EMAILS=${{ secrets.ALLOWED_EMAILS }}||SUPER_ADMIN_EMAILS=${{ secrets.SUPER_ADMIN_EMAILS }}" \
+            --min-instances 0 \
+            --max-instances 10 \
+            --memory 1Gi \
+            --cpu 1 \
+            --timeout 300 \
+            --concurrency 80 \
+            --port 8080 \
+            --allow-unauthenticated \
+            --quiet
+
+  # ──────────────── Worker ────────────────
+  deploy-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build & push Worker image
+        run: |
+          gcloud builds submit \
+            --config cloudbuild-worker.yaml \
+            --substitutions _TAG=gcr.io/$GCP_PROJECT_ID/sl-worker:${{ github.sha }} \
+            --timeout 600 .
+
+      - name: Deploy Worker to Cloud Run
+        run: |
+          gcloud run deploy sl-worker \
+            --image gcr.io/$GCP_PROJECT_ID/sl-worker:${{ github.sha }} \
+            --region $GCP_REGION \
+            --platform managed \
+            --service-account sl-worker@$GCP_PROJECT_ID.iam.gserviceaccount.com \
+            --set-env-vars "ENVIRONMENT=production,GCP_PROJECT_ID=$GCP_PROJECT_ID,GCP_REGION=$GCP_REGION" \
+            --min-instances 0 \
+            --max-instances 5 \
+            --memory 2Gi \
+            --cpu 2 \
+            --timeout 900 \
+            --concurrency 1 \
+            --port 8080 \
+            --no-allow-unauthenticated \
+            --quiet

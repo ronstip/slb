@@ -107,10 +107,11 @@ def _dispatch_enrichment_task(settings, collection_id: str, post_ids: str) -> No
     if post_ids:
         payload["post_ids"] = [p.strip() for p in post_ids.split(",") if p.strip()]
 
+    worker_url = settings.worker_service_url.rstrip("/")
     task = {
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
-            "url": f"https://enrichment-worker-{settings.gcp_project_id}.run.app/run",
+            "url": f"{worker_url}/enrichment/run",
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps(payload).encode(),
         }
