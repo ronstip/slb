@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Button } from '../../components/ui/button.tsx';
-import { Separator } from '../../components/ui/separator.tsx';
 import { Logo } from '../../components/Logo.tsx';
 import { useAuth } from '../../auth/useAuth.ts';
 import { AdminNav, type AdminSection } from './AdminNav.tsx';
@@ -58,54 +57,57 @@ export function AdminPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      {/* Top bar */}
-      <header className="flex h-12 shrink-0 items-center border-b border-border bg-card px-4">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('/')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <button onClick={() => navigate('/')} className="ml-3 focus:outline-none">
-          <Logo size="sm" />
-        </button>
-        <Separator orientation="vertical" className="mx-4 h-5" />
-        <ShieldCheck className="h-4 w-4 text-accent-vibrant" />
-        <span className="ml-2 text-sm font-medium text-foreground">Admin Dashboard</span>
-      </header>
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sidebar */}
+      <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-card">
+        {/* Logo + Back */}
+        <div className="flex items-center justify-between px-3 py-3">
+          <button onClick={() => navigate('/')} className="focus:outline-none">
+            <Logo size="sm" />
+          </button>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => navigate('/')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-60 shrink-0 border-r border-border bg-card p-4">
+        {/* Title */}
+        <div className="px-3 pb-3">
+          <span className="text-xs font-medium text-muted-foreground">Admin Dashboard</span>
+        </div>
+
+        {/* Nav */}
+        <div className="flex-1 px-3">
           <AdminNav
             activeSection={activeSection}
             onSelect={handleSelectSection}
           />
-        </aside>
+        </div>
+      </aside>
 
-        {/* Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-5xl px-8 py-8">
-            {selectedUserId ? (
-              <UserDetailSection
-                userId={selectedUserId}
-                onBack={() => setSelectedUserId(null)}
-              />
-            ) : (
-              <>
-                <h1 className="mb-6 text-xl font-semibold text-foreground">
-                  {SECTION_TITLES[activeSection]}
-                </h1>
-                {activeSection === 'overview' && <OverviewSection />}
-                {activeSection === 'users' && (
-                  <UsersSection onSelectUser={setSelectedUserId} />
-                )}
-                {activeSection === 'activity' && <ActivitySection />}
-                {activeSection === 'collections' && <CollectionsSection />}
-                {activeSection === 'revenue' && <RevenueSection />}
-              </>
-            )}
-          </div>
-        </main>
-      </div>
+      {/* Content */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl px-8 py-8">
+          {selectedUserId ? (
+            <UserDetailSection
+              userId={selectedUserId}
+              onBack={() => setSelectedUserId(null)}
+            />
+          ) : (
+            <>
+              <h1 className="mb-6 text-xl font-semibold text-foreground">
+                {SECTION_TITLES[activeSection]}
+              </h1>
+              {activeSection === 'overview' && <OverviewSection />}
+              {activeSection === 'users' && (
+                <UsersSection onSelectUser={setSelectedUserId} />
+              )}
+              {activeSection === 'activity' && <ActivitySection />}
+              {activeSection === 'collections' && <CollectionsSection />}
+              {activeSection === 'revenue' && <RevenueSection />}
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

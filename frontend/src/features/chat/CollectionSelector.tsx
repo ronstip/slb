@@ -1,8 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronDown, Database, Library, Plus, Search, X } from 'lucide-react';
 import { useSourcesStore, type Source } from '../../stores/sources-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useAuth } from '../../auth/useAuth.ts';
+import { listCollections } from '../../api/endpoints/collections.ts';
+import { mapCollectionToSource } from '../collections/utils.ts';
 import { PLATFORM_LABELS } from '../../lib/constants.ts';
 import { formatNumber } from '../../lib/format.ts';
 import { cn } from '../../lib/utils.ts';
@@ -73,10 +76,31 @@ export function CollectionSelector() {
   const [search, setSearch] = useState('');
   const { profile } = useAuth();
   const sources = useSourcesStore((s) => s.sources);
+  const setSources = useSourcesStore((s) => s.setSources);
   const addToSession = useSourcesStore((s) => s.addToSession);
   const removeFromSession = useSourcesStore((s) => s.removeFromSession);
   const openCollectionsLibrary = useUIStore((s) => s.openCollectionsLibrary);
   const openCollectionModal = useUIStore((s) => s.openCollectionModal);
+
+  // Fetch collections when dropdown opens (same query key as CollectionsLibrary — cached/deduped)
+  const { data: allCollections } = useQuery({
+    queryKey: ['collections'],
+    queryFn: () => listCollections(),
+    staleTime: 30_000,
+    enabled: open,
+  });
+
+  // Sync fetched collections into the sources store
+  useEffect(() => {
+    if (!allCollections || allCollections.length === 0) return;
+    const currentSources = useSourcesStore.getState().sources;
+    const existingIds = new Set(currentSources.map((s) => s.collectionId));
+    const newCollections = allCollections.filter((c) => !existingIds.has(c.collection_id));
+    if (newCollections.length === 0) return;
+
+    const newSources = newCollections.map(mapCollectionToSource);
+    setSources([...currentSources, ...newSources]);
+  }, [allCollections, setSources]);
 
   const activeCount = sources.filter((s) => s.selected).length;
 

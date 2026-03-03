@@ -1,7 +1,6 @@
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '../../components/ui/button.tsx';
-import { Separator } from '../../components/ui/separator.tsx';
 import { Logo } from '../../components/Logo.tsx';
 import { SettingsNav, type SettingsSection } from './SettingsNav.tsx';
 import { AccountSection } from './sections/AccountSection.tsx';
@@ -29,42 +28,46 @@ export function SettingsPage() {
       : 'account';
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      {/* Top bar */}
-      <header className="flex h-12 shrink-0 items-center border-b border-border bg-background px-4">
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => navigate('/')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <button onClick={() => navigate('/')} className="ml-3 focus:outline-none">
-          <Logo size="sm" />
-        </button>
-        <Separator orientation="vertical" className="mx-4 h-5" />
-        <span className="text-sm font-medium text-foreground">Settings</span>
-      </header>
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sidebar */}
+      <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-card">
+        {/* Logo + Back */}
+        <div className="flex items-center justify-between px-3 py-3">
+          <button onClick={() => navigate('/')} className="focus:outline-none">
+            <Logo size="sm" />
+          </button>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => navigate('/')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-60 shrink-0 border-r border-border bg-card p-4">
+        {/* Title */}
+        <div className="px-3 pb-3">
+          <span className="text-xs font-medium text-muted-foreground">Settings</span>
+        </div>
+
+        {/* Nav */}
+        <div className="flex-1 px-3">
           <SettingsNav
             activeSection={activeSection}
             onSelect={(section) => navigate(`/settings/${section}`)}
           />
-        </aside>
+        </div>
+      </aside>
 
-        {/* Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-2xl px-8 py-8">
-            <h1 className="mb-6 text-xl font-semibold text-foreground">
-              {SECTION_TITLES[activeSection]}
-            </h1>
-            {activeSection === 'account' && <AccountSection />}
-            {activeSection === 'organization' && <OrganizationSection />}
-            {activeSection === 'billing' && <BillingSection />}
-            {activeSection === 'usage' && <UsageSection />}
-            {activeSection === 'privacy' && <PrivacySection />}
-          </div>
-        </main>
-      </div>
+      {/* Content */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-2xl px-8 py-8">
+          <h1 className="mb-6 text-xl font-semibold text-foreground">
+            {SECTION_TITLES[activeSection]}
+          </h1>
+          {activeSection === 'account' && <AccountSection />}
+          {activeSection === 'organization' && <OrganizationSection />}
+          {activeSection === 'billing' && <BillingSection />}
+          {activeSection === 'usage' && <UsageSection />}
+          {activeSection === 'privacy' && <PrivacySection />}
+        </div>
+      </main>
     </div>
   );
 }

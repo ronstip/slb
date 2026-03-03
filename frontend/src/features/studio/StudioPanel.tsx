@@ -5,7 +5,7 @@ import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { FeedTab } from './FeedTab.tsx';
 import { ArtifactsTab } from './ArtifactsTab.tsx';
 import { Button } from '../../components/ui/button.tsx';
-import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs.tsx';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs.tsx';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +23,7 @@ export function StudioPanel() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+      <div className="flex items-center justify-between px-3 py-2">
         <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={toggle}>
           {collapsed ? (
             <PanelRightOpen className="h-4 w-4" />
@@ -61,26 +61,17 @@ export function StudioPanel() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'feed' | 'artifacts')} className="flex flex-1 flex-col overflow-hidden">
-            <TabsList className="w-full rounded-none border-b border-border bg-transparent p-0">
-              <TabsTrigger
-                value="feed"
-                className="flex-1 rounded-none border-b-2 border-transparent py-2 text-xs text-muted-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-              >
-                Feed
-              </TabsTrigger>
-              <TabsTrigger
-                value="artifacts"
-                className="flex-1 rounded-none border-b-2 border-transparent py-2 text-xs text-muted-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-              >
-                Artifacts
-              </TabsTrigger>
+            <TabsList className="w-full">
+              <TabsTrigger value="feed" className="data-[state=active]:bg-white">Feed</TabsTrigger>
+              <TabsTrigger value="artifacts" className="data-[state=active]:bg-white">Artifacts</TabsTrigger>
             </TabsList>
 
-            {/* Tab content */}
-            <div className="flex-1 overflow-y-auto">
-              {activeTab === 'feed' && <FeedTab />}
-              {activeTab === 'artifacts' && <ArtifactsTab />}
-            </div>
+            <TabsContent value="feed" className="overflow-y-auto">
+              <FeedTab />
+            </TabsContent>
+            <TabsContent value="artifacts" className="overflow-y-auto">
+              <ArtifactsTab />
+            </TabsContent>
           </Tabs>
         </div>
       )}

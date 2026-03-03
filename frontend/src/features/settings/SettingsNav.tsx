@@ -34,10 +34,10 @@ export function SettingsNav({ activeSection, onSelect }: SettingsNavProps) {
           key={id}
           onClick={() => onSelect(id)}
           className={cn(
-            'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+            'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
             activeSection === id
               ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
           )}
         >
           <Icon className="h-4 w-4" />
@@ -48,7 +48,7 @@ export function SettingsNav({ activeSection, onSelect }: SettingsNavProps) {
       <div className="mt-auto pt-4 border-t border-border">
         <button
           onClick={handleSignOut}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
           <LogOut className="h-4 w-4" />
           Log Out
