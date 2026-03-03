@@ -1,15 +1,17 @@
-import { Table2, BarChart3, FileText, ChevronRight } from 'lucide-react';
+import { Table2, BarChart3, FileText, LayoutDashboard, ChevronRight } from 'lucide-react';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { shortDate } from '../../lib/format.ts';
 import { DataExportView } from './DataExportView.tsx';
 import { InsightReportView } from './InsightReportView.tsx';
 import { ChartArtifactView } from './ChartArtifactView.tsx';
+import { DashboardView } from './dashboard/DashboardView.tsx';
 import { cn } from '../../lib/utils.ts';
 
 const ARTIFACT_STYLES: Record<string, { icon: typeof Table2; color: string; bg: string }> = {
   data_export: { icon: Table2, color: 'text-blue-500', bg: 'bg-blue-500/10' },
   insight_report: { icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10' },
   chart: { icon: BarChart3, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+  dashboard: { icon: LayoutDashboard, color: 'text-amber-500', bg: 'bg-amber-500/10' },
 };
 
 export function ArtifactsTab() {
@@ -28,6 +30,9 @@ export function ArtifactsTab() {
     }
     if (expandedArtifact.type === 'chart') {
       return <ChartArtifactView artifact={expandedArtifact as Extract<Artifact, { type: 'chart' }>} />;
+    }
+    if (expandedArtifact.type === 'dashboard') {
+      return <DashboardView artifact={expandedArtifact as Extract<Artifact, { type: 'dashboard' }>} />;
     }
   }
 
@@ -71,7 +76,9 @@ export function ArtifactsTab() {
                   ? `${artifact.rowCount} posts`
                   : artifact.type === 'insight_report'
                     ? `${artifact.cards.length} cards`
-                    : artifact.chartType.replace(/_/g, ' ')}
+                    : artifact.type === 'dashboard'
+                      ? `${artifact.collectionIds.length} collection${artifact.collectionIds.length !== 1 ? 's' : ''}`
+                      : artifact.chartType.replace(/_/g, ' ')}
               </p>
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />

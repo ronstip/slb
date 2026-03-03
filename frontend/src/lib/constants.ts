@@ -15,6 +15,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   list_table_ids: 'Discovering tables',
   display_posts: 'Preparing post display',
   generate_report: 'Generating insight report',
+  generate_dashboard: 'Creating interactive dashboard',
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {

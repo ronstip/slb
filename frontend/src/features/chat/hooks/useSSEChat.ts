@@ -7,7 +7,7 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isProgressResult, isDataExportResult, isChartResult, isPostEmbedResult, isReportResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isProgressResult, isDataExportResult, isChartResult, isPostEmbedResult, isReportResult, isDashboardResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard } from '../../../api/types.ts';
 
 export function useSSEChat() {
@@ -210,6 +210,24 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport(result.report_id as string);
+              } else if (isDashboardResult(toolName, result)) {
+                chatState.addCard(messageId, {
+                  type: 'dashboard',
+                  data: result,
+                });
+                // Auto-save dashboard artifact
+                useStudioStore.getState().addArtifact({
+                  id: result.dashboard_id as string,
+                  type: 'dashboard',
+                  title: result.title as string,
+                  collectionIds: result.collection_ids as string[],
+                  collectionNames: result.collection_names as Record<string, string>,
+                  createdAt: new Date(),
+                });
+                // Open studio panel, switch to artifacts, expand the dashboard
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
+                useStudioStore.getState().expandReport(result.dashboard_id as string);
               }
               break;
             }

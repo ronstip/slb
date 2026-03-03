@@ -16,6 +16,7 @@ import {
   isChartResult,
   isPostEmbedResult,
   isReportResult,
+  isDashboardResult,
 } from './event-parser.ts';
 
 /** Tools that produce thinking entries (mirrors THINKING_TOOLS in main.py). */
@@ -187,6 +188,16 @@ export function reconstructSession(
             dateFrom: result.date_from as string | undefined,
             dateTo: result.date_to as string | undefined,
             cards: result.cards as ReportCard[],
+            createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
+          });
+        } else if (isDashboardResult(toolName, result)) {
+          msg.cards.push({ type: 'dashboard', data: result });
+          artifacts.push({
+            id: (result.dashboard_id as string) || `dashboard-restored-${artifacts.length}`,
+            type: 'dashboard',
+            title: result.title as string,
+            collectionIds: result.collection_ids as string[],
+            collectionNames: result.collection_names as Record<string, string>,
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
         }

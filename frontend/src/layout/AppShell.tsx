@@ -15,7 +15,7 @@ const SOURCES_MIN = 220;
 const SOURCES_MAX = 420;
 const SOURCES_DEFAULT = 300;
 const STUDIO_MIN = 300;
-const STUDIO_MAX = 700;
+const STUDIO_MAX = 1000;
 const STUDIO_DEFAULT = 300;
 const COLLAPSED_W = 48;
 const CHAT_MIN_W = 480;
@@ -75,16 +75,30 @@ export function AppShell() {
     }
   }, [params.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-switch to studio-focus mode when feed has content or artifact is opened
-  const hasArtifactContent = (activeTab === 'artifacts' && artifacts.length > 0) || expandedReportId !== null;
+  // Determine which expanded artifact type is active (if any)
+  const expandedArtifact = expandedReportId ? artifacts.find((a) => a.id === expandedReportId) : null;
+  const isDashboardOpen = expandedArtifact?.type === 'dashboard';
+  const isNonDashboardArtifactOpen = expandedReportId !== null && !isDashboardOpen;
+
+  // Only show dashboard width when actually viewing the dashboard (artifacts tab + dashboard expanded)
+  const showDashboard = isDashboardOpen && activeTab === 'artifacts';
+
+  // Auto-resize studio panel based on content type
   useEffect(() => {
-    const shouldFocus = feedHasPosts || hasArtifactContent;
-    if (shouldFocus && layoutMode === 'balanced') {
-      setStudioFocus();
-      const focusW = Math.min(STUDIO_MAX, Math.floor((window.innerWidth - COLLAPSED_W) / 2));
-      setStudioW(focusW);
+    if (showDashboard) {
+      // Dashboard → fixed 1000px wide
+      if (layoutMode === 'balanced') setStudioFocus();
+      setStudioW(STUDIO_MAX);
+    } else if (feedHasPosts || isNonDashboardArtifactOpen) {
+      // Feed with posts or expanded non-dashboard artifact → 50:50 with chat
+      if (layoutMode === 'balanced') setStudioFocus();
+      const halfW = Math.min(STUDIO_MAX, Math.floor((window.innerWidth - COLLAPSED_W) / 2));
+      setStudioW(halfW);
+    } else {
+      // Artifacts menu list / no content → default width
+      setStudioW(STUDIO_DEFAULT);
     }
-  }, [feedHasPosts, hasArtifactContent, layoutMode, setStudioFocus]);
+  }, [feedHasPosts, isNonDashboardArtifactOpen, showDashboard, layoutMode, setStudioFocus]);
 
   const onMouseDown = useCallback((panel: 'sources' | 'studio', e: React.MouseEvent) => {
     e.preventDefault();
