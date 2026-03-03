@@ -456,6 +456,44 @@ export interface InsightReportPayload {
   message?: string;
 }
 
+// ─── Dashboard types ─────────────────────────────────────────────────
+
+export interface DashboardPost {
+  post_id: string;
+  collection_id: string;
+  platform: string;
+  channel_handle: string;
+  posted_at: string;
+  title?: string;
+  content?: string;
+  sentiment?: string;
+  emotion?: string;
+  themes?: string[];
+  entities?: string[];
+  language?: string;
+  content_type?: string;
+  key_quotes?: string[];
+  like_count: number;
+  view_count: number;
+  comment_count: number;
+  share_count: number;
+}
+
+export interface DashboardDataResponse {
+  posts: DashboardPost[];
+  collection_names: Record<string, string>;
+  truncated: boolean;
+}
+
+export interface DashboardPayload {
+  status: string;
+  dashboard_id: string;
+  title: string;
+  collection_ids: string[];
+  collection_names: Record<string, string>;
+  message?: string;
+}
+
 // ─── Tool result types ───────────────────────────────────────────────
 
 export interface DesignResearchResult {

@@ -35,8 +35,17 @@ interface InsightReportArtifact {
   createdAt: Date;
 }
 
+interface DashboardArtifact {
+  id: string;
+  type: 'dashboard';
+  title: string;
+  collectionIds: string[];
+  collectionNames: Record<string, string>;
+  createdAt: Date;
+}
+
 export type StudioTab = 'feed' | 'artifacts';
-export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact;
+export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact | DashboardArtifact;
 
 interface StudioStore {
   activeTab: StudioTab;

@@ -55,6 +55,33 @@ class FeedResponse(BaseModel):
     limit: int
 
 
+class DashboardPostResponse(BaseModel):
+    post_id: str
+    collection_id: str
+    platform: str
+    channel_handle: str = ""
+    posted_at: str = ""
+    title: str | None = None
+    content: str | None = None
+    sentiment: str | None = None
+    emotion: str | None = None
+    themes: list[str] = []
+    entities: list[str] = []
+    language: str | None = None
+    content_type: str | None = None
+    key_quotes: list[str] = []
+    like_count: int = 0
+    view_count: int = 0
+    comment_count: int = 0
+    share_count: int = 0
+
+
+class DashboardDataResponse(BaseModel):
+    posts: list[DashboardPostResponse]
+    collection_names: dict[str, str]
+    truncated: bool = False
+
+
 class BreakdownItem(BaseModel):
     value: str
     post_count: int = 0

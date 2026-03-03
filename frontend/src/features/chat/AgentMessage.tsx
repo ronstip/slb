@@ -16,6 +16,7 @@ import { DecisionCard } from './cards/DecisionCard.tsx';
 import { FindingChip } from './cards/FindingChip.tsx';
 import { PlanCard } from './cards/PlanCard.tsx';
 import { InsightReportCard } from './cards/InsightReportCard.tsx';
+import { DashboardCard } from './cards/DashboardCard.tsx';
 import { FollowUpChips } from './FollowUpChips.tsx';
 import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
 
@@ -140,6 +141,8 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               return <PlanCard key={i} data={card.data} onSelect={onSuggestionClick} />;
             case 'insight_report':
               return <InsightReportCard key={i} data={card.data} />;
+            case 'dashboard':
+              return <DashboardCard key={i} data={card.data} />;
             default:
               return null;
           }

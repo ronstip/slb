@@ -55,3 +55,7 @@ class MultiFeedRequest(BaseModel):
     sentiment: str = "all"
     limit: int = 12
     offset: int = 0
+
+
+class DashboardDataRequest(BaseModel):
+    collection_ids: list[str]

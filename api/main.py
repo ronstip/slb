@@ -36,6 +36,7 @@ from api.deps import get_bq, get_fs, get_gcs
 from api.routers import settings as settings_router
 from api.routers import billing as billing_router
 from api.routers import admin as admin_router
+from api.routers import dashboard as dashboard_router
 import csv
 import io
 
@@ -94,6 +95,7 @@ app.include_router(settings_router.router)
 app.include_router(billing_router.router)
 app.include_router(sessions_router.router)
 app.include_router(admin_router.router)
+app.include_router(dashboard_router.router)
 
 # CORS middleware — origins configurable via CORS_ORIGINS env var
 _settings = get_settings()
@@ -120,7 +122,7 @@ THINKING_TOOLS = {
     "execute_sql", "get_table_info", "list_table_ids",
     "google_search", "design_research", "start_collection",
     "get_progress", "enrich_collection", "display_posts",
-    "get_past_collections", "generate_report", "get_sql_reference",
+    "get_past_collections", "generate_report", "generate_dashboard", "get_sql_reference",
 }
 
 

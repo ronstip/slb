@@ -1,4 +1,4 @@
-import type { DesignResearchResult, DataExportResult, InsightReportPayload } from '../api/types.ts';
+import type { DesignResearchResult, DataExportResult, InsightReportPayload, DashboardPayload } from '../api/types.ts';
 import { TOOL_DISPLAY_NAMES } from './constants.ts';
 
 export function getToolDisplayText(toolName: string): string {
@@ -45,4 +45,11 @@ export function isReportResult(
   result?: Record<string, unknown>,
 ): result is Record<string, unknown> & InsightReportPayload {
   return toolName === 'generate_report' && result?.status === 'success' && Array.isArray(result?.cards);
+}
+
+export function isDashboardResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): result is Record<string, unknown> & DashboardPayload {
+  return toolName === 'generate_dashboard' && result?.status === 'success' && !!result?.dashboard_id;
 }
