@@ -30,11 +30,11 @@ export function InsightReportCard({ data }: InsightReportCardProps) {
   };
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/5 to-background shadow-sm">
+    <div className="mt-3 overflow-hidden rounded-2xl border border-accent-vibrant/20 bg-gradient-to-b from-accent-vibrant/5 to-background shadow-sm">
       <div className="flex items-center justify-between px-5 py-3.5">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-            <BarChart3 className="h-4 w-4 text-primary" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-vibrant/10">
+            <BarChart3 className="h-4 w-4 text-accent-vibrant" />
           </div>
           <div className="flex flex-col">
             <h4 className="text-sm font-semibold text-foreground">{title}</h4>

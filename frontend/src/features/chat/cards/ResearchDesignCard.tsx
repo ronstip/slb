@@ -125,8 +125,8 @@ export function ResearchDesignCard({ data }: ResearchDesignCardProps) {
       {/* ── Header row ── */}
       <div className="flex items-center justify-between px-5 py-3.5">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-            <Search className="h-4 w-4 text-primary" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-vibrant/10">
+            <Search className="h-4 w-4 text-accent-vibrant" />
           </div>
           <div>
             <h4 className="text-sm font-semibold text-foreground">Research Design</h4>
@@ -243,11 +243,11 @@ export function ResearchDesignCard({ data }: ResearchDesignCardProps) {
             {/* Status indicator */}
             {isActive ? (
               submitting && !collectionId ? (
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent-vibrant" />
               ) : (
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-50" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-vibrant opacity-50" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent-vibrant" />
                 </span>
               )
             ) : isDone ? (
@@ -304,7 +304,7 @@ export function ResearchDesignCard({ data }: ResearchDesignCardProps) {
               {isActive && (
                 <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                   <div
-                    className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
+                    className="h-full rounded-full bg-accent-vibrant transition-all duration-700 ease-out"
                     style={{
                       width: !collectionId
                         ? '5%'

@@ -20,7 +20,9 @@ interface UIStore {
   layoutMode: LayoutMode;
   collectionModalOpen: boolean;
   collectionModalPrefill: CollectionConfig | null;
+  collectionsLibraryOpen: boolean;
   activePoll: PollData | null;
+  sessionSearchOpen: boolean;
 
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
@@ -28,8 +30,12 @@ interface UIStore {
   setStudioFocus: () => void;
   openCollectionModal: (prefill?: CollectionConfig) => void;
   closeCollectionModal: () => void;
+  openCollectionsLibrary: () => void;
+  closeCollectionsLibrary: () => void;
   showPoll: (poll: PollData) => void;
   dismissPoll: () => void;
+  openSessionSearch: () => void;
+  closeSessionSearch: () => void;
 }
 
 const loadCollapsed = (key: string): boolean => {
@@ -46,7 +52,9 @@ export const useUIStore = create<UIStore>((set) => ({
   layoutMode: 'balanced' as LayoutMode,
   collectionModalOpen: false,
   collectionModalPrefill: null,
+  collectionsLibraryOpen: false,
   activePoll: null,
+  sessionSearchOpen: false,
 
   toggleSourcesPanel: () =>
     set((s) => {
@@ -89,6 +97,11 @@ export const useUIStore = create<UIStore>((set) => ({
   closeCollectionModal: () =>
     set({ collectionModalOpen: false, collectionModalPrefill: null }),
 
+  openCollectionsLibrary: () => set({ collectionsLibraryOpen: true }),
+  closeCollectionsLibrary: () => set({ collectionsLibraryOpen: false }),
+
   showPoll: (poll) => set({ activePoll: poll }),
   dismissPoll: () => set({ activePoll: null }),
+  openSessionSearch: () => set({ sessionSearchOpen: true }),
+  closeSessionSearch: () => set({ sessionSearchOpen: false }),
 }));

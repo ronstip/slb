@@ -233,7 +233,7 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
                   <button
                     onClick={() => setShowValues(!showValues)}
                     className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-                      showValues ? 'bg-primary' : 'bg-muted-foreground/20'
+                      showValues ? 'bg-foreground' : 'bg-muted-foreground/20'
                     }`}
                   >
                     <span
@@ -273,7 +273,7 @@ function ColorPicker({
     <button
       onClick={onToggle}
       className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-border ${
-        active ? 'border-primary/50 bg-primary/5 text-foreground' : 'border-border/40'
+        active ? 'border-foreground/30 bg-foreground/5 text-foreground' : 'border-border/40'
       }`}
     >
       <div className="h-3 w-3 rounded-full border border-border/30" style={{ backgroundColor: color }} />

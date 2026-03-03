@@ -14,10 +14,10 @@ export function FollowUpChips({ suggestions, onSelect }: FollowUpChipsProps) {
         <button
           key={i}
           onClick={() => onSelect(suggestion)}
-          className="group flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 py-1.5 text-[11px] text-muted-foreground transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
+          className="group flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground shadow-sm transition-all hover:border-primary/30 hover:text-foreground hover:shadow-md"
         >
           <span>{suggestion}</span>
-          <ArrowRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
+          <ArrowRight className="h-3 w-3 opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-60" />
         </button>
       ))}
     </div>

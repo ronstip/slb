@@ -21,9 +21,9 @@ export function PlanCard({ data, onSelect }: PlanCardProps) {
 
   return (
     <Card className="mt-3 overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border/30 bg-primary/5 px-4 py-2">
-        <ListChecks className="h-3.5 w-3.5 text-primary" />
-        <span className="text-[11px] font-medium text-primary">Analysis Plan</span>
+      <div className="flex items-center gap-2 border-b border-border/30 bg-accent-vibrant/5 px-4 py-2">
+        <ListChecks className="h-3.5 w-3.5 text-accent-vibrant" />
+        <span className="text-[11px] font-medium text-accent-vibrant">Analysis Plan</span>
         <span className="ml-auto text-[10px] text-muted-foreground">
           {payload.estimated_queries} queries
         </span>
@@ -37,7 +37,7 @@ export function PlanCard({ data, onSelect }: PlanCardProps) {
         <ol className="space-y-1.5">
           {payload.steps.map((step, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-semibold text-primary">
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent-vibrant/10 text-[9px] font-semibold text-accent-vibrant">
                 {i + 1}
               </span>
               <span className="text-[11px] leading-snug text-muted-foreground">

@@ -17,7 +17,7 @@ export function PostCard({ post, collectionTitle }: PostCardProps) {
   const media = (post.media_refs ?? []).filter((m) => m?.original_url || m?.gcs_uri);
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden shadow-sm transition-shadow hover:shadow-md">
       {/* Collection label (multi-collection feed only) */}
       {collectionTitle && (
         <div className="border-b border-border/50 bg-muted/30 px-3 py-1">
@@ -110,7 +110,7 @@ export function PostCard({ post, collectionTitle }: PostCardProps) {
             href={post.post_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-primary transition-colors hover:text-primary/80"
+            className="flex items-center gap-1 text-xs text-accent-vibrant transition-colors hover:text-accent-vibrant/80"
           >
             <ExternalLink className="h-3 w-3" />
             Original

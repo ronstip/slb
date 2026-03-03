@@ -93,8 +93,8 @@ export function ChartCard({ data }: ChartCardProps) {
 
       {/* Compact artifact card */}
       <div className="flex items-center gap-3 p-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <BarChart3 className="h-5 w-5 text-primary" />
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-success/10">
+          <BarChart3 className="h-5 w-5 text-accent-success" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{title}</p>

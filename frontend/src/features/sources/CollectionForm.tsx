@@ -189,8 +189,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
               onClick={() => togglePlatform(p)}
               className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
                 platforms.includes(p)
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'border border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground'
               }`}
             >
               {PLATFORM_LABELS[p]}
@@ -202,9 +202,9 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
       {/* Keywords */}
       <div className="mb-4">
         <Label className="mb-1.5">Keywords</Label>
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-ring">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-foreground/20 focus-within:ring-1 focus-within:ring-ring">
           {keywords.map((kw) => (
-            <Badge key={kw} variant="secondary" className="gap-1 bg-primary/10 text-primary">
+            <Badge key={kw} variant="secondary" className="gap-1 bg-foreground/10 text-foreground">
               {kw}
               <button onClick={() => setKeywords(keywords.filter((k) => k !== kw))}>
                 <X className="h-3 w-3" />
@@ -227,9 +227,9 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
         <Label className="mb-1.5">
           Channel URLs <span className="text-muted-foreground">(optional)</span>
         </Label>
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-ring">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-foreground/20 focus-within:ring-1 focus-within:ring-ring">
           {channelUrls.map((url) => (
-            <Badge key={url} variant="secondary" className="gap-1 bg-primary/10 text-primary">
+            <Badge key={url} variant="secondary" className="gap-1 bg-foreground/10 text-foreground">
               {url.length > 30 ? url.slice(0, 30) + '...' : url}
               <button onClick={() => setChannelUrls(channelUrls.filter((u) => u !== url))}>
                 <X className="h-3 w-3" />
@@ -257,8 +257,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
               onClick={() => setTimeRangeDays(value)}
               className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
                 timeRangeDays === value
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'border border-border bg-card text-muted-foreground hover:border-primary/40'
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:border-foreground/40'
               }`}
             >
               {label}

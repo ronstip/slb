@@ -32,12 +32,12 @@ export function ProgressCard({ data }: ProgressCardProps) {
     <Card className="mt-3 overflow-hidden">
       {/* Live collection header */}
       {isActive && (
-        <div className="flex items-center gap-2 border-b border-border/30 bg-primary/5 px-4 py-2">
+        <div className="flex items-center gap-2 border-b border-border/30 bg-accent-vibrant/5 px-4 py-2">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-vibrant opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-vibrant" />
           </span>
-          <span className="text-[11px] font-medium text-primary">Collecting</span>
+          <span className="text-[11px] font-medium text-accent-vibrant">Collecting</span>
           {postsCollected > 0 && (
             <span className="ml-auto text-[11px] text-muted-foreground">
               {formatNumber(postsCollected)} posts so far
@@ -73,7 +73,7 @@ export function ProgressCard({ data }: ProgressCardProps) {
           <div className="mt-3 space-y-1">
             <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
               <div
-                className="h-full rounded-full bg-primary transition-all duration-500"
+                className="h-full rounded-full bg-accent-vibrant transition-all duration-500"
                 style={{ width: `${postsCollected > 0 ? 60 : 20}%` }}
               />
               {/* Shimmer overlay */}

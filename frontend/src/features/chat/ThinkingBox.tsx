@@ -75,7 +75,7 @@ export function ThinkingBox({ entries, isStreaming, hasMainContent = false }: Th
           Thinking ({entries.length})
         </span>
         {isStreaming && (
-          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50" />
+          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-vibrant/50" />
         )}
         <span className="ml-auto">
           {boxOpen
@@ -110,7 +110,7 @@ export function ThinkingBox({ entries, isStreaming, hasMainContent = false }: Th
                 {/* Step content */}
                 {isOpen && (
                   <div className="px-3 pb-2 pt-0.5 pl-7">
-                    <div className="prose prose-sm max-w-none font-mono text-[10.5px] leading-relaxed text-muted-foreground/70 prose-code:text-[10px] prose-code:text-primary/60 prose-pre:bg-background prose-pre:border prose-pre:border-border/30 prose-pre:text-[10px] prose-pre:my-1">
+                    <div className="prose prose-sm max-w-none font-mono text-[10.5px] leading-relaxed text-muted-foreground/70 prose-code:text-[10px] prose-code:text-accent-vibrant/60 prose-pre:bg-background prose-pre:border prose-pre:border-border/30 prose-pre:text-[10px] prose-pre:my-1">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry}</ReactMarkdown>
                     </div>
                   </div>

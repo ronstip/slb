@@ -35,7 +35,7 @@ interface InsightReportArtifact {
   createdAt: Date;
 }
 
-export type StudioTab = 'feed' | 'artifacts' | 'data';
+export type StudioTab = 'feed' | 'artifacts';
 export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact;
 
 interface StudioStore {

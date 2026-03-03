@@ -61,7 +61,7 @@ export function InviteHandler({ inviteCode }: { inviteCode: string }) {
       <Card className="w-full max-w-md">
         {state === 'joining' && (
           <CardContent className="flex flex-col items-center gap-4 py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <Loader2 className="h-8 w-8 animate-spin text-foreground" />
             <p className="text-sm text-muted-foreground">Joining organization...</p>
           </CardContent>
         )}

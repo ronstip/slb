@@ -22,8 +22,8 @@ export function SignInPage() {
         <main className="flex flex-1 flex-col items-center justify-center px-8 pb-20">
           <div className="mx-auto max-w-4xl text-center">
             {/* Badge */}
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm backdrop-blur-sm">
-              <Sparkles className="h-4 w-4 text-primary" />
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent-vibrant/20 bg-accent-vibrant/5 px-4 py-1.5 text-sm backdrop-blur-sm">
+              <Sparkles className="h-4 w-4 text-accent-vibrant" />
               <span className="text-muted-foreground">AI-Powered Social Intelligence</span>
             </div>
 
@@ -31,7 +31,7 @@ export function SignInPage() {
             <h1 className="mb-6 text-6xl font-bold leading-tight tracking-tight">
               The most intelligent way to
               <br />
-              <span className="bg-gradient-to-r from-primary to-chart-5 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-accent-vibrant to-accent-pink bg-clip-text text-transparent">
                 listen to social media
               </span>
             </h1>
@@ -95,8 +95,8 @@ export function SignInPage() {
             {/* Value Props Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
               <div className="rounded-xl border border-border/50 bg-card/30 backdrop-blur-sm p-6 text-left hover:bg-card/50 transition-colors">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <MessageSquare className="h-5 w-5 text-primary" />
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-accent-vibrant/10">
+                  <MessageSquare className="h-5 w-5 text-accent-vibrant" />
                 </div>
                 <h3 className="mb-2 font-semibold text-foreground">Conversational Interface</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">

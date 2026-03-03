@@ -31,8 +31,8 @@ export function SettingsPage() {
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Top bar */}
-      <header className="flex h-12 shrink-0 items-center border-b border-border bg-card px-4">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('/')}>
+      <header className="flex h-12 shrink-0 items-center border-b border-border bg-background px-4">
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => navigate('/')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <button onClick={() => navigate('/')} className="ml-3 focus:outline-none">

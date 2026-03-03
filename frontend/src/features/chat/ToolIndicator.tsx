@@ -11,7 +11,7 @@ export function ToolIndicator({ indicator }: ToolIndicatorProps) {
       {indicator.resolved ? (
         <Check className="h-3 w-3 text-status-complete" strokeWidth={2.5} />
       ) : (
-        <CircleDot className="h-3 w-3 animate-pulse text-primary/70" />
+        <CircleDot className="h-3 w-3 animate-pulse text-accent-vibrant/70" />
       )}
       <span
         className={`text-xs tracking-wide ${

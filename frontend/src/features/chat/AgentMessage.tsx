@@ -45,15 +45,15 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
   return (
     <div className="flex gap-3 overflow-hidden max-w-[90%]">
       {/* Avatar */}
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5">
-        <Sparkles className="h-3.5 w-3.5 text-primary" />
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-vibrant/10">
+        <Sparkles className="h-3.5 w-3.5 text-accent-vibrant" />
       </div>
 
       <div className="min-w-0 flex-1 overflow-hidden">
         {/* Agent label */}
         {agentLabel && (
           <div className="mb-1.5 flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-primary/50">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
               {agentLabel}
             </span>
           </div>
@@ -68,9 +68,9 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
         {isThinking && (
           <div className="flex items-center gap-2 py-0.5">
             <div className="flex items-center gap-1">
-              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50" />
-              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50 [animation-delay:150ms]" />
-              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50 [animation-delay:300ms]" />
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-vibrant/50" />
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-vibrant/50 [animation-delay:150ms]" />
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-vibrant/50 [animation-delay:300ms]" />
             </div>
             <span className="text-xs text-muted-foreground/60">Thinking</span>
           </div>
@@ -87,7 +87,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
 
         {/* Tool indicators */}
         {message.toolIndicators.length > 0 && (
-          <div className="mb-2 rounded-lg border border-border/40 bg-accent/20 px-3 py-2 space-y-0.5">
+          <div className="mb-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2 space-y-0.5">
             {message.toolIndicators.map((indicator, idx) => {
               const sameNameAll = message.toolIndicators.filter((t) => t.name === indicator.name);
               const sameNameIdx = message.toolIndicators.slice(0, idx).filter((t) => t.name === indicator.name).length;
@@ -104,7 +104,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
 
         {/* Markdown content */}
         {cleanContent && (
-          <div className="agent-prose prose prose-sm max-w-none break-words prose-headings:text-foreground prose-headings:tracking-tight prose-h1:text-18px] prose-h1:font-semibold prose-h1:leading-tight prose-h1:mb-3 prose-h2:text-[15px] prose-h2:font-semibold prose-h2:leading-snug prose-h2:mb-2 prose-h2:mt-5 prose-h3:text-[13px] prose-h3:font-medium prose-h3:leading-snug prose-h3:mb-1.5 prose-h3:mt-4 prose-p:text-[12px] prose-p:leading-[1.75] prose-p:text-muted-foreground/90 prose-p:tracking-[0.01em] prose-p:break-words prose-p:mb-3 prose-strong:text-foreground/90 prose-strong:font-semibold prose-a:text-primary prose-a:font-medium prose-a:no-underline prose-a:break-all hover:prose-a:underline prose-ul:text-[12px] prose-ul:leading-[1.75] prose-ul:text-muted-foreground/90 prose-ul:mb-3 prose-ol:text-[12px] prose-ol:leading-[1.75] prose-ol:text-muted-foreground/90 prose-ol:mb-3 prose-li:text-muted-foreground/90 prose-li:my-0.5 prose-li:marker:text-muted-foreground prose-code:text-[10.5px] prose-code:font-normal prose-code:text-primary/80 prose-code:bg-primary/5 prose-code:rounded prose-code:px-1 prose-code:py-px prose-code:break-all prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-secondary prose-pre:rounded-lg prose-pre:border prose-pre:border-border/50 prose-pre:overflow-x-auto prose-pre:text-[10.5px] prose-th:text-[10.5px] prose-th:font-medium prose-th:text-muted-foreground prose-th:tracking-wide prose-td:text-[11px] prose-td:text-foreground/80 prose-table:my-2 prose-hr:border-border/60 prose-hr:my-8 prose-blockquote:border-primary/20 prose-blockquote:text-muted-foreground/70 prose-blockquote:text-[11.5px] prose-blockquote:not-italic">
+          <div className="agent-prose prose prose-sm max-w-none break-words prose-headings:text-foreground prose-headings:tracking-tight prose-h1:text-18px] prose-h1:font-semibold prose-h1:leading-tight prose-h1:mb-3 prose-h2:text-[15px] prose-h2:font-semibold prose-h2:leading-snug prose-h2:mb-2 prose-h2:mt-5 prose-h3:text-[13px] prose-h3:font-medium prose-h3:leading-snug prose-h3:mb-1.5 prose-h3:mt-4 prose-p:text-[12px] prose-p:leading-[1.75] prose-p:text-muted-foreground/90 prose-p:tracking-[0.01em] prose-p:break-words prose-p:mb-3 prose-strong:text-foreground/90 prose-strong:font-semibold prose-a:text-accent-vibrant prose-a:font-medium prose-a:no-underline prose-a:break-all hover:prose-a:underline prose-ul:text-[12px] prose-ul:leading-[1.75] prose-ul:text-muted-foreground/90 prose-ul:mb-3 prose-ol:text-[12px] prose-ol:leading-[1.75] prose-ol:text-muted-foreground/90 prose-ol:mb-3 prose-li:text-muted-foreground/90 prose-li:my-0.5 prose-li:marker:text-muted-foreground prose-code:text-[10.5px] prose-code:font-normal prose-code:text-accent-vibrant/80 prose-code:bg-accent-vibrant/5 prose-code:rounded prose-code:px-1 prose-code:py-px prose-code:break-all prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-secondary prose-pre:rounded-lg prose-pre:border prose-pre:border-border/50 prose-pre:overflow-x-auto prose-pre:text-[10.5px] prose-th:text-[10.5px] prose-th:font-medium prose-th:text-muted-foreground prose-th:tracking-wide prose-td:text-[11px] prose-td:text-foreground/80 prose-table:my-2 prose-hr:border-border/60 prose-hr:my-8 prose-blockquote:border-accent-vibrant/20 prose-blockquote:text-muted-foreground/70 prose-blockquote:text-[11.5px] prose-blockquote:not-italic">
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
               {cleanContent}
             </ReactMarkdown>
@@ -153,7 +153,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
         {/* Streaming cursor — shown between tool completion and text arrival */}
         {message.isStreaming && !cleanContent && !message.statusLine && message.toolIndicators.length > 0 && message.toolIndicators.every(t => t.resolved) && (
           <div className="flex items-center py-1">
-            <div className="h-4 w-0.5 animate-[blink_1s_steps(1)_infinite] rounded-full bg-primary/60" />
+            <div className="h-4 w-0.5 animate-[blink_1s_steps(1)_infinite] rounded-full bg-accent-vibrant/60" />
           </div>
         )}
       </div>

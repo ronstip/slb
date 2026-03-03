@@ -20,12 +20,14 @@ User ↔ React Frontend ↔ FastAPI Backend ↔ Google ADK Meta-Agent (Gemini)
 
 ## Frontend Architecture
 
-- **3-panel layout:** Sources (left) | Chat (center) | Studio (right)
+- **3-panel layout:** Sessions (left) | Chat (center) | Workspace (right, Feed + Artifacts only)
+- **Collections Library:** Full-width Sheet drawer from TopBar — search, filter, manage, add-to-session
+- **Chat context bar:** Collection pills above textarea with quick-add popover
 - **State management:** Zustand stores for app state, TanStack Query for server state
 - **Routing:** React Router 7 — main app, auth, settings
 - **Chat:** SSE streaming via `useSSEChat` hook → `sse-client.ts` → `/chat` endpoint
 - **UI components:** shadcn/ui (Radix + Tailwind) in `frontend/src/components/ui/`
-- **Feature modules:** `frontend/src/features/{chat,sources,studio,settings}/`
+- **Feature modules:** `frontend/src/features/{chat,sources,studio,collections,sessions,settings}/`
 
 ## Backend Architecture
 

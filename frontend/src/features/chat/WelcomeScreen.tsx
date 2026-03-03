@@ -33,18 +33,19 @@ const USE_CASES = [
 export function WelcomeScreen({ onPromptClick, onSend }: WelcomeScreenProps) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8">
-      {/* Animated logo with pulsing rings */}
+      {/* Animated logo with glow + pulsing rings */}
       <div className="relative flex items-center justify-center">
-        <div className="pulse-ring-1 absolute h-24 w-24 rounded-full border border-primary/20" />
-        <div className="pulse-ring-2 absolute h-36 w-36 rounded-full border border-primary/10" />
-        <div className="pulse-ring-3 absolute h-48 w-48 rounded-full border border-primary/5" />
+        {/* Subtle radial glow behind logo */}
+        <div className="absolute h-32 w-32 rounded-full bg-accent-vibrant/8 blur-2xl" />
+        <div className="pulse-ring-1 absolute h-24 w-24 rounded-full border border-accent-vibrant/15" />
+        <div className="pulse-ring-2 absolute h-36 w-36 rounded-full border border-accent-vibrant/8" />
         <Logo size="lg" showText={false} />
       </div>
 
-      <h2 className="mt-6 text-2xl font-semibold tracking-tight text-foreground">
-        Every trend starts with a whisper. Find It.
+      <h2 className="mt-8 text-3xl font-bold tracking-tight text-foreground">
+        Every trend starts with a whisper
       </h2>
-      <p className="mt-1.5 text-sm text-muted-foreground/60">
+      <p className="mt-2 text-base text-muted-foreground">
         Real-time social intelligence across every platform
       </p>
 
@@ -52,15 +53,16 @@ export function WelcomeScreen({ onPromptClick, onSend }: WelcomeScreenProps) {
         <MessageInput onSend={onSend} centered />
       </div>
 
-      <div className="mt-8 flex flex-wrap justify-center gap-2.5">
+      {/* Use case buttons — 2x2 grid */}
+      <div className="mt-8 grid grid-cols-2 gap-2.5 max-w-lg">
         {USE_CASES.map(({ icon: Icon, label, prompt }) => (
           <button
             key={label}
             type="button"
             onClick={() => onPromptClick(prompt)}
-            className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground/70 transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-foreground hover:shadow-sm"
+            className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-3 text-left text-xs font-medium text-muted-foreground transition-all hover:border-foreground/20 hover:bg-accent hover:text-foreground hover:shadow-sm"
           >
-            <Icon className="h-3.5 w-3.5 text-primary/50" />
+            <Icon className="h-4 w-4 shrink-0 text-accent-vibrant/70" />
             {label}
           </button>
         ))}

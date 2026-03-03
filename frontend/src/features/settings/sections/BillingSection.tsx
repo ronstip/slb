@@ -55,7 +55,7 @@ export function BillingSection() {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-foreground" />
         </CardContent>
       </Card>
     );
@@ -72,7 +72,7 @@ export function BillingSection() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Coins className="h-4 w-4 text-primary" />
+            <Coins className="h-4 w-4 text-accent-amber" />
             Credit Balance
           </CardTitle>
           <CardDescription>
@@ -96,7 +96,7 @@ export function BillingSection() {
               </div>
               <div className="h-2 w-full rounded-full bg-muted">
                 <div
-                  className="h-2 rounded-full bg-primary transition-all"
+                  className="h-2 rounded-full bg-accent-vibrant transition-all"
                   style={{ width: `${Math.min(usagePercent, 100)}%` }}
                 />
               </div>
@@ -123,13 +123,13 @@ export function BillingSection() {
                 key={pack.pack_id}
                 className={
                   pack.popular
-                    ? 'relative border-primary/50 shadow-sm'
+                    ? 'relative border-accent-vibrant/50 shadow-sm'
                     : ''
                 }
               >
                 {pack.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-primary text-primary-foreground">
+                    <Badge className="bg-accent-vibrant text-white">
                       <Sparkles className="mr-1 h-3 w-3" />
                       Best Value
                     </Badge>
@@ -137,7 +137,7 @@ export function BillingSection() {
                 )}
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Zap className="h-4 w-4 text-primary" />
+                    <Zap className="h-4 w-4 text-accent-amber" />
                     {pack.name}
                   </CardTitle>
                   <div className="flex items-baseline gap-2">
@@ -187,15 +187,15 @@ export function BillingSection() {
         <CardContent>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground" />
               <span><strong className="text-foreground">1 credit</strong> = 1 AI query or 10 posts collected</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground" />
               <span>Credits never expire — use them at your own pace</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground" />
               <span>
                 {isOrgBilling
                   ? 'Org credits are shared across all team members'
@@ -203,7 +203,7 @@ export function BillingSection() {
               </span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground" />
               <span>Larger packs offer better per-credit pricing</span>
             </li>
           </ul>

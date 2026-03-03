@@ -58,9 +58,9 @@ export function ExportTableModal({ rows, title, open, onClose }: ExportTableModa
   function SortIcon({ col }: { col: SortKey }) {
     if (col !== sortKey) return <ChevronDown className="h-3 w-3 opacity-30" />;
     return sortDir === 'desc' ? (
-      <ChevronDown className="h-3 w-3 text-primary" />
+      <ChevronDown className="h-3 w-3 text-foreground" />
     ) : (
-      <ChevronUp className="h-3 w-3 text-primary" />
+      <ChevronUp className="h-3 w-3 text-foreground" />
     );
   }
 
@@ -223,7 +223,7 @@ function ExportTableRow({ row, idx }: { row: DataExportRow; idx: number }) {
           {themes.slice(0, 2).map((t) => (
             <span
               key={t}
-              className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary capitalize"
+              className="rounded-full bg-accent-vibrant/10 px-1.5 py-0.5 text-[10px] text-accent-vibrant capitalize"
             >
               {t}
             </span>

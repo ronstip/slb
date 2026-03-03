@@ -68,7 +68,7 @@ export function AdminPage() {
           <Logo size="sm" />
         </button>
         <Separator orientation="vertical" className="mx-4 h-5" />
-        <ShieldCheck className="h-4 w-4 text-primary" />
+        <ShieldCheck className="h-4 w-4 text-accent-vibrant" />
         <span className="ml-2 text-sm font-medium text-foreground">Admin Dashboard</span>
       </header>
 

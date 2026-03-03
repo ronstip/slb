@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { TopBar } from './TopBar.tsx';
 import { useUIStore } from '../stores/ui-store.ts';
 import { useStudioStore } from '../stores/studio-store.ts';
 import { useSourcesStore } from '../stores/sources-store.ts';
@@ -9,6 +8,7 @@ import { ChatPanel } from '../features/chat/ChatPanel.tsx';
 import { SessionsPanel } from '../features/sessions/SessionsPanel.tsx';
 import { StudioPanel } from '../features/studio/StudioPanel.tsx';
 import { CollectionModal } from '../features/sources/CollectionModal.tsx';
+import { CollectionsLibrary } from '../features/collections/CollectionsLibrary.tsx';
 import { useCollectionPolling } from '../features/sources/useCollectionPolling.ts';
 
 const SOURCES_MIN = 220;
@@ -134,58 +134,70 @@ export function AppShell() {
 
   const transitionStyle = isResizing ? undefined : { transition: 'width 200ms ease' };
 
+  // Ctrl+K to open session search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        useUIStore.getState().openSessionSearch();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <TopBar />
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sessions Panel */}
-        <aside
-          className="shrink-0 overflow-hidden bg-card"
-          style={{
-            width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW,
-            ...transitionStyle,
-          }}
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sessions Panel (sidebar) */}
+      <aside
+        className={`shrink-0 overflow-hidden bg-card ${sourcesPanelCollapsed ? 'border-r border-border' : ''}`}
+        style={{
+          width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW,
+          ...transitionStyle,
+        }}
+      >
+        <SessionsPanel />
+      </aside>
+
+      {/* Sources resize handle */}
+      {!sourcesPanelCollapsed && (
+        <div
+          className="group relative z-10 w-1 shrink-0 cursor-col-resize"
+          onMouseDown={(e) => onMouseDown('sources', e)}
         >
-          <SessionsPanel />
-        </aside>
+          <div className="absolute inset-y-0 -left-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
+        </div>
+      )}
 
-        {/* Sources resize handle */}
-        {!sourcesPanelCollapsed && (
-          <div
-            className="group relative z-10 w-1 shrink-0 cursor-col-resize"
-            onMouseDown={(e) => onMouseDown('sources', e)}
-          >
-            <div className="absolute inset-y-0 -left-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
-          </div>
-        )}
+      {/* Chat Panel */}
+      <ChatPanel />
 
-        {/* Chat Panel */}
-        <ChatPanel />
-
-        {/* Studio resize handle */}
-        {!studioPanelCollapsed && (
-          <div
-            className="group relative z-10 w-1 shrink-0 cursor-col-resize"
-            onMouseDown={(e) => onMouseDown('studio', e)}
-          >
-            <div className="absolute inset-y-0 -right-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
-          </div>
-        )}
-
-        {/* Studio Panel */}
-        <aside
-          className="shrink-0 bg-card"
-          style={{
-            width: studioPanelCollapsed ? COLLAPSED_W : studioW,
-            ...transitionStyle,
-          }}
+      {/* Studio resize handle */}
+      {!studioPanelCollapsed && (
+        <div
+          className="group relative z-10 w-1 shrink-0 cursor-col-resize"
+          onMouseDown={(e) => onMouseDown('studio', e)}
         >
-          <StudioPanel />
-        </aside>
-      </div>
+          <div className="absolute inset-y-0 -right-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
+        </div>
+      )}
+
+      {/* Studio Panel */}
+      <aside
+        className="shrink-0 bg-card"
+        style={{
+          width: studioPanelCollapsed ? COLLAPSED_W : studioW,
+          ...transitionStyle,
+        }}
+      >
+        <StudioPanel />
+      </aside>
 
       {/* Collection Modal Overlay */}
       {collectionModalOpen && <CollectionModal />}
+
+      {/* Collections Library Drawer */}
+      <CollectionsLibrary />
     </div>
   );
 }
