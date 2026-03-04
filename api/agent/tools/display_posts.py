@@ -159,7 +159,7 @@ def display_posts(
 
         posts.append({
             "post_id": row["post_id"],
-            "collection_id": row.get("collection_id", collection_id),
+            "collection_id": row.get("collection_id", ""),
             "platform": row["platform"],
             "channel_handle": row.get("channel_handle", ""),
             "channel_id": row.get("channel_id"),

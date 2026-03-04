@@ -13,7 +13,6 @@ Six categories:
 """
 
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -29,16 +28,17 @@ logger = logging.getLogger(__name__)
 # Tools listed first in the schema are naturally favoured by the model.
 
 CORE_TOOLS = {"execute_sql", "get_table_info", "list_table_ids", "create_chart", "display_posts"}
-RESEARCH_TOOLS = {"design_research", "get_past_collections", "google_search", "get_sql_reference"}
-COLLECTION_TOOLS = {"start_collection", "cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
-OUTPUT_TOOLS = {"export_data", "generate_report"}
+RESEARCH_SUPPORT_TOOLS = {"get_past_collections", "google_search", "get_sql_reference"}
+RESEARCH_DESIGN_TOOLS = {"design_research"}
+COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
+OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
 
-# ─── Human-in-the-loop gate ─────────────────────────────────────────
-GATED_TOOLS = {"start_collection"}
-_APPROVAL_PATTERN = re.compile(
-    r"\b(start collecting|start collection|confirm|go ahead|yes|do it|launch|run it|approved|let'?s go|begin collection|kick it off)\b",
-    re.IGNORECASE,
-)
+# ─── Hard gate: tools blocked while a collection pipeline is running ──
+# cancel_collection is intentionally excluded — user can always cancel.
+COLLECTION_RUNNING_BLOCKED = {
+    "get_progress", "enrich_collection", "refresh_engagements",
+}
+
 
 # ─── Collection access enforcement ─────────────────────────────────
 # Tools whose `collection_id` (single) or `collection_ids` (list) args
@@ -49,8 +49,8 @@ TOOLS_WITH_COLLECTION_ID = {
     "refresh_engagements", "export_data", "display_posts",
 }
 TOOLS_WITH_COLLECTION_IDS = {
-    "get_collection_stats", "generate_report", "set_working_collections",
-    "export_data", "display_posts",
+    "get_collection_stats", "generate_report", "generate_dashboard",
+    "set_working_collections", "export_data", "display_posts",
 }
 
 
@@ -72,16 +72,7 @@ def collection_state_tracker(
     """
     tool_name = tool.name
 
-    if tool_name == "start_collection":
-        collection_id = tool_response.get("collection_id")
-        if collection_id and tool_response.get("status") == "success":
-            tool_context.state["active_collection_id"] = collection_id
-            tool_context.state["collection_status"] = "collecting"
-            tool_context.state["posts_collected"] = 0
-            tool_context.state["posts_enriched"] = 0
-            logger.info("State: active_collection_id=%s", collection_id)
-
-    elif tool_name == "get_progress":
+    if tool_name == "get_progress":
         if tool_response.get("status") == "success":
             tool_context.state["collection_status"] = tool_response.get(
                 "collection_status", "unknown"
@@ -129,25 +120,19 @@ def gate_expensive_tools(
     args: dict[str, Any],
     tool_context: ToolContext,
 ) -> Optional[dict]:
-    """Block start_collection unless the user explicitly approved it.
+    """Block collection tools while a pipeline is running.
 
     Returns a dict (tool response override) to block, or None to allow.
     """
-    if tool.name not in GATED_TOOLS:
-        return None
-
-    state = tool_context.state
-    if not state.get("collection_approved"):
+    if tool.name in COLLECTION_RUNNING_BLOCKED and tool_context.state.get("collection_running"):
         return {
             "status": "blocked",
             "message": (
-                "Collection requires explicit user approval. "
-                "Present the research design and ask the user to confirm before starting."
+                "A collection is currently running. The UI shows live progress. "
+                "Do NOT call collection tools — confirm to the user and move on."
             ),
         }
 
-    # Clear the flag after use (one-shot approval)
-    state["collection_approved"] = False
     return None
 
 
@@ -178,7 +163,7 @@ def enforce_collection_access(
     if "user_id" in args:
         args["user_id"] = user_id
     if "org_id" in args:
-        args["org_id"] = org_id or ""
+        args["org_id"] = org_id if org_id else None
 
     # Collect collection IDs to validate
     ids_to_check: list[str] = []
@@ -236,6 +221,21 @@ def _build_context_block(state: dict) -> Optional[str]:
         collection_id = effective_sources[0]
 
     if collection_id or effective_sources:
+        # Fetch live status from Firestore for the active collection
+        # instead of relying on stale session state
+        if collection_id:
+            from api.deps import get_fs
+            fs = get_fs()
+            live = fs.get_collection_status(collection_id)
+            if live:
+                state["collection_status"] = live.get("status", "unknown")
+                state["posts_collected"] = live.get("posts_collected", 0)
+                state["posts_enriched"] = live.get("posts_enriched", 0)
+                state["posts_embedded"] = live.get("posts_embedded", 0)
+                # Clear running flag when pipeline finishes
+                if live.get("status") in ("completed", "completed_with_errors", "failed", "cancelled"):
+                    state["collection_running"] = False
+
         status = state.get("collection_status", "unknown")
         posts = state.get("posts_collected", 0)
         enriched = state.get("posts_enriched", 0)
@@ -289,14 +289,15 @@ def _get_phase_priority(state: dict) -> list[set[str]]:
     )
 
     if not has_collection:
-        # Research phase — prioritize research + collection start tools
-        return [RESEARCH_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS]
+        # Research phase — context tools first, design tool last (after conversation)
+        return [RESEARCH_SUPPORT_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS]
     elif collection_status in ("collecting", "enriching"):
-        # Collection in progress — management tools first
-        return [COLLECTION_TOOLS, CORE_TOOLS, RESEARCH_TOOLS, OUTPUT_TOOLS]
+        # Collection in progress — push collection tools LAST so the agent
+        # doesn't loop on get_progress. The UI handles progress display.
+        return [CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS, COLLECTION_TOOLS]
     else:
         # Collection complete (or unknown) — analysis + output first
-        return [CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_TOOLS]
+        return [CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_SUPPORT_TOOLS, RESEARCH_DESIGN_TOOLS]
 
 
 def _tool_sort_key(tool_obj, priority_order: list[set[str]]) -> int:
@@ -319,18 +320,6 @@ def _reorder_tools(tools: list, priority_order: list[set[str]]) -> list:
     return sorted(tools, key=lambda t: _tool_sort_key(t, priority_order))
 
 
-def _get_last_user_text(llm_request: LlmRequest) -> Optional[str]:
-    """Extract text from the last user message in the conversation."""
-    if not llm_request.contents:
-        return None
-    for content in reversed(llm_request.contents):
-        if content.role == "user" and content.parts:
-            texts = [p.text for p in content.parts if hasattr(p, "text") and p.text]
-            if texts:
-                return " ".join(texts)
-    return None
-
-
 def inject_collection_context(
     callback_context: CallbackContext,
     llm_request: LlmRequest,
@@ -339,11 +328,6 @@ def inject_collection_context(
     reorder tools based on session phase.
     """
     state = callback_context.state
-
-    # ── Approval detection for gated tools ────────────────────────
-    last_user_text = _get_last_user_text(llm_request)
-    if last_user_text and _APPROVAL_PATTERN.search(last_user_text):
-        state["collection_approved"] = True
 
     # ── Context injection ─────────────────────────────────────────
     context_block = _build_context_block(state)

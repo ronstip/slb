@@ -53,10 +53,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         detail.state,
       );
 
-      // Restore all stores
+      // Restore all stores — clear agent context first to prevent leaks
       useChatStore.getState().setMessages(messages);
       useChatStore.getState().setSessionId(id);
       useStudioStore.getState().setArtifacts(artifacts);
+      useSourcesStore.getState().setAgentSelectedSources([]);
       useSourcesStore.getState().selectByIds(selectedSourceIds);
 
       set({
@@ -74,6 +75,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useChatStore.getState().reset();
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
+    useSourcesStore.getState().setAgentSelectedSources([]);
 
     set({
       activeSessionId: null,

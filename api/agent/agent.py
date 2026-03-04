@@ -36,7 +36,6 @@ from api.agent.tools.get_sql_reference import get_sql_reference
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
 from api.agent.tools.set_working_collections import set_working_collections
-from api.agent.tools.start_collection import start_collection
 from api.auth.session_service import FirestoreSessionService
 from config.settings import get_settings
 
@@ -64,13 +63,12 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
     # ─── Tool list ───────────────────────────────────────────────────
     tools = [
         # Research & context
-        design_research,
         get_past_collections,
+        design_research,
         # Data & analysis
         get_sql_reference,
         bq_toolset,
         # Collection lifecycle
-        start_collection,
         get_progress,
         cancel_collection,
         enrich_collection,
@@ -140,8 +138,8 @@ def create_memory_service():
         logger.info("Using InMemoryMemoryService (dev mode)")
         return InMemoryMemoryService()
     if not settings.agent_engine_id:
-        logger.warning("No agent_engine_id configured — memory disabled")
-        return None
+        logger.warning("No agent_engine_id configured — using in-memory fallback")
+        return InMemoryMemoryService()
     logger.info("Using VertexAiMemoryBankService (engine=%s)", settings.agent_engine_id)
     return VertexAiMemoryBankService(
         project=settings.gcp_project_id,

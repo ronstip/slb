@@ -1,29 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
-import { Play, Edit2, CheckCircle2, ChevronDown, ChevronUp, Search, Loader2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Play, Edit2, ChevronDown, ChevronUp, Search, Loader2 } from 'lucide-react';
 import type { DesignResearchResult, CreateCollectionRequest } from '../../../api/types.ts';
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '../../../lib/constants.ts';
-import { formatNumber } from '../../../lib/format.ts';
-import { createCollection, getCollectionStatus } from '../../../api/endpoints/collections.ts';
+import { createCollection } from '../../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
-import { useChatStore } from '../../../stores/chat-store.ts';
 import { CollectionForm } from '../../sources/CollectionForm.tsx';
+import { CollectionProgressCard } from './CollectionProgressCard.tsx';
 import { Badge } from '../../../components/ui/badge.tsx';
 
 interface ResearchDesignCardProps {
   data: DesignResearchResult;
+  onCollectionStarted?: (message: string) => void;
 }
 
-export function ResearchDesignCard({ data }: ResearchDesignCardProps) {
+export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesignCardProps) {
   const [formVisible, setFormVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [statsOpen, setStatsOpen] = useState(true);
   const formContainerRef = useRef<HTMLDivElement>(null);
 
   const addSource = useSourcesStore((s) => s.addSource);
-  const addSystemMessage = useChatStore((s) => s.addSystemMessage);
 
   const submitted = submitting || !!collectionId;
 
@@ -55,15 +52,16 @@ export function ResearchDesignCard({ data }: ResearchDesignCardProps) {
         config: cfg,
         title: cfg.keywords.join(', ') || 'New Collection',
         postsCollected: 0,
-        postsEnriched: 0,
-        postsEmbedded: 0,
+        totalViews: 0,
+        positivePct: null,
         selected: true,
         active: true,
         createdAt: new Date().toISOString(),
       });
       const platformNames = cfg.platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ');
-      addSystemMessage(
-        `Collection started: ${cfg.keywords.join(', ')} on ${platformNames}.`,
+      const keywords = cfg.keywords.join(', ');
+      onCollectionStarted?.(
+        `Collection just started for "${keywords}" on ${platformNames}. Collection ID: ${result.collection_id}.`,
       );
     } catch {
       setSubmitting(false);
@@ -83,42 +81,9 @@ export function ResearchDesignCard({ data }: ResearchDesignCardProps) {
     if (submitted) setDetailsOpen(false);
   }, [submitted]);
 
-  // Live polling for collection status
-  const { data: statusData } = useQuery({
-    queryKey: ['collection-status', collectionId],
-    queryFn: () => getCollectionStatus(collectionId!),
-    enabled: !!collectionId,
-    refetchInterval: (query) => {
-      const s = query.state.data?.status;
-      if (s === 'completed' || s === 'failed' || s === 'monitoring') return false;
-      return 5000;
-    },
-  });
-
-  const isActive = !statusData || !['completed', 'failed', 'monitoring'].includes(statusData.status);
-  const isDone = statusData && ['completed', 'monitoring'].includes(statusData.status);
-
   const platformSummary = data.summary.platforms
     .map((p) => PLATFORM_LABELS[p] || p)
     .join(', ');
-
-  const statusLabel = !collectionId
-    ? 'Creating collection…'
-    : !statusData
-      ? 'Starting…'
-      : statusData.status === 'collecting'
-        ? 'Collecting posts'
-        : statusData.status === 'enriching'
-          ? 'Enriching data'
-          : statusData.status === 'completed'
-            ? 'Complete'
-            : statusData.status === 'monitoring'
-              ? 'Monitoring'
-              : statusData.status === 'failed'
-                ? 'Failed'
-                : statusData.status === 'pending'
-                  ? 'Queued'
-                  : statusData.status;
 
   return (
     <div className="mt-3 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/5 to-background shadow-sm">
@@ -233,105 +198,13 @@ export function ResearchDesignCard({ data }: ResearchDesignCardProps) {
       )}
 
       {/* ── Live collection stats ── */}
-      {submitted && (
-        <div className="border-t border-border/30">
-          {/* Status header — always visible */}
-          <button
-            onClick={() => setStatsOpen((v) => !v)}
-            className="flex w-full items-center gap-2.5 px-5 py-2.5 text-left transition-colors hover:bg-accent/20"
-          >
-            {/* Status indicator */}
-            {isActive ? (
-              submitting && !collectionId ? (
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent-vibrant" />
-              ) : (
-                <span className="relative flex h-2.5 w-2.5 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-vibrant opacity-50" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent-vibrant" />
-                </span>
-              )
-            ) : isDone ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-            ) : statusData?.status === 'failed' ? (
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
-            ) : (
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground animate-pulse" />
-            )}
-
-            <span className="flex-1 text-[13px] font-medium text-foreground">
-              {statusLabel}
-            </span>
-
-            {statusData && statusData.posts_collected > 0 && (
-              <span className="rounded-full bg-muted/60 px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
-                {formatNumber(statusData.posts_collected)} posts
-              </span>
-            )}
-
-            {statsOpen ? (
-              <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            )}
-          </button>
-
-          {/* Stats body */}
-          {statsOpen && (
-            <div className="px-5 pb-4 space-y-3">
-              {/* Metric cards */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg bg-muted/40 px-3 py-2 text-center">
-                  <p className="text-base font-bold tabular-nums text-foreground">
-                    {formatNumber(statusData?.posts_collected ?? 0)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">Collected</p>
-                </div>
-                <div className="rounded-lg bg-muted/40 px-3 py-2 text-center">
-                  <p className="text-base font-bold tabular-nums text-foreground">
-                    {formatNumber(statusData?.posts_enriched ?? 0)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">Enriched</p>
-                </div>
-                <div className="rounded-lg bg-muted/40 px-3 py-2 text-center">
-                  <p className="text-base font-bold tabular-nums text-foreground">
-                    {formatNumber(statusData?.posts_embedded ?? 0)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">Embedded</p>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              {isActive && (
-                <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                  <div
-                    className="h-full rounded-full bg-accent-vibrant transition-all duration-700 ease-out"
-                    style={{
-                      width: !collectionId
-                        ? '5%'
-                        : statusData?.status === 'enriching'
-                          ? '80%'
-                          : (statusData?.posts_collected ?? 0) > 0
-                            ? '50%'
-                            : '15%',
-                    }}
-                  />
-                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                </div>
-              )}
-
-              {isDone && (
-                <div className="h-1.5 w-full rounded-full bg-emerald-500/20">
-                  <div className="h-full w-full rounded-full bg-emerald-500 transition-all duration-500" />
-                </div>
-              )}
-
-              {statusData?.status === 'failed' && statusData.error_message && (
-                <p className="rounded-lg bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
-                  {statusData.error_message}
-                </p>
-              )}
-            </div>
-          )}
+      {submitted && collectionId && (
+        <CollectionProgressCard collectionId={collectionId} variant="inline" onCompleted={onCollectionStarted} />
+      )}
+      {submitted && !collectionId && (
+        <div className="border-t border-border/30 px-5 py-2.5 flex items-center gap-2.5">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent-vibrant" />
+          <span className="text-[13px] font-medium text-foreground">Creating collection…</span>
         </div>
       )}
     </div>

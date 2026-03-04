@@ -16,6 +16,7 @@ import { FindingChip } from './cards/FindingChip.tsx';
 import { PlanCard } from './cards/PlanCard.tsx';
 import { InsightReportCard } from './cards/InsightReportCard.tsx';
 import { DashboardCard } from './cards/DashboardCard.tsx';
+import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
 import { FollowUpChips } from './FollowUpChips.tsx';
 import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
 
@@ -123,7 +124,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
         {message.cards.map((card, i) => {
           switch (card.type) {
             case 'research_design':
-              return <ResearchDesignCard key={i} data={card.data as unknown as DesignResearchResult} />;
+              return <ResearchDesignCard key={i} data={card.data as unknown as DesignResearchResult} onCollectionStarted={onSuggestionClick} />;
             case 'data_export':
               return <DataExportCard key={i} data={card.data} />;
             case 'chart':
@@ -140,6 +141,8 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               return <InsightReportCard key={i} data={card.data} />;
             case 'dashboard':
               return <DashboardCard key={i} data={card.data} />;
+            case 'collection_progress':
+              return <CollectionProgressCard key={i} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
             default:
               return null;
           }

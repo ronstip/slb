@@ -7,8 +7,8 @@ class CollectionStatusResponse(BaseModel):
     collection_id: str
     status: str
     posts_collected: int = 0
-    posts_enriched: int = 0
-    posts_embedded: int = 0
+    total_views: int = 0
+    positive_pct: float | None = None
     error_message: str | None = None
     config: dict | None = None
     created_at: str | None = None

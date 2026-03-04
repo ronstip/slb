@@ -47,11 +47,8 @@ def generate_dashboard(
         status = fs.get_collection_status(cid)
         if not status:
             return {"status": "error", "message": f"Collection {cid} not found."}
-        collection_names[cid] = status.get("config", {}).get(
-            "keywords", [cid]
-        ).__class__ != list and cid or ", ".join(
-            status.get("config", {}).get("keywords", [cid])[:3]
-        )
+        keywords = status.get("config", {}).get("keywords", [])
+        collection_names[cid] = ", ".join(keywords[:3]) if isinstance(keywords, list) and keywords else cid
 
     if not title:
         if len(collection_ids) == 1:

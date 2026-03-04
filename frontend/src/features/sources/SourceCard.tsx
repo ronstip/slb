@@ -114,8 +114,8 @@ export function SourceCard({ source }: SourceCardProps) {
       await setCollectionVisibility(source.collectionId, newVisibility);
       updateSource(source.collectionId, { visibility: newVisibility });
       queryClient.invalidateQueries({ queryKey: ['collections'] });
-    } catch {
-      // handle error
+    } catch (err) {
+      console.error('Source operation failed:', err);
     }
   };
 

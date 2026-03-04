@@ -77,9 +77,16 @@ def _format_message(status: dict) -> str:
             skipped = enrich_log.get("total_skipped")
             if skipped:
                 msg += f" ({skipped} posts skipped below {enrich_log.get('min_likes_threshold', 0)} likes threshold.)"
-            msg += " Ready for analysis — ask a question about the data or request a full analysis."
         else:
             msg += " Enrichment has not run yet. Use enrich_collection to run AI enrichment before generating insights."
+        return msg
+    elif s == "completed_with_errors":
+        enriched = status.get("posts_enriched", 0)
+        embedded = status.get("posts_embedded", 0)
+        err = status.get("error_message", "")
+        msg = f"Collection completed with partial errors: {posts} posts collected, {enriched} enriched, {embedded} embedded."
+        if err:
+            msg += f" Note: {err}"
         return msg
     elif s == "cancelled":
         return f"Collection was cancelled. {posts} posts were collected before cancellation."

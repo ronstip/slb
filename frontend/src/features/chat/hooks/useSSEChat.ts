@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
@@ -15,6 +15,14 @@ export function useSSEChat() {
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
   const navigate = useNavigate();
+
+  // Clean up refs on unmount to prevent stale message finalization
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      activeMessageRef.current = null;
+    };
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -117,8 +125,21 @@ export function useSSEChat() {
               break;
 
             case 'context_update': {
-              // Agent changed its working collection set
-              useSourcesStore.getState().setAgentSelectedSources(event.agent_selected_sources);
+              // Agent changed its working collection set — validate IDs exist
+              try {
+                const sourcesState = useSourcesStore.getState();
+                const knownIds = new Set(sourcesState.sources.map((s) => s.collectionId));
+                const validIds = (event.agent_selected_sources ?? []).filter((id: string) => {
+                  if (!knownIds.has(id)) {
+                    console.warn(`[context_update] Unknown collection ID from agent: ${id}`);
+                    return false;
+                  }
+                  return true;
+                });
+                sourcesState.setAgentSelectedSources(validIds);
+              } catch (err) {
+                console.error('[context_update] Failed to process agent context update:', err);
+              }
               break;
             }
 
@@ -131,6 +152,13 @@ export function useSSEChat() {
             case 'tool_result': {
               const toolName = event.metadata.name;
               const result = event.metadata.result;
+
+              // Blocked tool calls (e.g. gate rejected) — remove the indicator silently
+              if (result?.status === 'blocked') {
+                chatState.removeToolCall(messageId, toolName);
+                break;
+              }
+
               chatState.resolveToolCall(messageId, toolName, result);
 
               // Handle special tool results

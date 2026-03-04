@@ -43,7 +43,7 @@ export function WelcomeScreen({ onPromptClick, onSend }: WelcomeScreenProps) {
       </div>
 
       <h2 className="mt-8 text-3xl font-bold tracking-tight text-foreground">
-        Every trend starts with a whisper
+        Meet Stip
       </h2>
       <p className="mt-2 text-base text-muted-foreground">
         Real-time social intelligence across every platform

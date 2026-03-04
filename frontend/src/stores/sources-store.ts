@@ -7,8 +7,8 @@ export interface Source {
   config: CollectionConfig;
   title: string;
   postsCollected: number;
-  postsEnriched: number;
-  postsEmbedded: number;
+  totalViews: number;
+  positivePct: number | null;
   /** true = card is shown in the panel (in session) */
   selected: boolean;
   /** true = checkbox is checked; collection contributes to agent context */
@@ -50,7 +50,7 @@ interface SourcesStore {
 export const useSourcesStore = create<SourcesStore>((set, get) => ({
   sources: [],
   get selectedSourceIds() {
-    return get().sources.filter((s) => s.selected).map((s) => s.collectionId);
+    return get().sources.filter((s) => s.active).map((s) => s.collectionId);
   },
   pendingSelectedIds: null,
   agentSelectedIds: [],
@@ -139,9 +139,10 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
       return {
         agentSelectedIds: ids,
         sources: s.sources.map((src) => {
-          // If agent selected this source and it's not already in session, add it
-          if (idSet.has(src.collectionId) && !src.selected) {
-            return { ...src, selected: true, active: true };
+          // Agent selections contribute to agent context (active) but don't
+          // force the collection into the session panel (selected stays unchanged).
+          if (idSet.has(src.collectionId) && !src.active) {
+            return { ...src, active: true };
           }
           return src;
         }),

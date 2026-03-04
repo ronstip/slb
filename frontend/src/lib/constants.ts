@@ -2,7 +2,6 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   google_search: 'Searching the web',
   google_search_agent: 'Searching the web',
   design_research: 'Designing research plan',
-  start_collection: 'Starting data collection',
   get_progress: 'Checking collection progress',
   get_past_collections: 'Checking past collections',
   enrich_collection: 'Running AI enrichment',
