@@ -78,27 +78,31 @@ export function AppShell() {
   // Determine which expanded artifact type is active (if any)
   const expandedArtifact = expandedReportId ? artifacts.find((a) => a.id === expandedReportId) : null;
   const isDashboardOpen = expandedArtifact?.type === 'dashboard';
-  const isNonDashboardArtifactOpen = expandedReportId !== null && !isDashboardOpen;
+  const isDataExportOpen = expandedArtifact?.type === 'data_export';
+  const isNonDashboardArtifactOpen = expandedReportId !== null && !isDashboardOpen && !isDataExportOpen;
 
-  // Only show dashboard width when actually viewing the dashboard (artifacts tab + dashboard expanded)
-  const showDashboard = isDashboardOpen && activeTab === 'artifacts';
+  // Full-width artifacts: dashboard and data export table
+  const showFullWidth = (isDashboardOpen || isDataExportOpen) && activeTab === 'artifacts';
 
   // Auto-resize studio panel based on content type
   useEffect(() => {
-    if (showDashboard) {
-      // Dashboard → fixed 1000px wide
+    const srcW = sourcesPanelCollapsed ? COLLAPSED_W : sourcesW;
+    const maxAvailable = window.innerWidth - srcW - CHAT_MIN_W - HANDLE_W;
+
+    if (showFullWidth) {
+      // Dashboard / Data Export table → as wide as viewport allows (up to 1000px)
       if (layoutMode === 'balanced') setStudioFocus();
-      setStudioW(STUDIO_MAX);
+      setStudioW(Math.min(STUDIO_MAX, Math.max(STUDIO_MIN, maxAvailable)));
     } else if (feedHasPosts || isNonDashboardArtifactOpen) {
       // Feed with posts or expanded non-dashboard artifact → 50:50 with chat
       if (layoutMode === 'balanced') setStudioFocus();
       const halfW = Math.min(STUDIO_MAX, Math.floor((window.innerWidth - COLLAPSED_W) / 2));
-      setStudioW(halfW);
+      setStudioW(Math.min(halfW, maxAvailable));
     } else {
       // Artifacts menu list / no content → default width
       setStudioW(STUDIO_DEFAULT);
     }
-  }, [feedHasPosts, isNonDashboardArtifactOpen, showDashboard, layoutMode, setStudioFocus]);
+  }, [feedHasPosts, isNonDashboardArtifactOpen, showFullWidth, layoutMode, setStudioFocus, sourcesPanelCollapsed, sourcesW]);
 
   const onMouseDown = useCallback((panel: 'sources' | 'studio', e: React.MouseEvent) => {
     e.preventDefault();
@@ -146,7 +150,9 @@ export function AppShell() {
     };
   }, [sourcesW, studioW]);
 
-  const transitionStyle = isResizing ? undefined : { transition: 'width 200ms ease' };
+  // Skip transition when auto-expanding to full width so table-fixed layouts
+  // calculate their column widths against the final container size immediately.
+  const transitionStyle = isResizing || showFullWidth ? undefined : { transition: 'width 200ms ease' };
 
   // Ctrl+K to open session search
   useEffect(() => {
@@ -198,7 +204,7 @@ export function AppShell() {
 
       {/* Studio Panel */}
       <aside
-        className="shrink-0 bg-card"
+        className="shrink-0 overflow-hidden bg-card"
         style={{
           width: studioPanelCollapsed ? COLLAPSED_W : studioW,
           ...transitionStyle,

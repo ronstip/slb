@@ -26,10 +26,12 @@ SELECT
     e.saves,
     COALESCE(e.likes, 0) + COALESCE(e.shares, 0) + COALESCE(e.views, 0) AS total_engagement,
     ep.sentiment,
+    ep.emotion,
     ep.themes,
     ep.entities,
     ep.ai_summary,
-    ep.content_type
+    ep.content_type,
+    ep.key_quotes
 FROM social_listening.posts p
 LEFT JOIN latest_engagement e ON e.post_id = p.post_id AND e.rn = 1
 LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id

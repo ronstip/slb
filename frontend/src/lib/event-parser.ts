@@ -12,13 +12,6 @@ export function isDesignResearchResult(
   return toolName === 'design_research' && result?.status === 'success' && !!result?.config;
 }
 
-export function isProgressResult(
-  toolName: string,
-  result?: Record<string, unknown>,
-): boolean {
-  return toolName === 'get_progress' && result?.status === 'success';
-}
-
 export function isDataExportResult(
   toolName: string,
   result?: Record<string, unknown>,

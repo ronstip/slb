@@ -186,8 +186,8 @@ function resolveUrl(m: MediaRef): string {
 }
 
 function PostMedia({ media, postUrl }: { media: MediaRef[]; postUrl: string }) {
-  const images = media.filter((m) => m.media_type === 'image');
   const videos = media.filter((m) => m.media_type === 'video');
+  const images = media.filter((m) => m.media_type !== 'video');
 
   // If there's a video, show it prominently (no extra thumbnail images)
   if (videos.length > 0) {
@@ -258,7 +258,6 @@ function MediaImage({ media, className }: { media: MediaRef; className?: string 
       <img
         src={src}
         alt=""
-        loading="lazy"
         referrerPolicy="no-referrer"
         onLoad={() => setLoaded(true)}
         onError={() => {

@@ -81,7 +81,7 @@ export function InsightReportView({ artifact }: InsightReportViewProps) {
   const footerCards = artifact.cards.filter((c) => c.layout?.zone === 'footer');
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-secondary px-3 py-2">
         <Button
@@ -109,7 +109,7 @@ export function InsightReportView({ artifact }: InsightReportViewProps) {
         </Button>
       </div>
 
-      <div ref={contentRef} className="p-4">
+      <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto p-4">
         <h3 className="text-base font-semibold text-foreground">{artifact.title}</h3>
         {dateRange && (
           <p className="mt-0.5 text-xs text-muted-foreground">{dateRange}</p>

@@ -533,6 +533,7 @@ export interface DataExportRow {
   ai_summary: string | null;
   content_type: string | null;
   key_quotes: string[] | null;
+  media_refs?: string | MediaRef[];
   custom_fields?: Record<string, unknown> | null;
 }
 

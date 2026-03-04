@@ -11,7 +11,6 @@ import type { RawADKEvent } from '../api/endpoints/sessions.ts';
 import {
   getToolDisplayText,
   isDesignResearchResult,
-  isProgressResult,
   isDataExportResult,
   isChartResult,
   isPostEmbedResult,
@@ -175,8 +174,6 @@ export function reconstructSession(
             sourceIds: (state.selected_sources as string[]) || [],
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
-        } else if (isProgressResult(toolName, result)) {
-          msg.cards.push({ type: 'progress', data: result });
         } else if (isReportResult(toolName, result)) {
           msg.cards.push({ type: 'insight_report', data: result });
           artifacts.push({

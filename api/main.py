@@ -250,6 +250,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         session.state["first_message"] = chat_request.message
     session.state["message_count"] = session.state.get("message_count", 0) + 1
 
+    # Persist state changes so the ADK runner picks them up
+    runner.session_service._write_session(session)
+
     # Track usage
     from api.services.usage_service import track_query
     track_query(user_id, user.org_id, session_id)

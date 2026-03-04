@@ -7,7 +7,7 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isProgressResult, isDataExportResult, isChartResult, isPostEmbedResult, isReportResult, isDashboardResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isPostEmbedResult, isReportResult, isDashboardResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard } from '../../../api/types.ts';
 
 export function useSSEChat() {
@@ -182,11 +182,6 @@ export function useSSEChat() {
               } else if (isPostEmbedResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'post_embed',
-                  data: result!,
-                });
-              } else if (isProgressResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'progress',
                   data: result!,
                 });
               } else if (isReportResult(toolName, result)) {

@@ -8,7 +8,6 @@ import { ToolIndicator } from './ToolIndicator.tsx';
 import { ThinkingBox } from './ThinkingBox.tsx';
 import { StatusLine } from './StatusLine.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
-import { ProgressCard } from './cards/ProgressCard.tsx';
 import { DataExportCard } from './cards/DataExportCard.tsx';
 import { ChartCard } from './cards/ChartCard.tsx';
 import { PostEmbedCard } from './cards/PostEmbedCard.tsx';
@@ -125,8 +124,6 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           switch (card.type) {
             case 'research_design':
               return <ResearchDesignCard key={i} data={card.data as unknown as DesignResearchResult} />;
-            case 'progress':
-              return <ProgressCard key={i} data={card.data} />;
             case 'data_export':
               return <DataExportCard key={i} data={card.data} />;
             case 'chart':
