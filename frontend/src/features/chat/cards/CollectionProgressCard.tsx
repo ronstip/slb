@@ -110,7 +110,7 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
             </div>
             <div className="rounded-lg bg-muted/40 px-3 py-2 text-center">
               <p className="text-base font-bold tabular-nums text-foreground">
-                {formatNumber(statusData?.total_views ?? 0)}
+                {isActive && (statusData?.total_views ?? 0) === 0 ? '—' : formatNumber(statusData?.total_views ?? 0)}
               </p>
               <p className="text-[10px] text-muted-foreground">Views</p>
             </div>
@@ -157,7 +157,7 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
 
   if (variant === 'standalone') {
     return (
-      <div className="mt-3 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/5 to-background shadow-sm">
+      <div className="mt-3 overflow-hidden rounded-2xl border border-accent-vibrant/20 bg-gradient-to-b from-accent-vibrant/5 to-background shadow-sm">
         {inner}
       </div>
     );

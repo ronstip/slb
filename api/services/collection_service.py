@@ -192,7 +192,7 @@ def _run_pipeline(collection_id: str) -> None:
 
     # Check if collection was cancelled
     status = fs.get_collection_status(collection_id)
-    if not status or status.get("status") not in ("completed", "collecting"):
+    if not status or status.get("status") not in ("enriching", "collecting"):
         enrichment_executor.shutdown(wait=False)
         return
 

@@ -19,12 +19,20 @@ import {
   SelectValue,
 } from '../../components/ui/select.tsx';
 
+export interface CollectionFormSummary {
+  keywords: string[];
+  platforms: string[];
+  description: string;
+}
+
 interface CollectionFormProps {
   prefill?: CollectionConfig;
   onClose: () => void;
   variant?: 'modal' | 'inline';
   onSubmitStart?: () => void;
-  onSubmitSuccess?: (collectionId: string) => void;
+  onSubmitSuccess?: (collectionId: string, summary?: CollectionFormSummary) => void;
+  onSubmitError?: () => void;
+  suppressSystemMessage?: boolean;
 }
 
 const TIME_RANGES = [
@@ -37,7 +45,7 @@ const TIME_RANGES = [
 
 const MAX_CALLS_OPTIONS = [1, 2, 3, 5];
 
-export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitStart, onSubmitSuccess }: CollectionFormProps) {
+export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitStart, onSubmitSuccess, onSubmitError, suppressSystemMessage }: CollectionFormProps) {
   const [description, setDescription] = useState(prefill?.keywords?.join(', ') || '');
   const [platforms, setPlatforms] = useState<string[]>(prefill?.platforms || ['instagram', 'tiktok']);
   const [keywords, setKeywords] = useState<string[]>(prefill?.keywords || []);
@@ -150,16 +158,19 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
         createdAt: new Date().toISOString(),
       });
 
-      const platformNames = platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ');
-      addSystemMessage(
-        `Collection started: ${description || keywords.join(', ')} on ${platformNames} — ${keywords.length} keywords, last ${timeRangeDays === 1 ? '24 hours' : `${timeRangeDays} days`}.`,
-      );
+      if (!suppressSystemMessage) {
+        const platformNames = platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ');
+        addSystemMessage(
+          `Collection started: ${description || keywords.join(', ')} on ${platformNames} — ${keywords.length} keywords, last ${timeRangeDays === 1 ? '24 hours' : `${timeRangeDays} days`}.`,
+        );
+      }
 
       onClose();
-      onSubmitSuccess?.(result.collection_id);
+      onSubmitSuccess?.(result.collection_id, { keywords, platforms, description });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create collection';
       setError(message);
+      onSubmitError?.();
     } finally {
       setSubmitting(false);
     }

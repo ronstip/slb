@@ -17,7 +17,8 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
   const [formVisible, setFormVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [collectionId, setCollectionId] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
 
   const addSource = useSourcesStore((s) => s.addSource);
@@ -27,6 +28,7 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
   const handleDirectStart = async () => {
     if (submitting) return;
     setSubmitting(true);
+    setError(null);
     try {
       const cfg = data.config;
       const timeRangeDays = Math.max(1, Math.round(
@@ -63,7 +65,9 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
       onCollectionStarted?.(
         `Collection just started for "${keywords}" on ${platformNames}. Collection ID: ${result.collection_id}.`,
       );
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start collection';
+      setError(message);
       setSubmitting(false);
     }
   };
@@ -76,17 +80,14 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
     }
   }, [formVisible]);
 
-  // Collapse details after submission starts
-  useEffect(() => {
-    if (submitted) setDetailsOpen(false);
-  }, [submitted]);
-
   const platformSummary = data.summary.platforms
     .map((p) => PLATFORM_LABELS[p] || p)
     .join(', ');
 
+  const keywordSummary = data.summary.keywords.join(', ');
+
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/5 to-background shadow-sm">
+    <div className="mt-3 overflow-hidden rounded-2xl border border-accent-vibrant/20 bg-gradient-to-b from-accent-vibrant/5 to-background shadow-sm">
       {/* ── Header row ── */}
       <div className="flex items-center justify-between px-5 py-3.5">
         <div className="flex items-center gap-2.5">
@@ -128,12 +129,21 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
                 className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
               >
                 <Play className="h-3.5 w-3.5" />
-                Start
+                Start Collection
               </button>
             </>
           )}
         </div>
       </div>
+
+      {/* ── Compact summary (visible when details collapsed & submitted) ── */}
+      {!detailsOpen && submitted && keywordSummary && (
+        <div className="border-t border-border/30 px-5 py-2">
+          <p className="truncate text-[11px] text-muted-foreground">
+            {keywordSummary} · {platformSummary}
+          </p>
+        </div>
+      )}
 
       {/* ── Collapsable config details ── */}
       {detailsOpen && (
@@ -178,6 +188,15 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
         </div>
       )}
 
+      {/* ── Error banner ── */}
+      {error && (
+        <div className="border-t border-border/30 px-5 py-2.5">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+            {error}
+          </div>
+        </div>
+      )}
+
       {/* ── Inline edit form ── */}
       {formVisible && !submitted && (
         <div ref={formContainerRef} className="border-t border-border/30">
@@ -185,13 +204,26 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
             prefill={data.config}
             onClose={() => setFormVisible(false)}
             variant="inline"
+            suppressSystemMessage
             onSubmitStart={() => {
               setFormVisible(false);
               setSubmitting(true);
+              setError(null);
             }}
-            onSubmitSuccess={(id) => {
+            onSubmitSuccess={(id, summary) => {
               setCollectionId(id);
               setSubmitting(false);
+              if (summary && onCollectionStarted) {
+                const platformNames = summary.platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ');
+                const kw = summary.keywords.join(', ');
+                onCollectionStarted(
+                  `Collection just started for "${kw}" on ${platformNames}. Collection ID: ${id}.`,
+                );
+              }
+            }}
+            onSubmitError={() => {
+              setSubmitting(false);
+              setFormVisible(true);
             }}
           />
         </div>
