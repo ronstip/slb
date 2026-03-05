@@ -1,9 +1,11 @@
-import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles, Presentation } from 'lucide-react';
+import { useState } from 'react';
+import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles, Presentation, BarChart3 } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { FeedTab } from './FeedTab.tsx';
 import { ArtifactsTab } from './ArtifactsTab.tsx';
+import { ChartDialog } from './ChartDialog.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs.tsx';
 import {
@@ -19,6 +21,7 @@ export function StudioPanel() {
   const activeTab = useStudioStore((s) => s.activeTab);
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const { sendMessage } = useSSEChat();
+  const [chartOpen, setChartOpen] = useState(false);
 
   return (
     <div className="flex h-full flex-col">
@@ -55,6 +58,10 @@ export function StudioPanel() {
                   <FileDown className="mr-2 h-3.5 w-3.5" />
                   Data Export
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setChartOpen(true)}>
+                  <BarChart3 className="mr-2 h-3.5 w-3.5" />
+                  Chart
+                </DropdownMenuItem>
                 <DropdownMenuItem disabled>
                   <Presentation className="mr-2 h-3.5 w-3.5" />
                   Deck Slides
@@ -83,6 +90,8 @@ export function StudioPanel() {
           </Tabs>
         </div>
       )}
+
+      <ChartDialog open={chartOpen} onOpenChange={setChartOpen} onSubmit={sendMessage} />
     </div>
   );
 }
