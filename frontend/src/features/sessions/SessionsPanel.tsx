@@ -1,5 +1,6 @@
 import {
   Building2,
+  Layers,
   Library,
   LogOut,
   MessageSquareText,
@@ -44,6 +45,7 @@ export function SessionsPanel() {
   const toggle = useUIStore((s) => s.toggleSourcesPanel);
   const openSearch = useUIStore((s) => s.openSessionSearch);
   const openCollectionsLibrary = useUIStore((s) => s.openCollectionsLibrary);
+  const openArtifactLibrary = useUIStore((s) => s.openArtifactLibrary);
   const sessions = useSessionStore((s) => s.sessions);
   const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
   const navigate = useNavigate();
@@ -174,6 +176,16 @@ export function SessionsPanel() {
           <TooltipContent side="right">Collections</TooltipContent>
         </Tooltip>
 
+        {/* Artifact Library */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={openArtifactLibrary}>
+              <Layers className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Artifacts</TooltipContent>
+        </Tooltip>
+
         {/* Spacer — also clickable to expand */}
         <div className="flex-1" onClick={toggle} />
 
@@ -237,6 +249,13 @@ export function SessionsPanel() {
         >
           <Library className="h-4 w-4 shrink-0" />
           Collections
+        </button>
+        <button
+          onClick={openArtifactLibrary}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Layers className="h-4 w-4 shrink-0" />
+          Artifacts
         </button>
       </div>
 

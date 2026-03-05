@@ -41,6 +41,7 @@ import csv
 import io
 
 from api.routers import sessions as sessions_router
+from api.routers import artifacts as artifacts_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionModeRequest
 from api.schemas.responses import (
     BreakdownItem,
@@ -96,6 +97,7 @@ app.include_router(billing_router.router)
 app.include_router(sessions_router.router)
 app.include_router(admin_router.router)
 app.include_router(dashboard_router.router)
+app.include_router(artifacts_router.router)
 
 # CORS middleware — origins configurable via CORS_ORIGINS env var
 _settings = get_settings()
@@ -143,6 +145,99 @@ def get_runner(model: str | None = None) -> Runner:
             memory_service=_memory_service,
         )
     return _runners[model_key]
+
+
+# ---------------------------------------------------------------------------
+# Artifact auto-save
+# ---------------------------------------------------------------------------
+
+_ARTIFACT_ROW_CAP = 200
+
+
+def _maybe_persist_artifact(
+    tool_name: str,
+    result: dict,
+    user_id: str,
+    org_id: str | None,
+    session_id: str,
+) -> str | None:
+    """If the tool result is an artifact, persist to Firestore. Returns artifact_id or None."""
+    if result.get("status") != "success":
+        return None
+
+    artifact_type = None
+    artifact_id = None
+    title = ""
+    collection_ids: list[str] = []
+    payload: dict = {}
+
+    if tool_name == "generate_report" and result.get("cards"):
+        artifact_type = "insight_report"
+        artifact_id = result.get("report_id", f"report-{uuid4().hex[:8]}")
+        title = result.get("title", "Insight Report")
+        collection_ids = result.get("collection_ids") or []
+        payload = {
+            "cards": result.get("cards", []),
+            "date_from": result.get("date_from"),
+            "date_to": result.get("date_to"),
+            "collection_names": result.get("collection_names", []),
+        }
+    elif tool_name == "create_chart" and result.get("chart_type"):
+        artifact_type = "chart"
+        artifact_id = f"chart-{uuid4().hex[:8]}"
+        title = result.get("title", "Chart")
+        payload = {
+            "chart_type": result.get("chart_type"),
+            "data": result.get("data", []),
+            "color_overrides": result.get("color_overrides"),
+        }
+    elif tool_name == "export_data" and isinstance(result.get("rows"), list):
+        artifact_type = "data_export"
+        artifact_id = f"export-{uuid4().hex[:8]}"
+        title = result.get("title", "Data Export")
+        rows = result.get("rows", [])
+        payload = {
+            "rows": rows[:_ARTIFACT_ROW_CAP],
+            "row_count": result.get("row_count", len(rows)),
+            "column_names": result.get("column_names", []),
+            "truncated": len(rows) > _ARTIFACT_ROW_CAP,
+        }
+        collection_ids = result.get("collection_ids") or []
+    elif tool_name == "generate_dashboard" and result.get("dashboard_id"):
+        artifact_type = "dashboard"
+        artifact_id = result.get("dashboard_id", f"dash-{uuid4().hex[:8]}")
+        title = result.get("title", "Dashboard")
+        collection_ids = result.get("collection_ids") or []
+        payload = {
+            "collection_ids": collection_ids,
+            "collection_names": result.get("collection_names", {}),
+        }
+    else:
+        return None
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "type": artifact_type,
+        "title": title,
+        "user_id": user_id,
+        "org_id": org_id,
+        "session_id": session_id,
+        "collection_ids": collection_ids,
+        "favorited": False,
+        "shared": False,
+        "created_at": now,
+        "updated_at": now,
+        "payload": payload,
+    }
+
+    try:
+        fs = get_fs()
+        fs.create_artifact(artifact_id, doc)
+    except Exception as e:
+        logger.warning("Failed to persist artifact %s: %s", artifact_id, e)
+        return None
+
+    return artifact_id
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +441,14 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     # text segment (post-tool) streams fresh
                     if et == "tool_result":
                         streamed_text = False
+
+                        # Auto-save artifacts to Firestore
+                        tr_name = event_data.get("metadata", {}).get("name", "")
+                        tr_result = event_data.get("metadata", {}).get("result", {})
+                        if isinstance(tr_result, dict):
+                            _maybe_persist_artifact(
+                                tr_name, tr_result, user_id, user.org_id, session_id
+                            )
 
                 if event.is_final_response():
                     text = _extract_text(event)

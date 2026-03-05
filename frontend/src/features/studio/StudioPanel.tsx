@@ -1,4 +1,4 @@
-import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles, Presentation } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
@@ -54,6 +54,10 @@ export function StudioPanel() {
                 <DropdownMenuItem onClick={() => sendMessage('Export the data for the selected sources as CSV.')}>
                   <FileDown className="mr-2 h-3.5 w-3.5" />
                   Data Export
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled>
+                  <Presentation className="mr-2 h-3.5 w-3.5" />
+                  Deck Slides
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

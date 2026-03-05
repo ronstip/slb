@@ -21,6 +21,7 @@ interface UIStore {
   collectionModalOpen: boolean;
   collectionModalPrefill: CollectionConfig | null;
   collectionsLibraryOpen: boolean;
+  artifactLibraryOpen: boolean;
   activePoll: PollData | null;
   sessionSearchOpen: boolean;
 
@@ -32,6 +33,8 @@ interface UIStore {
   closeCollectionModal: () => void;
   openCollectionsLibrary: () => void;
   closeCollectionsLibrary: () => void;
+  openArtifactLibrary: () => void;
+  closeArtifactLibrary: () => void;
   showPoll: (poll: PollData) => void;
   dismissPoll: () => void;
   openSessionSearch: () => void;
@@ -53,6 +56,7 @@ export const useUIStore = create<UIStore>((set) => ({
   collectionModalOpen: false,
   collectionModalPrefill: null,
   collectionsLibraryOpen: false,
+  artifactLibraryOpen: false,
   activePoll: null,
   sessionSearchOpen: false,
 
@@ -99,6 +103,9 @@ export const useUIStore = create<UIStore>((set) => ({
 
   openCollectionsLibrary: () => set({ collectionsLibraryOpen: true }),
   closeCollectionsLibrary: () => set({ collectionsLibraryOpen: false }),
+
+  openArtifactLibrary: () => set({ artifactLibraryOpen: true }),
+  closeArtifactLibrary: () => set({ artifactLibraryOpen: false }),
 
   showPoll: (poll) => set({ activePoll: poll }),
   dismissPoll: () => set({ activePoll: null }),

@@ -9,6 +9,7 @@ import { SessionsPanel } from '../features/sessions/SessionsPanel.tsx';
 import { StudioPanel } from '../features/studio/StudioPanel.tsx';
 import { CollectionModal } from '../features/sources/CollectionModal.tsx';
 import { CollectionsLibrary } from '../features/collections/CollectionsLibrary.tsx';
+import { ArtifactLibrary } from '../features/artifacts/ArtifactLibrary.tsx';
 import { useCollectionPolling } from '../features/sources/useCollectionPolling.ts';
 
 const SOURCES_MIN = 220;
@@ -218,6 +219,9 @@ export function AppShell() {
 
       {/* Collections Library Drawer */}
       <CollectionsLibrary />
+
+      {/* Artifact Library Dialog */}
+      <ArtifactLibrary />
     </div>
   );
 }

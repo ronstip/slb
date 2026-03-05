@@ -55,6 +55,7 @@ interface StudioStore {
 
   setActiveTab: (tab: StudioTab) => void;
   addArtifact: (artifact: Artifact) => void;
+  loadExternalArtifact: (artifact: Artifact) => void;
   expandReport: (id: string) => void;
   collapseReport: () => void;
   setArtifacts: (artifacts: Artifact[]) => void;
@@ -72,6 +73,12 @@ export const useStudioStore = create<StudioStore>((set) => ({
 
   addArtifact: (artifact) =>
     set((s) => ({ artifacts: [artifact, ...s.artifacts] })),
+
+  loadExternalArtifact: (artifact) =>
+    set((s) => {
+      if (s.artifacts.some((a) => a.id === artifact.id)) return s;
+      return { artifacts: [artifact, ...s.artifacts] };
+    }),
 
   setArtifacts: (artifacts) => set({ artifacts }),
   expandReport: (id) => set({ expandedReportId: id }),
