@@ -62,7 +62,7 @@ export function QuickChoicePoll({ poll, onSubmit }: QuickChoicePollProps) {
               name="poll"
               checked={selected.includes(opt.value)}
               onChange={() => handleSelect(opt.value)}
-              className="text-primary focus:ring-primary"
+              className="text-foreground focus:ring-foreground"
             />
             <span className="text-foreground">{opt.label}</span>
           </label>

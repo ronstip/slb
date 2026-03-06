@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
 import { useSourcesStore, type Source } from '../../stores/sources-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
@@ -62,7 +61,6 @@ interface SourceCardProps {
 }
 
 export function SourceCard({ source }: SourceCardProps) {
-  const navigate = useNavigate();
   const { profile } = useAuth();
   const toggleActive = useSourcesStore((s) => s.toggleActive);
   const removeFromSession = useSourcesStore((s) => s.removeFromSession);
@@ -107,7 +105,6 @@ export function SourceCard({ source }: SourceCardProps) {
     if (studioPanelCollapsed) {
       toggleStudioPanel();
     }
-    navigate(`/collection/${source.collectionId}`);
   };
 
   const handleToggleVisibility = async (e: Event) => {
@@ -117,8 +114,8 @@ export function SourceCard({ source }: SourceCardProps) {
       await setCollectionVisibility(source.collectionId, newVisibility);
       updateSource(source.collectionId, { visibility: newVisibility });
       queryClient.invalidateQueries({ queryKey: ['collections'] });
-    } catch {
-      // handle error
+    } catch (err) {
+      console.error('Source operation failed:', err);
     }
   };
 
@@ -244,7 +241,7 @@ export function SourceCard({ source }: SourceCardProps) {
               ? 'border-emerald-500/30 bg-emerald-500/5'
               : 'border-emerald-500/10 hover:border-emerald-500/30 hover:bg-emerald-500/5'
             : source.active
-              ? 'border-primary/30 bg-primary/5'
+              ? 'border-accent-vibrant/30 bg-accent-vibrant/5'
               : 'border-transparent hover:border-border/60 hover:bg-muted/50',
         )}
         onClick={handleCardClick}
@@ -254,7 +251,7 @@ export function SourceCard({ source }: SourceCardProps) {
           className={cn(
             'absolute left-1 top-[12%] bottom-[12%] w-[3px] rounded-full transition-all duration-200',
             source.active
-              ? isMonitoring ? 'bg-emerald-500' : 'bg-primary'
+              ? isMonitoring ? 'bg-emerald-500' : 'bg-accent-vibrant'
               : 'bg-transparent',
           )}
         />
@@ -274,10 +271,10 @@ export function SourceCard({ source }: SourceCardProps) {
               source.active
                 ? isMonitoring
                   ? 'border-emerald-500 bg-emerald-500'
-                  : 'border-primary bg-primary'
+                  : 'border-foreground bg-foreground'
                 : isMonitoring
                   ? 'border-muted-foreground/30 bg-transparent hover:border-emerald-500/60'
-                  : 'border-muted-foreground/30 bg-transparent hover:border-primary/60',
+                  : 'border-muted-foreground/30 bg-transparent hover:border-foreground/60',
             )}
           >
             {source.active && <Check className="h-2.5 w-2.5 text-primary-foreground stroke-[3]" />}
@@ -302,7 +299,7 @@ export function SourceCard({ source }: SourceCardProps) {
                 <span className="text-[8px] font-semibold uppercase tracking-wider text-violet-500">AI</span>
               </span>
             )}
-            {isShared && <Globe className="h-3 w-3 shrink-0 text-primary" />}
+            {isShared && <Globe className="h-3 w-3 shrink-0 text-accent-blue" />}
           </div>
 
           {/* Meta row */}

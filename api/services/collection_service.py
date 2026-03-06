@@ -42,11 +42,12 @@ def create_collection_from_request(
     request: CreateCollectionRequest,
     user_id: str,
     org_id: str | None = None,
+    session_id: str = "",
+    extra_config: dict | None = None,
 ) -> dict:
-    """Create a collection from a frontend modal request.
+    """Create a collection, insert records, and dispatch the worker.
 
-    This replicates the logic from start_collection tool but is callable
-    from the REST API without going through the agent.
+    Used by both the REST endpoint and the agent start_collection tool.
     """
     settings = get_settings()
     bq = get_bq()
@@ -71,6 +72,8 @@ def create_collection_from_request(
         "ongoing": request.ongoing,
         "schedule": request.schedule if request.ongoing else None,
     }
+    if extra_config:
+        config.update(extra_config)
 
     # Insert collection record into BigQuery
     bq.insert_rows(
@@ -80,7 +83,7 @@ def create_collection_from_request(
                 "collection_id": collection_id,
                 "user_id": user_id,
                 "org_id": org_id,
-                "session_id": "",
+                "session_id": session_id,
                 "original_question": request.description,
                 "config": json.dumps(config),
             }
@@ -92,7 +95,7 @@ def create_collection_from_request(
 
     # Track usage
     from api.services.usage_service import track_collection_created
-    track_collection_created(user_id, org_id, collection_id)
+    track_collection_created(user_id, org_id, collection_id, session_id=session_id)
 
     # Dispatch worker
     if settings.is_dev:
@@ -112,6 +115,7 @@ def create_collection_from_request(
     return {
         "collection_id": collection_id,
         "status": "pending",
+        "config": config,
     }
 
 
@@ -188,11 +192,12 @@ def _run_pipeline(collection_id: str) -> None:
 
     # Check if collection was cancelled
     status = fs.get_collection_status(collection_id)
-    if not status or status.get("status") not in ("completed", "collecting"):
+    if not status or status.get("status") not in ("enriching", "collecting"):
         enrichment_executor.shutdown(wait=False)
         return
 
     # Step 2: Wait for all enrichment batches to complete
+    enrichment_executor.shutdown(wait=True)
     enrichment_failed = False
     for future in enrichment_futures:
         try:
@@ -200,19 +205,19 @@ def _run_pipeline(collection_id: str) -> None:
         except Exception:
             logger.exception("Enrichment batch failed for %s", collection_id)
             enrichment_failed = True
-    enrichment_executor.shutdown()
 
-    if enrichment_failed:
-        fs.update_collection_status(
-            collection_id, status="failed", error_message="One or more enrichment batches failed",
-        )
-        return
-
-    # Step 3: Update enrichment counts in Firestore
+    # Step 3: Update enrichment counts in Firestore (even on partial failure)
     try:
         update_enrichment_counts(collection_id)
     except Exception:
         logger.exception("Failed to update enrichment counts for %s", collection_id)
+
+    if enrichment_failed:
+        fs.update_collection_status(
+            collection_id, status="completed_with_errors",
+            error_message="One or more enrichment batches failed. Partial data is available.",
+        )
+        # Continue to embedding/stats — partial enrichment data is still useful
 
     # Step 4: Embedding (BQ-native, unchanged)
     try:
@@ -224,17 +229,47 @@ def _run_pipeline(collection_id: str) -> None:
     except Exception:
         logger.exception("Embedding failed for %s", collection_id)
 
+    # Step 4b: Update posts_embedded count in Firestore
+    try:
+        bq = get_bq()
+        rows = bq.query(
+            "SELECT COUNT(*) as cnt FROM social_listening.post_embeddings WHERE collection_id = @collection_id",
+            {"collection_id": collection_id},
+        )
+        embedded_count = rows[0]["cnt"] if rows else 0
+        fs.update_collection_status(collection_id, posts_embedded=embedded_count)
+    except Exception:
+        logger.exception("Failed to update posts_embedded count for %s", collection_id)
+
     # Step 5: Compute and persist statistical signature (non-fatal)
+    # Also extract total_views + positive_pct for the status card.
     try:
         from api.services.statistical_signature_service import refresh_statistical_signature
 
         bq = get_bq()
-        refresh_statistical_signature(collection_id, bq, fs)
+        sig = refresh_statistical_signature(collection_id, bq, fs)
+
+        # Write headline metrics to Firestore status doc for progress card
+        eng = sig.get("engagement_summary") or {}
+        total_views = int(eng.get("total_views") or 0)
+        positive = next(
+            (r for r in sig.get("sentiment_breakdown", []) if r["value"] == "positive"),
+            None,
+        )
+        positive_pct = None
+        if positive and total_views > 0:
+            positive_pct = round(positive["view_count"] / total_views * 100, 1)
+        fs.update_collection_status(
+            collection_id,
+            total_views=total_views,
+            positive_pct=positive_pct,
+        )
     except Exception:
         logger.exception("Statistical signature computation failed for %s", collection_id)
 
     # Step 6: Decide final status based on ongoing flag
     status = fs.get_collection_status(collection_id)
+    current_status = (status or {}).get("status")
     config = (status or {}).get("config") or {}
     if config.get("ongoing"):
         schedule = config.get("schedule", "daily")
@@ -244,7 +279,7 @@ def _run_pipeline(collection_id: str) -> None:
         run_entry = {
             "run_at": now.isoformat(),
             "posts_added": (status or {}).get("posts_collected", 0),
-            "status": "completed",
+            "status": "completed" if not enrichment_failed else "completed_with_errors",
         }
         fs.update_collection_status(
             collection_id,
@@ -259,7 +294,8 @@ def _run_pipeline(collection_id: str) -> None:
             collection_id,
             next_run_at.isoformat(),
         )
-    else:
+    elif current_status != "completed_with_errors":
+        # Don't overwrite completed_with_errors from enrichment step
         fs.update_collection_status(collection_id, status="completed")
 
 

@@ -490,6 +490,68 @@ class FirestoreClient:
 
         self._db.collection("credit_purchases").add(data)
 
+    # --- Artifact methods ---
+
+    def create_artifact(self, artifact_id: str, data: dict) -> None:
+        self._db.collection("artifacts").document(artifact_id).set(data)
+        logger.info("Created artifact %s (type=%s)", artifact_id, data.get("type"))
+
+    def get_artifact(self, artifact_id: str) -> dict | None:
+        doc = self._db.collection("artifacts").document(artifact_id).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["artifact_id"] = doc.id
+        for key in ("created_at", "updated_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def list_artifacts(self, user_id: str, org_id: str | None = None) -> list[dict]:
+        """List artifacts visible to the user: own + org-shared. Payload excluded."""
+        seen: set[str] = set()
+        results: list[dict] = []
+
+        # User's own artifacts
+        for doc in self._db.collection("artifacts").where("user_id", "==", user_id).stream():
+            data = doc.to_dict()
+            data["artifact_id"] = doc.id
+            for key in ("created_at", "updated_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            data.pop("payload", None)
+            seen.add(doc.id)
+            results.append(data)
+
+        # Org-shared artifacts
+        if org_id:
+            for doc in (
+                self._db.collection("artifacts")
+                .where("org_id", "==", org_id)
+                .where("shared", "==", True)
+                .stream()
+            ):
+                if doc.id in seen:
+                    continue
+                data = doc.to_dict()
+                data["artifact_id"] = doc.id
+                for key in ("created_at", "updated_at"):
+                    if key in data and hasattr(data[key], "isoformat"):
+                        data[key] = data[key].isoformat()
+                data.pop("payload", None)
+                results.append(data)
+
+        results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return results
+
+    def update_artifact(self, artifact_id: str, **fields) -> None:
+        fields["updated_at"] = datetime.now(timezone.utc)
+        self._db.collection("artifacts").document(artifact_id).update(fields)
+
+    def delete_artifact(self, artifact_id: str) -> None:
+        self._db.collection("artifacts").document(artifact_id).delete()
+        logger.info("Deleted artifact %s", artifact_id)
+
     def get_credit_history(
         self, user_id: str | None = None, org_id: str | None = None
     ) -> list[dict]:

@@ -141,9 +141,9 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
   const colorKeys = customization?.colorKeys(artifact.data) ?? [];
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Header bar */}
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-secondary px-3 py-2">
+      <div className="shrink-0 flex items-center justify-between border-b border-border bg-secondary px-3 py-2">
         <button
           onClick={collapseReport}
           className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -160,7 +160,8 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
         </button>
       </div>
 
-      {/* Chart content */}
+      {/* Scrollable content */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
       <div ref={exportRef} className="px-4 pb-2 pt-4">
         <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {artifact.title}
@@ -233,7 +234,7 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
                   <button
                     onClick={() => setShowValues(!showValues)}
                     className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-                      showValues ? 'bg-primary' : 'bg-muted-foreground/20'
+                      showValues ? 'bg-foreground' : 'bg-muted-foreground/20'
                     }`}
                   >
                     <span
@@ -248,6 +249,7 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -273,7 +275,7 @@ function ColorPicker({
     <button
       onClick={onToggle}
       className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-border ${
-        active ? 'border-primary/50 bg-primary/5 text-foreground' : 'border-border/40'
+        active ? 'border-foreground/30 bg-foreground/5 text-foreground' : 'border-border/40'
       }`}
     >
       <div className="h-3 w-3 rounded-full border border-border/30" style={{ backgroundColor: color }} />

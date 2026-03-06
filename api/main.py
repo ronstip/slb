@@ -36,10 +36,12 @@ from api.deps import get_bq, get_fs, get_gcs
 from api.routers import settings as settings_router
 from api.routers import billing as billing_router
 from api.routers import admin as admin_router
+from api.routers import dashboard as dashboard_router
 import csv
 import io
 
 from api.routers import sessions as sessions_router
+from api.routers import artifacts as artifacts_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionModeRequest
 from api.schemas.responses import (
     BreakdownItem,
@@ -94,6 +96,8 @@ app.include_router(settings_router.router)
 app.include_router(billing_router.router)
 app.include_router(sessions_router.router)
 app.include_router(admin_router.router)
+app.include_router(dashboard_router.router)
+app.include_router(artifacts_router.router)
 
 # CORS middleware — origins configurable via CORS_ORIGINS env var
 _settings = get_settings()
@@ -120,7 +124,7 @@ THINKING_TOOLS = {
     "execute_sql", "get_table_info", "list_table_ids",
     "google_search", "design_research", "start_collection",
     "get_progress", "enrich_collection", "display_posts",
-    "get_past_collections", "generate_report", "get_sql_reference",
+    "get_past_collections", "generate_report", "generate_dashboard", "get_sql_reference",
 }
 
 
@@ -141,6 +145,99 @@ def get_runner(model: str | None = None) -> Runner:
             memory_service=_memory_service,
         )
     return _runners[model_key]
+
+
+# ---------------------------------------------------------------------------
+# Artifact auto-save
+# ---------------------------------------------------------------------------
+
+_ARTIFACT_ROW_CAP = 200
+
+
+def _maybe_persist_artifact(
+    tool_name: str,
+    result: dict,
+    user_id: str,
+    org_id: str | None,
+    session_id: str,
+) -> str | None:
+    """If the tool result is an artifact, persist to Firestore. Returns artifact_id or None."""
+    if result.get("status") != "success":
+        return None
+
+    artifact_type = None
+    artifact_id = None
+    title = ""
+    collection_ids: list[str] = []
+    payload: dict = {}
+
+    if tool_name == "generate_report" and result.get("cards"):
+        artifact_type = "insight_report"
+        artifact_id = result.get("report_id", f"report-{uuid4().hex[:8]}")
+        title = result.get("title", "Insight Report")
+        collection_ids = result.get("collection_ids") or []
+        payload = {
+            "cards": result.get("cards", []),
+            "date_from": result.get("date_from"),
+            "date_to": result.get("date_to"),
+            "collection_names": result.get("collection_names", []),
+        }
+    elif tool_name == "create_chart" and result.get("chart_type"):
+        artifact_type = "chart"
+        artifact_id = f"chart-{uuid4().hex[:8]}"
+        title = result.get("title", "Chart")
+        payload = {
+            "chart_type": result.get("chart_type"),
+            "data": result.get("data", []),
+            "color_overrides": result.get("color_overrides"),
+        }
+    elif tool_name == "export_data" and isinstance(result.get("rows"), list):
+        artifact_type = "data_export"
+        artifact_id = f"export-{uuid4().hex[:8]}"
+        title = result.get("title", "Data Export")
+        rows = result.get("rows", [])
+        payload = {
+            "rows": rows[:_ARTIFACT_ROW_CAP],
+            "row_count": result.get("row_count", len(rows)),
+            "column_names": result.get("column_names", []),
+            "truncated": len(rows) > _ARTIFACT_ROW_CAP,
+        }
+        collection_ids = result.get("collection_ids") or []
+    elif tool_name == "generate_dashboard" and result.get("dashboard_id"):
+        artifact_type = "dashboard"
+        artifact_id = result.get("dashboard_id", f"dash-{uuid4().hex[:8]}")
+        title = result.get("title", "Dashboard")
+        collection_ids = result.get("collection_ids") or []
+        payload = {
+            "collection_ids": collection_ids,
+            "collection_names": result.get("collection_names", {}),
+        }
+    else:
+        return None
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "type": artifact_type,
+        "title": title,
+        "user_id": user_id,
+        "org_id": org_id,
+        "session_id": session_id,
+        "collection_ids": collection_ids,
+        "favorited": False,
+        "shared": False,
+        "created_at": now,
+        "updated_at": now,
+        "payload": payload,
+    }
+
+    try:
+        fs = get_fs()
+        fs.create_artifact(artifact_id, doc)
+    except Exception as e:
+        logger.warning("Failed to persist artifact %s: %s", artifact_id, e)
+        return None
+
+    return artifact_id
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +345,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         session.state["first_message"] = chat_request.message
     session.state["message_count"] = session.state.get("message_count", 0) + 1
 
+    # Persist state changes so the ADK runner picks them up
+    runner.session_service._write_session(session)
+
     # Track usage
     from api.services.usage_service import track_query
     track_query(user_id, user.org_id, session_id)
@@ -341,6 +441,14 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     # text segment (post-tool) streams fresh
                     if et == "tool_result":
                         streamed_text = False
+
+                        # Auto-save artifacts to Firestore
+                        tr_name = event_data.get("metadata", {}).get("name", "")
+                        tr_result = event_data.get("metadata", {}).get("result", {})
+                        if isinstance(tr_result, dict):
+                            _maybe_persist_artifact(
+                                tr_name, tr_result, user_id, user.org_id, session_id
+                            )
 
                 if event.is_final_response():
                     text = _extract_text(event)
@@ -534,8 +642,8 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
                 collection_id=doc.id,
                 status=data.get("status", "unknown"),
                 posts_collected=data.get("posts_collected", 0),
-                posts_enriched=data.get("posts_enriched", 0),
-                posts_embedded=data.get("posts_embedded", 0),
+                total_views=data.get("total_views", 0),
+                positive_pct=data.get("positive_pct"),
                 error_message=data.get("error_message"),
                 config=data.get("config"),
                 created_at=created_at_str,
@@ -721,8 +829,8 @@ async def get_collection_status(
         collection_id=collection_id,
         status=status.get("status", "unknown"),
         posts_collected=status.get("posts_collected", 0),
-        posts_enriched=status.get("posts_enriched", 0),
-        posts_embedded=status.get("posts_embedded", 0),
+        total_views=status.get("total_views", 0),
+        positive_pct=status.get("positive_pct"),
         error_message=status.get("error_message"),
         config=status.get("config"),
         visibility=status.get("visibility", "private"),

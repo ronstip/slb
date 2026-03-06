@@ -12,35 +12,10 @@ import { Input } from '../../components/ui/input.tsx';
 import { ScrollArea } from '../../components/ui/scroll-area.tsx';
 import { Separator } from '../../components/ui/separator.tsx';
 import type { Source } from '../../stores/sources-store.ts';
+import { mapCollectionToSource } from '../collections/utils.ts';
 
 interface CollectionPickerProps {
   onClose: () => void;
-}
-
-function mapCollectionToSource(c: Awaited<ReturnType<typeof getCollectionStatus>>) {
-  return {
-    collectionId: c.collection_id,
-    status: c.status,
-    config: c.config ?? {
-      platforms: [],
-      keywords: [],
-      channel_urls: [],
-      time_range: { start: '', end: '' },
-      max_calls: 0,
-      include_comments: false,
-      geo_scope: 'global',
-    },
-    title: c.config?.keywords?.join(', ') || `Collection ${c.collection_id.slice(0, 8)}`,
-    postsCollected: c.posts_collected,
-    postsEnriched: c.posts_enriched,
-    postsEmbedded: c.posts_embedded,
-    selected: false,
-    active: false,
-    createdAt: c.created_at ?? new Date().toISOString(),
-    errorMessage: c.error_message,
-    visibility: (c.visibility as 'private' | 'org') ?? 'private',
-    userId: c.user_id ?? undefined,
-  };
 }
 
 function PickerRow({ source, onSelect }: { source: Source; onSelect: () => void }) {
@@ -64,7 +39,7 @@ function PickerRow({ source, onSelect }: { source: Source; onSelect: () => void 
     <div
       className={cn(
         'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/60',
-        source.selected && 'bg-primary/5',
+        source.selected && 'bg-accent-vibrant/5',
       )}
       onClick={onSelect}
     >
@@ -73,7 +48,7 @@ function PickerRow({ source, onSelect }: { source: Source; onSelect: () => void 
         className={cn(
           'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors',
           source.selected
-            ? 'border-primary bg-primary text-primary-foreground'
+            ? 'border-foreground bg-foreground text-background'
             : 'border-muted-foreground/40',
         )}
       >

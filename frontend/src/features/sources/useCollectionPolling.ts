@@ -52,7 +52,7 @@ export function useCollectionPolling() {
       const data = result.data;
 
       // Skip update if data hasn't changed since last time we processed it
-      const fingerprint = `${data.status}:${data.posts_collected}:${data.posts_enriched}:${data.posts_embedded}`;
+      const fingerprint = `${data.status}:${data.posts_collected}:${data.total_views}:${data.positive_pct}`;
       if (prevDataRef.current.get(collectionId) === fingerprint) continue;
 
       const prevFingerprint = prevDataRef.current.get(collectionId);
@@ -63,8 +63,8 @@ export function useCollectionPolling() {
       updateSource(collectionId, {
         status: data.status,
         postsCollected: data.posts_collected,
-        postsEnriched: data.posts_enriched,
-        postsEmbedded: data.posts_embedded,
+        totalViews: data.total_views,
+        positivePct: data.positive_pct,
         errorMessage: data.error_message ?? undefined,
         lastRunAt: data.last_run_at,
         nextRunAt: data.next_run_at,

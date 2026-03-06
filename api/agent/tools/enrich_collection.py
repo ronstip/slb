@@ -28,17 +28,17 @@ def enrich_collection(
     IMPORTANT: Always get explicit user approval before running enrichment.
 
     Args:
-        collection_id: The collection ID to enrich. Provide this OR post_ids.
-        post_ids: Comma-separated post IDs to enrich. Provide this OR collection_id.
+        collection_id: The collection ID to enrich. Required. When using post_ids, this scopes ownership.
+        post_ids: Comma-separated post IDs to enrich. Optional — if omitted, enriches all posts in the collection.
         min_likes: Minimum likes threshold for enrichment. Default 0 (enrich all).
 
     Returns:
         A dictionary confirming enrichment has started.
     """
-    if not collection_id and not post_ids:
+    if not collection_id:
         return {
             "status": "error",
-            "message": "Provide either collection_id or post_ids.",
+            "message": "collection_id is required (even when providing post_ids).",
         }
 
     settings = get_settings()

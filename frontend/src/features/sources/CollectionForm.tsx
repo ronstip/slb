@@ -19,12 +19,20 @@ import {
   SelectValue,
 } from '../../components/ui/select.tsx';
 
+export interface CollectionFormSummary {
+  keywords: string[];
+  platforms: string[];
+  description: string;
+}
+
 interface CollectionFormProps {
   prefill?: CollectionConfig;
   onClose: () => void;
   variant?: 'modal' | 'inline';
   onSubmitStart?: () => void;
-  onSubmitSuccess?: (collectionId: string) => void;
+  onSubmitSuccess?: (collectionId: string, summary?: CollectionFormSummary) => void;
+  onSubmitError?: () => void;
+  suppressSystemMessage?: boolean;
 }
 
 const TIME_RANGES = [
@@ -37,7 +45,7 @@ const TIME_RANGES = [
 
 const MAX_CALLS_OPTIONS = [1, 2, 3, 5];
 
-export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitStart, onSubmitSuccess }: CollectionFormProps) {
+export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitStart, onSubmitSuccess, onSubmitError, suppressSystemMessage }: CollectionFormProps) {
   const [description, setDescription] = useState(prefill?.keywords?.join(', ') || '');
   const [platforms, setPlatforms] = useState<string[]>(prefill?.platforms || ['instagram', 'tiktok']);
   const [keywords, setKeywords] = useState<string[]>(prefill?.keywords || []);
@@ -143,23 +151,26 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
         },
         title: description || keywords.join(', ') || 'New Collection',
         postsCollected: 0,
-        postsEnriched: 0,
-        postsEmbedded: 0,
+        totalViews: 0,
+        positivePct: null,
         selected: true,
         active: true,
         createdAt: new Date().toISOString(),
       });
 
-      const platformNames = platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ');
-      addSystemMessage(
-        `Collection started: ${description || keywords.join(', ')} on ${platformNames} — ${keywords.length} keywords, last ${timeRangeDays === 1 ? '24 hours' : `${timeRangeDays} days`}.`,
-      );
+      if (!suppressSystemMessage) {
+        const platformNames = platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ');
+        addSystemMessage(
+          `Collection started: ${description || keywords.join(', ')} on ${platformNames} — ${keywords.length} keywords, last ${timeRangeDays === 1 ? '24 hours' : `${timeRangeDays} days`}.`,
+        );
+      }
 
       onClose();
-      onSubmitSuccess?.(result.collection_id);
+      onSubmitSuccess?.(result.collection_id, { keywords, platforms, description });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create collection';
       setError(message);
+      onSubmitError?.();
     } finally {
       setSubmitting(false);
     }
@@ -189,8 +200,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
               onClick={() => togglePlatform(p)}
               className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
                 platforms.includes(p)
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'border border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground'
               }`}
             >
               {PLATFORM_LABELS[p]}
@@ -202,9 +213,9 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
       {/* Keywords */}
       <div className="mb-4">
         <Label className="mb-1.5">Keywords</Label>
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-ring">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-foreground/20 focus-within:ring-1 focus-within:ring-ring">
           {keywords.map((kw) => (
-            <Badge key={kw} variant="secondary" className="gap-1 bg-primary/10 text-primary">
+            <Badge key={kw} variant="secondary" className="gap-1 bg-foreground/10 text-foreground">
               {kw}
               <button onClick={() => setKeywords(keywords.filter((k) => k !== kw))}>
                 <X className="h-3 w-3" />
@@ -227,9 +238,9 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
         <Label className="mb-1.5">
           Channel URLs <span className="text-muted-foreground">(optional)</span>
         </Label>
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-ring">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 focus-within:border-foreground/20 focus-within:ring-1 focus-within:ring-ring">
           {channelUrls.map((url) => (
-            <Badge key={url} variant="secondary" className="gap-1 bg-primary/10 text-primary">
+            <Badge key={url} variant="secondary" className="gap-1 bg-foreground/10 text-foreground">
               {url.length > 30 ? url.slice(0, 30) + '...' : url}
               <button onClick={() => setChannelUrls(channelUrls.filter((u) => u !== url))}>
                 <X className="h-3 w-3" />
@@ -257,8 +268,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
               onClick={() => setTimeRangeDays(value)}
               className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
                 timeRangeDays === value
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'border border-border bg-card text-muted-foreground hover:border-primary/40'
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:border-foreground/40'
               }`}
             >
               {label}

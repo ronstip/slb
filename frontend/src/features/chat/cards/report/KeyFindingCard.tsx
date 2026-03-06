@@ -6,7 +6,7 @@ interface KeyFindingCardProps {
 
 const SIGNIFICANCE_CONFIG = {
   surprising: { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-500/5 border-amber-500/20' },
-  notable: { icon: Lightbulb, color: 'text-primary', bg: 'bg-primary/5 border-primary/20' },
+  notable: { icon: Lightbulb, color: 'text-accent-vibrant', bg: 'bg-accent-vibrant/5 border-accent-vibrant/20' },
   expected: { icon: CheckCircle2, color: 'text-muted-foreground', bg: 'bg-accent/30 border-border/30' },
 } as const;
 

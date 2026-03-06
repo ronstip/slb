@@ -7,7 +7,7 @@ export interface ToolIndicator {
 }
 
 export interface MessageCard {
-  type: 'research_design' | 'progress' | 'data_export' | 'chart' | 'post_embed' | 'decision' | 'finding' | 'plan' | 'insight_report';
+  type: 'research_design' | 'data_export' | 'chart' | 'post_embed' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress';
   data: Record<string, unknown>;
 }
 
@@ -36,6 +36,7 @@ interface ChatStore {
   setActiveAgent: (messageId: string, agent: string) => void;
   addToolCall: (messageId: string, name: string, displayText: string) => void;
   resolveToolCall: (messageId: string, name: string, result?: Record<string, unknown>) => void;
+  removeToolCall: (messageId: string, name: string) => void;
   addCard: (messageId: string, card: MessageCard) => void;
   appendThinking: (messageId: string, content: string) => void;
   setStatusLine: (messageId: string, status: string | null) => void;
@@ -145,6 +146,26 @@ export const useChatStore = create<ChatStore>((set) => ({
             }
             return t;
           }),
+        };
+      }),
+    })),
+
+  removeToolCall: (messageId, name) =>
+    set((s) => ({
+      messages: s.messages.map((m) => {
+        if (m.id !== messageId) return m;
+        // Remove the last unresolved indicator matching the name
+        let idx = -1;
+        for (let i = m.toolIndicators.length - 1; i >= 0; i--) {
+          if (m.toolIndicators[i].name === name && !m.toolIndicators[i].resolved) {
+            idx = i;
+            break;
+          }
+        }
+        if (idx === -1) return m;
+        return {
+          ...m,
+          toolIndicators: m.toolIndicators.filter((_, i) => i !== idx),
         };
       }),
     })),

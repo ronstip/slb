@@ -1,4 +1,5 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
@@ -6,13 +7,22 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isProgressResult, isDataExportResult, isChartResult, isPostEmbedResult, isReportResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isPostEmbedResult, isReportResult, isDashboardResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard } from '../../../api/types.ts';
 
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
+  const navigate = useNavigate();
+
+  // Clean up refs on unmount to prevent stale message finalization
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      activeMessageRef.current = null;
+    };
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -115,8 +125,21 @@ export function useSSEChat() {
               break;
 
             case 'context_update': {
-              // Agent changed its working collection set
-              useSourcesStore.getState().setAgentSelectedSources(event.agent_selected_sources);
+              // Agent changed its working collection set — validate IDs exist
+              try {
+                const sourcesState = useSourcesStore.getState();
+                const knownIds = new Set(sourcesState.sources.map((s) => s.collectionId));
+                const validIds = (event.agent_selected_sources ?? []).filter((id: string) => {
+                  if (!knownIds.has(id)) {
+                    console.warn(`[context_update] Unknown collection ID from agent: ${id}`);
+                    return false;
+                  }
+                  return true;
+                });
+                sourcesState.setAgentSelectedSources(validIds);
+              } catch (err) {
+                console.error('[context_update] Failed to process agent context update:', err);
+              }
               break;
             }
 
@@ -129,6 +152,13 @@ export function useSSEChat() {
             case 'tool_result': {
               const toolName = event.metadata.name;
               const result = event.metadata.result;
+
+              // Blocked tool calls (e.g. gate rejected) — remove the indicator silently
+              if (result?.status === 'blocked') {
+                chatState.removeToolCall(messageId, toolName);
+                break;
+              }
+
               chatState.resolveToolCall(messageId, toolName, result);
 
               // Handle special tool results
@@ -182,11 +212,6 @@ export function useSSEChat() {
                   type: 'post_embed',
                   data: result!,
                 });
-              } else if (isProgressResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'progress',
-                  data: result!,
-                });
               } else if (isReportResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'insight_report',
@@ -208,6 +233,24 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport(result.report_id as string);
+              } else if (isDashboardResult(toolName, result)) {
+                chatState.addCard(messageId, {
+                  type: 'dashboard',
+                  data: result,
+                });
+                // Auto-save dashboard artifact
+                useStudioStore.getState().addArtifact({
+                  id: result.dashboard_id as string,
+                  type: 'dashboard',
+                  title: result.title as string,
+                  collectionIds: result.collection_ids as string[],
+                  collectionNames: result.collection_names as Record<string, string>,
+                  createdAt: new Date(),
+                });
+                // Open studio panel, switch to artifacts, expand the dashboard
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
+                useStudioStore.getState().expandReport(result.dashboard_id as string);
               }
               break;
             }
@@ -224,8 +267,13 @@ export function useSSEChat() {
               if (event.session_title) {
                 sessionStore.setActiveSessionTitle(event.session_title);
               }
-              // Only fetch full sessions list when this is a brand-new session
-              if (isNew) sessionStore.fetchSessions();
+              // Update sorting timestamp so this session floats to the top
+              sessionStore.touchSession(event.session_id);
+              if (isNew) {
+                // New session created — fetch list and update URL
+                sessionStore.fetchSessions();
+                navigate(`/session/${event.session_id}`, { replace: true });
+              }
               break;
             }
 
@@ -248,7 +296,7 @@ export function useSSEChat() {
         useChatStore.getState().finalizeMessage(messageId);
       }
     },
-    [getToken],
+    [getToken, navigate],
   );
 
   const cancelStream = useCallback(() => {

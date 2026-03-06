@@ -35,8 +35,17 @@ interface InsightReportArtifact {
   createdAt: Date;
 }
 
-export type StudioTab = 'feed' | 'artifacts' | 'data';
-export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact;
+interface DashboardArtifact {
+  id: string;
+  type: 'dashboard';
+  title: string;
+  collectionIds: string[];
+  collectionNames: Record<string, string>;
+  createdAt: Date;
+}
+
+export type StudioTab = 'feed' | 'artifacts';
+export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact | DashboardArtifact;
 
 interface StudioStore {
   activeTab: StudioTab;
@@ -46,6 +55,7 @@ interface StudioStore {
 
   setActiveTab: (tab: StudioTab) => void;
   addArtifact: (artifact: Artifact) => void;
+  loadExternalArtifact: (artifact: Artifact) => void;
   expandReport: (id: string) => void;
   collapseReport: () => void;
   setArtifacts: (artifacts: Artifact[]) => void;
@@ -63,6 +73,12 @@ export const useStudioStore = create<StudioStore>((set) => ({
 
   addArtifact: (artifact) =>
     set((s) => ({ artifacts: [artifact, ...s.artifacts] })),
+
+  loadExternalArtifact: (artifact) =>
+    set((s) => {
+      if (s.artifacts.some((a) => a.id === artifact.id)) return s;
+      return { artifacts: [artifact, ...s.artifacts] };
+    }),
 
   setArtifacts: (artifacts) => set({ artifacts }),
   expandReport: (id) => set({ expandedReportId: id }),

@@ -97,7 +97,7 @@ export function FeedControls({
             <SlidersHorizontal className="h-3 w-3" />
             Filter
             {hasActiveFilter && (
-              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
+              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent-vibrant" />
             )}
           </Button>
         </DropdownMenuTrigger>

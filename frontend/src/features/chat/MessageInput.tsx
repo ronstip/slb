@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
-import { Send, Square } from 'lucide-react';
+import { Plus, Send, Square, X } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
-import { useUIStore } from '../../stores/ui-store.ts';
 import { PLATFORM_LABELS } from '../../lib/constants.ts';
+import { CollectionPicker } from '../sources/CollectionPicker.tsx';
 import { Button } from '../../components/ui/button.tsx';
+import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { cn } from '../../lib/utils.ts';
 
 interface MessageInputProps {
@@ -24,6 +25,7 @@ const CYCLING_PLACEHOLDERS = [
 export function MessageInput({ onSend, onCancel, centered = false }: MessageInputProps) {
   const [text, setText] = useState('');
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
 
@@ -35,10 +37,9 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
     }, 4000);
     return () => clearInterval(interval);
   }, [centered, text]);
-  const sources = useSourcesStore((s) => s.sources);
-  const sourcesPanelCollapsed = useUIStore((s) => s.sourcesPanelCollapsed);
-  const toggleSourcesPanel = useUIStore((s) => s.toggleSourcesPanel);
 
+  const sources = useSourcesStore((s) => s.sources);
+  const removeFromSession = useSourcesStore((s) => s.removeFromSession);
   const activeSources = sources.filter((s) => s.active && s.selected);
 
   useEffect(() => {
@@ -62,16 +63,76 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
     }
   };
 
-  const handlePillClick = () => {
-    if (sourcesPanelCollapsed) {
-      toggleSourcesPanel();
-    }
+  const statusDotColor = (status: string) => {
+    if (status === 'collecting' || status === 'enriching' || status === 'pending') return 'bg-amber-500 animate-pulse';
+    if (status === 'monitoring') return 'bg-emerald-500 animate-pulse';
+    if (status === 'completed') return 'bg-emerald-500';
+    if (status === 'failed') return 'bg-red-500';
+    return 'bg-muted-foreground';
   };
 
   return (
     <div className={cn(centered ? 'w-full max-w-2xl px-4' : 'px-6 pb-5 pt-2')}>
+      {/* Context bar — active source pills above the input */}
       <div className={cn(
-        'flex items-end gap-2 rounded-2xl border border-border bg-card shadow-md transition-shadow focus-within:border-primary/50 focus-within:shadow-lg',
+        'flex min-h-[24px] flex-wrap items-center justify-center gap-1.5',
+        centered ? 'mb-3' : 'mb-2 px-1',
+      )}>
+        {!centered && isAgentResponding && (
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-vibrant" />
+            <span className="text-xs text-muted-foreground">Agent is responding...</span>
+          </div>
+        )}
+
+        {!(isAgentResponding && !centered) && activeSources.length > 0 && (
+          <>
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">Context</span>
+            {activeSources.map((src) => {
+              const keywords = src.config.keywords ?? [];
+              const keywordText =
+                keywords.length === 0
+                  ? src.title
+                  : keywords.length <= 2
+                    ? keywords.join(', ')
+                    : `${keywords.slice(0, 2).join(', ')} +${keywords.length - 2}`;
+
+              return (
+                <span
+                  key={src.collectionId}
+                  className="group inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground transition-colors"
+                  title={`${src.title} · ${(src.config.platforms ?? []).map((p) => PLATFORM_LABELS[p] || p).join(', ')}`}
+                >
+                  <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', statusDotColor(src.status))} />
+                  <span className="max-w-[120px] truncate">{keywordText}</span>
+                  <button
+                    onClick={() => removeFromSession(src.collectionId)}
+                    className="ml-0.5 hidden rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-foreground group-hover:inline-flex"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </span>
+              );
+            })}
+
+            {/* Add more button */}
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger asChild>
+                <button className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent-vibrant/10 hover:text-accent-vibrant">
+                  <Plus className="h-3 w-3" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-0" align="start" side="top">
+                <CollectionPicker onClose={() => setPickerOpen(false)} />
+              </PopoverContent>
+            </Popover>
+          </>
+        )}
+      </div>
+
+      {/* Input area */}
+      <div className={cn(
+        'flex items-end gap-2 rounded-2xl border border-border bg-card shadow-md transition-shadow focus-within:border-foreground/20 focus-within:shadow-lg',
         centered ? 'px-5 py-4' : 'px-4 py-2.5',
       )}>
         <textarea
@@ -109,59 +170,6 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
           </Button>
         )}
       </div>
-
-      {/* Context indicator — hidden in centered/welcome mode */}
-      {!centered && <div className="mt-1.5 flex min-h-[20px] flex-wrap items-center gap-1.5 px-1">
-        {isAgentResponding && (
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-            <span className="text-xs text-muted-foreground">Agent is responding...</span>
-          </div>
-        )}
-
-        {!isAgentResponding && activeSources.length === 0 && (
-          <span className="text-[11px] text-muted-foreground/50">
-            No collections in context — check one in the Sources panel
-          </span>
-        )}
-
-        {!isAgentResponding && activeSources.length > 0 && (
-          <>
-            <span className="text-[11px] text-muted-foreground/60">Context:</span>
-            {activeSources.map((src) => {
-              const keywords = src.config.keywords ?? [];
-              const platforms = src.config.platforms ?? [];
-              const keywordText =
-                keywords.length === 0
-                  ? 'No keywords'
-                  : keywords.length <= 2
-                    ? keywords.join(', ')
-                    : `${keywords.slice(0, 2).join(', ')} +${keywords.length - 2}`;
-              const platformText = platforms
-                .map((p) => PLATFORM_LABELS[p] || p)
-                .join(', ');
-
-              return (
-                <button
-                  key={src.collectionId}
-                  onClick={handlePillClick}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors',
-                    'bg-primary/10 text-primary hover:bg-primary/20',
-                  )}
-                  title={`Keywords: ${keywords.join(', ')} · Platforms: ${platformText}`}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  <span>{keywordText}</span>
-                  {platformText && (
-                    <span className="text-primary/60">· {platformText}</span>
-                  )}
-                </button>
-              );
-            })}
-          </>
-        )}
-      </div>}
     </div>
   );
 }

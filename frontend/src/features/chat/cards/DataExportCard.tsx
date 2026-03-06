@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Table2, Download, ExternalLink } from 'lucide-react';
-import { Card } from '../../../components/ui/card.tsx';
+import { Table2, Download, Eye } from 'lucide-react';
 import type { DataExportResult } from '../../../api/types.ts';
 import { downloadCollection } from '../../../api/endpoints/collections.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
@@ -41,39 +40,41 @@ export function DataExportCard({ data }: DataExportCardProps) {
   }
 
   return (
-    <Card className="mt-3 overflow-hidden rounded-md">
-      <div className="flex items-center gap-3 p-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <Table2 className="h-5 w-5 text-primary" />
+    <div className="mt-3 overflow-hidden rounded-2xl border border-accent-blue/20 bg-gradient-to-b from-accent-blue/5 to-background shadow-sm">
+      <div className="flex items-center justify-between px-5 py-3.5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-blue/10">
+            <Table2 className="h-4 w-4 text-accent-blue" />
+          </div>
+          <div className="flex flex-col">
+            <h4 className="text-sm font-semibold text-foreground">Table</h4>
+            <p className="text-[11px] text-muted-foreground">
+              {row_count} posts · saved to artifacts
+            </p>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">Data Export</p>
-          <p className="text-xs text-muted-foreground/70">
-            {row_count} posts · saved to artifacts
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex items-center gap-0.5">
           {_artifactId && (
             <button
               onClick={handleView}
-              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title="View in Studio"
             >
-              <ExternalLink className="h-3 w-3" />
-              View
+              <Eye className="h-3.5 w-3.5" />
             </button>
           )}
           {collection_id && (
             <button
               onClick={handleDownload}
               disabled={downloading}
-              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+              title={downloading ? 'Downloading…' : 'Download CSV'}
             >
-              <Download className="h-3 w-3" />
-              {downloading ? 'Downloading…' : 'Download'}
+              <Download className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }

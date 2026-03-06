@@ -1,12 +1,14 @@
 import json
 import logging
-import threading
-from uuid import uuid4
+from datetime import datetime
 
-from api.deps import get_bq, get_fs
-from config.settings import get_settings
+from api.schemas.requests import CreateCollectionRequest
+from api.services.collection_service import create_collection_from_request
 
 logger = logging.getLogger(__name__)
+
+# Enrichment-only config keys that design_research produces
+_EXTRA_CONFIG_KEYS = ("video_params", "reasoning_level", "min_likes", "custom_fields")
 
 
 def start_collection(
@@ -32,89 +34,58 @@ def start_collection(
     Returns:
         A dictionary with the collection_id and status.
     """
-    settings = get_settings()
-    bq = get_bq()
-    fs = get_fs()
-
-    collection_id = str(uuid4())
-
-    # Parse config
+    # Parse config from design_research
     if isinstance(config_json, str):
         config = json.loads(config_json)
     else:
         config = config_json
 
-    resolved_org_id = org_id if org_id else None
+    # Convert time_range {start, end} dates -> time_range_days int
+    time_range = config.get("time_range", {})
+    start_str = time_range.get("start")
+    end_str = time_range.get("end")
+    if start_str and end_str:
+        start_dt = datetime.strptime(start_str, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_str, "%Y-%m-%d")
+        time_range_days = max(1, (end_dt - start_dt).days)
+    else:
+        time_range_days = 90
 
-    # Insert collection record into BigQuery
-    bq.insert_rows(
-        "collections",
-        [
-            {
-                "collection_id": collection_id,
-                "user_id": user_id,
-                "org_id": resolved_org_id,
-                "session_id": session_id,
-                "original_question": original_question,
-                "config": json.dumps(config),
-            }
-        ],
+    # Extract enrichment-only fields into extra_config
+    extra_config = {k: config[k] for k in _EXTRA_CONFIG_KEYS if k in config}
+
+    # Build request matching the REST endpoint schema
+    request = CreateCollectionRequest(
+        description=original_question,
+        platforms=config.get("platforms", []),
+        keywords=config.get("keywords", []),
+        channel_urls=config.get("channel_urls") or None,
+        time_range_days=time_range_days,
+        geo_scope=config.get("geo_scope", "global"),
+        max_calls=config.get("max_calls", 2),
+        include_comments=config.get("include_comments", True),
+        ongoing=config.get("ongoing", False),
+        schedule=config.get("schedule"),
     )
 
-    # Create Firestore status document
-    fs.create_collection_status(collection_id, user_id, config, org_id=resolved_org_id)
+    resolved_org_id = org_id if org_id else None
 
-    # Track usage
-    from api.services.usage_service import track_collection_created
-    track_collection_created(user_id, resolved_org_id, collection_id, session_id)
-
-    # Dispatch worker
-    if settings.is_dev:
-        logger.info("DEV MODE: Running collection pipeline in background thread for %s", collection_id)
-        thread = threading.Thread(
-            target=_run_pipeline,
-            args=(collection_id,),
-            daemon=True,
-        )
-        thread.start()
-    else:
-        _dispatch_cloud_task(settings, collection_id)
+    # Delegate to the shared service function (same path as POST /collections)
+    result = create_collection_from_request(
+        request,
+        user_id=user_id,
+        org_id=resolved_org_id,
+        session_id=session_id,
+        extra_config=extra_config or None,
+    )
 
     return {
         "status": "success",
-        "collection_id": collection_id,
+        "collection_id": result["collection_id"],
+        "config": result["config"],
         "message": (
-            f"Collection {collection_id} has been started. "
-            "It will run in the background — use get_progress to check status. "
-            "Enrichment will run automatically after collection completes."
+            f"Collection {result['collection_id']} started. "
+            "The UI is showing live progress to the user. "
+            "You do NOT need to check progress — confirm to the user and move on."
         ),
     }
-
-
-def _run_pipeline(collection_id: str) -> None:
-    """Delegate to the shared pipeline in collection_service."""
-    from api.services.collection_service import _run_pipeline as shared_pipeline
-    shared_pipeline(collection_id)
-
-
-def _dispatch_cloud_task(settings, collection_id: str) -> None:
-    """Dispatch collection worker via Cloud Tasks."""
-    from google.cloud import tasks_v2
-
-    client = tasks_v2.CloudTasksClient()
-    parent = client.queue_path(
-        settings.gcp_project_id,
-        settings.gcp_region,
-        settings.cloud_tasks_queue,
-    )
-    worker_url = settings.worker_service_url.rstrip("/")
-    task = {
-        "http_request": {
-            "http_method": tasks_v2.HttpMethod.POST,
-            "url": f"{worker_url}/collection/run",
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"collection_id": collection_id}).encode(),
-        }
-    }
-    client.create_task(parent=parent, task=task)
-    logger.info("Dispatched Cloud Task for collection %s", collection_id)

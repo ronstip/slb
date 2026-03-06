@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router';
-import { TopBar } from './TopBar.tsx';
+import { useNavigate, useParams } from 'react-router';
 import { useUIStore } from '../stores/ui-store.ts';
 import { useStudioStore } from '../stores/studio-store.ts';
 import { useSourcesStore } from '../stores/sources-store.ts';
@@ -9,20 +8,23 @@ import { ChatPanel } from '../features/chat/ChatPanel.tsx';
 import { SessionsPanel } from '../features/sessions/SessionsPanel.tsx';
 import { StudioPanel } from '../features/studio/StudioPanel.tsx';
 import { CollectionModal } from '../features/sources/CollectionModal.tsx';
+import { CollectionsLibrary } from '../features/collections/CollectionsLibrary.tsx';
+import { ArtifactLibrary } from '../features/artifacts/ArtifactLibrary.tsx';
 import { useCollectionPolling } from '../features/sources/useCollectionPolling.ts';
 
 const SOURCES_MIN = 220;
 const SOURCES_MAX = 420;
 const SOURCES_DEFAULT = 300;
 const STUDIO_MIN = 300;
-const STUDIO_MAX = 700;
+const STUDIO_MAX = 1000;
 const STUDIO_DEFAULT = 300;
 const COLLAPSED_W = 48;
 const CHAT_MIN_W = 480;
 const HANDLE_W = 8; // 2 resize handles × 4px
 
 export function AppShell() {
-  const params = useParams<{ id?: string }>();
+  const params = useParams<{ sessionId?: string }>();
+  const navigate = useNavigate();
   const {
     sourcesPanelCollapsed,
     studioPanelCollapsed,
@@ -33,12 +35,9 @@ export function AppShell() {
 
   const activeTab = useStudioStore((s) => s.activeTab);
   const feedSourceId = useStudioStore((s) => s.feedSourceId);
-  const setFeedSource = useStudioStore((s) => s.setFeedSource);
-  const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const artifacts = useStudioStore((s) => s.artifacts);
   const expandedReportId = useStudioStore((s) => s.expandedReportId);
   const sources = useSourcesStore((s) => s.sources);
-  const addToSession = useSourcesStore((s) => s.addToSession);
   const hasSelectedSource = sources.some((s) => s.selected);
   const feedHasPosts = activeTab === 'feed' && !!(feedSourceId || hasSelectedSource);
 
@@ -51,43 +50,60 @@ export function AppShell() {
 
   useCollectionPolling();
 
-  // Restore active session on mount (page refresh)
+  // Fetch sessions list on mount
   useEffect(() => {
-    const sessionStore = useSessionStore.getState();
-    const storedId = sessionStore.activeSessionId;
-    if (storedId) {
-      sessionStore.restoreSession(storedId);
-    }
-    sessionStore.fetchSessions();
+    useSessionStore.getState().fetchSessions();
   }, []);
 
-  // Sync URL params with studio store (for page refresh/direct links)
-  // URL controls feedSourceId only — session membership (selected) is managed separately.
-  // Only depends on params.id to avoid fighting user's checkbox interactions.
+  // Sync URL ↔ session state: URL is the source of truth for active session
   useEffect(() => {
-    if (params.id) {
-      setFeedSource(params.id);
-      setActiveTab('feed');
-      // Ensure the collection is in session (for direct links / page refresh)
-      const source = useSourcesStore.getState().sources.find((s) => s.collectionId === params.id);
-      if (source && !source.selected) {
-        addToSession(params.id);
+    const sessionStore = useSessionStore.getState();
+    const currentActiveId = sessionStore.activeSessionId;
+
+    if (params.sessionId) {
+      // URL has a session ID — restore it if it's different from the current active session
+      if (currentActiveId !== params.sessionId) {
+        sessionStore.restoreSession(params.sessionId).catch(() => {
+          // Session not found (deleted or invalid) — redirect to home
+          navigate('/', { replace: true });
+        });
       }
     } else {
-      setFeedSource(null);
+      // URL is root `/` — start a fresh session if we had one active
+      if (currentActiveId) {
+        sessionStore.startNewSession();
+      }
     }
-  }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [params.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-switch to studio-focus mode when feed has content or artifact is opened
-  const hasArtifactContent = (activeTab === 'artifacts' && artifacts.length > 0) || expandedReportId !== null;
+  // Determine which expanded artifact type is active (if any)
+  const expandedArtifact = expandedReportId ? artifacts.find((a) => a.id === expandedReportId) : null;
+  const isDashboardOpen = expandedArtifact?.type === 'dashboard';
+  const isDataExportOpen = expandedArtifact?.type === 'data_export';
+  const isNonDashboardArtifactOpen = expandedReportId !== null && !isDashboardOpen && !isDataExportOpen;
+
+  // Full-width artifacts: dashboard and data export table
+  const showFullWidth = (isDashboardOpen || isDataExportOpen) && activeTab === 'artifacts';
+
+  // Auto-resize studio panel based on content type
   useEffect(() => {
-    const shouldFocus = feedHasPosts || hasArtifactContent;
-    if (shouldFocus && layoutMode === 'balanced') {
-      setStudioFocus();
-      const focusW = Math.min(STUDIO_MAX, Math.floor((window.innerWidth - COLLAPSED_W) / 2));
-      setStudioW(focusW);
+    const srcW = sourcesPanelCollapsed ? COLLAPSED_W : sourcesW;
+    const maxAvailable = window.innerWidth - srcW - CHAT_MIN_W - HANDLE_W;
+
+    if (showFullWidth) {
+      // Dashboard / Data Export table → as wide as viewport allows (up to 1000px)
+      if (layoutMode === 'balanced') setStudioFocus();
+      setStudioW(Math.min(STUDIO_MAX, Math.max(STUDIO_MIN, maxAvailable)));
+    } else if (feedHasPosts || isNonDashboardArtifactOpen) {
+      // Feed with posts or expanded non-dashboard artifact → 50:50 with chat
+      if (layoutMode === 'balanced') setStudioFocus();
+      const halfW = Math.min(STUDIO_MAX, Math.floor((window.innerWidth - COLLAPSED_W) / 2));
+      setStudioW(Math.min(halfW, maxAvailable));
+    } else {
+      // Artifacts menu list / no content → default width
+      setStudioW(STUDIO_DEFAULT);
     }
-  }, [feedHasPosts, hasArtifactContent, layoutMode, setStudioFocus]);
+  }, [feedHasPosts, isNonDashboardArtifactOpen, showFullWidth, layoutMode, setStudioFocus, sourcesPanelCollapsed, sourcesW]);
 
   const onMouseDown = useCallback((panel: 'sources' | 'studio', e: React.MouseEvent) => {
     e.preventDefault();
@@ -135,60 +151,77 @@ export function AppShell() {
     };
   }, [sourcesW, studioW]);
 
-  const transitionStyle = isResizing ? undefined : { transition: 'width 200ms ease' };
+  // Skip transition when auto-expanding to full width so table-fixed layouts
+  // calculate their column widths against the final container size immediately.
+  const transitionStyle = isResizing || showFullWidth ? undefined : { transition: 'width 200ms ease' };
+
+  // Ctrl+K to open session search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        useUIStore.getState().openSessionSearch();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <TopBar />
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sessions Panel */}
-        <aside
-          className="shrink-0 overflow-hidden bg-card"
-          style={{
-            width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW,
-            ...transitionStyle,
-          }}
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sessions Panel (sidebar) */}
+      <aside
+        className={`shrink-0 overflow-hidden bg-card ${sourcesPanelCollapsed ? 'border-r border-border' : ''}`}
+        style={{
+          width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW,
+          ...transitionStyle,
+        }}
+      >
+        <SessionsPanel />
+      </aside>
+
+      {/* Sources resize handle */}
+      {!sourcesPanelCollapsed && (
+        <div
+          className="group relative z-10 w-1 shrink-0 cursor-col-resize"
+          onMouseDown={(e) => onMouseDown('sources', e)}
         >
-          <SessionsPanel />
-        </aside>
+          <div className="absolute inset-y-0 -left-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
+        </div>
+      )}
 
-        {/* Sources resize handle */}
-        {!sourcesPanelCollapsed && (
-          <div
-            className="group relative z-10 w-1 shrink-0 cursor-col-resize"
-            onMouseDown={(e) => onMouseDown('sources', e)}
-          >
-            <div className="absolute inset-y-0 -left-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
-          </div>
-        )}
+      {/* Chat Panel */}
+      <ChatPanel />
 
-        {/* Chat Panel */}
-        <ChatPanel />
-
-        {/* Studio resize handle */}
-        {!studioPanelCollapsed && (
-          <div
-            className="group relative z-10 w-1 shrink-0 cursor-col-resize"
-            onMouseDown={(e) => onMouseDown('studio', e)}
-          >
-            <div className="absolute inset-y-0 -right-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
-          </div>
-        )}
-
-        {/* Studio Panel */}
-        <aside
-          className="shrink-0 bg-card"
-          style={{
-            width: studioPanelCollapsed ? COLLAPSED_W : studioW,
-            ...transitionStyle,
-          }}
+      {/* Studio resize handle */}
+      {!studioPanelCollapsed && (
+        <div
+          className="group relative z-10 w-1 shrink-0 cursor-col-resize"
+          onMouseDown={(e) => onMouseDown('studio', e)}
         >
-          <StudioPanel />
-        </aside>
-      </div>
+          <div className="absolute inset-y-0 -right-px w-[3px] bg-transparent transition-colors group-hover:bg-primary/20 group-active:bg-primary/40" />
+        </div>
+      )}
+
+      {/* Studio Panel */}
+      <aside
+        className="shrink-0 overflow-hidden bg-card"
+        style={{
+          width: studioPanelCollapsed ? COLLAPSED_W : studioW,
+          ...transitionStyle,
+        }}
+      >
+        <StudioPanel />
+      </aside>
 
       {/* Collection Modal Overlay */}
       {collectionModalOpen && <CollectionModal />}
+
+      {/* Collections Library Drawer */}
+      <CollectionsLibrary />
+
+      {/* Artifact Library Dialog */}
+      <ArtifactLibrary />
     </div>
   );
 }

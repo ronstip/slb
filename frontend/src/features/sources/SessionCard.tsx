@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useSessionStore } from '../../stores/session-store.ts';
 import { timeAgo, shortDate } from '../../lib/format.ts';
 import { MessageSquare, Trash2 } from 'lucide-react';
@@ -19,9 +20,9 @@ interface SessionCardProps {
 
 export function SessionCard({ session }: SessionCardProps) {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
-  const restoreSession = useSessionStore((s) => s.restoreSession);
   const removeSession = useSessionStore((s) => s.removeSession);
   const isRestoring = useSessionStore((s) => s.isRestoring);
+  const navigate = useNavigate();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -30,14 +31,18 @@ export function SessionCard({ session }: SessionCardProps) {
 
   const handleClick = () => {
     if (isActive || isRestoring) return;
-    restoreSession(session.session_id);
+    navigate(`/session/${session.session_id}`);
   };
 
   const handleDelete = async () => {
     setDeleting(true);
     try {
+      const wasActive = session.session_id === activeSessionId;
       await removeSession(session.session_id);
       setDeleteDialogOpen(false);
+      if (wasActive) {
+        navigate('/');
+      }
     } catch {
       // deletion failed
     } finally {
@@ -49,32 +54,40 @@ export function SessionCard({ session }: SessionCardProps) {
     <>
       <div
         className={cn(
-          'group relative flex cursor-pointer items-start rounded-lg border px-2 py-1.5 transition-all',
+          'group relative flex cursor-pointer items-start rounded-lg px-2 py-2 transition-all duration-150',
           isActive
-            ? 'border-primary/40 bg-primary/5'
-            : 'border-transparent hover:border-border hover:bg-muted/50',
+            ? 'bg-accent/80 text-accent-foreground'
+            : 'hover:bg-muted/60',
           isRestoring && !isActive && 'pointer-events-none opacity-50',
         )}
         onClick={handleClick}
       >
-        <div className="min-w-0 flex-1 overflow-hidden">
+        {/* Left accent bar for active state */}
+        {isActive && (
+          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent-vibrant" />
+        )}
+
+        <div className="min-w-0 flex-1 overflow-hidden pl-1">
           {/* Title */}
-          <span className="truncate text-[13px] font-medium leading-tight text-foreground block">
+          <span className={cn(
+            'block truncate text-[13px] leading-tight',
+            isActive ? 'font-semibold' : 'font-medium text-foreground',
+          )}>
             {session.title}
           </span>
 
           {/* Meta row */}
-          <div className="mt-0.5 flex items-center gap-x-1.5 text-[10px] text-muted-foreground">
+          <div className="mt-1 flex items-center gap-x-1.5 text-[10px] text-muted-foreground">
             {(session.updated_at || session.created_at) && (
               <>
                 <span className="whitespace-nowrap">{shortDate((session.updated_at || session.created_at)!)}</span>
-                <span className="text-border">·</span>
+                <span className="opacity-40">·</span>
                 <span className="whitespace-nowrap">{timeAgo((session.updated_at || session.created_at)!)}</span>
               </>
             )}
             {session.message_count > 0 && (
               <>
-                <span className="text-border">·</span>
+                <span className="opacity-40">·</span>
                 <span className="inline-flex items-center gap-0.5">
                   <MessageSquare className="h-2.5 w-2.5" />
                   {session.message_count}
@@ -82,7 +95,6 @@ export function SessionCard({ session }: SessionCardProps) {
               </>
             )}
           </div>
-
         </div>
 
         {/* Delete button on hover */}
@@ -90,10 +102,10 @@ export function SessionCard({ session }: SessionCardProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
             onClick={() => setDeleteDialogOpen(true)}
           >
-            <Trash2 className="h-3 w-3 text-muted-foreground" />
+            <Trash2 className="h-3 w-3" />
           </Button>
         </div>
       </div>

@@ -77,7 +77,7 @@ export function createRouter(user: any, loading: boolean, devMode: boolean) {
       ),
     },
     {
-      path: '/collection/:id',
+      path: '/session/:sessionId',
       element: (
         <ProtectedRoute user={user} loading={loading} devMode={devMode}>
           <AppShell />

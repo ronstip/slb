@@ -159,7 +159,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                 "platforms": wrapper.get_platform_stats(),
             },
         }
-        fs.update_collection_status(collection_id, status="completed", run_log=run_log)
+        fs.update_collection_status(collection_id, status="enriching", run_log=run_log)
         logger.info("Collection %s completed: %d total posts in %.1fs", collection_id, total_posts, duration_sec)
 
     except Exception as e:
