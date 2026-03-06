@@ -1,0 +1,571 @@
+# Bright Data Docs
+
+## Docs
+
+- [Account Management](https://docs.brightdata.com/account-management-quickstart.md)
+- [Agent Web Access](https://docs.brightdata.com/ai/agents.md): Complete web infrastructure for AI agents that need reliable, scalable web access. Production-ready APIs for enterprise-scale web access.
+- [Data Enrichment Agent Quickstart](https://docs.brightdata.com/ai/cookbooks/data-enrichment.md): Build an AI-powered data enrichment agent in 10 minutes using LangGraph + Bright Data
+- [Deep Research](https://docs.brightdata.com/ai/deep-research.md): Build AI agents that conduct comprehensive, multi-source research operations at scale. Combine real-time search, historical analysis, and complex site navigation for competitive intelligence and market research.
+- [Data Enrichment](https://docs.brightdata.com/ai/enrichment.md): Build AI agents that automatically fill CRM data, enrich leads, and complete customer records at enterprise scale. Master the search-and-extract pattern for enrichment operations.
+- [Web Data Infrastructure for AI](https://docs.brightdata.com/ai/introduction.md): Real-time web data infrastructure for AI applications, agents, and LLMs.
+- [LLM Grounding & Evaluation](https://docs.brightdata.com/ai/llm-grounding.md): Build AI systems that fact-check model outputs, validate training data, and ground language models in real-world information. Create evaluation workflows that test model accuracy against live web data.
+- [Web MCP Quickstart](https://docs.brightdata.com/ai/mcp-server-quickstart.md)
+- [FAQ: MCP](https://docs.brightdata.com/ai/mcp-server/faqs.md): Find answers to common questions about integrating, configuring, and using Bright Data's MCP server.
+- [OpenAI's Agent Builder MCP Server Integration](https://docs.brightdata.com/ai/mcp-server/integrations/agent-builder.md): How to integrate Agent Builder with Bright Data's MCP server to create AI Agents.
+- [OpenAI's ChatGPT MCP Server Integration](https://docs.brightdata.com/ai/mcp-server/integrations/chat-gpt.md): How to integrate ChatGPT with Bright Data's MCP server to build AI agents.
+- [Claude Desktop Integration](https://docs.brightdata.com/ai/mcp-server/integrations/claude.md): How to integrate Claude Desktop with Bright Data's MCP server for enhanced AI capabilities.
+- [Claude Code MCP Server Integration](https://docs.brightdata.com/ai/mcp-server/integrations/claude-code.md): How to integrate Claude Code with Bright Data's MCP server for enhanced AI capabilities.
+- [Cloudflare Agents SDK Integration](https://docs.brightdata.com/ai/mcp-server/integrations/cloudflare-agents.md): How to integrate Cloudflare's Agents SDK with Bright Data's Web MCP server for building AI agents on Cloudflare Workers.
+- [CrewAI Integration](https://docs.brightdata.com/ai/mcp-server/integrations/crewai.md): How to integrate CrewAI with Bright Data's The Web MCP server for enhanced AI agent capabilities.
+- [Cursor MCP Server Integration](https://docs.brightdata.com/ai/mcp-server/integrations/cursor.md): How to integrate Cursor with Bright Data's MCP server for enhanced AI capabilities.
+- [Google ADK Integration](https://docs.brightdata.com/ai/mcp-server/integrations/google-adk.md): How to integrate Google ADK with Bright Data's The Web MCP server for enhanced AI agent capabilities.
+- [LangChain Integration](https://docs.brightdata.com/ai/mcp-server/integrations/langchain.md): How to integrate LangChain with Bright Data's The Web MCP server for enhanced AI agent capabilities.
+- [LlamaIndex Integration](https://docs.brightdata.com/ai/mcp-server/integrations/llamaindex.md): How to integrate LlamaIndex with Bright Data's The Web MCP server for enhanced AI agent capabilities.
+- [How to Set Up the Web MCP with n8n](https://docs.brightdata.com/ai/mcp-server/integrations/n8n.md): Learn how to integrate Bright Data's MCP with n8n to build automated, no-code data workflows.
+- [NVIDIA NeMo Agent Toolkit Integration](https://docs.brightdata.com/ai/mcp-server/integrations/nvidia-nemo.md): How to integrate NVIDIA NeMo Agent Toolkit with Bright Data's The Web MCP server for enhanced AI agent capabilities.
+- [OpenAI SDK Integration](https://docs.brightdata.com/ai/mcp-server/integrations/openai.md): How to integrate OpenAI with Bright Data's MCP server for enhanced AI capabilities.
+- [Overview](https://docs.brightdata.com/ai/mcp-server/integrations/overview.md): Discover Bright Data's MCP server integrations that enhance AI capabilities by providing seamless access to real-time web data. Explore our supported integrations with popular AI frameworks and tools, enabling you to build intelligent agents and applications with ease.
+- [Snowflake Integration](https://docs.brightdata.com/ai/mcp-server/integrations/snowflake.md): How to integrate Bright Data's The Web MCP server with Snowflake to enable secure, enterprise-grade web automation.
+- [Vapi AI MCP Server Integration](https://docs.brightdata.com/ai/mcp-server/integrations/vapi.md): How to integrate Vapi AI with Bright Data's MCP server for enhanced AI capabilities.
+- [VS Code MCP Server Integration](https://docs.brightdata.com/ai/mcp-server/integrations/vscode.md): How to integrate VS Code with Bright Data's MCP server for enhanced AI capabilities.
+- [Advanced Configuration](https://docs.brightdata.com/ai/mcp-server/local/advanced.md): Once you’ve completed the basic setup, you can customize your MCP server with advanced options.
+- [How to Set Up Local (Self-hosted) MCP](https://docs.brightdata.com/ai/mcp-server/local/quickstart.md): Step-by-step guide for setting up a self-hosted MCP server instance.
+- [MCP Server Overview](https://docs.brightdata.com/ai/mcp-server/overview.md): The Web Model Context Protocol (MCP) by Bright Data empowers your AI models and agents with real-time, reliable access to public web data — now available for free.
+- [Advanced Configuration](https://docs.brightdata.com/ai/mcp-server/remote/advanced.md): Once you’ve completed the basic setup, you can customize your MCP server with advanced options.
+- [How to Get Started with Remote MCP Server](https://docs.brightdata.com/ai/mcp-server/remote/quickstart.md): Step-by-step guide for integrating with the Remote MCP Server.
+- [Tools](https://docs.brightdata.com/ai/mcp-server/tools.md): Overview of available tools for web scraping and data extraction.
+- [TOON Format](https://docs.brightdata.com/ai/mcp-server/toon.md): Learn how to use Token-Oriented Object Notation (TOON) to reduce token consumption when working with MCP data
+- [MCP Usage Examples](https://docs.brightdata.com/ai/mcp-server/usage-examples.md): A curated list of community demos using Bright Data's MCP server.
+- [Training Data for AI Models: A Technical Guide](https://docs.brightdata.com/ai/training.md): A comprehensive technical overview of Bright Data for building and managing AI training data acquisition pipelines.
+- [Python SDK](https://docs.brightdata.com/api-reference/SDK.md)
+- [JavaScript SDK](https://docs.brightdata.com/api-reference/SDK-JS.md)
+- [Add Static IP(s)](https://docs.brightdata.com/api-reference/account-management-api/Add_Static_Datacenter_ISP_IPs.md): Add Static IPs for Datacenter and ISP
+- [Add a Zone](https://docs.brightdata.com/api-reference/account-management-api/Add_a_Zone.md): Add a new zone
+- [Change Account Status](https://docs.brightdata.com/api-reference/account-management-api/Change_account_status.md)
+- [Get Available Countries](https://docs.brightdata.com/api-reference/account-management-api/Get_Available_Countries.md): List all available countries per zone type 
+- [Zone Statistics](https://docs.brightdata.com/api-reference/account-management-api/Get_Zone_Static_Datacenter_ISP_IPs.md): Get Zone Static (Datacenter/ISP) IPs
+- [Zone info](https://docs.brightdata.com/api-reference/account-management-api/Get_Zone_info.md): Get Zone status
+- [Zone Password](https://docs.brightdata.com/api-reference/account-management-api/Get_Zone_passwords.md): Get Zone passwords
+- [Zone Permission](https://docs.brightdata.com/api-reference/account-management-api/Get_Zone_permissions.md): Get Zone permissions
+- [Zone status](https://docs.brightdata.com/api-reference/account-management-api/Get_Zone_status.md): Get Zone status
+- [Account status](https://docs.brightdata.com/api-reference/account-management-api/Get_account_status.md): Get account status
+- [Active Zones](https://docs.brightdata.com/api-reference/account-management-api/Get_active_Zones.md): Return all active zones
+- [Get available dedicated IPs per Zone](https://docs.brightdata.com/api-reference/account-management-api/Get_all_available_dedicated_residential_IPs_per_Zone.md): Get all available residential dedicated IPs per Zone
+- [Amount of available Datacenter and ISP IPs](https://docs.brightdata.com/api-reference/account-management-api/Get_amount_of_available_Datacenter_and_ISP_IPs.md)
+- [Get Country Cities](https://docs.brightdata.com/api-reference/account-management-api/Get_country_cities.md): Get a list of cities from a Country
+- [Get current service status](https://docs.brightdata.com/api-reference/account-management-api/Get_current_service_status.md)
+- [List all available country's cities (static network)](https://docs.brightdata.com/api-reference/account-management-api/Get_list_of_available_cities_of_static_network_per_country.md): Get list of available cities of static network per country
+- [Live status of Static Zone](https://docs.brightdata.com/api-reference/account-management-api/Get_live_status_of_Static_Datacenter_ISP_Zone_and_IPs_with_connectivity_problem.md): Get live status of Static (Datacenter/ISP) Zone and IPs with connectivity problem
+- [Recent IPs attempting to use your Zone](https://docs.brightdata.com/api-reference/account-management-api/Get_recent_IPs_attempting_to_use_your_Zone.md)
+- [Available Datacenter & ISP IPs/Zone](https://docs.brightdata.com/api-reference/account-management-api/Get_the_available_Data_center_ISP_IPs_per_Zone.md): Get the available Data center/ISP IPs per Zone
+- [Bandwidth stats for a zone](https://docs.brightdata.com/api-reference/account-management-api/Get_the_bandwidth_stats_for_a_Zone.md): Get the bandwidth stats for a Zone
+- [Bandwidth stats for all your zones](https://docs.brightdata.com/api-reference/account-management-api/Get_the_bandwidth_stats_for_all_your_Zones.md): Get the bandwidth stats for all your Zones
+- [Total cost & bandwidth for a zone](https://docs.brightdata.com/api-reference/account-management-api/Get_the_total_cost_and_bandwidth_stats_for_a_Zone.md): Get the total cost and bandwidth stats for a Zone
+- [Total Balance](https://docs.brightdata.com/api-reference/account-management-api/Get_total_balance_through_API.md): Get total balance through API
+- [Migrate Static IPs between zones](https://docs.brightdata.com/api-reference/account-management-api/Migrate_Static_Datacenter_ISP_IPs_between_zones.md): Migrate Static IPs between zones (Datacenter/ISP)
+- [Refresh Static IPs (Datacenter/ISP)](https://docs.brightdata.com/api-reference/account-management-api/Refresh_Static_Datacenter_ISP_IPs.md)
+- [Refresh dedicated residential IPs](https://docs.brightdata.com/api-reference/account-management-api/Refresh_dedicated_residential_IPs.md)
+- [Remove Static IPs (Datacenter/ISP)](https://docs.brightdata.com/api-reference/account-management-api/Remove_Static_Datacenter_ISP_IPs.md)
+- [Remove a Zone](https://docs.brightdata.com/api-reference/account-management-api/Remove_Zone.md)
+- [Remove dedicated residential IPs](https://docs.brightdata.com/api-reference/account-management-api/Remove_dedicated_residential_IPs.md)
+- [Switch Automatic Failover](https://docs.brightdata.com/api-reference/account-management-api/Switch_100_uptime_ON_OFF_in_a_Static_zone.md): Switch automatic failover (100% uptime) ON/OFF in a Static zone
+- [Turn on/off Zone](https://docs.brightdata.com/api-reference/account-management-api/Turn_on_off_Zone.md)
+- [Allowlist IP(s)](https://docs.brightdata.com/api-reference/account-management-api/allowlist-ip.md): Add IP to zone's allowlist
+- [Allowlist/Denylist Domain(s)](https://docs.brightdata.com/api-reference/account-management-api/allowlist-or-denylist-domains.md): Add domain to Zone allowlist or denylist
+- [Denylist IP(s)](https://docs.brightdata.com/api-reference/account-management-api/denylist-ip.md): Add IP to zone's denylist
+- [Domain Consumption](https://docs.brightdata.com/api-reference/account-management-api/domain-consumption.md): Retrieve domain usage metrics such as bandwidth consumption and request count via the Domain Consumption API.
+- [All Zones](https://docs.brightdata.com/api-reference/account-management-api/get-all-zones.md): Return all zones
+- [Get Proxies Pending Replacement](https://docs.brightdata.com/api-reference/account-management-api/get-proxies-pending-replacement.md): Get list of all proxies in the provided zone, which are pending replacement
+- [Remove domain from Zone allowlist/denylist](https://docs.brightdata.com/api-reference/account-management-api/remove-domain-from-zone-allowlist-or-denylist.md)
+- [Remove IP from Zone allowlist](https://docs.brightdata.com/api-reference/account-management-api/remove-ip-from-zone-allowlist.md)
+- [Remove IP from Zone denylist](https://docs.brightdata.com/api-reference/account-management-api/remove-ip-from-zone-denylist.md)
+- [List of allowlisted IPs for a zone](https://docs.brightdata.com/api-reference/account-management-api/zone-ip-allowlist.md): Get a list of allowlisted IPs for a specific Zone
+- [List of denylisted IPs for a zone](https://docs.brightdata.com/api-reference/account-management-api/zone-ip-denylist.md): Get a list of denylisted IPs for a specific Zone
+- [Deliver Snapshot to Amazon S3 or Azure Blob Storage](https://docs.brightdata.com/api-reference/archive-api/deliver-to-cloud.md): Delivers a snapshot from a completed search to cloud storage using the specified delivery strategy.
+- [Get All Search Statuses](https://docs.brightdata.com/api-reference/archive-api/get-all-search-statuses.md): Retrieve the status and metadata of all current web archive searches.
+- [Get the Statuses of all Data Snapshots](https://docs.brightdata.com/api-reference/archive-api/get-all-snapshots-statuses.md): Retrieve the status and metadata of all data snapshots (dumps).
+- [Get Search Status](https://docs.brightdata.com/api-reference/archive-api/get-search-status.md): Check the status and results of a previously submitted web archive search query.
+- [Get Status of Data Snapshot](https://docs.brightdata.com/api-reference/archive-api/get-snapshot-status.md): Check the status and progress of a specific data snapshot (dump) using the `dump_id`.
+- [Run a Search](https://docs.brightdata.com/api-reference/archive-api/run-a-search.md): To initiate a search of our Archive, use the following `/search` endpoint.
+- [Authentication](https://docs.brightdata.com/api-reference/authentication.md): Learn how to authenticate with Bright Data using API Access or Native Access methods.
+- [Cancel Request](https://docs.brightdata.com/api-reference/deep-lookup/cancel-request.md): Cancel an in-progress research request.
+- [Create Preview](https://docs.brightdata.com/api-reference/deep-lookup/create-preview.md): Generate a preview to validate your query.
+- [Download Results](https://docs.brightdata.com/api-reference/deep-lookup/download-results.md): Export results in JSON, CSV, or Excel.
+- [Enhance Query](https://docs.brightdata.com/api-reference/deep-lookup/enhance-query.md): Refine your research query with additional requirements.
+- [Enrich Column](https://docs.brightdata.com/api-reference/deep-lookup/enrich-column.md): Add additional data columns to existing results.
+- [Get Preview Data](https://docs.brightdata.com/api-reference/deep-lookup/get-preview-data.md): Retrieve the preview results and metadata.
+- [Get Request Data](https://docs.brightdata.com/api-reference/deep-lookup/get-request-data.md): Retrieve the full results of your research.
+- [Get Request Status](https://docs.brightdata.com/api-reference/deep-lookup/get-request-status.md): Check the status of your research request.
+- [Overview](https://docs.brightdata.com/api-reference/deep-lookup/overview.md): The Deep Lookup API enables programmatic access to search and extract structured data from the public web. Transform any application into a data powerhouse by integrating real-time web intelligence directly into your workflows.
+- [Trigger Full Request](https://docs.brightdata.com/api-reference/deep-lookup/trigger-full-request.md): Execute the full research based on preview or with detailed specifications.
+- [Deliver Snapshot](https://docs.brightdata.com/api-reference/marketplace-dataset-api/deliver-snapshot.md): Deliver the dataset snapshot
+- [Snapshot Content](https://docs.brightdata.com/api-reference/marketplace-dataset-api/download-the-file-by-snapshot_id.md): Get dataset snapshot content
+- [Filter Dataset (BETA)](https://docs.brightdata.com/api-reference/marketplace-dataset-api/filter-dataset.md): Create a dataset snapshot based on a provided filter
+- [Filter Dataset (JSON or File Uploads)](https://docs.brightdata.com/api-reference/marketplace-dataset-api/filter-dataset-with-csv-json-files.md): Create a dataset snapshot based on a provided filter
+- [Dataset list](https://docs.brightdata.com/api-reference/marketplace-dataset-api/get-dataset-list.md): List all Dataset IDs of all Scraper APIs, you can use this API endpoint to retrieve a list of available datasets.
+- [Get Dataset Metadata](https://docs.brightdata.com/api-reference/marketplace-dataset-api/get-dataset-metadata.md)
+- [Get Snapshot Metadata](https://docs.brightdata.com/api-reference/marketplace-dataset-api/get-snapshot-meta.md): Get dataset snapshot metadata
+- [Get Snapshot Parts](https://docs.brightdata.com/api-reference/marketplace-dataset-api/get-snapshot-parts.md): Get dataset snapshot delivery parts. All query parameters used here need to match those used when downloading the snapshot to get accurate parts
+- [Troubleshooting](https://docs.brightdata.com/api-reference/marketplace-dataset-api/troubleshooting.md): This section covers errors encountered when interacting directly with Bright Data's Unlocker API, SERP API, Web Scraper API, Marketplace Dataset API, and Web Scraper IDE.
+- [Bright Data API Postman collection](https://docs.brightdata.com/api-reference/postman-collection.md): Quickly test and explore Bright Data's APIs using our Postman collection. View, run, and fork API requests without setting up your own backend environment.
+- [Add a User](https://docs.brightdata.com/api-reference/proxy-manager/add_a_user.md)
+- [Allowlist IPs](https://docs.brightdata.com/api-reference/proxy-manager/allowlist-ips.md)
+- [Ban an IP (All Ports)](https://docs.brightdata.com/api-reference/proxy-manager/ban_an_ip_for_all_ports.md)
+- [Ban an IP](https://docs.brightdata.com/api-reference/proxy-manager/ban_an_ip_single_.md)
+- [Ban multiple IPs (array)](https://docs.brightdata.com/api-reference/proxy-manager/ban_ips_array_.md)
+- [Create new Proxy Port](https://docs.brightdata.com/api-reference/proxy-manager/create_a_new_proxy_port.md)
+- [Delete a Proxy Port](https://docs.brightdata.com/api-reference/proxy-manager/delete_a_proxy_port.md)
+- [Delete Proxy Ports (multiple)](https://docs.brightdata.com/api-reference/proxy-manager/delete_proxy_ports.md)
+- [Enable SSL Analyzing (All Ports)](https://docs.brightdata.com/api-reference/proxy-manager/enable_ssl_analyzing_on_all_proxy_ports.md)
+- [Generate API key](https://docs.brightdata.com/api-reference/proxy-manager/generate_token_for_token_based_authentication.md): Generate API key for Token based Authentication
+- [Get all users](https://docs.brightdata.com/api-reference/proxy-manager/get_all_users.md)
+- [Get allocated gIPs in a zone](https://docs.brightdata.com/api-reference/proxy-manager/get_allocated_gips_in_zone.md)
+- [Get allocated IPs in a zone](https://docs.brightdata.com/api-reference/proxy-manager/get_allocated_ips_in_zone.md)
+- [Get Banned IPs](https://docs.brightdata.com/api-reference/proxy-manager/get_banned_ips.md)
+- [Get current NodeJS version](https://docs.brightdata.com/api-reference/proxy-manager/get_currently_running_nodejs_version.md)
+- [Get effective configuration for all running proxies](https://docs.brightdata.com/api-reference/proxy-manager/get_effective_configuration_for_all_running_proxies.md)
+- [Get enabled Zone's configuration](https://docs.brightdata.com/api-reference/proxy-manager/get_enabled_zones_configuration.md)
+- [Get explicit configuration of specified Proxies](https://docs.brightdata.com/api-reference/proxy-manager/get_explicit_configuration_of_all_or_specified_proxies.md)
+- [Get general settings](https://docs.brightdata.com/api-reference/proxy-manager/get_general_settings.md)
+- [Get HAR Logs](https://docs.brightdata.com/api-reference/proxy-manager/get_har_logs.md)
+- [Get Proxy Manager version](https://docs.brightdata.com/api-reference/proxy-manager/get_proxy_manager_version.md)
+- [Get Proxy Port Status](https://docs.brightdata.com/api-reference/proxy-manager/get_proxy_port_status.md)
+- [Get Recent Status](https://docs.brightdata.com/api-reference/proxy-manager/get_recent_stats.md)
+- [Get tail from the Log file](https://docs.brightdata.com/api-reference/proxy-manager/get_tail_from_the_log_file.md)
+- [Get the latest Proxy Manager (PM) version](https://docs.brightdata.com/api-reference/proxy-manager/get_the_latest_proxy_manager_versions.md)
+- [Refresh IP/gIP in a zone](https://docs.brightdata.com/api-reference/proxy-manager/refresh_ips_or_gips_in_zone.md)
+- [Refresh Proxy Manager Port Session](https://docs.brightdata.com/api-reference/proxy-manager/refresh_proxy_manager_port_sessions.md)
+- [Restart Proxy Manager](https://docs.brightdata.com/api-reference/proxy-manager/restart_proxy_manager.md)
+- [Shutdown Proxy Manager](https://docs.brightdata.com/api-reference/proxy-manager/shutdown_proxy_manager.md)
+- [Allowlist IPs to Access UI](https://docs.brightdata.com/api-reference/proxy-manager/ui-allowlist-ips.md)
+- [Unban an IP](https://docs.brightdata.com/api-reference/proxy-manager/unban_an_ip.md)
+- [Unban IPs (multiple)](https://docs.brightdata.com/api-reference/proxy-manager/unban_ips.md)
+- [Update a Proxy Port](https://docs.brightdata.com/api-reference/proxy-manager/update_a_proxy_port.md)
+- [Update General Setting](https://docs.brightdata.com/api-reference/proxy-manager/update_general_settings.md)
+- [Upgrade Proxy Manager](https://docs.brightdata.com/api-reference/proxy-manager/upgrade_proxy_manager.md)
+- [Request and Response C-Tag](https://docs.brightdata.com/api-reference/proxy/c-tag.md)
+- [Carrier-specific Proxy peer IP (Mobile only)](https://docs.brightdata.com/api-reference/proxy/carrier_specific_proxy_peer_ip_mobile_only_.md)
+- [Configuring DNS Resolution](https://docs.brightdata.com/api-reference/proxy/configuring_dns_resolution.md)
+- [Geolocation Targeting](https://docs.brightdata.com/api-reference/proxy/geolocation-targeting.md): Geolocation targeting allows you to target specific locations based on `Country`, `City`, `State`, `ASN`, or `ZIP code`
+- [Disable peer rotation](https://docs.brightdata.com/api-reference/proxy/keep_same_peer_in_session.md)
+- [OS Targeting](https://docs.brightdata.com/api-reference/proxy/os_targeting.md)
+- [Request Error Handling](https://docs.brightdata.com/api-reference/proxy/request_error_handling.md)
+- [Proxy and IP Rotation control ](https://docs.brightdata.com/api-reference/proxy/rotate_ips.md): How does proxy IP rotation work, and how can you configure or control it. 
+- [Select a specific gIP](https://docs.brightdata.com/api-reference/proxy/select_a_specific_gip.md)
+- [Select a specific IP](https://docs.brightdata.com/api-reference/proxy/select_a_specific_ip.md)
+- [null](https://docs.brightdata.com/api-reference/proxy/select_super_proxy_in_specific_country.md)
+- [Send requests directly from Super Proxy](https://docs.brightdata.com/api-reference/proxy/send_requests_directly_from_super_proxy.md)
+- [Asynchronous Requests](https://docs.brightdata.com/api-reference/rest-api/scraper/asynchronous-requests.md): Bright Data Web Scraper API enables you to trigger a collection for automated web data extraction.
+- [Crawl API](https://docs.brightdata.com/api-reference/rest-api/scraper/crawl-api.md): Bright Data Web Scraper API enables you to trigger a collection for automated web data extraction.
+- [Response](https://docs.brightdata.com/api-reference/rest-api/serp/get-results.md)
+- [Request](https://docs.brightdata.com/api-reference/rest-api/serp/request.md)
+- [SERP API](https://docs.brightdata.com/api-reference/rest-api/serp/serp-api.md): Extract search engine results using Bright Data SERP API. Extract structured data from major search engines including Google, Bing, Yandex, DuckDuckGo, and more.  Get organic results, paid ads, local listings, shopping results, and other SERP features.
+- [Response](https://docs.brightdata.com/api-reference/rest-api/unlocker/get-results.md)
+- [Request](https://docs.brightdata.com/api-reference/rest-api/unlocker/request.md)
+- [Unlocker API](https://docs.brightdata.com/api-reference/rest-api/unlocker/unlock-website.md): Use the Bright Data Unlocker API to test and unlock websites in real time, bypassing anti-bot protections while automatically managing proxies and CAPTCHAs.
+- [Choose a delivery type on request level](https://docs.brightdata.com/api-reference/scraper-studio-api/Choose_a_delivery_type_on_request_level.md)
+- [Getting started with the API](https://docs.brightdata.com/api-reference/scraper-studio-api/Getting_started_wtih_the_API.md): The Data scraper product offers a JSON API to control and inspect your data scrapers programmatically.
+- [Receive Batch Data](https://docs.brightdata.com/api-reference/scraper-studio-api/Receive_batch_data.md): Receive Batch data
+- [Receive data from real-time work scraper](https://docs.brightdata.com/api-reference/scraper-studio-api/Receive_data_from_real_time_work_scraper.md): Receive data from real-time work scraper
+- [Trigger a Scraper Asynchronously for Batch Collection](https://docs.brightdata.com/api-reference/scraper-studio-api/Trigger_a_scraper_for_batch_collection_method.md): Trigger a scraper for batch collection method
+- [Trigger a scraper for real-time collection (Asynchronous)](https://docs.brightdata.com/api-reference/scraper-studio-api/initiate-a-realtime-job/async-realtime-job.md): Trigger a scraper for real-time collection
+- [Trigger a Scraper Synchronously for real-time collection](https://docs.brightdata.com/api-reference/scraper-studio-api/initiate-a-realtime-job/sync-realtime-job.md): Trigger a scraper for batch collection method
+- [IDE Job data API](https://docs.brightdata.com/api-reference/scraper-studio-api/job-data.md): Get job data by job ID
+- [All Classification Data](https://docs.brightdata.com/api-reference/scraping-shield-api/all-classification-data.md): Get all classification data
+- [Domains by Classification](https://docs.brightdata.com/api-reference/scraping-shield-api/domains-by-classification-data.md): Returns usage data per domain for the chosen classification
+- [Samples by Classification](https://docs.brightdata.com/api-reference/scraping-shield-api/samples-by-classification-data.md): Returns sample requests data for the chosen classification
+- [Zone by Classification](https://docs.brightdata.com/api-reference/scraping-shield-api/zones-by-classification-data.md): Returns usage data per zone for the chosen classification
+- [Complex Search](https://docs.brightdata.com/api-reference/serp/google-flights/complex-search.md)
+- [Currency](https://docs.brightdata.com/api-reference/serp/google-flights/currency.md)
+- [Localization](https://docs.brightdata.com/api-reference/serp/google-flights/localization.md)
+- [Text Search](https://docs.brightdata.com/api-reference/serp/google-flights/text-search.md)
+- [Accommodation Type](https://docs.brightdata.com/api-reference/serp/google-hotels/accommodation-type.md)
+- [Currency](https://docs.brightdata.com/api-reference/serp/google-hotels/currency.md)
+- [Dates](https://docs.brightdata.com/api-reference/serp/google-hotels/dates.md)
+- [Device Type](https://docs.brightdata.com/api-reference/serp/google-hotels/device-type.md)
+- [Free Cancellation](https://docs.brightdata.com/api-reference/serp/google-hotels/free-cancellation.md)
+- [Localization](https://docs.brightdata.com/api-reference/serp/google-hotels/localization.md)
+- [Occupancy](https://docs.brightdata.com/api-reference/serp/google-hotels/occupancy.md)
+- [Occupancy (children)](https://docs.brightdata.com/api-reference/serp/google-hotels/occupancy-children.md)
+- [Parsed JSON](https://docs.brightdata.com/api-reference/serp/google-hotels/parsed-json.md)
+- [Text Search](https://docs.brightdata.com/api-reference/serp/google-hotels/text-search.md)
+- [Exact Matches](https://docs.brightdata.com/api-reference/serp/google-lens/exact-matches.md)
+- [Homework](https://docs.brightdata.com/api-reference/serp/google-lens/homework.md)
+- [Image URL](https://docs.brightdata.com/api-reference/serp/google-lens/image-url.md)
+- [Localization](https://docs.brightdata.com/api-reference/serp/google-lens/localization.md)
+- [Parsed JSON](https://docs.brightdata.com/api-reference/serp/google-lens/parsed-json.md)
+- [Products](https://docs.brightdata.com/api-reference/serp/google-lens/products.md)
+- [Visual Matches](https://docs.brightdata.com/api-reference/serp/google-lens/visual-matches.md)
+- [Coordinates](https://docs.brightdata.com/api-reference/serp/google-maps/coordinates.md)
+- [Filtering](https://docs.brightdata.com/api-reference/serp/google-maps/filtering.md)
+- [Localization](https://docs.brightdata.com/api-reference/serp/google-maps/localization.md)
+- [Pagination](https://docs.brightdata.com/api-reference/serp/google-maps/pagination.md)
+- [Parsed JSON](https://docs.brightdata.com/api-reference/serp/google-maps/parsed-json.md)
+- [Place Details](https://docs.brightdata.com/api-reference/serp/google-maps/place-details.md)
+- [Text search](https://docs.brightdata.com/api-reference/serp/google-maps/text-search.md)
+- [Filter by Keyword](https://docs.brightdata.com/api-reference/serp/google-reviews/filter-keyword.md)
+- [Localization](https://docs.brightdata.com/api-reference/serp/google-reviews/localization.md)
+- [Pagination](https://docs.brightdata.com/api-reference/serp/google-reviews/pagination.md)
+- [Sort (Highest)](https://docs.brightdata.com/api-reference/serp/google-reviews/sort-highest.md)
+- [Sort (Lowest)](https://docs.brightdata.com/api-reference/serp/google-reviews/sort-lowest.md)
+- [Sort (Newest)](https://docs.brightdata.com/api-reference/serp/google-reviews/sort-newest.md)
+- [Text search](https://docs.brightdata.com/api-reference/serp/google-reviews/text-search.md)
+- [AI Overview](https://docs.brightdata.com/api-reference/serp/google-search/ai-overview.md)
+- [Browser type](https://docs.brightdata.com/api-reference/serp/google-search/browser.md)
+- [Device (Platform)](https://docs.brightdata.com/api-reference/serp/google-search/device-ios.md)
+- [Device (Mobile/Desktop)](https://docs.brightdata.com/api-reference/serp/google-search/device-mobile.md)
+- [Geo-Location](https://docs.brightdata.com/api-reference/serp/google-search/geo-location.md)
+- [Image Search](https://docs.brightdata.com/api-reference/serp/google-search/images.md)
+- [Job Search](https://docs.brightdata.com/api-reference/serp/google-search/jobs.md)
+- [Localization](https://docs.brightdata.com/api-reference/serp/google-search/localization.md)
+- [News Search](https://docs.brightdata.com/api-reference/serp/google-search/news.md)
+- [Pagination](https://docs.brightdata.com/api-reference/serp/google-search/pagination.md)
+- [Shopping Search](https://docs.brightdata.com/api-reference/serp/google-search/shopping.md)
+- [Short Videos](https://docs.brightdata.com/api-reference/serp/google-search/short-videos.md)
+- [Text search](https://docs.brightdata.com/api-reference/serp/google-search/text-search.md)
+- [Video Search](https://docs.brightdata.com/api-reference/serp/google-search/videos.md)
+- [Category](https://docs.brightdata.com/api-reference/serp/google-trends/category.md)
+- [Geo](https://docs.brightdata.com/api-reference/serp/google-trends/geo.md)
+- [Localization](https://docs.brightdata.com/api-reference/serp/google-trends/localization.md)
+- [Search Type](https://docs.brightdata.com/api-reference/serp/google-trends/search-type.md)
+- [Text Search](https://docs.brightdata.com/api-reference/serp/google-trends/text-search.md)
+- [Time Range](https://docs.brightdata.com/api-reference/serp/google-trends/time-range.md)
+- [Terminology](https://docs.brightdata.com/api-reference/terminology.md)
+- [Send your first Request](https://docs.brightdata.com/api-reference/unlocker/sending_first_request.md)
+- [null](https://docs.brightdata.com/api-reference/web-scraper-api/delivery-apis/deliver-snapshot.md): Deliver the snapshot content to the specified storage
+- [Download Snapshot](https://docs.brightdata.com/api-reference/web-scraper-api/delivery-apis/download-snapshot.md): Download the snapshot content. This endpoint allows you to retrieve the collected dataset once the snapshot status is `ready`. Data can be downloaded in multiple formats and optionally split into batches.
+- [Cancel Snapshot](https://docs.brightdata.com/api-reference/web-scraper-api/management-apis/cancel-snapshot.md): Cancel the running collection
+- [Get Snapshot Delivery Parts](https://docs.brightdata.com/api-reference/web-scraper-api/management-apis/get-snapshot-delivery-parts.md): When requesting a delivery in batches (see available delivery APIs) use this endpoint to check how many parts were created. format, compress and batch_size should exactly match what was sent to the delivery/download API calls.
+- [Get Snapshot Input](https://docs.brightdata.com/api-reference/web-scraper-api/management-apis/get-snapshot-input.md): Get the inputs that were used to trigger the collection
+- [Get Snapshots](https://docs.brightdata.com/api-reference/web-scraper-api/management-apis/get-snapshots.md): Get a list of triggered collections, the list contains only snapshots created for a specific dataset
+- [Monitor Delivery](https://docs.brightdata.com/api-reference/web-scraper-api/management-apis/monitor-delivery.md): The call returns the delivery status
+- [Monitor Progress](https://docs.brightdata.com/api-reference/web-scraper-api/management-apis/monitor-progress.md): The Monitor Progress API is designed to track the current status of a data collection job, also known as a snapshot, indicating whether it is collecting data, processing it, or ready for download.
+- [Get Snapshot Data](https://docs.brightdata.com/api-reference/web-scraper-api/management-apis/snapshot-data.md): Retrieve the logs for a specific dataset snapshot
+- [Facebook API Scrapers](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/facebook.md)
+- [Comments API](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/instagram/comments.md): Collect the latest comments from Instagram posts.
+- [Instagram](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/instagram/overview.md)
+- [Posts API](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/instagram/posts.md): Collect and discover Instagram posts from post URLs or public profiles.
+- [Profiles API](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/instagram/profiles.md): Collect detailed information about Instagram profiles using the profile URL.
+- [Reels API](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/instagram/reels.md): Collect and discover Instagram Reels.
+- [Companies API](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/linkedin/companies.md): Collect detailed LinkedIn company profile information using a company URL.
+- [Job Listings API](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/linkedin/jobs.md): Collect detailed LinkedIn job listing information using a job URL.
+- [LinkedIn](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/linkedin/overview.md)
+- [Posts API](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/linkedin/posts.md): Collect detailed LinkedIn post data by post URL.
+- [Profiles API](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/linkedin/profiles.md): Collect LinkedIn profile data by profile URL.
+- [Social Media Scrapers APIs Overview](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/overview.md): The Social Media API Suite provides extensive tools for data collection across multiple platforms.
+- [Pinterest API Scrapers](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/pinterest.md)
+- [Quora API Scrapers](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/quora.md)
+- [Reddit API Scrapers](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/reddit.md)
+- [TikTok API Scrapers](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/tiktok.md)
+- [Twitter API Scrapers](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/twitter.md)
+- [Vimeo API Scrapers](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/vimeo.md)
+- [YouTube API Scrapers](https://docs.brightdata.com/api-reference/web-scraper-api/social-media-apis/youtube.md)
+- [Synchronous Requests](https://docs.brightdata.com/api-reference/web-scraper-api/synchronous-requests.md): This endpoint allows users to fetch data efficiently and ensures seamless integration with their applications or workflows.
+- [Archive](https://docs.brightdata.com/archive-quickstart.md)
+- [Browser API](https://docs.brightdata.com/browser-api-quickstart.md)
+- [Browser Extension](https://docs.brightdata.com/browser-extension-quickstart.md)
+- [Crawl API](https://docs.brightdata.com/crawl-api-quickstart.md)
+- [Managed Services](https://docs.brightdata.com/custom-dataset-quickstart.md)
+- [Data Center](https://docs.brightdata.com/data-center-quickstart.md)
+- [Dataset Marketplace](https://docs.brightdata.com/dataset-marketplace-quickstart.md)
+- [API Reference](https://docs.brightdata.com/datasets/archive/api-reference.md)
+- [How data range affects delivery time](https://docs.brightdata.com/datasets/archive/data-range-vs-delivery-time.md)
+- [FAQ: Archive API](https://docs.brightdata.com/datasets/archive/faqs.md): Find answers to common questions about Archive API.
+- [Web Archive Overview](https://docs.brightdata.com/datasets/archive/overview.md): The Web Archive gives you access to Bright Data's stored web traffic - a continuously growing repository of pages collected through our Unlocker and SERP APIs.
+- [Data validation for Customers](https://docs.brightdata.com/datasets/data-validation/data-validation-for-customers.md)
+- [Data validation for Partners](https://docs.brightdata.com/datasets/data-validation/data-validation-for-partners.md)
+- [Code Examples](https://docs.brightdata.com/datasets/deep-lookup/code-examples.md): Code examples for using the Deep Lookup API.
+- [Error Handling](https://docs.brightdata.com/datasets/deep-lookup/errors.md)
+- [Deep Lookup Documentation](https://docs.brightdata.com/datasets/deep-lookup/overview.md)
+- [Deep Lookup - Pricing](https://docs.brightdata.com/datasets/deep-lookup/pricing.md): Deep Lookup uses a pay-per-result pricing model where you only pay for successfully matched records. Our transparent pricing ensures you know costs upfront and only pay for the value you receive. No charges for skipped or unmatched results.
+- [Data Feeds](https://docs.brightdata.com/datasets/introduction.md): Bright Data’s Data Pipelines offer developers a faster, more efficient way to collect and process web data - without the complexity of managing scraping infrastructure. Integrate pre-built scrapers for 120+ popular websites, deploy custom scrapers as serverless functions, or grab ready-to-use datasets tailored to your needs.
+- [null](https://docs.brightdata.com/datasets/marketplace/customization-and-filtering.md)
+- [null](https://docs.brightdata.com/datasets/marketplace/dataset-view.md)
+- [FAQs](https://docs.brightdata.com/datasets/marketplace/faqs.md)
+- [Filter dataset by API](https://docs.brightdata.com/datasets/marketplace/filter-dataset-by-api.md)
+- [Dataset Marketplace Overview](https://docs.brightdata.com/datasets/marketplace/overview.md): The Dataset Marketplace is a centralized platform providing regularly updated, ethically sourced datasets from multiple domains, offering flexible solutions for data customization and acquisition.
+- [null](https://docs.brightdata.com/datasets/marketplace/pricing.md)
+- [null](https://docs.brightdata.com/datasets/marketplace/purchase-options.md)
+- [Scraper Studio AI Agent](https://docs.brightdata.com/datasets/scraper-studio/ai-agent.md): AI Scraper Studio is a no-code tool that lets you build custom web scrapers using natural language. Simply chat with AI by describing what data you want to collect from a website, and it automatically creates a scraper for you - no coding required.
+- [The Basics of Web Scraping](https://docs.brightdata.com/datasets/scraper-studio/basics-of-web-scraping.md): This article describes the basic concepts in web scraping, like Navigation, Parsing, Worker type, and main Challenges
+- [Best Practices for Scraper Studio IDE](https://docs.brightdata.com/datasets/scraper-studio/best-practices.md): Learn the best practices for using Scraper Studio IDE, including optimizing performance, handling errors, managing retries, and writing efficient scraper code.
+- [Develop a Self-Managed Scraper with the IDE](https://docs.brightdata.com/datasets/scraper-studio/develop-a-scraper.md): Learn how to create a self-managed data scraper using the Scraper Studio IDE. Follow steps to write interaction and parser code, preview, save, and initiate your custom scraper.
+- [Scraper Studio IDE FAQs](https://docs.brightdata.com/datasets/scraper-studio/faqs.md): Find answers to common questions about Bright Data's Scraper Studio IDE, including setup, troubleshooting, and best practices for developing custom data scrapers.
+- [null](https://docs.brightdata.com/datasets/scraper-studio/features.md)
+- [null](https://docs.brightdata.com/datasets/scraper-studio/functions.md)
+- [Initiate Data Collection & Delivery with IDE Scraper](https://docs.brightdata.com/datasets/scraper-studio/initiate-collection-and-delivery-options.md): Learn how to initiate data collection and set up delivery options using the IDE Scraper. Explore manual, API, and scheduled methods for efficient data scraping.
+- [Understanding Scraper Studio](https://docs.brightdata.com/datasets/scraper-studio/introduction.md): Understand what Bright Data Scraper Studio is, choose between AI Agent and IDE modes, and access it from your dashboard.
+- [Scraper Studio IDE - Interface Reference](https://docs.brightdata.com/datasets/scraper-studio/scraper-studio-ide-interface.md): Scraper Studio's IDE is a browser-based JavaScript development environment for building, testing, and debugging custom web scrapers. This page describes all interface components across two areas: the **IDE panel** and the **scraper Dashboard**.
+- [Self Healing Tool - AI Code Refactor](https://docs.brightdata.com/datasets/scraper-studio/self-healing-tool.md): Use the Self Healing Tool to automatically update and fix your data scraper's code with AI assistance. Easily add or modify input/output fields and resolve broken code.
+- [Scraper Studio Specifications](https://docs.brightdata.com/datasets/scraper-studio/specifications.md): Bright Data Scraper Studio infrastructure limits, billing model, and data retention rules.
+- [Video Tutorials: Mastering Web Scraping with the IDE](https://docs.brightdata.com/datasets/scraper-studio/videos.md): Explore video tutorials showcasing how to use the Scraper Studio IDE for various web scraping tasks, including automation, proxy management, and data extraction.
+- [WARC files](https://docs.brightdata.com/datasets/scraper-studio/warc-ide.md): Produce WARC files during scraping operations
+- [Worker types](https://docs.brightdata.com/datasets/scraper-studio/worker-types.md): This article explains the behavior difference between worker types, how to choose the right one for your project
+- [Managed Services](https://docs.brightdata.com/datasets/scrapers/managed-services.md)
+- [Overview](https://docs.brightdata.com/datasets/scrapers/overview.md)
+- [AI Web Scrapers Documentation](https://docs.brightdata.com/datasets/scrapers/scrapers-library/ai-scrapers.md): This document provides an overview of the AI-powered web scrapers integrated into our system. These scrapers interact with advanced AI models to retrieve structured responses to user prompts, including relevant metadata such as sources, citations, and contextual information.
+- [API Reference](https://docs.brightdata.com/datasets/scrapers/scrapers-library/api-reference.md)
+- [Authentication Guide](https://docs.brightdata.com/datasets/scrapers/scrapers-library/authentication-guide.md)
+- [Custom inputs](https://docs.brightdata.com/datasets/scrapers/scrapers-library/custom-inputs.md): Learn how to add custom fields to your input schema for enhanced data management and retrieval.
+- [Deadline Feature](https://docs.brightdata.com/datasets/scrapers/scrapers-library/deadline-feature.md): This guide shows you how to limit how long a dataset trigger request waits when a snapshot may take a long time to finish.
+- [Delivery Options](https://docs.brightdata.com/datasets/scrapers/scrapers-library/delivery-options.md): This article describes the options for getting the dataset once the snapshot is ready.
+- [Error codes by Endpoint](https://docs.brightdata.com/datasets/scrapers/scrapers-library/error-list-by-endpoint.md): A list of the error codes in the system, sorted by the specific endpoint
+- [Web Scraper API FAQs](https://docs.brightdata.com/datasets/scrapers/scrapers-library/faqs.md): Find answers to FAQs about Bright Data's Web Scraper API, covering setup, authentication, data formats, pricing, and large-scale data extraction.
+- [Clay integration](https://docs.brightdata.com/datasets/scrapers/scrapers-library/integrations/clay.md)
+- [Overview](https://docs.brightdata.com/datasets/scrapers/scrapers-library/overview.md): Discover the Web Scraper API, use our ready-made scrapers designed to streamline data collection and enhance dataset generation. Learn about initiating scrapes, managing data, and system limitations.
+- [Web Scraper API - Quick Start](https://docs.brightdata.com/datasets/scrapers/scrapers-library/quickstart.md)
+- [Working with Sources in AI Scrapers](https://docs.brightdata.com/datasets/scrapers/scrapers-library/working-with-sources.md): Learn how to work with sources in AI scrapers, including understanding sources, how they are generated, handling source errors, and best practices for prompting.
+- [Billing](https://docs.brightdata.com/general/account/billing-and-pricing/billing.md)
+- [About the Bright Rewards Program](https://docs.brightdata.com/general/account/billing-and-pricing/bright-rewards-program.md): This program is designed to reward our loyal customers for their continued usage of our services. Eligible users will receive Bright Points on a monthly basis to purchase Bright Data services with.
+- [Keeping track of your usage: Costs Explorer](https://docs.brightdata.com/general/account/billing-and-pricing/costs-explorer.md): We understand the importance of transparency and control over your data usage and expenses. That's why we've introduced the Cost Explorer feature, a powerful tool designed to give you detailed insights into your usage statistics and costs
+- [FAQs](https://docs.brightdata.com/general/account/billing-and-pricing/faqs.md)
+- [Payment](https://docs.brightdata.com/general/account/billing-and-pricing/payment.md)
+- [Accepted Payment Methods](https://docs.brightdata.com/general/account/billing-and-pricing/payment-methods.md): We have an automated billing system that supports a host of payment methods
+- [Payment Method Verification](https://docs.brightdata.com/general/account/billing-and-pricing/payment-verification.md): Understand why a payment method is required to access Proxy Networks and Web Unlocker API on a free trial, and how to add one.
+- [Premium IPs (deprecated)](https://docs.brightdata.com/general/account/billing-and-pricing/premium-ips.md): Premium IPs have deprecated and Bright Data does no longer offer them. 
+- [Bright Data Promo Codes](https://docs.brightdata.com/general/account/billing-and-pricing/promo-codes.md)
+- [Account Management FAQs](https://docs.brightdata.com/general/account/faqs.md)
+- [Limited Trial Account Restrictions](https://docs.brightdata.com/general/account/limited-trial-restrictions.md): Understanding rate limits and balance restrictions for accounts in Limited Trial mode
+- [Account Management Overview](https://docs.brightdata.com/general/account/overview.md): Explore and manage your account settings, billing, team access, and more.
+- [Referral Program](https://docs.brightdata.com/general/account/referral-program.md): Bright Data’s referral program offers a simple way to earn by recommending our platform to others. Whether you're introducing a colleague or suggesting Bright Data to a business, you can receive up to 50% of the revenue from each customer you bring in. This guide breaks down how the program works, how it differs from the affiliate program, and how you can start earning today.
+- [SSL Certificate](https://docs.brightdata.com/general/account/ssl-certificate.md)
+- [Users Management](https://docs.brightdata.com/general/account/users-management.md): Manage users and permissions for Bright Data access
+- [How to set up Entra ID (formerly Azure Active Directory) SSO and provisioning with Bright Data](https://docs.brightdata.com/general/authentication/How_to_set_up_Azure_SSO_Entra_ID_with_Bright_Data.md)
+- [How to set up SSO with Okta in Bright Data?](https://docs.brightdata.com/general/authentication/How_to_set_up_SSO_with_Okta_in_Bright_Data.md)
+- [Snowflake Delivery Configuration Guide](https://docs.brightdata.com/general/cloud-providers/snowflake.md)
+- [FAQs](https://docs.brightdata.com/general/faqs.md)
+- [How do Consumers join the Bright Data Peers Network](https://docs.brightdata.com/general/policy/How_do_consumers_join_the_Bright_Data_network_of_peers_.md)
+- [null](https://docs.brightdata.com/general/policy/Privacy_Policy.md)
+- [What is Bright Data Platform?](https://docs.brightdata.com/general/policy/What_is_Bright_Data_platform.md)
+- [Acceptable Use Policy](https://docs.brightdata.com/general/policy/acceptable-use-policy.md)
+- [Bright Data Master Service Agreement](https://docs.brightdata.com/general/policy/license.md): _Last Updated July 12, 2023_
+- [How does Bright Data ensure the Privacy & Security of the User that install its Apps?](https://docs.brightdata.com/general/privacy/privacy-and-security-for-apps.md)
+- [How does Bright Data protect End User's resources?](https://docs.brightdata.com/general/privacy/protect-end-users-resources.md)
+- [How does Bright Data handle Abuse Report?](https://docs.brightdata.com/general/security/abuse-report-handling.md)
+- [Denylisting or Allowlisting IPs and Domains](https://docs.brightdata.com/general/security/allowlist-denylist-ips-domains.md)
+- [How does Bright Data ensure Network Security?](https://docs.brightdata.com/general/security/network-security.md)
+- [null](https://docs.brightdata.com/general/security/security-overview.md)
+- [null](https://docs.brightdata.com/general/usage-monitoring/Event_log.md)
+- [Monitor your Usage](https://docs.brightdata.com/general/usage-monitoring/Monitoring_Residential_Network_Usage.md)
+- [Usage](https://docs.brightdata.com/general/usage-monitoring/Usage.md)
+- [Bandwidth](https://docs.brightdata.com/general/usage-monitoring/bandwidth.md)
+- [Unlimited DC & ISP Zones: Fair Use](https://docs.brightdata.com/general/usage-monitoring/fair_use_allowance.md): In DC & ISP unlimited zones, fair use allowance is applied to prevent abuse
+- [Webhook Notifications](https://docs.brightdata.com/general/webhook_notifications.md)
+- [Webmaster Console](https://docs.brightdata.com/general/webmaster-console.md): Configure BrightBot behavior for your domains using collectors.txt file
+- [How do I scrape site XYZ?](https://docs.brightdata.com/general/websites.md): This section will give you tips and tricks on how you can get information from specific websites that you are interested in.
+- [How to Set Up Bright Data With AdsPower](https://docs.brightdata.com/integrations/adspower.md): Boost your web scraping and multi-account management with Bright Data and AdsPower. Stay secure and undetectable as you manage multiple accounts effortlessly.
+- [How to Set Up Bright Data With Aezakmi](https://docs.brightdata.com/integrations/aezakmi.md): Enhance your anonymity and streamline your online tasks with Bright Data in Aezakmi. Follow this guide to configure secure and reliable proxy connections for your browser profiles.
+- [How to Set Up Bright Data With Agno](https://docs.brightdata.com/integrations/agno.md)
+- [Overview](https://docs.brightdata.com/integrations/ai-integrations.md): Bright Data delivers an AI-ready web data infrastructure that powers your models and agents with real-time, high‑quality web access. Whether you’re feeding data into RAG pipelines, enabling agent-driven search, or harvesting structured data, Bright Data offers seamless compatibility with common AI/ML workflows using both pre-built integrations, flexible API options, and an MCP server.
+- [How to Set Up Bright Data on Android](https://docs.brightdata.com/integrations/android.md): Get started with Bright Data on your Android device in just a few steps. This guide walks you through configuring Bright Data proxies for both mobile data and Wi-Fi connections.
+- [How to Set Up Bright Data With Antik](https://docs.brightdata.com/integrations/antik.md): Integrate Bright Data with Antik to enhance your online anonymity, streamline your tasks, and securely manage browser profiles. Follow this step-by-step guide to configure Bright Data with Antik for efficient and private browsing.
+- [How to Use Bright Data with Apify](https://docs.brightdata.com/integrations/apify.md): Web scraping made seamless! Integrating Oculus Proxies with Apify ensures smoother, anonymous, and efficient scraping workflows, helping you bypass challenges like IP bans, geo-restrictions, and CAPTCHAs. Follow this guide to set up Oculus Proxies with Apify for enhanced performance and reliability.
+- [How to Use Bright Data with BeautifulSoup](https://docs.brightdata.com/integrations/beautifulsoup.md): Enhance your web scraping workflows with Bright Data and BeautifulSoup. This guide walks you through integrating Bright Data proxies into your Python scripts to ensure secure, reliable, and anonymous data collection.
+- [How to Use Bright Data with BitBrowser](https://docs.brightdata.com/integrations/bitbrowser.md): Streamline your multi-profile browsing with Bright Data and BitBrowser. This guide walks you through integrating Bright Data proxies into BitBrowser to ensure secure, private, and efficient browsing across all your profiles.
+- [How to Set Up Bright Data With Capsolver](https://docs.brightdata.com/integrations/capsolver.md): Integrate Bright Data with Capsolver to enhance your CAPTCHA-solving workflows. Follow this guide to securely configure proxies for efficient and uninterrupted automation.
+- [How to Set Up Bright Data With ChangeDetection](https://docs.brightdata.com/integrations/changedetection.md): Monitor websites securely and anonymously with ChangeDetection and Bright Data. By integrating Bright Data, you can track website updates while ensuring your activities remain private and undetectable.
+- [How to Configure Proxy Settings in Chrome](https://docs.brightdata.com/integrations/chrome.md): Transform your browsing with proxies in Chrome! They’re perfect for safeguarding your privacy, accessing restricted sites, and juggling multiple accounts. In this guide, we’ll walk you through the setup and help you make the most of Chrome proxies.
+- [How to Integrate Bright Data With ClonBrowser](https://docs.brightdata.com/integrations/clonbrowser.md): Secure your browsing and automation workflows with Bright Data on ClonBrowser. This guide will walk you through the setup process, ensuring private and seamless browsing.
+- [How to Integrate Bright Data With CrewAI](https://docs.brightdata.com/integrations/crew-ai.md): Integrate Bright Data with CrewAI for powerful web scraping, data extraction, and search capabilities.
+- [How to Set Up Bright Data With DICloak](https://docs.brightdata.com/integrations/dicloak.md)
+- [How to Set Up Bright Data With Dify](https://docs.brightdata.com/integrations/dify.md)
+- [How to Set Up Bright Data With Dolphin Anty](https://docs.brightdata.com/integrations/dolphin-anty.md): Enhance your web scraping and multi-account management with Dolphin Anty and Bright Data proxies. Enjoy secure, efficient data extraction and powerful anti-detection features.
+- [How to Set Up Bright Data With Easync](https://docs.brightdata.com/integrations/easync.md): Enhance your automation workflows with Bright Data on Easync. Follow this guide to configure Bright Data for seamless, secure, and reliable e-commerce operations.
+- [How to Configure Proxy Settings in Firefox](https://docs.brightdata.com/integrations/firefox.md): Take charge of your online experience! Setting up a proxy in Firefox gives you a secure shield for your browsing—ideal for boosting privacy, bypassing limits, or handling multiple accounts with ease. Follow this guide to set up proxies and unleash the full power of Firefox.
+- [How to Set Up Bright Data With FoxyProxy](https://docs.brightdata.com/integrations/foxyproxy.md): Effortlessly enhance your browsing with FoxyProxy! By integrating Bright Data, you can securely manage and switch between proxy servers for smooth and efficient web scraping, secure browsing, and application testing. Use this guide to set up Bright Data with FoxyProxy and streamline your online operations.
+- [How to Use Bright Data With Geelark](https://docs.brightdata.com/integrations/geelark.md): Integrate Bright Data with Geelark to maximize your privacy and efficiency. This guide walks you through configuring Bright Data proxies for secure and anonymous browsing using Geelark.
+- [How to Use Bright Data With GenLogin](https://docs.brightdata.com/integrations/genlogin.md): Securely manage multiple browser profiles with Bright Data and GenLogin. This guide will walk you through the steps to integrate Bright Data with GenLogin for anonymous and efficient browsing.
+- [How to Set Up Bright Data With Ghost Browser](https://docs.brightdata.com/integrations/ghost-browser.md): Streamline multi-account management with Bright Data and Ghost Browser, ensuring secure and anonymous browsing while boosting your productivity.
+- [How to Set Up Bright Data With GoLogin](https://docs.brightdata.com/integrations/gologin.md): Boost your web scraping and multi-account management with GoLogin and Bright Data, offering robust anti-detection and flexible proxy control.
+- [How to Set Up Bright Data With Haystack](https://docs.brightdata.com/integrations/haystack.md)
+- [How to Set Up Bright Data With Helium Scraper](https://docs.brightdata.com/integrations/helium-scraper.md): Integrate Bright Data with Helium Scraper for secure, efficient, and anonymous web scraping with flexible proxy management.
+- [How to Integrate Bright Data With HideMyAcc](https://docs.brightdata.com/integrations/hidemyacc.md): Secure and streamline your browsing with Bright Data and HideMyAcc. This guide walks you through configuring Bright Data within HideMyAcc for private, reliable, and efficient account management.
+- [How to Integrate Bright Data With Smolagents](https://docs.brightdata.com/integrations/hugging-face.md): This tool connects to Bright Data to enable your agent to crawl websites, search the web, and access structured data from platforms like LinkedIn, Amazon, and social media.
+- [IBM Watsonx Orchestrate](https://docs.brightdata.com/integrations/ibm-watsonx-orchestrate.md): Integrate Bright Data's powerful web scraping and data extraction capabilities into IBM watsonx Orchestrate using the MCP Server method.
+- [How to Set Up Bright Data With Incogniton](https://docs.brightdata.com/integrations/incogniton.md): Integrate Bright Data with Incogniton for seamless multi-account management, offering secure and anonymous browsing with enhanced protection against detection and bans.
+- [How to Set Up Bright Data With Insomniac](https://docs.brightdata.com/integrations/insomniac.md): Using Bright Data proxies with Insomniac boosts your automation efforts by providing secure, anonymous connections, reducing the risk of detection and ensuring smoother operations.
+- [Proxy Integrations](https://docs.brightdata.com/integrations/introduction.md): Bright Data's proxies seamlessly integrate with leading third party software. Read our detailed guides to effortlessly configure and utilize Bright Data's proxies in your system, tool or utility.  We support all tools and utilities listed here: 
+- [How to Use Bright Data on iOS](https://docs.brightdata.com/integrations/ios.md): Learn how to set up Bright Data proxies on your iOS device to enjoy secure, private, and unrestricted browsing. This guide walks you through the complete configuration process for a smooth and reliable connection.
+- [How to Integrate Bright Data With IXBrowser](https://docs.brightdata.com/integrations/ixbrowser.md): Streamline your account management and secure your browsing with Bright Data and IXBrowser. Follow this guide to configure Bright Data for a seamless and anonymous experience using IXBrowser.
+- [How to Set Up Bright Data With Kameleo](https://docs.brightdata.com/integrations/kameleo.md): Integrate Bright Data with Kameleo for secure browsing and efficient management of multiple profiles, offering enhanced privacy and robust protection against detection.
+- [How to Set Up Bright Data With Lalicat](https://docs.brightdata.com/integrations/lalicat.md): Integrating Bright Data with Lalicat ensures secure, anonymous multi-account management, offering flexible proxy solutions for reliable and efficient browsing.
+- [How to Set Up Bright Data With LangChain](https://docs.brightdata.com/integrations/langchain.md)
+- [How to Set Up Bright Data With Lindy.ai](https://docs.brightdata.com/integrations/lindy-ai.md): Automate your web data workflows by integrating Bright Data with Lindy.ai. Learn how to connect APIs, trigger real-time data collection, and enhance business automation.
+- [How to Set Up Bright Data With LlamaIndex](https://docs.brightdata.com/integrations/llama-index.md)
+- [How to Use Bright Data on macOS](https://docs.brightdata.com/integrations/macos.md): Integrate Bright Data proxies into your macOS network settings for secure, private, and geo-flexible browsing. This guide walks you through the complete configuration process to keep your connection stable and protected.
+- [How to Set Up Bright Data With Make.com](https://docs.brightdata.com/integrations/make.md): Learn how to integrate Bright Data with Make.com to build automated, no-code data workflows.
+- [How to Use Bright Data With MarketerBrowser](https://docs.brightdata.com/integrations/marketerbrowser.md): Effortlessly enhance your browser profile management with Bright Data. Integrating Bright Data with MarketerBrowser allows you to secure your connections, manage multiple accounts, and explore region-specific content with ease. Follow this guide to set up Bright Data with MarketerBrowser today.
+- [How to Integrate Bright Data With Maskfog](https://docs.brightdata.com/integrations/maskfog.md): Learn how to integrate Bright Data with Maskfog to enhance privacy and streamline your account management. Follow this guide for a smooth setup experience.
+- [How to Set Up Bright Data With Mastra](https://docs.brightdata.com/integrations/mastra.md)
+- [How to Set Up Bright Data With MoreLogin](https://docs.brightdata.com/integrations/morelogin.md): Enhance your multi-account management with Bright Data on MoreLogin for secure, anonymous browsing and better protection against detection.
+- [How to Use Bright Data with MuLogin](https://docs.brightdata.com/integrations/mulogin.md): Enhance your MuLogin experience by integrating Bright Data proxies. This guide shows you how to set up secure, anonymous connections for better automation, data gathering, and account management.
+- [How to Set Up Bright Data With Multilogin](https://docs.brightdata.com/integrations/multilogin.md): Integrating Bright Data with Multilogin enhances your multi-account management, offering secure, undetectable browsing with improved privacy and reduced risk of account bans.
+- [How to Set Up Bright Data With n8n](https://docs.brightdata.com/integrations/n8n.md): Learn how to integrate Bright Data with n8n to build automated, no-code data workflows.
+- [How to Set Up Bright Data With NGINX](https://docs.brightdata.com/integrations/nginx.md): Integrate Bright Data with NGINX to efficiently route traffic, mask domains, and manage connections securely. Follow this guide to configure NGINX with Bright Data proxies for enhanced performance and flexibility.
+- [How to Set Up Bright Data With Octo Browser](https://docs.brightdata.com/integrations/octobrowser.md): Integrate Bright Data with Octo Browser to enhance your multi-account management and web scraping with robust anti-detection features and secure browsing.
+- [How to Set Up Bright Data With Octoparse](https://docs.brightdata.com/integrations/octoparse.md): Boost your web scraping efficiency by integrating Bright Data with Octoparse, ensuring secure and anonymous data extraction while reducing the risk of IP blocks.
+- [How to Set Up Bright Data With OpenBullet](https://docs.brightdata.com/integrations/openbullet.md): Enhance your automation workflows with Bright Data on OpenBullet. This guide walks you through configuring Bright Data proxies for secure, anonymous, and reliable automation.
+- [How to Set Up Bright Data With ParseHub](https://docs.brightdata.com/integrations/parsehub.md): Integrating Bright Data proxies with ParseHub enhances your web scraping by providing secure, anonymous access and reducing the risk of detection and IP bans.
+- [How to Set Up Bright Data With PhantomBuster](https://docs.brightdata.com/integrations/phantombuster.md): Ready to elevate your automation workflows? Connect Bright Data to PhantomBuster for a smoother, safer, and more productive data-gathering experience. With your online footprint masked and performance boosted, you can focus on meaningful insights instead of technical hurdles.
+- [How to Set Up Bright Data With Pica](https://docs.brightdata.com/integrations/pica.md)
+- [How to Set Up Bright Data With Playwright](https://docs.brightdata.com/integrations/playwright.md): Streamline your web automation with Bright Data and Playwright. This guide shows you how to configure secure, anonymous proxies that reduce detection risks and keep your tasks running smoothly.
+- [How to Set Up Bright Data With Postern](https://docs.brightdata.com/integrations/postern.md): Integrate Bright Data with Postern to manage your proxy configurations effortlessly. Follow this guide to securely configure proxies for efficient and uninterrupted browsing.
+- [How to Use Bright Data With Postman](https://docs.brightdata.com/integrations/postman.md): Streamline your API testing with Bright Data in Postman. This guide shows you how to configure proxies for secure, anonymous, and geo-targeted API requests.
+- [How to Configure Bright Data With Proxifier](https://docs.brightdata.com/integrations/proxifier.md): Streamline your network management with Proxifier! By integrating Bright Data, you can securely route traffic from applications that lack native proxy support. With Proxifier's flexible rule-based system, you can customize traffic routing and enjoy seamless, anonymous browsing.
+- [How to Set Up Bright Data With Puppeteer](https://docs.brightdata.com/integrations/puppeteer.md): Discover how to enhance Puppeteer’s browser automation with Bright Data. This guide will walk you through setting up secure, anonymous proxies for smoother web scraping and data retrieval.
+- [How to Set Up Bright Data With SaleFreaks](https://docs.brightdata.com/integrations/salefreaks.md): Learn how to integrate Bright Data proxies with SaleFreaks to securely manage dropshipping automation, protect seller accounts, and reduce IP-related risks.
+- [How to Use Bright Data with Scrapy](https://docs.brightdata.com/integrations/scrapy.md): Integrate Bright Data with Scrapy to enhance your web scraping workflows. This guide provides a step-by-step configuration process to enable secure and anonymous connections for your Scrapy projects.
+- [How to Set Up Bright Data With Screaming Frog](https://docs.brightdata.com/integrations/screaming-frog.md): Streamline your SEO tasks by integrating Bright Data with Screaming Frog. Follow this step-by-step guide to set up proxies for efficient and secure web crawling.
+- [How to Use Selenium with Bright Data](https://docs.brightdata.com/integrations/selenium.md): Integrate Bright Data proxies with Selenium in Python to enhance your automation workflows. This guide helps you set up secure, anonymous connections for web scraping and browser automation.
+- [How to Set Up Bright Data With SessionBox](https://docs.brightdata.com/integrations/sessionbox.md): Using Bright Data with SessionBox enables secure, efficient multi-session browsing, offering flexible proxy solutions for undetectable and streamlined account management.
+- [How to Set Up Bright Data With Shadowrocket](https://docs.brightdata.com/integrations/shadowrocket.md): Learn how to integrate Bright Data with Shadowrocket for secure and seamless browsing on your iOS device. Follow this step-by-step guide to configure proxies and enhance your online privacy.
+- [How to Set Up Bright Data With SMLogin](https://docs.brightdata.com/integrations/smlogin.md)
+- [How to Integrate Bright Data With Sphere Browser](https://docs.brightdata.com/integrations/sphere-browser.md): Integrate Bright Data with Sphere Browser to manage multiple accounts securely and anonymously. Follow this step-by-step guide for a seamless configuration.
+- [How to Integrate Bright Data with StablerSOLO](https://docs.brightdata.com/integrations/stablersolo.md): Enhance your data extraction capabilities by integrating Bright Data with StablerSOLO. Follow this step-by-step guide to configure your proxy settings seamlessly.
+- [How to Integrate Bright Data With Strands Agents](https://docs.brightdata.com/integrations/strands.md)
+- [How to Set Up Bright Data With SwitchyOmega](https://docs.brightdata.com/integrations/switchyomega.md): Effortlessly manage your proxies with SwitchyOmega! Learn how to integrate Bright Data with this browser extension to enhance your privacy, streamline account management, and simplify web scraping workflows.
+- [How to Set Up Bright Data With TexAu](https://docs.brightdata.com/integrations/texau.md): Maximize the power of automation with Bright Data on TexAu. Follow this step-by-step guide to configure secure and anonymous proxy connections for streamlined automation workflows.
+- [How to Set Up Bright Data on Ubuntu](https://docs.brightdata.com/integrations/ubuntu.md): Streamline your terminal-based workflows on Ubuntu! Integrate Bright Data to securely route your commands and applications through proxies, ensuring privacy and seamless access to geo-restricted resources. Follow this guide to configure Bright Data on your Ubuntu system.
+- [How to Set Up Bright Data With Undetectable](https://docs.brightdata.com/integrations/undetectable.md): Learn how to configure Bright Data in Undetectable for secure and anonymous browsing. This step-by-step guide will help you enhance your online privacy and efficiency.
+- [How to Integrate Bright Data With Vercel AI SDK](https://docs.brightdata.com/integrations/vercel-ai-sdk.md)
+- [How to Set Up Bright Data With VMLogin](https://docs.brightdata.com/integrations/vmlogin.md): Integrating Bright Data with VMLogin ensures secure, anonymous browsing and efficient multi-account management, minimizing the risk of detection and IP bans.
+- [How to Set Up Bright Data With WebHarvy](https://docs.brightdata.com/integrations/webharvy.md): Integrating WebHarvey with Bright Data proxies improves automated web scraping by offering secure, flexible proxy management for seamless and reliable data extraction.
+- [Webscraper.io Proxy Integration](https://docs.brightdata.com/integrations/webscraper.md): Learn how to Integrate Webscraper.io with Bright Data proxies.
+- [How to Set Up Bright Data on Windows](https://docs.brightdata.com/integrations/windows.md): Set up Bright Data proxies on Windows 10 or 11 to improve privacy, access geo-restricted content, and securely route your traffic. This guide walks you through the configuration step by step.
+- [How to Use Bright Data with XLogin](https://docs.brightdata.com/integrations/xlogin.md): Enhance your XLogin experience with Bright Data’s secure and anonymous proxies. This guide walks you through setting up Bright Data proxies for smoother, safer, and more efficient online automation.
+- [How to Set Up Bright Data With xpander.ai](https://docs.brightdata.com/integrations/xpander-ai.md)
+- [How to Set Up Bright Data With Zapier](https://docs.brightdata.com/integrations/zapier.md): Learn how to integrate your Bright Data Actors with Zapier.
+- [Welcome to Bright Data](https://docs.brightdata.com/introduction.md): Bright Data provides a powerful data collection platform to help you reliably build, run, and scale web data operations. Discover, access, navigate, extract, and structure the web with industry-leading performance.
+- [ISP](https://docs.brightdata.com/isp-quickstart.md)
+- [Mobile](https://docs.brightdata.com/mobile-quickstart.md)
+- [Proxy Manager](https://docs.brightdata.com/proxy-manager-quickstart.md)
+- [Proxy configuration options](https://docs.brightdata.com/proxy-networks/config-options.md)
+- [How to Configure Your Data Center Proxy](https://docs.brightdata.com/proxy-networks/data-center/configure-your-proxy.md): Learn how to configure your datacenter proxy settings, select IP types, set geolocation targeting, and enable advanced features in this guide.
+- [Dataceter Proxy FAQ](https://docs.brightdata.com/proxy-networks/data-center/faqs.md): Find answers to common questions about integrating, configuring, and using Bright Data's Datacenter proxy products, including IP types, geotargeting, and error codes.
+- [Introduction to Datacenter Proxies](https://docs.brightdata.com/proxy-networks/data-center/introduction.md): Discover Bright Data's Datacenter proxy network, offering over 1.6 million IPs from 98+ countries, providing the fastest and most cost-effective proxy solution.
+- [Create Your First Data Center Proxy](https://docs.brightdata.com/proxy-networks/data-center/quickstart.md): Follow these steps to set up your [Data Center Proxy](https://brightdata.com/proxy-types/datacenter-proxies) with Bright Data. Sign in, create a proxy zone, and verify your account to start.
+- [Send your first request](https://docs.brightdata.com/proxy-networks/data-center/send-your-first-request.md): Learn how to send your first request using Bright Data's proxy products with easy-to-follow code examples in multiple programming languages.
+- [Proxy errors troubleshooting](https://docs.brightdata.com/proxy-networks/errorCatalog.md): Explore the catalog of Bright Data HTTP errors, including error codes, descriptions, and actions to resolve common proxy issues.
+- [Proxy products FAQ](https://docs.brightdata.com/proxy-networks/faqs.md): Find answers to common questions about integrating, configuring, and using Bright Data's proxy products, including IP types, geotargeting, and error codes.
+- [Proxy Infrastructure](https://docs.brightdata.com/proxy-networks/introduction.md): Bright Data’s proxy infrastructure gives developers access to the web through 150M+ of industry’s most advanced and diverse IP networks. With full control over request logic, session management, and geo-location targeting, you can build and scale custom scrapers for any use case of your new file.
+- [How to Configure Your ISP Proxy](https://docs.brightdata.com/proxy-networks/isp/configure-your-proxy.md): Learn how to configure your ISP proxy settings effectively, choose IP types, enable cache proxy, and ensure 100% uptime for optimal performance.
+- [ISP Proxies FAQs](https://docs.brightdata.com/proxy-networks/isp/faqs.md): Discover how Bright Data's virtual ISP proxies operate, including security measures, user privacy, and compliance with ISP policies. Get answers to your most pressing questions.
+- [Introduction to ISP Proxies](https://docs.brightdata.com/proxy-networks/isp/introduction.md): Learn how Bright Data's ISP Proxy Network leverages residential IPs for high-speed, reliable data access, ideal for ad verification, QA, and overcoming datacenter proxy blocks.
+- [Create Your First ISP Proxy](https://docs.brightdata.com/proxy-networks/isp/quickstart.md): Follow these steps to set up your [ISP Proxy](https://brightdata.com/proxy-types/isp-proxies) with Bright Data. Sign in, create a proxy zone, and verify your account to start.
+- [Send your first request](https://docs.brightdata.com/proxy-networks/isp/send-your-first-request.md): Learn how to send your first request using Bright Data's proxy products with easy-to-follow code examples in multiple programming languages.
+- [How to Configure Your Mobile Proxy](https://docs.brightdata.com/proxy-networks/mobile/configure-your-proxy.md): Learn how to configure your Bright Data Mobile Proxy settings, including IP types, geolocation targeting, cache proxy, and advanced options for optimal performance.
+- [Mobile Proxy FAQs](https://docs.brightdata.com/proxy-networks/mobile/faqs.md): Find answers to common questions about integrating, configuring, and using Bright Data's Mobile proxy products, including IP types, geotargeting, and error codes.
+- [Introduction to Mobile Proxies](https://docs.brightdata.com/proxy-networks/mobile/introduction.md): Discover Bright Data's Mobile Proxy Network with 7 million mobile IPs worldwide, ideal for business intelligence, competitor analysis, and ad verification.
+- [Create Your First Mobile Proxy](https://docs.brightdata.com/proxy-networks/mobile/quickstart.md): Follow these steps to set up your [Mobile Proxy](https://brightdata.com/proxy-types/mobile-proxies) with Bright Data. Sign in, create a proxy zone, and verify your account to start.
+- [Send your first request](https://docs.brightdata.com/proxy-networks/mobile/send-your-first-request.md): Learn how to send your first request using Bright Data's proxy products with easy-to-follow code examples in multiple programming languages.
+- [How to Configure the Proxy Manager](https://docs.brightdata.com/proxy-networks/proxy-manager/configuration.md): Learn more about what Proxy Manager can do, how to tailor it to your needs, and how to implement popular optimized workflows.
+- [Proxy Manager FAQs](https://docs.brightdata.com/proxy-networks/proxy-manager/faqs.md): Find detailed answers to common Proxy Manager questions, including access restriction, port multiplication, IP targeting, and more.
+- [Proxy Manager Integration](https://docs.brightdata.com/proxy-networks/proxy-manager/integration.md): Learn about Bright Data's Proxy Manager integration options and some tips for best use.
+- [Introduction to Proxy Manager](https://docs.brightdata.com/proxy-networks/proxy-manager/introduction.md): Get to know Bright Data's Proxy Manager, an advanced tool for controlling, managing, and monitoring proxies with unique customization, rules implementation, and API integration.
+- [Create Your First Proxy Manager](https://docs.brightdata.com/proxy-networks/proxy-manager/quickstart.md): Get started with Bright Data's [Proxy Manager](https://brightdata.com/products/proxy-manager) by choosing Cloud Server or On-Premise, and begin managing and customizing your proxies for optimal performance.
+- [Secure Your Proxy Manager Setup](https://docs.brightdata.com/proxy-networks/proxy-manager/security.md): Implement best practices for securing your Proxy Manager, including IP allowlisting, admin access control, and API key-based authentication.
+- [How to Configure Your Residential Proxy](https://docs.brightdata.com/proxy-networks/residential/configure-your-proxy.md): Configure your Bright Data Residential Proxy settings with ease. Learn how to set IP types, enable geolocation targeting, manage advanced options like long-session peers, and more.
+- [Residential products FAQ](https://docs.brightdata.com/proxy-networks/residential/faqs.md): Find answers to common questions about integrating, configuring, and using Bright Data's Residential proxy products, including IP types, geotargeting, and error codes.
+- [Introduction to Residential Proxies](https://docs.brightdata.com/proxy-networks/residential/introduction.md): Bright Data’s Residential proxy network offers 150M+ IPs from 195+ countries, ideal for browsing and data collection as a real user.
+- [Residential Network Access Policy](https://docs.brightdata.com/proxy-networks/residential/network-access.md): To safeguard our expansive and ethical Residential network, Bright Data applies monitoring rules to ensure all Residential proxy traffic aligns with approved use cases and compliance policies.
+- [Create Your First Residential Proxy](https://docs.brightdata.com/proxy-networks/residential/quickstart.md): Follow these steps to set up your [Residential Proxy](https://brightdata.com/proxy-types/residential-proxies) with Bright Data. Sign in, create a proxy zone, and verify your account to start.
+- [Send your first request](https://docs.brightdata.com/proxy-networks/residential/send-your-first-request.md): Learn how to send your first request using Bright Data's proxy products with easy-to-follow code examples in multiple programming languages.
+- [SOCKS and SOCKS5 Proxies](https://docs.brightdata.com/proxy-networks/socks5.md): Learn how to use SOCKS and SOCKS5 protocol with Bright Data proxy networks
+- [Overcoming website blocking](https://docs.brightdata.com/proxy-networks/website-blocking.md): See general advice on how to overcome blocking and errors from websites
+- [Release Notes](https://docs.brightdata.com/release-notes.md): Stay up to date with the latest product updates and improvements. Scroll down to explore release notes from previous weeks.
+- [Residential](https://docs.brightdata.com/residential-quickstart.md)
+- [Scraper Studio](https://docs.brightdata.com/scraper-studio-quickstart.md)
+- [Scrapers](https://docs.brightdata.com/scrapers-quickstart.md)
+- [Bright Data's Asset Shield](https://docs.brightdata.com/scraping-automation/bright-shield/asset-shield.md): Protect your domain with Bright Data's Asset Shield, monitoring traffic, setting rules, and receiving alerts to secure your online assets.
+- [Get to know Bright Shield](https://docs.brightdata.com/scraping-automation/bright-shield/introduction.md)
+- [Bright Data's Scraping Shield](https://docs.brightdata.com/scraping-automation/bright-shield/scraping-shield.md): Control outgoing proxy traffic with Scraping Shield, classify domains, set rules, block requests, and receive alerts to enhance your data security.
+- [null](https://docs.brightdata.com/scraping-automation/browser-extension/configuration.md)
+- [FAQs](https://docs.brightdata.com/scraping-automation/browser-extension/faqs.md)
+- [null](https://docs.brightdata.com/scraping-automation/browser-extension/features.md)
+- [How to install the extension](https://docs.brightdata.com/scraping-automation/browser-extension/install.md): Learn how to install the Bright Data extension: download, add to Chrome, pin it, and sign in to start using it with your Bright Data account.
+- [Introduction](https://docs.brightdata.com/scraping-automation/browser-extension/introduction.md): Learn about Bright Data's Browser Extension
+- [Getting Started with Browser Extension](https://docs.brightdata.com/scraping-automation/browser-extension/quickstart.md): A quick guide to getting started with the Bright Data Browser Extension.
+- [Understanding asynchronous requests](https://docs.brightdata.com/scraping-automation/concepts/understanding-async-requests.md): Learn when to use async vs sync requests for Unlocker / SERP API and how each approach impacts performance, cost, and architecture.
+- [Crawl API Overview](https://docs.brightdata.com/scraping-automation/crawl-api/overview.md): Crawl API allows you to extract, map, and transform content from any domain into structured, LLM-compatible data. Whether you're building AI training datasets, performing SEO audits, or integrating content into your workflows, Crawl API delivers clean, ready-to-use data in formats like HTML, Markdown, and JSON.
+- [Getting Started](https://docs.brightdata.com/scraping-automation/crawl-api/quick-start.md)
+- [FAQs](https://docs.brightdata.com/scraping-automation/easy-scraper/faqs.md)
+- [Five-Minute How-To: Easy Scraper](https://docs.brightdata.com/scraping-automation/easy-scraper/five-minute-how-to.md)
+- [Product Overview](https://docs.brightdata.com/scraping-automation/easy-scraper/overview.md)
+- [Getting Started with Easy Scraper](https://docs.brightdata.com/scraping-automation/easy-scraper/quickstart.md)
+- [FAQ: Scraping automation products](https://docs.brightdata.com/scraping-automation/faqs.md): Find answers to common questions about integrating, configuring, and using Bright Data's Scraping Automation, including IP types, geotargeting, and error codes.
+- [Web Access APIs](https://docs.brightdata.com/scraping-automation/introduction.md): Bright Data’s Web Access APIs enable developers to reliably collect data from the public web by automating unblocking, crawling, dynamic content extraction, and search engine data access. These APIs manage proxy rotation, sessions, fingerprinting, and CAPTCHA solving so teams can focus on using the data rather than maintaining scraping infrastructure.
+- [Custom CDP Functions](https://docs.brightdata.com/scraping-automation/scraping-browser/cdp-functions/custom.md): In addition to the [standard CDP Functions](/scraping-automation/scraping-browser/cdp-functions/standard), Browser API also provides some powerful custom CDP Functions.
+- [Standard CDP Functions](https://docs.brightdata.com/scraping-automation/scraping-browser/cdp-functions/standard.md): Explore essential CDP functions for Browser API, from setting cookies to country targeting. Learn to optimize web scraping with these common Puppeteer and Playwright commands.
+- [Browser API Code Examples](https://docs.brightdata.com/scraping-automation/scraping-browser/code-examples.md): Explore detailed code examples for using Bright Data's Browser API with various technologies, including Playwright, Puppeteer, and Selenium.
+- [How to Configure the Browser API](https://docs.brightdata.com/scraping-automation/scraping-browser/configuration.md): Learn how to set up and configure Bright Data's Browser API with your credentials, run sample scripts, and navigate live browser sessions. Ensure efficient web scraping with our detailed instructions.
+- [Browser API FAQs](https://docs.brightdata.com/scraping-automation/scraping-browser/faqs.md): Find answers to common questions about Bright Data's Browser API, including supported languages, debugging tips, and integration guidelines.
+- [Disable Captcha Solver](https://docs.brightdata.com/scraping-automation/scraping-browser/features/captcha-solver.md): By default, as part of our full proxy unblocking solution, Browser API also solves CAPTCHAs that are encountered while returning your proxy request.
+- [Browser API Playground](https://docs.brightdata.com/scraping-automation/scraping-browser/features/playground.md): Experiment with Browser API using the Playground. Run or edit scripts, view real-time logs, and browser interactions. Currently supports Puppeteer and JavaScript.
+- [Browser API: Premium Domains](https://docs.brightdata.com/scraping-automation/scraping-browser/features/premium-domains.md): Premium domains are a part of Bright Data's tiered website classification system. These are websites that are more challenging to unblock than others and require additional Browser API resources.
+- [Geolocation targeting](https://docs.brightdata.com/scraping-automation/scraping-browser/features/proxy-location.md): Target specific peers in countries or geographical locations for precise geo-targeted data collection.
+- [Browser API Troubleshooting](https://docs.brightdata.com/scraping-automation/scraping-browser/features/troubleshooting.md): Get troubleshooting tips for Browser API. Learn how to use the debugger, analyze error codes, and optimize your web scraping with Chrome Dev Tools.
+- [5 Minute How-To: Run Your First Browser Session](https://docs.brightdata.com/scraping-automation/scraping-browser/five-minute-how-to.md): Learn how to launch your first browser session using Bright Data’s Browser API in under 5 minutes.
+- [Introduction to Bright Data’s Browser API](https://docs.brightdata.com/scraping-automation/scraping-browser/introduction.md): Learn how Bright Data’s Browser API enables large-scale browser-based data collection with full automation, proxy management, and built-in unblocking.
+- [Create Your First Browser API](https://docs.brightdata.com/scraping-automation/scraping-browser/quickstart.md): Get started with Bright Data’s Browser API in minutes. Follow this step-by-step guide to create your API, configure access, and run your first browser-based scraping workflow.
+- [Asynchronous Requests](https://docs.brightdata.com/scraping-automation/serp-api/asynchronous-requests.md): In this article, we'll explain the difference between sync and async requests, highlight the benefits of the async flow, and describe key parameters with examples.
+- [SERP API Configuration](https://docs.brightdata.com/scraping-automation/serp-api/configuration.md): Configure the SERP API to maximize efficiency with async requests, access hotel and enhanced ad data, and understand key parameters with examples.
+- [SERP API FAQs](https://docs.brightdata.com/scraping-automation/serp-api/faqs.md): Discover how to effectively use Bright Data's SERP API with detailed FAQs on setup, troubleshooting, and advanced search techniques, including Google Image and hotel data scraping.
+- [Get started with Bing SERP API](https://docs.brightdata.com/scraping-automation/serp-api/get-started-bing-serp-api.md): Start using Bright Data's Bing SERP API in 3 steps: Sign in, create a SERP zone, get your API key, and begin collecting Bing search data.
+- [Get started with Google SERP API](https://docs.brightdata.com/scraping-automation/serp-api/get-started-google-serp-api.md): Start using Bright Data's Google SERP API in 3 steps: Sign in, create a SERP zone, get your API key, and begin collecting Google search data.
+- [Get Top 100 Google Results in One API Call](https://docs.brightdata.com/scraping-automation/serp-api/get-top-100-google-results.md): Fetch positions 1-100 from Google search results in a single request with full control over language, location, and pagination depth. Includes AI Overview extraction.
+- [SERP API Google Header Parameters](https://docs.brightdata.com/scraping-automation/serp-api/header-parameters/google.md): Configure BrightData parameters for parsing and more.
+- [Introduction to SERP API](https://docs.brightdata.com/scraping-automation/serp-api/introduction.md): Collect search results without managing proxies, CAPTCHAs, or parsing. Start in minutes with a single endpoint.
+- [Microsoft Bing API to Bright Data SERP API migration guide](https://docs.brightdata.com/scraping-automation/serp-api/parsed-json-results/bing-to-bright-data-serp-migration-guide.md): Step-by-step guide to migrate your Bing Search API to Bright Data Bing SERP API.
+- [Parsed JSON Results with SERP API](https://docs.brightdata.com/scraping-automation/serp-api/parsed-json-results/parsing-search-results.md): In this article, we will cover the basics of parsing with SERP API and see real JSON examples of parsed data.
+- [SERP Pricing & Billing](https://docs.brightdata.com/scraping-automation/serp-api/pricing-and-billing.md): Pay only for successful requests. Learn Bright Data SERP API billing, what’s included, how async billing works.
+- [SERP API Bing Query Parameters](https://docs.brightdata.com/scraping-automation/serp-api/query-parameters/bing.md): Configure Bing search queries with Bright Data's SERP API, including parameters for localization, geo-location, pagination, device targeting, and custom data output options.
+- [SERP API DuckDuckGo Query Parameters](https://docs.brightdata.com/scraping-automation/serp-api/query-parameters/duckduckgo.md): Configure DuckDuckGo search queries with Bright Data's SERP API, including parameters for localization, safe search, time range, and device targeting, tailored to meet your data extraction needs.
+- [SERP API Google Query Parameters](https://docs.brightdata.com/scraping-automation/serp-api/query-parameters/google.md): Configure Google search, maps, trends, reviews, lens, hotels, and flights with Bright Data's SERP API, including parameters for localization, pagination, device type, parsing, and more.
+- [SERP API Yandex Query Parameters](https://docs.brightdata.com/scraping-automation/serp-api/query-parameters/yandex.md): Explore Yandex query parameters for SERP API, including localization, pagination, time range, and device targeting, to optimize your search results efficiently.
+- [Create Your First SERP API](https://docs.brightdata.com/scraping-automation/serp-api/quickstart.md): Get started quickly with Bright Data's [SERP API](https://brightdata.com/products/serp-api) by following these simple steps. Sign in, create your proxy, and verify your account to begin collecting search engine data effortlessly.
+- [Send Your First Request with Bright Data's SERP API](https://docs.brightdata.com/scraping-automation/serp-api/send-your-first-request.md): A step-by-step guide to sending your first SERP API request with easy-to-follow code examples
+- [Your First Async SERP API Request](https://docs.brightdata.com/scraping-automation/serp-api/your-first-async-request.md)
+- [Best practices for Unlocker API](https://docs.brightdata.com/scraping-automation/web-unlocker/bestpractices.md): Learn best practices for targeting API endpoints with Bright Data's Unlocker API, including troubleshooting tips and alternative methods for data extraction.
+- [Unlocker API Configuration](https://docs.brightdata.com/scraping-automation/web-unlocker/configuration.md): Configure your Unlocker API by enabling premium domains, asynchronous processing, custom headers and cookies, and fine-grained auto-throttling controls to optimize performance and cost.
+- [Web Unlocker API Features](https://docs.brightdata.com/scraping-automation/web-unlocker/features.md): Explore Web Unlocker API's advanced features like CAPTCHA solving, Premium Domains, Headers & Cookies management, and Browser Rendering for efficient web scraping.
+- [5 Minute How-To: Unlock Your First Website](https://docs.brightdata.com/scraping-automation/web-unlocker/five-minute-how-to.md): Learn how to unlock your first website using Bright Data’s Unlocker API in under 5 minutes.
+- [Introduction to Bright Data's Unlocker API](https://docs.brightdata.com/scraping-automation/web-unlocker/introduction.md): Learn how Bright Data's Unlocker API simplifies large-scale data collection by automatically handling proxy management, unblocking logic, and anti-bot challenges while delivering clean HTML or JSON responses.
+- [Create Your First Unlocker API](https://docs.brightdata.com/scraping-automation/web-unlocker/quickstart.md): Get started with Bright Data's Unlocker API in minutes. Follow this step-by-step guide to create your API, configure access, and prepare for your first unlock request.
+- [Send Your First Request with Bright Data's Web Unlocker API](https://docs.brightdata.com/scraping-automation/web-unlocker/send-your-first-request.md): Learn how to send your first request using Bright Data’s Web Unlocker API with step-by-step guidance, request breakdowns, and real-world code examples.
+- [Your First Async Unlocker API Request](https://docs.brightdata.com/scraping-automation/web-unlocker/your-first-async-request.md)
+- [JavaScript SDK](https://docs.brightdata.com/sdk-js-quickstart.md)
+- [Python SDK](https://docs.brightdata.com/sdk-quickstart.md)
+- [Search API](https://docs.brightdata.com/search-api-quickstart.md)
+- [Unlocker API](https://docs.brightdata.com/unlocker-api-quickstart.md)
+
+## OpenAPI Specs
+
+- [web-archive-api](https://docs.brightdata.com/api-reference/web-archive-api.json)
+- [async-api-reference](https://docs.brightdata.com/api-reference/async-api-reference.json)
+- [unlocker-rest-api](https://docs.brightdata.com/api-reference/unlocker-rest-api.json)
+- [serp-rest-api](https://docs.brightdata.com/api-reference/serp-rest-api.json)
+- [web-scraper-ide-rest-api](https://docs.brightdata.com/api-reference/web-scraper-ide-rest-api.json)
+- [dca-api](https://docs.brightdata.com/api-reference/dca-api.json)
+- [openapi](https://docs.brightdata.com/api-reference/openapi.json)
+- [proxy-manager](https://docs.brightdata.com/api-reference/proxy-manager.json)
+- [cn-dca-api](https://docs.brightdata.com/api-reference/cn-dca-api.json)
+- [cn-web-scraper-ide-rest-api](https://docs.brightdata.com/api-reference/cn-web-scraper-ide-rest-api.json)
+- [scraper-rest-api](https://docs.brightdata.com/api-reference/rest-api/scraper/scraper-rest-api.json)
+- [dca-custom-inputs](https://docs.brightdata.com/api-reference/dca-custom-inputs.json)
+- [crawl-rest-api](https://docs.brightdata.com/api-reference/rest-api/scraper/crawl-rest-api.json)
+- [cn-scraper-rest-api](https://docs.brightdata.com/api-reference/rest-api/scraper/cn-scraper-rest-api.json)
+- [cn-crawl-rest-api](https://docs.brightdata.com/api-reference/rest-api/scraper/cn-crawl-rest-api.json)
+- [filter-csv-json](https://docs.brightdata.com/api-reference/filter-csv-json.json)
+- [cn-unlocker-rest-api](https://docs.brightdata.com/api-reference/cn-unlocker-rest-api.json)
+- [cn-scraping-shield-rest-api](https://docs.brightdata.com/api-reference/cn-scraping-shield-rest-api.json)
+- [cn-proxy-rest-api](https://docs.brightdata.com/api-reference/cn-proxy-rest-api.json)
+- [cn-openapi](https://docs.brightdata.com/api-reference/cn-openapi.json)
+- [cn-openapi-reseller](https://docs.brightdata.com/api-reference/cn-openapi-reseller.json)
+- [cn-filter-csv-json](https://docs.brightdata.com/api-reference/cn-filter-csv-json.json)
+- [cn-deep-lookup](https://docs.brightdata.com/api-reference/cn-deep-lookup.json)
+- [openapi-reseller](https://docs.brightdata.com/api-reference/openapi-reseller.json)
+- [proxy-rest-api](https://docs.brightdata.com/api-reference/proxy-rest-api.json)
+- [scraping-shield-rest-api](https://docs.brightdata.com/api-reference/scraping-shield-rest-api.json)
+- [cn-serp-rest-api](https://docs.brightdata.com/api-reference/cn-serp-rest-api.json)
+- [deep-lookup](https://docs.brightdata.com/api-reference/deep-lookup.json)
+- [datasets-rest-api](https://docs.brightdata.com/cn/api-reference/datasets-rest-api.json)
