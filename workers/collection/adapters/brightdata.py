@@ -194,13 +194,14 @@ class BrightDataAdapter(DataProviderAdapter):
         num_per_kw = config.get("max_posts_per_keyword") or config.get("max_calls", 2) * 10
         time_range = config.get("time_range", {})
         start = time_range.get("start", "")
+        reddit_date = _iso_date_to_reddit_filter(start)
 
         all_results: list[dict] = []
 
         # Strategy 1: keyword-based discovery (preferred when keywords provided)
         if keywords:
             inputs = [
-                {"keyword": kw, "date": start}
+                {"keyword": kw, "date": reddit_date}
                 for kw in keywords
             ]
             results = self._client.scrape_and_wait(
@@ -360,6 +361,36 @@ def _to_bd_date_mmddyyyy(date_str: str | None) -> str:
         return dt.strftime("%m-%d-%Y")
     except ValueError:
         return date_str
+
+
+def _iso_date_to_reddit_filter(date_str: str) -> str:
+    """Convert an ISO date (YYYY-MM-DD) to the closest Reddit time filter label.
+
+    Reddit's Bright Data dataset accepts: "Past hour", "Today", "Past week",
+    "Past month", "Past year", "All time".
+    """
+    if not date_str:
+        return "All time"
+    try:
+        start = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return "All time"
+
+    delta = datetime.now() - start
+    days = delta.days
+
+    if days <= 0:
+        return "Today"
+    elif days <= 1:
+        return "Today"
+    elif days <= 7:
+        return "Past week"
+    elif days <= 30:
+        return "Past month"
+    elif days <= 365:
+        return "Past year"
+    else:
+        return "All time"
 
 
 def _detect_platform_from_url(url: str) -> str | None:

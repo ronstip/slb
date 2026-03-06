@@ -67,6 +67,11 @@ def parse_brightdata_tiktok_post(item: dict) -> Post:
         media_urls.append(preview)
     video_url = item.get("video_url")
     if video_url:
+        # BrightData returns video URLs with a placeholder "&tk=tt_chain_token"
+        # that must be replaced with the actual token from the response.
+        chain_token = item.get("tt_chain_token")
+        if chain_token and "tk=tt_chain_token" in video_url:
+            video_url = video_url.replace("tk=tt_chain_token", f"tk={chain_token}")
         media_urls.append(video_url)
     carousel = item.get("carousel_images") or []
     media_urls.extend(carousel)

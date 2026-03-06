@@ -78,7 +78,7 @@ class BrightDataClient:
         include_errors: bool = True,
         limit_per_input: int | None = None,
     ) -> str | list[dict]:
-        """POST /datasets/v3/trigger. Returns snapshot_id (async) or data list (sync)."""
+        """POST /datasets/v3/scrape. Returns snapshot_id (async) or data list (sync)."""
         params = {
             "dataset_id": dataset_id,
             "type": "discover_new",
@@ -89,9 +89,9 @@ class BrightDataClient:
         if limit_per_input is not None:
             params["limit_per_input"] = str(limit_per_input)
         resp = self._session.post(
-            f"{_BASE_URL}/trigger",
+            f"{_BASE_URL}/scrape",
             params=params,
-            json=inputs,
+            json={"input": inputs},
             timeout=_REQUEST_TIMEOUT,
         )
         if resp.status_code >= 400:

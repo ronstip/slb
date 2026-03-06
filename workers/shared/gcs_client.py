@@ -30,9 +30,15 @@ _VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov", ".avi", ".mkv"})
 
 
 def _is_video_url(url: str) -> bool:
-    """Check URL path extension to select appropriate timeout."""
-    path = urlparse(url).path.lower()
-    return any(path.endswith(ext) for ext in _VIDEO_EXTENSIONS)
+    """Check URL path extension or MIME hint to select appropriate timeout."""
+    parsed = urlparse(url)
+    path = parsed.path.lower()
+    if any(path.endswith(ext) for ext in _VIDEO_EXTENSIONS):
+        return True
+    # TikTok CDN URLs carry mime_type in query params instead of path extension
+    if "mime_type=video" in parsed.query:
+        return True
+    return False
 
 
 def _build_download_session() -> requests.Session:
