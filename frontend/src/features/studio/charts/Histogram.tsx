@@ -1,5 +1,7 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../../../components/ui/chart.tsx';
 import { formatNumber } from '../../../lib/format.ts';
+import { useChartColors } from './use-chart-colors.ts';
 import type { ChartOverrides } from './chart-overrides.ts';
 
 interface HistogramBucket {
@@ -12,23 +14,38 @@ interface HistogramProps {
   overrides?: ChartOverrides;
 }
 
-const DEFAULT_BAR_COLOR = '#4F46E5';
-
 export function Histogram({ data, overrides }: HistogramProps) {
-  const barColor = overrides?.colorOverrides?.['bar'] || DEFAULT_BAR_COLOR;
+  const chartColors = useChartColors();
+  const barColor = overrides?.colorOverrides?.['bar'] || chartColors[0];
+
+  const chartConfig: ChartConfig = {
+    count: { label: 'Count', color: barColor },
+  };
 
   return (
-    <ResponsiveContainer width="100%" height={160}>
-      <BarChart data={data} margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-        <XAxis dataKey="bucket" tick={{ fontSize: 10 }} />
-        <YAxis tick={{ fontSize: 10 }} width={38} tickFormatter={formatNumber} />
-        <Tooltip contentStyle={{ fontSize: 12 }} />
-        <Bar dataKey="count" fill={barColor} radius={[2, 2, 0, 0]}>
+    <ChartContainer config={chartConfig} className="min-h-[180px] w-full">
+      <BarChart accessibilityLayer data={data} margin={{ left: 0, right: 0 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis
+          dataKey="bucket"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          width={40}
+          tickFormatter={formatNumber}
+        />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Bar dataKey="count" fill="var(--color-count)" radius={4}>
           {overrides?.showValues && (
             <LabelList dataKey="count" position="top" style={{ fontSize: 9 }} />
           )}
         </Bar>
       </BarChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   );
 }

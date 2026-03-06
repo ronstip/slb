@@ -22,7 +22,7 @@ import requests as http_requests
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from google.adk.agents.run_config import RunConfig, StreamingMode
@@ -33,10 +33,12 @@ from sse_starlette.sse import EventSourceResponse
 from api.agent.agent import APP_NAME, create_memory_service, create_runner
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs, get_gcs
+from api.rate_limiting import limiter
 from api.routers import settings as settings_router
 from api.routers import billing as billing_router
 from api.routers import admin as admin_router
 from api.routers import dashboard as dashboard_router
+from api.routers import dashboard_shares as dashboard_shares_router
 import csv
 import io
 
@@ -59,19 +61,6 @@ from api.services.collection_service import (
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-
-def _rate_limit_key(request: Request) -> str:
-    """Key rate limiter by auth token hash (per-user) or IP (unauthenticated)."""
-    import hashlib
-
-    auth = request.headers.get("authorization", "")
-    if auth.startswith("Bearer "):
-        return hashlib.sha256(auth[7:].encode()).hexdigest()[:16]
-    return request.client.host if request.client else "unknown"
-
-
-limiter = Limiter(key_func=_rate_limit_key)
 
 
 @asynccontextmanager
@@ -97,6 +86,7 @@ app.include_router(billing_router.router)
 app.include_router(sessions_router.router)
 app.include_router(admin_router.router)
 app.include_router(dashboard_router.router)
+app.include_router(dashboard_shares_router.router)
 app.include_router(artifacts_router.router)
 
 # CORS middleware — origins configurable via CORS_ORIGINS env var

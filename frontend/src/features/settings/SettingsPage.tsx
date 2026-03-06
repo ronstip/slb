@@ -7,11 +7,13 @@ import { AccountSection } from './sections/AccountSection.tsx';
 import { OrganizationSection } from './sections/OrganizationSection.tsx';
 import { BillingSection } from './sections/BillingSection.tsx';
 import { UsageSection } from './sections/UsageSection.tsx';
+import { AppearanceSection } from './sections/AppearanceSection.tsx';
 import { PrivacySection } from './sections/PrivacySection.tsx';
 
 const SECTION_TITLES: Record<SettingsSection, string> = {
   account: 'Account',
   organization: 'Organization',
+  appearance: 'Appearance',
   billing: 'Billing',
   usage: 'Usage',
   privacy: 'Privacy',
@@ -23,7 +25,7 @@ export function SettingsPage() {
 
   // Default to 'account' if no section specified, or validate the section
   const activeSection: SettingsSection =
-    (params.section && ['account', 'organization', 'billing', 'usage', 'privacy'].includes(params.section))
+    (params.section && ['account', 'organization', 'appearance', 'billing', 'usage', 'privacy'].includes(params.section))
       ? params.section as SettingsSection
       : 'account';
 
@@ -63,6 +65,7 @@ export function SettingsPage() {
           </h1>
           {activeSection === 'account' && <AccountSection />}
           {activeSection === 'organization' && <OrganizationSection />}
+          {activeSection === 'appearance' && <AppearanceSection />}
           {activeSection === 'billing' && <BillingSection />}
           {activeSection === 'usage' && <UsageSection />}
           {activeSection === 'privacy' && <PrivacySection />}

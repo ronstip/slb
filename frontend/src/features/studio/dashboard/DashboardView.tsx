@@ -1,15 +1,16 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Download, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertTriangle, Share2 } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import type { Artifact } from '../../../stores/studio-store.ts';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
-import { cn } from '../../../lib/utils.ts';
 import { getDashboardData } from '../../../api/endpoints/dashboard.ts';
 import { downloadReportPdf } from '../../../lib/download-pdf.ts';
+import { ShareDashboardDialog } from './ShareDashboardDialog.tsx';
+import { ChartCard } from './ChartCard.tsx';
 
-// Chart components (reused from insight report)
+// Chart components
 import { KpiGrid } from '../../chat/cards/report/KpiGrid.tsx';
 import { SentimentPie } from '../charts/SentimentPie.tsx';
 import { PlatformBar } from '../charts/PlatformBar.tsx';
@@ -19,6 +20,7 @@ import { LanguagePie } from '../charts/LanguagePie.tsx';
 import { ThemeBar } from '../charts/ThemeBar.tsx';
 import { EntityTable } from '../charts/EntityTable.tsx';
 import { ChannelTable } from '../charts/ChannelTable.tsx';
+import { SentimentLineChart } from '../charts/SentimentLineChart.tsx';
 
 // Dashboard-specific
 import { DashboardFilterBar } from './DashboardFilterBar.tsx';
@@ -32,6 +34,7 @@ import {
   aggregateLanguages,
   aggregateVolume,
   aggregateChannels,
+  aggregateSentimentOverTime,
   computeKpis,
 } from './dashboard-aggregations.ts';
 
@@ -45,6 +48,7 @@ export function DashboardView({ artifact }: DashboardViewProps) {
   const collapseReport = useStudioStore((s) => s.collapseReport);
   const contentRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Fetch all posts for client-side filtering
   const { data: response, isLoading, error } = useQuery({
@@ -76,6 +80,7 @@ export function DashboardView({ artifact }: DashboardViewProps) {
   const themeData = useMemo(() => aggregateThemes(filteredPosts), [filteredPosts]);
   const entityData = useMemo(() => aggregateEntities(filteredPosts), [filteredPosts]);
   const channelData = useMemo(() => aggregateChannels(filteredPosts), [filteredPosts]);
+  const sentimentOverTimeData = useMemo(() => aggregateSentimentOverTime(filteredPosts), [filteredPosts]);
 
   const handleDownload = async () => {
     if (!contentRef.current) return;
@@ -90,24 +95,45 @@ export function DashboardView({ artifact }: DashboardViewProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+      <div className="flex items-center justify-between border-b border-border bg-card/50 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={collapseReport}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h2 className="text-sm font-semibold text-foreground truncate">{artifact.title}</h2>
+          <div className="h-4 w-px bg-border" />
+          <h2 className="text-sm font-semibold text-foreground truncate max-w-[200px]">{artifact.title}</h2>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1.5 text-xs"
-          onClick={handleDownload}
-          disabled={downloading || isLoading}
-        >
-          {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-          PDF
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => setShareOpen(true)}
+            disabled={isLoading}
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            Share
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={handleDownload}
+            disabled={downloading || isLoading}
+          >
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            PDF
+          </Button>
+        </div>
       </div>
+
+      <ShareDashboardDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        dashboardId={artifact.id}
+        collectionIds={artifact.collectionIds}
+        title={artifact.title}
+      />
 
       {/* Filter bar */}
       {!isLoading && !error && (
@@ -125,13 +151,13 @@ export function DashboardView({ artifact }: DashboardViewProps) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {isLoading && (
-          <div className="space-y-4 p-4">
-            <div className="grid grid-cols-4 gap-3">
-              {[...Array(4)].map((_, i) => (
-                <Skeleton key={i} className="h-20 rounded-xl" />
+          <div className="space-y-4 p-6">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-4">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-5">
               {[...Array(6)].map((_, i) => (
                 <Skeleton key={i} className="h-48 rounded-xl" />
               ))}
@@ -148,7 +174,7 @@ export function DashboardView({ artifact }: DashboardViewProps) {
         )}
 
         {!isLoading && !error && (
-          <div ref={contentRef} className="space-y-4 p-4">
+          <div ref={contentRef} className="space-y-8 p-6">
             {/* Truncation warning */}
             {response?.truncated && (
               <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
@@ -164,43 +190,100 @@ export function DashboardView({ artifact }: DashboardViewProps) {
               </p>
             )}
 
-            {/* KPI row */}
-            <KpiGrid data={{ items: kpis }} />
+            {/* ── SECTION 1: Overview ─────────────────────────────── */}
+            <section>
+              <SectionHeader label="Overview" />
+              <KpiGrid data={{ items: kpis }} />
+            </section>
 
-            {/* Chart grid */}
-            <div className="grid grid-cols-2 gap-4">
-              <ChartCard title="Sentiment">
-                <SentimentPie data={sentimentData} />
-              </ChartCard>
+            {/* ── SECTION 2: Distribution ─────────────────────────── */}
+            <section>
+              <SectionHeader label="Distribution" />
+              <div className="grid grid-cols-2 gap-5">
+                <ChartCard
+                  title="Sentiment"
+                  info="Breakdown of post sentiment classified by AI"
+                >
+                  <SentimentPie data={sentimentData} />
+                </ChartCard>
 
-              <ChartCard title="Platform">
-                <PlatformBar data={platformData} />
-              </ChartCard>
+                <ChartCard
+                  title="Platform"
+                  info="Post volume by social media platform"
+                >
+                  <PlatformBar data={platformData} />
+                </ChartCard>
 
-              <ChartCard title="Volume Over Time" fullWidth>
-                <VolumeChart data={volumeData} />
-              </ChartCard>
+                <ChartCard
+                  title="Content Type"
+                  info="Distribution of content formats (video, image, text, etc.)"
+                >
+                  <ContentTypeDonut data={contentTypeData} />
+                </ChartCard>
 
-              <ChartCard title="Content Type">
-                <ContentTypeDonut data={contentTypeData} />
-              </ChartCard>
+                <ChartCard
+                  title="Language"
+                  info="Post language distribution across all collected content"
+                >
+                  <LanguagePie data={languageData} />
+                </ChartCard>
+              </div>
+            </section>
 
-              <ChartCard title="Language">
-                <LanguagePie data={languageData} />
-              </ChartCard>
+            {/* ── SECTION 3: Trends ───────────────────────────────── */}
+            <section>
+              <SectionHeader label="Trends" />
+              <div className="space-y-5">
+                <ChartCard
+                  title="Volume Over Time"
+                  subtitle="Daily post count across all platforms"
+                  fullWidth
+                >
+                  <VolumeChart data={volumeData} />
+                </ChartCard>
 
-              <ChartCard title="Top Themes" fullWidth>
-                <ThemeBar data={themeData} />
-              </ChartCard>
+                <ChartCard
+                  title="Sentiment Over Time"
+                  subtitle="Daily sentiment distribution trends"
+                  info="Shows how positive, negative, neutral, and mixed sentiment has evolved over the collection period"
+                  fullWidth
+                >
+                  <SentimentLineChart data={sentimentOverTimeData} />
+                </ChartCard>
+              </div>
+            </section>
 
-              <ChartCard title="Top Entities" fullWidth>
-                <EntityTable data={entityData} />
-              </ChartCard>
+            {/* ── SECTION 4: Deep Dive ────────────────────────────── */}
+            <section>
+              <SectionHeader label="Deep Dive" />
+              <div className="space-y-5">
+                <ChartCard
+                  title="Top Themes"
+                  subtitle="Most discussed topics across posts"
+                  info="Themes are AI-extracted topics from post content"
+                  fullWidth
+                >
+                  <ThemeBar data={themeData} />
+                </ChartCard>
 
-              <ChartCard title="Top Channels" fullWidth>
-                <ChannelTable data={channelData} />
-              </ChartCard>
-            </div>
+                <ChartCard
+                  title="Top Entities"
+                  subtitle="People, brands, and places mentioned most"
+                  info="Entities are named items (people, brands, products, places) extracted by AI"
+                  fullWidth
+                >
+                  <EntityTable data={entityData} />
+                </ChartCard>
+
+                <ChartCard
+                  title="Top Channels"
+                  subtitle="Most active sources in this dataset"
+                  fullWidth
+                >
+                  <ChannelTable data={channelData} />
+                </ChartCard>
+              </div>
+            </section>
           </div>
         )}
       </div>
@@ -208,12 +291,13 @@ export function DashboardView({ artifact }: DashboardViewProps) {
   );
 }
 
-function ChartCard({ title, children, fullWidth }: { title: string; children: React.ReactNode; fullWidth?: boolean }) {
+function SectionHeader({ label }: { label: string }) {
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-4', fullWidth && 'col-span-2')}>
-      <h3 className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</h3>
-      {children}
+    <div className="mb-4 flex items-center gap-3">
+      <h2 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
+        {label}
+      </h2>
+      <div className="h-px flex-1 bg-border/60" />
     </div>
   );
 }
-

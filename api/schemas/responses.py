@@ -82,6 +82,28 @@ class DashboardDataResponse(BaseModel):
     truncated: bool = False
 
 
+class DashboardShareResponse(BaseModel):
+    token: str
+    dashboard_id: str
+    title: str
+    collection_ids: list[str]
+    created_at: str
+    share_url: str
+    active: bool = True
+
+
+class SharedDashboardMetaResponse(BaseModel):
+    title: str
+    created_at: str
+
+
+class SharedDashboardDataResponse(BaseModel):
+    posts: list[DashboardPostResponse]
+    collection_names: dict[str, str]
+    truncated: bool = False
+    meta: SharedDashboardMetaResponse
+
+
 class BreakdownItem(BaseModel):
     value: str
     post_count: int = 0

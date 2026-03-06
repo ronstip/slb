@@ -29,7 +29,7 @@
   --color-platform-youtube: #E03030;
 
   /* Vibrant accents (app-specific) — use for colored touches */
-  --color-accent-vibrant: #6366F1;
+  --color-accent-vibrant: #06B6D4;
   --color-accent-success: #10B981;
   --color-accent-blue: #3B82F6;
   --color-accent-pink: #EC4899;
@@ -98,11 +98,11 @@
   --border: #E5E5E5;
   --input: #E5E5E5;
   --ring: #0A0A0A;
-  --chart-1: #6366F1;
-  --chart-2: #10B981;
-  --chart-3: #F59E0B;
-  --chart-4: #EC4899;
-  --chart-5: #06B6D4;
+  --chart-1: #06B6D4;
+  --chart-2: #7C3AED;
+  --chart-3: #E11D6D;
+  --chart-4: #D49306;
+  --chart-5: #17A34A;
   --sidebar: #FFFFFF;
   --sidebar-foreground: #0A0A0A;
   --sidebar-primary: #0A0A0A;
@@ -133,11 +133,11 @@
   --border: #2E2E2E;
   --input: #2E2E2E;
   --ring: #EDEDED;
-  --chart-1: #818CF8;
-  --chart-2: #4ADE80;
-  --chart-3: #FBBF24;
-  --chart-4: #F472B6;
-  --chart-5: #38BDF8;
+  --chart-1: #22D3EE;
+  --chart-2: #A78BFA;
+  --chart-3: #FB7185;
+  --chart-4: #FBBF24;
+  --chart-5: #4ADE80;
   --sidebar: #111111;
   --sidebar-foreground: #EDEDED;
   --sidebar-primary: #EDEDED;

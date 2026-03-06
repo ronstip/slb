@@ -59,3 +59,9 @@ class MultiFeedRequest(BaseModel):
 
 class DashboardDataRequest(BaseModel):
     collection_ids: list[str]
+
+
+class CreateDashboardShareRequest(BaseModel):
+    dashboard_id: str
+    collection_ids: list[str]
+    title: str

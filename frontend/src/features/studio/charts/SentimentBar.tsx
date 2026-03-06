@@ -1,7 +1,12 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, LabelList } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../../../components/ui/chart.tsx';
 import type { SentimentBreakdown } from '../../../api/types.ts';
 import { SENTIMENT_COLORS } from '../../../lib/constants.ts';
 import type { ChartOverrides } from './chart-overrides.ts';
+
+const chartConfig: ChartConfig = {
+  percentage: { label: 'Percentage' },
+};
 
 interface SentimentBarProps {
   data: SentimentBreakdown[];
@@ -10,7 +15,6 @@ interface SentimentBarProps {
 
 function resolveSentimentColor(sentiment: string): string {
   const lower = sentiment.toLowerCase();
-  // Exact match first, then prefix match (handles "positive (by views)" etc.)
   return SENTIMENT_COLORS[lower]
     ?? Object.entries(SENTIMENT_COLORS).find(([key]) => lower.startsWith(key))?.[1]
     ?? '#78716C';
@@ -21,28 +25,31 @@ export function SentimentBar({ data, overrides }: SentimentBarProps) {
     overrides?.colorOverrides?.[sentiment] || resolveSentimentColor(sentiment);
 
   return (
-    <ResponsiveContainer width="100%" height={120}>
-      <BarChart data={data} layout="vertical" margin={{ left: 60, right: 20, top: 5, bottom: 5 }}>
-        <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+    <ChartContainer config={chartConfig} className="w-full" style={{ minHeight: Math.max(120, data.length * 32) }}>
+      <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 0, right: 8 }}>
+        <CartesianGrid horizontal={false} />
+        <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(v) => `${v}%`} />
         <YAxis
           type="category"
           dataKey="sentiment"
-          tick={{ fontSize: 11, textTransform: 'capitalize' } as object}
-          width={55}
+          width={70}
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          className="capitalize"
         />
-        <Tooltip
-          formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Percentage']}
-          contentStyle={{ fontSize: 12 }}
+        <ChartTooltip
+          content={<ChartTooltipContent formatter={(value) => `${Number(value).toFixed(1)}%`} />}
         />
-        <Bar dataKey="percentage" radius={[0, 4, 4, 0]}>
+        <Bar dataKey="percentage" radius={4}>
           {data.map((entry) => (
             <Cell key={entry.sentiment} fill={getColor(entry.sentiment)} />
           ))}
           {overrides?.showValues && (
-            <LabelList dataKey="percentage" position="right" formatter={(v) => `${Number(v).toFixed(0)}%`} style={{ fontSize: 10 }} />
+            <LabelList dataKey="percentage" position="right" formatter={(v: number) => `${Number(v).toFixed(0)}%`} style={{ fontSize: 10 }} />
           )}
         </Bar>
       </BarChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   );
 }

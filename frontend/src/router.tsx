@@ -4,6 +4,7 @@ import { SignInPage } from './auth/SignInPage.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
 import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
+import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
 
 // Route guard wrapper for authenticated routes
 interface ProtectedRouteProps {
@@ -91,6 +92,10 @@ export function createRouter(user: any, loading: boolean, devMode: boolean) {
           <AppShell />
         </ProtectedRoute>
       ),
+    },
+    {
+      path: '/shared/:token',
+      element: <SharedDashboardPage />,
     },
     {
       path: '*',

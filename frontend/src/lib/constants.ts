@@ -38,10 +38,10 @@ export const PLATFORM_LABELS: Record<string, string> = {
 };
 
 export const SENTIMENT_COLORS: Record<string, string> = {
-  positive: '#2DB87A',
-  negative: '#E05555',
-  neutral: '#7C7C84',
-  mixed: '#D4A030',
+  positive: '#22C55E',
+  negative: '#EF4444',
+  neutral: '#94A3B8',
+  mixed: '#F59E0B',
 };
 
 export const PLATFORMS = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'] as const;

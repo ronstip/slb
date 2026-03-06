@@ -16,11 +16,11 @@ const RANGE_OPTIONS = [
 ];
 
 const EVENT_COLORS: Record<string, string> = {
-  'Queries': 'hsl(var(--primary))',
-  'Collections': 'hsl(var(--chart-2, 160 60% 45%))',
-  'Posts Collected': 'hsl(var(--chart-3, 30 80% 55%))',
-  'Tool Calls': 'hsl(var(--chart-4, 280 65% 60%))',
-  'Credit Purchases': 'hsl(var(--chart-5, 340 75% 55%))',
+  'Queries': 'var(--primary)',
+  'Collections': 'var(--chart-2)',
+  'Posts Collected': 'var(--chart-3)',
+  'Tool Calls': 'var(--chart-4)',
+  'Credit Purchases': 'var(--chart-5)',
 };
 
 function pivotActivity(points: { date: string; event_type: string; count: number }[]) {
