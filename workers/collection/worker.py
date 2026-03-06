@@ -84,17 +84,19 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
             if not new_posts:
                 continue
 
-            # Cross-collection dedup: filter out post_ids already stored in BQ
-            # (handles cases where the same post is scraped across multiple collections or re-runs)
+            # Same-collection dedup: skip posts already in BQ for THIS collection
+            # (handles re-runs of ongoing collections without blocking cross-collection overlap)
             existing = bq.query(
-                "SELECT DISTINCT post_id FROM social_listening.posts WHERE post_id IN UNNEST(@post_ids)",
-                {"post_ids": [p.post_id for p in new_posts]},
+                "SELECT DISTINCT post_id FROM social_listening.posts "
+                "WHERE collection_id = @collection_id AND post_id IN UNNEST(@post_ids)",
+                {"collection_id": collection_id, "post_ids": [p.post_id for p in new_posts]},
             )
             existing_ids = {r["post_id"] for r in existing}
             if existing_ids:
+                total_dupes += len(existing_ids)
                 new_posts = [p for p in new_posts if p.post_id not in existing_ids]
                 logger.info(
-                    "Collection %s: cross-collection dedup removed %d already-stored posts",
+                    "Collection %s: same-collection dedup removed %d already-stored posts",
                     collection_id, len(existing_ids),
                 )
 
