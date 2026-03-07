@@ -72,6 +72,8 @@ def create_collection_from_request(
         "ongoing": request.ongoing,
         "schedule": request.schedule if request.ongoing else None,
     }
+    if request.vendor_config:
+        config["vendor_config"] = request.vendor_config.model_dump(exclude_none=True)
     if extra_config:
         config.update(extra_config)
 

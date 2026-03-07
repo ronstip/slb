@@ -8,6 +8,11 @@ class ChatRequest(BaseModel):
     model: str | None = None  # "flash" (default) or "pro"
 
 
+class VendorConfig(BaseModel):
+    default: str = "brightdata"  # "brightdata" | "vetric"
+    platform_overrides: dict[str, str] | None = None  # e.g., {"tiktok": "brightdata"}
+
+
 class CreateCollectionRequest(BaseModel):
     description: str
     platforms: list[str]
@@ -19,6 +24,7 @@ class CreateCollectionRequest(BaseModel):
     include_comments: bool = True
     ongoing: bool = False
     schedule: str | None = None  # "daily" | "weekly"
+    vendor_config: VendorConfig | None = None
 
 
 class UpdateCollectionModeRequest(BaseModel):

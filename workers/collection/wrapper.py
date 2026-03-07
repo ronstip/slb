@@ -2,6 +2,7 @@ import logging
 
 from config.settings import get_settings
 from workers.collection.adapters.base import DataProviderAdapter
+from workers.collection.adapters.brightdata import BrightDataAdapter
 from workers.collection.adapters.mock_adapter import MockAdapter
 from workers.collection.adapters.vetric import VetricAdapter
 from workers.collection.models import Batch
@@ -19,31 +20,73 @@ class DataProviderWrapper:
     ):
         settings = get_settings()
         self.config = config or {}
+        self._vendor_config = self.config.get("vendor_config", {})
 
         if providers is not None:
             self._providers = providers
         elif settings.is_dev:
+            self._providers = []
+            # BrightData first — default for tiktok, youtube, reddit
+            if settings.brightdata_api_token:
+                try:
+                    self._providers.append(BrightDataAdapter())
+                    logger.info("BrightDataAdapter initialized (dev mode)")
+                except ValueError:
+                    logger.warning("BrightDataAdapter init failed, skipping")
+            # Vetric second — handles instagram, twitter, and fallback
             try:
-                self._providers = [VetricAdapter()]
-                logger.info("Using VetricAdapter (dev mode, API keys found)")
+                self._providers.append(VetricAdapter())
+                logger.info("VetricAdapter initialized (dev mode)")
             except ValueError:
+                logger.info("VetricAdapter skipped (no API keys)")
+            if not self._providers:
                 self._providers = [MockAdapter()]
                 logger.info("Using MockAdapter (dev mode, no API keys)")
         else:
-            self._providers = [VetricAdapter()]
-            logger.info("Using VetricAdapter (production mode)")
+            self._providers = []
+            # BrightData first in production too
+            if settings.brightdata_api_token:
+                try:
+                    self._providers.append(BrightDataAdapter())
+                    logger.info("BrightDataAdapter initialized (production mode)")
+                except ValueError:
+                    logger.warning("BrightDataAdapter init failed, skipping")
+            try:
+                self._providers.append(VetricAdapter())
+                logger.info("VetricAdapter initialized (production mode)")
+            except ValueError:
+                logger.info("VetricAdapter skipped (no API keys)")
+            if not self._providers:
+                raise RuntimeError("No data providers available — configure BRIGHTDATA_API_TOKEN or VETRIC_API_KEY_*")
 
     def _get_adapter(self, platform: str) -> DataProviderAdapter:
+        """Select adapter based on vendor_config, then fallback to first match."""
+        preferred = self._vendor_config.get("platform_overrides", {}).get(
+            platform, self._vendor_config.get("default")
+        )
+
+        if preferred:
+            vendor_class_map = {
+                "vetric": VetricAdapter,
+                "brightdata": BrightDataAdapter,
+                "mock": MockAdapter,
+            }
+            target_class = vendor_class_map.get(preferred)
+            if target_class:
+                for provider in self._providers:
+                    if isinstance(provider, target_class) and platform in provider.supported_platforms():
+                        return provider
+
+        # Fallback: first adapter that supports this platform (backward compatible)
         for provider in self._providers:
             if platform in provider.supported_platforms():
                 return provider
         raise ValueError(f"No adapter supports platform: {platform}")
 
     def collect_all(self) -> list[Batch]:
-        # Adapters handle platform-level parallelism internally.
-        # The wrapper delegates to the first matching adapter.
-        adapters_used: set[int] = set()
-        all_batches: list[Batch] = []
+        """Collect from all platforms, routing each to its assigned adapter."""
+        # Group platforms by their resolved adapter
+        adapter_platforms: dict[int, tuple[DataProviderAdapter, list[str]]] = {}
 
         for platform in self.config.get("platforms", []):
             try:
@@ -52,12 +95,18 @@ class DataProviderWrapper:
                 logger.warning("Skipping platform %s: %s", platform, e)
                 continue
 
-            # Each adapter already parallelises internally across platforms,
-            # so call collect() once per unique adapter instance.
-            if id(adapter) not in adapters_used:
-                adapters_used.add(id(adapter))
-                logger.info("Collecting via %s", type(adapter).__name__)
-                all_batches.extend(adapter.collect(self.config))
+            key = id(adapter)
+            if key not in adapter_platforms:
+                adapter_platforms[key] = (adapter, [])
+            adapter_platforms[key][1].append(platform)
+
+        # Call collect() once per adapter with only its assigned platforms
+        all_batches: list[Batch] = []
+        for adapter, platforms in adapter_platforms.values():
+            sub_config = dict(self.config)
+            sub_config["platforms"] = platforms
+            logger.info("Collecting via %s for platforms: %s", type(adapter).__name__, platforms)
+            all_batches.extend(adapter.collect(sub_config))
 
         return all_batches
 
