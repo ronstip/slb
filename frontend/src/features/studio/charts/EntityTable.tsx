@@ -9,27 +9,32 @@ export function EntityTable({ data }: EntityTableProps) {
   const top10 = data.slice(0, 10);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      <table className="w-full text-left text-xs">
+    <div className="overflow-hidden">
+      <table className="w-full text-left">
         <thead>
-          <tr className="border-b border-border bg-muted/40">
-            <th className="px-3 py-2 font-medium text-muted-foreground">Entity</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Mentions</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Views</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Likes</th>
+          <tr className="border-b border-border/50 bg-muted/30">
+            <th className="w-8 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">#</th>
+            <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Entity</th>
+            <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Mentions</th>
+            <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Views</th>
+            <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Likes</th>
           </tr>
         </thead>
         <tbody>
-          {top10.map((e) => (
-            <tr key={e.entity} className="border-b border-border/50 last:border-b-0 hover:bg-muted/30 transition-colors">
-              <td className="px-3 py-2.5 text-[12px] font-medium text-foreground">{e.entity}</td>
-              <td className="px-3 py-2.5 text-right font-mono text-[12px] tabular-nums text-foreground">
+          {top10.map((e, idx) => (
+            <tr
+              key={e.entity}
+              className={`border-b border-border/30 last:border-b-0 transition-colors hover:bg-muted/50 ${idx % 2 === 1 ? 'bg-muted/10' : ''}`}
+            >
+              <td className="px-4 py-2.5 text-[11px] tabular-nums text-muted-foreground/60">{idx + 1}</td>
+              <td className="px-4 py-2.5 text-[12px] font-medium text-foreground">{e.entity}</td>
+              <td className="px-4 py-2.5 text-right text-[12px] tabular-nums font-medium text-foreground">
                 {formatNumber(e.mentions)}
               </td>
-              <td className="px-3 py-2.5 text-right font-mono text-[12px] tabular-nums text-foreground">
+              <td className="px-4 py-2.5 text-right text-[12px] tabular-nums text-muted-foreground">
                 {formatNumber(e.total_views)}
               </td>
-              <td className="px-3 py-2.5 text-right font-mono text-[12px] tabular-nums text-foreground">
+              <td className="px-4 py-2.5 text-right text-[12px] tabular-nums text-muted-foreground">
                 {formatNumber(e.total_likes)}
               </td>
             </tr>

@@ -12,6 +12,19 @@
     />
   </head>
   <body>
+    <script>
+      // Prevent flash of wrong theme/accent on load
+      (function () {
+        try {
+          var t = localStorage.getItem('sl-theme') || 'system';
+          var isDark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) document.documentElement.classList.add('dark');
+
+          var accent = localStorage.getItem('sl-accent-color');
+          if (accent) document.documentElement.style.setProperty('--color-accent-vibrant', accent);
+        } catch (e) {}
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

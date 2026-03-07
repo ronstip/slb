@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     vetric_api_key_tiktok: str = ""
     vetric_api_key_reddit: str = ""
     vetric_api_key_youtube: str = ""
+
+    # Bright Data
+    brightdata_api_token: str = ""
+    brightdata_poll_max_wait_sec: int = 300
+    brightdata_poll_initial_interval_sec: float = 5.0
+
     environment: str = "development"
     enable_search_grounding: bool = True
     agent_engine_id: str = ""  # Vertex AI Agent Engine ID for Memory Bank (prod only)

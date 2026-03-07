@@ -217,15 +217,44 @@ export function computeKpis(posts: DashboardPost[]): KpiItem[] {
   let views = 0;
   let likes = 0;
   let comments = 0;
+  let shares = 0;
   for (const p of posts) {
     views += p.view_count;
     likes += p.like_count;
     comments += p.comment_count;
+    shares += p.share_count;
   }
   return [
     { label: 'Total Posts', value: posts.length },
     { label: 'Total Views', value: views },
     { label: 'Total Likes', value: likes },
     { label: 'Total Comments', value: comments },
+    { label: 'Total Shares', value: shares },
   ];
+}
+
+// ─── Sentiment Over Time ────────────────────────────────────────────
+
+export interface SentimentTimePoint {
+  date: string;
+  positive: number;
+  negative: number;
+  neutral: number;
+  mixed: number;
+}
+
+export function aggregateSentimentOverTime(posts: DashboardPost[]): SentimentTimePoint[] {
+  const map = new Map<string, { positive: number; negative: number; neutral: number; mixed: number }>();
+  for (const p of posts) {
+    if (!p.posted_at) continue;
+    const date = p.posted_at.slice(0, 10);
+    const bucket = map.get(date) ?? { positive: 0, negative: 0, neutral: 0, mixed: 0 };
+    const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof bucket;
+    if (s in bucket) bucket[s] += 1;
+    else bucket.neutral += 1;
+    map.set(date, bucket);
+  }
+  return [...map.entries()]
+    .map(([date, counts]) => ({ date, ...counts }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }

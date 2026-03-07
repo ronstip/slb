@@ -1,5 +1,7 @@
-import { LineChart as ReLineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { LineChart as ReLineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../../../components/ui/chart.tsx';
 import { formatNumber } from '../../../lib/format.ts';
+import { useChartColors } from './use-chart-colors.ts';
 import type { VolumeOverTime } from '../../../api/types.ts';
 import type { ChartOverrides } from './chart-overrides.ts';
 
@@ -8,11 +10,14 @@ interface LineChartProps {
   overrides?: ChartOverrides;
 }
 
-const DEFAULT_LINE_COLOR = '#4F46E5';
-
 export function LineChart({ data, overrides }: LineChartProps) {
-  const lineColor = overrides?.colorOverrides?.['line'] || DEFAULT_LINE_COLOR;
-  // Aggregate by date (sum across platforms)
+  const chartColors = useChartColors();
+  const lineColor = overrides?.colorOverrides?.['line'] || chartColors[0];
+
+  const chartConfig: ChartConfig = {
+    count: { label: 'Posts', color: lineColor },
+  };
+
   const byDate = data.reduce<Record<string, number>>((acc, item) => {
     acc[item.post_date] = (acc[item.post_date] || 0) + item.post_count;
     return acc;
@@ -23,21 +28,33 @@ export function LineChart({ data, overrides }: LineChartProps) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return (
-    <ResponsiveContainer width="100%" height={150}>
-      <ReLineChart data={chartData} margin={{ left: 10, right: 10, top: 5, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.4} />
-        <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => d.slice(5)} />
-        <YAxis tick={{ fontSize: 10 }} width={38} tickFormatter={formatNumber} />
-        <Tooltip contentStyle={{ fontSize: 12 }} />
+    <ChartContainer config={chartConfig} className="min-h-[180px] w-full">
+      <ReLineChart accessibilityLayer data={chartData} margin={{ left: 0, right: 0 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tickFormatter={(d) => d.slice(5)}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          width={40}
+          tickFormatter={formatNumber}
+        />
+        <ChartTooltip content={<ChartTooltipContent />} />
         <Line
           type="monotone"
           dataKey="count"
-          stroke={lineColor}
+          stroke="var(--color-count)"
           strokeWidth={2}
-          dot={{ r: 2, fill: lineColor }}
+          dot={false}
           activeDot={{ r: 4 }}
         />
       </ReLineChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   );
 }

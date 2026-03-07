@@ -150,9 +150,9 @@ export function UserDetailSection({ userId, onBack }: UserDetailSectionProps) {
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="Queries" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.1} />
-                <Area type="monotone" dataKey="Collections" stroke="hsl(var(--chart-2, 160 60% 45%))" fill="hsl(var(--chart-2, 160 60% 45%))" fillOpacity={0.1} />
-                <Area type="monotone" dataKey="Posts" stroke="hsl(var(--chart-3, 30 80% 55%))" fill="hsl(var(--chart-3, 30 80% 55%))" fillOpacity={0.1} />
+                <Area type="monotone" dataKey="Queries" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.1} />
+                <Area type="monotone" dataKey="Collections" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.1} />
+                <Area type="monotone" dataKey="Posts" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={0.1} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>

@@ -552,6 +552,56 @@ class FirestoreClient:
         self._db.collection("artifacts").document(artifact_id).delete()
         logger.info("Deleted artifact %s", artifact_id)
 
+    # --- Dashboard share methods ---
+
+    def create_dashboard_share(self, token: str, data: dict) -> None:
+        """Store a share token document (doc ID == token)."""
+        self._db.collection("dashboard_shares").document(token).set(data)
+
+    def get_dashboard_share(self, token: str) -> dict | None:
+        """Fetch a share token document. Returns None if not found."""
+        doc = self._db.collection("dashboard_shares").document(token).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["token"] = doc.id
+        for key in ("created_at", "revoked_at", "last_accessed_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def revoke_dashboard_share(self, token: str) -> None:
+        """Mark a share token as revoked."""
+        self._db.collection("dashboard_shares").document(token).update({
+            "revoked": True,
+            "revoked_at": datetime.now(timezone.utc),
+        })
+
+    def get_dashboard_share_by_dashboard(
+        self, dashboard_id: str, owner_uid: str
+    ) -> dict | None:
+        """Find an active (non-revoked) share for a dashboard+owner pair.
+
+        NOTE: Requires a Firestore composite index on
+        (dashboard_id, owner_uid, revoked) for the dashboard_shares collection.
+        """
+        docs = (
+            self._db.collection("dashboard_shares")
+            .where("dashboard_id", "==", dashboard_id)
+            .where("owner_uid", "==", owner_uid)
+            .where("revoked", "==", False)
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            data["token"] = doc.id
+            for key in ("created_at", "revoked_at", "last_accessed_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            return data
+        return None
+
     def get_credit_history(
         self, user_id: str | None = None, org_id: str | None = None
     ) -> list[dict]:

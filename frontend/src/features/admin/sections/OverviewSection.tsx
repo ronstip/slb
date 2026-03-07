@@ -60,10 +60,10 @@ function pivotActivity(points: { date: string; event_type: string; count: number
 }
 
 const CHART_COLORS = {
-  Queries: 'hsl(var(--primary))',
-  Collections: 'hsl(var(--chart-2, 160 60% 45%))',
-  'Posts Collected': 'hsl(var(--chart-3, 30 80% 55%))',
-  'Tool Calls': 'hsl(var(--chart-4, 280 65% 60%))',
+  Queries: 'var(--primary)',
+  Collections: 'var(--chart-2)',
+  'Posts Collected': 'var(--chart-3)',
+  'Tool Calls': 'var(--chart-4)',
 };
 
 export function OverviewSection() {

@@ -485,6 +485,26 @@ export interface DashboardDataResponse {
   truncated: boolean;
 }
 
+export interface DashboardShareInfo {
+  token: string;
+  dashboard_id: string;
+  title: string;
+  collection_ids: string[];
+  created_at: string;
+  share_url: string;
+  active: boolean;
+}
+
+export interface SharedDashboardDataResponse {
+  posts: DashboardPost[];
+  collection_names: Record<string, string>;
+  truncated: boolean;
+  meta: {
+    title: string;
+    created_at: string;
+  };
+}
+
 export interface DashboardPayload {
   status: string;
   dashboard_id: string;
