@@ -67,6 +67,7 @@ def create_collection_from_request(
             "end": end_date.strftime("%Y-%m-%d"),
         },
         "max_calls": request.max_calls,
+        "max_posts_per_keyword": request.max_posts_per_keyword or request.max_calls * 10,
         "include_comments": request.include_comments,
         "geo_scope": request.geo_scope,
         "ongoing": request.ongoing,

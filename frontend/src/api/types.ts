@@ -125,7 +125,8 @@ export interface CreateCollectionRequest {
   channel_urls?: string[];
   time_range_days: number;
   geo_scope: string;
-  max_calls: number;
+  max_calls?: number;
+  max_posts_per_keyword?: number;
   include_comments: boolean;
   ongoing?: boolean;
   schedule?: string;
@@ -155,7 +156,8 @@ export interface CollectionConfig {
   keywords: string[];
   channel_urls: string[];
   time_range: { start: string; end: string };
-  max_calls: number;
+  max_calls?: number;
+  max_posts_per_keyword?: number;
   include_comments: boolean;
   geo_scope: string;
   ongoing?: boolean;
@@ -524,7 +526,7 @@ export interface DesignResearchResult {
     platforms: string[];
     keywords: string[];
     time_range: string;
-    estimated_api_calls: number;
+    estimated_posts: number;
     estimated_time_minutes: number;
     include_comments: boolean;
   };
