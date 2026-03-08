@@ -181,6 +181,17 @@ export function DashboardFilterBar({
         formatLabel={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
       />
 
+      {availableOptions.emotion.length > 0 && (
+        <FilterPill
+          label="Emotion"
+          count={filters.emotion.length}
+          options={availableOptions.emotion}
+          selected={filters.emotion}
+          onToggle={(v) => onToggle('emotion', v)}
+          formatLabel={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+        />
+      )}
+
       <FilterPill
         label="Platform"
         count={filters.platform.length}

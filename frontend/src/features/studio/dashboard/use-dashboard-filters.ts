@@ -3,6 +3,7 @@ import type { DashboardPost } from '../../../api/types.ts';
 
 export interface DashboardFilters {
   sentiment: string[];
+  emotion: string[];
   entities: string[];
   language: string[];
   collection: string[];
@@ -15,6 +16,7 @@ export interface DashboardFilters {
 
 export interface FilterOptions {
   sentiment: string[];
+  emotion: string[];
   entities: string[];
   language: string[];
   collection: string[];
@@ -28,6 +30,7 @@ export interface FilterOptions {
 
 const INITIAL_FILTERS: DashboardFilters = {
   sentiment: [],
+  emotion: [],
   entities: [],
   language: [],
   collection: [],
@@ -43,6 +46,7 @@ type ArrayFilterKey = Exclude<keyof DashboardFilters, 'date_range'>;
 function extractOptions(posts: DashboardPost[]): FilterOptions {
   const sets: Record<string, Set<string>> = {
     sentiment: new Set(),
+    emotion: new Set(),
     entities: new Set(),
     language: new Set(),
     collection: new Set(),
@@ -56,6 +60,7 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
 
   for (const p of posts) {
     if (p.sentiment) sets.sentiment.add(p.sentiment);
+    if (p.emotion && p.emotion !== 'unknown') sets.emotion.add(p.emotion);
     if (p.language) sets.language.add(p.language);
     if (p.content_type) sets.content_type.add(p.content_type);
     sets.platform.add(p.platform);
@@ -72,6 +77,7 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
 
   return {
     sentiment: [...sets.sentiment].sort(),
+    emotion: [...sets.emotion].sort(),
     entities: [...sets.entities].sort(),
     language: [...sets.language].sort(),
     collection: [...sets.collection].sort(),
@@ -87,6 +93,7 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
 function applyFilters(posts: DashboardPost[], filters: DashboardFilters): DashboardPost[] {
   return posts.filter((p) => {
     if (filters.sentiment.length > 0 && !filters.sentiment.includes(p.sentiment || '')) return false;
+    if (filters.emotion.length > 0 && !filters.emotion.includes(p.emotion || '')) return false;
     if (filters.platform.length > 0 && !filters.platform.includes(p.platform)) return false;
     if (filters.language.length > 0 && !filters.language.includes(p.language || '')) return false;
     if (filters.content_type.length > 0 && !filters.content_type.includes(p.content_type || '')) return false;

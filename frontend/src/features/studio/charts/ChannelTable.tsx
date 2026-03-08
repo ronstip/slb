@@ -1,16 +1,17 @@
 import type { ChannelSummary } from '../../../api/types.ts';
-import { PLATFORM_COLORS, PLATFORM_LABELS } from '../../../lib/constants.ts';
 import { formatNumber } from '../../../lib/format.ts';
+import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 
 interface ChannelTableProps {
   data: ChannelSummary[];
+  onRowClick?: (channel: string) => void;
 }
 
-export function ChannelTable({ data }: ChannelTableProps) {
+export function ChannelTable({ data, onRowClick }: ChannelTableProps) {
   const top10 = data.slice(0, 10);
 
   return (
-    <div className="overflow-hidden">
+    <div className="overflow-hidden rounded-lg">
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-border/50 bg-muted/30">
@@ -25,28 +26,23 @@ export function ChannelTable({ data }: ChannelTableProps) {
           {top10.map((ch, idx) => (
             <tr
               key={`${ch.platform}-${ch.channel_handle}`}
-              className={`border-b border-border/30 last:border-b-0 transition-colors hover:bg-muted/50 ${idx % 2 === 1 ? 'bg-muted/10' : ''}`}
+              className={`border-b border-border/20 last:border-b-0 transition-colors hover:bg-muted/40 ${onRowClick ? 'cursor-pointer' : ''}`}
+              onClick={() => onRowClick?.(ch.channel_handle)}
             >
-              <td className="px-4 py-2.5 text-[11px] tabular-nums text-muted-foreground/60">{idx + 1}</td>
+              <td className="px-4 py-2.5 text-[11px] tabular-nums text-muted-foreground/50">{idx + 1}</td>
               <td className="px-4 py-2.5">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: PLATFORM_COLORS[ch.platform] ?? '#78716C' }}
-                  />
-                  <span className="text-[12px] font-medium text-foreground">@{ch.channel_handle}</span>
-                  <span className="text-[10px] text-muted-foreground/60">
-                    {PLATFORM_LABELS[ch.platform] || ch.platform}
-                  </span>
+                  <PlatformIcon platform={ch.platform} className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-[12px] font-medium text-foreground truncate">@{ch.channel_handle}</span>
                 </div>
               </td>
               <td className="px-4 py-2.5 text-right text-[12px] tabular-nums font-medium text-foreground">
                 {ch.collected_posts}
               </td>
-              <td className="px-4 py-2.5 text-right text-[12px] tabular-nums text-muted-foreground">
+              <td className="px-4 py-2.5 text-right text-[11px] tabular-nums text-muted-foreground">
                 {formatNumber(ch.avg_likes)}
               </td>
-              <td className="px-4 py-2.5 text-right text-[12px] tabular-nums text-muted-foreground">
+              <td className="px-4 py-2.5 text-right text-[11px] tabular-nums text-muted-foreground">
                 {formatNumber(ch.avg_views)}
               </td>
             </tr>

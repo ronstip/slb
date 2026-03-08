@@ -2,38 +2,29 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../../../components/ui/chart.tsx';
 import { formatNumber } from '../../../lib/format.ts';
 import { useChartColors } from './use-chart-colors.ts';
-import type { VolumeOverTime } from '../../../api/types.ts';
+import type { EngagementRatePoint } from '../dashboard/dashboard-aggregations.ts';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-interface VolumeChartProps {
-  data: VolumeOverTime[];
+interface EngagementRateChartProps {
+  data: EngagementRatePoint[];
 }
 
-export function VolumeChart({ data }: VolumeChartProps) {
+export function EngagementRateChart({ data }: EngagementRateChartProps) {
   const chartColors = useChartColors();
-  const color = chartColors[0];
+  const color = chartColors[2] || chartColors[0];
 
   const chartConfig: ChartConfig = {
-    count: { label: 'Posts', color },
+    rate: { label: 'Engagement Rate', color },
   };
 
-  const byDate = data.reduce<Record<string, number>>((acc, item) => {
-    acc[item.post_date] = (acc[item.post_date] || 0) + item.post_count;
-    return acc;
-  }, {});
-
-  const chartData = Object.entries(byDate)
-    .map(([date, count]) => ({ date, count }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  if (chartData.length === 0) return null;
+  if (data.length === 0) return null;
 
   return (
-    <ChartContainer config={chartConfig} className="h-[240px] w-full">
-      <AreaChart accessibilityLayer data={chartData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+    <ChartContainer config={chartConfig} className="h-[220px] w-full">
+      <AreaChart accessibilityLayer data={data} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
         <defs>
-          <linearGradient id="grad-volume" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="grad-engagement" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor={color} stopOpacity={0.3} />
             <stop offset="95%" stopColor={color} stopOpacity={0.02} />
           </linearGradient>
@@ -56,15 +47,31 @@ export function VolumeChart({ data }: VolumeChartProps) {
           tickMargin={8}
           width={40}
           tick={{ fontSize: 10 }}
-          tickFormatter={formatNumber}
+          tickFormatter={(v: number) => `${v.toFixed(1)}%`}
         />
-        <ChartTooltip content={<ChartTooltipContent />} />
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              formatter={(value, _name, item) => {
+                const payload = item.payload as EngagementRatePoint;
+                return (
+                  <span>
+                    {Number(value).toFixed(2)}%
+                    <span className="ml-2 text-muted-foreground">
+                      ({formatNumber(payload.total_engagement)} eng / {formatNumber(payload.total_views)} views)
+                    </span>
+                  </span>
+                );
+              }}
+            />
+          }
+        />
         <Area
           type="monotone"
-          dataKey="count"
+          dataKey="rate"
           stroke={color}
           strokeWidth={2}
-          fill="url(#grad-volume)"
+          fill="url(#grad-engagement)"
           dot={false}
           activeDot={{ r: 3, strokeWidth: 0 }}
         />

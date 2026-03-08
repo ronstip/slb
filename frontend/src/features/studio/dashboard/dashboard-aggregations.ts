@@ -258,3 +258,149 @@ export function aggregateSentimentOverTime(posts: DashboardPost[]): SentimentTim
     .map(([date, counts]) => ({ date, ...counts }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
+
+// ─── Emotions ─────────────────────────────────────────────────────────
+
+export interface EmotionBreakdown {
+  emotion: string;
+  count: number;
+  percentage: number;
+}
+
+export function aggregateEmotions(posts: DashboardPost[]): EmotionBreakdown[] {
+  const counts = new Map<string, number>();
+  for (const p of posts) {
+    const e = p.emotion || 'unknown';
+    if (e === 'unknown') continue;
+    counts.set(e, (counts.get(e) || 0) + 1);
+  }
+  const total = [...counts.values()].reduce((s, c) => s + c, 0);
+  return [...counts.entries()]
+    .map(([emotion, count]) => ({
+      emotion,
+      count,
+      percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+}
+
+// ─── Theme Cloud ──────────────────────────────────────────────────────
+
+export interface CloudWord {
+  text: string;
+  value: number;
+}
+
+export function aggregateThemeCloud(posts: DashboardPost[]): CloudWord[] {
+  const counts = new Map<string, number>();
+  for (const p of posts) {
+    for (const t of p.themes ?? []) {
+      counts.set(t, (counts.get(t) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([text, value]) => ({ text, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 40);
+}
+
+// ─── Engagement Rate Over Time ────────────────────────────────────────
+
+export interface EngagementRatePoint {
+  date: string;
+  rate: number;
+  total_engagement: number;
+  total_views: number;
+}
+
+export function aggregateEngagementRate(posts: DashboardPost[]): EngagementRatePoint[] {
+  const map = new Map<string, { engagement: number; views: number }>();
+  for (const p of posts) {
+    if (!p.posted_at) continue;
+    const date = p.posted_at.slice(0, 10);
+    const cur = map.get(date) ?? { engagement: 0, views: 0 };
+    cur.engagement += p.like_count + p.comment_count + p.share_count;
+    cur.views += p.view_count;
+    map.set(date, cur);
+  }
+  return [...map.entries()]
+    .map(([date, v]) => ({
+      date,
+      rate: v.views > 0 ? Math.round((v.engagement / v.views) * 10000) / 100 : 0,
+      total_engagement: v.engagement,
+      total_views: v.views,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// ─── Enhanced KPIs ────────────────────────────────────────────────────
+
+export interface EnhancedKpi {
+  label: string;
+  value: number;
+  icon: 'posts' | 'views' | 'engagement' | 'rate' | 'avg';
+  format?: 'number' | 'percent';
+  sparklineData: number[];
+}
+
+export function computeEnhancedKpis(posts: DashboardPost[]): EnhancedKpi[] {
+  // Group by date for sparklines
+  const byDate = new Map<string, { posts: number; views: number; engagement: number }>();
+  let totalViews = 0;
+  let totalEngagement = 0;
+
+  for (const p of posts) {
+    const date = p.posted_at?.slice(0, 10) ?? 'unknown';
+    const cur = byDate.get(date) ?? { posts: 0, views: 0, engagement: 0 };
+    cur.posts += 1;
+    cur.views += p.view_count;
+    const eng = p.like_count + p.comment_count + p.share_count;
+    cur.engagement += eng;
+    byDate.set(date, cur);
+    totalViews += p.view_count;
+    totalEngagement += eng;
+  }
+
+  const sorted = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  // Downsample to max 30 points
+  const step = Math.max(1, Math.floor(sorted.length / 30));
+  const sampled = sorted.filter((_, i) => i % step === 0);
+
+  const engagementRate = totalViews > 0 ? Math.round((totalEngagement / totalViews) * 10000) / 100 : 0;
+  const avgEngPerPost = posts.length > 0 ? Math.round(totalEngagement / posts.length) : 0;
+
+  return [
+    {
+      label: 'Total Posts',
+      value: posts.length,
+      icon: 'posts',
+      sparklineData: sampled.map(([, v]) => v.posts),
+    },
+    {
+      label: 'Total Views',
+      value: totalViews,
+      icon: 'views',
+      sparklineData: sampled.map(([, v]) => v.views),
+    },
+    {
+      label: 'Total Engagement',
+      value: totalEngagement,
+      icon: 'engagement',
+      sparklineData: sampled.map(([, v]) => v.engagement),
+    },
+    {
+      label: 'Engagement Rate',
+      value: engagementRate,
+      icon: 'rate',
+      format: 'percent',
+      sparklineData: sampled.map(([, v]) => v.views > 0 ? (v.engagement / v.views) * 100 : 0),
+    },
+    {
+      label: 'Avg Eng / Post',
+      value: avgEngPerPost,
+      icon: 'avg',
+      sparklineData: sampled.map(([, v]) => v.posts > 0 ? v.engagement / v.posts : 0),
+    },
+  ];
+}
