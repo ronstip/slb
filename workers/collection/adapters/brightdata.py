@@ -118,7 +118,7 @@ class BrightDataAdapter(DataProviderAdapter):
         if not keywords:
             return []
 
-        num_per_kw = config.get("max_posts_per_keyword") or config.get("max_calls", 2) * 10
+        num_per_kw = config.get("max_posts_per_keyword", 20)
         geo = config.get("geo_scope", "")
         if geo == "global":
             geo = ""
@@ -151,7 +151,7 @@ class BrightDataAdapter(DataProviderAdapter):
         if not keywords:
             return []
 
-        num_per_kw = config.get("max_posts_per_keyword") or config.get("max_calls", 2) * 10
+        num_per_kw = config.get("max_posts_per_keyword", 20)
         time_range = config.get("time_range", {})
         start = _to_bd_date_mmddyyyy(time_range.get("start"))
         end = _to_bd_date_mmddyyyy(time_range.get("end"))
@@ -191,7 +191,7 @@ class BrightDataAdapter(DataProviderAdapter):
         if not keywords and not subreddit_urls:
             return []
 
-        num_per_kw = config.get("max_posts_per_keyword") or config.get("max_calls", 2) * 10
+        num_per_kw = config.get("max_posts_per_keyword", 20)
         time_range = config.get("time_range", {})
         start = time_range.get("start", "")
         reddit_date = _iso_date_to_reddit_filter(start)
@@ -201,14 +201,13 @@ class BrightDataAdapter(DataProviderAdapter):
         # Strategy 1: keyword-based discovery (preferred when keywords provided)
         if keywords:
             inputs = [
-                {"keyword": kw, "date": reddit_date}
+                {"keyword": kw, "date": reddit_date, "num_of_posts": num_per_kw}
                 for kw in keywords
             ]
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
-                limit_per_input=num_per_kw,
             )
             all_results.extend(results)
 

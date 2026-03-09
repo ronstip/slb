@@ -41,7 +41,7 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
         channel_urls: cfg.channel_urls?.length ? cfg.channel_urls : undefined,
         time_range_days: timeRangeDays,
         geo_scope: cfg.geo_scope,
-        max_calls: cfg.max_calls,
+        max_calls: cfg.max_calls ?? 2,
         include_comments: cfg.include_comments,
         ongoing: cfg.ongoing,
         schedule: cfg.schedule,
@@ -177,8 +177,8 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
               <p className="text-[12px] font-medium text-foreground">{data.summary.time_range}</p>
             </div>
             <div>
-              <p className="text-[10px] text-muted-foreground/60">API calls</p>
-              <p className="text-[12px] font-medium text-foreground">{data.summary.estimated_api_calls}</p>
+              <p className="text-[10px] text-muted-foreground/60">Est. posts</p>
+              <p className="text-[12px] font-medium text-foreground">{data.summary.estimated_posts}</p>
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground/60">Est. time</p>

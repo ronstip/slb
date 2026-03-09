@@ -43,7 +43,7 @@ const TIME_RANGES = [
   { label: '1 year', value: 365 },
 ];
 
-const MAX_CALLS_OPTIONS = [1, 2, 3, 5];
+const POSTS_PER_KEYWORD_OPTIONS = [10, 20, 50, 100];
 
 export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitStart, onSubmitSuccess, onSubmitError, suppressSystemMessage }: CollectionFormProps) {
   const [description, setDescription] = useState(prefill?.keywords?.join(', ') || '');
@@ -58,7 +58,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
       : 90,
   );
   const [geoScope, setGeoScope] = useState(prefill?.geo_scope || 'global');
-  const [maxCalls, setMaxCalls] = useState(prefill?.max_calls || 2);
+  const [maxPostsPerKeyword, setMaxPostsPerKeyword] = useState(prefill?.max_posts_per_keyword ?? 20);
   const [includeComments, setIncludeComments] = useState(prefill?.include_comments ?? true);
   const [ongoing, setOngoing] = useState(prefill?.ongoing ?? false);
 
@@ -124,7 +124,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
         channel_urls: channelUrls.length > 0 ? channelUrls : undefined,
         time_range_days: timeRangeDays,
         geo_scope: geoScope,
-        max_calls: maxCalls,
+        max_posts_per_keyword: maxPostsPerKeyword,
         include_comments: includeComments,
         ongoing,
         schedule: ongoing ? scheduleStr : undefined,
@@ -143,7 +143,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
             start: new Date(Date.now() - timeRangeDays * 86_400_000).toISOString().split('T')[0],
             end: new Date().toISOString().split('T')[0],
           },
-          max_calls: maxCalls,
+          max_posts_per_keyword: maxPostsPerKeyword,
           include_comments: includeComments,
           geo_scope: geoScope,
           ongoing,
@@ -295,13 +295,13 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
           </Select>
         </div>
         <div>
-          <Label className="mb-1.5">API Calls / Keyword</Label>
-          <Select value={String(maxCalls)} onValueChange={(v) => setMaxCalls(Number(v))}>
+          <Label className="mb-1.5">Posts / Keyword</Label>
+          <Select value={String(maxPostsPerKeyword)} onValueChange={(v) => setMaxPostsPerKeyword(Number(v))}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MAX_CALLS_OPTIONS.map((n) => (
+              {POSTS_PER_KEYWORD_OPTIONS.map((n) => (
                 <SelectItem key={n} value={String(n)}>{n}</SelectItem>
               ))}
             </SelectContent>

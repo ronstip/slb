@@ -8,7 +8,7 @@ from api.services.collection_service import create_collection_from_request
 logger = logging.getLogger(__name__)
 
 # Enrichment-only config keys that design_research produces
-_EXTRA_CONFIG_KEYS = ("video_params", "reasoning_level", "min_likes", "custom_fields")
+_EXTRA_CONFIG_KEYS = ("video_params", "reasoning_level", "min_likes", "custom_fields", "max_posts_per_keyword")
 
 
 def start_collection(

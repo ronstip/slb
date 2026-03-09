@@ -116,7 +116,7 @@ jobs:
             --region $GCP_REGION \
             --platform managed \
             --service-account sl-worker@$GCP_PROJECT_ID.iam.gserviceaccount.com \
-            --set-env-vars "^||^ENVIRONMENT=production||GCP_PROJECT_ID=$GCP_PROJECT_ID||GCP_REGION=$GCP_REGION||GOOGLE_GENAI_USE_VERTEXAI=TRUE||GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID||GOOGLE_CLOUD_LOCATION=global" \
+            --set-env-vars "^||^ENVIRONMENT=production||GCP_PROJECT_ID=$GCP_PROJECT_ID||GCP_REGION=$GCP_REGION||GOOGLE_GENAI_USE_VERTEXAI=TRUE||GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID||GOOGLE_CLOUD_LOCATION=global||BRIGHTDATA_API_TOKEN=${{ secrets.BRIGHTDATA_API_TOKEN }}" \
             --min-instances 0 \
             --max-instances 5 \
             --memory 2Gi \

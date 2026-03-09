@@ -112,7 +112,7 @@ gcloud iam service-accounts create sl-worker \
     --display-name="SL Workers" --project="$PROJECT_ID" 2>/dev/null || true
 
 # API service account roles
-for ROLE in roles/aiplatform.user roles/bigquery.dataViewer roles/bigquery.jobUser \
+for ROLE in roles/aiplatform.user roles/bigquery.dataEditor roles/bigquery.jobUser \
     roles/datastore.user roles/cloudtasks.enqueuer roles/secretmanager.secretAccessor \
     roles/storage.objectViewer; do
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
