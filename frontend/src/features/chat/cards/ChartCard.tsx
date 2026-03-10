@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react';
-import { BarChart3, Download, Eye } from 'lucide-react';
+import { BarChart3, Download } from 'lucide-react';
 import { SentimentPie } from '../../studio/charts/SentimentPie.tsx';
 import { SentimentBar } from '../../studio/charts/SentimentBar.tsx';
 import { VolumeChart } from '../../studio/charts/VolumeChart.tsx';
@@ -49,6 +49,22 @@ const CHART_COMPONENTS: Record<ChartType, React.ComponentType<{ data: any; overr
   value_count: Histogram,
 };
 
+const CHART_TYPE_LABELS: Partial<Record<ChartType, string>> = {
+  sentiment_pie: 'Sentiment',
+  sentiment_bar: 'Sentiment',
+  volume_chart: 'Volume over time',
+  line_chart: 'Trend',
+  histogram: 'Distribution',
+  theme_bar: 'Themes',
+  platform_bar: 'Platform breakdown',
+  content_type_donut: 'Content types',
+  language_pie: 'Languages',
+  engagement_metrics: 'Engagement',
+  channel_table: 'Top channels',
+  entity_table: 'Top entities',
+  value_count: 'Distribution',
+};
+
 interface ChartCardProps {
   data: Record<string, unknown>;
 }
@@ -58,8 +74,8 @@ export function ChartCard({ data }: ChartCardProps) {
   const chartData = data.data as unknown[];
   const title = (data.title as string) || 'Chart';
   const artifactId = data._artifactId as string | undefined;
+  const collectionName = data.collection_name as string | undefined;
 
-  // Hidden ref used solely for PNG export
   const exportRef = useRef<HTMLDivElement>(null);
 
   const ChartComponent = CHART_COMPONENTS[chartType];
@@ -77,50 +93,35 @@ export function ChartCard({ data }: ChartCardProps) {
     await downloadChartPng(exportRef.current, title.replace(/\s+/g, '_').toLowerCase());
   }, [title]);
 
-  return (
-    <div onClick={handleView} className="mt-3 cursor-pointer overflow-hidden rounded-2xl border border-accent-success/20 bg-gradient-to-b from-accent-success/5 to-background shadow-sm transition-colors hover:bg-accent-success/5">
-      {/* Off-screen render of the chart used only for PNG export */}
-      <div
-        aria-hidden="true"
-        style={{ position: 'absolute', left: '-9999px', top: 0, width: '500px', pointerEvents: 'none' }}
-      >
-        <div ref={exportRef} style={{ padding: '16px', background: 'white' }}>
-          <p style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#666' }}>
-            {title}
-          </p>
-          <ChartComponent data={chartData} overrides={{}} />
-        </div>
-      </div>
+  const subtitle = CHART_TYPE_LABELS[chartType] ?? chartType.replace(/_/g, ' ');
+  const meta = collectionName || subtitle;
 
-      <div className="flex items-center justify-between px-5 py-3.5">
+  return (
+    <div onClick={handleView} className="mt-3 cursor-pointer overflow-hidden rounded-2xl border border-accent-success/20 bg-gradient-to-b from-accent-success/5 to-background shadow-sm transition-colors hover:border-accent-success/40">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-3.5 pb-1">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-success/10">
             <BarChart3 className="h-4 w-4 text-accent-success" />
           </div>
           <div className="flex flex-col">
             <h4 className="text-sm font-semibold text-foreground">{title}</h4>
-            <p className="text-[11px] text-muted-foreground">
-              {chartType.replace(/_/g, ' ')} · saved to artifacts
-            </p>
+            <p className="text-[11px] text-muted-foreground">{meta}</p>
           </div>
         </div>
-        <div className="flex items-center gap-0.5">
-          {artifactId && (
-            <button
-              onClick={handleView}
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title="View in Studio"
-            >
-              <Eye className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            onClick={(e) => { e.stopPropagation(); handleDownload(); }}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title="Download PNG"
-          >
-            <Download className="h-3.5 w-3.5" />
-          </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); handleDownload(); }}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title="Download PNG"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Inline chart preview */}
+      <div ref={exportRef} className="px-4 pb-3 pt-1">
+        <div className="pointer-events-none max-h-[220px] overflow-hidden">
+          <ChartComponent data={chartData} overrides={{}} />
         </div>
       </div>
     </div>

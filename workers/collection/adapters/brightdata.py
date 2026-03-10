@@ -3,7 +3,7 @@
 Supports: TikTok, YouTube, Reddit.
 
 Uses Bright Data's async trigger → poll → download lifecycle.
-All keywords for a platform are batched into a single API call.
+Each keyword gets a separate API call (parallelized) to ensure per-keyword result quotas.
 Platforms are collected in parallel via ThreadPoolExecutor.
 """
 
@@ -29,6 +29,7 @@ from workers.collection.models import Batch, Channel, Post
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS_PLATFORMS = 3
+_MAX_WORKERS_KEYWORDS = 5
 
 
 class BrightDataAdapter(DataProviderAdapter):
@@ -123,24 +124,36 @@ class BrightDataAdapter(DataProviderAdapter):
         if geo == "global":
             geo = ""
 
-        inputs = [
-            {"search_keyword": kw, "num_of_posts": num_per_kw, "country": geo}
-            for kw in keywords
-        ]
-
-        results = self._client.scrape_and_wait(
-            dataset_id=self._DATASET_IDS["tiktok"]["posts"],
-            inputs=inputs,
-            discover_by="keyword",
-        )
-        # Filter out error objects (e.g., {"error": "Rate limited", "error_code": "dead_page"})
-        valid = [r for r in results if not r.get("error")]
-        if len(valid) < len(results):
-            logger.warning(
-                "BrightData TikTok: filtered %d error results out of %d",
-                len(results) - len(valid), len(results),
+        def _fetch_keyword(kw: str) -> list[dict]:
+            inputs = [{"search_keyword": kw, "num_of_posts": num_per_kw, "country": geo}]
+            results = self._client.scrape_and_wait(
+                dataset_id=self._DATASET_IDS["tiktok"]["posts"],
+                inputs=inputs,
+                discover_by="keyword",
             )
-        return self._parse_results("tiktok", valid)
+            valid = [r for r in results if not r.get("error")]
+            if len(valid) < len(results):
+                logger.warning(
+                    "BrightData TikTok keyword '%s': filtered %d error results out of %d",
+                    kw, len(results) - len(valid), len(results),
+                )
+            logger.info("BrightData TikTok keyword '%s': got %d results", kw, len(valid))
+            return valid
+
+        # Fetch each keyword separately to ensure each gets its own num_of_posts quota
+        all_valid: list[dict] = []
+        with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
+            futures = {pool.submit(_fetch_keyword, kw): kw for kw in keywords}
+            for future in as_completed(futures):
+                kw = futures[future]
+                try:
+                    all_valid.extend(future.result())
+                except BrightDataAPIError as e:
+                    logger.error("BrightData TikTok keyword '%s' failed: %s", kw, e)
+                except Exception:
+                    logger.exception("Unexpected error fetching TikTok keyword '%s'", kw)
+
+        return self._parse_results("tiktok", all_valid)
 
     # ------------------------------------------------------------------
     # YouTube
@@ -156,30 +169,44 @@ class BrightDataAdapter(DataProviderAdapter):
         start = _to_bd_date_mmddyyyy(time_range.get("start"))
         end = _to_bd_date_mmddyyyy(time_range.get("end"))
 
-        inputs = [
-            {
-                "keyword": kw,
-                "num_of_posts": str(num_per_kw),  # YouTube requires string
-                "start_date": start,
-                "end_date": end,
-                "country": "",
-            }
-            for kw in keywords
-        ]
-
-        results = self._client.scrape_and_wait(
-            dataset_id=self._DATASET_IDS["youtube"]["posts"],
-            inputs=inputs,
-            discover_by="keyword",
-        )
-        # Filter out error objects (e.g., {"error": "Wrong posted date.", "error_code": "dead_page"})
-        valid = [r for r in results if not r.get("error")]
-        if len(valid) < len(results):
-            logger.warning(
-                "BrightData YouTube: filtered %d error results out of %d",
-                len(results) - len(valid), len(results),
+        def _fetch_keyword(kw: str) -> list[dict]:
+            inputs = [
+                {
+                    "keyword": kw,
+                    "num_of_posts": str(num_per_kw),  # YouTube requires string
+                    "start_date": start,
+                    "end_date": end,
+                    "country": "",
+                }
+            ]
+            results = self._client.scrape_and_wait(
+                dataset_id=self._DATASET_IDS["youtube"]["posts"],
+                inputs=inputs,
+                discover_by="keyword",
             )
-        return self._parse_results("youtube", valid)
+            valid = [r for r in results if not r.get("error")]
+            if len(valid) < len(results):
+                logger.warning(
+                    "BrightData YouTube keyword '%s': filtered %d error results out of %d",
+                    kw, len(results) - len(valid), len(results),
+                )
+            logger.info("BrightData YouTube keyword '%s': got %d results", kw, len(valid))
+            return valid
+
+        # Fetch each keyword separately to ensure each gets its own num_of_posts quota
+        all_valid: list[dict] = []
+        with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
+            futures = {pool.submit(_fetch_keyword, kw): kw for kw in keywords}
+            for future in as_completed(futures):
+                kw = futures[future]
+                try:
+                    all_valid.extend(future.result())
+                except BrightDataAPIError as e:
+                    logger.error("BrightData YouTube keyword '%s' failed: %s", kw, e)
+                except Exception:
+                    logger.exception("Unexpected error fetching YouTube keyword '%s'", kw)
+
+        return self._parse_results("youtube", all_valid)
 
     # ------------------------------------------------------------------
     # Reddit

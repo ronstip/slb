@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -67,6 +68,8 @@ def export_data(
             row["themes"] = "; ".join(row["themes"])
         if isinstance(row.get("entities"), list):
             row["entities"] = "; ".join(row["entities"])
+        if isinstance(row.get("media_refs"), list):
+            row["media_refs"] = json.dumps(row["media_refs"])
 
     column_names = list(rows[0].keys()) if rows else []
 

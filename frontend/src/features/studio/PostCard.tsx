@@ -185,7 +185,7 @@ function resolveUrl(m: MediaRef): string {
   return m.original_url || '';
 }
 
-function PostMedia({ media, postUrl }: { media: MediaRef[]; postUrl: string }) {
+export function PostMedia({ media, postUrl }: { media: MediaRef[]; postUrl: string }) {
   const videos = media.filter((m) => m.media_type === 'video');
   const images = media.filter((m) => m.media_type !== 'video');
 

@@ -30,6 +30,7 @@ SELECT
     p.post_url,
     p.posted_at,
     p.post_type,
+    p.media_refs,
     eng.likes,
     eng.shares,
     eng.views,

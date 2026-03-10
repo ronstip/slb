@@ -1,5 +1,6 @@
 """Artifacts router — list, retrieve, update, and delete artifacts."""
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -187,6 +188,8 @@ def _run_underlying_data_query(
             row["entities"] = "; ".join(row["entities"])
         if isinstance(row.get("key_quotes"), list):
             row["key_quotes"] = "; ".join(row["key_quotes"])
+        if isinstance(row.get("media_refs"), list):
+            row["media_refs"] = json.dumps(row["media_refs"])
 
     column_names = list(rows[0].keys()) if rows else []
 
