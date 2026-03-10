@@ -42,7 +42,7 @@ interface ChatStore {
   setStatusLine: (messageId: string, status: string | null) => void;
   setSuggestions: (messageId: string, suggestions: string[]) => void;
   finalizeMessage: (messageId: string) => void;
-  addSystemMessage: (text: string) => void;
+  addSystemMessage: (text: string, cards?: MessageCard[]) => void;
   setSessionId: (id: string) => void;
   setMessages: (messages: ChatMessage[]) => void;
   setIsAgentResponding: (responding: boolean) => void;
@@ -219,7 +219,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       isAgentResponding: false,
     })),
 
-  addSystemMessage: (text) =>
+  addSystemMessage: (text, cards) =>
     set((s) => ({
       messages: [
         ...s.messages,
@@ -230,7 +230,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           timestamp: new Date(),
           isStreaming: false,
           toolIndicators: [],
-          cards: [],
+          cards: cards ?? [],
           thinkingEntries: [],
           statusLine: null,
           suggestions: [],
