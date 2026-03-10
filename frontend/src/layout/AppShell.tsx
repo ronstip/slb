@@ -11,6 +11,7 @@ import { CollectionModal } from '../features/sources/CollectionModal.tsx';
 import { CollectionsLibrary } from '../features/collections/CollectionsLibrary.tsx';
 import { ArtifactLibrary } from '../features/artifacts/ArtifactLibrary.tsx';
 import { useCollectionPolling } from '../features/sources/useCollectionPolling.ts';
+import { useCollectionsSync } from '../features/collections/useCollectionsSync.ts';
 
 const SOURCES_MIN = 220;
 const SOURCES_MAX = 420;
@@ -48,6 +49,7 @@ export function AppShell() {
   const startX = useRef(0);
   const startW = useRef(0);
 
+  useCollectionsSync();
   useCollectionPolling();
 
   // Fetch sessions list on mount
@@ -68,11 +70,9 @@ export function AppShell() {
           navigate('/', { replace: true });
         });
       }
-    } else {
+    } else if (currentActiveId) {
       // URL is root `/` — start a fresh session if we had one active
-      if (currentActiveId) {
-        sessionStore.startNewSession();
-      }
+      sessionStore.startNewSession();
     }
   }, [params.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 

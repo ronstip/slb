@@ -30,7 +30,7 @@ export function InsightReportCard({ data }: InsightReportCardProps) {
   };
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-accent-vibrant/20 bg-gradient-to-b from-accent-vibrant/5 to-background shadow-sm">
+    <div onClick={handleOpen} className="mt-3 cursor-pointer overflow-hidden rounded-2xl border border-accent-vibrant/20 bg-gradient-to-b from-accent-vibrant/5 to-background shadow-sm transition-colors hover:bg-accent-vibrant/5">
       <div className="flex items-center justify-between px-5 py-3.5">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-vibrant/10">
@@ -54,7 +54,7 @@ export function InsightReportCard({ data }: InsightReportCardProps) {
             <Eye className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={handleOpen}
+            onClick={(e) => { e.stopPropagation(); handleOpen(); }}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             title="Download as PDF"
           >

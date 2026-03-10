@@ -19,7 +19,7 @@ export function DashboardCard({ data }: DashboardCardProps) {
   };
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-500/5 to-background shadow-sm">
+    <div onClick={handleOpen} className="mt-3 cursor-pointer overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-500/5 to-background shadow-sm transition-colors hover:bg-amber-500/5">
       <div className="flex items-center justify-between px-5 py-3.5">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10">

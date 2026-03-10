@@ -78,7 +78,7 @@ export function ChartCard({ data }: ChartCardProps) {
   }, [title]);
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-accent-success/20 bg-gradient-to-b from-accent-success/5 to-background shadow-sm">
+    <div onClick={handleView} className="mt-3 cursor-pointer overflow-hidden rounded-2xl border border-accent-success/20 bg-gradient-to-b from-accent-success/5 to-background shadow-sm transition-colors hover:bg-accent-success/5">
       {/* Off-screen render of the chart used only for PNG export */}
       <div
         aria-hidden="true"
@@ -115,7 +115,7 @@ export function ChartCard({ data }: ChartCardProps) {
             </button>
           )}
           <button
-            onClick={handleDownload}
+            onClick={(e) => { e.stopPropagation(); handleDownload(); }}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             title="Download PNG"
           >

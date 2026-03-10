@@ -49,6 +49,11 @@ export function SessionsPanel() {
   const sessions = useSessionStore((s) => s.sessions);
   const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
   const navigate = useNavigate();
+
+  const handleNewSession = () => {
+    useSessionStore.getState().startNewSession();
+    navigate('/');
+  };
   const { user, profile, signOut, devMode } = useAuth();
   const { theme, setTheme } = useTheme();
 
@@ -149,7 +154,7 @@ export function SessionsPanel() {
         {/* New session */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={() => navigate('/')}>
+            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={handleNewSession}>
               <Plus className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -230,7 +235,7 @@ export function SessionsPanel() {
       {/* Menu items: New Session, Search, Collections */}
       <div className="flex flex-col gap-0.5 px-3">
         <button
-          onClick={() => navigate('/')}
+          onClick={handleNewSession}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <Plus className="h-4 w-4 shrink-0" />

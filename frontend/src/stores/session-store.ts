@@ -45,7 +45,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   restoreSession: async (id: string) => {
-    set({ isRestoring: true });
+    set({ isRestoring: true, activeSessionId: id });
+
+    // Clear old session state immediately so the UI shows a loading state
+    // instead of stale content from the previous session
+    useChatStore.getState().reset();
+    useStudioStore.getState().reset();
+    useSourcesStore.getState().deselectAll();
+    useSourcesStore.getState().setAgentSelectedSources([]);
+
     try {
       const detail = await getSession(id);
       const { messages, artifacts, selectedSourceIds } = reconstructSession(
@@ -53,11 +61,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         detail.state,
       );
 
-      // Restore all stores — clear agent context first to prevent leaks
+      // Restore all stores with the fetched session data
       useChatStore.getState().setMessages(messages);
       useChatStore.getState().setSessionId(id);
       useStudioStore.getState().setArtifacts(artifacts);
-      useSourcesStore.getState().setAgentSelectedSources([]);
       useSourcesStore.getState().selectByIds(selectedSourceIds);
 
       set({
@@ -66,7 +73,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         isRestoring: false,
       });
     } catch {
-      set({ isRestoring: false });
+      set({ isRestoring: false, activeSessionId: null });
       throw new Error('Session not found');
     }
   },

@@ -40,7 +40,7 @@ export function DataExportCard({ data }: DataExportCardProps) {
   }
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-accent-blue/20 bg-gradient-to-b from-accent-blue/5 to-background shadow-sm">
+    <div onClick={handleView} className="mt-3 cursor-pointer overflow-hidden rounded-2xl border border-accent-blue/20 bg-gradient-to-b from-accent-blue/5 to-background shadow-sm transition-colors hover:bg-accent-blue/5">
       <div className="flex items-center justify-between px-5 py-3.5">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-blue/10">
@@ -65,7 +65,7 @@ export function DataExportCard({ data }: DataExportCardProps) {
           )}
           {collection_id && (
             <button
-              onClick={handleDownload}
+              onClick={(e) => { e.stopPropagation(); handleDownload(); }}
               disabled={downloading}
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
               title={downloading ? 'Downloading…' : 'Download CSV'}

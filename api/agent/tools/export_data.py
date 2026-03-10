@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from api.deps import get_bq
 
@@ -36,10 +37,13 @@ def export_data(
         }
 
     bq = get_bq()
-    params = {"collection_ids": ids}
+    params = {
+        "collection_ids": ids,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
 
     try:
-        rows = bq.query_from_file("export_queries/export_posts.sql", params)
+        rows = bq.query_from_file("export_queries/underlying_data.sql", params)
     except Exception as e:
         logger.exception("Export query failed for collections %s", ids)
         return {

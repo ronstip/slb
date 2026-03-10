@@ -1,4 +1,6 @@
+import { Loader2 } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
+import { useSessionStore } from '../../stores/session-store.ts';
 import { useSSEChat } from './hooks/useSSEChat.ts';
 import { MessageList } from './MessageList.tsx';
 import { MessageInput } from './MessageInput.tsx';
@@ -7,6 +9,7 @@ import { CollectionSelector } from './CollectionSelector.tsx';
 
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
+  const isRestoring = useSessionStore((s) => s.isRestoring);
   const { sendMessage, cancelStream } = useSSEChat();
   const hasMessages = messages.length > 0;
 
@@ -17,7 +20,11 @@ export function ChatPanel() {
         <CollectionSelector />
       </div>
 
-      {hasMessages ? (
+      {isRestoring ? (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : hasMessages ? (
         <>
           <MessageList onSendMessage={sendMessage} />
           <MessageInput onSend={sendMessage} onCancel={cancelStream} />
