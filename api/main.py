@@ -240,6 +240,32 @@ def _maybe_persist_artifact(
 # ---------------------------------------------------------------------------
 
 
+def _build_user_context(user_id: str, org_id: str) -> dict:
+    """Build user context for agent personalization at session start."""
+    context: dict = {"display_name": "", "preferences": {}, "recent_topics": []}
+    try:
+        fs = get_fs()
+        user_doc = fs.get_user(user_id)
+        if user_doc:
+            context["display_name"] = user_doc.get("display_name", "")
+            context["preferences"] = user_doc.get("preferences") or {}
+
+        # Extract recent research topics from last 5 collections
+        from api.agent.tools.get_past_collections import fetch_user_collections
+        collections = fetch_user_collections(user_id, org_id or "", limit=5)
+        keywords: list[str] = []
+        for c in collections:
+            config = c.get("config") or {}
+            kw = config.get("keywords", [])
+            if isinstance(kw, list):
+                keywords.extend(kw)
+        # Deduplicate, keep order, cap at 15
+        context["recent_topics"] = list(dict.fromkeys(keywords))[:15]
+    except Exception:
+        logger.debug("User context loading failed for %s — non-critical", user_id)
+    return context
+
+
 def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
     """Check if the user can access a collection (user-scoped + org-scoped with visibility check)."""
     # Owner always has access
@@ -313,6 +339,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         session = None
 
     if session is None:
+        # Load user context for agent personalization
+        user_context = _build_user_context(user_id, user.org_id)
+
         session = await runner.session_service.create_session(
             app_name=APP_NAME,
             user_id=user_id,
@@ -326,6 +355,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "message_count": 0,
                 "first_message": None,
+                "user_display_name": user_context.get("display_name", ""),
+                "user_recent_topics": user_context.get("recent_topics", []),
+                "user_preferences": user_context.get("preferences", {}),
             },
         )
     else:

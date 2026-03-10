@@ -5,6 +5,66 @@ from api.deps import get_fs
 logger = logging.getLogger(__name__)
 
 
+def fetch_user_collections(user_id: str, org_id: str = "", limit: int = 10) -> list[dict]:
+    """Fetch recent collections for a user from Firestore.
+
+    Internal helper reused by get_past_collections tool and user context loading.
+    Returns a list of collection dicts sorted by created_at descending.
+    """
+    fs = get_fs()
+    db = fs._db
+
+    own_docs = list(
+        db.collection("collection_status")
+        .where("user_id", "==", user_id)
+        .order_by("created_at", direction="DESCENDING")
+        .limit(limit)
+        .stream()
+    )
+
+    seen_ids = {doc.id for doc in own_docs}
+    all_docs = list(own_docs)
+
+    if org_id:
+        try:
+            org_docs = list(
+                db.collection("collection_status")
+                .where("org_id", "==", org_id)
+                .order_by("created_at", direction="DESCENDING")
+                .limit(limit)
+                .stream()
+            )
+            for doc in org_docs:
+                if doc.id not in seen_ids:
+                    data = doc.to_dict()
+                    if data.get("visibility") == "org":
+                        all_docs.append(doc)
+                        seen_ids.add(doc.id)
+        except Exception as e:
+            logger.error("Org collections query failed: %s", e)
+
+    collections = []
+    for doc in all_docs:
+        data = doc.to_dict()
+        created_at = data.get("created_at")
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
+
+        collections.append({
+            "collection_id": doc.id,
+            "status": data.get("status", "unknown"),
+            "original_question": data.get("original_question"),
+            "config": data.get("config"),
+            "posts_collected": data.get("posts_collected", 0),
+            "posts_enriched": data.get("posts_enriched", 0),
+            "created_at": created_at,
+            "is_own": data.get("user_id") == user_id,
+        })
+
+    collections.sort(key=lambda c: c.get("created_at") or "", reverse=True)
+    return collections[:limit]
+
+
 def get_past_collections(user_id: str, org_id: str = "", limit: int = 10) -> dict:
     """Retrieve recent past collections for the current user.
 
@@ -24,62 +84,8 @@ def get_past_collections(user_id: str, org_id: str = "", limit: int = 10) -> dic
         A dictionary with recent collections including their configs,
         original questions, and status.
     """
-    fs = get_fs()
-    db = fs._db
-
     try:
-        # User's own collections
-        own_docs = list(
-            db.collection("collection_status")
-            .where("user_id", "==", user_id)
-            .order_by("created_at", direction="DESCENDING")
-            .limit(limit)
-            .stream()
-        )
-
-        seen_ids = {doc.id for doc in own_docs}
-        all_docs = list(own_docs)
-
-        # Org-shared collections (if user belongs to an org)
-        if org_id:
-            try:
-                org_docs = list(
-                    db.collection("collection_status")
-                    .where("org_id", "==", org_id)
-                    .order_by("created_at", direction="DESCENDING")
-                    .limit(limit)
-                    .stream()
-                )
-                for doc in org_docs:
-                    if doc.id not in seen_ids:
-                        data = doc.to_dict()
-                        if data.get("visibility") == "org":
-                            all_docs.append(doc)
-                            seen_ids.add(doc.id)
-            except Exception as e:
-                logger.error("Org collections query failed: %s", e)
-
-        collections = []
-        for doc in all_docs:
-            data = doc.to_dict()
-            created_at = data.get("created_at")
-            if hasattr(created_at, "isoformat"):
-                created_at = created_at.isoformat()
-
-            collections.append({
-                "collection_id": doc.id,
-                "status": data.get("status", "unknown"),
-                "original_question": data.get("original_question"),
-                "config": data.get("config"),
-                "posts_collected": data.get("posts_collected", 0),
-                "posts_enriched": data.get("posts_enriched", 0),
-                "created_at": created_at,
-                "is_own": data.get("user_id") == user_id,
-            })
-
-        # Sort by created_at descending and trim to limit
-        collections.sort(key=lambda c: c.get("created_at") or "", reverse=True)
-        collections = collections[:limit]
+        collections = fetch_user_collections(user_id, org_id, limit)
 
         if not collections:
             return {

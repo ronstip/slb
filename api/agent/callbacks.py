@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 # ─── Tool priority groups for phase-based reordering ─────────────────
 # Tools listed first in the schema are naturally favoured by the model.
 
-CORE_TOOLS = {"execute_sql", "get_table_info", "list_table_ids", "create_chart", "display_posts"}
-RESEARCH_SUPPORT_TOOLS = {"get_past_collections", "google_search", "get_sql_reference"}
+CORE_TOOLS = {"execute_sql", "create_chart", "display_posts"}
+RESEARCH_SUPPORT_TOOLS = {"get_past_collections", "google_search"}
 RESEARCH_DESIGN_TOOLS = {"design_research"}
 COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
 OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
@@ -314,6 +314,23 @@ def _build_context_block(state: dict) -> Optional[str]:
             "'my data' without specifying a collection ID. "
             "User-forced collections cannot be removed from the working set."
         )
+        blocks.append("\n".join(lines))
+
+    # ── User context ──────────────────────────────────────────────
+    display_name = state.get("user_display_name", "")
+    recent_topics = state.get("user_recent_topics", [])
+    preferences = state.get("user_preferences", {})
+
+    if display_name or recent_topics:
+        lines = ["## User Context"]
+        if display_name:
+            lines.append(f"- Name: **{display_name}**")
+        if recent_topics:
+            lines.append(f"- Recent research topics: {', '.join(recent_topics)}")
+        if preferences:
+            lines.append(f"- Preferences: {preferences}")
+        lines.append("")
+        lines.append("Use this to personalize responses. Reference past research when relevant.")
         blocks.append("\n".join(lines))
 
     # ── Tool result history ───────────────────────────────────────
