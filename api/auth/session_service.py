@@ -29,6 +29,12 @@ class FirestoreSessionService(BaseSessionService):
     def __init__(self, db: firestore.Client | None = None):
         settings = get_settings()
         self._db = db or firestore.Client(project=settings.gcp_project_id)
+        self._dirty_sessions: set[str] = set()
+        # In-memory cache keyed by session_id.  Ensures the chat endpoint
+        # and the ADK Runner share the *same* Python Session object within
+        # a single request so events appended by the Runner are visible
+        # when flush() is called with the endpoint's session reference.
+        self._session_cache: dict[str, Session] = {}
 
     # ------------------------------------------------------------------
     # Abstract method implementations
@@ -54,6 +60,7 @@ class FirestoreSessionService(BaseSessionService):
             last_update_time=0.0,
         )
 
+        self._session_cache[session_id] = session
         self._write_session(session)
         return session
 
@@ -66,6 +73,18 @@ class FirestoreSessionService(BaseSessionService):
         session_id: str,
         config: Optional[GetSessionConfig] = None,
     ) -> Optional[Session]:
+        # Return the cached session so the chat endpoint and the ADK Runner
+        # operate on the *same* Python object (events appended by the Runner
+        # are visible when flush() is later called with this session).
+        # Skip the cache when a config filter is requested (rare) to avoid
+        # mutating the cached event list.
+        if config is None:
+            cached = self._session_cache.get(session_id)
+            if cached is not None:
+                if cached.user_id != user_id:
+                    return None
+                return cached
+
         doc = self._db.collection(SESSIONS_COLLECTION).document(session_id).get()
         if not doc.exists:
             return None
@@ -94,6 +113,10 @@ class FirestoreSessionService(BaseSessionService):
                     for e in session.events
                     if e.timestamp and e.timestamp > config.after_timestamp
                 ]
+
+        # Only cache unfiltered sessions
+        if config is None:
+            self._session_cache[session_id] = session
 
         return session
 
@@ -134,6 +157,7 @@ class FirestoreSessionService(BaseSessionService):
         user_id: str,
         session_id: str,
     ) -> None:
+        self._session_cache.pop(session_id, None)
         self._db.collection(SESSIONS_COLLECTION).document(session_id).delete()
 
     # ------------------------------------------------------------------
@@ -143,8 +167,20 @@ class FirestoreSessionService(BaseSessionService):
     @override
     async def append_event(self, session: Session, event: Event) -> Event:
         event = await super().append_event(session, event)
-        self._write_session(session)
+        self._dirty_sessions.add(session.id)
         return event
+
+    def flush(self, session: Session) -> None:
+        """Persist session to Firestore if it has pending changes.
+
+        Call once at end of turn instead of after every event.
+        """
+        if session.id in self._dirty_sessions:
+            self._write_session(session)
+            self._dirty_sessions.discard(session.id)
+        # Always clear the per-request cache so the next request loads
+        # fresh data from Firestore.
+        self._session_cache.pop(session.id, None)
 
     # ------------------------------------------------------------------
     # Serialization helpers
@@ -152,6 +188,8 @@ class FirestoreSessionService(BaseSessionService):
 
     def _write_session(self, session: Session) -> None:
         """Serialize and persist a session to Firestore."""
+        t0 = time.perf_counter()
+
         # Serialize events via JSON round-trip to ensure all values are
         # Firestore-compatible primitives (strips non-serializable objects
         # like GroundingMetadata / protobuf instances).
@@ -164,6 +202,7 @@ class FirestoreSessionService(BaseSessionService):
             except Exception:
                 logger.warning("Failed to serialize event, skipping")
 
+        t1 = time.perf_counter()
         session.last_update_time = time.time()
 
         data = {
@@ -178,6 +217,11 @@ class FirestoreSessionService(BaseSessionService):
             self._db.collection(SESSIONS_COLLECTION).document(session.id).set(data)
         except Exception as exc:
             logger.error("Failed to write session %s to Firestore: %s", session.id, exc)
+        t2 = time.perf_counter()
+        logger.info(
+            "PERF _write_session serialize=%.3fs write=%.3fs events=%d",
+            t1 - t0, t2 - t1, len(session.events),
+        )
 
     def _deserialize(self, data: dict) -> Session:
         """Reconstruct a Session from a Firestore document."""

@@ -29,7 +29,8 @@ type ChartType =
   | 'language_pie'
   | 'engagement_metrics'
   | 'channel_table'
-  | 'entity_table';
+  | 'entity_table'
+  | 'value_count';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CHART_COMPONENTS: Record<ChartType, React.ComponentType<{ data: any; overrides?: ChartOverrides }>> = {
@@ -45,6 +46,7 @@ const CHART_COMPONENTS: Record<ChartType, React.ComponentType<{ data: any; overr
   engagement_metrics: EngagementMetrics,
   channel_table: ChannelTable,
   entity_table: EntityTable,
+  value_count: Histogram,
 };
 
 interface ChartCardProps {

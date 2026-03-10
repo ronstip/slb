@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Download, ChevronUp, ChevronDown, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Download, ChevronUp, ChevronDown, ExternalLink, Table2 } from 'lucide-react';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { downloadCollection } from '../../api/endpoints/collections.ts';
 import { PLATFORM_LABELS, SENTIMENT_COLORS } from '../../lib/constants.ts';
@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/button.tsx';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card.tsx';
 import { PostCard } from './PostCard.tsx';
 import type { DataExportRow, FeedPost, MediaRef } from '../../api/types.ts';
+import { UnderlyingDataDialog } from './UnderlyingDataDialog.tsx';
 
 interface DataExportViewProps {
   artifact: Extract<Artifact, { type: 'data_export' }>;
@@ -21,6 +22,7 @@ const PAGE_SIZE = 25;
 export function DataExportView({ artifact }: DataExportViewProps) {
   const collapseReport = useStudioStore((s) => s.collapseReport);
   const [downloading, setDownloading] = useState(false);
+  const [showUnderlyingData, setShowUnderlyingData] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('views');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(0);
@@ -90,6 +92,15 @@ export function DataExportView({ artifact }: DataExportViewProps) {
           <span className="text-xs text-muted-foreground">
             {formatNumber(artifact.rowCount)} posts
           </span>
+          {artifact.sourceIds.length > 0 && (
+            <button
+              onClick={() => setShowUnderlyingData(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              Data
+            </button>
+          )}
           {artifact.sourceIds[0] && (
             <button
               onClick={handleDownload}
@@ -211,6 +222,10 @@ export function DataExportView({ artifact }: DataExportViewProps) {
           </div>
         </div>
       )}
+      <UnderlyingDataDialog
+        artifactId={showUnderlyingData ? artifact.id : null}
+        onClose={() => setShowUnderlyingData(false)}
+      />
     </div>
   );
 }

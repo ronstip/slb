@@ -43,6 +43,7 @@ import {
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog.tsx';
 import { Input } from '../../components/ui/input.tsx';
+import { UnderlyingDataDialog } from '../studio/UnderlyingDataDialog.tsx';
 
 const ARTIFACT_STYLES: Record<string, { icon: typeof Table2; color: string; bg: string; label: string }> = {
   data_export: { icon: Table2, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Data Export' },
@@ -76,6 +77,7 @@ function convertToStudioArtifact(detail: ArtifactDetail): Artifact {
         chartType: p.chart_type as string,
         data: (p.data ?? []) as unknown[],
         colorOverrides: p.color_overrides as Record<string, string> | undefined,
+        collectionIds: detail.collection_ids,
       } as Extract<Artifact, { type: 'chart' }>;
     case 'data_export':
       return {
@@ -109,6 +111,7 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(artifact.title);
   const [loading, setLoading] = useState(false);
+  const [underlyingDataId, setUnderlyingDataId] = useState<string | null>(null);
 
   const style = ARTIFACT_STYLES[artifact.type] ?? ARTIFACT_STYLES.chart;
   const Icon = style.icon;
@@ -225,6 +228,15 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              {artifact.collection_ids.length > 0 && (
+                <>
+                  <DropdownMenuItem onClick={() => setUnderlyingDataId(artifact.artifact_id)}>
+                    <Table2 className="mr-2 h-3.5 w-3.5" />
+                    Show underlying data
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem onClick={handleUseInSession} disabled={loading}>
                 <ArrowRightToLine className="mr-2 h-3.5 w-3.5" />
                 Use in Session
@@ -267,6 +279,7 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <UnderlyingDataDialog artifactId={underlyingDataId} onClose={() => setUnderlyingDataId(null)} />
       </>
     );
   }
@@ -336,6 +349,15 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              {artifact.collection_ids.length > 0 && (
+                <>
+                  <DropdownMenuItem onClick={() => setUnderlyingDataId(artifact.artifact_id)}>
+                    <Table2 className="mr-2 h-3.5 w-3.5" />
+                    Show underlying data
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem onClick={handleUseInSession} disabled={loading}>
                 <ArrowRightToLine className="mr-2 h-3.5 w-3.5" />
                 Use in Session
@@ -379,6 +401,7 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <UnderlyingDataDialog artifactId={underlyingDataId} onClose={() => setUnderlyingDataId(null)} />
     </>
   );
 }

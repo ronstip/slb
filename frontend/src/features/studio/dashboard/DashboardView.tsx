@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Download, Loader2, AlertTriangle, Share2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2 } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import type { Artifact } from '../../../stores/studio-store.ts';
 import { Button } from '../../../components/ui/button.tsx';
@@ -8,6 +8,7 @@ import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { getDashboardData } from '../../../api/endpoints/dashboard.ts';
 import { downloadReportPdf } from '../../../lib/download-pdf.ts';
 import { ShareDashboardDialog } from './ShareDashboardDialog.tsx';
+import { UnderlyingDataDialog } from '../UnderlyingDataDialog.tsx';
 import { DashboardFilterBar } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { DashboardContent } from './DashboardContent.tsx';
@@ -23,6 +24,7 @@ export function DashboardView({ artifact }: DashboardViewProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [showUnderlyingData, setShowUnderlyingData] = useState(false);
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['dashboard-data', ...artifact.collectionIds],
@@ -64,6 +66,15 @@ export function DashboardView({ artifact }: DashboardViewProps) {
           <h2 className="text-sm font-semibold text-foreground truncate max-w-[200px]">{artifact.title}</h2>
         </div>
         <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => setShowUnderlyingData(true)}
+          >
+            <Table2 className="h-3.5 w-3.5" />
+            Data
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -148,6 +159,10 @@ export function DashboardView({ artifact }: DashboardViewProps) {
           </div>
         )}
       </div>
+      <UnderlyingDataDialog
+        artifactId={showUnderlyingData ? artifact.id : null}
+        onClose={() => setShowUnderlyingData(false)}
+      />
     </div>
   );
 }

@@ -1,11 +1,20 @@
-import { Table2, BarChart3, FileText, LayoutDashboard, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { Table2, BarChart3, FileText, LayoutDashboard, MoreHorizontal } from 'lucide-react';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { shortDate } from '../../lib/format.ts';
 import { DataExportView } from './DataExportView.tsx';
 import { InsightReportView } from './InsightReportView.tsx';
 import { ChartArtifactView } from './ChartArtifactView.tsx';
 import { DashboardView } from './dashboard/DashboardView.tsx';
+import { UnderlyingDataDialog } from './UnderlyingDataDialog.tsx';
 import { cn } from '../../lib/utils.ts';
+import { Button } from '../../components/ui/button.tsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu.tsx';
 
 const ARTIFACT_STYLES: Record<string, { icon: typeof Table2; color: string; bg: string }> = {
   data_export: { icon: Table2, color: 'text-blue-500', bg: 'bg-blue-500/10' },
@@ -14,10 +23,19 @@ const ARTIFACT_STYLES: Record<string, { icon: typeof Table2; color: string; bg: 
   dashboard: { icon: LayoutDashboard, color: 'text-amber-500', bg: 'bg-amber-500/10' },
 };
 
+function getArtifactCollectionIds(artifact: Artifact): string[] {
+  if (artifact.type === 'data_export') return artifact.sourceIds;
+  if (artifact.type === 'insight_report') return artifact.collectionIds ?? [];
+  if (artifact.type === 'dashboard') return artifact.collectionIds;
+  if (artifact.type === 'chart') return artifact.collectionIds ?? [];
+  return [];
+}
+
 export function ArtifactsTab() {
   const artifacts = useStudioStore((s) => s.artifacts);
   const expandedReportId = useStudioStore((s) => s.expandedReportId);
   const expandReport = useStudioStore((s) => s.expandReport);
+  const [underlyingDataArtifactId, setUnderlyingDataArtifactId] = useState<string | null>(null);
 
   // Show expanded artifact if one is selected
   const expandedArtifact = artifacts.find((a) => a.id === expandedReportId);
@@ -53,38 +71,64 @@ export function ArtifactsTab() {
   }
 
   return (
-    <div className="flex flex-col gap-2 p-3">
-      {artifacts.map((artifact) => {
-        const style = ARTIFACT_STYLES[artifact.type] ?? ARTIFACT_STYLES.chart;
-        const Icon = style.icon;
+    <>
+      <div className="flex flex-col gap-2 p-3">
+        {artifacts.map((artifact) => {
+          const style = ARTIFACT_STYLES[artifact.type] ?? ARTIFACT_STYLES.chart;
+          const Icon = style.icon;
+          const collectionIds = getArtifactCollectionIds(artifact);
 
-        return (
-          <div
-            key={artifact.id}
-            className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-sm transition-all hover:border-primary/20 hover:shadow-md"
-            onClick={() => expandReport(artifact.id)}
-          >
-            <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', style.bg)}>
-              <Icon className={cn('h-4 w-4', style.color)} />
+          return (
+            <div
+              key={artifact.id}
+              className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-sm transition-all hover:border-primary/20 hover:shadow-md"
+              onClick={() => expandReport(artifact.id)}
+            >
+              <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', style.bg)}>
+                <Icon className={cn('h-4 w-4', style.color)} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {artifact.title}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {shortDate(artifact.createdAt)} · {artifact.type === 'data_export'
+                    ? `${artifact.rowCount} posts`
+                    : artifact.type === 'insight_report'
+                      ? `${artifact.cards.length} cards`
+                      : artifact.type === 'dashboard'
+                        ? `${artifact.collectionIds.length} collection${artifact.collectionIds.length !== 1 ? 's' : ''}`
+                        : artifact.chartType.replace(/_/g, ' ')}
+                </p>
+              </div>
+              {collectionIds.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onSelect={() => setUnderlyingDataArtifactId(artifact.id)}>
+                      <Table2 className="mr-2 h-3.5 w-3.5" />
+                      Show underlying data
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">
-                {artifact.title}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {shortDate(artifact.createdAt)} · {artifact.type === 'data_export'
-                  ? `${artifact.rowCount} posts`
-                  : artifact.type === 'insight_report'
-                    ? `${artifact.cards.length} cards`
-                    : artifact.type === 'dashboard'
-                      ? `${artifact.collectionIds.length} collection${artifact.collectionIds.length !== 1 ? 's' : ''}`
-                      : artifact.chartType.replace(/_/g, ' ')}
-              </p>
-            </div>
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+      <UnderlyingDataDialog
+        artifactId={underlyingDataArtifactId}
+        onClose={() => setUnderlyingDataArtifactId(null)}
+      />
+    </>
   );
 }

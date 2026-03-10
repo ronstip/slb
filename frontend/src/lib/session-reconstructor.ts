@@ -150,7 +150,7 @@ export function reconstructSession(
           console.debug('[reconstruct] research_design card created from', toolName);
           msg.cards.push({ type: 'research_design', data: result });
         } else if (isChartResult(toolName, result)) {
-          const chartId = `chart-restored-${artifacts.length}`;
+          const chartId = (result._artifact_id as string) || `chart-restored-${artifacts.length}`;
           msg.cards.push({ type: 'chart', data: { ...result, _artifactId: chartId } });
           artifacts.push({
             id: chartId,
@@ -158,14 +158,18 @@ export function reconstructSession(
             title: (result.title as string) || 'Chart',
             chartType: result.chart_type as string,
             data: result.data as unknown[],
+            collectionIds: (result.collection_ids as string[] | undefined) ?? undefined,
+            filterSql: (result.filter_sql as string | undefined) || undefined,
+            sourceSql: (result.source_sql as string | undefined) || undefined,
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
         } else if (isPostEmbedResult(toolName, result)) {
           msg.cards.push({ type: 'post_embed', data: result });
         } else if (isDataExportResult(toolName, result)) {
-          msg.cards.push({ type: 'data_export', data: result });
+          const exportId = (result._artifact_id as string) || `artifact-restored-${artifacts.length}`;
+          msg.cards.push({ type: 'data_export', data: { ...result, _artifactId: exportId } });
           artifacts.push({
-            id: `artifact-restored-${artifacts.length}`,
+            id: exportId,
             type: 'data_export',
             title: 'Data Export',
             rows: result.rows as DataExportRow[],
@@ -177,7 +181,7 @@ export function reconstructSession(
         } else if (isReportResult(toolName, result)) {
           msg.cards.push({ type: 'insight_report', data: result });
           artifacts.push({
-            id: (result.report_id as string) || `report-restored-${artifacts.length}`,
+            id: (result._artifact_id as string) || (result.report_id as string) || `report-restored-${artifacts.length}`,
             type: 'insight_report',
             title: result.title as string,
             collectionIds: (result.collection_ids as string[] | undefined) ?? (result.collection_id ? [result.collection_id as string] : undefined),
@@ -190,7 +194,7 @@ export function reconstructSession(
         } else if (isDashboardResult(toolName, result)) {
           msg.cards.push({ type: 'dashboard', data: result });
           artifacts.push({
-            id: (result.dashboard_id as string) || `dashboard-restored-${artifacts.length}`,
+            id: (result._artifact_id as string) || (result.dashboard_id as string) || `dashboard-restored-${artifacts.length}`,
             type: 'dashboard',
             title: result.title as string,
             collectionIds: result.collection_ids as string[],
@@ -210,7 +214,8 @@ export function reconstructSession(
         while ((thinkingMatch = thinkingRe.exec(part.text)) !== null) {
           msg.thinkingEntries.push(thinkingMatch[1].trim());
         }
-        const cleanText = part.text.replace(/<!--\s*thinking:\s*[\s\S]*?\s*-->/g, '');
+        // Strip all HTML comments (status, thinking, plan, etc.) from visible text
+        const cleanText = part.text.replace(/<!--[\s\S]*?-->/g, '');
         msg.content += cleanText;
       }
     }

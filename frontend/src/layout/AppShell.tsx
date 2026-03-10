@@ -95,10 +95,9 @@ export function AppShell() {
       if (layoutMode === 'balanced') setStudioFocus();
       setStudioW(Math.min(STUDIO_MAX, Math.max(STUDIO_MIN, maxAvailable)));
     } else if (feedHasPosts || isNonDashboardArtifactOpen) {
-      // Feed with posts or expanded non-dashboard artifact → 50:50 with chat
+      // Feed with posts or expanded non-dashboard artifact → 400px default
       if (layoutMode === 'balanced') setStudioFocus();
-      const halfW = Math.min(STUDIO_MAX, Math.floor((window.innerWidth - COLLAPSED_W) / 2));
-      setStudioW(Math.min(halfW, maxAvailable));
+      setStudioW(Math.min(550, maxAvailable));
     } else {
       // Artifacts menu list / no content → default width
       setStudioW(STUDIO_DEFAULT);

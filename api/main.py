@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 import re
+import threading
+import time as _time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -176,10 +178,13 @@ def _maybe_persist_artifact(
         artifact_type = "chart"
         artifact_id = f"chart-{uuid4().hex[:8]}"
         title = result.get("title", "Chart")
+        collection_ids = result.get("collection_ids") or []
         payload = {
             "chart_type": result.get("chart_type"),
             "data": result.get("data", []),
             "color_overrides": result.get("color_overrides"),
+            "filter_sql": result.get("filter_sql", ""),
+            "source_sql": result.get("source_sql", ""),
         }
     elif tool_name == "export_data" and isinstance(result.get("rows"), list):
         artifact_type = "data_export"
@@ -292,12 +297,14 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
 @limiter.limit("20/minute")
 async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """SSE endpoint — streams agent events to the client."""
+    t_start = _time.perf_counter()
     model_override = MODEL_ALIASES.get(chat_request.model) if chat_request.model else None
     runner = get_runner(model=model_override)
     user_id = user.uid
     session_id = chat_request.session_id or str(uuid4())
 
     # Get or create session
+    t0 = _time.perf_counter()
     try:
         session = await runner.session_service.get_session(
             app_name=APP_NAME, user_id=user_id, session_id=session_id
@@ -325,6 +332,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         # Update selected_sources in session state
         if chat_request.selected_sources is not None:
             session.state["selected_sources"] = chat_request.selected_sources
+    logger.info("PERF session_init=%.3fs events=%d", _time.perf_counter() - t0, len(session.events))
 
     content = types.Content(
         role="user", parts=[types.Part.from_text(text=chat_request.message)]
@@ -335,23 +343,35 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         session.state["first_message"] = chat_request.message
     session.state["message_count"] = session.state.get("message_count", 0) + 1
 
-    # Persist state changes so the ADK runner picks them up
-    runner.session_service._write_session(session)
+    # Persist state changes in background — runner reads from the
+    # in-memory session object, not Firestore.
+    threading.Thread(
+        target=runner.session_service._write_session, args=(session,), daemon=True
+    ).start()
 
-    # Track usage
+    # Track usage in background (3 Firestore writes)
     from api.services.usage_service import track_query
-    track_query(user_id, user.org_id, session_id)
+    threading.Thread(
+        target=track_query, args=(user_id, user.org_id, session_id), daemon=True
+    ).start()
+
+    logger.info("PERF pre_runner=%.3fs", _time.perf_counter() - t_start)
 
     async def event_stream():
         try:
             run_config = RunConfig(streaming_mode=StreamingMode.SSE)
             streamed_text = False  # Track if text was streamed via partial events
+            t_runner_start = _time.perf_counter()
+            t_first_token = None
 
             async for event in runner.run_async(
                 user_id=user_id, session_id=session_id, new_message=content,
                 run_config=run_config,
             ):
                 is_partial = getattr(event, "partial", None) is True
+                if t_first_token is None and is_partial:
+                    t_first_token = _time.perf_counter()
+                    logger.info("PERF time_to_first_token=%.3fs", t_first_token - t_runner_start)
 
                 if is_partial:
                     # Streaming chunk — emit text parts for typewriter effect
@@ -391,6 +411,18 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 # the aggregated final to avoid duplication.
                 for event_data in _extract_event_data(event, suppress_text=streamed_text):
                     et = event_data["event_type"]
+
+                    # Persist artifacts BEFORE yielding so the Firestore
+                    # _artifact_id is included in the event sent to the client.
+                    if et == "tool_result":
+                        tr_name = event_data.get("metadata", {}).get("name", "")
+                        tr_result = event_data.get("metadata", {}).get("result", {})
+                        if isinstance(tr_result, dict):
+                            aid = _maybe_persist_artifact(
+                                tr_name, tr_result, user_id, user.org_id, session_id
+                            )
+                            if aid:
+                                tr_result["_artifact_id"] = aid
 
                     yield {
                         "event": et,
@@ -432,19 +464,11 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     if et == "tool_result":
                         streamed_text = False
 
-                        # Auto-save artifacts to Firestore
-                        tr_name = event_data.get("metadata", {}).get("name", "")
-                        tr_result = event_data.get("metadata", {}).get("result", {})
-                        if isinstance(tr_result, dict):
-                            _maybe_persist_artifact(
-                                tr_name, tr_result, user_id, user.org_id, session_id
-                            )
-
                 if event.is_final_response():
                     text = _extract_text(event)
 
-                    # Generate session title before sending done event
-                    session_title = await _maybe_name_session(runner, user_id, session_id)
+                    # Use existing title or "New Session" — naming happens in background
+                    session_title = session.state.get("session_title", "New Session")
 
                     # Extract follow-up suggestions if the agent embedded them
                     _, suggestions = _extract_suggestions(text)
@@ -462,13 +486,25 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         "event": "done",
                         "data": json.dumps(done_payload),
                     }
+                    logger.info(
+                        "PERF total=%.3fs runner=%.3fs",
+                        _time.perf_counter() - t_start,
+                        _time.perf_counter() - t_runner_start,
+                    )
+
+                    # Flush session to Firestore once (replaces per-event writes)
+                    runner.session_service.flush(session)
 
                     # Fire-and-forget background tasks
                     asyncio.create_task(
                         _save_to_memory(runner, user_id, session_id)
                     )
+                    asyncio.create_task(
+                        _name_session_background(runner, user_id, session_id)
+                    )
         except Exception as e:
             logger.exception("Error in event stream")
+            runner.session_service.flush(session)
             yield {
                 "event": "error",
                 "data": json.dumps({"event_type": "error", "content": str(e)}),
@@ -1417,6 +1453,14 @@ async def _write_session_summary(runner: Runner, session) -> None:
     runner.session_service._write_session(session)
     logger.info("Wrote session summary for %s: %d topics, %d findings",
                 session.id, len(summary.get("topics", [])), len(summary.get("key_findings", [])))
+
+
+async def _name_session_background(runner: Runner, user_id: str, session_id: str) -> None:
+    """Fire-and-forget wrapper around _maybe_name_session."""
+    try:
+        await _maybe_name_session(runner, user_id, session_id)
+    except Exception:
+        logger.debug("Background session naming failed for %s", session_id, exc_info=True)
 
 
 async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> str:

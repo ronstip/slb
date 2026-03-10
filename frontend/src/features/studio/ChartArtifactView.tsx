@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { ArrowLeft, Download, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Download, ChevronDown, ChevronRight, Table2 } from 'lucide-react';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { SentimentPie } from './charts/SentimentPie.tsx';
 import { SentimentBar } from './charts/SentimentBar.tsx';
@@ -16,6 +16,7 @@ import { EntityTable } from './charts/EntityTable.tsx';
 import { SENTIMENT_COLORS, PLATFORM_COLORS } from '../../lib/constants.ts';
 import { downloadChartPng } from '../../lib/chart-export.ts';
 import type { ChartOverrides } from './charts/chart-overrides.ts';
+import { UnderlyingDataDialog, type UnderlyingDataFallback } from './UnderlyingDataDialog.tsx';
 
 type ChartType =
   | 'sentiment_pie'
@@ -29,7 +30,8 @@ type ChartType =
   | 'language_pie'
   | 'engagement_metrics'
   | 'channel_table'
-  | 'entity_table';
+  | 'entity_table'
+  | 'value_count';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CHART_COMPONENTS: Record<ChartType, React.ComponentType<{ data: any; overrides?: ChartOverrides }>> = {
@@ -45,6 +47,7 @@ const CHART_COMPONENTS: Record<ChartType, React.ComponentType<{ data: any; overr
   engagement_metrics: EngagementMetrics,
   channel_table: ChannelTable,
   entity_table: EntityTable,
+  value_count: Histogram,
 };
 
 interface ChartCustomization {
@@ -94,6 +97,11 @@ const CHART_CUSTOMIZATIONS: Partial<Record<ChartType, ChartCustomization>> = {
     defaultColors: { bar: '#6B8CAE' },
     supportsValues: true,
   },
+  value_count: {
+    colorKeys: () => ['bar'],
+    defaultColors: { bar: '#6B8CAE' },
+    supportsValues: true,
+  },
 };
 
 const COLOR_PRESETS = [
@@ -116,6 +124,7 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
   const [showValues, setShowValues] = useState(true);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [activeColorKey, setActiveColorKey] = useState<string | null>(null);
+  const [showUnderlyingData, setShowUnderlyingData] = useState(false);
 
   const exportRef = useRef<HTMLDivElement>(null);
 
@@ -151,13 +160,24 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Studio
         </button>
-        <button
-          onClick={handleDownload}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Download PNG
-        </button>
+        <div className="flex items-center gap-1.5">
+          {(artifact.collectionIds?.length ?? 0) > 0 && (
+            <button
+              onClick={() => setShowUnderlyingData(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              Data
+            </button>
+          )}
+          <button
+            onClick={handleDownload}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download PNG
+          </button>
+        </div>
       </div>
 
       {/* Scrollable content */}
@@ -250,6 +270,16 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
         </div>
       )}
       </div>
+      <UnderlyingDataDialog
+        artifactId={showUnderlyingData ? artifact.id : null}
+        fallback={artifact.collectionIds?.length ? {
+          collectionIds: artifact.collectionIds,
+          createdAt: artifact.createdAt.toISOString(),
+          filterSql: artifact.filterSql,
+          sourceSql: artifact.sourceSql,
+        } as UnderlyingDataFallback : undefined}
+        onClose={() => setShowUnderlyingData(false)}
+      />
     </div>
   );
 }

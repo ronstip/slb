@@ -21,15 +21,14 @@ def generate_dashboard(
 ) -> dict:
     """Create an interactive dashboard for one or more collections.
 
-    The dashboard provides the same charts as generate_report (sentiment,
-    platform, themes, entities, volume, language, content type, channels)
-    but with interactive filters: sentiment, entities, language, collection,
-    content_type, platform, date range, themes, and channels.
+    WHEN TO USE: When the user wants to "explore", "filter", or interact
+    with data. Also called automatically on collection completion.
+    WHEN NOT TO USE: When the user wants a narrative report with findings
+    and insights — use generate_report instead.
 
-    Use this when the user asks for a "dashboard", wants to "explore" or
-    "filter" data interactively, or wants a self-service analytical view.
-    Use generate_report instead when the user wants a narrative analysis
-    with key findings and an executive summary.
+    Provides the same charts as generate_report but with interactive filters:
+    sentiment, entities, language, collection, content_type, platform, date
+    range, themes, and channels.
 
     Args:
         collection_ids: List of collection IDs to include.

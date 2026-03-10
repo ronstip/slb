@@ -10,9 +10,11 @@ logger = logging.getLogger(__name__)
 def get_collection_stats(collection_ids: list[str]) -> dict:
     """Return the statistical snapshot for one or more collections.
 
-    Accepts a list of collection IDs. For a single collection the pre-computed
-    Firestore cache is used (instant). For multiple collections a fresh
-    aggregation is computed from BigQuery (a few seconds).
+    WHEN TO USE: As the FIRST step before generate_report. Also for quick
+    overview stats (total posts, sentiment split, top themes). Uses pre-computed
+    cache — instant for single collections.
+    WHEN NOT TO USE: For filtered/sliced analysis — use execute_sql instead.
+    Don't use this to answer "how many negative posts mention X" — that needs SQL.
 
     Call this as the FIRST step when generating a report. After reading the stats,
     follow this sequence:

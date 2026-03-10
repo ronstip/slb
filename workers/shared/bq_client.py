@@ -74,8 +74,12 @@ class BQClient:
                     )
             job_config.query_parameters = query_params
 
-        # Replace unqualified table references with fully qualified ones
-        sql = sql.replace("social_listening.", f"{self.dataset}.")
+        # Replace unqualified table references with fully qualified ones.
+        # Backtick-quote the project ID since it may contain hyphens.
+        sql = sql.replace(
+            "social_listening.",
+            f"`{self._settings.gcp_project_id}`.{self._settings.bq_dataset}.",
+        )
 
         query_job = self._client.query(sql, job_config=job_config)
         results = query_job.result()

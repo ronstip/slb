@@ -17,10 +17,14 @@ def display_posts(
 ) -> dict:
     """Display social media posts as rich embedded cards in the conversation.
 
-    Two modes of operation:
+    WHEN TO USE: To SHOW specific posts to the user — after identifying
+    interesting ones via SQL, or to show collection highlights.
+    WHEN NOT TO USE: To analyze posts — query them with SQL first, then
+    display the interesting ones. Don't paste post content as text.
+
+    Two modes:
     1. **By post_ids** — Pass specific post IDs from your query results.
-    2. **By collection_ids** — Fetch top posts from one or more collections,
-       sorted by engagement. Useful for showing highlights across collections.
+    2. **By collection_ids** — Fetch top posts sorted by engagement.
 
     Args:
         post_ids: List of specific post IDs to display (max 10).

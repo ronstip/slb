@@ -168,7 +168,7 @@ export function useSSEChat() {
                   data: result,
                 });
               } else if (isDataExportResult(toolName, result)) {
-                const exportId = `artifact-${Date.now()}`;
+                const exportId = (result._artifact_id as string) || `artifact-${Date.now()}`;
                 chatState.addCard(messageId, {
                   type: 'data_export',
                   data: { ...result, _artifactId: exportId },
@@ -189,7 +189,7 @@ export function useSSEChat() {
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport(exportId);
               } else if (isChartResult(toolName, result)) {
-                const chartId = `chart-${Date.now()}`;
+                const chartId = (result?._artifact_id as string) || `chart-${Date.now()}`;
                 chatState.addCard(messageId, {
                   type: 'chart',
                   data: { ...result, _artifactId: chartId },
@@ -201,6 +201,9 @@ export function useSSEChat() {
                   title: (result?.title as string) || 'Chart',
                   chartType: result?.chart_type as string,
                   data: result?.data as unknown[],
+                  collectionIds: (result?.collection_ids as string[] | undefined) ?? undefined,
+                  filterSql: (result?.filter_sql as string | undefined) || undefined,
+                  sourceSql: (result?.source_sql as string | undefined) || undefined,
                   createdAt: new Date(),
                 });
                 // Open studio panel, switch to artifacts, expand the chart
@@ -219,7 +222,7 @@ export function useSSEChat() {
                 });
                 // Auto-save to artifacts
                 useStudioStore.getState().addArtifact({
-                  id: result.report_id as string,
+                  id: (result._artifact_id as string) || (result.report_id as string),
                   type: 'insight_report',
                   title: result.title as string,
                   collectionIds: (result.collection_ids as string[] | undefined) ?? (result.collection_id ? [result.collection_id as string] : undefined),
@@ -232,7 +235,7 @@ export function useSSEChat() {
                 // Open studio panel, switch to artifacts, expand the report
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
-                useStudioStore.getState().expandReport(result.report_id as string);
+                useStudioStore.getState().expandReport((result._artifact_id as string) || (result.report_id as string));
               } else if (isDashboardResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'dashboard',
@@ -240,7 +243,7 @@ export function useSSEChat() {
                 });
                 // Auto-save dashboard artifact
                 useStudioStore.getState().addArtifact({
-                  id: result.dashboard_id as string,
+                  id: (result._artifact_id as string) || (result.dashboard_id as string),
                   type: 'dashboard',
                   title: result.title as string,
                   collectionIds: result.collection_ids as string[],
@@ -250,7 +253,7 @@ export function useSSEChat() {
                 // Open studio panel, switch to artifacts, expand the dashboard
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
-                useStudioStore.getState().expandReport(result.dashboard_id as string);
+                useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
               }
               break;
             }

@@ -59,6 +59,38 @@ TOOLS_WITH_COLLECTION_IDS = {
 # ---------------------------------------------------------------------------
 
 
+def _summarize_tool_result(tool_name: str, tool_response: dict) -> str | None:
+    """Return a 1-line summary of a tool result for context injection."""
+    status = tool_response.get("status", "unknown") if isinstance(tool_response, dict) else "unknown"
+    if status == "error":
+        return f"{tool_name}: ERROR — {tool_response.get('message', 'unknown error')}"
+
+    if tool_name == "execute_sql":
+        # ADK BigQuery tool returns results differently
+        return None  # Handled by model's own context
+    elif tool_name == "get_collection_stats":
+        total = tool_response.get("total_posts", "?")
+        neg_pct = tool_response.get("negative_sentiment_pct", "?")
+        return f"get_collection_stats: {total} posts, {neg_pct}% negative sentiment"
+    elif tool_name == "create_chart":
+        ct = tool_response.get("chart_type", "?")
+        return f"create_chart: rendered {ct}"
+    elif tool_name == "display_posts":
+        count = tool_response.get("count", 0)
+        return f"display_posts: showed {count} posts"
+    elif tool_name == "design_research":
+        return f"design_research: config ready for user approval"
+    elif tool_name == "get_past_collections":
+        colls = tool_response.get("collections", [])
+        return f"get_past_collections: found {len(colls)} collections"
+    elif tool_name in ("generate_report", "generate_dashboard", "export_data"):
+        return f"{tool_name}: completed"
+    return None
+
+
+MAX_TOOL_HISTORY = 8  # Keep last N tool summaries in context
+
+
 def collection_state_tracker(
     tool: BaseTool,
     args: dict[str, Any],
@@ -69,8 +101,16 @@ def collection_state_tracker(
 
     The meta-agent calls collection tools directly. This callback captures
     results so inject_collection_context can prepend them to future turns.
+    Also maintains a rolling summary of recent tool results for context.
     """
     tool_name = tool.name
+
+    # Track tool result summary for context injection
+    summary = _summarize_tool_result(tool_name, tool_response if isinstance(tool_response, dict) else {})
+    if summary:
+        history: list[str] = tool_context.state.get("tool_result_history", [])
+        history.append(summary)
+        tool_context.state["tool_result_history"] = history[-MAX_TOOL_HISTORY:]
 
     if tool_name == "get_progress":
         if tool_response.get("status") == "success":
@@ -274,6 +314,16 @@ def _build_context_block(state: dict) -> Optional[str]:
             "'my data' without specifying a collection ID. "
             "User-forced collections cannot be removed from the working set."
         )
+        blocks.append("\n".join(lines))
+
+    # ── Tool result history ───────────────────────────────────────
+    tool_history: list[str] = state.get("tool_result_history", [])
+    if tool_history:
+        lines = ["## Recent Tool Results (working memory)"]
+        for entry in tool_history:
+            lines.append(f"- {entry}")
+        lines.append("")
+        lines.append("Use this to avoid re-running queries you already executed.")
         blocks.append("\n".join(lines))
 
     return "\n\n".join(blocks) if blocks else None

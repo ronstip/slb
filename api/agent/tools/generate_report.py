@@ -255,8 +255,10 @@ def generate_report(
 ) -> dict:
     """Generate a structured insight report for one or more collections.
 
-    Always call get_collection_stats first to read the pre-computed stats, then
-    write the narrative and decide on optional custom charts before calling this.
+    WHEN TO USE: When the user wants a narrative analysis with key findings,
+    charts, and an executive summary. Always call get_collection_stats first.
+    WHEN NOT TO USE: When the user wants to "explore" or "filter" data
+    interactively — use generate_dashboard instead.
 
     Fetches the statistical signature from Firestore (instant for single collection)
     and runs only 2 BQ queries (top posts + metadata), then assembles a modular

@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import { ArrowLeft, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Table2 } from 'lucide-react';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import type { Artifact } from '../../stores/studio-store.ts';
 import type { ReportCard, ReportCardType } from '../../api/types.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { downloadReportPdf } from '../../lib/download-pdf.ts';
+import { UnderlyingDataDialog } from './UnderlyingDataDialog.tsx';
 
 // Report sub-components
 import { KpiGrid } from '../chat/cards/report/KpiGrid.tsx';
@@ -62,6 +63,7 @@ function formatDateRange(dateFrom?: string, dateTo?: string): string | null {
 export function InsightReportView({ artifact }: InsightReportViewProps) {
   const collapseReport = useStudioStore((s) => s.collapseReport);
   const [downloading, setDownloading] = useState(false);
+  const [showUnderlyingData, setShowUnderlyingData] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const dateRange = formatDateRange(artifact.dateFrom, artifact.dateTo);
@@ -93,20 +95,33 @@ export function InsightReportView({ artifact }: InsightReportViewProps) {
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Studio
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleDownload}
-          disabled={downloading}
-          className="h-auto gap-1.5 px-2.5 py-1 text-xs"
-        >
-          {downloading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Download className="h-3.5 w-3.5" />
+        <div className="flex items-center gap-1.5">
+          {(artifact.collectionIds?.length ?? 0) > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowUnderlyingData(true)}
+              className="h-auto gap-1.5 px-2.5 py-1 text-xs"
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              Data
+            </Button>
           )}
-          {downloading ? 'Exporting...' : 'Download PDF'}
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="h-auto gap-1.5 px-2.5 py-1 text-xs"
+          >
+            {downloading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            {downloading ? 'Exporting...' : 'Download PDF'}
+          </Button>
+        </div>
       </div>
 
       <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -142,6 +157,10 @@ export function InsightReportView({ artifact }: InsightReportViewProps) {
           </div>
         )}
       </div>
+      <UnderlyingDataDialog
+        artifactId={showUnderlyingData ? artifact.id : null}
+        onClose={() => setShowUnderlyingData(false)}
+      />
     </div>
   );
 }

@@ -37,7 +37,13 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
   // Extract error portion from content (appended as "\n\nError: ..." or "\n\nConnection error: ...")
   const errorMatch = message.content.match(/\n\n((?:Connection )?[Ee]rror:\s*.+)$/s);
   const errorText = errorMatch ? errorMatch[1] : null;
-  const cleanContent = errorText ? message.content.slice(0, -errorMatch![0].length) : message.content;
+  const rawContent = errorText ? message.content.slice(0, -errorMatch![0].length) : message.content;
+  // Strip HTML comments (e.g. <!-- status: ... -->) that leak through during streaming.
+  // Also strip trailing unclosed comments from in-progress chunks.
+  const cleanContent = rawContent
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!--[\s\S]*$/g, '')
+    .trim();
 
   const hasActivity = cleanContent || errorText || message.toolIndicators.length > 0 || message.cards.length > 0;
   // Show thinking dots only when streaming, no activity, AND no status line
