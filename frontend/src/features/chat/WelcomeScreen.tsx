@@ -1,8 +1,7 @@
-import { Search, BarChart3, ArrowRight, Lock, Sparkles } from 'lucide-react';
+import { ArrowRight, ChevronRight, Lock, Sparkles } from 'lucide-react';
 import { Logo } from '../../components/Logo.tsx';
 import { MessageInput } from './MessageInput.tsx';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
-import { Badge } from '../../components/ui/badge.tsx';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useGuidedFlowStore } from '../../stores/guided-flow-store.ts';
 import { cn } from '../../lib/utils.ts';
@@ -14,62 +13,54 @@ interface WelcomeScreenProps {
 
 /* ── Data ────────────────────────────────────────────────── */
 
-const COLLECT_PROMPTS: { label: string; desc: string; flow: WizardFlowType }[] = [
-  { label: 'Brand mentions', desc: 'Track what people say about your brand', flow: 'brand_search' },
-  { label: 'Event buzz', desc: 'Monitor social conversation around an event', flow: 'event_search' },
-  { label: 'Competitor intel', desc: 'See how competitors are perceived online', flow: 'competitor_search' },
-  { label: 'Trending topics', desc: 'Follow emerging trends across platforms', flow: 'trending_topic' },
+const COLLECT_PROMPTS: { label: string; flow: WizardFlowType }[] = [
+  { label: 'Brand mentions', flow: 'brand_search' },
+  { label: 'Event buzz', flow: 'event_search' },
+  { label: 'Competitor intel', flow: 'competitor_search' },
+  { label: 'Trending topics', flow: 'trending_topic' },
 ];
 
-const ANALYZE_PROMPTS: { label: string; desc: string; flow: WizardFlowType; aspirational?: boolean }[] = [
-  { label: 'Build a dashboard', desc: 'Visualize your data with interactive charts', flow: 'build_dashboard' },
-  { label: 'Marketing report', desc: 'AI-generated insights & recommendations', flow: 'generate_report' },
-  { label: 'Scheduled reports', desc: 'Automated daily or weekly digests', flow: 'setup_scheduled_report' },
-  { label: 'Slide deck', desc: 'Export-ready presentation slides', flow: 'build_dashboard', aspirational: true },
+const ANALYZE_PROMPTS: { label: string; flow: WizardFlowType }[] = [
+  { label: 'Build a dashboard', flow: 'build_dashboard' },
+  { label: 'Marketing report', flow: 'generate_report' },
+  { label: 'Scheduled reports', flow: 'setup_scheduled_report' },
+  { label: 'Slide deck', flow: 'build_dashboard' },
 ];
 
 const PLATFORMS = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'] as const;
 
 /* ── Sub-components ──────────────────────────────────────── */
 
-function PromptButton({ label, desc, onClick, aspirational }: {
+function PromptButton({ label, onClick, disabled }: {
   label: string;
-  desc: string;
   onClick: () => void;
-  aspirational?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
-      onClick={aspirational ? undefined : onClick}
+      onClick={disabled ? undefined : onClick}
       className={cn(
-        'group flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-all w-full',
-        aspirational
-          ? 'border-border/40 cursor-default opacity-40'
-          : 'border-border bg-background/60 hover:border-accent-vibrant/30 hover:bg-accent-vibrant hover:shadow-md cursor-pointer',
+        'group flex items-center gap-2.5 py-2.5 px-2 -mx-2 rounded-lg text-left transition-all w-full',
+        disabled
+          ? 'cursor-default opacity-30'
+          : 'cursor-pointer hover:bg-muted/50',
       )}
     >
-      <div className="flex-1 min-w-0">
-        <span className={cn(
-          'block text-[13px] font-medium transition-colors',
-          aspirational ? 'text-muted-foreground' : 'text-foreground group-hover:text-background',
-        )}>
-          {label}
-        </span>
-        <span className={cn(
-          'block text-[11px] transition-colors',
-          aspirational ? 'text-muted-foreground/60' : 'text-muted-foreground group-hover:text-background/60',
-        )}>
-          {desc}
-        </span>
-      </div>
-      {aspirational ? (
-        <Badge variant="secondary" className="text-[9px] px-1.5 py-0 shrink-0">
-          Soon
-        </Badge>
-      ) : (
-        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0 group-hover:text-background" />
-      )}
+      <ChevronRight className={cn(
+        'h-4 w-4 shrink-0 transition-all',
+        disabled
+          ? 'text-muted-foreground/40'
+          : 'text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-0.5',
+      )} />
+      <span className={cn(
+        'text-sm font-semibold transition-colors',
+        disabled
+          ? 'text-muted-foreground/60'
+          : 'text-foreground/80 group-hover:text-primary',
+      )}>
+        {label}
+      </span>
     </button>
   );
 }
@@ -78,27 +69,31 @@ function CollectCard({ onPromptClick }: {
   onPromptClick: (flow: WizardFlowType) => void;
 }) {
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-5 transition-all hover:border-border/80">
-      {/* Header */}
-      <div className="flex items-center gap-2.5 mb-1.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-vibrant shadow-sm">
-          <Search className="h-4 w-4 text-white" />
-        </div>
-        <h3 className="text-sm font-semibold text-foreground">Collect & Enrich</h3>
-        <div className="ml-auto flex items-center gap-1.5">
-          {PLATFORMS.map((p) => (
-            <PlatformIcon key={p} platform={p} className="h-3.5 w-3.5 opacity-40" />
-          ))}
-        </div>
+    <div className="flex flex-col rounded-2xl border border-border/60 bg-card px-8 pt-10 pb-12 transition-all hover:border-border min-h-[380px]">
+      {/* Title */}
+      <h3 className="text-center text-lg font-semibold text-primary tracking-tight">
+        Collect & Enrich
+      </h3>
+      <p className="text-center text-[11px] text-muted-foreground mt-1.5">
+        Gather posts from social platforms, auto-enriched with AI
+      </p>
+
+      {/* Platform icons */}
+      <div className="flex items-center justify-center gap-3 mt-3 mb-auto">
+        {PLATFORMS.map((p) => (
+          <PlatformIcon key={p} platform={p} className="h-4.5 w-4.5 opacity-70" />
+        ))}
       </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground mb-4">
-        Gather posts from social platforms, auto-enriched with AI.
+
+      {/* Section label */}
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground/50 font-medium mb-2">
+        What interests you?
       </p>
 
       {/* Prompt buttons */}
-      <div className="flex flex-col gap-1.5">
-        {COLLECT_PROMPTS.map(({ label, desc, flow }) => (
-          <PromptButton key={label} label={label} desc={desc} onClick={() => onPromptClick(flow)} />
+      <div className="flex flex-col">
+        {COLLECT_PROMPTS.map(({ label, flow }) => (
+          <PromptButton key={label} label={label} onClick={() => onPromptClick(flow)} />
         ))}
       </div>
     </div>
@@ -111,46 +106,40 @@ function AnalyzeCard({ onPromptClick, hasCollections }: {
 }) {
   return (
     <div className={cn(
-      'flex flex-col rounded-2xl border bg-card p-5 transition-all relative',
+      'flex flex-col rounded-2xl border bg-card px-8 pt-10 pb-12 transition-all relative min-h-[380px]',
       hasCollections
-        ? 'border-border hover:border-border/80'
-        : 'border-dashed border-border/60',
+        ? 'border-border/60 hover:border-border'
+        : 'border-dashed border-border/40',
     )}>
-      {/* Header */}
-      <div className="flex items-center gap-2.5 mb-1.5">
-        <div className={cn(
-          'flex h-8 w-8 items-center justify-center rounded-xl shadow-sm',
-          hasCollections ? 'bg-accent-vibrant' : 'bg-muted-foreground/20',
-        )}>
-          <BarChart3 className={cn('h-4 w-4', hasCollections ? 'text-white' : 'text-muted-foreground')} />
-        </div>
-        <h3 className={cn('text-sm font-semibold', hasCollections ? 'text-foreground' : 'text-muted-foreground')}>
-          Analyze & Report
-        </h3>
-      </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground mb-4">
-        Dashboards, reports, and scheduled insights from your data.
+      {/* Title */}
+      <h3 className={cn(
+        'text-center text-lg font-semibold tracking-tight',
+        hasCollections ? 'text-primary' : 'text-muted-foreground',
+      )}>
+        Analyze & Report
+      </h3>
+      <p className="text-center text-[11px] text-muted-foreground mt-1.5 mb-auto">
+        Dashboards, reports, and insights from your data
       </p>
 
       {/* Prompt buttons */}
-      <div className={cn('flex flex-col gap-1.5', !hasCollections && 'opacity-30 pointer-events-none')}>
-        {ANALYZE_PROMPTS.map(({ label, desc, flow, aspirational }) => (
+      <div className="flex flex-col">
+        {ANALYZE_PROMPTS.map(({ label, flow }) => (
           <PromptButton
             key={label}
             label={label}
-            desc={desc}
             onClick={() => onPromptClick(flow)}
-            aspirational={aspirational}
+            disabled={!hasCollections}
           />
         ))}
       </div>
 
-      {/* Locked overlay hint */}
+      {/* Locked hint */}
       {!hasCollections && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
-          <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <p className="text-[11px] text-muted-foreground">
-            Collect data first to unlock analysis tools
+        <div className="mt-4 flex items-center justify-center gap-1.5">
+          <Lock className="h-3 w-3 text-muted-foreground/50" />
+          <p className="text-[11px] text-muted-foreground/50">
+            Collect data first to unlock
           </p>
         </div>
       )}
@@ -171,18 +160,25 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
       <div className="flex flex-col items-center mb-8">
         <Logo size="lg" showText={false} />
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
-          What would you like to explore?
+          Meet Stip
         </h1>
         <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
           <Sparkles className="h-3.5 w-3.5" />
-          AI-powered social listening across every platform
+          Real-time Social Listening Agent Across Every Platform
         </p>
       </div>
 
-      {/* Two cards side by side */}
-      <div className="grid grid-cols-2 gap-4 w-full max-w-3xl mb-8">
-        <CollectCard onPromptClick={(flow) => startFlow(flow)} />
-        <AnalyzeCard onPromptClick={(flow) => startFlow(flow)} hasCollections={hasCollections} />
+      {/* Two cards with flow arrow */}
+      <div className="flex items-center gap-3 w-full max-w-[540px] mb-8">
+        <div className="flex-1 min-w-0">
+          <CollectCard onPromptClick={(flow) => startFlow(flow)} />
+        </div>
+        <div className="flex flex-col items-center gap-1 shrink-0">
+          <ArrowRight className="h-4 w-4 text-muted-foreground/30" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <AnalyzeCard onPromptClick={(flow) => startFlow(flow)} hasCollections={hasCollections} />
+        </div>
       </div>
 
       {/* Chat input */}
