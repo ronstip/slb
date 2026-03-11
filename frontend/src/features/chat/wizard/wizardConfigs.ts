@@ -10,6 +10,7 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
       {
         id: 'brand-input',
         component: 'text_input',
+        chatPrompt: "Let's track what people say about your brand! What's your brand name?",
         props: {
           textLabel: "What's your brand name?",
           textPlaceholder: 'e.g., Glossier',
@@ -17,8 +18,8 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
           tagPlaceholder: 'e.g., skincare, beauty',
         },
       },
-      { id: 'platforms', component: 'platform_select', props: {} },
-      { id: 'time-range', component: 'time_range', props: {} },
+      { id: 'platforms', component: 'platform_select', chatPrompt: 'Which platforms should I search?', props: {} },
+      { id: 'time-range', component: 'time_range', chatPrompt: 'Almost there — how far back should I look?', props: {} },
     ],
     defaults: { platforms: ['instagram', 'tiktok'], timeRangeDays: 90, maxPostsPerKeyword: 20 },
   },
@@ -32,6 +33,7 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
       {
         id: 'event-input',
         component: 'text_input',
+        chatPrompt: "Let's monitor the buzz! What event are you interested in?",
         props: {
           textLabel: "What's the event?",
           textPlaceholder: 'e.g., Apple WWDC 2026',
@@ -39,8 +41,8 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
           tagPlaceholder: 'e.g., keynote, iOS',
         },
       },
-      { id: 'platforms', component: 'platform_select', props: {} },
-      { id: 'time-range', component: 'time_range', props: {} },
+      { id: 'platforms', component: 'platform_select', chatPrompt: 'Which platforms should I search?', props: {} },
+      { id: 'time-range', component: 'time_range', chatPrompt: 'Almost there — how far back should I look?', props: {} },
     ],
     defaults: { platforms: ['instagram', 'tiktok', 'twitter'], timeRangeDays: 7, maxPostsPerKeyword: 20 },
   },
@@ -54,13 +56,14 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
       {
         id: 'competitors-input',
         component: 'tag_input',
+        chatPrompt: "Let's see how your competitors are perceived! Who are they?",
         props: {
           tagLabel: 'Who are your competitors?',
           tagPlaceholder: 'Type a name + Enter',
         },
       },
-      { id: 'platforms', component: 'platform_select', props: {} },
-      { id: 'time-range', component: 'time_range', props: {} },
+      { id: 'platforms', component: 'platform_select', chatPrompt: 'Which platforms should I search?', props: {} },
+      { id: 'time-range', component: 'time_range', chatPrompt: 'Almost there — how far back should I look?', props: {} },
     ],
     defaults: { platforms: ['instagram', 'tiktok'], timeRangeDays: 90, maxPostsPerKeyword: 20 },
   },
@@ -74,6 +77,7 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
       {
         id: 'topic-input',
         component: 'text_input',
+        chatPrompt: "Let's follow this trend! What topic are you interested in?",
         props: {
           textLabel: "What's the topic?",
           textPlaceholder: 'e.g., AI in healthcare',
@@ -81,8 +85,8 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
           tagPlaceholder: 'e.g., #AIhealth, medtech',
         },
       },
-      { id: 'platforms', component: 'platform_select', props: {} },
-      { id: 'time-range', component: 'time_range', props: { showOngoing: true } },
+      { id: 'platforms', component: 'platform_select', chatPrompt: 'Which platforms should I search?', props: {} },
+      { id: 'time-range', component: 'time_range', chatPrompt: 'Almost there — how far back should I look?', props: { showOngoing: true } },
     ],
     defaults: { platforms: ['twitter', 'reddit', 'tiktok'], timeRangeDays: 7, maxPostsPerKeyword: 20, ongoing: true },
   },
@@ -93,7 +97,7 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
     title: 'Build a dashboard',
     icon: 'bar-chart',
     steps: [
-      { id: 'collections', component: 'collection_select', props: {} },
+      { id: 'collections', component: 'collection_select', chatPrompt: 'Which collections would you like to visualize?', props: {} },
     ],
     defaults: {},
   },
@@ -104,7 +108,7 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
     title: 'Generate a report',
     icon: 'bar-chart',
     steps: [
-      { id: 'collections', component: 'collection_select', props: {} },
+      { id: 'collections', component: 'collection_select', chatPrompt: 'Which collections should I analyze?', props: {} },
     ],
     defaults: {},
   },
@@ -115,7 +119,7 @@ export const WIZARD_CONFIGS: Record<WizardFlowType, WizardConfig> = {
     title: 'Set up a scheduled report',
     icon: 'bar-chart',
     steps: [
-      { id: 'collections', component: 'collection_select', props: {} },
+      { id: 'collections', component: 'collection_select', chatPrompt: 'Which collections should I include in the scheduled report?', props: {} },
     ],
     defaults: {},
   },

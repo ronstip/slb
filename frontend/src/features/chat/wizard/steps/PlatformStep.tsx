@@ -30,8 +30,8 @@ export function PlatformStep({ data, updateData }: PlatformStepProps) {
               onClick={() => toggle(p)}
               className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all ${
                 active
-                  ? 'bg-foreground text-background shadow-sm'
-                  : 'border border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground'
+                  ? 'bg-accent-vibrant text-white shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:border-accent-vibrant/40 hover:text-foreground'
               }`}
             >
               <PlatformIcon

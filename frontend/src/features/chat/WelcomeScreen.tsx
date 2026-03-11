@@ -1,17 +1,14 @@
-import { useState } from 'react';
 import { Search, BarChart3, ArrowRight, Lock, Sparkles } from 'lucide-react';
 import { Logo } from '../../components/Logo.tsx';
 import { MessageInput } from './MessageInput.tsx';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
 import { Badge } from '../../components/ui/badge.tsx';
 import { useSourcesStore } from '../../stores/sources-store.ts';
+import { useGuidedFlowStore } from '../../stores/guided-flow-store.ts';
 import { cn } from '../../lib/utils.ts';
-import { GuidedWizard } from './wizard/GuidedWizard.tsx';
-import { WIZARD_CONFIGS } from './wizard/wizardConfigs.ts';
 import type { WizardFlowType } from './wizard/WizardTypes.ts';
 
 interface WelcomeScreenProps {
-  onPromptClick: (text: string) => void;
   onSend: (text: string) => void;
 }
 
@@ -49,7 +46,7 @@ function PromptButton({ label, desc, onClick, aspirational }: {
         'group flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-all w-full',
         aspirational
           ? 'border-border/40 cursor-default opacity-40'
-          : 'border-border bg-background/60 hover:border-foreground/20 hover:bg-foreground hover:shadow-md cursor-pointer',
+          : 'border-border bg-background/60 hover:border-accent-vibrant/30 hover:bg-accent-vibrant hover:shadow-md cursor-pointer',
       )}
     >
       <div className="flex-1 min-w-0">
@@ -84,8 +81,8 @@ function CollectCard({ onPromptClick }: {
     <div className="flex flex-col rounded-2xl border border-border bg-card p-5 transition-all hover:border-border/80">
       {/* Header */}
       <div className="flex items-center gap-2.5 mb-1.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-foreground shadow-sm">
-          <Search className="h-4 w-4 text-background" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-vibrant shadow-sm">
+          <Search className="h-4 w-4 text-white" />
         </div>
         <h3 className="text-sm font-semibold text-foreground">Collect & Enrich</h3>
         <div className="ml-auto flex items-center gap-1.5">
@@ -123,9 +120,9 @@ function AnalyzeCard({ onPromptClick, hasCollections }: {
       <div className="flex items-center gap-2.5 mb-1.5">
         <div className={cn(
           'flex h-8 w-8 items-center justify-center rounded-xl shadow-sm',
-          hasCollections ? 'bg-foreground' : 'bg-muted-foreground/20',
+          hasCollections ? 'bg-accent-vibrant' : 'bg-muted-foreground/20',
         )}>
-          <BarChart3 className={cn('h-4 w-4', hasCollections ? 'text-background' : 'text-muted-foreground')} />
+          <BarChart3 className={cn('h-4 w-4', hasCollections ? 'text-white' : 'text-muted-foreground')} />
         </div>
         <h3 className={cn('text-sm font-semibold', hasCollections ? 'text-foreground' : 'text-muted-foreground')}>
           Analyze & Report
@@ -163,18 +160,16 @@ function AnalyzeCard({ onPromptClick, hasCollections }: {
 
 /* ── Main component ──────────────────────────────────────── */
 
-export function WelcomeScreen({ onPromptClick, onSend }: WelcomeScreenProps) {
+export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
   const sources = useSourcesStore((s) => s.sources);
   const hasCollections = sources.length > 0;
-  const [activeWizard, setActiveWizard] = useState<WizardFlowType | null>(null);
-
-  const activeConfig = activeWizard ? WIZARD_CONFIGS[activeWizard] : null;
+  const startFlow = useGuidedFlowStore((s) => s.startFlow);
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8 py-6">
       {/* Header */}
       <div className="flex flex-col items-center mb-8">
-        <Logo size="sm" showText={false} />
+        <Logo size="lg" showText={false} />
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
           What would you like to explore?
         </h1>
@@ -184,33 +179,19 @@ export function WelcomeScreen({ onPromptClick, onSend }: WelcomeScreenProps) {
         </p>
       </div>
 
-      {activeWizard && activeConfig ? (
-        /* ── Wizard mode ── */
-        <div className="w-full max-w-3xl mb-8">
-          <GuidedWizard
-            key={activeWizard}
-            config={activeConfig}
-            onClose={() => setActiveWizard(null)}
-            onSend={onPromptClick}
-          />
-        </div>
-      ) : (
-        /* ── Two cards side by side ── */
-        <div className="grid grid-cols-2 gap-4 w-full max-w-3xl mb-8">
-          <CollectCard onPromptClick={(flow) => setActiveWizard(flow)} />
-          <AnalyzeCard onPromptClick={(flow) => setActiveWizard(flow)} hasCollections={hasCollections} />
-        </div>
-      )}
+      {/* Two cards side by side */}
+      <div className="grid grid-cols-2 gap-4 w-full max-w-3xl mb-8">
+        <CollectCard onPromptClick={(flow) => startFlow(flow)} />
+        <AnalyzeCard onPromptClick={(flow) => startFlow(flow)} hasCollections={hasCollections} />
+      </div>
 
       {/* Chat input */}
-      {!activeWizard && (
-        <div className="w-full max-w-2xl">
-          <p className="text-center text-[11px] text-muted-foreground/50 mb-2">
-            or ask anything...
-          </p>
-          <MessageInput onSend={onSend} centered />
-        </div>
-      )}
+      <div className="w-full max-w-2xl">
+        <p className="text-center text-[11px] text-muted-foreground/50 mb-2">
+          or ask anything...
+        </p>
+        <MessageInput onSend={onSend} centered />
+      </div>
     </div>
   );
 }

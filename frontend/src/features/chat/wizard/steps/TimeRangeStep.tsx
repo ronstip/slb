@@ -42,8 +42,8 @@ export function TimeRangeStep({ data, updateData, stepProps }: TimeRangeStepProp
               onClick={() => updateData({ timeRangeDays: value })}
               className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
                 data.timeRangeDays === value
-                  ? 'bg-foreground text-background shadow-sm'
-                  : 'border border-border bg-card text-muted-foreground hover:border-foreground/40'
+                  ? 'bg-accent-vibrant text-white shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:border-accent-vibrant/40'
               }`}
             >
               {label}

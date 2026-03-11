@@ -28,6 +28,7 @@ export interface WizardStepDef {
   id: string;
   component: StepComponent;
   props: StepProps;
+  chatPrompt?: string;
 }
 
 export interface WizardConfig {

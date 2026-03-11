@@ -1,7 +1,8 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { remarkStripComments } from '../../lib/remark-strip-comments.ts';
-import { Sparkles, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
+import { Logo } from '../../components/Logo.tsx';
 import type { ChatMessage } from '../../stores/chat-store.ts';
 import type { DesignResearchResult } from '../../api/types.ts';
 import { ToolIndicator } from './ToolIndicator.tsx';
@@ -17,6 +18,8 @@ import { PlanCard } from './cards/PlanCard.tsx';
 import { InsightReportCard } from './cards/InsightReportCard.tsx';
 import { DashboardCard } from './cards/DashboardCard.tsx';
 import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
+import { WizardStepCard } from './cards/WizardStepCard.tsx';
+import type { WizardStepCardData } from '../../stores/guided-flow-store.ts';
 import { FollowUpChips } from './FollowUpChips.tsx';
 import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
 
@@ -52,8 +55,8 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
   return (
     <div className="flex gap-3 overflow-hidden max-w-3xl">
       {/* Avatar */}
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-vibrant/10">
-        <Sparkles className="h-3.5 w-3.5 text-accent-vibrant" />
+      <div className="mt-0.5 shrink-0">
+        <Logo size="sm" showText={false} />
       </div>
 
       <div className="min-w-0 flex-1 overflow-hidden">
@@ -149,6 +152,8 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               return <DashboardCard key={i} data={card.data} />;
             case 'collection_progress':
               return <CollectionProgressCard key={i} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
+            case 'wizard_step':
+              return <WizardStepCard key={i} data={card.data as unknown as WizardStepCardData} />;
             default:
               return null;
           }

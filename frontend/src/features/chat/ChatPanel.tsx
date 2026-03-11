@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
+import { useGuidedFlowStore } from '../../stores/guided-flow-store.ts';
 import { useSSEChat } from './hooks/useSSEChat.ts';
 import { MessageList } from './MessageList.tsx';
 import { MessageInput } from './MessageInput.tsx';
@@ -12,6 +14,12 @@ export function ChatPanel() {
   const isRestoring = useSessionStore((s) => s.isRestoring);
   const { sendMessage, cancelStream } = useSSEChat();
   const hasMessages = messages.length > 0;
+
+  // Wire sendMessage to the guided flow store so it can call the agent on submit
+  const setOnSend = useGuidedFlowStore((s) => s.setOnSend);
+  useEffect(() => {
+    setOnSend(sendMessage);
+  }, [sendMessage, setOnSend]);
 
   return (
     <main className="flex min-w-[480px] flex-1 flex-col bg-background">
@@ -30,7 +38,7 @@ export function ChatPanel() {
           <MessageInput onSend={sendMessage} onCancel={cancelStream} />
         </>
       ) : (
-        <WelcomeScreen onPromptClick={sendMessage} onSend={sendMessage} />
+        <WelcomeScreen onSend={sendMessage} />
       )}
     </main>
   );

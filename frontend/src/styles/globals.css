@@ -77,7 +77,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* ---------- Light Mode (Vercel-inspired: black primary, vibrant accents) ---------- */
+/* ---------- Light Mode ---------- */
 :root {
   --radius: 0.5rem;
   --background: #FAFAFA;
@@ -86,8 +86,8 @@
   --card-foreground: #0A0A0A;
   --popover: #FFFFFF;
   --popover-foreground: #0A0A0A;
-  --primary: #0A0A0A;
-  --primary-foreground: #FAFAFA;
+  --primary: #06B6D4;
+  --primary-foreground: #FFFFFF;
   --secondary: #F5F5F5;
   --secondary-foreground: #0A0A0A;
   --muted: #F5F5F5;
@@ -97,7 +97,7 @@
   --destructive: #DC2626;
   --border: #E5E5E5;
   --input: #E5E5E5;
-  --ring: #0A0A0A;
+  --ring: #06B6D4;
   --chart-1: #06B6D4;
   --chart-2: #7C3AED;
   --chart-3: #E11D6D;
@@ -105,15 +105,15 @@
   --chart-5: #17A34A;
   --sidebar: #FFFFFF;
   --sidebar-foreground: #0A0A0A;
-  --sidebar-primary: #0A0A0A;
-  --sidebar-primary-foreground: #FAFAFA;
+  --sidebar-primary: #06B6D4;
+  --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #F5F5F5;
   --sidebar-accent-foreground: #0A0A0A;
   --sidebar-border: #E5E5E5;
-  --sidebar-ring: #0A0A0A;
+  --sidebar-ring: #06B6D4;
 }
 
-/* ---------- Dark Mode (Vercel-inspired: white primary, vibrant accents) ---------- */
+/* ---------- Dark Mode ---------- */
 .dark {
   --background: #0A0A0A;
   --foreground: #EDEDED;
@@ -121,8 +121,8 @@
   --card-foreground: #EDEDED;
   --popover: #171717;
   --popover-foreground: #EDEDED;
-  --primary: #EDEDED;
-  --primary-foreground: #0A0A0A;
+  --primary: #22D3EE;
+  --primary-foreground: #FFFFFF;
   --secondary: #1A1A1A;
   --secondary-foreground: #EDEDED;
   --muted: #1A1A1A;
@@ -132,7 +132,7 @@
   --destructive: #EF4444;
   --border: #2E2E2E;
   --input: #2E2E2E;
-  --ring: #EDEDED;
+  --ring: #22D3EE;
   --chart-1: #22D3EE;
   --chart-2: #A78BFA;
   --chart-3: #FB7185;
@@ -140,12 +140,12 @@
   --chart-5: #4ADE80;
   --sidebar: #111111;
   --sidebar-foreground: #EDEDED;
-  --sidebar-primary: #EDEDED;
-  --sidebar-primary-foreground: #0A0A0A;
+  --sidebar-primary: #22D3EE;
+  --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #1A1A1A;
   --sidebar-accent-foreground: #EDEDED;
   --sidebar-border: #2E2E2E;
-  --sidebar-ring: #EDEDED;
+  --sidebar-ring: #22D3EE;
 
   /* Dark mode overrides for status */
   --color-status-active: #818CF8;

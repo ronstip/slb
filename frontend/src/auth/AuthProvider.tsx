@@ -19,6 +19,7 @@ import { useChatStore } from '../stores/chat-store.ts';
 import { useSessionStore } from '../stores/session-store.ts';
 import { useSourcesStore } from '../stores/sources-store.ts';
 import { useStudioStore } from '../stores/studio-store.ts';
+import { useGuidedFlowStore } from '../stores/guided-flow-store.ts';
 
 interface AuthContextValue {
   user: User | null;
@@ -91,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetAllStores = () => {
     useChatStore.getState().reset();
+    useGuidedFlowStore.getState().reset();
     useSessionStore.getState().reset();
     useSourcesStore.getState().reset();
     useStudioStore.getState().reset();

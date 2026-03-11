@@ -7,7 +7,7 @@ export interface ToolIndicator {
 }
 
 export interface MessageCard {
-  type: 'research_design' | 'data_export' | 'chart' | 'post_embed' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress';
+  type: 'research_design' | 'data_export' | 'chart' | 'post_embed' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress' | 'wizard_step';
   data: Record<string, unknown>;
 }
 
@@ -42,7 +42,9 @@ interface ChatStore {
   setStatusLine: (messageId: string, status: string | null) => void;
   setSuggestions: (messageId: string, suggestions: string[]) => void;
   finalizeMessage: (messageId: string) => void;
+  addAgentMessage: (text: string, cards?: MessageCard[]) => string;
   addSystemMessage: (text: string, cards?: MessageCard[]) => void;
+  updateCard: (messageId: string, cardIndex: number, updates: Record<string, unknown>) => void;
   setSessionId: (id: string) => void;
   setMessages: (messages: ChatMessage[]) => void;
   setIsAgentResponding: (responding: boolean) => void;
@@ -219,6 +221,28 @@ export const useChatStore = create<ChatStore>((set) => ({
       isAgentResponding: false,
     })),
 
+  addAgentMessage: (text, cards) => {
+    const id = nextId();
+    set((s) => ({
+      messages: [
+        ...s.messages,
+        {
+          id,
+          role: 'agent' as const,
+          content: text,
+          timestamp: new Date(),
+          isStreaming: false,
+          toolIndicators: [],
+          cards: cards ?? [],
+          thinkingEntries: [],
+          statusLine: null,
+          suggestions: [],
+        },
+      ],
+    }));
+    return id;
+  },
+
   addSystemMessage: (text, cards) =>
     set((s) => ({
       messages: [
@@ -236,6 +260,19 @@ export const useChatStore = create<ChatStore>((set) => ({
           suggestions: [],
         },
       ],
+    })),
+
+  updateCard: (messageId, cardIndex, updates) =>
+    set((s) => ({
+      messages: s.messages.map((m) => {
+        if (m.id !== messageId) return m;
+        return {
+          ...m,
+          cards: m.cards.map((c, i) =>
+            i === cardIndex ? { ...c, data: { ...c.data, ...updates } } : c,
+          ),
+        };
+      }),
     })),
 
   setMessages: (messages) => set({ messages, isAgentResponding: false }),

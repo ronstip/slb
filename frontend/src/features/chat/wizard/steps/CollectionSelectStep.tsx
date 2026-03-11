@@ -50,8 +50,8 @@ export function CollectionSelectStep({ data, updateData }: CollectionSelectStepP
               onClick={() => toggle(source.collectionId)}
               className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-all ${
                 selected
-                  ? 'border-foreground/20 bg-foreground/5'
-                  : 'border-border bg-card hover:border-foreground/10'
+                  ? 'border-accent-vibrant/30 bg-accent-vibrant/5'
+                  : 'border-border bg-card hover:border-accent-vibrant/20'
               }`}
             >
               <Checkbox

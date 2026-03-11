@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
 import { Plus, Send, Square, X } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
+import { useGuidedFlowStore } from '../../stores/guided-flow-store.ts';
 import { PLATFORM_LABELS } from '../../lib/constants.ts';
 import { CollectionPicker } from '../sources/CollectionPicker.tsx';
 import { Button } from '../../components/ui/button.tsx';
@@ -28,6 +29,11 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
   const [pickerOpen, setPickerOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
+  const isGuidedFlowActive = useGuidedFlowStore((s) => s.activeFlow !== null);
+
+  const sources = useSourcesStore((s) => s.sources);
+  const removeFromSession = useSourcesStore((s) => s.removeFromSession);
+  const activeSources = sources.filter((s) => s.active && s.selected);
 
   // Cycle placeholder text in centered/welcome mode
   useEffect(() => {
@@ -38,16 +44,23 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
     return () => clearInterval(interval);
   }, [centered, text]);
 
-  const sources = useSourcesStore((s) => s.sources);
-  const removeFromSession = useSourcesStore((s) => s.removeFromSession);
-  const activeSources = sources.filter((s) => s.active && s.selected);
-
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
   }, [text]);
+
+  // Hide input during guided flow (user interacts via step cards instead)
+  if (isGuidedFlowActive && !centered) {
+    return (
+      <div className="px-6 pb-5 pt-2">
+        <div className="flex items-center justify-center rounded-2xl border border-dashed border-border/50 bg-card/50 py-3.5">
+          <span className="text-xs text-muted-foreground/60">Complete the steps above to continue...</span>
+        </div>
+      </div>
+    );
+  }
 
   const handleSend = () => {
     const trimmed = text.trim();

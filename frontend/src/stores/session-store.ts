@@ -9,6 +9,7 @@ import { reconstructSession } from '../lib/session-reconstructor.ts';
 import { useChatStore } from './chat-store.ts';
 import { useStudioStore } from './studio-store.ts';
 import { useSourcesStore } from './sources-store.ts';
+import { useGuidedFlowStore } from './guided-flow-store.ts';
 
 interface SessionStore {
   sessions: SessionListItem[];
@@ -50,6 +51,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // Clear old session state immediately so the UI shows a loading state
     // instead of stale content from the previous session
     useChatStore.getState().reset();
+    useGuidedFlowStore.getState().reset();
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
     useSourcesStore.getState().setAgentSelectedSources([]);
@@ -80,6 +82,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   startNewSession: () => {
     useChatStore.getState().reset();
+    useGuidedFlowStore.getState().reset();
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
     useSourcesStore.getState().setAgentSelectedSources([]);
