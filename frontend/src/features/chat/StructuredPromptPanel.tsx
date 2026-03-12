@@ -128,7 +128,7 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
   );
 
   // Auto-submit when all required fields are filled on the last tab
-  const autoSubmitRef = useRef<ReturnType<typeof setTimeout>>();
+  const autoSubmitRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     clearTimeout(autoSubmitRef.current);
     if (!canSubmit() || hasActiveOther) return;

@@ -55,7 +55,7 @@ export function UnderlyingDataDialog({ artifactId, fallback, onClose }: Underlyi
       .finally(() => setLoading(false));
   }, [artifactId, fallback]);
 
-  const rows = (data?.rows ?? []) as DataExportRow[];
+  const rows = (data?.rows ?? []) as unknown as DataExportRow[];
 
   return (
     <Dialog open={!!artifactId} onOpenChange={(open) => { if (!open) onClose(); }}>
