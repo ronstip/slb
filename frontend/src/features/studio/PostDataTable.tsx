@@ -1,6 +1,5 @@
 import { ArrowLeft, Download, Table2 } from 'lucide-react';
 import { DataTable, postColumns, ExpandedPostRow, parseMediaRefs } from '../../components/DataTable/index.ts';
-import type { ColumnDef } from '../../components/DataTable/index.ts';
 import { PostCard } from './PostCard.tsx';
 import { formatNumber } from '../../lib/format.ts';
 import type { DataExportRow, FeedPost } from '../../api/types.ts';
@@ -18,10 +17,7 @@ interface PostDataTableProps {
   onShowData?: () => void;
 }
 
-const columns: ColumnDef<DataExportRow>[] = postColumns<DataExportRow>({
-  summaryLabel: 'AI Summary',
-  summaryField: 'ai_summary',
-  showEntities: true,
+const columns = postColumns<DataExportRow>({
   hoverContent: (row) => <PostCard post={rowToFeedPost(row)} />,
 });
 
@@ -88,12 +84,10 @@ export function PostDataTable({
 }
 
 /* ------------------------------------------------------------------ */
-/* Helpers (kept for backward compatibility — re-exported from core)  */
+/* Internal helper                                                     */
 /* ------------------------------------------------------------------ */
 
-export { parseMediaRefs } from '../../components/DataTable/index.ts';
-
-export function rowToFeedPost(row: DataExportRow): FeedPost {
+function rowToFeedPost(row: DataExportRow): FeedPost {
   return {
     post_id: row.post_id,
     platform: row.platform,
