@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS social_listening.enriched_posts (
     language STRING,
     content_type STRING,
     key_quotes ARRAY<STRING>,
+    is_related_to_keyword BOOL,
+    detected_brands ARRAY<STRING>,
+    channel_type STRING,
     custom_fields JSON,
     enriched_at TIMESTAMP
 )

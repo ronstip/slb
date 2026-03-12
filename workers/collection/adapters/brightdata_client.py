@@ -15,20 +15,53 @@ from urllib3.util.retry import Retry
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.brightdata.com/datasets/v3"
-_REQUEST_TIMEOUT = 60
+_TRIGGER_TIMEOUT = 120   # Trigger can take 60-90s while BD queues the job
+_REQUEST_TIMEOUT = 60    # For poll/status requests
+_DOWNLOAD_TIMEOUT = 180  # Snapshot downloads can be large
 
 
-def _parse_ndjson(text: str) -> list[dict]:
-    """Parse NDJSON (newline-delimited JSON) text into a list of dicts."""
-    results = []
-    for line in text.splitlines():
+def _parse_response_data(text: str) -> list[dict]:
+    """Parse Bright Data response — handles both JSON array and NDJSON formats."""
+    stripped = text.strip()
+    if not stripped:
+        logger.warning("Empty response body from Bright Data")
+        return []
+
+    # Attempt 1: standard JSON (array or single object)
+    try:
+        data = json.loads(stripped)
+        if isinstance(data, list):
+            valid = [item for item in data if isinstance(item, dict)]
+            if len(valid) < len(data):
+                logger.warning("BD response: skipped %d non-dict elements", len(data) - len(valid))
+            return valid
+        if isinstance(data, dict):
+            return [data]
+        logger.warning("Unexpected JSON type from BD: %s", type(data).__name__)
+        return []
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 2: NDJSON (one JSON object per line)
+    results: list[dict] = []
+    parse_errors = 0
+    for line in stripped.splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            results.append(json.loads(line))
+            obj = json.loads(line)
+            if isinstance(obj, dict):
+                results.append(obj)
+            elif isinstance(obj, list):
+                results.extend(item for item in obj if isinstance(item, dict))
         except json.JSONDecodeError:
-            logger.warning("Skipping malformed NDJSON line: %.100s", line)
+            parse_errors += 1
+            if parse_errors <= 3:
+                logger.warning("Skipping malformed NDJSON line: %.200s", line)
+
+    if parse_errors:
+        logger.warning("BD NDJSON: %d parse errors out of %d total lines", parse_errors, parse_errors + len(results))
     return results
 
 
@@ -92,7 +125,7 @@ class BrightDataClient:
             f"{_BASE_URL}/scrape",
             params=params,
             json={"input": inputs},
-            timeout=_REQUEST_TIMEOUT,
+            timeout=_TRIGGER_TIMEOUT,
         )
         if resp.status_code >= 400:
             raise BrightDataAPIError(resp.status_code, resp.text[:500])
@@ -108,8 +141,8 @@ class BrightDataClient:
         except (json.JSONDecodeError, ValueError):
             pass
 
-        # Sync response returned as NDJSON (one JSON object per line)
-        return _parse_ndjson(resp.text)
+        # Sync response returned as NDJSON or JSON array
+        return _parse_response_data(resp.text)
 
     def poll_snapshot(self, snapshot_id: str) -> dict:
         """GET /datasets/v3/progress/{snapshot_id}. Returns status dict."""
@@ -122,16 +155,22 @@ class BrightDataClient:
         return resp.json()
 
     def download_snapshot(self, snapshot_id: str) -> list[dict]:
-        """GET /datasets/v3/snapshot/{snapshot_id}. Parses NDJSON response."""
+        """GET /datasets/v3/snapshot/{snapshot_id}. Parses NDJSON or JSON response."""
         resp = self._session.get(
             f"{_BASE_URL}/snapshot/{snapshot_id}",
-            timeout=_REQUEST_TIMEOUT,
+            timeout=_DOWNLOAD_TIMEOUT,
         )
         if resp.status_code >= 400:
             raise BrightDataAPIError(resp.status_code, resp.text[:500], snapshot_id)
 
-        results = _parse_ndjson(resp.text)
-        logger.info("Downloaded snapshot %s: %d records", snapshot_id, len(results))
+        results = _parse_response_data(resp.text)
+        if not results:
+            logger.error(
+                "Snapshot %s: 0 parseable records. Response length=%d, content-type=%s, first 500 chars: %.500s",
+                snapshot_id, len(resp.text), resp.headers.get("Content-Type", "?"), resp.text,
+            )
+        else:
+            logger.info("Downloaded snapshot %s: %d records", snapshot_id, len(results))
         return results
 
     def scrape_and_wait(

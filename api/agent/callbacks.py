@@ -145,6 +145,12 @@ def collection_state_tracker(
                 tool_response.get("active_collections") or []
             )
 
+    elif tool_name == "ask_user":
+        # Signal the before_model_callback to stop the ReAct loop.
+        # The user must respond before the agent continues.
+        if isinstance(tool_response, dict) and tool_response.get("status") == "needs_input":
+            tool_context.state["awaiting_user_input"] = True
+
     return None
 
 
@@ -430,6 +436,21 @@ def inject_collection_context(
     reorder tools based on session phase.
     """
     state = callback_context.state
+
+    # ── Hard stop after ask_user ─────────────────────────────────
+    # The agent must wait for the user's structured response before
+    # continuing.  Return an empty LlmResponse (no tool calls) to
+    # end the ReAct loop immediately.
+    if state.get("awaiting_user_input", False):
+        state["awaiting_user_input"] = False
+        from google.genai import types as genai_types
+
+        return LlmResponse(
+            content=genai_types.Content(
+                role="model",
+                parts=[genai_types.Part.from_text(text="")],
+            )
+        )
 
     # ── Context injection ─────────────────────────────────────────
     context_block = _build_context_block(state)

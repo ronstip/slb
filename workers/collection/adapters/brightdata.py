@@ -57,6 +57,7 @@ class BrightDataAdapter(DataProviderAdapter):
             poll_initial_interval_sec=settings.brightdata_poll_initial_interval_sec,
         )
         self._platform_stats: dict[str, dict] = {}
+        self._collection_errors: list[dict] = []
         self._stats_lock = threading.Lock()
         logger.info("BrightDataAdapter initialized")
 
@@ -67,9 +68,14 @@ class BrightDataAdapter(DataProviderAdapter):
     def platform_stats(self) -> dict[str, dict]:
         return dict(self._platform_stats)
 
+    @property
+    def collection_errors(self) -> list[dict]:
+        return list(self._collection_errors)
+
     def collect(self, config: dict) -> list[Batch]:
         """Collect from all assigned platforms in parallel."""
         self._platform_stats = {}
+        self._collection_errors = []
         platforms = [p for p in config.get("platforms", []) if p in self.supported_platforms()]
         if not platforms:
             return []
@@ -100,12 +106,26 @@ class BrightDataAdapter(DataProviderAdapter):
                         }
                     logger.info("BrightData %s: collected %d posts", platform, post_count)
                 except BrightDataAPIError as e:
+                    error_detail = {
+                        "platform": platform,
+                        "error_type": "BrightDataAPIError",
+                        "message": str(e),
+                        "status_code": getattr(e, "status_code", None),
+                        "snapshot_id": getattr(e, "snapshot_id", None),
+                    }
+                    self._collection_errors.append(error_detail)
                     with self._stats_lock:
                         self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1, "error": str(e)}
                     logger.error("BrightData API error for %s: %s", platform, e)
-                except Exception:
+                except Exception as e:
+                    error_detail = {
+                        "platform": platform,
+                        "error_type": type(e).__name__,
+                        "message": str(e),
+                    }
+                    self._collection_errors.append(error_detail)
                     with self._stats_lock:
-                        self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1}
+                        self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1, "error": str(e)}
                     logger.exception("Unexpected error collecting %s via BrightData", platform)
 
         return all_batches
@@ -300,6 +320,12 @@ class BrightDataAdapter(DataProviderAdapter):
             )
 
         if not posts:
+            if results:
+                logger.error(
+                    "BrightData %s: All %d raw results failed parsing (0 valid posts). "
+                    "Sample keys from first item: %s",
+                    platform, len(results), list(results[0].keys())[:15],
+                )
             return []
         return [Batch(posts=posts, channels=list(channels_seen.values()))]
 

@@ -142,6 +142,8 @@ def _post_to_enrichment_data(post):
         posted_at=post.posted_at.isoformat() if post.posted_at else None,
         title=post.title,
         content=post.content,
+        post_url=post.post_url,
+        search_keyword=post.search_keyword,
         media_refs=media_refs,
     )
 
@@ -193,9 +195,13 @@ def _run_pipeline(collection_id: str) -> None:
         enrichment_executor.shutdown(wait=False)
         return
 
-    # Check if collection was cancelled
+    # Check if collection was cancelled or failed
     status = fs.get_collection_status(collection_id)
     if not status or status.get("status") not in ("enriching", "collecting"):
+        logger.info(
+            "Pipeline stopping for %s — status is '%s' (not enriching/collecting)",
+            collection_id, (status or {}).get("status"),
+        )
         enrichment_executor.shutdown(wait=False)
         return
 

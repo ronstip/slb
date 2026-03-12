@@ -152,6 +152,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
 
         # Build run_log with platform stats and timing
         duration_sec = round(time.monotonic() - collection_start, 1)
+        collection_errors = wrapper.get_collection_errors()
         run_log = {
             "collection": {
                 "started_at": collection_started_at,
@@ -161,6 +162,25 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                 "platforms": wrapper.get_platform_stats(),
             },
         }
+        if collection_errors:
+            run_log["collection"]["errors"] = collection_errors
+
+        if total_posts == 0:
+            error_msg = (
+                f"No posts were collected after {duration_sec}s. "
+                f"Platform stats: {wrapper.get_platform_stats()}. "
+                f"Errors: {collection_errors or 'none'}. "
+                f"Dupes skipped: {total_dupes}."
+            )
+            logger.error("Collection %s: %s", collection_id, error_msg)
+            fs.update_collection_status(
+                collection_id,
+                status="failed",
+                error_message="No posts were collected. The data provider returned no results or all results failed processing.",
+                run_log=run_log,
+            )
+            return
+
         fs.update_collection_status(collection_id, status="enriching", run_log=run_log)
         logger.info("Collection %s completed: %d total posts in %.1fs", collection_id, total_posts, duration_sec)
 

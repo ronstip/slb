@@ -108,7 +108,23 @@ class DataProviderWrapper:
             logger.info("Collecting via %s for platforms: %s", type(adapter).__name__, platforms)
             all_batches.extend(adapter.collect(sub_config))
 
+        if not all_batches:
+            errors = self.get_collection_errors()
+            stats = self.get_platform_stats()
+            logger.error(
+                "collect_all() returned 0 batches. Platform stats: %s, Errors: %s",
+                stats, errors,
+            )
+
         return all_batches
+
+    def get_collection_errors(self) -> list[dict]:
+        """Return any errors encountered during the last collect_all() call."""
+        errors: list[dict] = []
+        for provider in self._providers:
+            if hasattr(provider, "collection_errors"):
+                errors.extend(provider.collection_errors)
+        return errors
 
     def get_platform_stats(self) -> dict[str, dict]:
         """Return per-platform collection stats from the last collect_all() call."""

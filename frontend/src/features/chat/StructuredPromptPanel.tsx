@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
-import { X } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 import { Badge } from '../../components/ui/badge.tsx';
 import { Switch } from '../../components/ui/switch.tsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs.tsx';
@@ -15,6 +15,14 @@ type TagMap = Record<string, string[]>;
 type OtherTextMap = Record<string, string>;
 
 const OTHER_VALUE = '__other__';
+
+/** Prompts that need an explicit "Done" tap before the panel can close */
+function needsExplicitSubmit(p: StructuredPrompt): boolean {
+  if (p.type === 'tag_input') return true;
+  if (p.multi_select) return true;
+  if (p.preselected && p.preselected.length > 0) return true;
+  return false;
+}
 
 interface StructuredPromptPanelProps {
   onSubmit: (text: string) => void;
@@ -63,6 +71,9 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
 
   const [otherText, setOtherText] = useState<OtherTextMap>({});
 
+  // Track which multiselect/preset prompts the user has explicitly confirmed
+  const [submitted, setSubmitted] = useState<Set<string>>(() => new Set());
+
   // Escape to cancel
   useEffect(() => {
     const handleEsc = (e: globalThis.KeyboardEvent) => {
@@ -80,10 +91,13 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
         const sel = selections[p.id] ?? [];
         if (sel.length === 0) return false;
         if (sel.includes(OTHER_VALUE) && !(otherText[p.id] ?? '').trim()) return false;
+        // Multiselect / preset fields must be explicitly submitted
+        if (needsExplicitSubmit(p) && !submitted.has(p.id)) return false;
       }
+      if (p.type === 'tag_input' && !submitted.has(p.id)) return false;
     }
     return true;
-  }, [prompts, selections, otherText]);
+  }, [prompts, selections, otherText, submitted]);
 
   const formatAnswer = useCallback((): string => {
     const parts: string[] = [];
@@ -122,30 +136,59 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
     return `${readable}\n<!-- structured_response: ${json} -->`;
   }, [prompts, selections, tags, toggles, otherText]);
 
+  const markSubmitted = useCallback((promptId: string) => {
+    const nextSubmitted = new Set(submitted).add(promptId);
+    setSubmitted(nextSubmitted);
+
+    // Check if this was the last pending field — if so, submit immediately
+    const allReady = prompts.every((p) => {
+      if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
+        const sel = selections[p.id] ?? [];
+        if (sel.length === 0) return false;
+        if (sel.includes(OTHER_VALUE) && !(otherText[p.id] ?? '').trim()) return false;
+        if (needsExplicitSubmit(p) && !nextSubmitted.has(p.id)) return false;
+      }
+      if (p.type === 'tag_input' && !nextSubmitted.has(p.id)) return false;
+      return true;
+    });
+
+    if (allReady) {
+      setTimeout(() => {
+        const text = formatAnswer();
+        useChatStore.getState().setActivePrompt(null);
+        useChatStore.getState().setActivePromptData(null);
+        onSubmit(text);
+      }, 200);
+    } else {
+      const idx = prompts.findIndex((p) => p.id === promptId);
+      if (idx < prompts.length - 1) {
+        setTimeout(() => setActiveTab(prompts[idx + 1].id), 200);
+      }
+    }
+  }, [prompts, submitted, selections, otherText, formatAnswer, onSubmit]);
+
   // Check if any "Other" text input is active (user is typing)
   const hasActiveOther = Object.entries(selections).some(
     ([id, sel]) => sel.includes(OTHER_VALUE) && !(otherText[id] ?? '').trim(),
   );
 
-  // Auto-submit when all required fields are filled on the last tab
+  // Auto-submit when all fields are complete:
+  // - single-select (no presets) have a value
+  // - multiselect / preset / tag_input have been explicitly submitted
   const autoSubmitRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     clearTimeout(autoSubmitRef.current);
     if (!canSubmit() || hasActiveOther) return;
-
-    // Only auto-submit when user is on the last tab
-    const lastPrompt = prompts[prompts.length - 1];
-    if (activeTab !== lastPrompt?.id) return;
 
     autoSubmitRef.current = setTimeout(() => {
       const text = formatAnswer();
       useChatStore.getState().setActivePrompt(null);
       useChatStore.getState().setActivePromptData(null);
       onSubmit(text);
-    }, 600);
+    }, 500);
 
     return () => clearTimeout(autoSubmitRef.current);
-  }, [canSubmit, hasActiveOther, activeTab, prompts, formatAnswer, onSubmit]);
+  }, [canSubmit, hasActiveOther, formatAnswer, onSubmit]);
 
   const isPromptFilled = (p: StructuredPrompt): boolean => {
     if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
@@ -191,11 +234,12 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
             <TabsList variant="line" className="h-9 flex-1 justify-start gap-0">
               {prompts.map((p) => {
                 const filled = isPromptFilled(p);
+                const confirmed = submitted.has(p.id);
                 return (
-                  <TabsTrigger key={p.id} value={p.id} className="gap-1.5 px-3 text-xs">
+                  <TabsTrigger key={p.id} value={p.id} className="gap-1.5 px-3 text-[11px] font-normal">
                     {promptLabel(p)}
-                    {filled && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-accent-vibrant" />
+                    {(filled || confirmed) && (
+                      <span className={`h-1.5 w-1.5 rounded-full ${confirmed ? 'bg-accent-vibrant' : 'bg-muted-foreground/30'}`} />
                     )}
                   </TabsTrigger>
                 );
@@ -211,24 +255,54 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
 
           {/* Content */}
           <div className="px-4 pt-3">
-            {prompts.map((prompt) => (
-              <TabsContent key={prompt.id} value={prompt.id} className="mt-0">
-                <p className="mb-3 text-[13px] text-muted-foreground">
-                  {prompt.question}
-                </p>
-                <PromptRenderer
-                  prompt={prompt}
-                  selections={selections}
-                  tags={tags}
-                  toggles={toggles}
-                  otherText={otherText}
-                  onToggleSelection={toggleSelection}
-                  onSetTags={(id, v) => setTags((prev) => ({ ...prev, [id]: v }))}
-                  onSetToggle={(id, v) => setToggles((prev) => ({ ...prev, [id]: v }))}
-                  onSetOtherText={(id, v) => setOtherText((prev) => ({ ...prev, [id]: v }))}
-                />
-              </TabsContent>
-            ))}
+            {prompts.map((prompt) => {
+              const explicit = needsExplicitSubmit(prompt);
+              const isConfirmed = submitted.has(prompt.id);
+              const hasSel = isPromptFilled(prompt);
+              return (
+                <TabsContent key={prompt.id} value={prompt.id} className="mt-0">
+                  <p className="mb-3 text-sm font-medium text-foreground">
+                    {prompt.question}
+                  </p>
+                  <PromptRenderer
+                    prompt={prompt}
+                    selections={selections}
+                    tags={tags}
+                    toggles={toggles}
+                    otherText={otherText}
+                    onToggleSelection={toggleSelection}
+                    onSetTags={(id, v) => setTags((prev) => ({ ...prev, [id]: v }))}
+                    onSetToggle={(id, v) => setToggles((prev) => ({ ...prev, [id]: v }))}
+                    onSetOtherText={(id, v) => setOtherText((prev) => ({ ...prev, [id]: v }))}
+                  />
+                  {explicit && (
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        disabled={!hasSel}
+                        onClick={() => markSubmitted(prompt.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
+                          isConfirmed
+                            ? 'bg-accent-vibrant/10 text-accent-vibrant cursor-default'
+                            : hasSel
+                              ? 'bg-accent-vibrant text-white hover:bg-accent-vibrant/90'
+                              : 'bg-muted text-muted-foreground cursor-not-allowed'
+                        }`}
+                      >
+                        {isConfirmed ? (
+                          <>
+                            <Check className="h-3 w-3" />
+                            Done
+                          </>
+                        ) : (
+                          'Confirm'
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </TabsContent>
+              );
+            })}
           </div>
 
           {/* Footer */}
