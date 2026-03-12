@@ -24,7 +24,6 @@ Single meta-agent built on Google ADK. One `LlmAgent` with all tools — not a m
 | `enrich_collection` | Trigger enrichment worker |
 | `refresh_engagements` | Update engagement metrics |
 | `create_chart` | Generate chart specs for frontend |
-| `display_posts` | Query & format posts for chat display |
 | `generate_report` | Create detailed insight reports |
 | `export_data` | Export posts as CSV |
 

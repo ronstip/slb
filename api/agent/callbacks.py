@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # ─── Tool priority groups for phase-based reordering ─────────────────
 # Tools listed first in the schema are naturally favoured by the model.
 
-CORE_TOOLS = {"execute_sql", "create_chart", "display_posts"}
+CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_past_collections", "google_search"}
 RESEARCH_DESIGN_TOOLS = {"design_research"}
 COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
@@ -46,11 +46,11 @@ COLLECTION_RUNNING_BLOCKED = {
 
 TOOLS_WITH_COLLECTION_ID = {
     "enrich_collection", "get_progress", "cancel_collection",
-    "refresh_engagements", "export_data", "display_posts",
+    "refresh_engagements", "export_data",
 }
 TOOLS_WITH_COLLECTION_IDS = {
     "get_collection_stats", "generate_report", "generate_dashboard",
-    "set_working_collections", "export_data", "display_posts",
+    "set_working_collections", "export_data",
 }
 
 
@@ -75,9 +75,6 @@ def _summarize_tool_result(tool_name: str, tool_response: dict) -> str | None:
     elif tool_name == "create_chart":
         ct = tool_response.get("chart_type", "?")
         return f"create_chart: rendered {ct}"
-    elif tool_name == "display_posts":
-        count = tool_response.get("count", 0)
-        return f"display_posts: showed {count} posts"
     elif tool_name == "design_research":
         return f"design_research: config ready for user approval"
     elif tool_name == "get_past_collections":

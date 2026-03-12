@@ -115,7 +115,7 @@ MODEL_ALIASES: dict[str, str] = {
 THINKING_TOOLS = {
     "execute_sql", "get_table_info", "list_table_ids",
     "google_search", "design_research", "start_collection",
-    "get_progress", "enrich_collection", "display_posts",
+    "get_progress", "enrich_collection",
     "get_past_collections", "generate_report", "generate_dashboard", "get_sql_reference",
 }
 
@@ -1608,9 +1608,6 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
         if tool_name == "enrich_collection":
             cid = args.get("collection_id", "")
             return f"Running AI enrichment on `{cid}`" if cid else "Running AI enrichment..."
-        if tool_name == "display_posts":
-            count = len(args.get("post_ids", []))
-            return f"Loading {count} posts for display"
         if tool_name == "get_past_collections":
             return "Checking for existing collections..."
     elif event_type == "tool_result":
@@ -1627,8 +1624,6 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
             return "Progress retrieved"
         if tool_name == "enrich_collection":
             return "Enrichment complete"
-        if tool_name == "display_posts":
-            return "Posts loaded"
         if tool_name == "get_past_collections":
             return "Past collections retrieved"
     return None

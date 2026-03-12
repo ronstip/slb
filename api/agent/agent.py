@@ -25,7 +25,6 @@ from api.agent.prompts.meta_agent import (
 from api.agent.tools.cancel_collection import cancel_collection
 from api.agent.tools.create_chart import create_chart
 from api.agent.tools.design_research import design_research
-from api.agent.tools.display_posts import display_posts
 from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
@@ -73,7 +72,6 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         refresh_engagements,
         # Output & visualization
         create_chart,
-        display_posts,
         export_data,
         get_collection_stats,
         generate_report,

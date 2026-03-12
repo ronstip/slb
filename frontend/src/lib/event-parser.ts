@@ -26,13 +26,6 @@ export function isChartResult(
   return toolName === 'create_chart' && result?.status === 'success' && !!result?.chart_type;
 }
 
-export function isPostEmbedResult(
-  toolName: string,
-  result?: Record<string, unknown>,
-): boolean {
-  return toolName === 'display_posts' && result?.status === 'success' && Array.isArray(result?.posts);
-}
-
 export function isReportResult(
   toolName: string,
   result?: Record<string, unknown>,

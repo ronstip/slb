@@ -12,7 +12,6 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   create_chart: 'Creating chart',
   get_table_info: 'Inspecting table schema',
   list_table_ids: 'Discovering tables',
-  display_posts: 'Preparing post display',
   generate_report: 'Generating insight report',
   generate_dashboard: 'Creating interactive dashboard',
 };

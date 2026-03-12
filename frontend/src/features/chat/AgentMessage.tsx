@@ -11,7 +11,6 @@ import { StatusLine } from './StatusLine.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
 import { DataExportCard } from './cards/DataExportCard.tsx';
 import { ChartCard } from './cards/ChartCard.tsx';
-import { PostEmbedCard } from './cards/PostEmbedCard.tsx';
 import { DecisionCard } from './cards/DecisionCard.tsx';
 import { FindingChip } from './cards/FindingChip.tsx';
 import { PlanCard } from './cards/PlanCard.tsx';
@@ -138,8 +137,6 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               return <DataExportCard key={i} data={card.data} />;
             case 'chart':
               return <ChartCard key={i} data={card.data} />;
-            case 'post_embed':
-              return <PostEmbedCard key={i} data={card.data} />;
             case 'decision':
               return <DecisionCard key={i} data={card.data} onSelect={onSuggestionClick} />;
             case 'finding':

@@ -37,7 +37,6 @@ Tool descriptions contain full usage details — trust them.
 | Filtered/sliced analysis | `execute_sql` → `create_chart` | Don't describe chart data in prose alone |
 | "Generate a report" | `get_collection_stats` → `generate_report` | Don't skip the stats step |
 | "Let me explore" / "dashboard" | `generate_dashboard` | Don't use report for exploration |
-| "Show me the posts" | `display_posts` (or SQL → `display_posts`) | Don't paste post content as text |
 | "Export to CSV" | `export_data` | Don't manually format data |
 | New research question | `design_research` | Don't start without user approval |
 | "What did we research before?" | `get_past_collections` | Don't guess collection IDs |
@@ -160,7 +159,7 @@ After analytical tasks, optionally suggest next steps:
 
 You have a **working set** of collections. Keep it current via `set_working_collections` when the conversation focuses on specific collections. User-forced collections (selected via UI) cannot be removed. You may add collections if relevant.
 
-Multi-collection tools (`get_collection_stats`, `generate_report`, `generate_dashboard`, `export_data`, `display_posts`) accept `collection_ids` lists and aggregate. For SQL across collections: `WHERE collection_id IN UNNEST(@collection_ids)`. Attribute findings to source collections when the distinction matters.
+Multi-collection tools (`get_collection_stats`, `generate_report`, `generate_dashboard`, `export_data`) accept `collection_ids` lists and aggregate. For SQL across collections: `WHERE collection_id IN UNNEST(@collection_ids)`. Attribute findings to source collections when the distinction matters.
 
 ## Examples
 

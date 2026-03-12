@@ -13,7 +13,6 @@ import {
   isDesignResearchResult,
   isDataExportResult,
   isChartResult,
-  isPostEmbedResult,
   isReportResult,
   isDashboardResult,
 } from './event-parser.ts';
@@ -163,8 +162,6 @@ export function reconstructSession(
             sourceSql: (result.source_sql as string | undefined) || undefined,
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
-        } else if (isPostEmbedResult(toolName, result)) {
-          msg.cards.push({ type: 'post_embed', data: result });
         } else if (isDataExportResult(toolName, result)) {
           const exportId = (result._artifact_id as string) || `artifact-restored-${artifacts.length}`;
           msg.cards.push({ type: 'data_export', data: { ...result, _artifactId: exportId } });
