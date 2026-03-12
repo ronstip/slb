@@ -90,7 +90,7 @@ export function SessionsPanel() {
             <p className="text-xs text-muted-foreground">Sign up to save your work</p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => linkAccount('google')}>
+          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); linkAccount('google'); }}>
             <svg className="mr-2 h-3.5 w-3.5" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -99,7 +99,7 @@ export function SessionsPanel() {
             </svg>
             Sign up with Google
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => linkAccount('microsoft')}>
+          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); linkAccount('microsoft'); }}>
             <svg className="mr-2 h-3.5 w-3.5" viewBox="0 0 23 23">
               <path fill="#f35325" d="M1 1h10v10H1z" />
               <path fill="#81bc06" d="M12 1h10v10H12z" />

@@ -94,8 +94,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           anonSignInAttempted.current = true;
           try {
             await signInAnonymously(auth!);
-          } catch {
-            // Anonymous sign-in failed — show app without auth
+          } catch (err) {
+            // Anonymous sign-in failed (likely not enabled in Firebase Console)
+            console.warn('Anonymous sign-in failed:', err);
             setLoading(false);
             authReadyRef.current!.resolve();
           }
@@ -134,12 +135,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /** Link an anonymous account to a Google or Microsoft account. */
+  /** Link an anonymous account to a Google or Microsoft account, or sign in directly. */
   const linkAccount = async (provider: 'google' | 'microsoft') => {
-    if (!auth?.currentUser) return;
+    if (!auth) return;
 
-    const oldUid = auth.currentUser.uid;
     const authProvider = provider === 'google' ? googleProvider! : microsoftProvider!;
+
+    // No current user (anonymous auth disabled/failed) — sign in directly
+    if (!auth.currentUser) {
+      try {
+        await signInWithPopup(auth, authProvider);
+      } catch (error: unknown) {
+        const firebaseError = error as AuthError;
+        if (firebaseError.code === 'auth/popup-closed-by-user') return;
+        throw error;
+      }
+      return;
+    }
+
+    // Anonymous user exists — link the account
+    const oldUid = auth.currentUser.uid;
 
     try {
       const result = await linkWithPopup(auth.currentUser, authProvider);

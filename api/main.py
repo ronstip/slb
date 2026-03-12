@@ -92,16 +92,27 @@ app.include_router(dashboard_router.router)
 app.include_router(dashboard_shares_router.router)
 app.include_router(artifacts_router.router)
 
-# CORS middleware — origins configurable via CORS_ORIGINS env var
+# CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
 _settings = get_settings()
-_cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if _settings.is_dev:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    logger.info("CORS: allow_origins=['*'] (dev mode)")
+else:
+    _cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    logger.info("CORS origins: %s", _cors_origins)
 
 _runners: dict[str, Runner] = {}
 _memory_service = None
