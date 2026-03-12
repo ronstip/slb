@@ -57,22 +57,16 @@ export function AppShell() {
     useSessionStore.getState().fetchSessions();
   }, []);
 
-  // Sync URL ↔ session state: URL is the source of truth for active session
+  // Sync URL → session state: restore session when URL has a session ID
   useEffect(() => {
-    const sessionStore = useSessionStore.getState();
-    const currentActiveId = sessionStore.activeSessionId;
+    if (!params.sessionId) return;
 
-    if (params.sessionId) {
-      // URL has a session ID — restore it if it's different from the current active session
-      if (currentActiveId !== params.sessionId) {
-        sessionStore.restoreSession(params.sessionId).catch(() => {
-          // Session not found (deleted or invalid) — redirect to home
-          navigate('/', { replace: true });
-        });
-      }
-    } else if (currentActiveId) {
-      // URL is root `/` — start a fresh session if we had one active
-      sessionStore.startNewSession();
+    const sessionStore = useSessionStore.getState();
+    if (sessionStore.activeSessionId !== params.sessionId) {
+      sessionStore.restoreSession(params.sessionId).catch(() => {
+        // Session not found (deleted or invalid) — redirect to home
+        navigate('/', { replace: true });
+      });
     }
   }, [params.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 

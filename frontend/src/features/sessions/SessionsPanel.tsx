@@ -20,6 +20,7 @@ import { useTheme } from '../../components/theme-provider.tsx';
 import { Logo } from '../../components/Logo.tsx';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
+import { getAppPath } from '../../lib/navigation.ts';
 import { SessionCard } from '../sources/SessionCard.tsx';
 import { SessionSearchModal } from './SessionSearchModal.tsx';
 import { Button } from '../../components/ui/button.tsx';
@@ -134,7 +135,7 @@ export function SessionsPanel() {
         {/* Logo symbol */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <button onClick={() => navigate('/')} className="mb-1 focus:outline-none">
+            <button onClick={() => navigate(getAppPath())} className="mb-1 focus:outline-none">
               <Logo size="sm" showText={false} />
             </button>
           </TooltipTrigger>
@@ -224,7 +225,7 @@ export function SessionsPanel() {
     <div className="flex h-full flex-col">
       {/* Top: Logo + collapse (no bottom border) */}
       <div className="flex items-center justify-between px-3 py-3">
-        <button onClick={() => navigate('/')} className="focus:outline-none">
+        <button onClick={() => navigate(getAppPath())} className="focus:outline-none">
           <Logo size="sm" />
         </button>
         <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={toggle}>

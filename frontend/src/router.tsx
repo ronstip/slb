@@ -1,34 +1,13 @@
 import { createBrowserRouter, Navigate, useParams } from 'react-router';
 import { AppShell } from './layout/AppShell.tsx';
 import { SignInPage } from './auth/SignInPage.tsx';
+import { AuthGate } from './auth/AuthGate.tsx';
+import { LoginGate } from './auth/LoginGate.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
 import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
 import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
-
-// Route guard wrapper for authenticated routes
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-  user: any;
-  loading: boolean;
-  devMode: boolean;
-}
-
-function ProtectedRoute({ children, user, loading, devMode }: ProtectedRouteProps) {
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
-      </div>
-    );
-  }
-
-  if (!devMode && !user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <>{children}</>;
-}
+import { StandaloneArtifactPage } from './features/artifacts/StandaloneArtifactPage.tsx';
 
 // Wrapper for invite handler to extract code from params
 function InviteRoute() {
@@ -36,70 +15,52 @@ function InviteRoute() {
   return <InviteHandler inviteCode={params.code || ''} />;
 }
 
-// Route loader wrapper that injects auth state
-export function createRouter(user: any, loading: boolean, devMode: boolean) {
-  return createBrowserRouter([
-    {
-      path: '/login',
-      element: loading ? (
-        <div className="flex h-screen items-center justify-center bg-background">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
-        </div>
-      ) : (
-        user && !devMode ? <Navigate to="/" replace /> : <SignInPage />
-      ),
-    },
-    {
-      path: '/invite/:code',
-      element: (
-        <ProtectedRoute user={user} loading={loading} devMode={devMode}>
-          <InviteRoute />
-        </ProtectedRoute>
-      ),
-    },
-    {
-      path: '/settings/:section',
-      element: (
-        <ProtectedRoute user={user} loading={loading} devMode={devMode}>
-          <SettingsPage />
-        </ProtectedRoute>
-      ),
-    },
-    {
-      path: '/settings',
-      element: <Navigate to="/settings/account" replace />,
-    },
-    {
-      path: '/admin/:section?',
-      element: (
-        <ProtectedRoute user={user} loading={loading} devMode={devMode}>
-          <AdminPage />
-        </ProtectedRoute>
-      ),
-    },
-    {
-      path: '/session/:sessionId',
-      element: (
-        <ProtectedRoute user={user} loading={loading} devMode={devMode}>
-          <AppShell />
-        </ProtectedRoute>
-      ),
-    },
-    {
-      path: '/',
-      element: (
-        <ProtectedRoute user={user} loading={loading} devMode={devMode}>
-          <AppShell />
-        </ProtectedRoute>
-      ),
-    },
-    {
-      path: '/shared/:token',
-      element: <SharedDashboardPage />,
-    },
-    {
-      path: '*',
-      element: <Navigate to="/" replace />,
-    },
-  ]);
-}
+// Static router — never recreated. Auth is handled by the AuthGate layout route.
+export const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <LoginGate><SignInPage /></LoginGate>,
+  },
+  {
+    path: '/shared/:token',
+    element: <SharedDashboardPage />,
+  },
+  {
+    // All authenticated routes go through AuthGate
+    element: <AuthGate />,
+    children: [
+      {
+        path: '/invite/:code',
+        element: <InviteRoute />,
+      },
+      {
+        path: '/settings/:section',
+        element: <SettingsPage />,
+      },
+      {
+        path: '/settings',
+        element: <Navigate to="/settings/account" replace />,
+      },
+      {
+        path: '/admin/:section?',
+        element: <AdminPage />,
+      },
+      {
+        path: '/artifact/:artifactId',
+        element: <StandaloneArtifactPage />,
+      },
+      {
+        path: '/session/:sessionId',
+        element: <AppShell />,
+      },
+      {
+        path: '/',
+        element: <AppShell />,
+      },
+    ],
+  },
+  {
+    path: '*',
+    element: <Navigate to="/" replace />,
+  },
+]);

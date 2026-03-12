@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Button } from '../../components/ui/button.tsx';
 import { Logo } from '../../components/Logo.tsx';
+import { getAppPath } from '../../lib/navigation.ts';
 import { useAuth } from '../../auth/useAuth.ts';
 import { AdminNav, type AdminSection } from './AdminNav.tsx';
 import { OverviewSection } from './sections/OverviewSection.tsx';
@@ -37,7 +38,7 @@ export function AdminPage() {
           <p className="mt-2 text-sm text-muted-foreground">
             You don't have permission to access the admin dashboard.
           </p>
-          <Button className="mt-4" onClick={() => navigate('/')}>
+          <Button className="mt-4" onClick={() => navigate(getAppPath())}>
             Back to App
           </Button>
         </div>
@@ -62,10 +63,10 @@ export function AdminPage() {
       <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-card">
         {/* Logo + Back */}
         <div className="flex items-center justify-between px-3 py-3">
-          <button onClick={() => navigate('/')} className="focus:outline-none">
+          <button onClick={() => navigate(getAppPath())} className="focus:outline-none">
             <Logo size="sm" />
           </button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => navigate('/')}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => navigate(getAppPath())}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </div>
