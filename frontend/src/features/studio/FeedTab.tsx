@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
@@ -39,20 +39,21 @@ export function FeedTab() {
   // Effective IDs to query (empty filter = use all active)
   const effectiveIds = collectionFilter.length > 0 ? collectionFilter : activeIds;
 
-  const containerRef = useRef<HTMLDivElement>(null);
   const [colCount, setColCount] = useState(2);
+  const calcCols = (w: number) => (w >= 700 ? 3 : w >= 380 ? 2 : 1);
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const calcCols = (w: number) => (w >= 700 ? 3 : w >= 380 ? 2 : 1);
-    setColCount(calcCols(el.getBoundingClientRect().width));
-    const observer = new ResizeObserver(([entry]) => {
-      setColCount(calcCols(entry.contentRect.width));
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  const containerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!node) return;
+      setColCount(calcCols(node.getBoundingClientRect().width));
+      const observer = new ResizeObserver(([entry]) => {
+        setColCount(calcCols(entry.contentRect.width));
+      });
+      observer.observe(node);
+      return () => observer.disconnect();
+    },
+    [],
+  );
 
   const { data, fetchNextPage, hasNextPage, isFetching, isLoading, isError } = useInfiniteQuery({
     queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment],
