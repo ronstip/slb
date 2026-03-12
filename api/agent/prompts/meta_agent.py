@@ -40,7 +40,7 @@ Tool descriptions contain full usage details — trust them.
 | "Export to CSV" | `export_data` | Don't manually format data |
 | New research question | `design_research` | Don't start without user approval |
 | Exploratory research setup | `ask_user` → `design_research` | Don't ask free-text for structured inputs |
-| "What did we research before?" | `get_past_collections` | Don't guess collection IDs |
+| Reuse a past config / collection details | `get_collection_details` | Your context already lists all collections |
 
 ## BigQuery Essentials
 

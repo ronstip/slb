@@ -116,7 +116,7 @@ THINKING_TOOLS = {
     "execute_sql", "get_table_info", "list_table_ids",
     "google_search", "design_research", "start_collection",
     "get_progress", "enrich_collection",
-    "get_past_collections", "generate_report", "generate_dashboard", "get_sql_reference",
+    "get_collection_details", "generate_report", "generate_dashboard", "get_sql_reference",
 }
 
 
@@ -242,7 +242,7 @@ def _maybe_persist_artifact(
 
 def _build_user_context(user_id: str, org_id: str) -> dict:
     """Build user context for agent personalization at session start."""
-    context: dict = {"display_name": "", "preferences": {}, "recent_topics": []}
+    context: dict = {"display_name": "", "preferences": {}, "collections_index": []}
     try:
         fs = get_fs()
         user_doc = fs.get_user(user_id)
@@ -250,17 +250,33 @@ def _build_user_context(user_id: str, org_id: str) -> dict:
             context["display_name"] = user_doc.get("display_name", "")
             context["preferences"] = user_doc.get("preferences") or {}
 
-        # Extract recent research topics from last 5 collections
+        # Build lightweight collections index from last 10 collections
         from api.agent.tools.get_past_collections import fetch_user_collections
-        collections = fetch_user_collections(user_id, org_id or "", limit=5)
-        keywords: list[str] = []
+        collections = fetch_user_collections(user_id, org_id or "", limit=10)
+        index = []
         for c in collections:
             config = c.get("config") or {}
             kw = config.get("keywords", [])
-            if isinstance(kw, list):
-                keywords.extend(kw)
-        # Deduplicate, keep order, cap at 15
-        context["recent_topics"] = list(dict.fromkeys(keywords))[:15]
+            if not isinstance(kw, list):
+                kw = []
+            platforms = config.get("platforms", [])
+            if isinstance(platforms, str):
+                platforms = [p.strip() for p in platforms.split(",")]
+            channels = config.get("channel_urls", [])
+            if not isinstance(channels, list):
+                channels = []
+            index.append({
+                "id": c.get("collection_id"),
+                "label": c.get("original_question") or ", ".join(kw[:3]) or "untitled",
+                "status": c.get("status", "unknown"),
+                "platforms": platforms,
+                "keywords": kw[:10],
+                "channels": channels[:5],
+                "posts": c.get("posts_collected", 0),
+                "created": (c.get("created_at") or "")[:10],
+                "own": c.get("is_own", True),
+            })
+        context["collections_index"] = index
     except Exception:
         logger.debug("User context loading failed for %s — non-critical", user_id)
     return context
@@ -356,7 +372,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "message_count": 0,
                 "first_message": None,
                 "user_display_name": user_context.get("display_name", ""),
-                "user_recent_topics": user_context.get("recent_topics", []),
+                "user_collections_index": user_context.get("collections_index", []),
                 "user_preferences": user_context.get("preferences", {}),
             },
         )
@@ -1608,8 +1624,9 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
         if tool_name == "enrich_collection":
             cid = args.get("collection_id", "")
             return f"Running AI enrichment on `{cid}`" if cid else "Running AI enrichment..."
-        if tool_name == "get_past_collections":
-            return "Checking for existing collections..."
+        if tool_name == "get_collection_details":
+            cid = args.get("collection_id", "")
+            return f"Loading details for `{cid}`" if cid else "Loading collection details..."
     elif event_type == "tool_result":
         result = event_data.get("metadata", {}).get("result", {})
         if tool_name == "execute_sql":
@@ -1624,8 +1641,8 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
             return "Progress retrieved"
         if tool_name == "enrich_collection":
             return "Enrichment complete"
-        if tool_name == "get_past_collections":
-            return "Past collections retrieved"
+        if tool_name == "get_collection_details":
+            return "Collection details loaded"
     return None
 
 

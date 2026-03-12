@@ -17,7 +17,7 @@ Single meta-agent built on Google ADK. One `LlmAgent` with all tools — not a m
 | Tool | Purpose |
 |------|---------|
 | `design_research` | Creates research plan from user question |
-| `get_past_collections` | Query existing collections |
+| `get_collection_details` | Get full details for a specific collection |
 | `start_collection` | Dispatch collection worker via Cloud Tasks |
 | `get_progress` | Poll collection status from Firestore |
 | `cancel_collection` | Cancel active collection |

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Tools listed first in the schema are naturally favoured by the model.
 
 CORE_TOOLS = {"execute_sql", "create_chart"}
-RESEARCH_SUPPORT_TOOLS = {"get_past_collections", "google_search"}
+RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search"}
 RESEARCH_DESIGN_TOOLS = {"design_research"}
 COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
 OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
@@ -46,7 +46,7 @@ COLLECTION_RUNNING_BLOCKED = {
 
 TOOLS_WITH_COLLECTION_ID = {
     "enrich_collection", "get_progress", "cancel_collection",
-    "refresh_engagements", "export_data",
+    "refresh_engagements", "export_data", "get_collection_details",
 }
 TOOLS_WITH_COLLECTION_IDS = {
     "get_collection_stats", "generate_report", "generate_dashboard",
@@ -77,9 +77,10 @@ def _summarize_tool_result(tool_name: str, tool_response: dict) -> str | None:
         return f"create_chart: rendered {ct}"
     elif tool_name == "design_research":
         return f"design_research: config ready for user approval"
-    elif tool_name == "get_past_collections":
-        colls = tool_response.get("collections", [])
-        return f"get_past_collections: found {len(colls)} collections"
+    elif tool_name == "get_collection_details":
+        cid = tool_response.get("collection_id", "?")
+        cstatus = tool_response.get("collection_status", "?")
+        return f"get_collection_details: {cid} ({cstatus})"
     elif tool_name in ("generate_report", "generate_dashboard", "export_data"):
         return f"{tool_name}: completed"
     return None
@@ -315,19 +316,42 @@ def _build_context_block(state: dict) -> Optional[str]:
 
     # ── User context ──────────────────────────────────────────────
     display_name = state.get("user_display_name", "")
-    recent_topics = state.get("user_recent_topics", [])
     preferences = state.get("user_preferences", {})
 
-    if display_name or recent_topics:
+    if display_name:
         lines = ["## User Context"]
-        if display_name:
-            lines.append(f"- Name: **{display_name}**")
-        if recent_topics:
-            lines.append(f"- Recent research topics: {', '.join(recent_topics)}")
+        lines.append(f"- Name: **{display_name}**")
         if preferences:
             lines.append(f"- Preferences: {preferences}")
+        blocks.append("\n".join(lines))
+
+    # ── Collections Library ──────────────────────────────────────
+    collections_index: list[dict] = state.get("user_collections_index", [])
+    if collections_index:
+        lines = ["## Collections Library"]
+        lines.append(
+            "Your available collections (use `get_collection_details(collection_id)` for full config):"
+        )
         lines.append("")
-        lines.append("Use this to personalize responses. Reference past research when relevant.")
+        for c in collections_index:
+            platforms_str = ", ".join(c.get("platforms", []))
+            own_marker = "" if c.get("own", True) else " [shared]"
+            lines.append(
+                f"- `{c['id']}` | {c.get('label', 'untitled')} "
+                f"| {c.get('status', '?')} | {platforms_str} "
+                f"| {c.get('posts', 0)} posts | {c.get('created', '?')}{own_marker}"
+            )
+            kw = c.get("keywords", [])
+            if kw:
+                lines.append(f"  Keywords: {', '.join(kw)}")
+            channels = c.get("channels", [])
+            if channels:
+                lines.append(f"  Channels: {', '.join(channels)}")
+        lines.append("")
+        lines.append(
+            "Reference these when the user mentions past research. "
+            "Do NOT call a tool to discover collections — this list is current."
+        )
         blocks.append("\n".join(lines))
 
     # ── Tool result history ───────────────────────────────────────

@@ -31,7 +31,7 @@ from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
 from api.agent.tools.generate_report import generate_report
 from api.agent.tools.get_collection_stats import get_collection_stats
-from api.agent.tools.get_past_collections import get_past_collections
+from api.agent.tools.get_past_collections import get_collection_details
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
 from api.agent.tools.set_working_collections import set_working_collections
@@ -62,7 +62,7 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
     # ─── Tool list ───────────────────────────────────────────────────
     tools = [
         # Research & context
-        get_past_collections,
+        get_collection_details,
         ask_user,
         design_research,
         # Data & analysis
