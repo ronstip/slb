@@ -58,6 +58,7 @@ from api.schemas.responses import (
 )
 from api.services.collection_service import (
     create_collection_from_request,
+    is_valid_schedule,
     trigger_collection_now,
     update_collection_mode,
 )
@@ -689,8 +690,11 @@ async def set_collection_mode(
     """Switch a collection between ongoing and normal mode. Owner only."""
     if request.ongoing and not request.schedule:
         raise HTTPException(status_code=400, detail="schedule is required when ongoing=true")
-    if request.ongoing and request.schedule not in ("daily", "weekly"):
-        raise HTTPException(status_code=400, detail="schedule must be 'daily' or 'weekly'")
+    if request.ongoing and not is_valid_schedule(request.schedule):
+        raise HTTPException(
+            status_code=400,
+            detail="schedule must be 'daily', 'weekly', or 'Nd@HH:MM' format (e.g. '1d@09:00')",
+        )
 
     fs = get_fs()
     status = fs.get_collection_status(collection_id)
@@ -765,7 +769,7 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
         data = doc.to_dict()
         created_at_raw = data.get("created_at")
         created_at_str = None
-        for key in ("created_at", "updated_at"):
+        for key in ("created_at", "updated_at", "last_run_at", "next_run_at"):
             if key in data and hasattr(data[key], "isoformat"):
                 data[key] = data[key].isoformat()
                 if key == "created_at":
@@ -785,6 +789,11 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
                 created_at=created_at_str,
                 visibility=data.get("visibility", "private"),
                 user_id=data.get("user_id"),
+                ongoing=data.get("ongoing", False),
+                last_run_at=data.get("last_run_at"),
+                next_run_at=data.get("next_run_at"),
+                total_runs=data.get("total_runs", 0),
+                run_history=data.get("run_history", []),
             )
         )
 
@@ -971,6 +980,11 @@ async def get_collection_status(
         config=status.get("config"),
         visibility=status.get("visibility", "private"),
         user_id=status.get("user_id"),
+        ongoing=status.get("ongoing", False),
+        last_run_at=status.get("last_run_at"),
+        next_run_at=status.get("next_run_at"),
+        total_runs=status.get("total_runs", 0),
+        run_history=status.get("run_history", []),
     )
 
 
@@ -1384,7 +1398,9 @@ async def scheduler_tick():
     dispatched = []
     for doc in due:
         collection_id = doc["collection_id"]
-        fs.update_collection_status(collection_id, status="collecting")
+        if not fs.claim_for_run(collection_id):
+            logger.info("Scheduler tick: collection %s already claimed, skipping", collection_id)
+            continue
         if settings.is_dev:
             import threading
 

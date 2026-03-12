@@ -428,6 +428,31 @@ def _reorder_tools(tools: list, priority_order: list[set[str]]) -> list:
     return sorted(tools, key=lambda t: _tool_sort_key(t, priority_order))
 
 
+def _is_react_continuation(llm_request: LlmRequest) -> bool:
+    """True when the model is re-invoked after tool execution in the same turn.
+
+    Detects the pattern: model(text/function_call) → function_response → [now].
+    When this fires, the model has already generated text visible to the user
+    and should avoid restating it.
+    """
+    contents = llm_request.contents
+    if not contents:
+        return False
+    last = contents[-1]
+    if not last.parts:
+        return False
+    return any(getattr(p, "function_response", None) for p in last.parts)
+
+
+_ANTI_REPEAT_INSTRUCTION = (
+    "\n\n## Continuation Reminder\n"
+    "You have already generated text visible to the user earlier in this turn. "
+    "That text is still displayed — it accumulates, not replaces. "
+    "Do NOT restate your earlier analysis. Either proceed directly to your "
+    "next tool call, or add only genuinely new insights from the latest results."
+)
+
+
 def inject_collection_context(
     callback_context: CallbackContext,
     llm_request: LlmRequest,
@@ -469,6 +494,19 @@ def inject_collection_context(
                 llm_request.config.system_instruction = (
                     context_block + "\n\n" + str(existing)
                 )
+
+    # ── Anti-repetition for ReAct continuations ──────────────────
+    # When the model is re-invoked after tool results, inject a
+    # reminder not to repeat text it already generated this turn.
+    if _is_react_continuation(llm_request):
+        si = llm_request.config.system_instruction or ""
+        if isinstance(si, str):
+            llm_request.config.system_instruction = si + _ANTI_REPEAT_INSTRUCTION
+        elif hasattr(si, "parts"):
+            from google.genai import types as genai_types
+            si.parts.append(
+                genai_types.Part.from_text(text=_ANTI_REPEAT_INSTRUCTION)
+            )
 
     # ── Tool reordering (soft filter) ─────────────────────────────
     if llm_request.config.tools:

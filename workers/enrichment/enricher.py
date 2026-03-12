@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 ENRICHMENT_PROMPT = """\
 Your task is to analyze the attached social media post to determine its primary content, context, intent, tone, and cultural relevance and narrative.
 
+IMPORTANT: All output fields MUST be in English, regardless of the post's original language. Translate content, quotes, themes, and entities into English. The only exception is the "language" field, which should report the ISO code of the post's original language.
+
 Instructions:
 - ai_summary: A summary paragraph of the post, its content, context, and narrative
 - sentiment: overall sentiment (positive/negative/neutral)

@@ -4,7 +4,7 @@ import type { CollectionConfig, CreateCollectionRequest } from '../../api/types.
 import { createCollection } from '../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useChatStore } from '../../stores/chat-store.ts';
-import { PLATFORMS, PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString } from '../../lib/constants.ts';
+import { PLATFORMS, PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, buildScheduleString, type ScheduleUnit } from '../../lib/constants.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Textarea } from '../../components/ui/textarea.tsx';
 import { Label } from '../../components/ui/label.tsx';
@@ -63,7 +63,8 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
   const [ongoing, setOngoing] = useState(prefill?.ongoing ?? false);
 
   const parsed = parseScheduleString(prefill?.schedule);
-  const [scheduleIntervalDays, setScheduleIntervalDays] = useState(parsed.days);
+  const [scheduleUnit, setScheduleUnit] = useState<ScheduleUnit>(parsed.unit);
+  const [scheduleInterval, setScheduleInterval] = useState(parsed.interval);
   const [scheduleTimeUtc, setScheduleTimeUtc] = useState(parsed.time);
 
   const [submitting, setSubmitting] = useState(false);
@@ -72,7 +73,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
   const addSource = useSourcesStore((s) => s.addSource);
   const addSystemMessage = useChatStore((s) => s.addSystemMessage);
 
-  const scheduleStr = `${scheduleIntervalDays}d@${scheduleTimeUtc}`;
+  const scheduleStr = buildScheduleString(scheduleUnit, scheduleInterval, scheduleTimeUtc);
 
   const togglePlatform = (p: string) => {
     setPlatforms((prev) =>
@@ -339,25 +340,37 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
               <input
                 type="number"
                 min={1}
-                max={90}
-                value={scheduleIntervalDays}
-                onChange={(e) => setScheduleIntervalDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+                max={scheduleUnit === 'minute' ? 1440 : scheduleUnit === 'hour' ? 168 : 90}
+                value={scheduleInterval}
+                onChange={(e) => setScheduleInterval(Math.max(1, Number(e.target.value) || 1))}
                 className="w-14 rounded border border-input bg-card px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
-              <span className="text-muted-foreground">
-                {scheduleIntervalDays === 1 ? 'day' : 'days'} at
-              </span>
-              <Select value={scheduleTimeUtc} onValueChange={setScheduleTimeUtc}>
-                <SelectTrigger className="w-28 h-7 text-xs">
+              <Select value={scheduleUnit} onValueChange={(v) => setScheduleUnit(v as ScheduleUnit)}>
+                <SelectTrigger className="w-24 h-7 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
+                  <SelectItem value="minute">{scheduleInterval === 1 ? 'minute' : 'minutes'}</SelectItem>
+                  <SelectItem value="hour">{scheduleInterval === 1 ? 'hour' : 'hours'}</SelectItem>
+                  <SelectItem value="day">{scheduleInterval === 1 ? 'day' : 'days'}</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="text-xs text-muted-foreground">UTC</span>
+              {scheduleUnit === 'day' && (
+                <>
+                  <span className="text-muted-foreground">at</span>
+                  <Select value={scheduleTimeUtc} onValueChange={setScheduleTimeUtc}>
+                    <SelectTrigger className="w-28 h-7 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-xs text-muted-foreground">UTC</span>
+                </>
+              )}
             </div>
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               Time range above sets the initial backfill window. Subsequent runs collect only new posts.

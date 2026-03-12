@@ -3,7 +3,7 @@ import { useSourcesStore, type Source } from '../../stores/sources-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useAuth } from '../../auth/useAuth.ts';
-import { PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, formatSchedule } from '../../lib/constants.ts';
+import { PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, buildScheduleString, formatSchedule, type ScheduleUnit } from '../../lib/constants.ts';
 import { formatNumber, shortDate } from '../../lib/format.ts';
 import {
   BarChart2,
@@ -83,11 +83,13 @@ export function SourceCard({ source }: SourceCardProps) {
 
   // Schedule dialog state — init from existing config if available
   const existingSchedule = parseScheduleString(source.config.schedule);
-  const [scheduleDays, setScheduleDays] = useState(existingSchedule.days);
+  const [scheduleUnit, setScheduleUnit] = useState<ScheduleUnit>(existingSchedule.unit);
+  const [scheduleInterval, setScheduleInterval] = useState(existingSchedule.interval);
   const [scheduleTime, setScheduleTime] = useState(existingSchedule.time);
 
   const isProcessing = source.status === 'collecting' || source.status === 'enriching' || source.status === 'pending';
   const isMonitoring = source.status === 'monitoring';
+  const isPaused = source.status === 'paused';
   const isReady = source.status === 'completed';
   const isFailed = source.status === 'failed';
   const isOwner = !source.userId || source.userId === profile?.uid;
@@ -193,21 +195,25 @@ export function SourceCard({ source }: SourceCardProps) {
     ? 'bg-amber-500 animate-pulse'
     : isMonitoring
       ? 'bg-emerald-500 animate-pulse'
-      : isReady
-        ? 'bg-emerald-500'
-        : isFailed
-          ? 'bg-red-500'
-          : 'bg-muted-foreground';
+      : isPaused
+        ? 'bg-amber-500'
+        : isReady
+          ? 'bg-emerald-500'
+          : isFailed
+            ? 'bg-red-500'
+            : 'bg-muted-foreground';
 
   const statusLabel = isProcessing
     ? 'Processing'
     : isMonitoring
       ? 'Monitoring'
-      : isReady
-        ? 'Ready'
-        : isFailed
-          ? 'Failed'
-          : source.status;
+      : isPaused
+        ? 'Paused'
+        : isReady
+          ? 'Ready'
+          : isFailed
+            ? 'Failed'
+            : source.status;
 
   // Relative time helpers for monitoring meta line
   const relativeTime = (iso: string | undefined): string => {
@@ -469,25 +475,37 @@ export function SourceCard({ source }: SourceCardProps) {
               <input
                 type="number"
                 min={1}
-                max={90}
-                value={scheduleDays}
-                onChange={(e) => setScheduleDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+                max={scheduleUnit === 'minute' ? 1440 : scheduleUnit === 'hour' ? 168 : 90}
+                value={scheduleInterval}
+                onChange={(e) => setScheduleInterval(Math.max(1, Number(e.target.value) || 1))}
                 className="w-14 rounded border border-input bg-background px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
-              <span className="text-muted-foreground">
-                {scheduleDays === 1 ? 'day' : 'days'} at
-              </span>
-              <Select value={scheduleTime} onValueChange={setScheduleTime}>
-                <SelectTrigger className="w-28">
+              <Select value={scheduleUnit} onValueChange={(v) => setScheduleUnit(v as ScheduleUnit)}>
+                <SelectTrigger className="w-24">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
+                  <SelectItem value="minute">{scheduleInterval === 1 ? 'minute' : 'minutes'}</SelectItem>
+                  <SelectItem value="hour">{scheduleInterval === 1 ? 'hour' : 'hours'}</SelectItem>
+                  <SelectItem value="day">{scheduleInterval === 1 ? 'day' : 'days'}</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="text-xs text-muted-foreground">UTC</span>
+              {scheduleUnit === 'day' && (
+                <>
+                  <span className="text-muted-foreground">at</span>
+                  <Select value={scheduleTime} onValueChange={setScheduleTime}>
+                    <SelectTrigger className="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-xs text-muted-foreground">UTC</span>
+                </>
+              )}
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -496,7 +514,7 @@ export function SourceCard({ source }: SourceCardProps) {
             </Button>
             <Button
               onClick={() => {
-                handleStartMonitoring(`${scheduleDays}d@${scheduleTime}`);
+                handleStartMonitoring(buildScheduleString(scheduleUnit, scheduleInterval, scheduleTime));
                 setScheduleDialogOpen(false);
               }}
               disabled={togglingMode}

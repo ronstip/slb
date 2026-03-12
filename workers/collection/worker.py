@@ -59,6 +59,10 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
     logger.info("Starting collection %s", collection_id)
 
     wrapper = DataProviderWrapper(config=config)
+    # For ongoing collections, start from existing count so posts_collected is cumulative
+    existing_posts = 0
+    if status_doc and status_doc.get("ongoing"):
+        existing_posts = status_doc.get("posts_collected", 0) or 0
     total_posts = 0
     total_dupes = 0
     seen_post_ids: set[str] = set()
@@ -93,12 +97,28 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
             )
             existing_ids = {r["post_id"] for r in existing}
             if existing_ids:
+                # Refresh engagements for existing posts (append new time-series snapshot)
+                dupe_posts = [p for p in new_posts if p.post_id in existing_ids]
+                refresh_rows = [post_to_engagement_row(p) for p in dupe_posts]
+                for row in refresh_rows:
+                    row["source"] = "ongoing_refresh"
+                if refresh_rows:
+                    bq.insert_rows("post_engagements", refresh_rows)
+
+                # Refresh channel data for existing posts' channels
+                dupe_channel_ids = {p.channel_id for p in dupe_posts if p.channel_id}
+                refresh_channels = [c for c in batch.channels if c.channel_id in dupe_channel_ids]
+                if refresh_channels:
+                    channel_rows = [channel_to_bq_row(c, collection_id) for c in refresh_channels]
+                    bq.insert_rows("channels", channel_rows)
+
+                logger.info(
+                    "Collection %s: dedup — %d existing posts (refreshed engagements + %d channels), keeping %d new",
+                    collection_id, len(existing_ids), len(refresh_channels),
+                    len(new_posts) - len(existing_ids),
+                )
                 total_dupes += len(existing_ids)
                 new_posts = [p for p in new_posts if p.post_id not in existing_ids]
-                logger.info(
-                    "Collection %s: same-collection dedup removed %d already-stored posts",
-                    collection_id, len(existing_ids),
-                )
 
             if not new_posts:
                 continue
@@ -125,7 +145,9 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
             total_posts += len(new_posts)
             total_dupes += dupes_in_batch
             fs.update_collection_status(
-                collection_id, posts_collected=total_posts
+                collection_id,
+                posts_collected=existing_posts + total_posts,
+                last_run_posts_added=total_posts,
             )
             # Track usage for billing + analytics
             if owner_user_id and len(new_posts) > 0:

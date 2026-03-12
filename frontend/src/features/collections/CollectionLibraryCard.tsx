@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   BarChart2,
+  ChevronRight,
   Download,
   Eye,
   EyeOff,
@@ -15,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../auth/useAuth.ts';
 import { useSourcesStore, type Source } from '../../stores/sources-store.ts';
-import { PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, formatSchedule } from '../../lib/constants.ts';
+import { PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, buildScheduleString, formatSchedule, type ScheduleUnit } from '../../lib/constants.ts';
 import { formatNumber, shortDate } from '../../lib/format.ts';
 import {
   deleteCollection,
@@ -71,13 +72,16 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
   const [triggering, setTriggering] = useState(false);
   const [togglingMode, setTogglingMode] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
 
   const existingSchedule = parseScheduleString(source.config.schedule);
-  const [scheduleDays, setScheduleDays] = useState(existingSchedule.days);
+  const [scheduleUnit, setScheduleUnit] = useState<ScheduleUnit>(existingSchedule.unit);
+  const [scheduleInterval, setScheduleInterval] = useState(existingSchedule.interval);
   const [scheduleTime, setScheduleTime] = useState(existingSchedule.time);
 
   const isProcessing = source.status === 'collecting' || source.status === 'enriching' || source.status === 'pending';
   const isMonitoring = source.status === 'monitoring';
+  const isPaused = source.status === 'paused';
   const isReady = source.status === 'completed';
   const isFailed = source.status === 'failed';
   const isOwner = !source.userId || source.userId === profile?.uid;
@@ -95,21 +99,25 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
     ? 'bg-amber-500 animate-pulse'
     : isMonitoring
       ? 'bg-emerald-500 animate-pulse'
-      : isReady
-        ? 'bg-emerald-500'
-        : isFailed
-          ? 'bg-red-500'
-          : 'bg-muted-foreground';
+      : isPaused
+        ? 'bg-amber-500'
+        : isReady
+          ? 'bg-emerald-500'
+          : isFailed
+            ? 'bg-red-500'
+            : 'bg-muted-foreground';
 
   const statusLabel = isProcessing
     ? 'Processing'
     : isMonitoring
       ? 'Monitoring'
-      : isReady
-        ? 'Completed'
-        : isFailed
-          ? 'Failed'
-          : source.status;
+      : isPaused
+        ? 'Paused'
+        : isReady
+          ? 'Completed'
+          : isFailed
+            ? 'Failed'
+            : source.status;
 
   const handleSessionToggle = (checked: boolean) => {
     if (checked) {
@@ -340,6 +348,41 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
           </div>
         )}
 
+        {/* Paused notice */}
+        {isPaused && source.errorMessage && (
+          <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+            {source.errorMessage}
+          </div>
+        )}
+
+        {/* Run history (monitoring/paused collections) */}
+        {source.runHistory && source.runHistory.length > 0 && (
+          <div className="mt-1.5">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setHistoryExpanded(!historyExpanded); }}
+              className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              <ChevronRight className={cn('h-3 w-3 transition-transform', historyExpanded && 'rotate-90')} />
+              {source.runHistory.length} run{source.runHistory.length !== 1 ? 's' : ''}
+            </button>
+            {historyExpanded && (
+              <div className="mt-1 space-y-0.5 pl-4">
+                {source.runHistory.slice(-5).reverse().map((entry, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span className={cn(
+                      'h-1 w-1 rounded-full',
+                      entry.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500',
+                    )} />
+                    <span>{shortDate(entry.run_at)}</span>
+                    <span>+{entry.posts_added} posts</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Session toggle row — entire row is clickable */}
         <button
           type="button"
@@ -376,32 +419,44 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
               <input
                 type="number"
                 min={1}
-                max={90}
-                value={scheduleDays}
-                onChange={(e) => setScheduleDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+                max={scheduleUnit === 'minute' ? 1440 : scheduleUnit === 'hour' ? 168 : 90}
+                value={scheduleInterval}
+                onChange={(e) => setScheduleInterval(Math.max(1, Number(e.target.value) || 1))}
                 className="w-14 rounded border border-input bg-background px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
-              <span className="text-muted-foreground">
-                {scheduleDays === 1 ? 'day' : 'days'} at
-              </span>
-              <Select value={scheduleTime} onValueChange={setScheduleTime}>
-                <SelectTrigger className="w-28">
+              <Select value={scheduleUnit} onValueChange={(v) => setScheduleUnit(v as ScheduleUnit)}>
+                <SelectTrigger className="w-24">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
+                  <SelectItem value="minute">{scheduleInterval === 1 ? 'minute' : 'minutes'}</SelectItem>
+                  <SelectItem value="hour">{scheduleInterval === 1 ? 'hour' : 'hours'}</SelectItem>
+                  <SelectItem value="day">{scheduleInterval === 1 ? 'day' : 'days'}</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="text-xs text-muted-foreground">UTC</span>
+              {scheduleUnit === 'day' && (
+                <>
+                  <span className="text-muted-foreground">at</span>
+                  <Select value={scheduleTime} onValueChange={setScheduleTime}>
+                    <SelectTrigger className="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-xs text-muted-foreground">UTC</span>
+                </>
+              )}
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>Cancel</Button>
             <Button
               onClick={() => {
-                handleStartMonitoring(`${scheduleDays}d@${scheduleTime}`);
+                handleStartMonitoring(buildScheduleString(scheduleUnit, scheduleInterval, scheduleTime));
                 setScheduleDialogOpen(false);
               }}
               disabled={togglingMode}

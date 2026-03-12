@@ -47,6 +47,7 @@ export function SessionsPanel() {
   const openSearch = useUIStore((s) => s.openSessionSearch);
   const openCollectionsLibrary = useUIStore((s) => s.openCollectionsLibrary);
   const openArtifactLibrary = useUIStore((s) => s.openArtifactLibrary);
+  const openSignUpPrompt = useUIStore((s) => s.openSignUpPrompt);
   const sessions = useSessionStore((s) => s.sessions);
   const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
   const navigate = useNavigate();
@@ -233,24 +234,43 @@ export function SessionsPanel() {
         <div className="flex-1" onClick={toggle} />
 
         {/* User avatar */}
-        <DropdownMenu>
+        {isAnonymous ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <button className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <Avatar className="h-7 w-7">
-                    <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
-                    <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
-                      {displayInitial}
-                    </AvatarFallback>
-                  </Avatar>
-                </button>
-              </DropdownMenuTrigger>
+              <button
+                onClick={openSignUpPrompt}
+                className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Avatar className="h-7 w-7">
+                  <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
+                  <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
+                    {displayInitial}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
             </TooltipTrigger>
-            <TooltipContent side="right">Account</TooltipContent>
+            <TooltipContent side="right">Sign up</TooltipContent>
           </Tooltip>
-          {userDropdownContent('right')}
-        </DropdownMenu>
+        ) : (
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <button className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Avatar className="h-7 w-7">
+                      <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
+                      <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
+                        {displayInitial}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="right">Account</TooltipContent>
+            </Tooltip>
+            {userDropdownContent('right')}
+          </DropdownMenu>
+        )}
 
         <SessionSearchModal />
       </div>
@@ -340,25 +360,43 @@ export function SessionsPanel() {
 
       {/* Bottom: User card */}
       <div className="border-t border-border px-3 py-3">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <Avatar className="h-7 w-7 shrink-0">
-                <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
-                <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
-                  {displayInitial}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
-                {displayEmail && (
-                  <p className="truncate text-[11px] text-muted-foreground">{displayEmail}</p>
-                )}
-              </div>
-            </button>
-          </DropdownMenuTrigger>
-          {userDropdownContent('top')}
-        </DropdownMenu>
+        {isAnonymous ? (
+          <button
+            onClick={openSignUpPrompt}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Avatar className="h-7 w-7 shrink-0">
+              <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
+              <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
+                {displayInitial}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
+              <p className="truncate text-[11px] text-muted-foreground">Sign up to save your work</p>
+            </div>
+          </button>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <Avatar className="h-7 w-7 shrink-0">
+                  <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
+                  <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
+                    {displayInitial}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
+                  {displayEmail && (
+                    <p className="truncate text-[11px] text-muted-foreground">{displayEmail}</p>
+                  )}
+                </div>
+              </button>
+            </DropdownMenuTrigger>
+            {userDropdownContent('top')}
+          </DropdownMenu>
+        )}
       </div>
 
       <SessionSearchModal />

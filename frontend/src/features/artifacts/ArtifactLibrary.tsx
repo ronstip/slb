@@ -239,15 +239,18 @@ export function ArtifactLibrary() {
               )}>
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className={cn(
-                    'rounded-lg border border-border p-4 space-y-3',
-                    viewMode === 'grid' && 'aspect-square w-full min-w-0',
+                    'rounded-lg border border-border space-y-3 overflow-hidden',
+                    viewMode === 'grid' ? 'w-full min-w-0' : 'p-4',
                   )}>
-                    <div className="flex items-start justify-between">
-                      <Skeleton className="h-9 w-9 rounded-lg" />
-                      <Skeleton className="h-4 w-4 rounded-full" />
+                    {viewMode === 'grid' && <Skeleton className="h-28 w-full rounded-none" />}
+                    <div className={cn('space-y-3', viewMode === 'grid' && 'px-3.5 pb-3.5')}>
+                      <div className="flex items-start justify-between">
+                        <Skeleton className={viewMode === 'grid' ? 'h-5 w-20 rounded' : 'h-9 w-9 rounded-lg'} />
+                        <Skeleton className="h-4 w-4 rounded-full" />
+                      </div>
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
                     </div>
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
                   </div>
                 ))}
               </div>

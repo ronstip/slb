@@ -69,6 +69,7 @@ export function useCollectionPolling() {
         lastRunAt: data.last_run_at,
         nextRunAt: data.next_run_at,
         totalRuns: data.total_runs,
+        runHistory: data.run_history,
       });
 
       // Auto-open Studio Feed when first posts arrive (not waiting for completion)

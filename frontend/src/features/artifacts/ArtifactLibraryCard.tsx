@@ -42,6 +42,7 @@ import {
 import { Input } from '../../components/ui/input.tsx';
 import { UnderlyingDataDialog } from '../studio/UnderlyingDataDialog.tsx';
 import { ARTIFACT_STYLES, convertToStudioArtifact } from './artifact-utils.ts';
+import { ArtifactPreviewIllustration } from './ArtifactPreviewIllustration.tsx';
 
 interface ArtifactLibraryCardProps {
   artifact: ArtifactListItem;
@@ -239,20 +240,32 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
 
   // Grid view
   return (
-    <div className="aspect-square w-full min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all hover:border-primary/20 hover:shadow-md">
-      <div className="flex h-full flex-col overflow-hidden p-4">
-        {/* Top row: icon + type badge + favorite */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', style.bg)}>
-              <Icon className={cn('h-4.5 w-4.5', style.color)} />
+    <div className="w-full min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all hover:border-primary/20 hover:shadow-md">
+      {/* Illustration area */}
+      <div className={cn('flex h-28 items-center justify-center bg-gradient-to-br to-transparent', style.gradientFrom)}>
+        <div className="h-16 w-28">
+          <ArtifactPreviewIllustration
+            artifactType={artifact.type}
+            chartType={artifact.chart_type}
+            fillClass={style.fill}
+          />
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="flex flex-col p-3.5 pt-3">
+        {/* Type badge + favorite */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <div className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded', style.bg)}>
+              <Icon className={cn('h-3 w-3', style.color)} />
             </div>
-            <span className={cn('text-[11px] font-medium', style.color)}>{style.label}</span>
+            <span className={cn('text-[10px] font-medium', style.color)}>{style.label}</span>
           </div>
           <button onClick={handleFavorite}>
             <Star
               className={cn(
-                'h-4 w-4 transition-colors',
+                'h-3.5 w-3.5 transition-colors',
                 artifact.favorited ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30 hover:text-amber-400',
               )}
             />
@@ -260,7 +273,7 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
         </div>
 
         {/* Title */}
-        <div className="mt-3 min-h-[2.5rem] flex-1">
+        <div className="mt-2 min-h-[2.25rem]">
           {isRenaming ? (
             <Input
               value={renameValue}
@@ -274,36 +287,36 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
               autoFocus
             />
           ) : (
-            <p className="line-clamp-2 text-sm font-medium leading-tight">{artifact.title}</p>
+            <p className="line-clamp-2 text-[13px] font-medium leading-tight">{artifact.title}</p>
           )}
         </div>
 
         {/* Meta */}
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-[10px] text-muted-foreground">
           {artifact.collection_ids.length > 0 ? `${artifact.collection_ids.length} source${artifact.collection_ids.length !== 1 ? 's' : ''} · ` : ''}{timeAgo(artifact.created_at)}
         </p>
         {artifact.shared && (
-          <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
             <Share2 className="h-2.5 w-2.5" /> Shared
           </span>
         )}
 
         {/* Actions row */}
-        <div className="mt-auto flex items-center justify-between border-t border-border pt-3">
+        <div className="mt-2.5 flex items-center justify-between border-t border-border pt-2.5">
           <div className="flex items-center gap-1">
             {artifact.type === 'data_export' && (
-              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={handleDownload} disabled={loading}>
+              <Button variant="ghost" size="sm" className="h-6 gap-1 text-[11px] px-1.5" onClick={handleDownload} disabled={loading}>
                 <Download className="h-3 w-3" />
                 CSV
               </Button>
             )}
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleOpenNewTab} title="Open in new tab">
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleOpenNewTab} title="Open in new tab">
               <ExternalLink className="h-3 w-3" />
             </Button>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
+              <Button variant="ghost" size="icon" className="h-6 w-6">
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>

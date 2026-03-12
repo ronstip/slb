@@ -37,6 +37,7 @@ class FirestoreClient:
                 "next_run_at": None,
                 "total_runs": 0,
                 "run_history": [],
+                "consecutive_failures": 0,
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
             }
@@ -126,6 +127,36 @@ class FirestoreClient:
         except Exception as e:
             logger.warning("Failed to query due ongoing collections: %s", e)
             return []
+
+    def claim_for_run(self, collection_id: str) -> bool:
+        """Atomically claim a monitoring collection for execution.
+
+        Uses a Firestore transaction to check status == 'monitoring' and
+        set it to 'collecting'. Returns True if claimed, False if another
+        process already claimed it.
+        """
+        doc_ref = self._db.collection("collection_status").document(collection_id)
+
+        @firestore.transactional
+        def _claim(transaction):
+            snapshot = doc_ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return False
+            data = snapshot.to_dict()
+            if data.get("status") != "monitoring":
+                return False
+            transaction.update(doc_ref, {
+                "status": "collecting",
+                "updated_at": datetime.now(timezone.utc),
+            })
+            return True
+
+        transaction = self._db.transaction()
+        try:
+            return _claim(transaction)
+        except Exception:
+            logger.exception("Failed to claim collection %s for run", collection_id)
+            return False
 
     def get_session(self, session_id: str) -> dict | None:
         doc_ref = self._db.collection("sessions").document(session_id)
@@ -519,7 +550,8 @@ class FirestoreClient:
             for key in ("created_at", "updated_at"):
                 if key in data and hasattr(data[key], "isoformat"):
                     data[key] = data[key].isoformat()
-            data.pop("payload", None)
+            payload = data.pop("payload", None) or {}
+            data["chart_type"] = payload.get("chart_type")
             seen.add(doc.id)
             results.append(data)
 
@@ -538,7 +570,8 @@ class FirestoreClient:
                 for key in ("created_at", "updated_at"):
                     if key in data and hasattr(data[key], "isoformat"):
                         data[key] = data[key].isoformat()
-                data.pop("payload", None)
+                payload = data.pop("payload", None) or {}
+                data["chart_type"] = payload.get("chart_type")
                 results.append(data)
 
         results.sort(key=lambda x: x.get("created_at", ""), reverse=True)

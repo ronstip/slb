@@ -131,6 +131,11 @@ export interface CreateCollectionRequest {
   include_comments: boolean;
   ongoing?: boolean;
   schedule?: string;
+  // Enrichment config (optional, set by design_research)
+  custom_fields?: { name: string; description: string; type: string }[];
+  video_params?: { fps: number; start_offset_sec: number; end_offset_sec: number };
+  reasoning_level?: string;
+  min_likes?: number;
 }
 
 export interface FeedParams {
@@ -149,6 +154,7 @@ export type CollectionStatus =
   | 'enriching'
   | 'completed'
   | 'monitoring'
+  | 'paused'
   | 'failed'
   | 'cancelled';
 
@@ -169,7 +175,14 @@ export interface CollectionConfig {
     end_offset_sec: number;
   };
   reasoning_level?: string;
+  min_likes?: number;
   custom_fields?: { name: string; description: string; type: string }[];
+}
+
+export interface RunHistoryEntry {
+  run_at: string;
+  posts_added: number;
+  status: string;
 }
 
 export interface CollectionStatusResponse {
@@ -187,6 +200,7 @@ export interface CollectionStatusResponse {
   last_run_at?: string;
   next_run_at?: string;
   total_runs?: number;
+  run_history?: RunHistoryEntry[];
 }
 
 export interface MediaRef {

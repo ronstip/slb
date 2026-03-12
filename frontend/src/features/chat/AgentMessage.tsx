@@ -129,35 +129,62 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           </div>
         )}
 
-        {/* Structured cards */}
-        {message.cards.map((card, i) => {
-          switch (card.type) {
-            case 'research_design':
-              return <ResearchDesignCard key={i} data={card.data as unknown as DesignResearchResult} onCollectionStarted={onSuggestionClick} />;
-            case 'data_export':
-              return <DataExportCard key={i} data={card.data} />;
-            case 'chart':
-              return <ChartCard key={i} data={card.data} />;
-            case 'decision':
-              return <DecisionCard key={i} data={card.data} onSelect={onSuggestionClick} />;
-            case 'finding':
-              return <FindingChip key={i} data={card.data} />;
-            case 'plan':
-              return <PlanCard key={i} data={card.data} onSelect={onSuggestionClick} />;
-            case 'insight_report':
-              return <InsightReportCard key={i} data={card.data} />;
-            case 'dashboard':
-              return <DashboardCard key={i} data={card.data} />;
-            case 'collection_progress':
-              return <CollectionProgressCard key={i} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
-            case 'structured_prompt': {
-              if (activePromptMessageId === message.id) return null;
-              return <PromptAnsweredSummary key={i} data={card.data} />;
-            }
-            default:
-              return null;
-          }
-        })}
+        {/* Structured cards — split into artifact cards (2-col grid) and other cards (full-width) */}
+        {(() => {
+          const ARTIFACT_TYPES = new Set(['chart', 'insight_report', 'data_export', 'dashboard']);
+          const artifactCards: typeof message.cards = [];
+          const otherCards: typeof message.cards = [];
+          message.cards.forEach((card) => {
+            if (ARTIFACT_TYPES.has(card.type)) artifactCards.push(card);
+            else otherCards.push(card);
+          });
+
+          return (
+            <>
+              {/* Full-width cards */}
+              {otherCards.map((card, i) => {
+                switch (card.type) {
+                  case 'research_design':
+                    return <ResearchDesignCard key={`other-${i}`} data={card.data as unknown as DesignResearchResult} onCollectionStarted={onSuggestionClick} />;
+                  case 'decision':
+                    return <DecisionCard key={`other-${i}`} data={card.data} onSelect={onSuggestionClick} />;
+                  case 'finding':
+                    return <FindingChip key={`other-${i}`} data={card.data} />;
+                  case 'plan':
+                    return <PlanCard key={`other-${i}`} data={card.data} onSelect={onSuggestionClick} />;
+                  case 'collection_progress':
+                    return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
+                  case 'structured_prompt': {
+                    if (activePromptMessageId === message.id) return null;
+                    return <PromptAnsweredSummary key={`other-${i}`} data={card.data} />;
+                  }
+                  default:
+                    return null;
+                }
+              })}
+
+              {/* Artifact cards — 2-column grid */}
+              {artifactCards.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 gap-2.5">
+                  {artifactCards.map((card, i) => {
+                    switch (card.type) {
+                      case 'chart':
+                        return <ChartCard key={`artifact-${i}`} data={card.data} />;
+                      case 'insight_report':
+                        return <InsightReportCard key={`artifact-${i}`} data={card.data} />;
+                      case 'data_export':
+                        return <DataExportCard key={`artifact-${i}`} data={card.data} />;
+                      case 'dashboard':
+                        return <DashboardCard key={`artifact-${i}`} data={card.data} />;
+                      default:
+                        return null;
+                    }
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* Follow-up suggestions */}
         {!message.isStreaming && message.suggestions.length > 0 && onSuggestionClick && (
