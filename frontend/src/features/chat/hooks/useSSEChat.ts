@@ -7,8 +7,8 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult } from '../../../lib/event-parser.ts';
-import type { DataExportRow, ReportCard } from '../../../api/types.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult } from '../../../lib/event-parser.ts';
+import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
@@ -249,6 +249,13 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
+              } else if (isStructuredPromptResult(toolName, result)) {
+                chatState.addCard(messageId, {
+                  type: 'structured_prompt',
+                  data: result,
+                });
+                chatState.setActivePrompt(messageId);
+                chatState.setActivePromptData(result as unknown as StructuredPromptResult);
               }
               break;
             }

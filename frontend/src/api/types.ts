@@ -385,6 +385,33 @@ export interface NeedsDecisionPayload {
   impact: 'high' | 'low';
 }
 
+// ─── Structured prompt types (ask_user tool) ──────────────────────────
+
+export interface StructuredPromptOption {
+  value: string;
+  label: string;
+  icon?: string;
+  description?: string;
+  recommended?: boolean;
+}
+
+export interface StructuredPrompt {
+  id: string;
+  type: 'icon_grid' | 'pill_row' | 'tag_input' | 'card_select' | 'toggle_row';
+  question: string;
+  options?: StructuredPromptOption[];
+  multi_select?: boolean;
+  preselected?: string[];
+  placeholder?: string;
+  default_value?: boolean | string;
+}
+
+export interface StructuredPromptResult {
+  status: 'needs_input';
+  prompts: StructuredPrompt[];
+  title?: string;
+}
+
 export interface FindingPayload {
   summary: string;
   significance: 'notable' | 'surprising' | 'expected';

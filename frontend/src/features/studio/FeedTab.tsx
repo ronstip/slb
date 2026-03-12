@@ -6,12 +6,11 @@ import { PostCard } from './PostCard.tsx';
 import { FeedControls } from './FeedControls.tsx';
 import type { FeedParams, FeedPost } from '../../api/types.ts';
 
-/** Split posts into two balanced columns by alternating assignment. */
-function splitColumns(posts: FeedPost[]): [FeedPost[], FeedPost[]] {
-  const left: FeedPost[] = [];
-  const right: FeedPost[] = [];
-  posts.forEach((post, i) => (i % 2 === 0 ? left : right).push(post));
-  return [left, right];
+/** Split posts into N balanced columns by alternating assignment. */
+function splitColumns(posts: FeedPost[], numCols: number): FeedPost[][] {
+  const cols: FeedPost[][] = Array.from({ length: numCols }, () => []);
+  posts.forEach((post, i) => cols[i % numCols].push(post));
+  return cols;
 }
 
 export function FeedTab() {
@@ -41,14 +40,15 @@ export function FeedTab() {
   const effectiveIds = collectionFilter.length > 0 ? collectionFilter : activeIds;
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const [useTwoCols, setUseTwoCols] = useState(true);
+  const [colCount, setColCount] = useState(2);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    setUseTwoCols(el.getBoundingClientRect().width >= 380);
+    const calcCols = (w: number) => (w >= 700 ? 3 : w >= 380 ? 2 : 1);
+    setColCount(calcCols(el.getBoundingClientRect().width));
     const observer = new ResizeObserver(([entry]) => {
-      setUseTwoCols(entry.contentRect.width >= 380);
+      setColCount(calcCols(entry.contentRect.width));
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -102,7 +102,9 @@ export function FeedTab() {
     );
   }
 
-  const [colA, colB] = splitColumns(allPosts);
+  const columns = splitColumns(allPosts, colCount);
+  const gridClass = colCount === 3 ? 'grid grid-cols-3' : 'grid grid-cols-2';
+  const spanClass = colCount === 3 ? 'col-span-3' : 'col-span-2';
 
   const collectionTitleMap = Object.fromEntries(
     activeSources.map((s) => [s.collectionId, s.title]),
@@ -125,7 +127,7 @@ export function FeedTab() {
 
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>
         {isLoading ? (
-          <div className={useTwoCols ? 'grid grid-cols-2 gap-4 pt-4' : 'flex flex-col gap-4 pt-4'}>
+          <div className={colCount > 1 ? `${gridClass} gap-4 pt-4` : 'flex flex-col gap-4 pt-4'}>
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-32 animate-pulse rounded-xl bg-secondary" />
             ))}
@@ -138,28 +140,21 @@ export function FeedTab() {
           <p className="py-12 text-center text-sm text-muted-foreground">
             No posts found.
           </p>
-        ) : useTwoCols ? (
-          <div className="grid grid-cols-2 gap-4 pt-4 items-start">
-            <div className="flex flex-col gap-4">
-              {colA.map((post) => (
-                <PostCard
-                  key={post.post_id}
-                  post={post}
-                  collectionTitle={showCollectionLabels ? collectionTitleMap[post.collection_id ?? ''] : undefined}
-                />
-              ))}
-            </div>
-            <div className="flex flex-col gap-4">
-              {colB.map((post) => (
-                <PostCard
-                  key={post.post_id}
-                  post={post}
-                  collectionTitle={showCollectionLabels ? collectionTitleMap[post.collection_id ?? ''] : undefined}
-                />
-              ))}
-            </div>
+        ) : colCount > 1 ? (
+          <div className={`${gridClass} gap-4 pt-4 items-start`}>
+            {columns.map((col, colIdx) => (
+              <div key={colIdx} className="flex flex-col gap-4">
+                {col.map((post) => (
+                  <PostCard
+                    key={post.post_id}
+                    post={post}
+                    collectionTitle={showCollectionLabels ? collectionTitleMap[post.collection_id ?? ''] : undefined}
+                  />
+                ))}
+              </div>
+            ))}
             {isFetching && (
-              <div className="col-span-2 py-4 text-center text-xs text-muted-foreground/70">
+              <div className={`${spanClass} py-4 text-center text-xs text-muted-foreground/70`}>
                 Loading more...
               </div>
             )}

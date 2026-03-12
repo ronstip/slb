@@ -17,8 +17,8 @@ import { PlanCard } from './cards/PlanCard.tsx';
 import { InsightReportCard } from './cards/InsightReportCard.tsx';
 import { DashboardCard } from './cards/DashboardCard.tsx';
 import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
-import { WizardStepCard } from './cards/WizardStepCard.tsx';
-import type { WizardStepCardData } from '../../stores/guided-flow-store.ts';
+import { PromptAnsweredSummary } from './StructuredPromptPanel.tsx';
+import { useChatStore } from '../../stores/chat-store.ts';
 import { FollowUpChips } from './FollowUpChips.tsx';
 import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
 
@@ -32,6 +32,7 @@ interface AgentMessageProps {
 }
 
 export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) {
+  const activePromptMessageId = useChatStore((s) => s.activePromptMessageId);
   const agentLabel = message.activeAgent
     ? AGENT_DISPLAY_NAMES[message.activeAgent] || formatAgentName(message.activeAgent)
     : null;
@@ -149,8 +150,10 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               return <DashboardCard key={i} data={card.data} />;
             case 'collection_progress':
               return <CollectionProgressCard key={i} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
-            case 'wizard_step':
-              return <WizardStepCard key={i} data={card.data as unknown as WizardStepCardData} />;
+            case 'structured_prompt': {
+              if (activePromptMessageId === message.id) return null;
+              return <PromptAnsweredSummary key={i} data={card.data} />;
+            }
             default:
               return null;
           }

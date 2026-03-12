@@ -22,6 +22,7 @@ from api.agent.prompts.meta_agent import (
     META_AGENT_DYNAMIC_PROMPT,
     META_AGENT_STATIC_PROMPT,
 )
+from api.agent.tools.ask_user import ask_user
 from api.agent.tools.cancel_collection import cancel_collection
 from api.agent.tools.create_chart import create_chart
 from api.agent.tools.design_research import design_research
@@ -62,6 +63,7 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
     tools = [
         # Research & context
         get_past_collections,
+        ask_user,
         design_research,
         # Data & analysis
         bq_toolset,
