@@ -4,7 +4,7 @@ import type { DataExportResult, DataExportRow } from '../../../api/types.ts';
 import { downloadCollection } from '../../../api/endpoints/collections.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
-import { PLATFORM_LABELS, SENTIMENT_COLORS } from '../../../lib/constants.ts';
+import { DataTable, previewColumns } from '../../../components/DataTable/index.ts';
 import { formatNumber } from '../../../lib/format.ts';
 
 interface DataExportCardProps {
@@ -12,6 +12,8 @@ interface DataExportCardProps {
 }
 
 const PREVIEW_ROWS = 3;
+
+const columns = previewColumns<DataExportRow>();
 
 export function DataExportCard({ data }: DataExportCardProps) {
   const exportData = data as unknown as DataExportResult & { _artifactId?: string; title?: string; collection_name?: string };
@@ -78,43 +80,14 @@ export function DataExportCard({ data }: DataExportCardProps) {
       {/* Mini table preview */}
       {previewRows.length > 0 && (
         <div className="mx-4 mb-3 overflow-hidden rounded-lg border border-border/50">
-          <table className="w-full text-[11px]">
-            <thead>
-              <tr className="border-b border-border/50 bg-muted/40 text-muted-foreground">
-                <th className="px-2.5 py-1.5 text-left font-medium">Platform</th>
-                <th className="px-2.5 py-1.5 text-left font-medium">Handle</th>
-                <th className="px-2.5 py-1.5 text-left font-medium">Summary</th>
-                <th className="px-2.5 py-1.5 text-right font-medium">Views</th>
-                <th className="px-2.5 py-1.5 text-left font-medium">Sentiment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {previewRows.map((row) => {
-                const sentColor = row.sentiment ? SENTIMENT_COLORS[row.sentiment] : undefined;
-                const summary = row.ai_summary?.slice(0, 60) || [row.title, row.content].filter(Boolean).join(' ').slice(0, 60);
-                return (
-                  <tr key={row.post_id} className="border-b border-border/30 last:border-b-0">
-                    <td className="truncate px-2.5 py-1.5 text-muted-foreground">
-                      {PLATFORM_LABELS[row.platform] || row.platform}
-                    </td>
-                    <td className="truncate px-2.5 py-1.5">@{row.channel_handle}</td>
-                    <td className="max-w-[200px] truncate px-2.5 py-1.5 text-foreground/80">{summary || '—'}</td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums">{formatNumber(row.views ?? 0)}</td>
-                    <td className="px-2.5 py-1.5">
-                      {row.sentiment && (
-                        <span
-                          className="inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize"
-                          style={{ color: sentColor, backgroundColor: sentColor ? `${sentColor}20` : undefined }}
-                        >
-                          {row.sentiment}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <DataTable
+            data={previewRows}
+            columns={columns}
+            getRowKey={(r) => r.post_id}
+            pageSize={0}
+            striped={false}
+            className="text-[11px] [&_th]:bg-muted/40 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-muted-foreground [&_td]:px-2.5 [&_td]:py-1.5 [&_tr]:border-b [&_tr]:border-border/30 [&_tr:last-child]:border-b-0 [&_thead_tr]:border-border/50"
+          />
           {row_count > PREVIEW_ROWS && (
             <div className="border-t border-border/30 bg-muted/20 px-2.5 py-1 text-center text-[10px] text-muted-foreground">
               +{formatNumber(row_count - PREVIEW_ROWS)} more rows
