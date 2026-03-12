@@ -10,6 +10,7 @@ import { Textarea } from '../../components/ui/textarea.tsx';
 import { Label } from '../../components/ui/label.tsx';
 import { Badge } from '../../components/ui/badge.tsx';
 import { Checkbox } from '../../components/ui/checkbox.tsx';
+import { Input } from '../../components/ui/input.tsx';
 import { Switch } from '../../components/ui/switch.tsx';
 import {
   Select,
@@ -43,7 +44,6 @@ const TIME_RANGES = [
   { label: '1 year', value: 365 },
 ];
 
-const POSTS_PER_KEYWORD_OPTIONS = [10, 20, 50, 100];
 
 export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitStart, onSubmitSuccess, onSubmitError, suppressSystemMessage }: CollectionFormProps) {
   const [description, setDescription] = useState(prefill?.keywords?.join(', ') || '');
@@ -297,16 +297,12 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
         </div>
         <div>
           <Label className="mb-1.5">Posts / Keyword</Label>
-          <Select value={String(maxPostsPerKeyword)} onValueChange={(v) => setMaxPostsPerKeyword(Number(v))}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {POSTS_PER_KEYWORD_OPTIONS.map((n) => (
-                <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Input
+            type="number"
+            min={1}
+            value={maxPostsPerKeyword}
+            onChange={(e) => setMaxPostsPerKeyword(Math.max(1, Number(e.target.value) || 1))}
+          />
         </div>
       </div>
 
