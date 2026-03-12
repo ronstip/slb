@@ -55,14 +55,14 @@ export function SessionsPanel() {
     useSessionStore.getState().startNewSession();
     navigate('/');
   };
-  const { user, profile, signOut, devMode, isAnonymous, linkAccount } = useAuth();
+  const { user, profile, signOut, isAnonymous, linkAccount } = useAuth();
   const { theme, setTheme } = useTheme();
 
   const isDark =
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
-  const displayName = isAnonymous ? 'Guest' : (user?.displayName || profile?.display_name || 'Dev Mode');
+  const displayName = isAnonymous ? 'Guest' : (user?.displayName || profile?.display_name || 'Guest');
   const displayEmail = isAnonymous ? '' : (user?.email || profile?.email || '');
   const displayInitial = isAnonymous ? 'G' : (displayName[0] || '?');
 
@@ -147,7 +147,7 @@ export function SessionsPanel() {
         <MessageSquareText className="mr-2 h-3.5 w-3.5" />
         About
       </DropdownMenuItem>
-      {!devMode && !isAnonymous && (
+      {!isAnonymous && (
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={signOut}>

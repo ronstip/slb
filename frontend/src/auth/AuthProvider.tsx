@@ -49,7 +49,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(isFirebaseConfigured);
   const anonSignInAttempted = useRef(false);
 
+  // Promise that resolves once auth state is initialized (anonymous or real user).
+  // getToken() awaits this so requests never fire before auth is ready.
+  const authReadyRef = useRef<{ resolve: () => void; promise: Promise<void> }>(null);
+  if (!authReadyRef.current) {
+    let resolve: () => void;
+    const promise = new Promise<void>((r) => { resolve = r; });
+    authReadyRef.current = { resolve: resolve!, promise };
+  }
+
   const getToken = async (): Promise<string | null> => {
+    if (isFirebaseConfigured) {
+      await authReadyRef.current!.promise;
+    }
     if (!auth?.currentUser) return null;
     return auth.currentUser.getIdToken();
   };
@@ -76,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) {
+        setUser(null);
         // No user — sign in anonymously (once)
         if (!anonSignInAttempted.current) {
           anonSignInAttempted.current = true;
@@ -84,16 +97,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch {
             // Anonymous sign-in failed — show app without auth
             setLoading(false);
+            authReadyRef.current!.resolve();
           }
         } else {
           setLoading(false);
           setProfile(null);
+          authReadyRef.current!.resolve();
         }
         return;
       }
 
       setUser(u);
       setLoading(false);
+      authReadyRef.current!.resolve();
       await fetchProfile();
     });
     return unsub;
@@ -164,15 +180,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     if (auth) {
-      await firebaseSignOut(auth);
+      // Reset BEFORE sign-out so onAuthStateChanged(null) triggers re-anon-sign-in
+      anonSignInAttempted.current = false;
+      // Reset auth-ready gate so getToken() waits for the new anon sign-in
+      let resolve: () => void;
+      const promise = new Promise<void>((r) => { resolve = r; });
+      authReadyRef.current = { resolve: resolve!, promise };
       setProfile(null);
       resetAllStores();
-      // After sign-out, onAuthStateChanged fires with null → auto anon sign-in
-      anonSignInAttempted.current = false;
+      await firebaseSignOut(auth);
     }
   };
 
-  const isAnonymous = user?.isAnonymous ?? false;
+  const isAnonymous = !user || user.isAnonymous;
 
   return (
     <AuthContext.Provider value={{
