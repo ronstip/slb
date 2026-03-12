@@ -10,6 +10,7 @@ import { StudioPanel } from '../features/studio/StudioPanel.tsx';
 import { CollectionModal } from '../features/sources/CollectionModal.tsx';
 import { CollectionsLibrary } from '../features/collections/CollectionsLibrary.tsx';
 import { ArtifactLibrary } from '../features/artifacts/ArtifactLibrary.tsx';
+import { SignUpPrompt } from '../auth/SignUpPrompt.tsx';
 import { useCollectionPolling } from '../features/sources/useCollectionPolling.ts';
 import { useCollectionsSync } from '../features/collections/useCollectionsSync.ts';
 
@@ -215,6 +216,9 @@ export function AppShell() {
 
       {/* Artifact Library Dialog */}
       <ArtifactLibrary />
+
+      {/* Sign Up Prompt (anonymous users) */}
+      <SignUpPrompt />
     </div>
   );
 }

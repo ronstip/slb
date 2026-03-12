@@ -21,6 +21,7 @@ init_firebase()
 
 import requests as http_requests
 
+from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -328,11 +329,56 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
         "org_id": user.org_id,
         "org_role": user.org_role,
         "org_name": org_name,
+        "is_anonymous": user.is_anonymous,
         "preferences": user_doc.get("preferences") if user_doc else None,
         "subscription_plan": user_doc.get("subscription_plan") if user_doc else None,
         "subscription_status": user_doc.get("subscription_status") if user_doc else None,
         "is_super_admin": is_super_admin,
     }
+
+
+class LinkAccountRequest(BaseModel):
+    old_uid: str
+
+
+@app.post("/auth/link-account")
+async def link_account(body: LinkAccountRequest, user: CurrentUser = Depends(get_current_user)):
+    """Migrate anonymous user data to linked account after UID change."""
+    from api.auth.dependencies import _user_cache
+
+    old_uid = body.old_uid
+    new_uid = user.uid
+
+    if old_uid == new_uid:
+        return {"status": "ok", "migrated": False}
+
+    fs = get_fs()
+
+    # 1. Migrate sessions: update user_id in session state
+    sessions_ref = fs._db.collection("sessions")
+    old_sessions = list(sessions_ref.where("user_id", "==", old_uid).stream())
+    for doc in old_sessions:
+        doc.reference.update({"user_id": new_uid})
+        # Also update the nested state.user_id if present
+        data = doc.to_dict()
+        if data.get("state", {}).get("user_id") == old_uid:
+            doc.reference.update({"state.user_id": new_uid, "state.is_anonymous": False})
+
+    # 2. Migrate user doc
+    old_user = fs.get_user(old_uid)
+    if old_user:
+        new_user = fs.get_user(new_uid)
+        if not new_user:
+            old_user["is_anonymous"] = False
+            fs.create_user(new_uid, old_user)
+        fs._db.collection("users").document(old_uid).delete()
+
+    # 3. Clear caches
+    _user_cache.pop(old_uid, None)
+    _user_cache.pop(new_uid, None)
+
+    logger.info("Linked account: %s -> %s (migrated %d sessions)", old_uid, new_uid, len(old_sessions))
+    return {"status": "ok", "migrated": True, "sessions_migrated": len(old_sessions)}
 
 
 @app.post("/chat")
@@ -365,6 +411,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             state={
                 "user_id": user_id,
                 "org_id": user.org_id,
+                "is_anonymous": user.is_anonymous,
                 "session_id": session_id,
                 "selected_sources": chat_request.selected_sources or [],
                 "session_title": "New Session",
@@ -390,6 +437,10 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     if not session.state.get("first_message"):
         session.state["first_message"] = chat_request.message
     session.state["message_count"] = session.state.get("message_count", 0) + 1
+
+    # Rate limit anonymous users
+    if user.is_anonymous and session.state.get("message_count", 0) > 15:
+        raise HTTPException(status_code=429, detail="Sign up for a free account to continue chatting")
 
     # Persist state changes in background — runner reads from the
     # in-memory session object, not Firestore.

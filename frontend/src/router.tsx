@@ -1,8 +1,7 @@
 import { createBrowserRouter, Navigate, useParams } from 'react-router';
 import { AppShell } from './layout/AppShell.tsx';
-import { SignInPage } from './auth/SignInPage.tsx';
+import { AboutPage } from './auth/AboutPage.tsx';
 import { AuthGate } from './auth/AuthGate.tsx';
-import { LoginGate } from './auth/LoginGate.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
 import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
@@ -18,8 +17,8 @@ function InviteRoute() {
 // Static router — never recreated. Auth is handled by the AuthGate layout route.
 export const router = createBrowserRouter([
   {
-    path: '/login',
-    element: <LoginGate><SignInPage /></LoginGate>,
+    path: '/about',
+    element: <AboutPage />,
   },
   {
     path: '/shared/:token',

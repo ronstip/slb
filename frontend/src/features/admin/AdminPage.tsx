@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Navigate, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Button } from '../../components/ui/button.tsx';
 import { Logo } from '../../components/Logo.tsx';
@@ -24,7 +24,9 @@ const SECTION_TITLES: Record<AdminSection, string> = {
 export function AdminPage() {
   const navigate = useNavigate();
   const params = useParams<{ section?: string }>();
-  const { profile } = useAuth();
+  const { profile, isAnonymous } = useAuth();
+
+  if (isAnonymous) return <Navigate to="/" replace />;
 
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 

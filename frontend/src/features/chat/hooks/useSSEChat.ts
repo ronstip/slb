@@ -159,6 +159,13 @@ export function useSSEChat() {
                 break;
               }
 
+              // Anonymous user tried to start a collection — open sign-up prompt
+              if (result?.status === 'auth_required') {
+                chatState.removeToolCall(messageId, toolName);
+                useUIStore.getState().openSignUpPrompt();
+                break;
+              }
+
               chatState.resolveToolCall(messageId, toolName, result);
 
               // Handle special tool results

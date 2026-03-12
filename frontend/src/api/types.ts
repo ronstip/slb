@@ -25,6 +25,7 @@ export interface UserProfile {
   org_id: string | null;
   org_role: string | null;
   org_name: string | null;
+  is_anonymous?: boolean;
   preferences: UserPreferences | null;
   subscription_plan: string | null;
   subscription_status: string | null;

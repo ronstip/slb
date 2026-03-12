@@ -31,6 +31,7 @@ class CurrentUser:
     display_name: str | None
     org_id: str | None
     org_role: str | None
+    is_anonymous: bool = False
 
 
 async def get_current_user(request: Request) -> CurrentUser:
@@ -68,9 +69,11 @@ async def get_current_user(request: Request) -> CurrentUser:
 
     uid = decoded["uid"]
     email = decoded.get("email", "")
+    firebase_info = decoded.get("firebase", {})
+    is_anonymous = firebase_info.get("sign_in_provider") == "anonymous"
 
-    # Email allowlist — if set, reject anyone not on the list
-    if settings.allowed_emails:
+    # Email allowlist — skip for anonymous users; if set, reject anyone not on the list
+    if settings.allowed_emails and not is_anonymous:
         allowed = {e.strip().lower() for e in settings.allowed_emails.split(",") if e.strip()}
         if email.lower() not in allowed:
             logger.warning("Email not in allowlist: %s", email)
@@ -83,7 +86,7 @@ async def get_current_user(request: Request) -> CurrentUser:
         return cached[0]
 
     # Fetch or provision user in Firestore
-    user_doc = await asyncio.to_thread(_get_or_create_user, uid, decoded)
+    user_doc = await asyncio.to_thread(_get_or_create_user, uid, decoded, is_anonymous)
 
     current_user = CurrentUser(
         uid=uid,
@@ -91,6 +94,7 @@ async def get_current_user(request: Request) -> CurrentUser:
         display_name=decoded.get("name"),
         org_id=user_doc.get("org_id"),
         org_role=user_doc.get("org_role"),
+        is_anonymous=is_anonymous,
     )
 
     # Cache the result
@@ -99,7 +103,7 @@ async def get_current_user(request: Request) -> CurrentUser:
     return current_user
 
 
-def _get_or_create_user(uid: str, decoded_token: dict) -> dict:
+def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = False) -> dict:
     """Lazy user provisioning — create Firestore user doc on first login."""
     fs = get_fs()
 
@@ -131,6 +135,7 @@ def _get_or_create_user(uid: str, decoded_token: dict) -> dict:
         "email": email,
         "display_name": decoded_token.get("name"),
         "photo_url": decoded_token.get("picture"),
+        "is_anonymous": is_anonymous,
         "org_id": org_id,
         "org_role": org_role,
         "created_at": now,

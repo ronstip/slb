@@ -1,5 +1,6 @@
-import { useNavigate, useParams } from 'react-router';
+import { Navigate, useNavigate, useParams } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
+import { useAuth } from '../../auth/useAuth.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Logo } from '../../components/Logo.tsx';
 import { getAppPath } from '../../lib/navigation.ts';
@@ -21,8 +22,11 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
 };
 
 export function SettingsPage() {
+  const { isAnonymous } = useAuth();
   const navigate = useNavigate();
   const params = useParams<{ section?: string }>();
+
+  if (isAnonymous) return <Navigate to="/" replace />;
 
   // Default to 'account' if no section specified, or validate the section
   const activeSection: SettingsSection =

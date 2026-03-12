@@ -153,12 +153,15 @@ def collection_state_tracker(
 # ---------------------------------------------------------------------------
 
 
+ANONYMOUS_BLOCKED = {"start_collection"}
+
+
 def gate_expensive_tools(
     tool: BaseTool,
     args: dict[str, Any],
     tool_context: ToolContext,
 ) -> Optional[dict]:
-    """Block collection tools while a pipeline is running.
+    """Block collection tools while a pipeline is running or for anonymous users.
 
     Returns a dict (tool response override) to block, or None to allow.
     """
@@ -168,6 +171,17 @@ def gate_expensive_tools(
             "message": (
                 "A collection is currently running. The UI shows live progress. "
                 "Do NOT call collection tools — confirm to the user and move on."
+            ),
+        }
+
+    if tool.name in ANONYMOUS_BLOCKED and tool_context.state.get("is_anonymous"):
+        return {
+            "status": "auth_required",
+            "message": (
+                "This action requires a free account. "
+                "Tell the user they need to create a free account before starting a collection. "
+                "They can click the 'Sign Up Free' button in the sidebar to create their account. "
+                "Their conversation will be preserved."
             ),
         }
 
