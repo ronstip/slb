@@ -1,10 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Table2,
-  BarChart3,
-  FileText,
-  LayoutDashboard,
   Star,
   Download,
   MoreHorizontal,
@@ -14,11 +10,12 @@ import {
   Share2,
   Lock,
   Trash2,
+  Table2,
 } from 'lucide-react';
-import type { ArtifactListItem, ArtifactDetail } from '../../api/endpoints/artifacts.ts';
+import type { ArtifactListItem } from '../../api/endpoints/artifacts.ts';
 import { getArtifact } from '../../api/endpoints/artifacts.ts';
 import { useUpdateArtifact, useDeleteArtifact } from './hooks/useArtifacts.ts';
-import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
+import { useStudioStore } from '../../stores/studio-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { downloadCsv } from '../../lib/download-csv.ts';
@@ -44,59 +41,8 @@ import {
 } from '../../components/ui/alert-dialog.tsx';
 import { Input } from '../../components/ui/input.tsx';
 import { UnderlyingDataDialog } from '../studio/UnderlyingDataDialog.tsx';
-
-const ARTIFACT_STYLES: Record<string, { icon: typeof Table2; color: string; bg: string; label: string }> = {
-  data_export: { icon: Table2, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Data Export' },
-  insight_report: { icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10', label: 'Report' },
-  chart: { icon: BarChart3, color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'Chart' },
-  dashboard: { icon: LayoutDashboard, color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'Dashboard' },
-};
-
-function convertToStudioArtifact(detail: ArtifactDetail): Artifact {
-  const base = {
-    id: detail.artifact_id,
-    title: detail.title,
-    createdAt: new Date(detail.created_at),
-  };
-  const p = detail.payload;
-
-  switch (detail.type) {
-    case 'insight_report':
-      return {
-        ...base,
-        type: 'insight_report',
-        cards: (p.cards ?? []) as Artifact extends { type: 'insight_report' } ? Artifact['cards'] : never,
-        collectionIds: detail.collection_ids,
-        dateFrom: p.date_from as string | undefined,
-        dateTo: p.date_to as string | undefined,
-      } as Extract<Artifact, { type: 'insight_report' }>;
-    case 'chart':
-      return {
-        ...base,
-        type: 'chart',
-        chartType: p.chart_type as string,
-        data: (p.data ?? []) as unknown[],
-        colorOverrides: p.color_overrides as Record<string, string> | undefined,
-        collectionIds: detail.collection_ids,
-      } as Extract<Artifact, { type: 'chart' }>;
-    case 'data_export':
-      return {
-        ...base,
-        type: 'data_export',
-        rows: (p.rows ?? []) as Extract<Artifact, { type: 'data_export' }>['rows'],
-        rowCount: (p.row_count ?? 0) as number,
-        columnNames: (p.column_names ?? []) as string[],
-        sourceIds: detail.collection_ids,
-      } as Extract<Artifact, { type: 'data_export' }>;
-    case 'dashboard':
-      return {
-        ...base,
-        type: 'dashboard',
-        collectionIds: detail.collection_ids,
-        collectionNames: (p.collection_names ?? {}) as Record<string, string>,
-      } as Extract<Artifact, { type: 'dashboard' }>;
-  }
-}
+import { ARTIFACT_STYLES, convertToStudioArtifact } from './artifact-utils.ts';
+import { ArtifactPreviewIllustration } from './ArtifactPreviewIllustration.tsx';
 
 interface ArtifactLibraryCardProps {
   artifact: ArtifactListItem;
@@ -182,6 +128,11 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
     navigate(`/session/${artifact.session_id}`);
   };
 
+  const handleOpenNewTab = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(`/artifact/${artifact.artifact_id}`, '_blank');
+  };
+
   if (view === 'list') {
     return (
       <>
@@ -221,6 +172,9 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
               <Download className="h-3.5 w-3.5" />
             </Button>
           )}
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleOpenNewTab} title="Open in new tab">
+            <ExternalLink className="h-3 w-3" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
@@ -286,17 +240,32 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
 
   // Grid view
   return (
-    <>
-      <div className="flex aspect-square min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-sm transition-all hover:border-primary/20 hover:shadow-md">
-        {/* Top row: icon + favorite */}
-        <div className="flex items-start justify-between">
-          <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', style.bg)}>
-            <Icon className={cn('h-4.5 w-4.5', style.color)} />
+    <div className="w-full min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all hover:border-primary/20 hover:shadow-md">
+      {/* Illustration area */}
+      <div className={cn('flex h-28 items-center justify-center bg-gradient-to-br to-transparent', style.gradientFrom)}>
+        <div className="h-16 w-28">
+          <ArtifactPreviewIllustration
+            artifactType={artifact.type}
+            chartType={artifact.chart_type}
+            fillClass={style.fill}
+          />
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="flex flex-col p-3.5 pt-3">
+        {/* Type badge + favorite */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <div className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded', style.bg)}>
+              <Icon className={cn('h-3 w-3', style.color)} />
+            </div>
+            <span className={cn('text-[10px] font-medium', style.color)}>{style.label}</span>
           </div>
           <button onClick={handleFavorite}>
             <Star
               className={cn(
-                'h-4 w-4 transition-colors',
+                'h-3.5 w-3.5 transition-colors',
                 artifact.favorited ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30 hover:text-amber-400',
               )}
             />
@@ -304,7 +273,7 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
         </div>
 
         {/* Title */}
-        <div className="mt-3 min-h-[2.5rem] flex-1">
+        <div className="mt-2 min-h-[2.25rem]">
           {isRenaming ? (
             <Input
               value={renameValue}
@@ -318,33 +287,36 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
               autoFocus
             />
           ) : (
-            <p className="line-clamp-2 text-sm font-medium leading-tight">{artifact.title}</p>
+            <p className="line-clamp-2 text-[13px] font-medium leading-tight">{artifact.title}</p>
           )}
         </div>
 
         {/* Meta */}
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {style.label} · {timeAgo(artifact.created_at)}
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          {artifact.collection_ids.length > 0 ? `${artifact.collection_ids.length} source${artifact.collection_ids.length !== 1 ? 's' : ''} · ` : ''}{timeAgo(artifact.created_at)}
         </p>
         {artifact.shared && (
-          <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
             <Share2 className="h-2.5 w-2.5" /> Shared
           </span>
         )}
 
         {/* Actions row */}
-        <div className="mt-auto flex items-center justify-between border-t border-border pt-3">
-          {artifact.type === 'data_export' ? (
-            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={handleDownload} disabled={loading}>
-              <Download className="h-3 w-3" />
-              CSV
+        <div className="mt-2.5 flex items-center justify-between border-t border-border pt-2.5">
+          <div className="flex items-center gap-1">
+            {artifact.type === 'data_export' && (
+              <Button variant="ghost" size="sm" className="h-6 gap-1 text-[11px] px-1.5" onClick={handleDownload} disabled={loading}>
+                <Download className="h-3 w-3" />
+                CSV
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleOpenNewTab} title="Open in new tab">
+              <ExternalLink className="h-3 w-3" />
             </Button>
-          ) : (
-            <div />
-          )}
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
+              <Button variant="ghost" size="icon" className="h-6 w-6">
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
@@ -402,6 +374,6 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
         </AlertDialogContent>
       </AlertDialog>
       <UnderlyingDataDialog artifactId={underlyingDataId} onClose={() => setUnderlyingDataId(null)} />
-    </>
+    </div>
   );
 }

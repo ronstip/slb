@@ -29,6 +29,10 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
 
+  const sources = useSourcesStore((s) => s.sources);
+  const removeFromSession = useSourcesStore((s) => s.removeFromSession);
+  const activeSources = sources.filter((s) => s.active && s.selected);
+
   // Cycle placeholder text in centered/welcome mode
   useEffect(() => {
     if (!centered || text) return;
@@ -37,10 +41,6 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
     }, 4000);
     return () => clearInterval(interval);
   }, [centered, text]);
-
-  const sources = useSourcesStore((s) => s.sources);
-  const removeFromSession = useSourcesStore((s) => s.removeFromSession);
-  const activeSources = sources.filter((s) => s.active && s.selected);
 
   useEffect(() => {
     const el = textareaRef.current;

@@ -59,6 +59,7 @@ class BrightDataAdapter(DataProviderAdapter):
             poll_initial_interval_sec=settings.brightdata_poll_initial_interval_sec,
         )
         self._platform_stats: dict[str, dict] = {}
+        self._collection_errors: list[dict] = []
         self._stats_lock = threading.Lock()
         logger.info("BrightDataAdapter initialized")
 
@@ -76,6 +77,7 @@ class BrightDataAdapter(DataProviderAdapter):
     def collect(self, config: dict) -> Iterator[Batch]:
         """Collect from all assigned platforms in parallel, yielding batches as they arrive."""
         self._platform_stats = {}
+        self._collection_errors = []
         platforms = [p for p in config.get("platforms", []) if p in self.supported_platforms()]
         logger.info("BrightData collect: platforms=%s", platforms)
         if not platforms:
@@ -336,6 +338,12 @@ class BrightDataAdapter(DataProviderAdapter):
             )
 
         if not posts:
+            if results:
+                logger.error(
+                    "BrightData %s: All %d raw results failed parsing (0 valid posts). "
+                    "Sample keys from first item: %s",
+                    platform, len(results), list(results[0].keys())[:15],
+                )
             return []
         return [Batch(posts=posts, channels=list(channels_seen.values()))]
 

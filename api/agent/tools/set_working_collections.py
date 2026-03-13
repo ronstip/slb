@@ -25,7 +25,7 @@ def set_working_collections(
     - **Agent-selected collections** (set by this tool) — you control these.
 
     Typical workflow:
-    1. Call `get_past_collections` to see all available collections.
+    1. Check the Collections Library in your context for available collections.
     2. Identify which collections are relevant to the user's question.
     3. Call `set_working_collections` with those IDs.
     4. Proceed with analysis using the focused context.

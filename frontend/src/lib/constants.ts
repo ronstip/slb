@@ -3,7 +3,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   google_search_agent: 'Searching the web',
   design_research: 'Designing research plan',
   get_progress: 'Checking collection progress',
-  get_past_collections: 'Checking past collections',
+  get_collection_details: 'Loading collection details',
   enrich_collection: 'Running AI enrichment',
   refresh_engagements: 'Refreshing engagement metrics',
   cancel_collection: 'Cancelling collection',
@@ -12,9 +12,9 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   create_chart: 'Creating chart',
   get_table_info: 'Inspecting table schema',
   list_table_ids: 'Discovering tables',
-  display_posts: 'Preparing post display',
   generate_report: 'Generating insight report',
   generate_dashboard: 'Creating interactive dashboard',
+  ask_user: 'Preparing questions',
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {
@@ -62,17 +62,38 @@ export const SCHEDULE_UTC_TIMES = [
   { label: '09:00 PM', value: '21:00' },
 ] as const;
 
-/** Parse a schedule string ("daily", "weekly", or "Nd@HH:MM") → { days, time } */
-export function parseScheduleString(schedule?: string | null): { days: number; time: string } {
-  if (!schedule || schedule === 'daily') return { days: 1, time: '09:00' };
-  if (schedule === 'weekly') return { days: 7, time: '09:00' };
-  const m = schedule.match(/^(\d+)d@(\d{2}:\d{2})$/);
-  if (m) return { days: parseInt(m[1], 10), time: m[2] };
-  return { days: 1, time: '09:00' };
+export type ScheduleUnit = 'minute' | 'hour' | 'day';
+
+export interface ParsedSchedule {
+  unit: ScheduleUnit;
+  interval: number;
+  time: string; // only meaningful for 'day' unit
 }
 
-/** Format a schedule into human-readable text e.g. "Every day at 09:00 UTC" */
+/** Parse a schedule string → { unit, interval, time } */
+export function parseScheduleString(schedule?: string | null): ParsedSchedule {
+  if (!schedule || schedule === 'daily') return { unit: 'day', interval: 1, time: '09:00' };
+  if (schedule === 'weekly') return { unit: 'day', interval: 7, time: '09:00' };
+  const mm = schedule.match(/^(\d+)m$/);
+  if (mm) return { unit: 'minute', interval: parseInt(mm[1], 10), time: '09:00' };
+  const hm = schedule.match(/^(\d+)h$/);
+  if (hm) return { unit: 'hour', interval: parseInt(hm[1], 10), time: '09:00' };
+  const dm = schedule.match(/^(\d+)d@(\d{2}:\d{2})$/);
+  if (dm) return { unit: 'day', interval: parseInt(dm[1], 10), time: dm[2] };
+  return { unit: 'day', interval: 1, time: '09:00' };
+}
+
+/** Build a schedule string from parts */
+export function buildScheduleString(unit: ScheduleUnit, interval: number, time: string): string {
+  if (unit === 'minute') return `${interval}m`;
+  if (unit === 'hour') return `${interval}h`;
+  return `${interval}d@${time}`;
+}
+
+/** Format a schedule into human-readable text */
 export function formatSchedule(schedule?: string | null): string {
-  const { days, time } = parseScheduleString(schedule);
-  return `Every ${days === 1 ? 'day' : `${days} days`} at ${time} UTC`;
+  const { unit, interval, time } = parseScheduleString(schedule);
+  if (unit === 'minute') return `Every ${interval === 1 ? 'minute' : `${interval} minutes`}`;
+  if (unit === 'hour') return `Every ${interval === 1 ? 'hour' : `${interval} hours`}`;
+  return `Every ${interval === 1 ? 'day' : `${interval} days`} at ${time} UTC`;
 }

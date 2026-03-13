@@ -12,6 +12,7 @@ export interface ArtifactListItem {
   shared: boolean;
   created_at: string;
   updated_at: string;
+  chart_type?: string | null;
 }
 
 export interface ArtifactDetail extends ArtifactListItem {

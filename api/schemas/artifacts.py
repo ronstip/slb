@@ -17,6 +17,7 @@ class ArtifactListItem(BaseModel):
     shared: bool = False
     created_at: str
     updated_at: str
+    chart_type: str | None = None
 
 
 class ArtifactDetailResponse(ArtifactListItem):

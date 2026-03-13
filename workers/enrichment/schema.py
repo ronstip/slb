@@ -27,6 +27,8 @@ class PostData(BaseModel):
     posted_at: str | None = None
     title: str | None = None
     content: str | None = None
+    post_url: str | None = None
+    search_keyword: str | None = None
     media_refs: list[MediaRef] = []
 
 
@@ -49,4 +51,7 @@ class EnrichmentResult(BaseModel):
     language: str
     content_type: str
     key_quotes: list[str]
+    is_related_to_keyword: bool = True
+    detected_brands: list[str] = []
+    channel_type: Literal["official", "media", "ugc"] = "ugc"
     custom_fields: dict | None = None

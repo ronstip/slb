@@ -18,6 +18,8 @@ def design_research(
     reasoning_level: str = "standard",
     min_likes: int = 0,
     custom_fields: str = "",
+    ongoing: bool = False,
+    schedule: str = "",
 ) -> dict:
     """Convert a user's research question into a data collection configuration.
 
@@ -46,6 +48,12 @@ def design_research(
             "name:type:description". Supported types: str, bool, int, float, list[str].
             Example: "purchase_intent:str:Whether intent to buy|is_sponsored:bool:Appears sponsored".
             These are extracted by Gemini alongside the standard enrichment fields.
+        ongoing: Whether this should be a continuously monitored collection
+            that automatically re-runs on a schedule. Default False. Set to True
+            when the user wants to "monitor", "track over time", or "keep watching".
+        schedule: Collection schedule when ongoing=True. Format: "Nd@HH:MM"
+            (e.g. "1d@09:00" for daily at 9am UTC, "7d@04:00" for weekly at
+            4am UTC). Ignored when ongoing=False.
 
     Returns:
         A dictionary with the collection config and estimated scope.
@@ -93,6 +101,8 @@ def design_research(
         },
         "reasoning_level": reasoning_level,
         "min_likes": min_likes,
+        "ongoing": ongoing,
+        "schedule": schedule if ongoing else None,
     }
     if custom_fields_list:
         config["custom_fields"] = custom_fields_list
@@ -100,6 +110,20 @@ def design_research(
     num_keywords = max(len(keyword_list), 1)
     estimated_posts = len(platform_list) * num_keywords * max_posts_per_keyword
     estimated_time_minutes = max(1, estimated_posts // 100)
+
+    monitoring_note = ""
+    if ongoing and schedule:
+        from api.services.collection_service import _parse_schedule
+        unit, interval, hour, minute = _parse_schedule(schedule)
+        if unit == "m":
+            monitoring_note = f" Ongoing monitoring: every {interval} minute{'s' if interval > 1 else ''}."
+        elif unit == "h":
+            monitoring_note = f" Ongoing monitoring: every {interval} hour{'s' if interval > 1 else ''}."
+        else:
+            monitoring_note = (
+                f" Ongoing monitoring: every {interval} day{'s' if interval > 1 else ''}"
+                f" at {hour:02d}:{minute:02d} UTC."
+            )
 
     return {
         "status": "success",
@@ -112,12 +136,14 @@ def design_research(
             "estimated_posts": estimated_posts,
             "estimated_time_minutes": estimated_time_minutes,
             "include_comments": include_comments,
+            "ongoing": ongoing,
+            "schedule": schedule if ongoing else None,
         },
         "message": (
             f"Research plan ready: collecting from {', '.join(platform_list)} "
             f"for keywords [{', '.join(keyword_list)}] "
             f"over the past {time_range_days} days "
-            f"(~{estimated_posts} posts, ~{estimated_time_minutes} min). "
+            f"(~{estimated_posts} posts, ~{estimated_time_minutes} min).{monitoring_note} "
             "Please confirm to start collection."
         ),
     }

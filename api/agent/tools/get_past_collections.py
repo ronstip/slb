@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 def fetch_user_collections(user_id: str, org_id: str = "", limit: int = 10) -> list[dict]:
     """Fetch recent collections for a user from Firestore.
 
-    Internal helper reused by get_past_collections tool and user context loading.
+    Internal helper reused by get_collection_details tool and user context loading.
     Returns a list of collection dicts sorted by created_at descending.
     """
     fs = get_fs()
@@ -65,44 +65,60 @@ def fetch_user_collections(user_id: str, org_id: str = "", limit: int = 10) -> l
     return collections[:limit]
 
 
-def get_past_collections(user_id: str, org_id: str = "", limit: int = 10) -> dict:
-    """Retrieve recent past collections for the current user.
+def get_collection_details(collection_id: str) -> dict:
+    """Get full details for a specific collection by ID.
 
-    Returns the user's own collections plus any org-shared collections
-    (visibility='org') within the same organization.
+    Use this when you need the complete configuration or run log for a
+    collection you already know about from the Collections Library in your
+    context. Typical reasons to call this:
+    - Reusing a past config ("do the same thing for Red Bull")
+    - Inspecting custom enrichment fields or exact keyword lists
+    - Checking detailed run log / platform-level stats
 
-    Use this to check if a similar collection already exists before designing
-    a new one, or to reference a prior research design when the user says
-    something like "do the same thing for Red Bull" or "reuse the last setup."
+    Do NOT use this to discover what collections exist — the Collections
+    Library injected into your context already lists all available collections
+    with their IDs, labels, status, platforms, keywords, and post counts.
 
     Args:
-        user_id: The authenticated user's ID (from session context).
-        org_id: The user's organization ID. Empty string if none.
-        limit: Maximum number of recent collections to return. Default 10.
+        collection_id: The ID of the collection to look up.
 
     Returns:
-        A dictionary with recent collections including their configs,
-        original questions, and status.
+        A dictionary with full collection details including config,
+        status, counts, run_log, and scheduling info.
     """
     try:
-        collections = fetch_user_collections(user_id, org_id, limit)
-
-        if not collections:
+        fs = get_fs()
+        status_doc = fs.get_collection_status(collection_id)
+        if not status_doc:
             return {
-                "status": "success",
-                "collections": [],
-                "message": "No past collections found.",
+                "status": "error",
+                "message": f"Collection {collection_id} not found.",
             }
+
+        config = status_doc.get("config") or {}
+        created_at = status_doc.get("created_at")
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
 
         return {
             "status": "success",
-            "collections": collections,
-            "message": f"Found {len(collections)} collection(s).",
+            "collection_id": collection_id,
+            "collection_status": status_doc.get("status", "unknown"),
+            "original_question": status_doc.get("original_question") or config.get("original_question", ""),
+            "config": config,
+            "posts_collected": status_doc.get("posts_collected", 0),
+            "posts_enriched": status_doc.get("posts_enriched", 0),
+            "posts_embedded": status_doc.get("posts_embedded", 0),
+            "error_message": status_doc.get("error_message"),
+            "created_at": created_at,
+            "ongoing": status_doc.get("ongoing", False),
+            "visibility": status_doc.get("visibility", "private"),
+            "run_log": status_doc.get("run_log"),
         }
 
     except Exception as e:
-        logger.exception("Failed to fetch past collections")
+        logger.exception("Failed to fetch collection details")
         return {
             "status": "error",
-            "message": f"Failed to retrieve past collections: {e}",
+            "message": f"Failed to retrieve collection details: {e}",
         }

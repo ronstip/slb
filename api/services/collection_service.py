@@ -12,30 +12,70 @@ from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-def _parse_schedule(schedule: str | None) -> tuple[int, int, int]:
-    """Return (interval_days, hour_utc, minute_utc) for a schedule string.
+def _parse_schedule(schedule: str | None) -> tuple[str, int, int | None, int | None]:
+    """Return (unit, interval, hour_utc, minute_utc) for a schedule string.
 
     Supported formats:
-      "daily"         → every 1 day  at 09:00 UTC  (legacy)
-      "weekly"        → every 7 days at 09:00 UTC  (legacy)
-      "Nd@HH:MM"      → every N days at HH:MM UTC  (e.g. "1d@04:00", "7d@09:30")
+      "daily"         → ("d", 1, 9, 0)        (legacy)
+      "weekly"        → ("d", 7, 9, 0)        (legacy)
+      "Nm"            → ("m", N, None, None)   (e.g. "30m" = every 30 minutes)
+      "Nh"            → ("h", N, None, None)   (e.g. "2h"  = every 2 hours)
+      "Nd@HH:MM"      → ("d", N, HH, MM)      (e.g. "1d@09:00" = daily at 09:00)
     """
-    if not schedule or schedule == "daily":
-        return (1, 9, 0)
-    if schedule == "weekly":
-        return (7, 9, 0)
     import re
+    if not schedule or schedule == "daily":
+        return ("d", 1, 9, 0)
+    if schedule == "weekly":
+        return ("d", 7, 9, 0)
+    # Minutes: "30m"
+    m = re.match(r"^(\d+)m$", schedule)
+    if m:
+        return ("m", int(m.group(1)), None, None)
+    # Hours: "2h"
+    m = re.match(r"^(\d+)h$", schedule)
+    if m:
+        return ("h", int(m.group(1)), None, None)
+    # Days: "1d@09:00"
     m = re.match(r"^(\d+)d@(\d{2}):(\d{2})$", schedule)
     if m:
-        return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    return (1, 9, 0)
+        return ("d", int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return ("d", 1, 9, 0)
+
+
+def is_valid_schedule(schedule: str | None) -> bool:
+    """Return True if the schedule string is a recognized format."""
+    if not schedule:
+        return False
+    if schedule in ("daily", "weekly"):
+        return True
+    import re
+    return bool(
+        re.match(r"^(\d+)m$", schedule)
+        or re.match(r"^(\d+)h$", schedule)
+        or re.match(r"^(\d+)d@(\d{2}):(\d{2})$", schedule)
+    )
 
 
 def _compute_next_run_at(schedule: str | None, from_time: datetime) -> datetime:
-    """Return the next run datetime for the given schedule, starting from from_time."""
-    interval_days, hour, minute = _parse_schedule(schedule)
-    base = from_time + timedelta(days=interval_days)
-    return base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    """Return the next future run datetime for the given schedule."""
+    unit, interval, hour, minute = _parse_schedule(schedule)
+
+    if unit == "m":
+        candidate = from_time + timedelta(minutes=interval)
+        return candidate.replace(second=0, microsecond=0)
+
+    if unit == "h":
+        candidate = from_time + timedelta(hours=interval)
+        return candidate.replace(second=0, microsecond=0)
+
+    # Days: pin to specific time of day
+    assert hour is not None and minute is not None
+    candidate = from_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    candidate += timedelta(days=interval)
+    # Safety: ensure candidate is in the future
+    while candidate <= from_time:
+        candidate += timedelta(days=1)
+    return candidate
 
 
 def create_collection_from_request(
@@ -77,6 +117,17 @@ def create_collection_from_request(
         config["vendor_config"] = request.vendor_config.model_dump(exclude_none=True)
     if extra_config:
         config.update(extra_config)
+
+    # Pull enrichment config from request (frontend direct-start path).
+    # setdefault so extra_config (agent path) takes precedence.
+    if request.custom_fields:
+        config.setdefault("custom_fields", request.custom_fields)
+    if request.video_params:
+        config.setdefault("video_params", request.video_params)
+    if request.reasoning_level:
+        config.setdefault("reasoning_level", request.reasoning_level)
+    if request.min_likes is not None:
+        config.setdefault("min_likes", request.min_likes)
 
     # Insert collection record into BigQuery
     bq.insert_rows(
@@ -149,6 +200,8 @@ def _post_to_enrichment_data(post):
         posted_at=post.posted_at.isoformat() if post.posted_at else None,
         title=post.title,
         content=post.content,
+        post_url=post.post_url,
+        search_keyword=post.search_keyword,
         media_refs=media_refs,
     )
 
@@ -207,11 +260,11 @@ def _run_pipeline(collection_id: str) -> None:
         return
     logger.info("── Step 1 done in %.1fs", _time.monotonic() - t0)
 
-    # Check if collection was cancelled
+    # Check if collection was cancelled or failed
     status = fs.get_collection_status(collection_id)
     if not status or status.get("status") not in ("enriching", "collecting"):
         logger.info(
-            "Pipeline stopping for %s — status is '%s'",
+            "Pipeline stopping for %s — status is '%s' (not enriching/collecting)",
             collection_id, (status or {}).get("status"),
         )
         enrichment_executor.shutdown(wait=False)
@@ -310,16 +363,78 @@ def _run_pipeline(collection_id: str) -> None:
     status = fs.get_collection_status(collection_id)
     current_status = (status or {}).get("status")
     config = (status or {}).get("config") or {}
+
+    # Don't reschedule if user cancelled or collection failed fatally
+    if current_status in ("cancelled", "failed"):
+        logger.info(
+            "Collection %s has status '%s' — skipping reschedule",
+            collection_id,
+            current_status,
+        )
+        return
+
+    # Check if user toggled ongoing off mid-run
+    ongoing_flag = (status or {}).get("ongoing", False)
+    if not ongoing_flag and not config.get("ongoing"):
+        if current_status != "completed_with_errors":
+            fs.update_collection_status(collection_id, status="completed")
+        return
+
     if config.get("ongoing"):
         schedule = config.get("schedule", "daily")
         now = datetime.now(timezone.utc)
-        next_run_at = _compute_next_run_at(schedule, now)
 
+        # Use the previous next_run_at as the base to maintain cadence
+        # (avoids drift from pipeline duration)
+        prev_next_run = (status or {}).get("next_run_at")
+        if prev_next_run:
+            if isinstance(prev_next_run, str):
+                prev_next_run = datetime.fromisoformat(prev_next_run)
+            base_time = prev_next_run
+        else:
+            base_time = now
+        next_run_at = _compute_next_run_at(schedule, base_time)
+        # Safety: if computed time is already in the past, fall back to now
+        if next_run_at <= now:
+            next_run_at = _compute_next_run_at(schedule, now)
+        logger.info(
+            "Schedule computation for %s: schedule=%r, base_time=%s, next_run_at=%s",
+            collection_id, schedule, base_time.isoformat(), next_run_at.isoformat(),
+        )
+
+        run_status = "completed" if not enrichment_failed else "completed_with_errors"
         run_entry = {
             "run_at": now.isoformat(),
-            "posts_added": (status or {}).get("posts_collected", 0),
-            "status": "completed" if not enrichment_failed else "completed_with_errors",
+            "posts_added": (status or {}).get("last_run_posts_added", 0),
+            "status": run_status,
         }
+
+        # Track consecutive failures for auto-pause
+        consecutive_failures = (status or {}).get("consecutive_failures", 0)
+        if enrichment_failed or current_status == "completed_with_errors":
+            consecutive_failures += 1
+        else:
+            consecutive_failures = 0
+
+        MAX_CONSECUTIVE_FAILURES = 3
+        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            fs.update_collection_status(
+                collection_id,
+                status="paused",
+                error_message=f"Auto-paused after {consecutive_failures} consecutive failures. "
+                              "Review errors and resume monitoring manually.",
+                consecutive_failures=consecutive_failures,
+                total_runs=transforms.Increment(1),
+                run_history=transforms.ArrayUnion([run_entry]),
+                last_run_at=now,
+            )
+            logger.warning(
+                "Ongoing collection %s paused after %d consecutive failures",
+                collection_id,
+                consecutive_failures,
+            )
+            return
+
         fs.update_collection_status(
             collection_id,
             status="monitoring",
@@ -327,11 +442,13 @@ def _run_pipeline(collection_id: str) -> None:
             next_run_at=next_run_at,
             total_runs=transforms.Increment(1),
             run_history=transforms.ArrayUnion([run_entry]),
+            consecutive_failures=consecutive_failures,
         )
         logger.info(
-            "Ongoing collection %s set to monitoring; next run at %s",
+            "Ongoing collection %s set to monitoring; next run at %s (run: %s)",
             collection_id,
             next_run_at.isoformat(),
+            run_status,
         )
     elif current_status != "completed_with_errors":
         # Don't overwrite completed_with_errors from enrichment step
@@ -360,8 +477,11 @@ def trigger_collection_now(collection_id: str) -> None:
             f"Collection {collection_id} is not in monitoring state (current: {status.get('status')})"
         )
 
-    # Claim the collection before dispatching to prevent scheduler double-trigger
-    fs.update_collection_status(collection_id, status="collecting")
+    # Atomically claim to prevent scheduler double-trigger
+    if not fs.claim_for_run(collection_id):
+        raise ValueError(
+            f"Collection {collection_id} is already being processed by another trigger"
+        )
 
     if settings.is_dev:
         thread = threading.Thread(target=_run_pipeline, args=(collection_id,), daemon=True)
@@ -414,6 +534,7 @@ def update_collection_mode(
         fs.update_collection_status(
             collection_id,
             ongoing=True,
+            config=config,
             status="monitoring",
             next_run_at=next_run_at,
         )
@@ -427,6 +548,7 @@ def update_collection_mode(
         fs.update_collection_status(
             collection_id,
             ongoing=False,
+            config=config,
             status="completed",
             next_run_at=None,
         )

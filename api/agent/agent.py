@@ -22,16 +22,16 @@ from api.agent.prompts.meta_agent import (
     META_AGENT_DYNAMIC_PROMPT,
     META_AGENT_STATIC_PROMPT,
 )
+from api.agent.tools.ask_user import ask_user
 from api.agent.tools.cancel_collection import cancel_collection
 from api.agent.tools.create_chart import create_chart
 from api.agent.tools.design_research import design_research
-from api.agent.tools.display_posts import display_posts
 from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
 from api.agent.tools.generate_report import generate_report
 from api.agent.tools.get_collection_stats import get_collection_stats
-from api.agent.tools.get_past_collections import get_past_collections
+from api.agent.tools.get_past_collections import get_collection_details
 from api.agent.tools.get_progress import get_progress
 from api.agent.tools.refresh_engagements import refresh_engagements
 from api.agent.tools.set_working_collections import set_working_collections
@@ -62,7 +62,8 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
     # ─── Tool list ───────────────────────────────────────────────────
     tools = [
         # Research & context
-        get_past_collections,
+        get_collection_details,
+        ask_user,
         design_research,
         # Data & analysis
         bq_toolset,
@@ -73,7 +74,6 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         refresh_engagements,
         # Output & visualization
         create_chart,
-        display_posts,
         export_data,
         get_collection_stats,
         generate_report,

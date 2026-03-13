@@ -30,7 +30,7 @@ import {
   updateCollectionMode,
 } from '../../api/endpoints/collections.ts';
 import { mapCollectionToSource } from '../collections/utils.ts';
-import { PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString } from '../../lib/constants.ts';
+import { PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, buildScheduleString, type ScheduleUnit } from '../../lib/constants.ts';
 import { formatNumber } from '../../lib/format.ts';
 import { cn } from '../../lib/utils.ts';
 import { Button } from '../../components/ui/button.tsx';
@@ -242,7 +242,8 @@ export function CollectionSelector() {
   const [deleting, setDeleting] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [togglingMode, setTogglingMode] = useState(false);
-  const [scheduleDays, setScheduleDays] = useState(1);
+  const [scheduleUnit, setScheduleUnit] = useState<ScheduleUnit>('day');
+  const [scheduleInterval, setScheduleInterval] = useState(1);
   const [scheduleTime, setScheduleTime] = useState('06:00');
 
   // Fetch collections when dropdown opens (same query key as CollectionsLibrary — cached/deduped)
@@ -400,7 +401,8 @@ export function CollectionSelector() {
       case 'edit-schedule':
       case 'set-schedule': {
         const existing = parseScheduleString(source.config.schedule);
-        setScheduleDays(existing.days);
+        setScheduleUnit(existing.unit);
+        setScheduleInterval(existing.interval);
         setScheduleTime(existing.time);
         setModalSource(source);
         setScheduleDialogOpen(true);
@@ -579,32 +581,44 @@ export function CollectionSelector() {
                   <input
                     type="number"
                     min={1}
-                    max={90}
-                    value={scheduleDays}
-                    onChange={(e) => setScheduleDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+                    max={scheduleUnit === 'minute' ? 1440 : scheduleUnit === 'hour' ? 168 : 90}
+                    value={scheduleInterval}
+                    onChange={(e) => setScheduleInterval(Math.max(1, Number(e.target.value) || 1))}
                     className="w-14 rounded border border-input bg-background px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                   />
-                  <span className="text-muted-foreground">
-                    {scheduleDays === 1 ? 'day' : 'days'} at
-                  </span>
-                  <Select value={scheduleTime} onValueChange={setScheduleTime}>
-                    <SelectTrigger className="w-28">
+                  <Select value={scheduleUnit} onValueChange={(v) => setScheduleUnit(v as ScheduleUnit)}>
+                    <SelectTrigger className="w-24">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
-                      ))}
+                      <SelectItem value="minute">{scheduleInterval === 1 ? 'minute' : 'minutes'}</SelectItem>
+                      <SelectItem value="hour">{scheduleInterval === 1 ? 'hour' : 'hours'}</SelectItem>
+                      <SelectItem value="day">{scheduleInterval === 1 ? 'day' : 'days'}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <span className="text-xs text-muted-foreground">UTC</span>
+                  {scheduleUnit === 'day' && (
+                    <>
+                      <span className="text-muted-foreground">at</span>
+                      <Select value={scheduleTime} onValueChange={setScheduleTime}>
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
+                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="text-xs text-muted-foreground">UTC</span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => { setScheduleDialogOpen(false); setModalSource(null); }}>Cancel</Button>
                 <Button
                   onClick={() => {
-                    handleStartMonitoring(`${scheduleDays}d@${scheduleTime}`);
+                    handleStartMonitoring(buildScheduleString(scheduleUnit, scheduleInterval, scheduleTime));
                     setScheduleDialogOpen(false);
                     setModalSource(null);
                   }}

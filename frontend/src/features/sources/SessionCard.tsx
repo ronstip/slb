@@ -41,6 +41,7 @@ export function SessionCard({ session }: SessionCardProps) {
       await removeSession(session.session_id);
       setDeleteDialogOpen(false);
       if (wasActive) {
+        useSessionStore.getState().startNewSession();
         navigate('/');
       }
     } catch {

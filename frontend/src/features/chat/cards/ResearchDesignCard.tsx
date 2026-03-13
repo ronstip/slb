@@ -45,6 +45,10 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
         include_comments: cfg.include_comments,
         ongoing: cfg.ongoing,
         schedule: cfg.schedule,
+        custom_fields: cfg.custom_fields,
+        video_params: cfg.video_params,
+        reasoning_level: cfg.reasoning_level,
+        min_likes: cfg.min_likes,
       };
       const result = await createCollection(req);
       setCollectionId(result.collection_id);
@@ -185,6 +189,19 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
               <p className="text-[12px] font-medium text-foreground">~{data.summary.estimated_time_minutes} min</p>
             </div>
           </div>
+
+          {data.config.custom_fields && data.config.custom_fields.length > 0 && (
+            <div>
+              <span className="text-[11px] text-muted-foreground/60">Custom enrichment</span>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {data.config.custom_fields.map((f) => (
+                  <Badge key={f.name} variant="outline" className="text-[11px] font-normal text-muted-foreground" title={f.description}>
+                    {f.name}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

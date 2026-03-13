@@ -26,6 +26,11 @@ class CreateCollectionRequest(BaseModel):
     ongoing: bool = False
     schedule: str | None = None  # "daily" | "weekly"
     vendor_config: VendorConfig | None = None
+    # Enrichment config (optional, set by design_research)
+    custom_fields: list[dict] | None = None
+    video_params: dict | None = None
+    reasoning_level: str | None = None
+    min_likes: int | None = None
 
 
 class UpdateCollectionModeRequest(BaseModel):

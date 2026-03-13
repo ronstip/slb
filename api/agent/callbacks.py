@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 # ─── Tool priority groups for phase-based reordering ─────────────────
 # Tools listed first in the schema are naturally favoured by the model.
 
-CORE_TOOLS = {"execute_sql", "create_chart", "display_posts"}
-RESEARCH_SUPPORT_TOOLS = {"get_past_collections", "google_search"}
+CORE_TOOLS = {"execute_sql", "create_chart"}
+RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search"}
 RESEARCH_DESIGN_TOOLS = {"design_research"}
 COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
 OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
@@ -46,11 +46,11 @@ COLLECTION_RUNNING_BLOCKED = {
 
 TOOLS_WITH_COLLECTION_ID = {
     "enrich_collection", "get_progress", "cancel_collection",
-    "refresh_engagements", "export_data", "display_posts",
+    "refresh_engagements", "export_data", "get_collection_details",
 }
 TOOLS_WITH_COLLECTION_IDS = {
     "get_collection_stats", "generate_report", "generate_dashboard",
-    "set_working_collections", "export_data", "display_posts",
+    "set_working_collections", "export_data",
 }
 
 
@@ -75,14 +75,12 @@ def _summarize_tool_result(tool_name: str, tool_response: dict) -> str | None:
     elif tool_name == "create_chart":
         ct = tool_response.get("chart_type", "?")
         return f"create_chart: rendered {ct}"
-    elif tool_name == "display_posts":
-        count = tool_response.get("count", 0)
-        return f"display_posts: showed {count} posts"
     elif tool_name == "design_research":
         return f"design_research: config ready for user approval"
-    elif tool_name == "get_past_collections":
-        colls = tool_response.get("collections", [])
-        return f"get_past_collections: found {len(colls)} collections"
+    elif tool_name == "get_collection_details":
+        cid = tool_response.get("collection_id", "?")
+        cstatus = tool_response.get("collection_status", "?")
+        return f"get_collection_details: {cid} ({cstatus})"
     elif tool_name in ("generate_report", "generate_dashboard", "export_data"):
         return f"{tool_name}: completed"
     return None
@@ -147,6 +145,12 @@ def collection_state_tracker(
                 tool_response.get("active_collections") or []
             )
 
+    elif tool_name == "ask_user":
+        # Signal the before_model_callback to stop the ReAct loop.
+        # The user must respond before the agent continues.
+        if isinstance(tool_response, dict) and tool_response.get("status") == "needs_input":
+            tool_context.state["awaiting_user_input"] = True
+
     return None
 
 
@@ -155,12 +159,15 @@ def collection_state_tracker(
 # ---------------------------------------------------------------------------
 
 
+ANONYMOUS_BLOCKED = {"start_collection"}
+
+
 def gate_expensive_tools(
     tool: BaseTool,
     args: dict[str, Any],
     tool_context: ToolContext,
 ) -> Optional[dict]:
-    """Block collection tools while a pipeline is running.
+    """Block collection tools while a pipeline is running or for anonymous users.
 
     Returns a dict (tool response override) to block, or None to allow.
     """
@@ -170,6 +177,17 @@ def gate_expensive_tools(
             "message": (
                 "A collection is currently running. The UI shows live progress. "
                 "Do NOT call collection tools — confirm to the user and move on."
+            ),
+        }
+
+    if tool.name in ANONYMOUS_BLOCKED and tool_context.state.get("is_anonymous"):
+        return {
+            "status": "auth_required",
+            "message": (
+                "This action requires a free account. "
+                "Tell the user they need to create a free account before starting a collection. "
+                "They can click the 'Sign Up Free' button in the sidebar to create their account. "
+                "Their conversation will be preserved."
             ),
         }
 
@@ -318,19 +336,42 @@ def _build_context_block(state: dict) -> Optional[str]:
 
     # ── User context ──────────────────────────────────────────────
     display_name = state.get("user_display_name", "")
-    recent_topics = state.get("user_recent_topics", [])
     preferences = state.get("user_preferences", {})
 
-    if display_name or recent_topics:
+    if display_name:
         lines = ["## User Context"]
-        if display_name:
-            lines.append(f"- Name: **{display_name}**")
-        if recent_topics:
-            lines.append(f"- Recent research topics: {', '.join(recent_topics)}")
+        lines.append(f"- Name: **{display_name}**")
         if preferences:
             lines.append(f"- Preferences: {preferences}")
+        blocks.append("\n".join(lines))
+
+    # ── Collections Library ──────────────────────────────────────
+    collections_index: list[dict] = state.get("user_collections_index", [])
+    if collections_index:
+        lines = ["## Collections Library"]
+        lines.append(
+            "Your available collections (use `get_collection_details(collection_id)` for full config):"
+        )
         lines.append("")
-        lines.append("Use this to personalize responses. Reference past research when relevant.")
+        for c in collections_index:
+            platforms_str = ", ".join(c.get("platforms", []))
+            own_marker = "" if c.get("own", True) else " [shared]"
+            lines.append(
+                f"- `{c['id']}` | {c.get('label', 'untitled')} "
+                f"| {c.get('status', '?')} | {platforms_str} "
+                f"| {c.get('posts', 0)} posts | {c.get('created', '?')}{own_marker}"
+            )
+            kw = c.get("keywords", [])
+            if kw:
+                lines.append(f"  Keywords: {', '.join(kw)}")
+            channels = c.get("channels", [])
+            if channels:
+                lines.append(f"  Channels: {', '.join(channels)}")
+        lines.append("")
+        lines.append(
+            "Reference these when the user mentions past research. "
+            "Do NOT call a tool to discover collections — this list is current."
+        )
         blocks.append("\n".join(lines))
 
     # ── Tool result history ───────────────────────────────────────
@@ -387,6 +428,31 @@ def _reorder_tools(tools: list, priority_order: list[set[str]]) -> list:
     return sorted(tools, key=lambda t: _tool_sort_key(t, priority_order))
 
 
+def _is_react_continuation(llm_request: LlmRequest) -> bool:
+    """True when the model is re-invoked after tool execution in the same turn.
+
+    Detects the pattern: model(text/function_call) → function_response → [now].
+    When this fires, the model has already generated text visible to the user
+    and should avoid restating it.
+    """
+    contents = llm_request.contents
+    if not contents:
+        return False
+    last = contents[-1]
+    if not last.parts:
+        return False
+    return any(getattr(p, "function_response", None) for p in last.parts)
+
+
+_ANTI_REPEAT_INSTRUCTION = (
+    "\n\n## Continuation Reminder\n"
+    "You have already generated text visible to the user earlier in this turn. "
+    "That text is still displayed — it accumulates, not replaces. "
+    "Do NOT restate your earlier analysis. Either proceed directly to your "
+    "next tool call, or add only genuinely new insights from the latest results."
+)
+
+
 def inject_collection_context(
     callback_context: CallbackContext,
     llm_request: LlmRequest,
@@ -395,6 +461,21 @@ def inject_collection_context(
     reorder tools based on session phase.
     """
     state = callback_context.state
+
+    # ── Hard stop after ask_user ─────────────────────────────────
+    # The agent must wait for the user's structured response before
+    # continuing.  Return an empty LlmResponse (no tool calls) to
+    # end the ReAct loop immediately.
+    if state.get("awaiting_user_input", False):
+        state["awaiting_user_input"] = False
+        from google.genai import types as genai_types
+
+        return LlmResponse(
+            content=genai_types.Content(
+                role="model",
+                parts=[genai_types.Part.from_text(text="")],
+            )
+        )
 
     # ── Context injection ─────────────────────────────────────────
     context_block = _build_context_block(state)
@@ -413,6 +494,19 @@ def inject_collection_context(
                 llm_request.config.system_instruction = (
                     context_block + "\n\n" + str(existing)
                 )
+
+    # ── Anti-repetition for ReAct continuations ──────────────────
+    # When the model is re-invoked after tool results, inject a
+    # reminder not to repeat text it already generated this turn.
+    if _is_react_continuation(llm_request):
+        si = llm_request.config.system_instruction or ""
+        if isinstance(si, str):
+            llm_request.config.system_instruction = si + _ANTI_REPEAT_INSTRUCTION
+        elif hasattr(si, "parts"):
+            from google.genai import types as genai_types
+            si.parts.append(
+                genai_types.Part.from_text(text=_ANTI_REPEAT_INSTRUCTION)
+            )
 
     # ── Tool reordering (soft filter) ─────────────────────────────
     if llm_request.config.tools:

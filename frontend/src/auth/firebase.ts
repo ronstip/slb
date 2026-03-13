@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -24,4 +24,4 @@ if (isFirebaseConfigured) {
   microsoftProvider = new OAuthProvider('microsoft.com');
 }
 
-export { auth, googleProvider, microsoftProvider };
+export { auth, googleProvider, microsoftProvider, signInAnonymously };

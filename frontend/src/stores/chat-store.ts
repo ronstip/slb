@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { StructuredPromptResult } from '../api/types.ts';
 
 export interface ToolIndicator {
   name: string;
@@ -7,7 +8,7 @@ export interface ToolIndicator {
 }
 
 export interface MessageCard {
-  type: 'research_design' | 'data_export' | 'chart' | 'post_embed' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress';
+  type: 'research_design' | 'data_export' | 'chart' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress' | 'structured_prompt';
   data: Record<string, unknown>;
 }
 
@@ -29,7 +30,11 @@ interface ChatStore {
   messages: ChatMessage[];
   isAgentResponding: boolean;
   sessionId: string | null;
+  activePromptMessageId: string | null;
+  activePromptData: StructuredPromptResult | null;
 
+  setActivePrompt: (id: string | null) => void;
+  setActivePromptData: (data: StructuredPromptResult | null) => void;
   sendUserMessage: (text: string) => void;
   startAgentMessage: () => string;
   appendText: (messageId: string, text: string) => void;
@@ -42,7 +47,9 @@ interface ChatStore {
   setStatusLine: (messageId: string, status: string | null) => void;
   setSuggestions: (messageId: string, suggestions: string[]) => void;
   finalizeMessage: (messageId: string) => void;
-  addSystemMessage: (text: string) => void;
+  addAgentMessage: (text: string, cards?: MessageCard[]) => string;
+  addSystemMessage: (text: string, cards?: MessageCard[]) => void;
+  updateCard: (messageId: string, cardIndex: number, updates: Record<string, unknown>) => void;
   setSessionId: (id: string) => void;
   setMessages: (messages: ChatMessage[]) => void;
   setIsAgentResponding: (responding: boolean) => void;
@@ -59,6 +66,11 @@ export const useChatStore = create<ChatStore>((set) => ({
   messages: [],
   isAgentResponding: false,
   sessionId: null,
+  activePromptMessageId: null,
+  activePromptData: null,
+
+  setActivePrompt: (id) => set({ activePromptMessageId: id }),
+  setActivePromptData: (data) => set({ activePromptData: data }),
 
   sendUserMessage: (text) =>
     set((s) => ({
@@ -219,7 +231,29 @@ export const useChatStore = create<ChatStore>((set) => ({
       isAgentResponding: false,
     })),
 
-  addSystemMessage: (text) =>
+  addAgentMessage: (text, cards) => {
+    const id = nextId();
+    set((s) => ({
+      messages: [
+        ...s.messages,
+        {
+          id,
+          role: 'agent' as const,
+          content: text,
+          timestamp: new Date(),
+          isStreaming: false,
+          toolIndicators: [],
+          cards: cards ?? [],
+          thinkingEntries: [],
+          statusLine: null,
+          suggestions: [],
+        },
+      ],
+    }));
+    return id;
+  },
+
+  addSystemMessage: (text, cards) =>
     set((s) => ({
       messages: [
         ...s.messages,
@@ -230,7 +264,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           timestamp: new Date(),
           isStreaming: false,
           toolIndicators: [],
-          cards: [],
+          cards: cards ?? [],
           thinkingEntries: [],
           statusLine: null,
           suggestions: [],
@@ -238,9 +272,22 @@ export const useChatStore = create<ChatStore>((set) => ({
       ],
     })),
 
+  updateCard: (messageId, cardIndex, updates) =>
+    set((s) => ({
+      messages: s.messages.map((m) => {
+        if (m.id !== messageId) return m;
+        return {
+          ...m,
+          cards: m.cards.map((c, i) =>
+            i === cardIndex ? { ...c, data: { ...c.data, ...updates } } : c,
+          ),
+        };
+      }),
+    })),
+
   setMessages: (messages) => set({ messages, isAgentResponding: false }),
   setSessionId: (id) => set({ sessionId: id }),
   setIsAgentResponding: (responding) => set({ isAgentResponding: responding }),
-  clearMessages: () => set({ messages: [], isAgentResponding: false }),
-  reset: () => set({ messages: [], isAgentResponding: false, sessionId: null }),
+  clearMessages: () => set({ messages: [], isAgentResponding: false, activePromptMessageId: null, activePromptData: null }),
+  reset: () => set({ messages: [], isAgentResponding: false, sessionId: null, activePromptMessageId: null, activePromptData: null }),
 }));

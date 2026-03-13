@@ -24,6 +24,7 @@ interface UIStore {
   artifactLibraryOpen: boolean;
   activePoll: PollData | null;
   sessionSearchOpen: boolean;
+  signUpPromptOpen: boolean;
 
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
@@ -39,6 +40,8 @@ interface UIStore {
   dismissPoll: () => void;
   openSessionSearch: () => void;
   closeSessionSearch: () => void;
+  openSignUpPrompt: () => void;
+  closeSignUpPrompt: () => void;
 }
 
 const loadCollapsed = (key: string): boolean => {
@@ -59,6 +62,7 @@ export const useUIStore = create<UIStore>((set) => ({
   artifactLibraryOpen: false,
   activePoll: null,
   sessionSearchOpen: false,
+  signUpPromptOpen: false,
 
   toggleSourcesPanel: () =>
     set((s) => {
@@ -111,4 +115,6 @@ export const useUIStore = create<UIStore>((set) => ({
   dismissPoll: () => set({ activePoll: null }),
   openSessionSearch: () => set({ sessionSearchOpen: true }),
   closeSessionSearch: () => set({ sessionSearchOpen: false }),
+  openSignUpPrompt: () => set({ signUpPromptOpen: true }),
+  closeSignUpPrompt: () => set({ signUpPromptOpen: false }),
 }));

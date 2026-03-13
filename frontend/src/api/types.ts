@@ -25,6 +25,7 @@ export interface UserProfile {
   org_id: string | null;
   org_role: string | null;
   org_name: string | null;
+  is_anonymous?: boolean;
   preferences: UserPreferences | null;
   subscription_plan: string | null;
   subscription_status: string | null;
@@ -130,6 +131,11 @@ export interface CreateCollectionRequest {
   include_comments: boolean;
   ongoing?: boolean;
   schedule?: string;
+  // Enrichment config (optional, set by design_research)
+  custom_fields?: { name: string; description: string; type: string }[];
+  video_params?: { fps: number; start_offset_sec: number; end_offset_sec: number };
+  reasoning_level?: string;
+  min_likes?: number;
 }
 
 export interface FeedParams {
@@ -148,6 +154,7 @@ export type CollectionStatus =
   | 'enriching'
   | 'completed'
   | 'monitoring'
+  | 'paused'
   | 'failed'
   | 'cancelled';
 
@@ -168,7 +175,14 @@ export interface CollectionConfig {
     end_offset_sec: number;
   };
   reasoning_level?: string;
+  min_likes?: number;
   custom_fields?: { name: string; description: string; type: string }[];
+}
+
+export interface RunHistoryEntry {
+  run_at: string;
+  posts_added: number;
+  status: string;
 }
 
 export interface CollectionStatusResponse {
@@ -186,6 +200,7 @@ export interface CollectionStatusResponse {
   last_run_at?: string;
   next_run_at?: string;
   total_runs?: number;
+  run_history?: RunHistoryEntry[];
 }
 
 export interface MediaRef {
@@ -383,6 +398,33 @@ export interface NeedsDecisionPayload {
   options: DecisionOption[];
   context: string;
   impact: 'high' | 'low';
+}
+
+// ─── Structured prompt types (ask_user tool) ──────────────────────────
+
+export interface StructuredPromptOption {
+  value: string;
+  label: string;
+  icon?: string;
+  description?: string;
+  recommended?: boolean;
+}
+
+export interface StructuredPrompt {
+  id: string;
+  type: 'icon_grid' | 'pill_row' | 'tag_input' | 'card_select' | 'toggle_row';
+  question: string;
+  options?: StructuredPromptOption[];
+  multi_select?: boolean;
+  preselected?: string[];
+  placeholder?: string;
+  default_value?: boolean | string;
+}
+
+export interface StructuredPromptResult {
+  status: 'needs_input';
+  prompts: StructuredPrompt[];
+  title?: string;
 }
 
 export interface FindingPayload {

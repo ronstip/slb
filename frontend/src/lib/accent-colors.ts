@@ -94,6 +94,9 @@ export function generateAccentVariants(
 
   return {
     '--color-accent-vibrant': accentHex,
+    '--primary': accentHex,
+    '--primary-foreground': '#FFFFFF',
+    '--ring': accentHex,
     '--chart-1': palette[0],
     '--chart-2': palette[1],
     '--chart-3': palette[2],

@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
 from google.genai import types
+from pydantic import BaseModel, create_model
 
 from config.settings import get_settings
 from workers.enrichment.schema import CustomFieldDef, EnrichmentResult, PostData
@@ -20,15 +21,20 @@ logger = logging.getLogger(__name__)
 ENRICHMENT_PROMPT = """\
 Your task is to analyze the attached social media post to determine its primary content, context, intent, tone, and cultural relevance and narrative.
 
+IMPORTANT: All output fields MUST be in English, regardless of the post's original language. Translate content, quotes, themes, and entities into English. The only exception is the "language" field, which should report the ISO code of the post's original language.
+
 Instructions:
 - ai_summary: A summary paragraph of the post, its content, context, and narrative
-- sentiment: overall sentiment (positive/negative/neutral/mixed)
+- sentiment: overall sentiment (positive/negative/neutral)
 - emotion: primary emotion (joy/anger/frustration/excitement/disappointment/surprise/trust/fear/neutral)
 - entities: brands, products, people mentioned (in text or visible in media)
 - themes: topic themes (e.g. "skincare routine", "product review")
 - language: ISO code of the post language (e.g. en, es, he)
 - content_type: review/tutorial/meme/ad/unboxing/comparison/testimonial/other
 - key_quotes: 1-3 notable direct quotes from the post text (empty array if none)
+- is_related_to_keyword: Whether this post is genuinely related to the search keyword "{search_keyword}". True if the post discusses, references, or is meaningfully about the keyword topic. False if the keyword match is coincidental, the post is spam, or the content is unrelated despite containing the keyword.
+- detected_brands: All brand names mentioned, referenced, shown, or visible in the post content or media. Include both text mentions and brands visible in images/video (logos, products, packaging).
+- channel_type: Classify the posting channel/account. "official" for verified brand or entity accounts, "media" for news outlets and media channels, "ugc" for regular users and creators.
 
 Post:
   Platform: {platform}
@@ -36,8 +42,9 @@ Post:
   Posted at: {posted_at}
   Title: {title}
   Content: {content}
+  Search Keyword: {search_keyword}
   Media:
-  
+
 """
 
 _MEDIA_RESOLUTION_MAP = {
@@ -53,6 +60,15 @@ _THINKING_LEVEL_MAP = {
     "high": types.ThinkingLevel.HIGH,
 }
 
+# Type mapping for dynamic Pydantic model generation from CustomFieldDef
+_CUSTOM_FIELD_TYPE_MAP: dict[str, type] = {
+    "str": str,
+    "bool": bool,
+    "int": int,
+    "float": float,
+    "list[str]": list[str],
+}
+
 
 def _is_video(media_type: str, content_type: str) -> bool:
     """Check if a media ref is a video."""
@@ -65,6 +81,41 @@ def _build_custom_fields_prompt(custom_fields: list[CustomFieldDef]) -> str:
     for f in custom_fields:
         lines.append(f"- {f.name} ({f.type}): {f.description}")
     return "\n".join(lines) + "\n"
+
+
+def _build_custom_fields_model(custom_fields: list[CustomFieldDef]) -> type[BaseModel]:
+    """Dynamically create a typed Pydantic model for the custom_fields sub-object.
+
+    Gives Gemini an explicit schema with typed field names instead of a vague dict,
+    so structured output knows exactly what keys and types to produce.
+    """
+    field_definitions = {}
+    for f in custom_fields:
+        python_type = _CUSTOM_FIELD_TYPE_MAP.get(f.type, str)
+        field_definitions[f.name] = (python_type | None, None)
+
+    return create_model("CustomFields", **field_definitions)
+
+
+def _build_response_schema(
+    custom_fields: list[CustomFieldDef] | None = None,
+) -> type[BaseModel]:
+    """Build the response schema, optionally with typed custom fields.
+
+    When custom fields are defined, creates a subclass of EnrichmentResult that
+    replaces the vague `dict | None` with a specific typed model. This ensures
+    Gemini's structured output returns exactly the right field names and types.
+    """
+    if not custom_fields:
+        return EnrichmentResult
+
+    CustomFieldsModel = _build_custom_fields_model(custom_fields)
+
+    return create_model(
+        "EnrichmentResultWithCustomFields",
+        __base__=EnrichmentResult,
+        custom_fields=(CustomFieldsModel | None, None),
+    )
 
 
 def _build_content_parts(
@@ -82,6 +133,7 @@ def _build_content_parts(
         posted_at=post.posted_at or "unknown",
         title=post.title or "",
         content=post.content or "",
+        search_keyword=post.search_keyword or "N/A",
     )
 
     # Append custom field instructions if defined
@@ -136,11 +188,34 @@ def _build_content_parts(
                 post.post_url,
             )
 
+    # YouTube: if no video media in GCS, pass the YouTube URL directly.
+    # Gemini can natively process YouTube URLs for video analysis.
+    if (
+        post.platform == "youtube"
+        and post.post_url
+        and not any(_is_video(r.media_type, r.content_type) for r in post.media_refs)
+    ):
+        try:
+            parts.append(
+                types.Part.from_uri(
+                    file_uri=post.post_url,
+                    mime_type="video/mp4",
+                )
+            )
+        except Exception:
+            logger.warning(
+                "Failed to create YouTube video part for %s (%s)",
+                post.post_id,
+                post.post_url,
+            )
+
     return parts
 
 
-def _build_config() -> types.GenerateContentConfig:
-    """Build GenerateContentConfig from settings."""
+def _build_config(
+    custom_fields: list[CustomFieldDef] | None = None,
+) -> types.GenerateContentConfig:
+    """Build GenerateContentConfig from settings, with optional dynamic schema."""
     settings = get_settings()
 
     media_res = _MEDIA_RESOLUTION_MAP.get(
@@ -152,11 +227,13 @@ def _build_config() -> types.GenerateContentConfig:
     if settings.enrichment_search:
         tools.append(types.Tool(google_search=types.GoogleSearch()))
 
+    response_schema = _build_response_schema(custom_fields)
+
     config = types.GenerateContentConfig(
         temperature=settings.enrichment_temperature,
         max_output_tokens=settings.enrichment_max_output_tokens,
         response_mime_type="application/json",
-        response_schema=EnrichmentResult,
+        response_schema=response_schema,
         media_resolution=media_res,
         tools=tools or None,
     )
@@ -227,7 +304,7 @@ def enrich_posts(
         location=settings.gemini_location,
     )
     model = settings.enrichment_model
-    config = _build_config()
+    config = _build_config(custom_fields)
 
     # Log media availability so we can verify videos reach Gemini
     n_images = sum(

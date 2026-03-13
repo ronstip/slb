@@ -21,6 +21,7 @@ init_firebase()
 
 import requests as http_requests
 
+from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -57,6 +58,7 @@ from api.schemas.responses import (
 )
 from api.services.collection_service import (
     create_collection_from_request,
+    is_valid_schedule,
     trigger_collection_now,
     update_collection_mode,
 )
@@ -91,16 +93,27 @@ app.include_router(dashboard_router.router)
 app.include_router(dashboard_shares_router.router)
 app.include_router(artifacts_router.router)
 
-# CORS middleware — origins configurable via CORS_ORIGINS env var
+# CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
 _settings = get_settings()
-_cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if _settings.is_dev:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    logger.info("CORS: allow_origins=['*'] (dev mode)")
+else:
+    _cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    logger.info("CORS origins: %s", _cors_origins)
 
 _runners: dict[str, Runner] = {}
 _memory_service = None
@@ -115,8 +128,8 @@ MODEL_ALIASES: dict[str, str] = {
 THINKING_TOOLS = {
     "execute_sql", "get_table_info", "list_table_ids",
     "google_search", "design_research", "start_collection",
-    "get_progress", "enrich_collection", "display_posts",
-    "get_past_collections", "generate_report", "generate_dashboard", "get_sql_reference",
+    "get_progress", "enrich_collection",
+    "get_collection_details", "generate_report", "generate_dashboard", "get_sql_reference",
 }
 
 
@@ -242,7 +255,7 @@ def _maybe_persist_artifact(
 
 def _build_user_context(user_id: str, org_id: str) -> dict:
     """Build user context for agent personalization at session start."""
-    context: dict = {"display_name": "", "preferences": {}, "recent_topics": []}
+    context: dict = {"display_name": "", "preferences": {}, "collections_index": []}
     try:
         fs = get_fs()
         user_doc = fs.get_user(user_id)
@@ -250,17 +263,33 @@ def _build_user_context(user_id: str, org_id: str) -> dict:
             context["display_name"] = user_doc.get("display_name", "")
             context["preferences"] = user_doc.get("preferences") or {}
 
-        # Extract recent research topics from last 5 collections
+        # Build lightweight collections index from last 10 collections
         from api.agent.tools.get_past_collections import fetch_user_collections
-        collections = fetch_user_collections(user_id, org_id or "", limit=5)
-        keywords: list[str] = []
+        collections = fetch_user_collections(user_id, org_id or "", limit=10)
+        index = []
         for c in collections:
             config = c.get("config") or {}
             kw = config.get("keywords", [])
-            if isinstance(kw, list):
-                keywords.extend(kw)
-        # Deduplicate, keep order, cap at 15
-        context["recent_topics"] = list(dict.fromkeys(keywords))[:15]
+            if not isinstance(kw, list):
+                kw = []
+            platforms = config.get("platforms", [])
+            if isinstance(platforms, str):
+                platforms = [p.strip() for p in platforms.split(",")]
+            channels = config.get("channel_urls", [])
+            if not isinstance(channels, list):
+                channels = []
+            index.append({
+                "id": c.get("collection_id"),
+                "label": c.get("original_question") or ", ".join(kw[:3]) or "untitled",
+                "status": c.get("status", "unknown"),
+                "platforms": platforms,
+                "keywords": kw[:10],
+                "channels": channels[:5],
+                "posts": c.get("posts_collected", 0),
+                "created": (c.get("created_at") or "")[:10],
+                "own": c.get("is_own", True),
+            })
+        context["collections_index"] = index
     except Exception:
         logger.debug("User context loading failed for %s — non-critical", user_id)
     return context
@@ -312,11 +341,56 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
         "org_id": user.org_id,
         "org_role": user.org_role,
         "org_name": org_name,
+        "is_anonymous": user.is_anonymous,
         "preferences": user_doc.get("preferences") if user_doc else None,
         "subscription_plan": user_doc.get("subscription_plan") if user_doc else None,
         "subscription_status": user_doc.get("subscription_status") if user_doc else None,
         "is_super_admin": is_super_admin,
     }
+
+
+class LinkAccountRequest(BaseModel):
+    old_uid: str
+
+
+@app.post("/auth/link-account")
+async def link_account(body: LinkAccountRequest, user: CurrentUser = Depends(get_current_user)):
+    """Migrate anonymous user data to linked account after UID change."""
+    from api.auth.dependencies import _user_cache
+
+    old_uid = body.old_uid
+    new_uid = user.uid
+
+    if old_uid == new_uid:
+        return {"status": "ok", "migrated": False}
+
+    fs = get_fs()
+
+    # 1. Migrate sessions: update user_id in session state
+    sessions_ref = fs._db.collection("sessions")
+    old_sessions = list(sessions_ref.where("user_id", "==", old_uid).stream())
+    for doc in old_sessions:
+        doc.reference.update({"user_id": new_uid})
+        # Also update the nested state.user_id if present
+        data = doc.to_dict()
+        if data.get("state", {}).get("user_id") == old_uid:
+            doc.reference.update({"state.user_id": new_uid, "state.is_anonymous": False})
+
+    # 2. Migrate user doc
+    old_user = fs.get_user(old_uid)
+    if old_user:
+        new_user = fs.get_user(new_uid)
+        if not new_user:
+            old_user["is_anonymous"] = False
+            fs.create_user(new_uid, old_user)
+        fs._db.collection("users").document(old_uid).delete()
+
+    # 3. Clear caches
+    _user_cache.pop(old_uid, None)
+    _user_cache.pop(new_uid, None)
+
+    logger.info("Linked account: %s -> %s (migrated %d sessions)", old_uid, new_uid, len(old_sessions))
+    return {"status": "ok", "migrated": True, "sessions_migrated": len(old_sessions)}
 
 
 @app.post("/chat")
@@ -349,6 +423,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             state={
                 "user_id": user_id,
                 "org_id": user.org_id,
+                "is_anonymous": user.is_anonymous,
                 "session_id": session_id,
                 "selected_sources": chat_request.selected_sources or [],
                 "session_title": "New Session",
@@ -356,7 +431,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "message_count": 0,
                 "first_message": None,
                 "user_display_name": user_context.get("display_name", ""),
-                "user_recent_topics": user_context.get("recent_topics", []),
+                "user_collections_index": user_context.get("collections_index", []),
                 "user_preferences": user_context.get("preferences", {}),
             },
         )
@@ -374,6 +449,10 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     if not session.state.get("first_message"):
         session.state["first_message"] = chat_request.message
     session.state["message_count"] = session.state.get("message_count", 0) + 1
+
+    # Rate limit anonymous users
+    if user.is_anonymous and session.state.get("message_count", 0) > 15:
+        raise HTTPException(status_code=429, detail="Sign up for a free account to continue chatting")
 
     # Persist state changes in background — runner reads from the
     # in-memory session object, not Firestore.
@@ -611,8 +690,11 @@ async def set_collection_mode(
     """Switch a collection between ongoing and normal mode. Owner only."""
     if request.ongoing and not request.schedule:
         raise HTTPException(status_code=400, detail="schedule is required when ongoing=true")
-    if request.ongoing and request.schedule not in ("daily", "weekly"):
-        raise HTTPException(status_code=400, detail="schedule must be 'daily' or 'weekly'")
+    if request.ongoing and not is_valid_schedule(request.schedule):
+        raise HTTPException(
+            status_code=400,
+            detail="schedule must be 'daily', 'weekly', or 'Nd@HH:MM' format (e.g. '1d@09:00')",
+        )
 
     fs = get_fs()
     status = fs.get_collection_status(collection_id)
@@ -687,7 +769,7 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
         data = doc.to_dict()
         created_at_raw = data.get("created_at")
         created_at_str = None
-        for key in ("created_at", "updated_at"):
+        for key in ("created_at", "updated_at", "last_run_at", "next_run_at"):
             if key in data and hasattr(data[key], "isoformat"):
                 data[key] = data[key].isoformat()
                 if key == "created_at":
@@ -707,6 +789,11 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
                 created_at=created_at_str,
                 visibility=data.get("visibility", "private"),
                 user_id=data.get("user_id"),
+                ongoing=data.get("ongoing", False),
+                last_run_at=data.get("last_run_at"),
+                next_run_at=data.get("next_run_at"),
+                total_runs=data.get("total_runs", 0),
+                run_history=data.get("run_history", []),
             )
         )
 
@@ -893,6 +980,11 @@ async def get_collection_status(
         config=status.get("config"),
         visibility=status.get("visibility", "private"),
         user_id=status.get("user_id"),
+        ongoing=status.get("ongoing", False),
+        last_run_at=status.get("last_run_at"),
+        next_run_at=status.get("next_run_at"),
+        total_runs=status.get("total_runs", 0),
+        run_history=status.get("run_history", []),
     )
 
 
@@ -1306,7 +1398,9 @@ async def scheduler_tick():
     dispatched = []
     for doc in due:
         collection_id = doc["collection_id"]
-        fs.update_collection_status(collection_id, status="collecting")
+        if not fs.claim_for_run(collection_id):
+            logger.info("Scheduler tick: collection %s already claimed, skipping", collection_id)
+            continue
         if settings.is_dev:
             import threading
 
@@ -1608,11 +1702,9 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
         if tool_name == "enrich_collection":
             cid = args.get("collection_id", "")
             return f"Running AI enrichment on `{cid}`" if cid else "Running AI enrichment..."
-        if tool_name == "display_posts":
-            count = len(args.get("post_ids", []))
-            return f"Loading {count} posts for display"
-        if tool_name == "get_past_collections":
-            return "Checking for existing collections..."
+        if tool_name == "get_collection_details":
+            cid = args.get("collection_id", "")
+            return f"Loading details for `{cid}`" if cid else "Loading collection details..."
     elif event_type == "tool_result":
         result = event_data.get("metadata", {}).get("result", {})
         if tool_name == "execute_sql":
@@ -1627,10 +1719,8 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
             return "Progress retrieved"
         if tool_name == "enrich_collection":
             return "Enrichment complete"
-        if tool_name == "display_posts":
-            return "Posts loaded"
-        if tool_name == "get_past_collections":
-            return "Past collections retrieved"
+        if tool_name == "get_collection_details":
+            return "Collection details loaded"
     return None
 
 

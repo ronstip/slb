@@ -1,0 +1,115 @@
+import { useParams, useNavigate } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, ArrowLeft } from 'lucide-react';
+import { Logo } from '../../components/Logo.tsx';
+import { Button } from '../../components/ui/button.tsx';
+import { Skeleton } from '../../components/ui/skeleton.tsx';
+import { getArtifact } from '../../api/endpoints/artifacts.ts';
+import { ARTIFACT_STYLES, convertToStudioArtifact } from './artifact-utils.ts';
+import { ChartArtifactView } from '../studio/ChartArtifactView.tsx';
+import { InsightReportView } from '../studio/InsightReportView.tsx';
+import { DataExportView } from '../studio/DataExportView.tsx';
+import { DashboardView } from '../studio/dashboard/DashboardView.tsx';
+import { cn } from '../../lib/utils.ts';
+import type { Artifact } from '../../stores/studio-store.ts';
+
+export function StandaloneArtifactPage() {
+  const { artifactId } = useParams<{ artifactId: string }>();
+  const navigate = useNavigate();
+
+  const { data: detail, isLoading, error } = useQuery({
+    queryKey: ['artifact-standalone', artifactId],
+    queryFn: () => getArtifact(artifactId!),
+    enabled: !!artifactId,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const artifact = detail ? convertToStudioArtifact(detail) : null;
+  const style = detail ? ARTIFACT_STYLES[detail.type] ?? ARTIFACT_STYLES.chart : null;
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+          <Logo size="sm" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => navigate('/')}
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Back to app
+          </Button>
+        </div>
+      </header>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="mx-auto max-w-6xl px-6 py-8 space-y-4">
+          <Skeleton className="h-8 w-64 rounded-lg" />
+          <Skeleton className="h-4 w-40 rounded" />
+          <Skeleton className="h-96 rounded-xl" />
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="flex flex-col items-center justify-center py-32 text-center px-4">
+          <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+          <h2 className="mt-4 text-lg font-semibold">Artifact not available</h2>
+          <p className="mt-2 text-sm text-muted-foreground max-w-sm">
+            This artifact may have been deleted or you don't have access.
+          </p>
+          <Button className="mt-6" onClick={() => navigate('/')}>
+            Go to app
+          </Button>
+        </div>
+      )}
+
+      {/* Artifact content */}
+      {!isLoading && !error && artifact && style && (
+        <>
+          {/* Title bar */}
+          <div className="border-b border-border bg-card">
+            <div className="mx-auto max-w-6xl px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', style.bg)}>
+                  <style.icon className={cn('h-4.5 w-4.5', style.color)} />
+                </div>
+                <div>
+                  <h1 className="text-xl font-semibold text-foreground">
+                    {artifact.title}
+                  </h1>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {style.label}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Content */}
+          <main className="mx-auto max-w-6xl">
+            <ArtifactRenderer artifact={artifact} />
+          </main>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ArtifactRenderer({ artifact }: { artifact: Artifact }) {
+  switch (artifact.type) {
+    case 'chart':
+      return <ChartArtifactView artifact={artifact} />;
+    case 'insight_report':
+      return <InsightReportView artifact={artifact} />;
+    case 'data_export':
+      return <DataExportView artifact={artifact} />;
+    case 'dashboard':
+      return <DashboardView artifact={artifact} />;
+  }
+}

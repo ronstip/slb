@@ -17,14 +17,13 @@ Single meta-agent built on Google ADK. One `LlmAgent` with all tools — not a m
 | Tool | Purpose |
 |------|---------|
 | `design_research` | Creates research plan from user question |
-| `get_past_collections` | Query existing collections |
+| `get_collection_details` | Get full details for a specific collection |
 | `start_collection` | Dispatch collection worker via Cloud Tasks |
 | `get_progress` | Poll collection status from Firestore |
 | `cancel_collection` | Cancel active collection |
 | `enrich_collection` | Trigger enrichment worker |
 | `refresh_engagements` | Update engagement metrics |
 | `create_chart` | Generate chart specs for frontend |
-| `display_posts` | Query & format posts for chat display |
 | `generate_report` | Create detailed insight reports |
 | `export_data` | Export posts as CSV |
 

@@ -30,15 +30,17 @@ class OngoingScheduler:
         fs = FirestoreClient(settings)
 
         while True:
-            time.sleep(60)
+            time.sleep(15)
             try:
                 due = fs.get_due_ongoing_collections()
                 if due:
                     logger.info("Scheduler: %d ongoing collection(s) due for next run", len(due))
                 for doc in due:
                     collection_id = doc["collection_id"]
-                    # Claim immediately (prevents double-trigger on next tick)
-                    fs.update_collection_status(collection_id, status="collecting")
+                    # Atomically claim (prevents race with manual trigger or concurrent tick)
+                    if not fs.claim_for_run(collection_id):
+                        logger.info("Scheduler: collection %s already claimed, skipping", collection_id)
+                        continue
                     thread = threading.Thread(
                         target=_run_pipeline,
                         args=(collection_id,),

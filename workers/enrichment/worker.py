@@ -53,6 +53,8 @@ def _write_results_via_values(
         themes_arr = ", ".join(f"'{_esc(t)}'" for t in r.themes)
         quotes_arr = ", ".join(f"'{_esc(q)}'" for q in r.key_quotes)
 
+        brands_arr = ", ".join(f"'{_esc(b)}'" for b in r.detected_brands)
+
         custom_json = json.dumps(r.custom_fields) if r.custom_fields else None
         custom_sql = f"PARSE_JSON('{_esc(custom_json)}')" if custom_json else "CAST(NULL AS JSON)"
 
@@ -66,6 +68,9 @@ def _write_results_via_values(
             f"'{_esc(r.language)}' AS language, "
             f"'{_esc(r.content_type)}' AS content_type, "
             f"[{quotes_arr}] AS key_quotes, "
+            f"{'TRUE' if r.is_related_to_keyword else 'FALSE'} AS is_related_to_keyword, "
+            f"[{brands_arr}] AS detected_brands, "
+            f"'{_esc(r.channel_type)}' AS channel_type, "
             f"{custom_sql} AS custom_fields"
         )
 
@@ -78,20 +83,23 @@ USING (
 ) AS source
 ON target.post_id = source.post_id
 WHEN NOT MATCHED THEN
-    INSERT (post_id, sentiment, emotion, entities, themes, ai_summary, language, content_type, key_quotes, custom_fields, enriched_at)
-    VALUES (source.post_id, source.sentiment, source.emotion, source.entities, source.themes, source.ai_summary, source.language, source.content_type, source.key_quotes, source.custom_fields, CURRENT_TIMESTAMP())
+    INSERT (post_id, sentiment, emotion, entities, themes, ai_summary, language, content_type, key_quotes, is_related_to_keyword, detected_brands, channel_type, custom_fields, enriched_at)
+    VALUES (source.post_id, source.sentiment, source.emotion, source.entities, source.themes, source.ai_summary, source.language, source.content_type, source.key_quotes, source.is_related_to_keyword, source.detected_brands, source.channel_type, source.custom_fields, CURRENT_TIMESTAMP())
 WHEN MATCHED THEN
     UPDATE SET
-        sentiment     = source.sentiment,
-        emotion       = source.emotion,
-        entities      = source.entities,
-        themes        = source.themes,
-        ai_summary    = source.ai_summary,
-        language      = source.language,
-        content_type  = source.content_type,
-        key_quotes    = source.key_quotes,
-        custom_fields = source.custom_fields,
-        enriched_at   = CURRENT_TIMESTAMP();"""
+        sentiment              = source.sentiment,
+        emotion                = source.emotion,
+        entities               = source.entities,
+        themes                 = source.themes,
+        ai_summary             = source.ai_summary,
+        language               = source.language,
+        content_type           = source.content_type,
+        key_quotes             = source.key_quotes,
+        is_related_to_keyword  = source.is_related_to_keyword,
+        detected_brands        = source.detected_brands,
+        channel_type           = source.channel_type,
+        custom_fields          = source.custom_fields,
+        enriched_at            = CURRENT_TIMESTAMP();"""
 
     bq.query(merge_sql)
     logger.info("Wrote %d enrichment results to BQ", len(results))
@@ -114,7 +122,8 @@ def _read_posts_from_bq(
     """Read posts from BQ for a collection, filtered by engagement threshold."""
     rows = bq.query(
         "SELECT p.post_id, p.platform, p.channel_handle, "
-        "  CAST(p.posted_at AS STRING) AS posted_at, p.title, p.content, p.media_refs "
+        "  CAST(p.posted_at AS STRING) AS posted_at, p.title, p.content, "
+        "  p.post_url, p.search_keyword, p.media_refs "
         "FROM social_listening.posts p "
         "LEFT JOIN ("
         "  SELECT post_id, likes, "
@@ -134,7 +143,8 @@ def _read_posts_from_bq_by_ids(bq: BQClient, post_ids: list[str]) -> list[PostDa
     """Read specific posts from BQ by ID."""
     rows = bq.query(
         "SELECT p.post_id, p.platform, p.channel_handle, "
-        "  CAST(p.posted_at AS STRING) AS posted_at, p.title, p.content, p.media_refs "
+        "  CAST(p.posted_at AS STRING) AS posted_at, p.title, p.content, "
+        "  p.post_url, p.search_keyword, p.media_refs "
         "FROM social_listening.posts p "
         "WHERE p.post_id IN UNNEST(@post_ids)",
         {"post_ids": post_ids},
@@ -170,6 +180,8 @@ def _row_to_post_data(row: dict) -> PostData:
         posted_at=row.get("posted_at"),
         title=row.get("title"),
         content=row.get("content"),
+        post_url=row.get("post_url"),
+        search_keyword=row.get("search_keyword"),
         media_refs=media_refs,
     )
 

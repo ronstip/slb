@@ -30,15 +30,15 @@ export function DashboardCard({ data }: DashboardCardProps) {
   const meta = metaParts.join(' · ');
 
   return (
-    <div onClick={handleOpen} className="mt-3 cursor-pointer overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-500/5 to-background shadow-sm transition-colors hover:border-amber-500/40">
-      <div className="flex items-center justify-between px-4 py-3.5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10">
+    <div onClick={handleOpen} className="cursor-pointer overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-500/5 to-background shadow-sm transition-colors hover:border-amber-500/40">
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
             <LayoutDashboard className="h-4 w-4 text-amber-500" />
           </div>
-          <div className="flex flex-col">
-            <h4 className="text-sm font-semibold text-foreground">{title}</h4>
-            <p className="text-[11px] text-muted-foreground">{meta}</p>
+          <div className="flex flex-col min-w-0">
+            <h4 className="text-sm font-semibold text-foreground truncate">{title}</h4>
+            <p className="text-[11px] text-muted-foreground truncate">{meta}</p>
           </div>
         </div>
         <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">

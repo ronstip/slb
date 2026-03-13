@@ -48,7 +48,7 @@ export function MessageList({ onSendMessage }: MessageListProps) {
             case 'agent':
               return <AgentMessage key={msg.id} message={msg} onSuggestionClick={onSendMessage} />;
             case 'system':
-              return <SystemMessage key={msg.id} message={msg} />;
+              return <SystemMessage key={msg.id} message={msg} onSendMessage={onSendMessage} />;
           }
         })}
       </div>
