@@ -6,6 +6,7 @@ All configuration read from settings (env vars).
 """
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
@@ -89,16 +90,18 @@ def _build_content_parts(
 
     parts.append(types.Part.from_text(text=prompt_text))
 
-    # Media parts (images/video from GCS)
+    # Media parts — prefer GCS URI (permanent), fall back to original CDN URL for images
     for ref in post.media_refs[: settings.enrichment_max_media_per_post]:
+        uri = ref.gcs_uri or ref.original_url
+        if not uri:
+            continue
+        mime = ref.content_type or ("video/mp4" if _is_video(ref.media_type, ref.content_type) else "image/jpeg")
         try:
-            if _is_video(ref.media_type, ref.content_type):
+            if _is_video(ref.media_type, ref.content_type) and ref.gcs_uri:
+                # Video: only use GCS (CDN video URLs don't work with Gemini)
                 parts.append(
                     types.Part(
-                        file_data=types.FileData(
-                            file_uri=ref.gcs_uri,
-                            mime_type=ref.content_type,
-                        ),
+                        file_data=types.FileData(file_uri=ref.gcs_uri, mime_type=mime),
                         video_metadata=types.VideoMetadata(
                             start_offset=settings.enrichment_video_start_offset,
                             end_offset=settings.enrichment_video_end_offset,
@@ -106,15 +109,31 @@ def _build_content_parts(
                         ),
                     )
                 )
-            else:
-                parts.append(
-                    types.Part.from_uri(
-                        file_uri=ref.gcs_uri, mime_type=ref.content_type
-                    )
+            elif not _is_video(ref.media_type, ref.content_type):
+                # Image: GCS URI or CDN URL both work with Gemini
+                parts.append(types.Part.from_uri(file_uri=uri, mime_type=mime))
+        except Exception:
+            logger.warning("Failed to create media part for %s (%s)", post.post_id, uri)
+
+    # YouTube: if no GCS video, pass the YouTube URL directly.
+    # Gemini natively understands YouTube URLs for video analysis.
+    if (
+        post.platform == "youtube"
+        and post.post_url
+        and not any(_is_video(r.media_type, r.content_type) and r.gcs_uri for r in post.media_refs)
+    ):
+        try:
+            parts.append(
+                types.Part.from_uri(
+                    file_uri=post.post_url,
+                    mime_type="video/mp4",
                 )
+            )
         except Exception:
             logger.warning(
-                "Failed to create media part for %s (%s)", post.post_id, ref.gcs_uri
+                "Failed to create YouTube video part for %s (%s)",
+                post.post_id,
+                post.post_url,
             )
 
     return parts
@@ -127,23 +146,26 @@ def _build_config() -> types.GenerateContentConfig:
     media_res = _MEDIA_RESOLUTION_MAP.get(
         settings.enrichment_media_resolution, types.MediaResolution.MEDIA_RESOLUTION_MEDIUM
     )
-    thinking = _THINKING_LEVEL_MAP.get(
-        settings.enrichment_thinking_level, types.ThinkingLevel.LOW
-    )
+    thinking = _THINKING_LEVEL_MAP.get(settings.enrichment_thinking_level)
 
     tools = []
     if settings.enrichment_search:
         tools.append(types.Tool(google_search=types.GoogleSearch()))
 
-    return types.GenerateContentConfig(
+    config = types.GenerateContentConfig(
         temperature=settings.enrichment_temperature,
         max_output_tokens=settings.enrichment_max_output_tokens,
         response_mime_type="application/json",
         response_schema=EnrichmentResult,
         media_resolution=media_res,
-        thinking_config=types.ThinkingConfig(thinking_level=thinking),
         tools=tools or None,
     )
+    # Only set thinking_config if the level is explicitly configured
+    # (some models like gemini-3-flash-preview don't support it)
+    if thinking is not None:
+        config.thinking_config = types.ThinkingConfig(thinking_level=thinking)
+
+    return config
 
 
 def _enrich_single_post(
@@ -153,22 +175,32 @@ def _enrich_single_post(
     post: PostData,
     custom_fields: list[CustomFieldDef] | None = None,
 ) -> tuple[str, EnrichmentResult | None]:
-    """Enrich a single post. Returns (post_id, result) or (post_id, None) on failure."""
-    try:
-        parts = _build_content_parts(post, custom_fields)
+    """Enrich a single post. Returns (post_id, result) or (post_id, None) on failure.
 
-        response = client.models.generate_content(
-            model=model,
-            contents=types.Content(role="user", parts=parts),
-            config=config,
-        )
+    Retries once with backoff on 429 RESOURCE_EXHAUSTED.
+    """
+    parts = _build_content_parts(post, custom_fields)
+    contents = types.Content(role="user", parts=parts)
 
-        result = EnrichmentResult.model_validate_json(response.text)
-        return (post.post_id, result)
+    for attempt in range(2):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+            result = EnrichmentResult.model_validate_json(response.text)
+            return (post.post_id, result)
 
-    except Exception:
-        logger.exception("Enrichment failed for post %s", post.post_id)
-        return (post.post_id, None)
+        except Exception as e:
+            is_rate_limit = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+            if is_rate_limit and attempt == 0:
+                wait = 30
+                logger.warning("Enrichment 429 for post %s — retrying in %ds", post.post_id, wait)
+                time.sleep(wait)
+            else:
+                logger.warning("Enrichment failed for post %s: %s: %s", post.post_id, type(e).__name__, str(e)[:200])
+                return (post.post_id, None)
 
 
 def enrich_posts(
@@ -197,6 +229,25 @@ def enrich_posts(
     model = settings.enrichment_model
     config = _build_config()
 
+    # Log media availability so we can verify videos reach Gemini
+    n_images = sum(
+        1 for p in posts
+        if any(not _is_video(r.media_type, r.content_type) and (r.gcs_uri or r.original_url) for r in p.media_refs)
+    )
+    n_videos = sum(
+        1 for p in posts
+        if any(_is_video(r.media_type, r.content_type) and r.gcs_uri for r in p.media_refs)
+    )
+    n_youtube = sum(
+        1 for p in posts
+        if p.platform == "youtube" and p.post_url
+        and not any(_is_video(r.media_type, r.content_type) and r.gcs_uri for r in p.media_refs)
+    )
+    logger.info(
+        "Enriching %d posts — %d with images, %d with videos in GCS, %d YouTube URLs",
+        len(posts), n_images, n_videos, n_youtube,
+    )
+
     results: list[tuple[str, EnrichmentResult]] = []
 
     with ThreadPoolExecutor(max_workers=settings.enrichment_concurrency) as executor:
@@ -211,8 +262,6 @@ def enrich_posts(
                 post_id, result = future.result()
                 if result is not None:
                     results.append((post_id, result))
-                else:
-                    logger.warning("No result for post %s (skipped)", post.post_id)
             except Exception:
                 logger.exception("Unexpected error enriching post %s", post.post_id)
 

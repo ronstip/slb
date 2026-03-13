@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _BASE_CTE = """WITH deduped_posts AS (
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
     FROM social_listening.posts
     WHERE collection_id IN UNNEST(@collection_ids)
 ),
@@ -131,7 +131,7 @@ SELECT 'entity' AS dim, * FROM entity_counts
 _DAILY_VOLUME_SQL = """
 WITH deduped_posts AS (
     SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+           ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
     FROM social_listening.posts
     WHERE collection_id IN UNNEST(@collection_ids)
 )

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
@@ -19,7 +19,7 @@ export function FeedTab() {
   // All active (checkbox-checked) collections in session
   const activeSources = sources.filter((s) => s.active && s.selected);
   // Auto-refetch while any active collection is still collecting/enriching
-  const isAnyCollecting = activeSources.some((s) => s.status === 'collecting' || s.status === 'enriching');
+  const isAnyCollecting = activeSources.some((s) => s.status === 'pending' || s.status === 'collecting' || s.status === 'enriching');
   const activeIds = activeSources.map((s) => s.collectionId);
 
   const [sort, setSort] = useState<FeedParams['sort']>('views');
@@ -71,10 +71,17 @@ export function FeedTab() {
     },
     initialPageParam: 0,
     enabled: effectiveIds.length > 0,
-    refetchInterval: isAnyCollecting ? 5000 : false,
+    refetchInterval: isAnyCollecting ? 3000 : false,
   });
 
-  const allPosts = data?.pages.flatMap((p) => p.posts) ?? [];
+  const allPosts = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.pages.flatMap((p) => p.posts) ?? []).filter((p) => {
+      if (seen.has(p.post_id)) return false;
+      seen.add(p.post_id);
+      return true;
+    });
+  }, [data]);
   const totalCount = data?.pages[0]?.total ?? 0;
   const showCollectionLabels = activeSources.length > 1;
 
@@ -134,6 +141,21 @@ export function FeedTab() {
           <p className="py-12 text-center text-sm text-muted-foreground">
             Failed to load posts. Try adjusting the filters.
           </p>
+        ) : allPosts.length === 0 && isAnyCollecting ? (
+          <div className="flex flex-col items-center gap-4 pt-8">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-vibrant opacity-50" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-vibrant" />
+              </span>
+              Collecting posts…
+            </div>
+            <div className={colCount > 1 ? `${gridClass} gap-4 w-full` : 'flex flex-col gap-4 w-full'}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-32 animate-pulse rounded-xl bg-secondary" />
+              ))}
+            </div>
+          </div>
         ) : allPosts.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             No posts found.

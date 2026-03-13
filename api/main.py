@@ -794,7 +794,7 @@ async def get_collection_posts(
         COUNT(*) OVER() as _total
     FROM (
         SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+               ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
         FROM social_listening.posts
     ) p
     LEFT JOIN (
@@ -996,7 +996,7 @@ async def download_collection(
         COALESCE(pe.saves, 0) as saves,
         ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.key_quotes, ep.custom_fields
     FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
         FROM social_listening.posts
     ) p
     LEFT JOIN (
@@ -1110,7 +1110,7 @@ async def get_multi_collection_feed(
         ep.custom_fields,
         COUNT(*) OVER() as _total
     FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
         FROM social_listening.posts
     ) p
     LEFT JOIN (
@@ -1382,10 +1382,10 @@ async def proxy_media(url: str = Query(...)):
             headers={"Cache-Control": "public, max-age=86400"},
         )
     except http_requests.RequestException as e:
-        logger.warning("Media proxy failed for %s: %s", url, e)
+        logger.warning("Media proxy failed for %.80s...: %s", url, e)
         raise HTTPException(status_code=502, detail="Failed to fetch media")
     except Exception as e:
-        logger.exception("Media proxy error: %s", url)
+        logger.exception("Media proxy error: %.80s...", url)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -54,7 +54,7 @@ def _write_results_via_values(
         quotes_arr = ", ".join(f"'{_esc(q)}'" for q in r.key_quotes)
 
         custom_json = json.dumps(r.custom_fields) if r.custom_fields else None
-        custom_sql = f"PARSE_JSON('{_esc(custom_json)}')" if custom_json else "NULL"
+        custom_sql = f"PARSE_JSON('{_esc(custom_json)}')" if custom_json else "CAST(NULL AS JSON)"
 
         selects.append(
             f"SELECT '{_esc(post_id)}' AS post_id, "
@@ -150,11 +150,17 @@ def _row_to_post_data(row: dict) -> PostData:
         if isinstance(raw_refs, str):
             raw_refs = json.loads(raw_refs)
         for ref in (raw_refs or []):
-            if isinstance(ref, dict) and ref.get("gcs_uri"):
+            if not isinstance(ref, dict):
+                continue
+            gcs_uri = ref.get("gcs_uri", "")
+            original_url = ref.get("original_url", "")
+            media_type = ref.get("media_type", "image")
+            if gcs_uri or (original_url and media_type == "image"):
                 media_refs.append(MediaRef(
-                    gcs_uri=ref["gcs_uri"],
-                    media_type=ref.get("media_type", "image"),
-                    content_type=ref.get("content_type", "application/octet-stream"),
+                    gcs_uri=gcs_uri,
+                    original_url=original_url,
+                    media_type=media_type,
+                    content_type=ref.get("content_type", ""),
                 ))
 
     return PostData(
@@ -188,18 +194,10 @@ def run_enrichment_inline(
     settings = get_settings()
     bq = BQClient(settings)
 
-    logger.info(
-        "Enriching %d posts inline%s",
-        len(posts),
-        f" for collection {collection_id}" if collection_id else "",
-    )
     start = time.monotonic()
-
     results = enrich_posts(posts, custom_fields=custom_fields)
     _write_results_to_bq(bq, results)
-
-    duration = round(time.monotonic() - start, 1)
-    logger.info("Inline enrichment: %d/%d posts in %.1fs", len(results), len(posts), duration)
+    logger.info("Enrichment batch: %d/%d ok in %.1fs", len(results), len(posts), round(time.monotonic() - start, 1))
     return results
 
 

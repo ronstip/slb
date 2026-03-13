@@ -5,12 +5,22 @@ wraps the corresponding CLI worker script.
 """
 
 import logging
+import os
 import traceback
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+# Console + file logging (logs/ is git-ignored)
+_log_fmt = "%(asctime)s %(name)s %(levelname)s %(message)s"
+logging.basicConfig(level=logging.INFO, format=_log_fmt)
+
+_log_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
+os.makedirs(_log_dir, exist_ok=True)
+_file_handler = logging.FileHandler(os.path.join(_log_dir, "worker.log"), encoding="utf-8")
+_file_handler.setLevel(logging.INFO)
+_file_handler.setFormatter(logging.Formatter(_log_fmt))
+logging.getLogger().addHandler(_file_handler)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SL Workers")

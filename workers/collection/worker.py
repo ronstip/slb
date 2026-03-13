@@ -6,6 +6,7 @@ Usage:
 
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -25,6 +26,57 @@ from workers.shared.firestore_client import FirestoreClient
 from workers.shared.gcs_client import GCSClient
 
 logger = logging.getLogger(__name__)
+
+# Ensure collection logs are written to logs/worker.log (git-ignored)
+_log_dir = os.path.join(os.path.dirname(__file__), "..", "..", "logs")
+os.makedirs(_log_dir, exist_ok=True)
+_log_file = os.path.join(_log_dir, "worker.log")
+if not any(isinstance(h, logging.FileHandler) and h.baseFilename == os.path.abspath(_log_file) for h in logging.getLogger().handlers):
+    _fh = logging.FileHandler(_log_file, encoding="utf-8")
+    _fh.setLevel(logging.INFO)
+    _fh.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+    _root = logging.getLogger()
+    _root.addHandler(_fh)
+    # Ensure root logger passes INFO+ to handlers (default is WARNING)
+    if _root.level > logging.INFO:
+        _root.setLevel(logging.INFO)
+
+
+def _update_media_refs_in_bq(bq: 'BQClient', posts) -> None:
+    """Batch-update media_refs in BQ for posts that have GCS URIs after download.
+
+    BQ DML cannot touch rows that are still in the streaming buffer.
+    Retries once after a 90s wait, which is enough for the buffer to clear.
+    """
+    cases = []
+    post_ids = []
+    for p in posts:
+        refs_json = json.dumps(p.media_refs if isinstance(p.media_refs, list) else [])
+        refs_json = refs_json.replace("\\", "\\\\").replace("'", "\\'")
+        cases.append(f"WHEN '{p.post_id}' THEN PARSE_JSON('{refs_json}')")
+        post_ids.append(p.post_id)
+
+    if not cases:
+        return
+
+    sql = (
+        "UPDATE social_listening.posts "
+        f"SET media_refs = CASE post_id {' '.join(cases)} ELSE media_refs END "
+        "WHERE post_id IN UNNEST(@post_ids)"
+    )
+
+    for attempt in range(2):
+        try:
+            bq.query(sql, {"post_ids": post_ids})
+            logger.info("Updated media_refs in BQ for %d posts", len(post_ids))
+            return
+        except Exception as e:
+            if "streaming buffer" in str(e) and attempt == 0:
+                logger.info("media_refs UPDATE hit streaming buffer — retrying in 90s")
+                time.sleep(90)
+            else:
+                logger.warning("Failed to update media_refs in BQ: %s", e)
+                return
 
 
 def run_collection(collection_id: str, on_batch_complete=None) -> None:
@@ -103,13 +155,18 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
             if not new_posts:
                 continue
 
-            # Download media to GCS (parallelized)
-            download_media_batch(gcs, new_posts, collection_id)
-
-            # Insert posts
+            # Seed media_refs from original CDN URLs so posts display images immediately
+            for p in new_posts:
+                if p.media_urls and not p.media_refs:
+                    p.media_refs = [
+                        {"original_url": url, "media_type": "video" if any(ext in url.lower() for ext in (".mp4", ".mov", ".webm", "mime_type=video", "googlevideo.com", "videoplayback", "v.redd.it")) else "image", "content_type": ""}
+                        for url in p.media_urls
+                    ]
+            # Insert posts FIRST so they appear in the feed immediately
+            failed_posts = 0
             post_rows = [post_to_bq_row(p, collection_id) for p in new_posts]
             if post_rows:
-                bq.insert_rows("posts", post_rows)
+                failed_posts = bq.insert_rows("posts", post_rows)
 
             # Insert initial engagements
             engagement_rows = [post_to_engagement_row(p) for p in new_posts]
@@ -122,11 +179,30 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                 bq.insert_rows("channels", channel_rows)
 
             dupes_in_batch = len(batch.posts) - len(new_posts)
-            total_posts += len(new_posts)
+            total_posts += len(new_posts) - failed_posts
             total_dupes += dupes_in_batch
             fs.update_collection_status(
                 collection_id, posts_collected=total_posts
             )
+
+            # Download media to GCS synchronously — posts are already visible in feed via
+            # CDN URLs seeded above, so this doesn't block feed display. We MUST do this
+            # before on_batch_complete so enrichment gets GCS URIs (required for videos).
+            t_dl = time.monotonic()
+            download_media_batch(gcs, new_posts, collection_id)
+            logger.info("Download done in %.1fs", time.monotonic() - t_dl)
+
+            # Persist GCS URIs back to BQ in background (non-blocking — enrichment uses
+            # the already-updated in-memory refs, not BQ; BQ update is for re-enrichment).
+            def _update_bq_bg(posts_copy=list(new_posts), cid=collection_id):
+                try:
+                    updated = [p for p in posts_copy if any(r.get("gcs_uri") for r in (p.media_refs or []))]
+                    if updated:
+                        _update_media_refs_in_bq(bq, updated)
+                except Exception:
+                    logger.warning("Background BQ media update failed for %s", cid, exc_info=True)
+            threading.Thread(target=_update_bq_bg, daemon=True).start()
+
             # Track usage for billing + analytics
             if owner_user_id and len(new_posts) > 0:
                 fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", len(new_posts))
@@ -161,6 +237,30 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                 "platforms": wrapper.get_platform_stats(),
             },
         }
+        if collection_errors:
+            run_log["collection"]["errors"] = collection_errors
+            logger.warning(
+                "Collection %s had %d platform errors: %s",
+                collection_id, len(collection_errors), collection_errors,
+            )
+
+        if total_posts == 0:
+            error_msg = (
+                f"No posts were collected after {duration_sec}s. "
+                f"Platform stats: {wrapper.get_platform_stats()}. "
+                f"Errors: {collection_errors or 'none'}. "
+                f"Dupes skipped: {total_dupes}."
+            )
+            logger.error("Collection %s: %s", collection_id, error_msg)
+            fs.update_collection_status(
+                collection_id,
+                status="failed",
+                error_message="No posts were collected. The data provider returned no results or all results failed processing.",
+                run_log=run_log,
+            )
+            return
+
+
         fs.update_collection_status(collection_id, status="enriching", run_log=run_log)
         logger.info("Collection %s completed: %d total posts in %.1fs", collection_id, total_posts, duration_sec)
 

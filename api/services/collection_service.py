@@ -128,11 +128,18 @@ def _post_to_enrichment_data(post):
 
     media_refs = []
     for ref in (post.media_refs or []):
-        if isinstance(ref, dict) and ref.get("gcs_uri"):
+        if not isinstance(ref, dict):
+            continue
+        gcs_uri = ref.get("gcs_uri", "")
+        original_url = ref.get("original_url", "")
+        media_type = ref.get("media_type", "image")
+        # Include ref if it has either a GCS URI or a CDN URL (for images only — video CDN URLs don't work with Gemini)
+        if gcs_uri or (original_url and media_type == "image"):
             media_refs.append(MediaRef(
-                gcs_uri=ref["gcs_uri"],
-                media_type=ref.get("media_type", "image"),
-                content_type=ref.get("content_type", "application/octet-stream"),
+                gcs_uri=gcs_uri,
+                original_url=original_url,
+                media_type=media_type,
+                content_type=ref.get("content_type", ""),
             ))
 
     return PostData(
@@ -148,6 +155,7 @@ def _post_to_enrichment_data(post):
 
 def _run_pipeline(collection_id: str) -> None:
     """Run collection + parallel enrichment + embedding pipeline."""
+    import time as _time
     from concurrent.futures import ThreadPoolExecutor
 
     from google.cloud.firestore_v1 import transforms
@@ -163,6 +171,9 @@ def _run_pipeline(collection_id: str) -> None:
 
     settings = get_settings()
     fs = FirestoreClient(settings)
+
+    logger.info("━━━ Pipeline START %s ━━━", collection_id)
+    pipeline_start = _time.monotonic()
 
     # Load custom field definitions from collection config
     status_doc = fs.get_collection_status(collection_id)
@@ -186,28 +197,45 @@ def _run_pipeline(collection_id: str) -> None:
         enrichment_futures.append(future)
 
     # Step 1: Collection (enrichment fires in parallel per batch via callback)
+    logger.info("── Step 1: collection")
+    t0 = _time.monotonic()
     try:
         run_collection(collection_id, on_batch_complete=on_batch_complete)
     except Exception:
         logger.exception("Collection pipeline failed for %s", collection_id)
         enrichment_executor.shutdown(wait=False)
         return
+    logger.info("── Step 1 done in %.1fs", _time.monotonic() - t0)
 
     # Check if collection was cancelled
     status = fs.get_collection_status(collection_id)
     if not status or status.get("status") not in ("enriching", "collecting"):
+        logger.info(
+            "Pipeline stopping for %s — status is '%s'",
+            collection_id, (status or {}).get("status"),
+        )
         enrichment_executor.shutdown(wait=False)
         return
 
     # Step 2: Wait for all enrichment batches to complete
+    logger.info("── Step 2: enrichment (%d batches queued)", len(enrichment_futures))
+    t0 = _time.monotonic()
     enrichment_executor.shutdown(wait=True)
     enrichment_failed = False
+    failed_batches = 0
     for future in enrichment_futures:
         try:
             future.result()
         except Exception:
             logger.exception("Enrichment batch failed for %s", collection_id)
             enrichment_failed = True
+            failed_batches += 1
+    logger.info(
+        "── Step 2 done in %.1fs (%d/%d batches ok)",
+        _time.monotonic() - t0,
+        len(enrichment_futures) - failed_batches,
+        len(enrichment_futures),
+    )
 
     # Step 3: Update enrichment counts in Firestore (even on partial failure)
     try:
@@ -223,12 +251,15 @@ def _run_pipeline(collection_id: str) -> None:
         # Continue to embedding/stats — partial enrichment data is still useful
 
     # Step 4: Embedding (BQ-native, unchanged)
+    logger.info("── Step 3: embedding")
+    t0 = _time.monotonic()
     try:
         bq = get_bq()
         bq.query_from_file("batch_queries/batch_embed.sql", {
             "collection_id": collection_id,
             "post_ids": [],
         })
+        logger.info("── Step 3 done in %.1fs", _time.monotonic() - t0)
     except Exception:
         logger.exception("Embedding failed for %s", collection_id)
 
@@ -236,7 +267,9 @@ def _run_pipeline(collection_id: str) -> None:
     try:
         bq = get_bq()
         rows = bq.query(
-            "SELECT COUNT(*) as cnt FROM social_listening.post_embeddings WHERE collection_id = @collection_id",
+            "SELECT COUNT(*) as cnt FROM social_listening.post_embeddings pe "
+            "JOIN social_listening.posts p ON p.post_id = pe.post_id "
+            "WHERE p.collection_id = @collection_id",
             {"collection_id": collection_id},
         )
         embedded_count = rows[0]["cnt"] if rows else 0
@@ -246,6 +279,8 @@ def _run_pipeline(collection_id: str) -> None:
 
     # Step 5: Compute and persist statistical signature (non-fatal)
     # Also extract total_views + positive_pct for the status card.
+    logger.info("── Step 4: statistical signature")
+    t0 = _time.monotonic()
     try:
         from api.services.statistical_signature_service import refresh_statistical_signature
 
@@ -267,6 +302,7 @@ def _run_pipeline(collection_id: str) -> None:
             total_views=total_views,
             positive_pct=positive_pct,
         )
+        logger.info("── Step 4 done in %.1fs (views=%d, positive=%s%%)", _time.monotonic() - t0, total_views, positive_pct)
     except Exception:
         logger.exception("Statistical signature computation failed for %s", collection_id)
 
@@ -300,6 +336,12 @@ def _run_pipeline(collection_id: str) -> None:
     elif current_status != "completed_with_errors":
         # Don't overwrite completed_with_errors from enrichment step
         fs.update_collection_status(collection_id, status="completed")
+
+    final_status = current_status if config.get("ongoing") else (
+        "completed_with_errors" if enrichment_failed else "completed"
+    )
+    logger.info("━━━ Pipeline DONE %s — status=%s total=%.1fs ━━━",
+                collection_id, final_status, _time.monotonic() - pipeline_start)
 
 
 def trigger_collection_now(collection_id: str) -> None:

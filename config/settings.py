@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3-flash-preview"
     meta_agent_model: str = "gemini-3-flash-preview"
     research_model: str = "gemini-3-flash-preview"  # kept for potential future worker
-    enrichment_model: str = "gemini-3-flash-preview"
+    enrichment_model: str = "gemini-2.0-flash"
     embedding_model: str = "text-embedding-005"
 
     # Enrichment worker config
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     enrichment_temperature: float = 0.2
     enrichment_max_output_tokens: int = 2048
     enrichment_media_resolution: str = "medium"  # low, medium, high
-    enrichment_thinking_level: str = "low"  # minimal, low, medium, high
+    enrichment_thinking_level: str = ""  # minimal, low, medium, high (empty = disabled)
     enrichment_max_media_per_post: int = 5
     enrichment_video_start_offset: str = "0s"
     enrichment_video_end_offset: str = "120s"

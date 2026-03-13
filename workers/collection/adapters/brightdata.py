@@ -8,8 +8,10 @@ Platforms are collected in parallel via ThreadPoolExecutor.
 """
 
 import logging
+import queue
 import re
 import threading
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -67,12 +69,17 @@ class BrightDataAdapter(DataProviderAdapter):
     def platform_stats(self) -> dict[str, dict]:
         return dict(self._platform_stats)
 
-    def collect(self, config: dict) -> list[Batch]:
-        """Collect from all assigned platforms in parallel."""
+    @property
+    def collection_errors(self) -> list[dict]:
+        return list(self._collection_errors)
+
+    def collect(self, config: dict) -> Iterator[Batch]:
+        """Collect from all assigned platforms in parallel, yielding batches as they arrive."""
         self._platform_stats = {}
         platforms = [p for p in config.get("platforms", []) if p in self.supported_platforms()]
+        logger.info("BrightData collect: platforms=%s", platforms)
         if not platforms:
-            return []
+            return
 
         collector_map = {
             "tiktok": self._collect_tiktok,
@@ -80,44 +87,69 @@ class BrightDataAdapter(DataProviderAdapter):
             "reddit": self._collect_reddit,
         }
 
-        all_batches: list[Batch] = []
-        with ThreadPoolExecutor(max_workers=min(len(platforms), _MAX_WORKERS_PLATFORMS)) as pool:
-            futures = {
-                pool.submit(collector_map[p], config): p
-                for p in platforms
-            }
-            for future in as_completed(futures):
-                platform = futures[future]
-                try:
-                    batches = future.result()
-                    all_batches.extend(batches)
-                    post_count = sum(len(b.posts) for b in batches)
-                    with self._stats_lock:
-                        self._platform_stats[platform] = {
-                            "posts": post_count,
-                            "batches": len(batches),
-                            "errors": 0,
-                        }
-                    logger.info("BrightData %s: collected %d posts", platform, post_count)
-                except BrightDataAPIError as e:
-                    with self._stats_lock:
-                        self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1, "error": str(e)}
-                    logger.error("BrightData API error for %s: %s", platform, e)
-                except Exception:
-                    with self._stats_lock:
-                        self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1}
-                    logger.exception("Unexpected error collecting %s via BrightData", platform)
+        batch_queue: queue.Queue = queue.Queue()
 
-        return all_batches
+        def _run_platform(platform: str):
+            """Run a platform collector, putting batches into the queue as they arrive."""
+            post_count = 0
+            batch_count = 0
+            try:
+                for batch in collector_map[platform](config):
+                    post_count += len(batch.posts)
+                    batch_count += 1
+                    batch_queue.put(("batch", platform, batch))
+                with self._stats_lock:
+                    self._platform_stats[platform] = {
+                        "posts": post_count,
+                        "batches": batch_count,
+                        "errors": 0,
+                    }
+                logger.info("[%s] collected %d posts", platform, post_count)
+            except BrightDataAPIError as e:
+                error_detail = {
+                    "platform": platform,
+                    "error_type": "BrightDataAPIError",
+                    "message": str(e),
+                    "status_code": getattr(e, "status_code", None),
+                    "snapshot_id": getattr(e, "snapshot_id", None),
+                }
+                with self._stats_lock:
+                    self._collection_errors.append(error_detail)
+                    self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1, "error": str(e)}
+                logger.error("BrightData API error for %s: %s", platform, e)
+            except Exception as e:
+                error_detail = {
+                    "platform": platform,
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                }
+                with self._stats_lock:
+                    self._collection_errors.append(error_detail)
+                    self._platform_stats[platform] = {"posts": 0, "batches": 0, "errors": 1, "error": str(e)}
+                logger.exception("Unexpected error collecting %s via BrightData", platform)
+            finally:
+                batch_queue.put(("done", platform, None))
+
+        with ThreadPoolExecutor(max_workers=min(len(platforms), _MAX_WORKERS_PLATFORMS)) as pool:
+            for p in platforms:
+                pool.submit(_run_platform, p)
+
+            remaining = len(platforms)
+            while remaining > 0:
+                msg_type, platform, payload = batch_queue.get()
+                if msg_type == "batch":
+                    yield payload
+                elif msg_type == "done":
+                    remaining -= 1
 
     # ------------------------------------------------------------------
     # TikTok
     # ------------------------------------------------------------------
 
-    def _collect_tiktok(self, config: dict) -> list[Batch]:
+    def _collect_tiktok(self, config: dict) -> Iterator[Batch]:
         keywords = config.get("keywords", [])
         if not keywords:
-            return []
+            return
 
         num_per_kw = config.get("max_posts_per_keyword", 20)
         geo = config.get("geo_scope", "")
@@ -130,39 +162,39 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["tiktok"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
+                limit_per_input=num_per_kw,
             )
             valid = [r for r in results if not r.get("error")]
-            if len(valid) < len(results):
-                logger.warning(
-                    "BrightData TikTok keyword '%s': filtered %d error results out of %d",
-                    kw, len(results) - len(valid), len(results),
-                )
-            logger.info("BrightData TikTok keyword '%s': got %d results", kw, len(valid))
+            errors = len(results) - len(valid)
+            logger.info(
+                "[tiktok] kw=%r → %d/%d posts%s",
+                kw, len(valid), len(results),
+                f" ({errors} errors)" if errors else "",
+            )
             return valid
 
-        # Fetch each keyword separately to ensure each gets its own num_of_posts quota
-        all_valid: list[dict] = []
+        # Fetch each keyword separately — yield a batch as soon as each keyword completes
         with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
             futures = {pool.submit(_fetch_keyword, kw): kw for kw in keywords}
             for future in as_completed(futures):
                 kw = futures[future]
                 try:
-                    all_valid.extend(future.result())
+                    results = future.result()
+                    for batch in self._parse_results("tiktok", results):
+                        yield batch
                 except BrightDataAPIError as e:
                     logger.error("BrightData TikTok keyword '%s' failed: %s", kw, e)
                 except Exception:
                     logger.exception("Unexpected error fetching TikTok keyword '%s'", kw)
 
-        return self._parse_results("tiktok", all_valid)
-
     # ------------------------------------------------------------------
     # YouTube
     # ------------------------------------------------------------------
 
-    def _collect_youtube(self, config: dict) -> list[Batch]:
+    def _collect_youtube(self, config: dict) -> Iterator[Batch]:
         keywords = config.get("keywords", [])
         if not keywords:
-            return []
+            return
 
         num_per_kw = config.get("max_posts_per_keyword", 20)
         time_range = config.get("time_range", {})
@@ -183,40 +215,40 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
+                limit_per_input=num_per_kw,
             )
             valid = [r for r in results if not r.get("error")]
-            if len(valid) < len(results):
-                logger.warning(
-                    "BrightData YouTube keyword '%s': filtered %d error results out of %d",
-                    kw, len(results) - len(valid), len(results),
-                )
-            logger.info("BrightData YouTube keyword '%s': got %d results", kw, len(valid))
+            errors = len(results) - len(valid)
+            logger.info(
+                "[youtube] kw=%r → %d/%d posts%s",
+                kw, len(valid), len(results),
+                f" ({errors} errors)" if errors else "",
+            )
             return valid
 
-        # Fetch each keyword separately to ensure each gets its own num_of_posts quota
-        all_valid: list[dict] = []
+        # Fetch each keyword separately — yield a batch as soon as each keyword completes
         with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
             futures = {pool.submit(_fetch_keyword, kw): kw for kw in keywords}
             for future in as_completed(futures):
                 kw = futures[future]
                 try:
-                    all_valid.extend(future.result())
+                    results = future.result()
+                    for batch in self._parse_results("youtube", results):
+                        yield batch
                 except BrightDataAPIError as e:
                     logger.error("BrightData YouTube keyword '%s' failed: %s", kw, e)
                 except Exception:
                     logger.exception("Unexpected error fetching YouTube keyword '%s'", kw)
 
-        return self._parse_results("youtube", all_valid)
-
     # ------------------------------------------------------------------
     # Reddit
     # ------------------------------------------------------------------
 
-    def _collect_reddit(self, config: dict) -> list[Batch]:
+    def _collect_reddit(self, config: dict) -> Iterator[Batch]:
         keywords = config.get("keywords", [])
         subreddit_urls = config.get("reddit_subreddits", [])
         if not keywords and not subreddit_urls:
-            return []
+            return
 
         num_per_kw = config.get("max_posts_per_keyword", 20)
         time_range = config.get("time_range", {})
@@ -235,7 +267,9 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
+                limit_per_input=num_per_kw,
             )
+            logger.info("[reddit] keywords (%d) → %d raw results", len(keywords), len(results))
             all_results.extend(results)
 
         # Strategy 2: subreddit URL discovery (when explicit subreddits provided)
@@ -249,7 +283,9 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="subreddit_url",
+                limit_per_input=num_per_kw,
             )
+            logger.info("[reddit] subreddits (%d) → %d raw results", len(subreddit_urls), len(results))
             all_results.extend(results)
 
         # Filter out error objects and deduplicate by post_id
@@ -265,7 +301,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 seen_ids.add(pid)
             valid.append(item)
 
-        return self._parse_results("reddit", valid)
+        yield from self._parse_results("reddit", valid)
 
     # ------------------------------------------------------------------
     # Shared parsing

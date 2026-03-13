@@ -22,13 +22,13 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
     enabled: !!collectionId,
     refetchInterval: (query) => {
       const s = query.state.data?.status;
-      if (s === 'completed' || s === 'failed' || s === 'monitoring') return false;
+      if (s === 'completed' || s === 'failed' || s === 'monitoring' || s === 'completed_with_errors') return false;
       return 5000;
     },
   });
 
-  const isActive = !statusData || !['completed', 'failed', 'monitoring'].includes(statusData.status);
-  const isDone = statusData && ['completed', 'monitoring'].includes(statusData.status);
+  const isActive = !statusData || !['completed', 'failed', 'monitoring', 'completed_with_errors'].includes(statusData.status);
+  const isDone = statusData && ['completed', 'monitoring', 'completed_with_errors'].includes(statusData.status);
 
   // Fire completion message once when status transitions to done
   useEffect(() => {
@@ -53,11 +53,13 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
           ? 'Complete'
           : statusData.status === 'monitoring'
             ? 'Monitoring'
-            : statusData.status === 'failed'
-              ? 'Failed'
-              : statusData.status === 'pending'
-                ? 'Queued'
-                : statusData.status;
+            : statusData.status === 'completed_with_errors'
+              ? 'Complete (partial)'
+              : statusData.status === 'failed'
+                ? 'Failed'
+                : statusData.status === 'pending'
+                  ? 'Queued'
+                  : statusData.status;
 
   const inner = (
     <div className={variant === 'inline' ? 'border-t border-border/30' : ''}>

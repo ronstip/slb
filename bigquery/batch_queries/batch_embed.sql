@@ -11,7 +11,7 @@ SELECT
     'text-embedding-005',
     CURRENT_TIMESTAMP()
 FROM AI.GENERATE_EMBEDDING(
-    MODEL `social_listening.embedding_model`,
+    MODEL social_listening.embedding_model,
     (
         SELECT
             ep.post_id,

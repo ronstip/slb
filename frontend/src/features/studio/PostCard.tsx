@@ -189,9 +189,9 @@ export function PostMedia({ media, postUrl }: { media: MediaRef[]; postUrl: stri
   const videos = media.filter((m) => m.media_type === 'video');
   const images = media.filter((m) => m.media_type !== 'video');
 
-  // If there's a video, show it prominently (no extra thumbnail images)
+  // If there's a video, show it with thumbnail image as preview
   if (videos.length > 0) {
-    return <VideoPlayer media={videos[0]} postUrl={postUrl} />;
+    return <VideoPlayer media={videos[0]} postUrl={postUrl} thumbnailMedia={images[0]} />;
   }
 
   // Images only
@@ -273,16 +273,52 @@ function MediaImage({ media, className }: { media: MediaRef; className?: string 
   );
 }
 
-function VideoPlayer({ media, postUrl }: { media: MediaRef; postUrl: string }) {
+function VideoPlayer({ media, postUrl, thumbnailMedia }: { media: MediaRef; postUrl: string; thumbnailMedia?: MediaRef }) {
+  const hasGcsVideo = !!media.gcs_uri;
+
+  // If we have a GCS-proxied video, try to play it inline
+  if (hasGcsVideo) {
+    return <InlineVideo media={media} postUrl={postUrl} />;
+  }
+
+  // No GCS video yet — show thumbnail with play overlay linking to original
+  if (thumbnailMedia) {
+    return (
+      <a
+        href={postUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="relative block group"
+      >
+        <MediaImage media={thumbnailMedia} className="w-full aspect-[4/3]" />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white">
+            <Play className="h-6 w-6 fill-current" />
+          </div>
+        </div>
+      </a>
+    );
+  }
+
+  // No thumbnail available — simple play link
+  return (
+    <a
+      href={postUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex h-40 items-center justify-center gap-2 bg-secondary text-muted-foreground transition-colors hover:bg-border"
+    >
+      <Play className="h-8 w-8" />
+      <span className="text-sm font-medium">Watch on original platform</span>
+    </a>
+  );
+}
+
+function InlineVideo({ media, postUrl }: { media: MediaRef; postUrl: string }) {
   const primarySrc = resolveUrl(media);
-  const fallbackSrc = media.original_url
-    ? mediaUrl(undefined, media.original_url)
-    : undefined;
-  const [src, setSrc] = useState(primarySrc);
   const [failed, setFailed] = useState(false);
 
   if (failed) {
-    // Fallback: link to original post
     return (
       <a
         href={postUrl}
@@ -298,16 +334,10 @@ function VideoPlayer({ media, postUrl }: { media: MediaRef; postUrl: string }) {
 
   return (
     <video
-      src={src}
+      src={primarySrc}
       controls
       preload="metadata"
-      onError={() => {
-        if (fallbackSrc && src !== fallbackSrc) {
-          setSrc(fallbackSrc);
-        } else {
-          setFailed(true);
-        }
-      }}
+      onError={() => setFailed(true)}
       className="w-full max-h-72 bg-black object-contain"
     />
   );

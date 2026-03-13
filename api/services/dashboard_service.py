@@ -28,7 +28,7 @@ SELECT
     COALESCE(pe.shares, 0) AS share_count
 FROM (
     SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
+           ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
     FROM social_listening.posts
 ) p
 LEFT JOIN (

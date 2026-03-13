@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 
 from config.settings import get_settings
 from workers.collection.adapters.base import DataProviderAdapter
@@ -83,8 +84,8 @@ class DataProviderWrapper:
                 return provider
         raise ValueError(f"No adapter supports platform: {platform}")
 
-    def collect_all(self) -> list[Batch]:
-        """Collect from all platforms, routing each to its assigned adapter."""
+    def collect_all(self) -> Iterator[Batch]:
+        """Collect from all platforms, yielding batches as they arrive from each adapter."""
         # Group platforms by their resolved adapter
         adapter_platforms: dict[int, tuple[DataProviderAdapter, list[str]]] = {}
 
@@ -101,14 +102,11 @@ class DataProviderWrapper:
             adapter_platforms[key][1].append(platform)
 
         # Call collect() once per adapter with only its assigned platforms
-        all_batches: list[Batch] = []
         for adapter, platforms in adapter_platforms.values():
             sub_config = dict(self.config)
             sub_config["platforms"] = platforms
             logger.info("Collecting via %s for platforms: %s", type(adapter).__name__, platforms)
-            all_batches.extend(adapter.collect(sub_config))
-
-        return all_batches
+            yield from adapter.collect(sub_config)
 
     def get_platform_stats(self) -> dict[str, dict]:
         """Return per-platform collection stats from the last collect_all() call."""

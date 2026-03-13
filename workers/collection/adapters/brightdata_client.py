@@ -88,6 +88,7 @@ class BrightDataClient:
         }
         if limit_per_input is not None:
             params["limit_per_input"] = str(limit_per_input)
+        logger.info("BD scrape: discover_by=%s, inputs=%d, limit=%s", discover_by, len(inputs), limit_per_input)
         resp = self._session.post(
             f"{_BASE_URL}/scrape",
             params=params,
@@ -101,7 +102,7 @@ class BrightDataClient:
         try:
             data = resp.json()
             if isinstance(data, dict) and data.get("snapshot_id"):
-                logger.info("Bright Data scrape triggered, snapshot_id=%s", data["snapshot_id"])
+                logger.info("BD snapshot triggered: %s (async)", data["snapshot_id"])
                 return data["snapshot_id"]
             if isinstance(data, list):
                 return data
@@ -153,8 +154,10 @@ class BrightDataClient:
         snapshot_id = result
         interval = self._poll_initial_interval_sec
         elapsed = 0.0
-        poll_backoff = 1.5
-        max_poll_interval = 30.0
+        poll_backoff = 1.2
+        max_poll_interval = 10.0
+        last_state = None
+        last_log_elapsed = 0.0
 
         while elapsed < self._poll_max_wait_sec:
             time.sleep(interval)
@@ -162,10 +165,12 @@ class BrightDataClient:
 
             status = self.poll_snapshot(snapshot_id)
             state = status.get("status")
-            logger.debug(
-                "Polling snapshot %s: status=%s, elapsed=%.0fs",
-                snapshot_id, state, elapsed,
-            )
+
+            # Log on state change or every 30 seconds
+            if state != last_state or (elapsed - last_log_elapsed) >= 30:
+                logger.info("BD snapshot %s: %s (%.0fs)", snapshot_id, state, elapsed)
+                last_state = state
+                last_log_elapsed = elapsed
 
             if state == "ready":
                 return self.download_snapshot(snapshot_id)

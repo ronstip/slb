@@ -10,11 +10,12 @@ from pydantic import BaseModel
 
 
 class MediaRef(BaseModel):
-    """A single media attachment with its GCS location."""
+    """A single media attachment — GCS URI preferred, original CDN URL as fallback."""
 
-    gcs_uri: str
-    media_type: str  # image, video, audio
-    content_type: str  # image/jpeg, video/mp4, etc.
+    gcs_uri: str = ""          # GCS URI (permanent, proxied)
+    original_url: str = ""     # CDN/original URL (may expire, used if no gcs_uri)
+    media_type: str = "image"  # image, video, audio
+    content_type: str = ""     # image/jpeg, video/mp4, etc.
 
 
 class PostData(BaseModel):
