@@ -125,6 +125,21 @@ def download_media(gcs_client: GCSClient, post: Post, collection_id: str) -> lis
                 "gcs_uri": "",
             })
 
+    # TikTok: if no video was obtained via CDN (expected — video_url is excluded
+    # from media_urls due to expiring tokens), download directly from the post
+    # page URL via yt-dlp. yt-dlp resolves the video independently of CDN tokens.
+    if (
+        use_ytdlp_fallback
+        and not ytdlp_used
+        and post.post_url
+        and not any(r.get("media_type") == "video" for r in media_refs)
+    ):
+        ytdlp_ref = _download_via_ytdlp(
+            gcs_client, post.post_url, collection_id, post.post_id, len(media_refs)
+        )
+        if ytdlp_ref:
+            media_refs.append(ytdlp_ref)
+
     return media_refs
 
 

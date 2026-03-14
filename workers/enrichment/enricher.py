@@ -6,6 +6,7 @@ All configuration read from settings (env vars).
 """
 
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -17,6 +18,22 @@ from config.settings import get_settings
 from workers.enrichment.schema import CustomFieldDef, EnrichmentResult, PostData
 
 logger = logging.getLogger(__name__)
+
+# Global semaphore to cap concurrent Gemini API calls across all batch workers.
+# Lazy-initialized on first use so settings are available.
+_global_semaphore: threading.Semaphore | None = None
+_semaphore_lock = threading.Lock()
+
+
+def _get_global_semaphore() -> threading.Semaphore:
+    global _global_semaphore
+    if _global_semaphore is None:
+        with _semaphore_lock:
+            if _global_semaphore is None:
+                limit = get_settings().enrichment_global_concurrency
+                _global_semaphore = threading.Semaphore(limit)
+                logger.info("Global enrichment semaphore initialized (limit=%d)", limit)
+    return _global_semaphore
 
 ENRICHMENT_PROMPT = """\
 Your task is to analyze the attached social media post to determine its primary content, context, intent, tone, and cultural relevance and narrative.
@@ -188,27 +205,6 @@ def _build_content_parts(
                 post.post_url,
             )
 
-    # YouTube: if no video media in GCS, pass the YouTube URL directly.
-    # Gemini can natively process YouTube URLs for video analysis.
-    if (
-        post.platform == "youtube"
-        and post.post_url
-        and not any(_is_video(r.media_type, r.content_type) for r in post.media_refs)
-    ):
-        try:
-            parts.append(
-                types.Part.from_uri(
-                    file_uri=post.post_url,
-                    mime_type="video/mp4",
-                )
-            )
-        except Exception:
-            logger.warning(
-                "Failed to create YouTube video part for %s (%s)",
-                post.post_id,
-                post.post_url,
-            )
-
     return parts
 
 
@@ -254,26 +250,35 @@ def _enrich_single_post(
 ) -> tuple[str, EnrichmentResult | None]:
     """Enrich a single post. Returns (post_id, result) or (post_id, None) on failure.
 
-    Retries once with backoff on 429 RESOURCE_EXHAUSTED.
+    Uses global semaphore to cap concurrent Gemini calls.
+    Retries up to 3 times with exponential backoff on 429 RESOURCE_EXHAUSTED.
     """
     parts = _build_content_parts(post, custom_fields)
     contents = types.Content(role="user", parts=parts)
+    semaphore = _get_global_semaphore()
+    max_attempts = 3
+    backoff_delays = [10, 20]  # delays between retries
 
-    for attempt in range(2):
+    for attempt in range(max_attempts):
         try:
-            response = client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=config,
-            )
+            semaphore.acquire()
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+            finally:
+                semaphore.release()
+
             result = EnrichmentResult.model_validate_json(response.text)
             return (post.post_id, result)
 
         except Exception as e:
             is_rate_limit = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
-            if is_rate_limit and attempt == 0:
-                wait = 30
-                logger.warning("Enrichment 429 for post %s — retrying in %ds", post.post_id, wait)
+            if is_rate_limit and attempt < max_attempts - 1:
+                wait = backoff_delays[attempt]
+                logger.warning("Enrichment 429 for post %s — retrying in %ds (attempt %d/%d)", post.post_id, wait, attempt + 1, max_attempts)
                 time.sleep(wait)
             else:
                 logger.warning("Enrichment failed for post %s: %s: %s", post.post_id, type(e).__name__, str(e)[:200])

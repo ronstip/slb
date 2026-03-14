@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     enrichment_video_end_offset: str = "180s"
     enrichment_video_fps: float = 0.5
     enrichment_batch_workers: int = 20
+    enrichment_global_concurrency: int = 50  # Max concurrent Gemini calls across all batches
 
     vetric_api_key_twitter: str = ""
     vetric_api_key_instagram: str = ""

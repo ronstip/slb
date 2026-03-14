@@ -155,11 +155,20 @@ class BrightDataAdapter(DataProviderAdapter):
 
         num_per_kw = config.get("max_posts_per_keyword") or 0
 
-        def _fetch_keyword(kw: str) -> list[dict]:
+        # Expand keywords with hashtag variants for broader discovery
+        hashtags = _expand_keywords_to_hashtags(keywords)
+        all_search_terms = keywords + hashtags
+        logger.info("[tiktok] search terms: %s (keywords=%d + hashtags=%d)", all_search_terms, len(keywords), len(hashtags))
+
+        # Build all inputs and send in a single API call (BrightData parallelizes internally)
+        inputs = []
+        for kw in all_search_terms:
             inp: dict = {"search_keyword": kw}
             if num_per_kw > 0:
                 inp["num_of_posts"] = num_per_kw
-            inputs = [inp]
+            inputs.append(inp)
+
+        try:
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["tiktok"]["posts"],
                 inputs=inputs,
@@ -168,25 +177,18 @@ class BrightDataAdapter(DataProviderAdapter):
             valid = [r for r in results if not _is_error_item(r)]
             errors = len(results) - len(valid)
             logger.info(
-                "[tiktok] kw=%r → %d/%d posts%s",
-                kw, len(valid), len(results),
+                "[tiktok] batch → %d/%d posts%s",
+                len(valid), len(results),
                 f" ({errors} errors)" if errors else "",
             )
-            return valid
-
-        # Fetch each keyword separately — yield a batch as soon as each keyword completes
-        with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
-            futures = {pool.submit(_fetch_keyword, kw): kw for kw in keywords}
-            for future in as_completed(futures):
-                kw = futures[future]
-                try:
-                    results = future.result()
-                    for batch in self._parse_results("tiktok", results):
-                        yield batch
-                except BrightDataAPIError as e:
-                    logger.error("BrightData TikTok keyword '%s' failed: %s", kw, e)
-                except Exception:
-                    logger.exception("Unexpected error fetching TikTok keyword '%s'", kw)
+            for batch in self._parse_results("tiktok", valid):
+                yield batch
+        except BrightDataAPIError as e:
+            logger.error("BrightData TikTok batch failed: %s", e)
+            raise
+        except Exception:
+            logger.exception("Unexpected error fetching TikTok batch")
+            raise
 
     # ------------------------------------------------------------------
     # YouTube
@@ -202,42 +204,68 @@ class BrightDataAdapter(DataProviderAdapter):
         start = _to_bd_date_mmddyyyy(time_range.get("start"))
         end = _to_bd_date_mmddyyyy(time_range.get("end"))
 
-        def _fetch_keyword(kw: str) -> list[dict]:
-            inp: dict = {
-                "keyword": kw,
-                "start_date": start,
-                "end_date": end,
-            }
-            if num_per_kw > 0:
-                inp["num_of_posts"] = num_per_kw
-            inputs = [inp]
+        # Expand keywords with hashtag variants for hashtag discovery
+        hashtags = _expand_keywords_to_hashtags(keywords)
+        logger.info("[youtube] keywords=%s, hashtags=%s", keywords, hashtags)
+
+        def _fetch_keywords_batch() -> list[dict]:
+            """Keyword-based search: all keywords in one API call."""
+            inputs = []
+            for kw in keywords:
+                inp: dict = {"keyword": kw, "start_date": start, "end_date": end}
+                if num_per_kw > 0:
+                    inp["num_of_posts"] = num_per_kw
+                inputs.append(inp)
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
             )
             valid = [r for r in results if not _is_error_item(r)]
-            errors = len(results) - len(valid)
-            logger.info(
-                "[youtube] kw=%r → %d/%d posts%s",
-                kw, len(valid), len(results),
-                f" ({errors} errors)" if errors else "",
-            )
+            logger.info("[youtube] keyword batch → %d/%d posts", len(valid), len(results))
             return valid
 
-        # Fetch each keyword separately — yield a batch as soon as each keyword completes
-        with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
-            futures = {pool.submit(_fetch_keyword, kw): kw for kw in keywords}
+        def _fetch_hashtag_batch() -> list[dict]:
+            """Hashtag discovery: returns different results than keyword search."""
+            if not hashtags:
+                return []
+            inputs = []
+            for tag in hashtags:
+                inp: dict = {"hashtag": tag}
+                if num_per_kw > 0:
+                    inp["num_of_posts"] = num_per_kw
+                inputs.append(inp)
+            results = self._client.scrape_and_wait(
+                dataset_id=self._DATASET_IDS["youtube"]["posts"],
+                inputs=inputs,
+                discover_by="hashtag",
+            )
+            valid = [r for r in results if not _is_error_item(r)]
+            logger.info("[youtube] hashtag batch → %d/%d posts", len(valid), len(results))
+            return valid
+
+        # Run keyword + hashtag discovery in parallel
+        all_results: list[dict] = []
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = {
+                pool.submit(_fetch_keywords_batch): "keyword",
+                pool.submit(_fetch_hashtag_batch): "hashtag",
+            }
             for future in as_completed(futures):
-                kw = futures[future]
+                label = futures[future]
                 try:
-                    results = future.result()
-                    for batch in self._parse_results("youtube", results):
-                        yield batch
+                    all_results.extend(future.result())
                 except BrightDataAPIError as e:
-                    logger.error("BrightData YouTube keyword '%s' failed: %s", kw, e)
+                    logger.error("BrightData YouTube %s batch failed: %s", label, e)
                 except Exception:
-                    logger.exception("Unexpected error fetching YouTube keyword '%s'", kw)
+                    logger.exception("Unexpected error fetching YouTube %s batch", label)
+
+        if not all_results:
+            return
+
+        # Dedup handled in _parse_results
+        for batch in self._parse_results("youtube", all_results):
+            yield batch
 
     # ------------------------------------------------------------------
     # Reddit
@@ -312,17 +340,27 @@ class BrightDataAdapter(DataProviderAdapter):
     _BATCH_SIZE = 50  # Sub-batch size for progressive enrichment
 
     def _parse_results(self, platform: str, results: list[dict]) -> list[Batch]:
-        """Parse raw results into sub-batches of _BATCH_SIZE for progressive enrichment."""
+        """Parse raw results into sub-batches of _BATCH_SIZE for progressive enrichment.
+
+        Deduplicates posts by post_id (important when multiple search terms
+        return overlapping results).
+        """
         if not results:
             return []
 
         parse_post, parse_channel = self._PLATFORM_PARSERS[platform]
         posts: list[Post] = []
         channels_seen: dict[str, Channel] = {}
+        seen_post_ids: set[str] = set()
 
         for item in results:
             try:
                 post = parse_post(item)
+                # Dedup across keywords/hashtags
+                if post.post_id and post.post_id in seen_post_ids:
+                    continue
+                if post.post_id:
+                    seen_post_ids.add(post.post_id)
                 posts.append(post)
                 channel = parse_channel(item)
                 if channel.channel_id and channel.channel_id not in channels_seen:
@@ -337,6 +375,12 @@ class BrightDataAdapter(DataProviderAdapter):
             logger.warning(
                 "BrightData %s: dropped %d posts with empty post_id",
                 platform, before_count - len(posts),
+            )
+        deduped_count = len(results) - len(posts)
+        if deduped_count > 0:
+            logger.info(
+                "BrightData %s: deduped %d overlapping posts (%d → %d unique)",
+                platform, deduped_count, len(results), len(posts),
             )
 
         if not posts:
@@ -503,3 +547,20 @@ def _detect_platform_from_url(url: str) -> str | None:
         if domain in url:
             return platform
     return None
+
+
+def _expand_keywords_to_hashtags(keywords: list[str]) -> list[str]:
+    """Expand keywords into hashtag variants for broader discovery.
+
+    "Mark Zuckerberg" → "#markzuckerberg"
+    Already-hashtag keywords are kept as-is.
+    Returns only the NEW hashtag variants (not the originals).
+    """
+    hashtags: list[str] = []
+    for kw in keywords:
+        if kw.startswith("#"):
+            continue
+        # Strip spaces and lowercase to form a hashtag
+        tag = "#" + re.sub(r"\s+", "", kw).lower()
+        hashtags.append(tag)
+    return hashtags
