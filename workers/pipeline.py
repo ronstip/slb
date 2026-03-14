@@ -23,11 +23,12 @@ def _post_to_enrichment_data(post):
     """Convert a collection Post model to enrichment PostData (in-memory, no BQ read)."""
     media_refs = []
     for ref in (post.media_refs or []):
-        if isinstance(ref, dict) and ref.get("gcs_uri"):
+        if isinstance(ref, dict) and (ref.get("gcs_uri") or ref.get("original_url")):
             media_refs.append(MediaRef(
-                gcs_uri=ref["gcs_uri"],
+                gcs_uri=ref.get("gcs_uri", ""),
+                original_url=ref.get("original_url", ""),
                 media_type=ref.get("media_type", "image"),
-                content_type=ref.get("content_type", "application/octet-stream"),
+                content_type=ref.get("content_type", ""),
             ))
 
     return PostData(
@@ -103,12 +104,15 @@ def run_pipeline(collection_id: str) -> None:
             custom_fields_defs = [CustomFieldDef(**f) for f in raw_cf]
 
     # Thread pool for parallel enrichment batches
-    enrichment_executor = ThreadPoolExecutor(max_workers=3)
+    enrichment_executor = ThreadPoolExecutor(max_workers=settings.enrichment_batch_workers)
     enrichment_futures = []
+
+    enrichment_batch_sizes = []
 
     def on_batch_complete(new_posts):
         """Callback from collection worker — fire enrichment for this batch."""
         post_data = [_post_to_enrichment_data(p) for p in new_posts]
+        enrichment_batch_sizes.append(len(post_data))
         future = enrichment_executor.submit(
             run_enrichment_inline, post_data, collection_id, custom_fields_defs,
         )
@@ -141,9 +145,17 @@ def run_pipeline(collection_id: str) -> None:
     enrichment_executor.shutdown(wait=True)
     enrichment_failed = False
     failed_batches = 0
-    for future in enrichment_futures:
+    for i, future in enumerate(enrichment_futures):
         try:
-            future.result()
+            result = future.result()
+            batch_size = enrichment_batch_sizes[i] if i < len(enrichment_batch_sizes) else 0
+            if not result and batch_size > 0:
+                logger.warning(
+                    "Enrichment batch %d returned 0/%d results for %s",
+                    i, batch_size, collection_id,
+                )
+                enrichment_failed = True
+                failed_batches += 1
         except Exception:
             logger.exception("Enrichment batch failed for %s", collection_id)
             enrichment_failed = True
@@ -166,35 +178,10 @@ def run_pipeline(collection_id: str) -> None:
             collection_id, status="completed_with_errors",
             error_message="One or more enrichment batches failed. Partial data is available.",
         )
-        # Continue to embedding/stats — partial enrichment data is still useful
+        # Continue to stats — partial enrichment data is still useful
 
-    # Step 4: Embedding (BQ-native)
-    logger.info("── Step 3: embedding")
-    t0 = _time.monotonic()
-    try:
-        bq.query_from_file("batch_queries/batch_embed.sql", {
-            "collection_id": collection_id,
-            "post_ids": [],
-        })
-        logger.info("── Step 3 done in %.1fs", _time.monotonic() - t0)
-    except Exception:
-        logger.exception("Embedding failed for %s", collection_id)
-
-    # Step 4b: Update posts_embedded count in Firestore
-    try:
-        rows = bq.query(
-            "SELECT COUNT(*) as cnt FROM social_listening.post_embeddings pe "
-            "JOIN social_listening.posts p ON p.post_id = pe.post_id "
-            "WHERE p.collection_id = @collection_id",
-            {"collection_id": collection_id},
-        )
-        embedded_count = rows[0]["cnt"] if rows else 0
-        fs.update_collection_status(collection_id, posts_embedded=embedded_count)
-    except Exception:
-        logger.exception("Failed to update posts_embedded count for %s", collection_id)
-
-    # Step 5: Compute and persist statistical signature (non-fatal)
-    logger.info("── Step 4: statistical signature")
+    # Step 4: Compute and persist statistical signature (non-fatal)
+    logger.info("── Step 3: statistical signature")
     t0 = _time.monotonic()
     try:
         sig = refresh_statistical_signature(collection_id, bq, fs)
@@ -214,11 +201,11 @@ def run_pipeline(collection_id: str) -> None:
             total_views=total_views,
             positive_pct=positive_pct,
         )
-        logger.info("── Step 4 done in %.1fs (views=%d, positive=%s%%)", _time.monotonic() - t0, total_views, positive_pct)
+        logger.info("── Step 3 done in %.1fs (views=%d, positive=%s%%)", _time.monotonic() - t0, total_views, positive_pct)
     except Exception:
         logger.exception("Statistical signature computation failed for %s", collection_id)
 
-    # Step 6: Decide final status based on ongoing flag
+    # Step 4: Decide final status based on ongoing flag (set completed BEFORE embedding)
     status = fs.get_collection_status(collection_id)
     current_status = (status or {}).get("status")
     config = (status or {}).get("config") or {}
@@ -314,3 +301,28 @@ def run_pipeline(collection_id: str) -> None:
     )
     logger.info("━━━ Pipeline DONE %s — status=%s total=%.1fs ━━━",
                 collection_id, final_status, _time.monotonic() - pipeline_start)
+
+    # Step 5: Embedding (deferred — runs AFTER status is set so UX is not blocked)
+    logger.info("── Step 5: embedding (deferred, non-blocking)")
+    t0 = _time.monotonic()
+    try:
+        bq.query_from_file("batch_queries/batch_embed.sql", {
+            "collection_id": collection_id,
+            "post_ids": [],
+        })
+        logger.info("── Step 5 done in %.1fs", _time.monotonic() - t0)
+    except Exception:
+        logger.exception("Embedding failed for %s", collection_id)
+
+    # Update posts_embedded count in Firestore
+    try:
+        rows = bq.query(
+            "SELECT COUNT(*) as cnt FROM social_listening.post_embeddings pe "
+            "JOIN social_listening.posts p ON p.post_id = pe.post_id "
+            "WHERE p.collection_id = @collection_id",
+            {"collection_id": collection_id},
+        )
+        embedded_count = rows[0]["cnt"] if rows else 0
+        fs.update_collection_status(collection_id, posts_embedded=embedded_count)
+    except Exception:
+        logger.exception("Failed to update posts_embedded count for %s", collection_id)

@@ -193,8 +193,8 @@ class BrightDataClient:
         snapshot_id = result
         interval = self._poll_initial_interval_sec
         elapsed = 0.0
-        poll_backoff = 1.2
-        max_poll_interval = 10.0
+        poll_backoff = 1.15
+        max_poll_interval = 5.0
         last_state = None
         last_log_elapsed = 0.0
 

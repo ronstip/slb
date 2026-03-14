@@ -10,7 +10,7 @@ export function mapCollectionToSource(c: CollectionStatusResponse): Source {
       keywords: [],
       channel_urls: [],
       time_range: { start: '', end: '' },
-      max_calls: 0,
+      n_posts: 0,
       include_comments: false,
       geo_scope: 'global',
     },

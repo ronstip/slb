@@ -98,6 +98,7 @@ When gathering collection parameters (platforms, time range, keywords, etc.), us
 ### Research Design
 
 - Reason through keyword selection — consider recall and precision. Keep reasoning brief.
+- When the user specifies a total post count (e.g., "2K posts", "500 posts"), pass it as `n_posts` to `design_research`. The system distributes proportionally across keywords and platforms automatically. When no count is specified, use `n_posts=0` (collect everything available).
 - Suggest custom enrichment fields when the question benefits from domain-specific extraction. Present as part of the design for user approval.
 - **Custom field consistency is critical.** The custom fields you describe to the user in conversation must EXACTLY match what you pass to `design_research` via the `custom_fields` parameter — same names, same descriptions. Format: "field_name:type:description" separated by pipes.
 - **Re-enrichment**: ALWAYS get explicit user approval before calling `enrich_collection`.

@@ -31,7 +31,7 @@ from workers.collection.models import Batch, Channel, Post
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS_PLATFORMS = 3
-_MAX_WORKERS_KEYWORDS = 5
+_MAX_WORKERS_KEYWORDS = 10
 
 
 class BrightDataAdapter(DataProviderAdapter):
@@ -153,18 +153,21 @@ class BrightDataAdapter(DataProviderAdapter):
         if not keywords:
             return
 
-        num_per_kw = config.get("max_posts_per_keyword", 20)
+        num_per_kw = config.get("max_posts_per_keyword") or 0
         geo = config.get("geo_scope", "")
         if geo == "global":
             geo = ""
 
         def _fetch_keyword(kw: str) -> list[dict]:
-            inputs = [{"search_keyword": kw, "num_of_posts": num_per_kw, "country": geo}]
+            inp: dict = {"search_keyword": kw, "country": geo}
+            if num_per_kw > 0:
+                inp["num_of_posts"] = num_per_kw
+            inputs = [inp]
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["tiktok"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
-                limit_per_input=num_per_kw,
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             valid = [r for r in results if not r.get("error")]
             errors = len(results) - len(valid)
@@ -198,26 +201,26 @@ class BrightDataAdapter(DataProviderAdapter):
         if not keywords:
             return
 
-        num_per_kw = config.get("max_posts_per_keyword", 20)
+        num_per_kw = config.get("max_posts_per_keyword") or 0
         time_range = config.get("time_range", {})
         start = _to_bd_date_mmddyyyy(time_range.get("start"))
         end = _to_bd_date_mmddyyyy(time_range.get("end"))
 
         def _fetch_keyword(kw: str) -> list[dict]:
-            inputs = [
-                {
-                    "keyword": kw,
-                    "num_of_posts": str(num_per_kw),  # YouTube requires string
-                    "start_date": start,
-                    "end_date": end,
-                    "country": "",
-                }
-            ]
+            inp: dict = {
+                "keyword": kw,
+                "start_date": start,
+                "end_date": end,
+                "country": "",
+            }
+            if num_per_kw > 0:
+                inp["num_of_posts"] = str(num_per_kw)
+            inputs = [inp]
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
-                limit_per_input=num_per_kw,
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             valid = [r for r in results if not r.get("error")]
             errors = len(results) - len(valid)
@@ -252,7 +255,7 @@ class BrightDataAdapter(DataProviderAdapter):
         if not keywords and not subreddit_urls:
             return
 
-        num_per_kw = config.get("max_posts_per_keyword", 20)
+        num_per_kw = config.get("max_posts_per_keyword") or 0
         time_range = config.get("time_range", {})
         start = time_range.get("start", "")
         reddit_date = _iso_date_to_reddit_filter(start)
@@ -261,15 +264,17 @@ class BrightDataAdapter(DataProviderAdapter):
 
         # Strategy 1: keyword-based discovery (preferred when keywords provided)
         if keywords:
-            inputs = [
-                {"keyword": kw, "date": reddit_date, "num_of_posts": num_per_kw}
-                for kw in keywords
-            ]
+            inputs = []
+            for kw in keywords:
+                inp: dict = {"keyword": kw, "date": reddit_date}
+                if num_per_kw > 0:
+                    inp["num_of_posts"] = num_per_kw
+                inputs.append(inp)
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
-                limit_per_input=num_per_kw,
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             logger.info("[reddit] keywords (%d) → %d raw results", len(keywords), len(results))
             all_results.extend(results)
@@ -280,12 +285,15 @@ class BrightDataAdapter(DataProviderAdapter):
             for url in subreddit_urls:
                 if not url.startswith("http"):
                     url = f"https://www.reddit.com/r/{url}/"
-                inputs.append({"url": url, "num_of_posts": num_per_kw})
+                sub_inp: dict = {"url": url}
+                if num_per_kw > 0:
+                    sub_inp["num_of_posts"] = num_per_kw
+                inputs.append(sub_inp)
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="subreddit_url",
-                limit_per_input=num_per_kw,
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             logger.info("[reddit] subreddits (%d) → %d raw results", len(subreddit_urls), len(results))
             all_results.extend(results)
@@ -309,8 +317,10 @@ class BrightDataAdapter(DataProviderAdapter):
     # Shared parsing
     # ------------------------------------------------------------------
 
+    _BATCH_SIZE = 50  # Sub-batch size for progressive enrichment
+
     def _parse_results(self, platform: str, results: list[dict]) -> list[Batch]:
-        """Parse raw results into a single Batch, deduplicating channels."""
+        """Parse raw results into sub-batches of _BATCH_SIZE for progressive enrichment."""
         if not results:
             return []
 
@@ -345,7 +355,22 @@ class BrightDataAdapter(DataProviderAdapter):
                     platform, len(results), list(results[0].keys())[:15],
                 )
             return []
-        return [Batch(posts=posts, channels=list(channels_seen.values()))]
+
+        # Split into sub-batches for progressive enrichment
+        all_channels = list(channels_seen.values())
+        batches: list[Batch] = []
+        for i in range(0, len(posts), self._BATCH_SIZE):
+            chunk = posts[i:i + self._BATCH_SIZE]
+            # Include channels relevant to this chunk
+            chunk_channel_ids = {p.channel_id for p in chunk if p.channel_id}
+            chunk_channels = [c for c in all_channels if c.channel_id in chunk_channel_ids]
+            batches.append(Batch(posts=chunk, channels=chunk_channels))
+
+        logger.info(
+            "BrightData %s: %d posts → %d sub-batches of ~%d",
+            platform, len(posts), len(batches), self._BATCH_SIZE,
+        )
+        return batches
 
     # ------------------------------------------------------------------
     # Engagement refresh

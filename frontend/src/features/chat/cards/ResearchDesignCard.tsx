@@ -41,7 +41,7 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
         channel_urls: cfg.channel_urls?.length ? cfg.channel_urls : undefined,
         time_range_days: timeRangeDays,
         geo_scope: cfg.geo_scope,
-        max_calls: cfg.max_calls ?? 2,
+        n_posts: cfg.n_posts ?? 0,
         include_comments: cfg.include_comments,
         ongoing: cfg.ongoing,
         schedule: cfg.schedule,

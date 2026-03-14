@@ -106,8 +106,11 @@ def create_collection_from_request(
             "start": start_date.strftime("%Y-%m-%d"),
             "end": end_date.strftime("%Y-%m-%d"),
         },
-        "max_calls": request.max_calls,
-        "max_posts_per_keyword": request.max_posts_per_keyword or request.max_calls * 10,
+        "n_posts": request.n_posts,
+        "max_posts_per_keyword": (
+            __import__("math").ceil(request.n_posts / (max(len(request.platforms), 1) * max(len(request.keywords), 1)))
+            if request.n_posts > 0 else None
+        ),
         "include_comments": request.include_comments,
         "geo_scope": request.geo_scope,
         "ongoing": request.ongoing,

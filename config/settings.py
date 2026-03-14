@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3-flash-preview"
     meta_agent_model: str = "gemini-3-flash-preview"
     research_model: str = "gemini-3-flash-preview"  # kept for potential future worker
-    enrichment_model: str = "gemini-2.0-flash"
+    enrichment_model: str = "gemini-3-flash-preview"
     embedding_model: str = "text-embedding-005"
 
     # Enrichment worker config
@@ -27,8 +27,10 @@ class Settings(BaseSettings):
     enrichment_thinking_level: str = ""  # minimal, low, medium, high (empty = disabled)
     enrichment_max_media_per_post: int = 5
     enrichment_video_start_offset: str = "0s"
-    enrichment_video_end_offset: str = "120s"
-    enrichment_video_fps: int = 1
+    enrichment_video_end_offset: str = "180s"
+    enrichment_video_fps: float = 0.5
+    enrichment_batch_workers: int = 20
+
     vetric_api_key_twitter: str = ""
     vetric_api_key_instagram: str = ""
     vetric_api_key_tiktok: str = ""
@@ -37,8 +39,8 @@ class Settings(BaseSettings):
 
     # Bright Data
     brightdata_api_token: str = ""
-    brightdata_poll_max_wait_sec: int = 300
-    brightdata_poll_initial_interval_sec: float = 5.0
+    brightdata_poll_max_wait_sec: int = 180
+    brightdata_poll_initial_interval_sec: float = 1.5
 
     environment: str = "development"
     enable_search_grounding: bool = True

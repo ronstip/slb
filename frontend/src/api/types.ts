@@ -126,8 +126,7 @@ export interface CreateCollectionRequest {
   channel_urls?: string[];
   time_range_days: number;
   geo_scope: string;
-  max_calls?: number;
-  max_posts_per_keyword?: number;
+  n_posts?: number;
   include_comments: boolean;
   ongoing?: boolean;
   schedule?: string;
@@ -164,8 +163,7 @@ export interface CollectionConfig {
   keywords: string[];
   channel_urls: string[];
   time_range: { start: string; end: string };
-  max_calls?: number;
-  max_posts_per_keyword?: number;
+  n_posts?: number;
   include_comments: boolean;
   geo_scope: string;
   ongoing?: boolean;

@@ -8,7 +8,7 @@ from api.services.collection_service import create_collection_from_request
 logger = logging.getLogger(__name__)
 
 # Enrichment-only config keys that design_research produces
-_EXTRA_CONFIG_KEYS = ("video_params", "reasoning_level", "min_likes", "custom_fields", "max_posts_per_keyword")
+_EXTRA_CONFIG_KEYS = ("video_params", "reasoning_level", "min_likes", "custom_fields", "n_posts")
 
 
 def start_collection(
@@ -62,7 +62,7 @@ def start_collection(
         channel_urls=config.get("channel_urls") or None,
         time_range_days=time_range_days,
         geo_scope=config.get("geo_scope", "global"),
-        max_calls=config.get("max_calls", 2),
+        n_posts=config.get("n_posts", 0),
         include_comments=config.get("include_comments", True),
         ongoing=config.get("ongoing", False),
         schedule=config.get("schedule"),

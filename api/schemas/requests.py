@@ -20,8 +20,7 @@ class CreateCollectionRequest(BaseModel):
     channel_urls: list[str] | None = None
     time_range_days: int = 90
     geo_scope: str = "global"
-    max_calls: int = 2
-    max_posts_per_keyword: int | None = None
+    n_posts: int = 0
     include_comments: bool = True
     ongoing: bool = False
     schedule: str | None = None  # "daily" | "weekly"

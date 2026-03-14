@@ -8,7 +8,7 @@ from workers.shared.gcs_client import GCSClient
 
 logger = logging.getLogger(__name__)
 
-_MAX_MEDIA_WORKERS = 10
+_MAX_MEDIA_WORKERS = 30
 
 # Platforms whose CDN blocks direct server-side video downloads
 _YTDLP_PLATFORMS = frozenset({"tiktok"})
