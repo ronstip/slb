@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     gcs_media_bucket: str = ""
     gcs_exports_bucket: str = ""
     cloud_tasks_queue: str = "worker-queue"
+    cloud_tasks_service_account: str = ""  # SA email for OIDC auth on Cloud Tasks → Cloud Run
     gemini_model: str = "gemini-3-flash-preview"
     meta_agent_model: str = "gemini-3-flash-preview"
     research_model: str = "gemini-3-flash-preview"  # kept for potential future worker

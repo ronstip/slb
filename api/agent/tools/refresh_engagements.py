@@ -57,15 +57,19 @@ def _dispatch_engagement_task(settings, collection_id: str) -> None:
         settings.cloud_tasks_queue,
     )
     worker_url = settings.worker_service_url.rstrip("/")
-    task = {
-        "http_request": {
-            "http_method": tasks_v2.HttpMethod.POST,
-            "url": f"{worker_url}/engagement/run",
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(
-                {"input_type": "collection_id", "collection_id": collection_id}
-            ).encode(),
-        }
+    http_request = {
+        "http_method": tasks_v2.HttpMethod.POST,
+        "url": f"{worker_url}/engagement/run",
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(
+            {"input_type": "collection_id", "collection_id": collection_id}
+        ).encode(),
     }
+    if settings.cloud_tasks_service_account:
+        http_request["oidc_token"] = {
+            "service_account_email": settings.cloud_tasks_service_account,
+            "audience": worker_url,
+        }
+    task = {"http_request": http_request}
     client.create_task(parent=parent, task=task)
     logger.info("Dispatched Cloud Task for engagement refresh %s", collection_id)

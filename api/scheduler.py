@@ -23,7 +23,7 @@ class OngoingScheduler:
         logger.info("OngoingScheduler started")
 
     def _run(self) -> None:
-        from api.services.collection_service import _run_pipeline
+        from workers.pipeline import run_pipeline as _run_pipeline
         from workers.shared.firestore_client import FirestoreClient
 
         settings = get_settings()
