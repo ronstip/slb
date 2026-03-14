@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     enrichment_concurrency: int = 30
     enrichment_search: bool = False
     enrichment_temperature: float = 0.2
-    enrichment_max_output_tokens: int = 2048
+    enrichment_max_output_tokens: int = 4096
     enrichment_media_resolution: str = "medium"  # low, medium, high
     enrichment_thinking_level: str = ""  # minimal, low, medium, high (empty = disabled)
     enrichment_max_media_per_post: int = 5

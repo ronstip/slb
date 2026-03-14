@@ -60,19 +60,12 @@ def parse_brightdata_tiktok_post(item: dict) -> Post:
     post_id = str(item.get("post_id", ""))
     username = item.get("profile_username", "")
 
-    # Media URLs
+    # Media URLs — skip video_url (TikTok CDN tokens expire within minutes,
+    # causing 100% 403 failures). Keep thumbnails + carousel images only.
     media_urls: list[str] = []
     preview = item.get("preview_image")
     if preview:
         media_urls.append(preview)
-    video_url = item.get("video_url")
-    if video_url:
-        # BrightData returns video URLs with a placeholder "&tk=tt_chain_token"
-        # that must be replaced with the actual token from the response.
-        chain_token = item.get("tt_chain_token")
-        if chain_token and "tk=tt_chain_token" in video_url:
-            video_url = video_url.replace("tk=tt_chain_token", f"tk={chain_token}")
-        media_urls.append(video_url)
     carousel = item.get("carousel_images") or []
     media_urls.extend(carousel)
 
@@ -107,6 +100,7 @@ def parse_brightdata_tiktok_post(item: dict) -> Post:
             "video_duration": item.get("video_duration"),
             "music": item.get("music"),
             "region": item.get("region"),
+            "video_url": item.get("video_url"),  # stored for future yt-dlp pipeline
         },
         crawl_provider="brightdata",
         search_keyword=_extract_search_keyword(item),

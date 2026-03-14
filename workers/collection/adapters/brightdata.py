@@ -154,12 +154,9 @@ class BrightDataAdapter(DataProviderAdapter):
             return
 
         num_per_kw = config.get("max_posts_per_keyword") or 0
-        geo = config.get("geo_scope", "")
-        if geo == "global":
-            geo = ""
 
         def _fetch_keyword(kw: str) -> list[dict]:
-            inp: dict = {"search_keyword": kw, "country": geo}
+            inp: dict = {"search_keyword": kw}
             if num_per_kw > 0:
                 inp["num_of_posts"] = num_per_kw
             inputs = [inp]
@@ -167,7 +164,6 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["tiktok"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
-                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             valid = [r for r in results if not _is_error_item(r)]
             errors = len(results) - len(valid)
@@ -211,7 +207,6 @@ class BrightDataAdapter(DataProviderAdapter):
                 "keyword": kw,
                 "start_date": start,
                 "end_date": end,
-                "country": "",
             }
             if num_per_kw > 0:
                 inp["num_of_posts"] = num_per_kw
@@ -220,7 +215,6 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
-                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             valid = [r for r in results if not _is_error_item(r)]
             errors = len(results) - len(valid)
@@ -274,7 +268,6 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
-                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             logger.info("[reddit] keywords (%d) → %d raw results", len(keywords), len(results))
             all_results.extend(results)
@@ -293,7 +286,6 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="subreddit_url",
-                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             logger.info("[reddit] subreddits (%d) → %d raw results", len(subreddit_urls), len(results))
             all_results.extend(results)
