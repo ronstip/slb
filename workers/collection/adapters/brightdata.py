@@ -169,7 +169,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 discover_by="keyword",
                 limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
-            valid = [r for r in results if not r.get("error")]
+            valid = [r for r in results if not _is_error_item(r)]
             errors = len(results) - len(valid)
             logger.info(
                 "[tiktok] kw=%r → %d/%d posts%s",
@@ -214,7 +214,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 "country": "",
             }
             if num_per_kw > 0:
-                inp["num_of_posts"] = str(num_per_kw)
+                inp["num_of_posts"] = num_per_kw
             inputs = [inp]
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
@@ -222,7 +222,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 discover_by="keyword",
                 limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
-            valid = [r for r in results if not r.get("error")]
+            valid = [r for r in results if not _is_error_item(r)]
             errors = len(results) - len(valid)
             logger.info(
                 "[youtube] kw=%r → %d/%d posts%s",
@@ -302,7 +302,7 @@ class BrightDataAdapter(DataProviderAdapter):
         seen_ids: set[str] = set()
         valid: list[dict] = []
         for item in all_results:
-            if item.get("error"):
+            if _is_error_item(item):
                 continue
             pid = str(item.get("post_id", ""))
             if pid and pid in seen_ids:
@@ -349,10 +349,11 @@ class BrightDataAdapter(DataProviderAdapter):
 
         if not posts:
             if results:
+                sample = {k: str(v)[:200] for k, v in results[0].items()}
                 logger.error(
                     "BrightData %s: All %d raw results failed parsing (0 valid posts). "
-                    "Sample keys from first item: %s",
-                    platform, len(results), list(results[0].keys())[:15],
+                    "First item: %s",
+                    platform, len(results), sample,
                 )
             return []
 
@@ -446,6 +447,17 @@ class BrightDataAdapter(DataProviderAdapter):
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
+
+def _is_error_item(item: dict) -> bool:
+    """Check if a BrightData result item is an error object rather than real data."""
+    if item.get("error"):
+        return True
+    # BrightData sometimes returns error objects with status/message keys instead of post data
+    if "status" in item and "message" in item and len(item) <= 5:
+        logger.warning("BrightData error item: %s", {k: str(v)[:200] for k, v in item.items()})
+        return True
+    return False
+
 
 def _to_bd_date_mmddyyyy(date_str: str | None) -> str:
     """Convert YYYY-MM-DD to MM-DD-YYYY (Bright Data YouTube format)."""

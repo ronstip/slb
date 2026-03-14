@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # Bright Data
     brightdata_api_token: str = ""
-    brightdata_poll_max_wait_sec: int = 180
+    brightdata_poll_max_wait_sec: int = 300
     brightdata_poll_initial_interval_sec: float = 1.5
 
     environment: str = "development"
