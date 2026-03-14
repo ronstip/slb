@@ -153,6 +153,7 @@ export type CollectionStatus =
   | 'collecting'
   | 'enriching'
   | 'completed'
+  | 'completed_with_errors'
   | 'monitoring'
   | 'paused'
   | 'failed'
