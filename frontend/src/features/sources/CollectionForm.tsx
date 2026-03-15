@@ -58,7 +58,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
       : 90,
   );
   const [geoScope, setGeoScope] = useState(prefill?.geo_scope || 'global');
-  const [maxPostsPerKeyword, setMaxPostsPerKeyword] = useState(prefill?.max_posts_per_keyword ?? 20);
+  const [nPosts, setNPosts] = useState(prefill?.n_posts ?? 0);
   const [includeComments, setIncludeComments] = useState(prefill?.include_comments ?? true);
   const [ongoing, setOngoing] = useState(prefill?.ongoing ?? false);
 
@@ -125,7 +125,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
         channel_urls: channelUrls.length > 0 ? channelUrls : undefined,
         time_range_days: timeRangeDays,
         geo_scope: geoScope,
-        max_posts_per_keyword: maxPostsPerKeyword,
+        n_posts: nPosts,
         include_comments: includeComments,
         ongoing,
         schedule: ongoing ? scheduleStr : undefined,
@@ -144,7 +144,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
             start: new Date(Date.now() - timeRangeDays * 86_400_000).toISOString().split('T')[0],
             end: new Date().toISOString().split('T')[0],
           },
-          max_posts_per_keyword: maxPostsPerKeyword,
+          n_posts: nPosts,
           include_comments: includeComments,
           geo_scope: geoScope,
           ongoing,
@@ -296,12 +296,12 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
           </Select>
         </div>
         <div>
-          <Label className="mb-1.5">Posts / Keyword</Label>
+          <Label className="mb-1.5">Total Posts (0 = all)</Label>
           <Input
             type="number"
-            min={1}
-            value={maxPostsPerKeyword}
-            onChange={(e) => setMaxPostsPerKeyword(Math.max(1, Number(e.target.value) || 1))}
+            min={0}
+            value={nPosts}
+            onChange={(e) => setNPosts(Math.max(0, Number(e.target.value) || 0))}
           />
         </div>
       </div>

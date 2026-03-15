@@ -207,12 +207,13 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                 last_run_posts_added=total_posts,
             )
 
-            # Download media to GCS synchronously — posts are already visible in feed via
-            # CDN URLs seeded above, so this doesn't block feed display. We MUST do this
-            # before on_batch_complete so enrichment gets GCS URIs (required for videos).
+            # Download media to GCS — skip YouTube (Gemini accepts YouTube URLs natively).
+            # TikTok videos MUST be downloaded to GCS for Gemini enrichment.
+            posts_needing_download = [p for p in new_posts if p.platform != "youtube"]
             t_dl = time.monotonic()
-            download_media_batch(gcs, new_posts, collection_id)
-            logger.info("Download done in %.1fs", time.monotonic() - t_dl)
+            if posts_needing_download:
+                download_media_batch(gcs, posts_needing_download, collection_id)
+            logger.info("Download done in %.1fs (%d posts, %d skipped youtube)", time.monotonic() - t_dl, len(posts_needing_download), len(new_posts) - len(posts_needing_download))
 
             # Persist GCS URIs back to BQ in background (non-blocking — enrichment uses
             # the already-updated in-memory refs, not BQ; BQ update is for re-enrichment).

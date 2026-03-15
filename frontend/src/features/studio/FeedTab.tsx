@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';

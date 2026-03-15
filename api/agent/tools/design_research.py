@@ -9,12 +9,12 @@ def design_research(
     platforms: str = "instagram,tiktok",
     keywords: str = "",
     time_range_days: int = 90,
-    max_posts_per_keyword: int = 20,
+    n_posts: int = 0,
     geo_scope: str = "global",
     include_comments: bool = True,
-    video_fps: float = 1.0,
+    video_fps: float = 0.5,
     video_start_offset_sec: int = 0,
-    video_end_offset_sec: int = 120,
+    video_end_offset_sec: int = 180,
     reasoning_level: str = "standard",
     min_likes: int = 0,
     custom_fields: str = "",
@@ -34,7 +34,11 @@ def design_research(
         keywords: Comma-separated list of brand names, product names, or search
             terms to track. Extract these from the user's question.
         time_range_days: Number of days to look back for posts. Default 90.
-        max_posts_per_keyword: Maximum number of posts to collect per keyword per platform. Default 20.
+        n_posts: Total number of posts to collect across all platforms and keywords.
+            Default 0 (collect everything available). When set, the system distributes
+            proportionally — e.g. n_posts=2000 with 2 platforms and 1 keyword means
+            ~1000 posts per platform. When the user specifies a count like "2K posts",
+            "500 posts", etc., pass that number here.
         geo_scope: Geographic scope — "global", "US", "EU", or a specific country.
         include_comments: Whether to collect comments on posts.
         video_fps: Frames per second for Gemini video analysis during enrichment.
@@ -83,6 +87,15 @@ def design_research(
                     "description": parts[1].strip(),
                 })
 
+    # Compute per-keyword-per-platform post limit from n_posts
+    from math import ceil
+    num_keywords = max(len(keyword_list), 1)
+    num_platforms = max(len(platform_list), 1)
+    if n_posts > 0:
+        posts_per_kw = ceil(n_posts / (num_platforms * num_keywords))
+    else:
+        posts_per_kw = 0  # 0 = unlimited (collect everything available)
+
     config = {
         "platforms": platform_list,
         "keywords": keyword_list,
@@ -91,7 +104,8 @@ def design_research(
             "start": start_date.strftime("%Y-%m-%d"),
             "end": end_date.strftime("%Y-%m-%d"),
         },
-        "max_posts_per_keyword": max_posts_per_keyword,
+        "n_posts": n_posts,
+        "max_posts_per_keyword": posts_per_kw if posts_per_kw > 0 else None,
         "include_comments": include_comments,
         "geo_scope": geo_scope,
         "video_params": {
@@ -107,8 +121,7 @@ def design_research(
     if custom_fields_list:
         config["custom_fields"] = custom_fields_list
 
-    num_keywords = max(len(keyword_list), 1)
-    estimated_posts = len(platform_list) * num_keywords * max_posts_per_keyword
+    estimated_posts = n_posts if n_posts > 0 else num_platforms * num_keywords * 200
     estimated_time_minutes = max(1, estimated_posts // 100)
 
     monitoring_note = ""

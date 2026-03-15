@@ -36,9 +36,9 @@ async def run_collection_handler(request: Request):
 
     logger.info("Starting collection worker for %s", collection_id)
     try:
-        from workers.collection.worker import run_collection
+        from workers.pipeline import run_pipeline
 
-        run_collection(collection_id)
+        run_pipeline(collection_id)
         logger.info("Collection worker completed for %s", collection_id)
         return {"status": "ok", "collection_id": collection_id}
     except Exception as e:

@@ -1391,7 +1391,8 @@ async def scheduler_tick():
     Protected by Cloud Run IAM (--no-allow-unauthenticated not needed here
     since the API service is public, but Cloud Scheduler authenticates via OIDC).
     """
-    from api.services.collection_service import _run_pipeline, _dispatch_cloud_task
+    from api.services.collection_service import _dispatch_cloud_task
+    from workers.pipeline import run_pipeline as _run_pipeline
 
     settings = get_settings()
     fs = get_fs()

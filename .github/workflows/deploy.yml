@@ -78,7 +78,7 @@ jobs:
             --region $GCP_REGION \
             --platform managed \
             --service-account sl-api@$GCP_PROJECT_ID.iam.gserviceaccount.com \
-            --set-env-vars "^||^ENVIRONMENT=production||GCP_PROJECT_ID=$GCP_PROJECT_ID||GCP_REGION=$GCP_REGION||GOOGLE_GENAI_USE_VERTEXAI=TRUE||GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID||GOOGLE_CLOUD_LOCATION=global||CORS_ORIGINS=https://social-listening-pl.web.app||FRONTEND_URL=https://social-listening-pl.web.app||WORKER_SERVICE_URL=$WORKER_URL||ALLOWED_EMAILS=${{ secrets.ALLOWED_EMAILS }}||SUPER_ADMIN_EMAILS=${{ secrets.SUPER_ADMIN_EMAILS }}" \
+            --set-env-vars "^||^ENVIRONMENT=production||GCP_PROJECT_ID=$GCP_PROJECT_ID||GCP_REGION=$GCP_REGION||GOOGLE_GENAI_USE_VERTEXAI=TRUE||GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID||GOOGLE_CLOUD_LOCATION=global||CORS_ORIGINS=https://social-listening-pl.web.app||FRONTEND_URL=https://social-listening-pl.web.app||WORKER_SERVICE_URL=$WORKER_URL||CLOUD_TASKS_SERVICE_ACCOUNT=sl-api@$GCP_PROJECT_ID.iam.gserviceaccount.com||ALLOWED_EMAILS=${{ secrets.ALLOWED_EMAILS }}||SUPER_ADMIN_EMAILS=${{ secrets.SUPER_ADMIN_EMAILS }}" \
             --min-instances 0 \
             --max-instances 10 \
             --memory 1Gi \
@@ -116,11 +116,11 @@ jobs:
             --region $GCP_REGION \
             --platform managed \
             --service-account sl-worker@$GCP_PROJECT_ID.iam.gserviceaccount.com \
-            --set-env-vars "^||^ENVIRONMENT=production||GCP_PROJECT_ID=$GCP_PROJECT_ID||GCP_REGION=$GCP_REGION||GOOGLE_GENAI_USE_VERTEXAI=TRUE||GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID||GOOGLE_CLOUD_LOCATION=global||BRIGHTDATA_API_TOKEN=${{ secrets.BRIGHTDATA_API_TOKEN }}" \
+            --set-env-vars "^||^ENVIRONMENT=production||GCP_PROJECT_ID=$GCP_PROJECT_ID||GCP_REGION=$GCP_REGION||GOOGLE_GENAI_USE_VERTEXAI=TRUE||GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID||GOOGLE_CLOUD_LOCATION=global||BRIGHTDATA_API_TOKEN=${{ secrets.BRIGHTDATA_API_TOKEN }}||ENRICHMENT_MODEL=gemini-3-flash-preview||ENRICHMENT_VIDEO_FPS=0.5||ENRICHMENT_VIDEO_END_OFFSET=180s||ENRICHMENT_MAX_OUTPUT_TOKENS=4096" \
             --min-instances 0 \
             --max-instances 5 \
-            --memory 2Gi \
-            --cpu 2 \
+            --memory 4Gi \
+            --cpu 4 \
             --timeout 900 \
             --concurrency 1 \
             --port 8080 \

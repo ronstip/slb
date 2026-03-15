@@ -230,6 +230,19 @@ gcloud run services add-iam-policy-binding sl-worker \
     --role="roles/run.invoker" \
     --quiet
 
+# Allow Cloud Tasks service agent to mint OIDC tokens for the API SA
+CT_SA="service-$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')@gcp-sa-cloudtasks.iam.gserviceaccount.com"
+gcloud iam service-accounts add-iam-policy-binding "$API_SA" \
+    --member="serviceAccount:$CT_SA" \
+    --role="roles/iam.serviceAccountTokenCreator" \
+    --project="$PROJECT_ID" --quiet 2>/dev/null || true
+
+# Set the Cloud Tasks service account on the API so it can dispatch authenticated tasks
+gcloud run services update sl-api \
+    --region "$REGION" \
+    --update-env-vars "CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA" \
+    --quiet
+
 echo "  Services wired."
 echo ""
 
