@@ -27,11 +27,12 @@ export function StandaloneArtifactPage() {
 
   const artifact = detail ? convertToStudioArtifact(detail) : null;
   const style = detail ? ARTIFACT_STYLES[detail.type] ?? ARTIFACT_STYLES.chart : null;
+  const isDashboard = artifact?.type === 'dashboard';
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
           <Logo size="sm" />
           <Button
@@ -71,31 +72,36 @@ export function StandaloneArtifactPage() {
 
       {/* Artifact content */}
       {!isLoading && !error && artifact && style && (
-        <>
-          {/* Title bar */}
-          <div className="border-b border-border bg-card">
-            <div className="mx-auto max-w-6xl px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', style.bg)}>
-                  <style.icon className={cn('h-4.5 w-4.5', style.color)} />
-                </div>
-                <div>
-                  <h1 className="text-xl font-semibold text-foreground">
-                    {artifact.title}
-                  </h1>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {style.label}
-                  </p>
+        isDashboard ? (
+          /* Dashboard: standalone toolbar shows title + controls, no separate title bar */
+          <main className="mx-auto max-w-6xl w-full flex-1 flex flex-col min-h-0">
+            <DashboardView artifact={artifact} standalone />
+          </main>
+        ) : (
+          <>
+            {/* Title bar (non-dashboard artifacts) */}
+            <div className="border-b border-border bg-card shrink-0">
+              <div className="mx-auto max-w-6xl px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', style.bg)}>
+                    <style.icon className={cn('h-4.5 w-4.5', style.color)} />
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-semibold text-foreground">
+                      {artifact.title}
+                    </h1>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {style.label}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Content */}
-          <main className="mx-auto max-w-6xl">
-            <ArtifactRenderer artifact={artifact} />
-          </main>
-        </>
+            <main className="mx-auto max-w-6xl">
+              <ArtifactRenderer artifact={artifact} />
+            </main>
+          </>
+        )
       )}
     </div>
   );
@@ -110,6 +116,6 @@ function ArtifactRenderer({ artifact }: { artifact: Artifact }) {
     case 'data_export':
       return <DataExportView artifact={artifact} />;
     case 'dashboard':
-      return <DashboardView artifact={artifact} />;
+      return <DashboardView artifact={artifact} standalone />;
   }
 }

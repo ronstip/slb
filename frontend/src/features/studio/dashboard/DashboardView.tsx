@@ -1,30 +1,60 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2, Maximize2, Pencil } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import type { Artifact } from '../../../stores/studio-store.ts';
+import { updateArtifact } from '../../../api/endpoints/artifacts.ts';
+import { Input } from '../../../components/ui/input.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { getDashboardData } from '../../../api/endpoints/dashboard.ts';
-import { downloadReportPdf } from '../../../lib/download-pdf.ts';
+import { exportDashboardPdf } from './exportDashboardPdf.ts';
 import { ShareDashboardDialog } from './ShareDashboardDialog.tsx';
 import { UnderlyingDataDialog } from '../UnderlyingDataDialog.tsx';
-import { DashboardFilterBar } from './DashboardFilterBar.tsx';
+import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
+import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
-import { DashboardContent } from './DashboardContent.tsx';
+import { SocialDashboardView } from './SocialDashboardView.tsx';
+import type { DashboardToolbarHandlers } from './SocialDashboardView.tsx';
+import { SocialDashboardToolbar } from './SocialDashboardToolbar.tsx';
 
 type DashboardArtifact = Extract<Artifact, { type: 'dashboard' }>;
 
 interface DashboardViewProps {
   artifact: DashboardArtifact;
+  standalone?: boolean;
 }
 
-export function DashboardView({ artifact }: DashboardViewProps) {
+export function DashboardView({ artifact, standalone = false }: DashboardViewProps) {
   const collapseReport = useStudioStore((s) => s.collapseReport);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const updateArtifactTitle = useStudioStore((s) => s.updateArtifactTitle);
+  const gridRef = useRef<HTMLElement | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [showUnderlyingData, setShowUnderlyingData] = useState(false);
+  const [filterBarFilters, setFilterBarFilters] = useState<FilterBarFilterId[]>(DEFAULT_FILTER_BAR_FILTERS);
+  const [toolbarHandlers, setToolbarHandlers] = useState<DashboardToolbarHandlers | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [displayTitle, setDisplayTitle] = useState(artifact.title);
+  const [titleDraft, setTitleDraft] = useState(artifact.title);
+
+  const isEditMode = toolbarHandlers?.isEditMode ?? false;
+
+  const commitTitle = () => {
+    const trimmed = titleDraft.trim();
+    if (trimmed && trimmed !== displayTitle) {
+      setDisplayTitle(trimmed);
+      updateArtifactTitle(artifact.id, trimmed);
+      updateArtifact(artifact.id, { title: trimmed }).catch(() => {
+        // revert on failure
+        setDisplayTitle(displayTitle);
+        updateArtifactTitle(artifact.id, displayTitle);
+      });
+    } else {
+      setTitleDraft(displayTitle);
+    }
+    setEditingTitle(false);
+  };
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['dashboard-data', ...artifact.collectionIds],
@@ -45,27 +75,71 @@ export function DashboardView({ artifact }: DashboardViewProps) {
   } = useDashboardFilters(allPosts);
 
   const handleDownload = async () => {
-    if (!contentRef.current) return;
+    if (!gridRef.current) return;
     setDownloading(true);
     try {
-      await downloadReportPdf(contentRef.current, `dashboard-${artifact.id}`);
+      await exportDashboardPdf(gridRef.current, displayTitle);
     } finally {
       setDownloading(false);
     }
   };
 
+  const handleLayoutLoaded = useCallback((persisted: string[]) => {
+    setFilterBarFilters(persisted as FilterBarFilterId[]);
+  }, []);
+
+  const handleToolbarReady = useCallback((handlers: DashboardToolbarHandlers) => {
+    setToolbarHandlers(handlers);
+  }, []);
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-border bg-card/50 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={collapseReport}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="h-4 w-px bg-border" />
-          <h2 className="text-sm font-semibold text-foreground truncate max-w-[200px]">{artifact.title}</h2>
-        </div>
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2 border-b border-border bg-card/50 px-4 py-2.5">
+        {!standalone && (
+          <>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={collapseReport}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="h-4 w-px bg-border shrink-0" />
+          </>
+        )}
+        {/* Editable title */}
+        {editingTitle ? (
+          <Input
+            autoFocus
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitTitle(); if (e.key === 'Escape') { setTitleDraft(displayTitle); setEditingTitle(false); } }}
+            className="flex-1 h-7 text-sm font-semibold min-w-0"
+          />
+        ) : (
+          <h2
+            className={`flex-1 min-w-0 text-sm font-semibold text-foreground truncate ${isEditMode ? 'cursor-text hover:bg-muted/50 rounded px-1.5 py-0.5 -mx-1.5' : ''}`}
+            onClick={() => { if (isEditMode) { setTitleDraft(displayTitle); setEditingTitle(true); } }}
+          >
+            {displayTitle}
+            {isEditMode && <Pencil className="inline-block h-3 w-3 ml-1.5 text-muted-foreground" />}
+          </h2>
+        )}
+
+        {/* Right-side controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Edit controls */}
+          {toolbarHandlers && (
+            <>
+              <SocialDashboardToolbar
+                isEditMode={toolbarHandlers.isEditMode}
+                isSaving={toolbarHandlers.isSaving}
+                onEdit={toolbarHandlers.onEdit}
+                onDone={toolbarHandlers.onDone}
+                onAddWidget={toolbarHandlers.onAddWidget}
+                onResetToDefaults={toolbarHandlers.onResetToDefaults}
+              />
+              <div className="h-4 w-px bg-border shrink-0" />
+            </>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -75,6 +149,18 @@ export function DashboardView({ artifact }: DashboardViewProps) {
             <Table2 className="h-3.5 w-3.5" />
             Data
           </Button>
+          {!standalone && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => window.open(`/artifact/${artifact.id}`, '_blank')}
+              title="Open in fullscreen"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              Fullscreen
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -116,6 +202,10 @@ export function DashboardView({ artifact }: DashboardViewProps) {
           onSetFilter={setFilter}
           onClearAll={clearAll}
           collectionNames={artifact.collectionNames}
+          isEditMode={toolbarHandlers?.isEditMode ?? false}
+          filterBarFilters={filterBarFilters}
+          onFilterBarChange={(f) => setFilterBarFilters(f as FilterBarFilterId[])}
+          allPosts={allPosts}
         />
       )}
 
@@ -147,16 +237,19 @@ export function DashboardView({ artifact }: DashboardViewProps) {
         )}
 
         {!isLoading && !error && (
-          <div ref={contentRef}>
-            <DashboardContent
-              filteredPosts={filteredPosts}
-              allPostsCount={allPosts.length}
-              activeFilterCount={activeFilterCount}
-              truncated={response?.truncated}
-              filters={filters}
-              toggleFilterValue={toggleFilterValue}
-            />
-          </div>
+          <SocialDashboardView
+            artifactId={artifact.id}
+            filteredPosts={filteredPosts}
+            allPosts={allPosts}
+            availableOptions={availableOptions}
+            truncated={response?.truncated}
+            activeFilterCount={activeFilterCount}
+            toggleFilterValue={toggleFilterValue}
+            filterBarFilters={filterBarFilters}
+            onLayoutLoaded={handleLayoutLoaded}
+            onToolbarReady={handleToolbarReady}
+            gridRef={gridRef}
+          />
         )}
       </div>
       <UnderlyingDataDialog

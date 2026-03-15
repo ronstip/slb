@@ -42,6 +42,7 @@ from api.routers import billing as billing_router
 from api.routers import admin as admin_router
 from api.routers import dashboard as dashboard_router
 from api.routers import dashboard_shares as dashboard_shares_router
+from api.routers import dashboard_layouts as dashboard_layouts_router
 import csv
 import io
 
@@ -91,6 +92,7 @@ app.include_router(sessions_router.router)
 app.include_router(admin_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(dashboard_shares_router.router)
+app.include_router(dashboard_layouts_router.router)
 app.include_router(artifacts_router.router)
 
 # CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod

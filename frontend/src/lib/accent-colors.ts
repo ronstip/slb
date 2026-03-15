@@ -5,21 +5,21 @@ export interface AccentPreset {
   hex: string;
 }
 
-export const DEFAULT_ACCENT = '#06B6D4'; // Vibrant Cyan
+export const DEFAULT_ACCENT = '#4A7C8F'; // Steel Teal
 
 export const ACCENT_PRESETS: AccentPreset[] = [
-  { name: 'Cyan', hex: '#06B6D4' },
-  { name: 'Blue', hex: '#2563EB' },
-  { name: 'Violet', hex: '#8B5CF6' },
-  { name: 'Fuchsia', hex: '#D946EF' },
-  { name: 'Rose', hex: '#E11D48' },
-  { name: 'Orange', hex: '#EA580C' },
-  { name: 'Amber', hex: '#D97706' },
-  { name: 'Emerald', hex: '#059669' },
-  { name: 'Teal', hex: '#0D9488' },
-  { name: 'Sky', hex: '#0284C7' },
-  { name: 'Pink', hex: '#DB2777' },
-  { name: 'Lime', hex: '#65A30D' },
+  { name: 'Steel Teal', hex: '#4A7C8F' },
+  { name: 'Navy', hex: '#2B5066' },
+  { name: 'Slate Blue', hex: '#5A7FA0' },
+  { name: 'Burgundy', hex: '#6B3040' },
+  { name: 'Rose', hex: '#9E4A5A' },
+  { name: 'Amber', hex: '#9A7B3C' },
+  { name: 'Forest', hex: '#3E6B52' },
+  { name: 'Charcoal', hex: '#4A5568' },
+  { name: 'Copper', hex: '#8B6040' },
+  { name: 'Plum', hex: '#6B4A6E' },
+  { name: 'Olive', hex: '#5C6B3A' },
+  { name: 'Storm', hex: '#4A6072' },
 ];
 
 // ── Color conversion utilities ──
@@ -62,24 +62,32 @@ export function hslToHex(h: number, s: number, l: number): string {
 // ── Palette generation ──
 
 /**
- * Generate 5 harmonious chart colors from a single accent using pentadic hue rotation.
- * Dark mode adjusts lightness for visibility on dark backgrounds.
+ * Generate 5 monochromatic chart colors from a single accent.
+ * Varies lightness and slight saturation to create professional tonal shades.
+ * Dark mode adjusts for visibility on dark backgrounds.
  */
 export function generateChartPalette(accentHex: string, isDark: boolean): string[] {
-  const { h, s, l } = hexToHsl(accentHex);
+  const { h, s } = hexToHsl(accentHex);
 
-  // For dark mode, ensure minimum lightness for visibility; for light mode, cap it
-  const adjustL = (baseLightness: number) => {
-    if (isDark) return Math.max(baseLightness, 0.55) + 0.1;
-    return Math.min(baseLightness, 0.5);
-  };
+  // Monochromatic: same hue, varying lightness/saturation
+  const shades = isDark
+    ? [
+        { l: 0.55, sFactor: 1.0 },   // base (medium)
+        { l: 0.70, sFactor: 0.75 },   // lighter, muted
+        { l: 0.40, sFactor: 1.1 },    // darker, slightly richer
+        { l: 0.62, sFactor: 0.60 },   // soft mid-tone
+        { l: 0.48, sFactor: 0.85 },   // deep muted
+      ]
+    : [
+        { l: 0.35, sFactor: 0.90 },   // deep (primary)
+        { l: 0.50, sFactor: 0.75 },   // medium
+        { l: 0.25, sFactor: 1.0 },    // darkest
+        { l: 0.62, sFactor: 0.55 },   // soft/light
+        { l: 0.42, sFactor: 0.65 },   // mid muted
+      ];
 
-  // Keep saturation vivid
-  const adjustS = (baseSat: number) => Math.max(baseSat, 0.5);
-
-  const hueOffsets = [0, 72, 144, 216, 288]; // pentadic
-  return hueOffsets.map((offset) =>
-    hslToHex(h + offset, adjustS(s), adjustL(l)),
+  return shades.map(({ l, sFactor }) =>
+    hslToHex(h, Math.min(s * sFactor, 0.85), l),
   );
 }
 

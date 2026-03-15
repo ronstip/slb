@@ -1,4 +1,5 @@
 import type { DashboardPost } from '../../../api/types.ts';
+import type { CustomChartConfig, WidgetData } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
 
@@ -403,4 +404,101 @@ export function computeEnhancedKpis(posts: DashboardPost[]): EnhancedKpi[] {
       sparklineData: sampled.map(([, v]) => v.posts > 0 ? v.engagement / v.posts : 0),
     },
   ];
+}
+
+// ─── Custom chart aggregation ──────────────────────────────────────────────────
+
+function getMetricValue(p: DashboardPost, metric: CustomChartConfig['metric']): number {
+  switch (metric) {
+    case 'post_count':       return 1;
+    case 'like_count':       return p.like_count;
+    case 'view_count':       return p.view_count;
+    case 'comment_count':    return p.comment_count;
+    case 'share_count':      return p.share_count;
+    case 'engagement_total': return p.like_count + p.comment_count + p.share_count;
+  }
+}
+
+function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartConfig['timeBucket']>): string {
+  if (!dateStr) return 'unknown';
+  if (timeBucket === 'day') return dateStr.slice(0, 10);
+  const d = new Date(dateStr);
+  if (timeBucket === 'week') {
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d);
+    monday.setDate(diff);
+    return monday.toISOString().slice(0, 10);
+  }
+  // month
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfig): WidgetData {
+  const { dimension, metric, metricAgg = 'sum', timeBucket = 'day' } = config;
+
+  if (!dimension) {
+    if (metricAgg === 'count') return { value: posts.length, labels: ['Count'], values: [posts.length] };
+    const vals = posts.map((p) => getMetricValue(p, metric));
+    let value: number;
+    switch (metricAgg) {
+      case 'avg': value = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0; break;
+      case 'min': value = vals.length > 0 ? Math.min(...vals) : 0; break;
+      case 'max': value = vals.length > 0 ? Math.max(...vals) : 0; break;
+      default: value = vals.reduce((a, b) => a + b, 0); break;
+    }
+    return { value, labels: [metric], values: [value] };
+  }
+
+  const acc = new Map<string, { sum: number; count: number; min: number; max: number }>();
+  const add = (key: string, val: number) => {
+    const cur = acc.get(key) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity };
+    cur.sum += val;
+    cur.count += 1;
+    cur.min = Math.min(cur.min, val);
+    cur.max = Math.max(cur.max, val);
+    acc.set(key, cur);
+  };
+
+  for (const p of posts) {
+    const val = getMetricValue(p, metric);
+    if (dimension === 'themes') {
+      for (const t of p.themes ?? []) add(t, val);
+    } else if (dimension === 'entities') {
+      for (const e of p.entities ?? []) add(e, val);
+    } else if (dimension === 'posted_at') {
+      add(bucketDate(p.posted_at ?? '', timeBucket), val);
+    } else {
+      const key = (p as Record<string, unknown>)[dimension] as string ?? 'unknown';
+      add(key, val);
+    }
+  }
+
+  const resolved: Array<{ label: string; value: number }> = [];
+  for (const [label, { sum, count, min, max }] of acc) {
+    let value: number;
+    switch (metricAgg) {
+      case 'avg': value = count > 0 ? Math.round(sum / count) : 0; break;
+      case 'min': value = min === Infinity ? 0 : min; break;
+      case 'max': value = max === -Infinity ? 0 : max; break;
+      case 'count': value = count; break;
+      default: value = sum; break;
+    }
+    resolved.push({ label, value });
+  }
+
+  const total = resolved.reduce((s, r) => s + r.value, 0);
+
+  if (dimension === 'posted_at') {
+    resolved.sort((a, b) => a.label.localeCompare(b.label));
+    return {
+      value: total,
+      labels: resolved.map((r) => r.label),
+      values: resolved.map((r) => r.value),
+      timeSeries: resolved.map((r) => ({ date: r.label, value: r.value })),
+    };
+  }
+
+  resolved.sort((a, b) => b.value - a.value);
+  return { value: total, labels: resolved.map((r) => r.label), values: resolved.map((r) => r.value) };
 }

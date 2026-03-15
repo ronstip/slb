@@ -1,0 +1,147 @@
+import { Label } from '../../../../components/ui/label.tsx';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../../components/ui/select.tsx';
+import { cn } from '../../../../lib/utils.ts';
+import type { CustomChartConfig, CustomDimension, CustomMetric, SocialChartType } from '../types-social-dashboard.ts';
+import { DIMENSION_META, METRIC_META, getValidChartTypesForCustom } from '../types-social-dashboard.ts';
+
+const ALL_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
+const ALL_METRICS = Object.keys(METRIC_META) as CustomMetric[];
+
+const AGG_OPTIONS: Array<{ value: CustomChartConfig['metricAgg']; label: string }> = [
+  { value: 'sum', label: 'Total (Sum)' },
+  { value: 'avg', label: 'Average' },
+  { value: 'min', label: 'Minimum' },
+  { value: 'max', label: 'Maximum' },
+  { value: 'count', label: 'Count' },
+];
+
+interface DataSourceFormProps {
+  config: CustomChartConfig;
+  onChange: (config: CustomChartConfig) => void;
+  onChartTypeChange: (type: SocialChartType) => void;
+}
+
+export function DataSourceForm({ config, onChange, onChartTypeChange }: DataSourceFormProps) {
+  const handleMetricChange = (metric: CustomMetric) => {
+    const next: CustomChartConfig = { ...config, metric };
+    // Ensure chart type is still valid
+    const validTypes = getValidChartTypesForCustom(config.dimension, metric);
+    onChartTypeChange(validTypes[0]);
+    onChange(next);
+  };
+
+  const handleDimensionChange = (dimension: CustomDimension | undefined) => {
+    const next: CustomChartConfig = { ...config, dimension };
+    // Reset timeBucket when not on date
+    if (dimension !== 'posted_at') {
+      delete next.timeBucket;
+    } else if (!next.timeBucket) {
+      next.timeBucket = 'day';
+    }
+    // Ensure chart type is valid for new dimension
+    const validTypes = getValidChartTypesForCustom(dimension, config.metric);
+    if (!validTypes.includes(config.metric as unknown as SocialChartType)) {
+      onChartTypeChange(validTypes[0]);
+    }
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Metric */}
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Metric</Label>
+        <Select
+          value={config.metric}
+          onValueChange={(v) => handleMetricChange(v as CustomMetric)}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ALL_METRICS.map((metric) => (
+              <SelectItem key={metric} value={metric}>
+                {METRIC_META[metric].label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Aggregation — visible whenever there's a dimension */}
+      {config.dimension && (
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Aggregation</Label>
+          <Select
+            value={config.metricAgg ?? 'sum'}
+            onValueChange={(v) => onChange({ ...config, metricAgg: v as CustomChartConfig['metricAgg'] })}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AGG_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value!}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Group By */}
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Group By</Label>
+        <Select
+          value={config.dimension ?? 'none'}
+          onValueChange={(v) =>
+            handleDimensionChange(v === 'none' ? undefined : (v as CustomDimension))
+          }
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">None (single value)</SelectItem>
+            {ALL_DIMENSIONS.map((dim) => (
+              <SelectItem key={dim} value={dim}>
+                {DIMENSION_META[dim].label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Time bucket (only when grouped by posted_at) */}
+      {config.dimension === 'posted_at' && (
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Time Bucket</Label>
+          <div className="flex items-center gap-1.5">
+            {(['day', 'week', 'month'] as const).map((bucket) => (
+              <button
+                key={bucket}
+                type="button"
+                onClick={() => onChange({ ...config, timeBucket: bucket })}
+                className={cn(
+                  'rounded-md border px-2.5 py-1 text-xs font-medium transition-all capitalize',
+                  config.timeBucket === bucket
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {bucket}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

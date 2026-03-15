@@ -62,6 +62,7 @@ interface StudioStore {
   expandReport: (id: string) => void;
   collapseReport: () => void;
   setArtifacts: (artifacts: Artifact[]) => void;
+  updateArtifactTitle: (id: string, title: string) => void;
   setFeedSource: (id: string | null) => void;
   reset: () => void;
 }
@@ -84,6 +85,10 @@ export const useStudioStore = create<StudioStore>((set) => ({
     }),
 
   setArtifacts: (artifacts) => set({ artifacts }),
+  updateArtifactTitle: (id, title) =>
+    set((s) => ({
+      artifacts: s.artifacts.map((a) => (a.id === id ? { ...a, title } : a)),
+    })),
   expandReport: (id) => set({ expandedReportId: id }),
   collapseReport: () => set({ expandedReportId: null }),
   setFeedSource: (id) => set({ feedSourceId: id }),

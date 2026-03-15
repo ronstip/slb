@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
@@ -5,12 +6,14 @@ import { Logo } from '../../../components/Logo.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { getSharedDashboardData } from '../../../api/endpoints/dashboard.ts';
-import { DashboardFilterBar } from './DashboardFilterBar.tsx';
+import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
+import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
-import { DashboardContent } from './DashboardContent.tsx';
+import { SocialDashboardView } from './SocialDashboardView.tsx';
 
 export function SharedDashboardPage() {
   const { token } = useParams<{ token: string }>();
+  const [filterBarFilters, setFilterBarFilters] = useState<FilterBarFilterId[]>(DEFAULT_FILTER_BAR_FILTERS);
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['shared-dashboard', token],
@@ -32,16 +35,29 @@ export function SharedDashboardPage() {
     clearAll,
   } = useDashboardFilters(allPosts);
 
+  const handleLayoutLoaded = useCallback((persisted: string[]) => {
+    setFilterBarFilters(persisted as FilterBarFilterId[]);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-2.5">
           <Logo size="sm" />
+          {response?.meta.title && (
+            <>
+              <div className="h-4 w-px bg-border shrink-0" />
+              <h1 className="text-sm font-semibold text-foreground truncate flex-1">
+                {response.meta.title}
+              </h1>
+            </>
+          )}
+          {!response?.meta.title && <div className="flex-1" />}
           <Button
             size="sm"
             onClick={() => window.open('/', '_blank')}
-            className="h-7 text-xs"
+            className="h-7 text-xs shrink-0"
           >
             Create your own
           </Button>
@@ -82,20 +98,8 @@ export function SharedDashboardPage() {
       {/* Dashboard content */}
       {!isLoading && !error && response && (
         <>
-          {/* Title bar */}
-          <div className="border-b border-border bg-card">
-            <div className="mx-auto max-w-6xl px-6 py-4">
-              <h1 className="text-xl font-semibold text-foreground">
-                {response.meta.title}
-              </h1>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Shared dashboard &mdash; interactive filters enabled
-              </p>
-            </div>
-          </div>
-
           {/* Filter bar */}
-          <div className="sticky top-[49px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
+          <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
             <div className="mx-auto max-w-6xl">
             <DashboardFilterBar
               filters={filters}
@@ -105,18 +109,24 @@ export function SharedDashboardPage() {
               onSetFilter={setFilter}
               onClearAll={clearAll}
               collectionNames={response.collection_names}
+              filterBarFilters={filterBarFilters}
+              allPosts={allPosts}
             />
             </div>
           </div>
 
           <main className="mx-auto max-w-6xl">
-            <DashboardContent
+            <SocialDashboardView
+              artifactId={token!}
               filteredPosts={filteredPosts}
-              allPostsCount={allPosts.length}
-              activeFilterCount={activeFilterCount}
+              allPosts={allPosts}
+              availableOptions={availableOptions}
               truncated={response.truncated}
-              filters={filters}
+              activeFilterCount={activeFilterCount}
               toggleFilterValue={toggleFilterValue}
+              filterBarFilters={filterBarFilters}
+              onLayoutLoaded={handleLayoutLoaded}
+              readOnly
             />
           </main>
 
