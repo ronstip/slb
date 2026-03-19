@@ -27,6 +27,11 @@ from workers.shared.gcs_client import GCSClient
 
 logger = logging.getLogger(__name__)
 
+# Limit concurrent media download batches to avoid connection pool exhaustion.
+# With 7+ batch threads running in parallel, each with 10 download workers,
+# unconstrained this creates 70+ simultaneous connections to i.redd.it / GCS.
+_DOWNLOAD_BATCH_SEMAPHORE = threading.Semaphore(3)
+
 # Ensure collection logs are written to logs/worker.log (git-ignored)
 _log_dir = os.path.join(os.path.dirname(__file__), "..", "..", "logs")
 os.makedirs(_log_dir, exist_ok=True)
@@ -41,42 +46,6 @@ if not any(isinstance(h, logging.FileHandler) and h.baseFilename == os.path.absp
     if _root.level > logging.INFO:
         _root.setLevel(logging.INFO)
 
-
-def _update_media_refs_in_bq(bq: 'BQClient', posts) -> None:
-    """Batch-update media_refs in BQ for posts that have GCS URIs after download.
-
-    BQ DML cannot touch rows that are still in the streaming buffer.
-    Retries once after a 90s wait, which is enough for the buffer to clear.
-    """
-    cases = []
-    post_ids = []
-    for p in posts:
-        refs_json = json.dumps(p.media_refs if isinstance(p.media_refs, list) else [])
-        refs_json = refs_json.replace("\\", "\\\\").replace("'", "\\'")
-        cases.append(f"WHEN '{p.post_id}' THEN PARSE_JSON('{refs_json}')")
-        post_ids.append(p.post_id)
-
-    if not cases:
-        return
-
-    sql = (
-        "UPDATE social_listening.posts "
-        f"SET media_refs = CASE post_id {' '.join(cases)} ELSE media_refs END "
-        "WHERE post_id IN UNNEST(@post_ids)"
-    )
-
-    for attempt in range(2):
-        try:
-            bq.query(sql, {"post_ids": post_ids})
-            logger.info("Updated media_refs in BQ for %d posts", len(post_ids))
-            return
-        except Exception as e:
-            if "streaming buffer" in str(e) and attempt == 0:
-                logger.info("media_refs UPDATE hit streaming buffer — retrying in 90s")
-                time.sleep(90)
-            else:
-                logger.warning("Failed to update media_refs in BQ: %s", e)
-                return
 
 
 def run_collection(collection_id: str, on_batch_complete=None) -> None:
@@ -123,7 +92,11 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
     collection_started_at = datetime.now(timezone.utc).isoformat()
 
     try:
+        batch_index = 0
+        _batch_threads: list[threading.Thread] = []  # join before returning
         for batch in wrapper.collect_all():
+            t_batch = time.monotonic()
+            batch_index += 1
             # Check for cancellation before processing each batch
             status = fs.get_collection_status(collection_id)
             if status and status.get("status") == "cancelled":
@@ -185,6 +158,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
             # Insert posts FIRST so they appear in the feed immediately
             failed_posts = 0
             post_rows = [post_to_bq_row(p, collection_id) for p in new_posts]
+            t_bq_insert = time.monotonic()
             if post_rows:
                 failed_posts = bq.insert_rows("posts", post_rows)
 
@@ -207,29 +181,9 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                 last_run_posts_added=total_posts,
             )
 
-            # Download media to GCS — skip YouTube (Gemini accepts YouTube URLs natively).
-            # TikTok videos MUST be downloaded to GCS for Gemini enrichment.
-            posts_needing_download = [p for p in new_posts if p.platform != "youtube"]
-            t_dl = time.monotonic()
-            if posts_needing_download:
-                download_media_batch(gcs, posts_needing_download, collection_id)
-            logger.info("Download done in %.1fs (%d posts, %d skipped youtube)", time.monotonic() - t_dl, len(posts_needing_download), len(new_posts) - len(posts_needing_download))
-
-            # Persist GCS URIs back to BQ in background (non-blocking — enrichment uses
-            # the already-updated in-memory refs, not BQ; BQ update is for re-enrichment).
-            def _update_bq_bg(posts_copy=list(new_posts), cid=collection_id):
-                try:
-                    updated = [p for p in posts_copy if any(r.get("gcs_uri") for r in (p.media_refs or []))]
-                    if updated:
-                        _update_media_refs_in_bq(bq, updated)
-                except Exception:
-                    logger.warning("Background BQ media update failed for %s", cid, exc_info=True)
-            threading.Thread(target=_update_bq_bg, daemon=True).start()
-
-            # Track usage for billing + analytics
+            # Track usage for billing + analytics (fire-and-forget)
             if owner_user_id and len(new_posts) > 0:
                 fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", len(new_posts))
-                # Fire-and-forget BQ event log for admin activity dashboard
                 def _log_posts_event(uid=owner_user_id, oid=owner_org_id, cid=collection_id, cnt=len(new_posts)):
                     try:
                         bq.insert_rows("usage_events", [{
@@ -243,11 +197,109 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                     except Exception:
                         logger.warning("Failed to log posts_collected event to BQ", exc_info=True)
                 threading.Thread(target=_log_posts_event, daemon=True).start()
-            # Notify callback (e.g., for parallel enrichment)
-            if on_batch_complete and new_posts:
-                on_batch_complete(new_posts)
 
-            logger.info("Collection %s: %d posts so far (%d dupes skipped)", collection_id, total_posts, dupes_in_batch)
+            # Spawn a background thread: download media → enrich → persist GCS URIs to BQ.
+            #
+            # Posts are already in BQ with CDN URLs (seeded above), so the feed updates
+            # immediately. The background thread then:
+            #   1. Downloads media to GCS (all platforms except YouTube, which Gemini handles natively)
+            #   2. Fires on_batch_complete() so enrichment runs with GCS URIs in media_refs
+            #   3. Attempts to UPDATE media_refs in BQ with GCS URIs (best-effort, one try)
+            #
+            # All batch threads run concurrently — downloads and enrichment for all batches
+            # happen in parallel, bounded only by the global enrichment semaphore.
+            #
+            # We join all threads before run_collection() returns so that pipeline.py can
+            # safely wait on the enrichment executor shutdown.
+            posts_needing_dl = [p for p in new_posts if p.platform != "youtube"]
+
+            def _download_enrich_update(
+                posts_copy=list(new_posts),
+                dl_posts=list(posts_needing_dl),
+                bidx=batch_index,
+                cid=collection_id,
+                t_insert=t_bq_insert,
+            ):
+                t0 = time.monotonic()
+
+                # Step 1: Download media to GCS (throttled — max 3 batch threads
+                # download simultaneously to prevent connection pool exhaustion)
+                if dl_posts:
+                    with _DOWNLOAD_BATCH_SEMAPHORE:
+                        download_media_batch(gcs, dl_posts, cid)
+                    logger.info(
+                        "Batch %d media download done: %.1fs (%d posts)",
+                        bidx, time.monotonic() - t0, len(dl_posts),
+                    )
+
+                # Step 2: Enrich — posts now have GCS URIs (or YouTube URLs) in media_refs
+                if on_batch_complete:
+                    on_batch_complete(posts_copy)
+
+                # Step 3: Persist GCS URIs back to BQ.
+                # BQ streaming inserts block DML for ~90s (sometimes longer).
+                # Wait at least 95s from the insert, then retry with backoff
+                # if the streaming buffer hasn't flushed yet.
+                posts_with_gcs = [
+                    p for p in posts_copy
+                    if any(r.get("gcs_uri") for r in (p.media_refs or []))
+                ]
+                if posts_with_gcs:
+                    wait = max(0, 120 - (time.monotonic() - t_insert))
+                    if wait > 0:
+                        logger.info("Batch %d: waiting %.0fs for BQ streaming buffer before media_refs update", bidx, wait)
+                        time.sleep(wait)
+                    post_ids = [p.post_id for p in posts_with_gcs]
+                    refs_jsons = [json.dumps(p.media_refs) for p in posts_with_gcs]
+                    sql = (
+                        "UPDATE social_listening.posts t "
+                        "SET t.media_refs = PARSE_JSON(s.refs_json) "
+                        "FROM ("
+                        "  SELECT pid, rj AS refs_json"
+                        "  FROM UNNEST(@post_ids) pid WITH OFFSET o1"
+                        "  JOIN UNNEST(@refs_jsons) rj WITH OFFSET o2 ON o1 = o2"
+                        ") s "
+                        "WHERE t.post_id = s.pid"
+                    )
+                    max_retries = 5
+                    for attempt in range(max_retries):
+                        try:
+                            bq.query(sql, {"post_ids": post_ids, "refs_jsons": refs_jsons})
+                            logger.info("Batch %d: updated media_refs in BQ for %d posts", bidx, len(posts_with_gcs))
+                            break
+                        except Exception as e:
+                            err_str = str(e)
+                            if "streaming buffer" in err_str.lower() and attempt < max_retries - 1:
+                                retry_wait = 60 * (attempt + 1)
+                                logger.info("Batch %d: streaming buffer not flushed, retrying in %ds (attempt %d/%d)", bidx, retry_wait, attempt + 1, max_retries)
+                                time.sleep(retry_wait)
+                            else:
+                                logger.warning("Batch %d: media_refs BQ update failed (%s)", bidx, err_str[:200])
+                                break
+
+                logger.info(
+                    "Batch %d background complete: %.1fs total (download+enrich+bq_update)",
+                    bidx, time.monotonic() - t0,
+                )
+
+            t = threading.Thread(target=_download_enrich_update, daemon=True)
+            t.start()
+            _batch_threads.append(t)
+
+            batch_elapsed = time.monotonic() - t_batch
+            logger.info(
+                "Batch %d: %d posts inserted to BQ in %.1fs — download+enrich queued in background",
+                batch_index, len(new_posts), batch_elapsed,
+            )
+
+        # Wait for all background download+enrich threads to complete before returning.
+        # This ensures all enrichment callbacks have been submitted to the executor in
+        # pipeline.py before it calls shutdown(wait=True) to collect results.
+        if _batch_threads:
+            logger.info("Waiting for %d background batch threads to complete...", len(_batch_threads))
+            for t in _batch_threads:
+                t.join()
+            logger.info("All background batch threads done")
 
         # Build run_log with platform stats and timing
         duration_sec = round(time.monotonic() - collection_start, 1)

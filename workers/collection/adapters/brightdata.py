@@ -158,37 +158,49 @@ class BrightDataAdapter(DataProviderAdapter):
         # Expand keywords with hashtag variants for broader discovery
         hashtags = _expand_keywords_to_hashtags(keywords)
         all_search_terms = keywords + hashtags
-        logger.info("[tiktok] search terms: %s (keywords=%d + hashtags=%d)", all_search_terms, len(keywords), len(hashtags))
+        logger.info(
+            "[tiktok] search terms: %s (keywords=%d + hashtags=%d), num_per_kw=%s, "
+            "expected_max=%s",
+            all_search_terms, len(keywords), len(hashtags), num_per_kw or "unlimited",
+            (num_per_kw * len(all_search_terms)) if num_per_kw else "unlimited",
+        )
 
-        # Build all inputs and send in a single API call (BrightData parallelizes internally)
-        inputs = []
-        for kw in all_search_terms:
+        # Split into per-keyword batches (parallel) to avoid huge single jobs
+        # that exceed BrightData's processing time → poll timeout
+        def _fetch_tiktok_keyword(kw: str) -> list[dict]:
             inp: dict = {"search_keyword": kw}
             if num_per_kw > 0:
                 inp["num_of_posts"] = num_per_kw
-            inputs.append(inp)
-
-        try:
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["tiktok"]["posts"],
-                inputs=inputs,
+                inputs=[inp],
                 discover_by="keyword",
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             valid = [r for r in results if not _is_error_item(r)]
-            errors = len(results) - len(valid)
-            logger.info(
-                "[tiktok] batch → %d/%d posts%s",
-                len(valid), len(results),
-                f" ({errors} errors)" if errors else "",
-            )
-            for batch in self._parse_results("tiktok", valid):
-                yield batch
-        except BrightDataAPIError as e:
-            logger.error("BrightData TikTok batch failed: %s", e)
-            raise
-        except Exception:
-            logger.exception("Unexpected error fetching TikTok batch")
-            raise
+            logger.info("[tiktok] keyword %r → %d/%d posts", kw, len(valid), len(results))
+            return valid
+
+        all_results: list[dict] = []
+        with ThreadPoolExecutor(max_workers=min(len(all_search_terms), 4)) as pool:
+            futures = {
+                pool.submit(_fetch_tiktok_keyword, kw): kw
+                for kw in all_search_terms
+            }
+            for future in as_completed(futures):
+                kw = futures[future]
+                try:
+                    all_results.extend(future.result())
+                except BrightDataAPIError as e:
+                    logger.error("BrightData TikTok keyword %r failed: %s", kw, e)
+                except Exception:
+                    logger.exception("Unexpected error fetching TikTok keyword %r", kw)
+
+        if not all_results:
+            return
+
+        for batch in self._parse_results("tiktok", all_results):
+            yield batch
 
     # ------------------------------------------------------------------
     # YouTube
@@ -206,7 +218,12 @@ class BrightDataAdapter(DataProviderAdapter):
 
         # Expand keywords with hashtag variants for hashtag discovery
         hashtags = _expand_keywords_to_hashtags(keywords)
-        logger.info("[youtube] keywords=%s, hashtags=%s", keywords, hashtags)
+        logger.info(
+            "[youtube] keywords=%s, hashtags=%s, num_per_kw=%s, date_range=%s→%s, "
+            "expected_max=%s",
+            keywords, hashtags, num_per_kw or "unlimited", start, end,
+            (num_per_kw * (len(keywords) + len(hashtags))) if num_per_kw else "unlimited",
+        )
 
         def _fetch_keywords_batch() -> list[dict]:
             """Keyword-based search: all keywords in one API call."""
@@ -220,6 +237,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             valid = [r for r in results if not _is_error_item(r)]
             logger.info("[youtube] keyword batch → %d/%d posts", len(valid), len(results))
@@ -239,6 +257,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
                 inputs=inputs,
                 discover_by="hashtag",
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             valid = [r for r in results if not _is_error_item(r)]
             logger.info("[youtube] hashtag batch → %d/%d posts", len(valid), len(results))
@@ -281,6 +300,10 @@ class BrightDataAdapter(DataProviderAdapter):
         time_range = config.get("time_range", {})
         start = time_range.get("start", "")
         reddit_date = _iso_date_to_reddit_filter(start)
+        logger.info(
+            "[reddit] keywords=%s, subreddits=%s, num_per_kw=%s, date_filter=%s",
+            keywords, subreddit_urls, num_per_kw or "unlimited", reddit_date,
+        )
 
         all_results: list[dict] = []
 
@@ -296,6 +319,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             logger.info("[reddit] keywords (%d) → %d raw results", len(keywords), len(results))
             all_results.extend(results)
@@ -314,6 +338,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 dataset_id=self._DATASET_IDS["reddit"]["posts"],
                 inputs=inputs,
                 discover_by="subreddit_url",
+                limit_per_input=num_per_kw if num_per_kw > 0 else None,
             )
             logger.info("[reddit] subreddits (%d) → %d raw results", len(subreddit_urls), len(results))
             all_results.extend(results)

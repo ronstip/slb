@@ -68,9 +68,42 @@ from config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
+def _cleanup_stuck_collections() -> None:
+    """Mark collections stuck in transient states as completed_with_errors.
+
+    On startup no pipeline is running, so any collection still in
+    'collecting' or 'enriching' was orphaned by a prior crash/restart.
+    """
+    from workers.shared.firestore_client import FirestoreClient
+    from google.cloud import firestore as _firestore
+
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+    db = fs._db
+
+    stuck_statuses = ["collecting", "enriching"]
+    for status in stuck_statuses:
+        docs = db.collection("collection_status").where("status", "==", status).stream()
+        for doc in docs:
+            doc_id = doc.id
+            logger.warning(
+                "Startup cleanup: collection %s stuck in '%s' — marking completed_with_errors",
+                doc_id, status,
+            )
+            fs.update_collection_status(
+                doc_id,
+                status="completed_with_errors",
+                error_message=f"Collection was interrupted (server restart). Partial data may be available.",
+            )
+
+
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
     settings = get_settings()
+    try:
+        _cleanup_stuck_collections()
+    except Exception:
+        logger.exception("Startup cleanup of stuck collections failed (non-fatal)")
     if settings.is_dev:
         from api.scheduler import OngoingScheduler
         scheduler = OngoingScheduler()

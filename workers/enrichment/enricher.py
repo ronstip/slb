@@ -6,6 +6,7 @@ All configuration read from settings (env vars).
 """
 
 import logging
+import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,21 +20,92 @@ from workers.enrichment.schema import CustomFieldDef, EnrichmentResult, PostData
 
 logger = logging.getLogger(__name__)
 
-# Global semaphore to cap concurrent Gemini API calls across all batch workers.
-# Lazy-initialized on first use so settings are available.
+# ---------------------------------------------------------------------------
+# Process-wide rate limiting & concurrency control
+# ---------------------------------------------------------------------------
+# All collections from all users within the same worker process share these.
+# This is correct because the Gemini API quota is per-GCP-project, not per-user.
+#
+# Three layers of throttling:
+#   1. _general_rate_limiter — caps total enrichment calls per minute
+#   2. _video_rate_limiter   — caps video/* calls per minute (tighter)
+#   3. _global_semaphore     — caps concurrent in-flight calls
+# ---------------------------------------------------------------------------
+
+
+class _TokenBucketRateLimiter:
+    """Thread-safe token-bucket rate limiter.
+
+    Allows up to `tokens_per_interval` calls per `interval_seconds`.
+    Callers block via threading.Condition when the bucket is empty.
+    """
+
+    def __init__(self, tokens_per_interval: int, interval_seconds: float = 60.0):
+        self._max_tokens = tokens_per_interval
+        self._interval = interval_seconds
+        self._tokens = tokens_per_interval
+        self._last_refill = time.monotonic()
+        self._cond = threading.Condition(threading.Lock())
+
+    def acquire(self) -> None:
+        with self._cond:
+            while True:
+                self._refill()
+                if self._tokens > 0:
+                    self._tokens -= 1
+                    return
+                # Sleep until next refill could produce a token
+                wait = self._interval / self._max_tokens
+                self._cond.wait(timeout=wait)
+
+    def _refill(self) -> None:
+        now = time.monotonic()
+        elapsed = now - self._last_refill
+        new_tokens = elapsed * (self._max_tokens / self._interval)
+        if new_tokens >= 1:
+            self._tokens = min(self._max_tokens, self._tokens + int(new_tokens))
+            self._last_refill = now
+            self._cond.notify_all()
+
+
+# Lazy-initialized singletons (same pattern as the existing semaphore)
 _global_semaphore: threading.Semaphore | None = None
-_semaphore_lock = threading.Lock()
+_video_rate_limiter: _TokenBucketRateLimiter | None = None
+_general_rate_limiter: _TokenBucketRateLimiter | None = None
+_init_lock = threading.Lock()
 
 
 def _get_global_semaphore() -> threading.Semaphore:
     global _global_semaphore
     if _global_semaphore is None:
-        with _semaphore_lock:
+        with _init_lock:
             if _global_semaphore is None:
                 limit = get_settings().enrichment_global_concurrency
                 _global_semaphore = threading.Semaphore(limit)
                 logger.info("Global enrichment semaphore initialized (limit=%d)", limit)
     return _global_semaphore
+
+
+def _get_video_rate_limiter() -> _TokenBucketRateLimiter:
+    global _video_rate_limiter
+    if _video_rate_limiter is None:
+        with _init_lock:
+            if _video_rate_limiter is None:
+                limit = get_settings().enrichment_video_rate_limit
+                _video_rate_limiter = _TokenBucketRateLimiter(limit, 60.0)
+                logger.info("Video rate limiter initialized (%d/min)", limit)
+    return _video_rate_limiter
+
+
+def _get_general_rate_limiter() -> _TokenBucketRateLimiter:
+    global _general_rate_limiter
+    if _general_rate_limiter is None:
+        with _init_lock:
+            if _general_rate_limiter is None:
+                limit = get_settings().enrichment_general_rate_limit
+                _general_rate_limiter = _TokenBucketRateLimiter(limit, 60.0)
+                logger.info("General rate limiter initialized (%d/min)", limit)
+    return _general_rate_limiter
 
 ENRICHMENT_PROMPT = """\
 Your task is to analyze the attached social media post to determine its primary content, context, intent, tone, and cultural relevance and narrative.
@@ -241,6 +313,21 @@ def _build_config(
     return config
 
 
+def _post_has_video(post: PostData) -> bool:
+    """Check if a post will include video content in its Gemini request."""
+    # Video in GCS media refs
+    if any(_is_video(r.media_type, r.content_type) and r.gcs_uri for r in post.media_refs):
+        return True
+    # YouTube URL pass-through (when no GCS video exists)
+    if (
+        post.platform == "youtube"
+        and post.post_url
+        and not any(_is_video(r.media_type, r.content_type) and r.gcs_uri for r in post.media_refs)
+    ):
+        return True
+    return False
+
+
 def _enrich_single_post(
     client: genai.Client,
     model: str,
@@ -250,17 +337,33 @@ def _enrich_single_post(
 ) -> tuple[str, EnrichmentResult | None]:
     """Enrich a single post. Returns (post_id, result) or (post_id, None) on failure.
 
-    Uses global semaphore to cap concurrent Gemini calls.
-    Retries up to 3 times with exponential backoff on 429 RESOURCE_EXHAUSTED.
+    Three layers of throttling before calling Gemini:
+      1. General rate limiter (all posts) — prevents overall quota exhaustion
+      2. Video rate limiter (video posts only) — tighter limit for video/* quota
+      3. Global semaphore — caps concurrent in-flight calls
+
+    Retries with jittered exponential backoff on transient errors
+    (429 RESOURCE_EXHAUSTED, 504 DEADLINE_EXCEEDED, disconnects).
     """
+    settings = get_settings()
     parts = _build_content_parts(post, custom_fields)
     contents = types.Content(role="user", parts=parts)
     semaphore = _get_global_semaphore()
-    max_attempts = 3
-    backoff_delays = [10, 20]  # delays between retries
+    general_limiter = _get_general_rate_limiter()
+    has_video = _post_has_video(post)
+    video_limiter = _get_video_rate_limiter() if has_video else None
+
+    max_attempts = settings.enrichment_max_retries
+    base_delay = settings.enrichment_retry_base_delay
 
     for attempt in range(max_attempts):
         try:
+            # Layer 1: rate-limit all calls (prevents multi-user quota exhaustion)
+            general_limiter.acquire()
+            # Layer 2: tighter rate-limit for video content
+            if video_limiter:
+                video_limiter.acquire()
+            # Layer 3: cap concurrent in-flight calls
             semaphore.acquire()
             try:
                 response = client.models.generate_content(
@@ -275,13 +378,24 @@ def _enrich_single_post(
             return (post.post_id, result)
 
         except Exception as e:
-            is_rate_limit = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
-            if is_rate_limit and attempt < max_attempts - 1:
-                wait = backoff_delays[attempt]
-                logger.warning("Enrichment 429 for post %s — retrying in %ds (attempt %d/%d)", post.post_id, wait, attempt + 1, max_attempts)
+            err_str = str(e)
+            is_retryable = (
+                "429" in err_str
+                or "RESOURCE_EXHAUSTED" in err_str
+                or "DEADLINE_EXCEEDED" in err_str
+                or "504" in err_str
+                or "disconnected" in err_str.lower()
+            )
+            if is_retryable and attempt < max_attempts - 1:
+                # Jittered exponential backoff to break thundering herd
+                wait = base_delay * (2 ** attempt) + random.uniform(0, 5)
+                logger.warning(
+                    "Enrichment error for post %s — retrying in %.0fs (attempt %d/%d): %s",
+                    post.post_id, wait, attempt + 1, max_attempts, err_str[:120],
+                )
                 time.sleep(wait)
             else:
-                logger.warning("Enrichment failed for post %s: %s: %s", post.post_id, type(e).__name__, str(e)[:200])
+                logger.warning("Enrichment failed for post %s: %s: %s", post.post_id, type(e).__name__, err_str[:200])
                 return (post.post_id, None)
 
 
@@ -307,6 +421,7 @@ def enrich_posts(
         vertexai=True,
         project=settings.gcp_project_id,
         location=settings.gemini_location,
+        http_options=types.HttpOptions(timeout=300_000),  # 300s max per call — video analysis can take >120s
     )
     model = settings.enrichment_model
     config = _build_config(custom_fields)

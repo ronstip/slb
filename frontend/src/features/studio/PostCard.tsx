@@ -276,9 +276,9 @@ function MediaImage({ media, className }: { media: MediaRef; className?: string 
 function VideoPlayer({ media, postUrl, thumbnailMedia }: { media: MediaRef; postUrl: string; thumbnailMedia?: MediaRef }) {
   const hasGcsVideo = !!media.gcs_uri;
 
-  // If we have a GCS-proxied video, try to play it inline
+  // If we have a GCS-proxied video, show thumbnail + click to play inline
   if (hasGcsVideo) {
-    return <InlineVideo media={media} postUrl={postUrl} />;
+    return <InlineVideo media={media} postUrl={postUrl} thumbnailMedia={thumbnailMedia} />;
   }
 
   // No GCS video yet — show thumbnail with play overlay linking to original
@@ -314,8 +314,9 @@ function VideoPlayer({ media, postUrl, thumbnailMedia }: { media: MediaRef; post
   );
 }
 
-function InlineVideo({ media, postUrl }: { media: MediaRef; postUrl: string }) {
+function InlineVideo({ media, postUrl, thumbnailMedia }: { media: MediaRef; postUrl: string; thumbnailMedia?: MediaRef }) {
   const primarySrc = resolveUrl(media);
+  const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
 
   if (failed) {
@@ -332,11 +333,42 @@ function InlineVideo({ media, postUrl }: { media: MediaRef; postUrl: string }) {
     );
   }
 
+  if (!playing) {
+    // Show thumbnail with play button — video is only loaded on click
+    const thumbUrl = thumbnailMedia
+      ? resolveUrl(thumbnailMedia)
+      : media.original_url ? mediaUrl(undefined, media.original_url) : undefined;
+    return (
+      <button
+        type="button"
+        onClick={() => setPlaying(true)}
+        className="relative block w-full group cursor-pointer"
+      >
+        {thumbUrl ? (
+          <img
+            src={thumbUrl}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="w-full aspect-[4/3] object-cover bg-secondary"
+          />
+        ) : (
+          <div className="w-full aspect-[4/3] bg-secondary" />
+        )}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white">
+            <Play className="h-6 w-6 fill-current" />
+          </div>
+        </div>
+      </button>
+    );
+  }
+
   return (
     <video
       src={primarySrc}
       controls
-      preload="metadata"
+      autoPlay
+      preload="auto"
       onError={() => setFailed(true)}
       className="w-full max-h-72 bg-black object-contain"
     />

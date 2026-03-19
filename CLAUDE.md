@@ -1,5 +1,5 @@
 # CLAUDE.md
-
+Memory bank is not updated - please ignore it for now, stop reading this.
 ## Memory Bank
 
 This project uses a **memory bank** system for persistent context across chat sessions.

@@ -189,19 +189,25 @@ def run_pipeline(collection_id: str) -> None:
         # Write headline metrics to Firestore status doc for progress card
         eng = sig.get("engagement_summary") or {}
         total_views = int(eng.get("total_views") or 0)
+        total_posts = int(sig.get("total_posts") or 0)
         positive = next(
             (r for r in sig.get("sentiment_breakdown", []) if r["value"] == "positive"),
             None,
         )
         positive_pct = None
-        if positive and total_views > 0:
-            positive_pct = round(positive["view_count"] / total_views * 100, 1)
+        if positive:
+            if total_views > 0:
+                # Views-based (YouTube, TikTok): % of total views that are on positive posts
+                positive_pct = round(positive["view_count"] / total_views * 100, 1)
+            elif total_posts > 0:
+                # Post-count fallback (Reddit, text-only): % of posts that are positive
+                positive_pct = round(positive["post_count"] / total_posts * 100, 1)
         fs.update_collection_status(
             collection_id,
             total_views=total_views,
             positive_pct=positive_pct,
         )
-        logger.info("── Step 3 done in %.1fs (views=%d, positive=%s%%)", _time.monotonic() - t0, total_views, positive_pct)
+        logger.info("── Step 3 done in %.1fs (views=%d, posts=%d, positive=%s%%)", _time.monotonic() - t0, total_views, total_posts, positive_pct)
     except Exception:
         logger.exception("Statistical signature computation failed for %s", collection_id)
 

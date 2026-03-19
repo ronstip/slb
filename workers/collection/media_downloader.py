@@ -8,10 +8,10 @@ from workers.shared.gcs_client import GCSClient
 
 logger = logging.getLogger(__name__)
 
-_MAX_MEDIA_WORKERS = 30
+_MAX_MEDIA_WORKERS = 10
 
 # Platforms whose CDN blocks direct server-side video downloads
-_YTDLP_PLATFORMS = frozenset({"tiktok"})
+_YTDLP_PLATFORMS = frozenset({"tiktok", "reddit"})
 
 # Markers used to classify a URL as video (mirrors GCS client + worker seeding heuristic)
 _VIDEO_URL_MARKERS = (".mp4", ".mov", ".webm", "mime_type=video", "googlevideo.com", "videoplayback", "v.redd.it")
@@ -102,8 +102,9 @@ def download_media(gcs_client: GCSClient, post: Post, collection_id: str) -> lis
         ref = gcs_client.download_from_url(url, collection_id, post.post_id, index)
         if ref.get("gcs_uri"):
             media_refs.append(ref)
-        elif use_ytdlp_fallback and not ytdlp_used and "mime_type=video" in url:
-            # CDN blocked the video — try yt-dlp with the post page URL
+        elif use_ytdlp_fallback and not ytdlp_used and _is_video_url(url):
+            # CDN blocked the video (e.g. TikTok mime_type=video, Reddit v.redd.it 403)
+            # try yt-dlp with the post page URL
             logger.info("CDN download failed for post %s, trying yt-dlp fallback", post.post_id)
             ytdlp_ref = _download_via_ytdlp(
                 gcs_client, post.post_url, collection_id, post.post_id, index
@@ -128,8 +129,10 @@ def download_media(gcs_client: GCSClient, post: Post, collection_id: str) -> lis
     # TikTok: if no video was obtained via CDN (expected — video_url is excluded
     # from media_urls due to expiring tokens), download directly from the post
     # page URL via yt-dlp. yt-dlp resolves the video independently of CDN tokens.
+    # NOTE: This fallback is TikTok-specific. Reddit videos are handled inline via
+    # _is_video_url() above; firing yt-dlp for Reddit text/image posts causes 403s.
     if (
-        use_ytdlp_fallback
+        post.platform == "tiktok"
         and not ytdlp_used
         and post.post_url
         and not any(r.get("media_type") == "video" for r in media_refs)

@@ -156,23 +156,64 @@ class BrightDataClient:
         return resp.json()
 
     def download_snapshot(self, snapshot_id: str) -> list[dict]:
-        """GET /datasets/v3/snapshot/{snapshot_id}. Parses NDJSON or JSON response."""
-        resp = self._session.get(
-            f"{_BASE_URL}/snapshot/{snapshot_id}",
-            timeout=_DOWNLOAD_TIMEOUT,
-        )
-        if resp.status_code >= 400:
-            raise BrightDataAPIError(resp.status_code, resp.text[:500], snapshot_id)
+        """GET /datasets/v3/snapshot/{snapshot_id}. Parses NDJSON or JSON response.
 
-        results = _parse_response_data(resp.text)
-        if not results:
-            logger.error(
-                "Snapshot %s: 0 parseable records. Response length=%d, content-type=%s, first 500 chars: %.500s",
-                snapshot_id, len(resp.text), resp.headers.get("Content-Type", "?"), resp.text,
+        BrightData sometimes marks a snapshot as "ready" prematurely, then returns
+        {'status': 'building', 'message': 'Dataset is not ready yet, try again in 30s'}
+        on the actual download. We detect this and retry up to _DOWNLOAD_BUILD_RETRIES times.
+        """
+        _DOWNLOAD_BUILD_RETRIES = 6   # 6 × 30s = up to 3 extra minutes
+        _DOWNLOAD_BUILD_WAIT = 30     # seconds — matches BD's own suggestion
+
+        for attempt in range(_DOWNLOAD_BUILD_RETRIES + 1):
+            t0 = time.monotonic()
+            resp = self._session.get(
+                f"{_BASE_URL}/snapshot/{snapshot_id}",
+                timeout=_DOWNLOAD_TIMEOUT,
             )
-        else:
-            logger.info("Downloaded snapshot %s: %d records", snapshot_id, len(results))
-        return results
+            elapsed = time.monotonic() - t0
+            if resp.status_code >= 400:
+                raise BrightDataAPIError(resp.status_code, resp.text[:500], snapshot_id)
+
+            results = _parse_response_data(resp.text)
+
+            # Detect premature "ready": BD serves a single building-status error object
+            if (
+                results
+                and all(
+                    r.get("status") == "building" or r.get("message", "").startswith("Dataset is not ready")
+                    for r in results
+                )
+            ):
+                if attempt < _DOWNLOAD_BUILD_RETRIES:
+                    logger.warning(
+                        "Snapshot %s: BD returned 'building' on download (attempt %d/%d, %.1fs) — "
+                        "waiting %ds before retry",
+                        snapshot_id, attempt + 1, _DOWNLOAD_BUILD_RETRIES, elapsed, _DOWNLOAD_BUILD_WAIT,
+                    )
+                    time.sleep(_DOWNLOAD_BUILD_WAIT)
+                    continue
+                logger.error(
+                    "Snapshot %s: still returning 'building' after %d retries — giving up",
+                    snapshot_id, _DOWNLOAD_BUILD_RETRIES,
+                )
+                return []
+
+            if not results:
+                logger.error(
+                    "Snapshot %s: 0 parseable records (%.1fs). Response length=%d, "
+                    "content-type=%s, first 500 chars: %.500s",
+                    snapshot_id, elapsed, len(resp.text),
+                    resp.headers.get("Content-Type", "?"), resp.text,
+                )
+            else:
+                logger.info(
+                    "Downloaded snapshot %s: %d records in %.1fs (attempt %d)",
+                    snapshot_id, len(results), elapsed, attempt + 1,
+                )
+            return results
+
+        return []  # unreachable but satisfies type checker
 
     def scrape_and_wait(
         self,
@@ -183,10 +224,14 @@ class BrightDataClient:
         limit_per_input: int | None = None,
     ) -> list[dict]:
         """High-level: trigger + poll with exponential backoff + download."""
+        t_trigger = time.monotonic()
         result = self.trigger_scrape(dataset_id, inputs, discover_by, include_errors, limit_per_input)
+        trigger_elapsed = time.monotonic() - t_trigger
+        logger.info("BD trigger completed in %.1fs", trigger_elapsed)
 
         # Sync response — data returned directly
         if isinstance(result, list):
+            logger.info("BD sync response: %d records (no polling needed)", len(result))
             return result
 
         # Async — poll until ready
@@ -197,6 +242,7 @@ class BrightDataClient:
         max_poll_interval = 5.0
         last_state = None
         last_log_elapsed = 0.0
+        t_poll_start = time.monotonic()
 
         while elapsed < self._poll_max_wait_sec:
             time.sleep(interval)
@@ -212,7 +258,15 @@ class BrightDataClient:
                 last_log_elapsed = elapsed
 
             if state == "ready":
-                return self.download_snapshot(snapshot_id)
+                poll_elapsed = time.monotonic() - t_poll_start
+                logger.info("BD snapshot %s ready after %.1fs polling (trigger=%.1fs)", snapshot_id, poll_elapsed, trigger_elapsed)
+                records = self.download_snapshot(snapshot_id)
+                total_elapsed = time.monotonic() - t_trigger
+                logger.info(
+                    "BD scrape_and_wait total=%.1fs (trigger=%.1fs poll=%.1fs) → %d records",
+                    total_elapsed, trigger_elapsed, poll_elapsed, len(records),
+                )
+                return records
             elif state == "failed":
                 raise BrightDataAPIError(
                     0, f"Snapshot {snapshot_id} failed: {status}", snapshot_id
