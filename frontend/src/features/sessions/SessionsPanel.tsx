@@ -164,6 +164,7 @@ export function SessionsPanel() {
   if (collapsed) {
     return (
       <div
+        data-testid="sessions-panel"
         className="flex h-full cursor-pointer flex-col items-center py-3"
         onClick={(e) => {
           // Only expand when clicking the container itself (whitespace), not child buttons
@@ -279,7 +280,7 @@ export function SessionsPanel() {
 
   // ── Expanded sidebar (~260-300px) ──
   return (
-    <div className="flex h-full flex-col">
+    <div data-testid="sessions-panel" className="flex h-full flex-col">
       {/* Top: Logo + collapse (no bottom border) */}
       <div className="flex items-center justify-between px-3 py-3">
         <button onClick={() => navigate(getAppPath())} className="focus:outline-none">

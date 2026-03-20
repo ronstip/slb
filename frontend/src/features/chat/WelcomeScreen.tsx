@@ -165,7 +165,7 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
   const hasCollections = sources.length > 0;
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-8 py-6">
+    <div data-testid="welcome-screen" className="flex flex-1 flex-col items-center justify-center px-8 py-6">
       {/* Header */}
       <div className="flex flex-col items-center mb-10">
         <Logo size="lg" showText={false} />

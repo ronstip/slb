@@ -1,0 +1,16 @@
+{
+  "name": "slb-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "mcp": "npx @playwright/mcp@latest"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52",
+    "@playwright/mcp": "^0.0.28",
+    "typescript": "^5.8"
+  }
+}

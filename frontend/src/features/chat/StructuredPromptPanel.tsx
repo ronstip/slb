@@ -83,6 +83,18 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
     return () => document.removeEventListener('keydown', handleEsc);
   }, [onCancel]);
 
+  /** Close the panel: submit if all fields are filled, otherwise cancel. */
+  const handleClose = useCallback(() => {
+    if (canSubmit()) {
+      const text = formatAnswer();
+      useChatStore.getState().setActivePrompt(null);
+      useChatStore.getState().setActivePromptData(null);
+      onSubmit(text);
+    } else {
+      onCancel();
+    }
+  }, [canSubmit, formatAnswer, onSubmit, onCancel]);
+
   // ── Helpers ──────────────────────────────────────────────────────
 
   const canSubmit = useCallback(() => {
@@ -246,7 +258,7 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
               })}
             </TabsList>
             <button
-              onClick={onCancel}
+              onClick={handleClose}
               className="shrink-0 rounded-md p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" />
@@ -307,7 +319,7 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
 
           {/* Footer */}
           <div className="px-4 pb-3 pt-2">
-            <span className="text-[11px] text-muted-foreground/40">Esc to cancel</span>
+            <span className="text-[11px] text-muted-foreground/40">Esc to dismiss</span>
           </div>
         </Tabs>
       </div>

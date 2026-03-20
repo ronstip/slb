@@ -22,7 +22,7 @@ export function ChatPanel() {
   }, []);
 
   return (
-    <main className="flex min-w-[480px] flex-1 flex-col bg-background">
+    <main data-testid="chat-panel" className="flex min-w-[480px] flex-1 flex-col bg-background">
       {/* Top bar — collection selector (always visible) */}
       <div className="flex shrink-0 items-center px-4 py-2">
         <CollectionSelector />

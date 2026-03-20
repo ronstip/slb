@@ -24,7 +24,7 @@ export function StudioPanel() {
   const [chartOpen, setChartOpen] = useState(false);
 
   return (
-    <div className="flex h-full flex-col">
+    <div data-testid="studio-panel" className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
         <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={toggle}>

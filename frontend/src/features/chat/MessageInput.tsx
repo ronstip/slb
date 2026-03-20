@@ -136,6 +136,7 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
         centered ? 'px-5 py-4' : 'px-4 py-2.5',
       )}>
         <textarea
+          data-testid="chat-input"
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}

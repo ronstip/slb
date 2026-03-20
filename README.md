@@ -39,19 +39,59 @@ cd frontend && npm install && npm run dev
 api/              Backend API (FastAPI + Gemini agent)
 workers/          Worker services (collection, enrichment, engagement)
 frontend/         React SPA
+e2e/              E2E tests (Playwright) + AI-driven testing (MCP)
 config/           Shared settings (pydantic-settings)
 bigquery/         BigQuery schemas
 scripts/          Deployment scripts (one-time setup)
+```
+
+## Testing
+
+### E2E Tests (Playwright)
+
+Smoke tests run automatically on every PR to `main` and gate all deploys.
+
+```bash
+# Run smoke tests locally (builds frontend + runs headless Chromium)
+cd e2e && npm install && npx playwright install chromium
+npm test
+
+# Headed mode (watch tests run in browser)
+npm run test:headed
+
+# Debug mode (step through tests)
+npm run test:debug
+
+# Interactive UI mode
+npm run test:ui
+```
+
+### AI-Driven Testing (Playwright MCP)
+
+Claude Code can visually interact with the running app via the Playwright MCP server configured in `.mcp.json`.
+
+```bash
+# Terminal 1: Start backend
+cd api && uvicorn main:app --reload
+
+# Terminal 2: Start frontend
+cd frontend && npm run dev
+
+# Then ask Claude Code to test flows — it can navigate, click, type, and screenshot
 ```
 
 ## Deployment
 
 ### Auto-deploy (CI/CD)
 
-Every push to `main` triggers `.github/workflows/deploy.yml` which deploys all three services in parallel:
-- **Frontend** → Firebase Hosting
-- **API** → Cloud Run (`sl-api`)
-- **Worker** → Cloud Run (`sl-worker`)
+Every push to `main` triggers `.github/workflows/deploy.yml`:
+1. **E2E smoke tests** run first (Playwright, headless Chromium)
+2. If tests pass, all three services deploy in parallel:
+   - **Frontend** → Firebase Hosting
+   - **API** → Cloud Run (`sl-api`)
+   - **Worker** → Cloud Run (`sl-worker`)
+
+Pull requests to `main` also run the smoke tests (but don't deploy).
 
 ### Manual deploy
 

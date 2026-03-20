@@ -162,7 +162,7 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div data-testid="app-shell" className="flex h-screen overflow-hidden bg-background">
       {/* Sessions Panel (sidebar) */}
       <aside
         className={`shrink-0 overflow-hidden bg-card ${sourcesPanelCollapsed ? 'border-r border-border' : ''}`}
