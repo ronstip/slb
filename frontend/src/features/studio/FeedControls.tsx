@@ -21,6 +21,8 @@ import {
 } from '../../components/ui/dropdown-menu.tsx';
 import { Button } from '../../components/ui/button.tsx';
 
+export type FeedViewMode = 'posts' | 'topics';
+
 interface FeedControlsProps {
   sort: FeedParams['sort'];
   platform: string;
@@ -32,6 +34,8 @@ interface FeedControlsProps {
   activeSources: Source[];
   collectionFilter: string[];
   onCollectionFilterChange: (ids: string[]) => void;
+  viewMode: FeedViewMode;
+  onViewModeChange: (mode: FeedViewMode) => void;
 }
 
 export function FeedControls({
@@ -45,6 +49,8 @@ export function FeedControls({
   activeSources,
   collectionFilter,
   onCollectionFilterChange,
+  viewMode,
+  onViewModeChange,
 }: FeedControlsProps) {
   const hasActiveFilter =
     platform !== 'all' || sentiment !== 'all' || collectionFilter.length > 0;
@@ -72,6 +78,22 @@ export function FeedControls({
 
   return (
     <div className="flex items-center gap-1.5 border-b border-border px-3 py-1.5">
+      {/* View mode toggle */}
+      <div className="flex h-6 rounded-md bg-secondary p-0.5 text-[11px]">
+        <button
+          className={`rounded px-2 transition-colors ${viewMode === 'posts' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => onViewModeChange('posts')}
+        >
+          Posts
+        </button>
+        <button
+          className={`rounded px-2 transition-colors ${viewMode === 'topics' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => onViewModeChange('topics')}
+        >
+          Topics
+        </button>
+      </div>
+
       {/* Sort */}
       <Select value={sort} onValueChange={(v) => onSortChange(v as FeedParams['sort'])}>
         <SelectTrigger className="h-6 w-auto min-w-0 gap-1 px-2 text-[11px]">

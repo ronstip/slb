@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     enrichment_max_retries: int = 5  # Max retry attempts for 429 errors
     enrichment_retry_base_delay: float = 10.0  # Base delay in seconds for retry backoff
 
+    # Clustering (brothers algorithm) thresholds
+    clustering_brothers_threshold: float = 0.25
+    clustering_max_intra_group_mean: float = 0.26
+    clustering_max_distance_ungrouped: float = 0.29
+
     vetric_api_key_twitter: str = ""
     vetric_api_key_instagram: str = ""
     vetric_api_key_tiktok: str = ""

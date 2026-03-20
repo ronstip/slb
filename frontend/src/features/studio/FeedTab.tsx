@@ -4,7 +4,9 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { PostCard } from './PostCard.tsx';
 import { FeedControls } from './FeedControls.tsx';
+import { TopicsFeed } from './TopicsFeed.tsx';
 import type { FeedParams, FeedPost } from '../../api/types.ts';
+import type { FeedViewMode } from './FeedControls.tsx';
 
 /** Split posts into N balanced columns by alternating assignment. */
 function splitColumns(posts: FeedPost[], numCols: number): FeedPost[][] {
@@ -21,6 +23,7 @@ export function FeedTab() {
   const isAnyCollecting = activeSources.some((s) => s.status === 'pending' || s.status === 'collecting' || s.status === 'enriching');
   const activeIds = activeSources.map((s) => s.collectionId);
 
+  const [viewMode, setViewMode] = useState<FeedViewMode>('posts');
   const [sort, setSort] = useState<FeedParams['sort']>('views');
   const [platform, setPlatform] = useState('all');
   const [sentiment, setSentiment] = useState('all');
@@ -131,8 +134,15 @@ export function FeedTab() {
         activeSources={activeSources}
         collectionFilter={collectionFilter}
         onCollectionFilterChange={setCollectionFilter}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
+      {viewMode === 'topics' ? (
+        <div className="flex-1 overflow-y-auto">
+          <TopicsFeed collectionIds={effectiveIds} />
+        </div>
+      ) : (
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>
         {isLoading ? (
           <div className={colCount > 1 ? `${gridClass} gap-4 pt-4` : 'flex flex-col gap-4 pt-4'}>
@@ -199,6 +209,7 @@ export function FeedTab() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

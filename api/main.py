@@ -48,6 +48,7 @@ import io
 
 from api.routers import sessions as sessions_router
 from api.routers import artifacts as artifacts_router
+from api.routers import topics as topics_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionModeRequest
 from api.schemas.responses import (
     BreakdownItem,
@@ -127,6 +128,7 @@ app.include_router(dashboard_router.router)
 app.include_router(dashboard_shares_router.router)
 app.include_router(dashboard_layouts_router.router)
 app.include_router(artifacts_router.router)
+app.include_router(topics_router.router)
 
 # CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
 _settings = get_settings()
