@@ -225,8 +225,12 @@ def _load_custom_fields(fs: FirestoreClient, collection_id: str) -> list[CustomF
     return [CustomFieldDef(**f) for f in raw_fields]
 
 
-def run_enrichment(collection_id: str, min_likes: int = 0) -> None:
-    """Enrich all qualifying posts in a collection. Reads from BQ (standalone mode)."""
+def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50) -> None:
+    """Enrich all qualifying posts in a collection. Reads from BQ (standalone mode).
+
+    Processes posts in batches of `batch_size`, writing results after each batch
+    so progress is preserved if the process is interrupted.
+    """
     settings = get_settings()
     bq = BQClient(settings)
     fs = FirestoreClient(settings)
@@ -239,8 +243,20 @@ def run_enrichment(collection_id: str, min_likes: int = 0) -> None:
         logger.info("Standalone enrichment: %d posts for collection %s", len(posts), collection_id)
 
         start = time.monotonic()
-        results = enrich_posts(posts, custom_fields=custom_fields)
-        _write_results_to_bq(bq, results)
+        all_results = []
+        for i in range(0, len(posts), batch_size):
+            batch = posts[i : i + batch_size]
+            batch_results = enrich_posts(batch, custom_fields=custom_fields)
+            _write_results_to_bq(bq, batch_results)
+            all_results.extend(batch_results)
+            logger.info(
+                "Standalone batch %d/%d: %d/%d ok (total %d/%d)",
+                i // batch_size + 1,
+                (len(posts) + batch_size - 1) // batch_size,
+                len(batch_results), len(batch),
+                len(all_results), len(posts),
+            )
+        results = all_results
         duration = round(time.monotonic() - start, 1)
 
         # Count total enriched posts for this collection

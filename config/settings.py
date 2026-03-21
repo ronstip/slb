@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-005"
 
     # Enrichment worker config
-    enrichment_concurrency: int = 30
+    enrichment_concurrency: int = 10
     enrichment_search: bool = False
     enrichment_temperature: float = 0.2
     enrichment_max_output_tokens: int = 4096
@@ -29,10 +29,10 @@ class Settings(BaseSettings):
     enrichment_video_start_offset: str = "0s"
     enrichment_video_end_offset: str = "180s"
     enrichment_video_fps: float = 0.5
-    enrichment_batch_workers: int = 20
-    enrichment_global_concurrency: int = 20  # Max concurrent Gemini calls across all batches
+    enrichment_batch_workers: int = 4
+    enrichment_global_concurrency: int = 10  # Max concurrent Gemini calls across all batches
     enrichment_video_rate_limit: int = 15  # Max video enrichment calls per minute (process-wide)
-    enrichment_general_rate_limit: int = 200  # Max total enrichment calls per minute (process-wide)
+    enrichment_general_rate_limit: int = 60  # Max total enrichment calls per minute (process-wide)
     enrichment_max_retries: int = 5  # Max retry attempts for 429 errors
     enrichment_retry_base_delay: float = 10.0  # Base delay in seconds for retry backoff
 

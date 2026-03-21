@@ -4,9 +4,10 @@ import { TopicCard } from './TopicCard.tsx';
 
 interface TopicsFeedProps {
   collectionIds: string[];
+  onViewPosts?: (clusterId: string, topicName: string) => void;
 }
 
-export function TopicsFeed({ collectionIds }: TopicsFeedProps) {
+export function TopicsFeed({ collectionIds, onViewPosts }: TopicsFeedProps) {
   // For now, show topics for the first active collection
   // (topics are per-collection scoped)
   const collectionId = collectionIds[0];
@@ -61,7 +62,7 @@ export function TopicsFeed({ collectionIds }: TopicsFeedProps) {
         {topics.length} topics
       </p>
       {topics.map((topic) => (
-        <TopicCard key={topic.cluster_id} topic={topic} collectionId={collectionId} />
+        <TopicCard key={topic.cluster_id} topic={topic} collectionId={collectionId} onViewPosts={onViewPosts} />
       ))}
     </div>
   );

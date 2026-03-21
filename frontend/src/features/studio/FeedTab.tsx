@@ -29,6 +29,8 @@ export function FeedTab() {
   const [sentiment, setSentiment] = useState('all');
   // Which of the active collections to show (empty = all)
   const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
+  // Topic filter (set from TopicCard "Posts" button)
+  const [topicFilter, setTopicFilter] = useState<{ id: string; name: string } | null>(null);
 
   // Keep collectionFilter in sync when activeSources change
   useEffect(() => {
@@ -59,7 +61,7 @@ export function FeedTab() {
   );
 
   const { data, fetchNextPage, hasNextPage, isFetching, isLoading, isError } = useInfiniteQuery({
-    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment],
+    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, topicFilter?.id ?? ''],
     queryFn: ({ pageParam = 0 }) =>
       getMultiCollectionPosts({
         collection_ids: effectiveIds,
@@ -68,6 +70,7 @@ export function FeedTab() {
         sentiment,
         limit: 12,
         offset: pageParam,
+        ...(topicFilter ? { topic_cluster_id: topicFilter.id } : {}),
       }),
     getNextPageParam: (lastPage) => {
       const nextOffset = lastPage.offset + lastPage.limit;
@@ -138,9 +141,29 @@ export function FeedTab() {
         onViewModeChange={setViewMode}
       />
 
+      {/* Topic filter chip */}
+      {topicFilter && viewMode === 'posts' && (
+        <div className="flex items-center gap-1.5 border-b border-border px-3 py-1">
+          <span className="text-[11px] text-muted-foreground">Topic:</span>
+          <span className="text-[11px] font-medium text-foreground truncate max-w-[200px]">{topicFilter.name}</span>
+          <button
+            className="ml-1 text-muted-foreground hover:text-foreground text-[11px]"
+            onClick={() => setTopicFilter(null)}
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {viewMode === 'topics' ? (
         <div className="flex-1 overflow-y-auto">
-          <TopicsFeed collectionIds={effectiveIds} />
+          <TopicsFeed
+            collectionIds={effectiveIds}
+            onViewPosts={(clusterId, topicName) => {
+              setTopicFilter({ id: clusterId, name: topicName });
+              setViewMode('posts');
+            }}
+          />
         </div>
       ) : (
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>

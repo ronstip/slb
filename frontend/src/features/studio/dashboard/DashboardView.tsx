@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2, Maximize2, Pencil } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
@@ -73,6 +73,16 @@ export function DashboardView({ artifact, standalone = false }: DashboardViewPro
     activeFilterCount,
     clearAll,
   } = useDashboardFilters(allPosts);
+
+  // Consume pending topic filter from TopicCard "Dashboard" button
+  const pendingTopicFilter = useStudioStore((s) => s.pendingTopicFilter);
+  const clearPendingTopicFilter = useStudioStore((s) => s.clearPendingTopicFilter);
+  useEffect(() => {
+    if (pendingTopicFilter) {
+      setFilter('themes', pendingTopicFilter.themes);
+      clearPendingTopicFilter();
+    }
+  }, [pendingTopicFilter, clearPendingTopicFilter, setFilter]);
 
   const handleDownload = async () => {
     if (!gridRef.current) return;

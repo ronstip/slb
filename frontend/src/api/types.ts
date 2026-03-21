@@ -252,6 +252,7 @@ export interface MultiFeedParams {
   sentiment?: string;
   limit?: number;
   offset?: number;
+  topic_cluster_id?: string;
 }
 
 export interface BreakdownItem {
@@ -620,6 +621,15 @@ export interface TopicCluster {
   representative_post_ids: string[];
   algorithm_version: string;
   created_at: string;
+  // Summary metrics (enriched by list_topics from BQ)
+  positive_count?: number;
+  negative_count?: number;
+  neutral_count?: number;
+  mixed_count?: number;
+  total_views?: number;
+  total_likes?: number;
+  thumbnail_url?: string | null;
+  thumbnail_gcs_uri?: string | null;
 }
 
 export interface TopicAnalyticsTotals {
@@ -656,6 +666,7 @@ export interface TopicPost {
   post_url: string | null;
   posted_at: string | null;
   thumbnail_url: string | null;
+  thumbnail_gcs_uri?: string | null;
   ai_summary: string | null;
   sentiment: string | null;
   emotion: string | null;

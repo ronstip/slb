@@ -1211,6 +1211,22 @@ async def get_multi_collection_feed(
         where_clauses.append("ep.sentiment = @sentiment")
         params["sentiment"] = request.sentiment
 
+    # Topic cluster filter
+    topic_join_sql = ""
+    if request.topic_cluster_id:
+        topic_join_sql = """
+        JOIN social_listening.topic_cluster_members tcm
+          ON p.post_id = tcm.post_id
+          AND tcm.collection_id = p.collection_id
+          AND tcm.cluster_id = @topic_cluster_id
+          AND tcm.clustered_at = (
+              SELECT MAX(clustered_at)
+              FROM social_listening.topic_cluster_members
+              WHERE collection_id = p.collection_id
+          )
+        """
+        params["topic_cluster_id"] = request.topic_cluster_id
+
     where_sql = " AND ".join(where_clauses)
 
     sort_map = {
@@ -1252,6 +1268,7 @@ async def get_multi_collection_feed(
                ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
         FROM social_listening.post_engagements
     ) pe ON p.post_id = pe.post_id AND pe.rn = 1
+    {topic_join_sql}
     WHERE {where_sql}
     ORDER BY {order_sql}
     LIMIT @limit OFFSET @offset

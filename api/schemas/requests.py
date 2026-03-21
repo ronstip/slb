@@ -66,6 +66,7 @@ class MultiFeedRequest(BaseModel):
     sentiment: str = "all"
     limit: int = 12
     offset: int = 0
+    topic_cluster_id: str | None = None
 
 
 class DashboardDataRequest(BaseModel):

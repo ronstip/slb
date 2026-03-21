@@ -74,6 +74,10 @@ _video_rate_limiter: _TokenBucketRateLimiter | None = None
 _general_rate_limiter: _TokenBucketRateLimiter | None = None
 _init_lock = threading.Lock()
 
+# Global backoff: when a 429 is detected, all threads pause before next request
+_global_backoff_until: float = 0.0  # monotonic timestamp
+_global_backoff_lock = threading.Lock()
+
 
 def _get_global_semaphore() -> threading.Semaphore:
     global _global_semaphore
@@ -210,8 +214,13 @@ def _build_response_schema(
 def _build_content_parts(
     post: PostData,
     custom_fields: list[CustomFieldDef] | None = None,
+    skip_video: bool = False,
 ) -> list[types.Part]:
-    """Build multimodal content parts for a single post."""
+    """Build multimodal content parts for a single post.
+
+    If skip_video is True, video parts (GCS and YouTube URL) are omitted.
+    Used as fallback when video causes PERMISSION_DENIED.
+    """
     settings = get_settings()
     parts: list[types.Part] = []
 
@@ -239,6 +248,8 @@ def _build_content_parts(
         mime = ref.content_type or ("video/mp4" if _is_video(ref.media_type, ref.content_type) else "image/jpeg")
         try:
             if _is_video(ref.media_type, ref.content_type) and ref.gcs_uri:
+                if skip_video:
+                    continue
                 # Video: only use GCS (CDN video URLs don't work with Gemini)
                 parts.append(
                     types.Part(
@@ -259,7 +270,8 @@ def _build_content_parts(
     # YouTube: if no GCS video, pass the YouTube URL directly.
     # Gemini natively understands YouTube URLs for video analysis.
     if (
-        post.platform == "youtube"
+        not skip_video
+        and post.platform == "youtube"
         and post.post_url
         and not any(_is_video(r.media_type, r.content_type) and r.gcs_uri for r in post.media_refs)
     ):
@@ -328,6 +340,23 @@ def _post_has_video(post: PostData) -> bool:
     return False
 
 
+def _apply_global_backoff() -> None:
+    """If a 429 triggered a global backoff, wait until it expires."""
+    global _global_backoff_until
+    remaining = _global_backoff_until - time.monotonic()
+    if remaining > 0:
+        time.sleep(remaining)
+
+
+def _signal_global_backoff(cooldown: float = 5.0) -> None:
+    """Signal all threads to pause for `cooldown` seconds after a 429."""
+    global _global_backoff_until
+    with _global_backoff_lock:
+        new_until = time.monotonic() + cooldown
+        if new_until > _global_backoff_until:
+            _global_backoff_until = new_until
+
+
 def _enrich_single_post(
     client: genai.Client,
     model: str,
@@ -344,6 +373,7 @@ def _enrich_single_post(
 
     Retries with jittered exponential backoff on transient errors
     (429 RESOURCE_EXHAUSTED, 504 DEADLINE_EXCEEDED, disconnects).
+    On PERMISSION_DENIED (e.g. restricted YouTube video), retries once without video.
     """
     settings = get_settings()
     parts = _build_content_parts(post, custom_fields)
@@ -358,6 +388,8 @@ def _enrich_single_post(
 
     for attempt in range(max_attempts):
         try:
+            # Wait for global backoff if a 429 was recently detected
+            _apply_global_backoff()
             # Layer 1: rate-limit all calls (prevents multi-user quota exhaustion)
             general_limiter.acquire()
             # Layer 2: tighter rate-limit for video content
@@ -379,6 +411,19 @@ def _enrich_single_post(
 
         except Exception as e:
             err_str = str(e)
+
+            # PERMISSION_DENIED on video: retry once without video part
+            if "PERMISSION_DENIED" in err_str and has_video:
+                logger.info(
+                    "PERMISSION_DENIED for post %s — retrying without video part",
+                    post.post_id,
+                )
+                parts_no_video = _build_content_parts(post, custom_fields, skip_video=True)
+                contents = types.Content(role="user", parts=parts_no_video)
+                has_video = False
+                video_limiter = None
+                continue
+
             is_retryable = (
                 "429" in err_str
                 or "RESOURCE_EXHAUSTED" in err_str
@@ -387,6 +432,8 @@ def _enrich_single_post(
                 or "disconnected" in err_str.lower()
             )
             if is_retryable and attempt < max_attempts - 1:
+                # Signal all threads to back off
+                _signal_global_backoff(cooldown=5.0)
                 # Jittered exponential backoff to break thundering herd
                 wait = base_delay * (2 ** attempt) + random.uniform(0, 5)
                 logger.warning(
