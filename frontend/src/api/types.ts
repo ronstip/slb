@@ -252,6 +252,7 @@ export interface MultiFeedParams {
   sentiment?: string;
   limit?: number;
   offset?: number;
+  topic_cluster_id?: string;
 }
 
 export interface BreakdownItem {
@@ -607,6 +608,74 @@ export interface DataExportResult {
   row_count: number;
   column_names: string[];
   collection_id?: string;
+}
+
+// --- Topic Clustering types ---
+
+export interface TopicCluster {
+  cluster_id: string;
+  topic_name: string;
+  topic_summary: string;
+  topic_keywords: string[];
+  post_count: number;
+  representative_post_ids: string[];
+  algorithm_version: string;
+  created_at: string;
+  // Summary metrics (enriched by list_topics from BQ)
+  positive_count?: number;
+  negative_count?: number;
+  neutral_count?: number;
+  mixed_count?: number;
+  total_views?: number;
+  total_likes?: number;
+  thumbnail_url?: string | null;
+  thumbnail_gcs_uri?: string | null;
+}
+
+export interface TopicAnalyticsTotals {
+  post_count: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  mixed_count: number;
+  total_views: number;
+  total_likes: number;
+  total_comments: number;
+  earliest_post: string | null;
+  latest_post: string | null;
+}
+
+export interface TopicPlatformBreakdown {
+  platform: string;
+  post_count: number;
+  views: number;
+  likes: number;
+}
+
+export interface TopicAnalytics {
+  totals: TopicAnalyticsTotals;
+  platforms: TopicPlatformBreakdown[];
+}
+
+export interface TopicPost {
+  post_id: string;
+  platform: string;
+  channel_name: string | null;
+  title: string | null;
+  content: string | null;
+  post_url: string | null;
+  posted_at: string | null;
+  thumbnail_url: string | null;
+  thumbnail_gcs_uri?: string | null;
+  ai_summary: string | null;
+  sentiment: string | null;
+  emotion: string | null;
+  views: number | null;
+  likes: number | null;
+  comments_count: number | null;
+  shares: number | null;
+  distance_to_centroid: number;
+  is_representative: boolean;
 }
 
 // --- Admin types ---

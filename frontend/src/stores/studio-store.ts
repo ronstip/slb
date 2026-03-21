@@ -50,11 +50,17 @@ interface DashboardArtifact {
 export type StudioTab = 'feed' | 'artifacts';
 export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact | DashboardArtifact;
 
+export interface PendingTopicFilter {
+  themes: string[];
+  topicName: string;
+}
+
 interface StudioStore {
   activeTab: StudioTab;
   artifacts: Artifact[];
   expandedReportId: string | null;
   feedSourceId: string | null;
+  pendingTopicFilter: PendingTopicFilter | null;
 
   setActiveTab: (tab: StudioTab) => void;
   addArtifact: (artifact: Artifact) => void;
@@ -64,6 +70,8 @@ interface StudioStore {
   setArtifacts: (artifacts: Artifact[]) => void;
   updateArtifactTitle: (id: string, title: string) => void;
   setFeedSource: (id: string | null) => void;
+  setPendingTopicFilter: (filter: PendingTopicFilter) => void;
+  clearPendingTopicFilter: () => void;
   reset: () => void;
 }
 
@@ -72,6 +80,7 @@ export const useStudioStore = create<StudioStore>((set) => ({
   artifacts: [],
   expandedReportId: null,
   feedSourceId: null,
+  pendingTopicFilter: null,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -92,5 +101,7 @@ export const useStudioStore = create<StudioStore>((set) => ({
   expandReport: (id) => set({ expandedReportId: id }),
   collapseReport: () => set({ expandedReportId: null }),
   setFeedSource: (id) => set({ feedSourceId: id }),
-  reset: () => set({ activeTab: 'feed', artifacts: [], expandedReportId: null, feedSourceId: null }),
+  setPendingTopicFilter: (filter) => set({ pendingTopicFilter: filter }),
+  clearPendingTopicFilter: () => set({ pendingTopicFilter: null }),
+  reset: () => set({ activeTab: 'feed', artifacts: [], expandedReportId: null, feedSourceId: null, pendingTopicFilter: null }),
 }));

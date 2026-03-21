@@ -32,5 +32,6 @@ FROM AI.GENERATE_EMBEDDING(
               p.collection_id = @collection_id
               OR ep.post_id IN UNNEST(@post_ids)
           )
-    )
+    ),
+    STRUCT(768 AS output_dimensionality)
 ) AS result;

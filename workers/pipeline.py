@@ -332,3 +332,14 @@ def run_pipeline(collection_id: str) -> None:
         fs.update_collection_status(collection_id, posts_embedded=embedded_count)
     except Exception:
         logger.exception("Failed to update posts_embedded count for %s", collection_id)
+
+    # Step 6: Topic clustering (deferred, after embedding)
+    logger.info("── Step 6: topic clustering (deferred)")
+    t0 = _time.monotonic()
+    try:
+        from workers.clustering.worker import run_clustering
+        result = run_clustering(collection_id)
+        logger.info("── Step 6 done in %.1fs (%d topics)",
+                    _time.monotonic() - t0, result.get("topics_count", 0))
+    except Exception:
+        logger.exception("Topic clustering failed for %s", collection_id)
