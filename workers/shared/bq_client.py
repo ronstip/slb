@@ -76,10 +76,36 @@ class BQClient:
 
         # Replace unqualified table references with fully qualified ones.
         # Backtick-quote the project ID since it may contain hyphens.
+        import re
+        project = self._settings.gcp_project_id
+        dataset = self._settings.bq_dataset
+
+        # MODEL references need a single backtick-quoted identifier
+        # (e.g. `project.dataset.model`). Replace them first with a
+        # placeholder so the blanket table replace doesn't double-qualify.
+        model_placeholder = "__BQ_MODEL_REF__"
+        models: list[str] = []
+
+        def _replace_model(m):
+            full = f"`{project}.{dataset}.{m.group(2)}`"
+            models.append(full)
+            return f"{m.group(1)}{model_placeholder}{len(models) - 1}"
+
+        sql = re.sub(
+            r"(MODEL\s+)social_listening\.(\w+)",
+            _replace_model,
+            sql,
+        )
+
+        # Replace remaining unqualified table references.
         sql = sql.replace(
             "social_listening.",
-            f"`{self._settings.gcp_project_id}`.{self._settings.bq_dataset}.",
+            f"`{project}`.{dataset}.",
         )
+
+        # Restore MODEL placeholders.
+        for i, ref in enumerate(models):
+            sql = sql.replace(f"{model_placeholder}{i}", ref)
 
         query_job = self._client.query(sql, job_config=job_config)
         results = query_job.result()
