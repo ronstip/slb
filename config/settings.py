@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     enrichment_max_retries: int = 5  # Max retry attempts for 429 errors
     enrichment_retry_base_delay: float = 10.0  # Base delay in seconds for retry backoff
 
+    # Pipeline v2 (post-level DAG)
+    use_pipeline_v2: bool = False
+
     # Clustering (brothers algorithm) thresholds
     clustering_brothers_threshold: float = 0.25
     clustering_max_intra_group_mean: float = 0.26

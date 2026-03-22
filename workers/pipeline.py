@@ -85,9 +85,12 @@ def _compute_next_run_at(schedule: str | None, from_time: datetime) -> datetime:
 
 def run_pipeline(collection_id: str) -> None:
     """Run collection + parallel enrichment + embedding pipeline."""
-    from google.cloud.firestore_v1 import transforms
-
     settings = get_settings()
+    if settings.use_pipeline_v2:
+        from workers.pipeline_v2.pipeline import run_pipeline_v2
+        return run_pipeline_v2(collection_id)
+
+    from google.cloud.firestore_v1 import transforms
     fs = FirestoreClient(settings)
     bq = BQClient(settings)
 
