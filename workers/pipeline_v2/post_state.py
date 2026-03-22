@@ -35,6 +35,13 @@ TERMINAL_STATES = frozenset({
     PostState.EMBEDDING_FAILED,
 })
 
+# States that represent actual pipeline processing failures (not input stumps)
+FAILURE_STATES = frozenset({
+    PostState.DOWNLOAD_FAILED,
+    PostState.ENRICHMENT_FAILED,
+    PostState.EMBEDDING_FAILED,
+})
+
 # Map stump states to their retry entry point
 RETRY_MAP: dict[PostState, PostState] = {
     PostState.DOWNLOAD_FAILED: PostState.COLLECTED_WITH_MEDIA,

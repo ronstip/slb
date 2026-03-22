@@ -24,7 +24,7 @@ from workers.collection.normalizer import (
     post_to_engagement_row,
 )
 from workers.collection.wrapper import DataProviderWrapper
-from workers.pipeline_v2.post_state import TERMINAL_STATES, PostState
+from workers.pipeline_v2.post_state import FAILURE_STATES, TERMINAL_STATES, PostState
 from workers.pipeline_v2.schedule_utils import compute_next_run_at
 from workers.pipeline_v2.state_manager import StateManager
 from workers.pipeline_v2.steps import PIPELINE_STEPS, StepContext
@@ -97,10 +97,19 @@ class PipelineRunner:
         # Wait for crawl thread to finish (should already be done)
         crawl_thread.join(timeout=10)
 
-        # Check if cancelled
+        # Check if cancelled or failed
         status = self.fs.get_collection_status(self.collection_id)
         if (status or {}).get("status") == "cancelled":
             logger.info("Pipeline %s cancelled", self.collection_id)
+            return
+
+        if self._crawl_error and self._total_posts_collected == 0:
+            self.fs.update_collection_status(
+                self.collection_id,
+                status="failed",
+                error_message=f"Crawl failed: {self._crawl_error[:500]}",
+            )
+            logger.error("Pipeline %s failed: crawl error with 0 posts", self.collection_id)
             return
 
         # Reconcile counters (fixes drift from incremental updates)
@@ -376,9 +385,15 @@ class PipelineRunner:
 
                 self.state_manager.transition_batch(transitions, media_refs=media_refs)
 
-                # After download step, persist GCS URIs back to BQ
+                # After download step, persist GCS URIs back to BQ (background — don't block loop)
                 if step.name == "download" and media_refs:
-                    self._update_bq_media_refs(media_refs)
+                    refs_copy = dict(media_refs)
+                    threading.Thread(
+                        target=self._update_bq_media_refs,
+                        args=(refs_copy,),
+                        daemon=True,
+                        name=f"bq-media-update-{self.collection_id[:8]}",
+                    ).start()
 
             if not any_work:
                 if self._crawl_complete.is_set() and self.state_manager.all_posts_terminal():
@@ -510,12 +525,11 @@ class PipelineRunner:
         if current_status in ("cancelled", "failed"):
             return
 
-        # Check for failures in the pipeline
+        # Check for actual pipeline processing failures (not input stumps like MISSING_MEDIA)
         counts = self.state_manager.get_counts()
         has_failures = any(
             counts.get(s.value, 0) > 0
-            for s in TERMINAL_STATES
-            if s != PostState.DONE
+            for s in FAILURE_STATES
         )
 
         ongoing_flag = (status or {}).get("ongoing", False)

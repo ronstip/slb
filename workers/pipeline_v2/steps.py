@@ -119,23 +119,25 @@ def action_download(posts: list[dict], ctx: StepContext) -> list[StepResult]:
     # Run download (mutates post.media_refs in place)
     download_media_batch(ctx.gcs, post_objects, ctx.collection_id)
 
-    # Build results
+    # Build results — always pass through to enrichment even if media failed.
+    # Enrichment reads text content from BQ independently.
     results: list[StepResult] = []
     downloaded_map = {p.post_id: p for p in post_objects}
 
     for pid in post_ids:
         post = downloaded_map.get(pid)
-        if not post or not post.media_refs:
+        if not post:
             results.append((pid, "fail", None))
             continue
-        has_usable_media = any(
-            r.get("gcs_uri") or r.get("original_url")
-            for r in post.media_refs
-        )
-        if has_usable_media:
-            results.append((pid, "ok", {"media_refs": post.media_refs}))
+        usable_refs = [
+            r for r in (post.media_refs or [])
+            if r.get("gcs_uri") or r.get("original_url")
+        ]
+        if usable_refs:
+            results.append((pid, "ok", {"media_refs": usable_refs}))
         else:
-            results.append((pid, "fail", None))
+            # No usable media, but still advance — text content may be enrichable
+            results.append((pid, "ok", None))
 
     return results
 
@@ -272,7 +274,7 @@ def action_embed(posts: list[dict], ctx: StepContext) -> list[StepResult]:
 
     try:
         ctx.bq.query_from_file("batch_queries/batch_embed.sql", {
-            "collection_id": "",
+            "collection_id": ctx.collection_id,
             "post_ids": to_embed_ids,
         })
         for pid in to_embed_ids:
