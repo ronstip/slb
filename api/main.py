@@ -1884,6 +1884,36 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
                     except json.JSONDecodeError:
                         pass
 
+                # Extract <!-- topics_section: {...} --> markers
+                for topics_match in re.finditer(
+                    r"<!--\s*topics_section:\s*(\{[\s\S]*?\})\s*-->", raw
+                ):
+                    try:
+                        payload = json.loads(topics_match.group(1))
+                        results.append({
+                            "event_type": "topics_section",
+                            "content": "",
+                            "metadata": payload,
+                            "author": event.author,
+                        })
+                    except json.JSONDecodeError:
+                        pass
+
+                # Extract <!-- metrics_section: {...} --> markers
+                for metrics_match in re.finditer(
+                    r"<!--\s*metrics_section:\s*(\{[\s\S]*?\})\s*-->", raw
+                ):
+                    try:
+                        payload = json.loads(metrics_match.group(1))
+                        results.append({
+                            "event_type": "metrics_section",
+                            "content": "",
+                            "metadata": payload,
+                            "author": event.author,
+                        })
+                    except json.JSONDecodeError:
+                        pass
+
                 # Strip all comment markers from the visible text
                 clean = re.sub(r"<!--[\s\S]*?-->", "", raw).strip()
                 if clean and not suppress_text:

@@ -8,7 +8,7 @@ export interface ToolIndicator {
 }
 
 export interface MessageCard {
-  type: 'research_design' | 'data_export' | 'chart' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress' | 'structured_prompt';
+  type: 'research_design' | 'data_export' | 'chart' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress' | 'structured_prompt' | 'topics_section' | 'metrics_section';
   data: Record<string, unknown>;
 }
 

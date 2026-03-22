@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { Play, Edit2, ChevronDown, ChevronUp, Search, Loader2 } from 'lucide-react';
 import type { DesignResearchResult, CreateCollectionRequest } from '../../../api/types.ts';
-import { PLATFORM_LABELS, PLATFORM_COLORS } from '../../../lib/constants.ts';
+import { PLATFORM_LABELS } from '../../../lib/constants.ts';
 import { createCollection } from '../../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { CollectionForm } from '../../sources/CollectionForm.tsx';
 import { CollectionProgressCard } from './CollectionProgressCard.tsx';
 import { Badge } from '../../../components/ui/badge.tsx';
+import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 
 interface ResearchDesignCardProps {
   data: DesignResearchResult;
@@ -17,7 +18,7 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
   const [formVisible, setFormVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [collectionId, setCollectionId] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
 
@@ -84,74 +85,60 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
     }
   }, [formVisible]);
 
-  const platformSummary = data.summary.platforms
-    .map((p) => PLATFORM_LABELS[p] || p)
-    .join(', ');
-
-  const keywordSummary = data.summary.keywords.join(', ');
-
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-accent-vibrant/20 bg-gradient-to-b from-accent-vibrant/5 to-background shadow-sm">
+    <div className="mt-3 overflow-hidden rounded-xl border border-accent-vibrant/20 bg-gradient-to-b from-accent-vibrant/5 to-background shadow-sm">
       {/* ── Header row ── */}
-      <div className="flex items-center justify-between px-5 py-3.5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-vibrant/10">
-            <Search className="h-4 w-4 text-accent-vibrant" />
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-foreground">Research Design</h4>
-            <p className="text-xs text-muted-foreground">{platformSummary}</p>
-          </div>
+      <div className="flex items-center gap-3 px-3 py-2">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent-vibrant/10">
+          <Search className="h-3.5 w-3.5 text-accent-vibrant" />
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Details toggle */}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <h4 className="shrink-0 text-[13px] font-semibold text-foreground">Research Design</h4>
+
+          <div className="flex items-center gap-1.5">
+            {data.summary.platforms.map((p) => (
+              <PlatformIcon key={p} platform={p} className="h-3.5 w-3.5" />
+            ))}
+          </div>
+
+          <span className="hidden truncate text-[11px] text-muted-foreground sm:block">
+            {data.summary.estimated_posts} posts · {data.summary.time_range}
+          </span>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             onClick={() => setDetailsOpen((v) => !v)}
-            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            Details
-            {detailsOpen ? (
-              <ChevronUp className="h-3 w-3" />
-            ) : (
-              <ChevronDown className="h-3 w-3" />
-            )}
+            {detailsOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
 
-          {/* Action buttons — hidden after submission */}
           {!formVisible && !submitted && (
             <>
               <button
                 onClick={() => setFormVisible(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                <Edit2 className="h-3.5 w-3.5" />
+                <Edit2 className="h-3 w-3" />
                 Edit
               </button>
               <button
                 onClick={handleDirectStart}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
               >
-                <Play className="h-3.5 w-3.5" />
-                Start Collection
+                <Play className="h-3 w-3" />
+                Start
               </button>
             </>
           )}
         </div>
       </div>
 
-      {/* ── Compact summary (visible when details collapsed & submitted) ── */}
-      {!detailsOpen && submitted && keywordSummary && (
-        <div className="border-t border-border/30 px-5 py-2">
-          <p className="truncate text-[11px] text-muted-foreground">
-            {keywordSummary} · {platformSummary}
-          </p>
-        </div>
-      )}
-
       {/* ── Collapsable config details ── */}
       {detailsOpen && (
-        <div className="border-t border-border/30 px-5 py-3 space-y-2.5">
+        <div className="border-t border-border/30 px-3 py-2 space-y-2">
           {data.summary.keywords.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground/60 mr-1">Keywords</span>
@@ -166,16 +153,13 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
           <div className="flex flex-wrap items-center gap-3">
             {data.summary.platforms.map((p) => (
               <span key={p} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: PLATFORM_COLORS[p] || '#78716C' }}
-                />
+                <PlatformIcon platform={p} className="h-3 w-3" />
                 {PLATFORM_LABELS[p] || p}
               </span>
             ))}
           </div>
 
-          <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/40 px-3 py-2">
+          <div className="grid grid-cols-3 gap-3 rounded-md bg-muted/40 px-2.5 py-1.5">
             <div>
               <p className="text-[10px] text-muted-foreground/60">Time range</p>
               <p className="text-[12px] font-medium text-foreground">{data.summary.time_range}</p>

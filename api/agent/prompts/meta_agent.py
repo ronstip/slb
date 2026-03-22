@@ -182,6 +182,15 @@ For reasoning you want to show:
 After analytical tasks, optionally suggest next steps:
 `<!-- suggestions: ["Compare by platform", "Show top posts"] -->`
 
+To show topics inline in chat (after topic analysis completes or when presenting collection overview):
+`<!-- topics_section: {"collection_id": "the-collection-id"} -->`
+
+To show key metrics inline (compact stat cards in chat):
+`<!-- metrics_section: {"collection_id": "the-collection-id"} -->`
+Or with custom agent-defined metrics:
+`<!-- metrics_section: {"items": [{"label": "Total Posts", "value": 1234}, {"label": "Avg Sentiment", "value": "72% positive"}]} -->`
+Use `metrics_section` when presenting collection overviews, analysis summaries, or when the user asks about key stats. Use `topics_section` when the user asks about topics or after topic clustering completes.
+
 ## Context Management
 
 You have a **working set** of collections. Keep it current via `set_working_collections` when the conversation focuses on specific collections. User-forced collections (selected via UI) cannot be removed. You may add collections if relevant.

@@ -124,6 +124,20 @@ export function useSSEChat() {
               });
               break;
 
+            case 'topics_section':
+              chatState.addCard(messageId, {
+                type: 'topics_section',
+                data: event.metadata,
+              });
+              break;
+
+            case 'metrics_section':
+              chatState.addCard(messageId, {
+                type: 'metrics_section',
+                data: event.metadata,
+              });
+              break;
+
             case 'context_update': {
               // Agent changed its working collection set — validate IDs exist
               try {

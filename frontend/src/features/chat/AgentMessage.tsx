@@ -17,6 +17,8 @@ import { PlanCard } from './cards/PlanCard.tsx';
 import { InsightReportCard } from './cards/InsightReportCard.tsx';
 import { DashboardCard } from './cards/DashboardCard.tsx';
 import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
+import { TopicsSectionCard } from './cards/TopicsSectionCard.tsx';
+import { MetricsSectionCard } from './cards/MetricsSectionCard.tsx';
 import { PromptAnsweredSummary } from './StructuredPromptPanel.tsx';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { FollowUpChips } from './FollowUpChips.tsx';
@@ -138,6 +140,9 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
             if (ARTIFACT_TYPES.has(card.type)) artifactCards.push(card);
             else otherCards.push(card);
           });
+          // Ensure metrics always renders above topics
+          const CARD_ORDER: Record<string, number> = { metrics_section: 0, topics_section: 1 };
+          otherCards.sort((a, b) => (CARD_ORDER[a.type] ?? 0.5) - (CARD_ORDER[b.type] ?? 0.5));
 
           return (
             <>
@@ -152,6 +157,10 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
                     return <FindingChip key={`other-${i}`} data={card.data} />;
                   case 'plan':
                     return <PlanCard key={`other-${i}`} data={card.data} onSelect={onSuggestionClick} />;
+                  case 'metrics_section':
+                    return <MetricsSectionCard key={`other-${i}`} data={card.data} />;
+                  case 'topics_section':
+                    return <TopicsSectionCard key={`other-${i}`} data={card.data} />;
                   case 'collection_progress':
                     return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
                   case 'structured_prompt': {

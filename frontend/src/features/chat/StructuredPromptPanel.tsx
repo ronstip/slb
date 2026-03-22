@@ -83,18 +83,6 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
     return () => document.removeEventListener('keydown', handleEsc);
   }, [onCancel]);
 
-  /** Close the panel: submit if all fields are filled, otherwise cancel. */
-  const handleClose = useCallback(() => {
-    if (canSubmit()) {
-      const text = formatAnswer();
-      useChatStore.getState().setActivePrompt(null);
-      useChatStore.getState().setActivePromptData(null);
-      onSubmit(text);
-    } else {
-      onCancel();
-    }
-  }, [canSubmit, formatAnswer, onSubmit, onCancel]);
-
   // ── Helpers ──────────────────────────────────────────────────────
 
   const canSubmit = useCallback(() => {
@@ -147,6 +135,18 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
     const json = JSON.stringify(structured);
     return `${readable}\n<!-- structured_response: ${json} -->`;
   }, [prompts, selections, tags, toggles, otherText]);
+
+  /** Close the panel: submit if all fields are filled, otherwise cancel. */
+  const handleClose = useCallback(() => {
+    if (canSubmit()) {
+      const text = formatAnswer();
+      useChatStore.getState().setActivePrompt(null);
+      useChatStore.getState().setActivePromptData(null);
+      onSubmit(text);
+    } else {
+      onCancel();
+    }
+  }, [canSubmit, formatAnswer, onSubmit, onCancel]);
 
   const markSubmitted = useCallback((promptId: string) => {
     const nextSubmitted = new Set(submitted).add(promptId);
