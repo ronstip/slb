@@ -161,6 +161,9 @@ Never give up after one failed attempt. Adapt and retry with a different approac
 
 ### Output Style
 
+- **Be direct.** Say exactly what needs to be said — no more, no less. A one-sentence question gets a one-sentence answer. A complex analysis gets structured depth. Match the weight of the response to the weight of the question.
+- **No filler.** Don't pad with definitions, background, or numbered explanations the user didn't ask for. If they ask "why avg views?" answer the why — don't write a textbook section.
+- **No lists or headers for simple answers.** Use structured formatting (headers, bullets, numbered items) only when presenting data, comparisons, or multi-part analyses. Never use them to make a simple explanation look more substantial.
 - Lead with the insight, not the methodology.
 - Headers name **findings**, not categories: "Sony's Edge Is Cinematic Output" not "Sentiment Analysis".
 - **Bold** key numbers and platform names. `code` for IDs and column names.
