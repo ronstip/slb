@@ -39,8 +39,13 @@ class StateManager:
         - Posts with media_urls → COLLECTED_WITH_MEDIA (needs download)
         - Text-only posts (has content, no media) → READY_FOR_ENRICHMENT
         - Media post type but no media_urls → MISSING_MEDIA (stump)
+
+        Also stores media_refs in Firestore so the download step can read them
+        without waiting for the BQ streaming buffer.
         """
         transitions: list[tuple[str, PostState]] = []
+        media_refs: dict[str, list[dict]] = {}
+        post_meta: dict[str, dict] = {}
 
         for post in posts:
             if post.platform == "youtube":
@@ -52,8 +57,25 @@ class StateManager:
             else:
                 transitions.append((post.post_id, PostState.MISSING_MEDIA))
 
+            # Store media_refs + metadata so download step doesn't need to
+            # query BQ (avoids streaming buffer race condition)
+            if post.media_refs:
+                media_refs[post.post_id] = post.media_refs
+            elif post.media_urls:
+                media_refs[post.post_id] = [
+                    {"original_url": url} for url in post.media_urls
+                ]
+
+            post_meta[post.post_id] = {
+                "platform": post.platform,
+                "post_url": post.post_url or "",
+            }
+
         if transitions:
-            self.transition_batch(transitions, is_initial=True)
+            self.transition_batch(
+                transitions, media_refs=media_refs,
+                post_meta=post_meta, is_initial=True,
+            )
 
     # ------------------------------------------------------------------
     # State transitions
@@ -63,6 +85,7 @@ class StateManager:
         self,
         transitions: list[tuple[str, PostState]],
         media_refs: dict[str, list[dict]] | None = None,
+        post_meta: dict[str, dict] | None = None,
         is_initial: bool = False,
     ) -> None:
         """Write state transitions and update counters atomically.
@@ -73,18 +96,20 @@ class StateManager:
         Args:
             transitions: list of (post_id, new_state)
             media_refs: optional post_id → media_refs mapping (from download step)
+            post_meta: optional post_id → {platform, post_url} (from mark_collected)
             is_initial: if True, only increment new state counters (no old state to decrement)
         """
         if not transitions:
             return
 
         media_refs = media_refs or {}
+        post_meta = post_meta or {}
         now = datetime.now(timezone.utc)
         chunk_size = 200
 
         for i in range(0, len(transitions), chunk_size):
             chunk = transitions[i : i + chunk_size]
-            self._write_chunk(chunk, media_refs, now, is_initial)
+            self._write_chunk(chunk, media_refs, post_meta, now, is_initial)
 
         logger.debug(
             "Transitioned %d posts for %s", len(transitions), self._collection_id
@@ -94,6 +119,7 @@ class StateManager:
         self,
         chunk: list[tuple[str, PostState]],
         media_refs: dict[str, list[dict]],
+        post_meta: dict[str, dict],
         now: datetime,
         is_initial: bool,
     ) -> None:
@@ -119,6 +145,8 @@ class StateManager:
             }
             if post_id in media_refs:
                 doc_data["media_refs"] = media_refs[post_id]
+            if post_id in post_meta:
+                doc_data.update(post_meta[post_id])
             batch.set(doc_ref, doc_data, merge=True)
 
             # Track deltas
@@ -218,6 +246,36 @@ class StateManager:
             c.get("status") in ("completed", "failed")
             for c in crawlers.values()
         )
+
+    # ------------------------------------------------------------------
+    # Counter reconciliation
+    # ------------------------------------------------------------------
+
+    def recount(self) -> dict[str, int]:
+        """Recompute counters from actual post_state docs and overwrite.
+
+        Fixes any drift from incremental Increment operations.
+        Returns the recomputed counts dict.
+        """
+        counts: dict[str, int] = {}
+        total = 0
+        for doc in self._posts_ref.stream():
+            status = doc.to_dict().get("status", "")
+            if status:
+                counts[status] = counts.get(status, 0) + 1
+                total += 1
+
+        update: dict = {
+            "counts": counts,
+            "total_posts_in_dag": total,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        self._status_ref.update(update)
+        logger.info(
+            "Recounted %s: %d posts, counts=%s",
+            self._collection_id, total, counts,
+        )
+        return counts
 
     # ------------------------------------------------------------------
     # Cleanup

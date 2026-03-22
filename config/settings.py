@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     enrichment_retry_base_delay: float = 10.0  # Base delay in seconds for retry backoff
 
     # Pipeline v2 (post-level DAG)
-    use_pipeline_v2: bool = False
+    use_pipeline_v2: bool = True
 
     # Clustering (brothers algorithm) thresholds
     clustering_brothers_threshold: float = 0.25

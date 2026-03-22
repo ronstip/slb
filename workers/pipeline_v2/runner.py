@@ -103,6 +103,9 @@ class PipelineRunner:
             logger.info("Pipeline %s cancelled", self.collection_id)
             return
 
+        # Reconcile counters (fixes drift from incremental updates)
+        self.state_manager.recount()
+
         # Collection gates
         self._run_collection_gates()
 
@@ -206,8 +209,6 @@ class PipelineRunner:
             if not new_posts:
                 continue
 
-            # Write posts to BQ (always — no dedup, timestamps differentiate)
-            post_rows = [post_to_bq_row(p, self.collection_id) for p in new_posts]
             # Seed media_refs from CDN URLs so posts display immediately
             for p in new_posts:
                 if p.media_urls and not p.media_refs:
@@ -228,6 +229,8 @@ class PipelineRunner:
                         for url in p.media_urls
                     ]
 
+            # Write posts to BQ (always — no dedup, timestamps differentiate)
+            post_rows = [post_to_bq_row(p, self.collection_id) for p in new_posts]
             failed_posts = self.bq.insert_rows("posts", post_rows)
 
             # Engagements + channels
@@ -373,6 +376,10 @@ class PipelineRunner:
 
                 self.state_manager.transition_batch(transitions, media_refs=media_refs)
 
+                # After download step, persist GCS URIs back to BQ
+                if step.name == "download" and media_refs:
+                    self._update_bq_media_refs(media_refs)
+
             if not any_work:
                 if self._crawl_complete.is_set() and self.state_manager.all_posts_terminal():
                     break
@@ -381,6 +388,49 @@ class PipelineRunner:
                 _time.sleep(1)
 
         logger.info("── Processing loop complete for %s", self.collection_id)
+
+    # ------------------------------------------------------------------
+    # BQ media_refs update
+    # ------------------------------------------------------------------
+
+    def _update_bq_media_refs(self, media_refs: dict[str, list[dict]]) -> None:
+        """Persist GCS URIs back to BQ posts table after download."""
+        post_ids = list(media_refs.keys())
+        refs_jsons = [json.dumps(media_refs[pid]) for pid in post_ids]
+
+        sql = (
+            "UPDATE social_listening.posts t "
+            "SET t.media_refs = PARSE_JSON(s.refs_json) "
+            "FROM ("
+            "  SELECT pid, rj AS refs_json"
+            "  FROM UNNEST(@post_ids) pid WITH OFFSET o1"
+            "  JOIN UNNEST(@refs_jsons) rj WITH OFFSET o2 ON o1 = o2"
+            ") s "
+            "WHERE t.post_id = s.pid"
+        )
+
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                self.bq.query(sql, {"post_ids": post_ids, "refs_jsons": refs_jsons})
+                logger.info(
+                    "Updated media_refs in BQ for %d posts", len(post_ids)
+                )
+                return
+            except Exception as e:
+                err_str = str(e)
+                if "streaming buffer" in err_str.lower() and attempt < max_retries - 1:
+                    retry_wait = 60 * (attempt + 1)
+                    logger.info(
+                        "Streaming buffer not flushed, retrying in %ds (attempt %d/%d)",
+                        retry_wait, attempt + 1, max_retries,
+                    )
+                    _time.sleep(retry_wait)
+                else:
+                    logger.warning(
+                        "media_refs BQ update failed: %s", err_str[:200]
+                    )
+                    return
 
     # ------------------------------------------------------------------
     # Collection gates

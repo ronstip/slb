@@ -49,8 +49,10 @@ class PipelineStep:
 def action_download(posts: list[dict], ctx: StepContext) -> list[StepResult]:
     """Download media to GCS for posts in COLLECTED_WITH_MEDIA state.
 
-    Reads post data from BQ to reconstruct Post objects (needed by download_media_batch).
-    After download, media_refs are returned so the runner stores them in Firestore.
+    Reads media_urls and metadata from Firestore post_state docs (stored during
+    mark_collected) to avoid BQ streaming buffer race condition.
+    Falls back to BQ only for posts missing from Firestore.
+    After download, updated media_refs are returned so the runner stores them.
     """
     from workers.collection.media_downloader import download_media_batch
     from workers.collection.models import Post
@@ -59,25 +61,35 @@ def action_download(posts: list[dict], ctx: StepContext) -> list[StepResult]:
     if not post_ids:
         return []
 
-    # Read post data from BQ to get media_urls
-    rows = ctx.bq.query(
-        "SELECT post_id, platform, channel_handle, post_url, post_type, "
-        "  CAST(posted_at AS STRING) AS posted_at, title, content, "
-        "  media_refs, search_keyword "
-        "FROM social_listening.posts "
-        "WHERE post_id IN UNNEST(@post_ids)",
-        {"post_ids": post_ids},
-    )
-    row_map = {r["post_id"]: r for r in rows}
+    # Build post map from Firestore post_state docs (already in `posts`)
+    fs_map: dict[str, dict] = {p["post_id"]: p for p in posts}
 
-    # Reconstruct Post objects with media_urls from BQ media_refs
+    # Identify posts that need BQ fallback (no media_refs in Firestore)
+    missing_ids = [
+        pid for pid in post_ids
+        if not fs_map.get(pid, {}).get("media_refs")
+    ]
+    bq_map: dict[str, dict] = {}
+    if missing_ids:
+        logger.info("Download: %d/%d posts missing media_refs in Firestore, falling back to BQ", len(missing_ids), len(post_ids))
+        rows = ctx.bq.query(
+            "SELECT post_id, platform, channel_handle, post_url, post_type, "
+            "  title, content, media_refs, search_keyword "
+            "FROM social_listening.posts "
+            "WHERE post_id IN UNNEST(@post_ids)",
+            {"post_ids": missing_ids},
+        )
+        bq_map = {r["post_id"]: r for r in rows}
+
+    # Reconstruct Post objects
     post_objects: list[Post] = []
     for pid in post_ids:
-        row = row_map.get(pid)
-        if not row:
-            continue
+        fs = fs_map.get(pid, {})
+        bq = bq_map.get(pid, {})
+
+        # media_urls: prefer Firestore media_refs, fall back to BQ
         media_urls = []
-        raw_refs = row.get("media_refs")
+        raw_refs = fs.get("media_refs") or bq.get("media_refs")
         if raw_refs:
             if isinstance(raw_refs, str):
                 raw_refs = json.loads(raw_refs)
@@ -86,17 +98,22 @@ def action_download(posts: list[dict], ctx: StepContext) -> list[StepResult]:
                     url = ref.get("original_url", "")
                     if url:
                         media_urls.append(url)
+
+        # Metadata: prefer Firestore (stored at mark_collected), fall back to BQ
+        platform = fs.get("platform") or bq.get("platform", "")
+        post_url = fs.get("post_url") or bq.get("post_url", "")
+
         post_objects.append(Post(
             post_id=pid,
-            platform=row.get("platform", ""),
-            channel_handle=row.get("channel_handle", ""),
-            post_url=row.get("post_url", ""),
+            platform=platform,
+            channel_handle=bq.get("channel_handle", ""),
+            post_url=post_url,
             posted_at=None,
-            post_type=row.get("post_type", ""),
-            title=row.get("title"),
-            content=row.get("content"),
+            post_type=bq.get("post_type", ""),
+            title=bq.get("title"),
+            content=bq.get("content"),
             media_urls=media_urls,
-            search_keyword=row.get("search_keyword"),
+            search_keyword=bq.get("search_keyword"),
         ))
 
     # Run download (mutates post.media_refs in place)
