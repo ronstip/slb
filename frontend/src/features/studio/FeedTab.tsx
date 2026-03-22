@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
@@ -31,6 +31,8 @@ export function FeedTab() {
   const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
   // Topic filter (set from TopicCard "Posts" button)
   const [topicFilter, setTopicFilter] = useState<{ id: string; name: string } | null>(null);
+  const [topicCount, setTopicCount] = useState<number | undefined>(undefined);
+  const stableSetTopicCount = useRef((count: number) => setTopicCount(count)).current;
 
   // Keep collectionFilter in sync when activeSources change
   useEffect(() => {
@@ -139,6 +141,7 @@ export function FeedTab() {
         onCollectionFilterChange={setCollectionFilter}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        topicCount={topicCount}
       />
 
       {/* Topic filter chip */}
@@ -156,9 +159,10 @@ export function FeedTab() {
       )}
 
       {viewMode === 'topics' ? (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto bg-muted">
           <TopicsFeed
             collectionIds={effectiveIds}
+            onTopicCount={stableSetTopicCount}
             onViewPosts={(clusterId, topicName) => {
               setTopicFilter({ id: clusterId, name: topicName });
               setViewMode('posts');

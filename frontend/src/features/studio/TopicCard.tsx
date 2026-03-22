@@ -5,10 +5,10 @@ import {
   Eye,
   ThumbsUp,
   MessageCircle,
-  Layers,
   List,
   BarChart3,
   Sparkles,
+  Table2,
 } from 'lucide-react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { Card } from '../../components/ui/card.tsx';
@@ -19,6 +19,7 @@ import { getTopicAnalytics, getTopicPosts } from '../../api/endpoints/topics.ts'
 import { mediaUrl } from '../../api/client.ts';
 import { formatNumber } from '../../lib/format.ts';
 import { SENTIMENT_COLORS } from '../../lib/constants.ts';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip.tsx';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import type { TopicCluster, TopicPost } from '../../api/types.ts';
@@ -26,10 +27,39 @@ import type { TopicCluster, TopicPost } from '../../api/types.ts';
 interface TopicCardProps {
   topic: TopicCluster;
   collectionId: string;
+  rank?: number;
   onViewPosts?: (clusterId: string, topicName: string) => void;
 }
 
 const MAX_VISIBLE_KEYWORDS = 3;
+
+function viralityScore(topic: TopicCluster): number | null {
+  if (!topic.total_views || !topic.post_count) return null;
+  return Math.round(topic.total_views / topic.post_count);
+}
+
+/** Returns a color on a green-gray-red gradient based on positive vs negative ratio. */
+function sentimentColor(topic: TopicCluster): string {
+  const pos = topic.positive_count ?? 0;
+  const neg = topic.negative_count ?? 0;
+  const total = pos + neg;
+  if (!total) return '#94A3B8'; // neutral gray
+  const ratio = pos / total; // 1 = all positive, 0 = all negative
+  // Interpolate: red(0) → gray(0.5) → green(1)
+  if (ratio >= 0.5) {
+    const t = (ratio - 0.5) * 2; // 0→1
+    const r = Math.round(148 - t * 114); // 148→34
+    const g = Math.round(163 + t * 32);  // 163→195
+    const b = Math.round(184 - t * 94);  // 184→90
+    return `rgb(${r},${g},${b})`;
+  } else {
+    const t = ratio * 2; // 0→1
+    const r = Math.round(239 - t * 91);  // 239→148
+    const g = Math.round(68 + t * 95);   // 68→163
+    const b = Math.round(68 + t * 116);  // 68→184
+    return `rgb(${r},${g},${b})`;
+  }
+}
 
 function dominantSentiment(topic: TopicCluster) {
   const counts = [
@@ -56,7 +86,7 @@ function resolvePostThumbnail(post: TopicPost): string | null {
   return null;
 }
 
-export function TopicCard({ topic, collectionId, onViewPosts }: TopicCardProps) {
+export function TopicCard({ topic, collectionId, rank, onViewPosts }: TopicCardProps) {
   const [expanded, setExpanded] = useState(false);
   const thumbSrc = resolveThumbnail(topic);
   const sentiment = dominantSentiment(topic);
@@ -89,47 +119,72 @@ export function TopicCard({ topic, collectionId, onViewPosts }: TopicCardProps) 
     sendMessage(`Analyze the topic "${topic.topic_name}" in depth. What are the key themes, notable posts, and sentiment drivers?`);
   };
 
+  const virality = viralityScore(topic);
+  const vColor = sentimentColor(topic);
+
   return (
-    <Card className="overflow-hidden shadow-sm transition-shadow hover:shadow-md">
+    <Card className="overflow-hidden rounded-lg shadow-sm transition-shadow hover:shadow-md !py-0 !gap-0">
       {/* Collapsed header — always visible */}
-      <button
-        className="w-full text-left px-4 py-4 cursor-pointer"
+      <div
+        className="w-full text-left cursor-pointer"
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded(!expanded)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded); } }}
       >
-        <div className="flex items-start gap-3">
+        {/* Main content area */}
+        <div className="flex gap-3 px-3 pt-3 pb-2">
           {/* Thumbnail */}
-          {thumbSrc ? (
+          {thumbSrc && (
             <img
               src={thumbSrc}
               alt=""
-              className="h-14 w-14 shrink-0 rounded-lg object-cover bg-secondary"
+              className="h-16 w-16 shrink-0 rounded object-cover bg-secondary"
               loading="lazy"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-              }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
-          ) : null}
-          {(!thumbSrc) && (
-            <div className="h-14 w-14 shrink-0 rounded-lg bg-gradient-to-br from-secondary to-muted flex items-center justify-center">
-              <Layers className="h-5 w-5 text-muted-foreground/40" />
-            </div>
           )}
 
           {/* Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="text-sm font-semibold text-foreground leading-tight line-clamp-2">
+          <div className="flex-1 min-w-0 space-y-1.5">
+            {/* Title row: rank + title + virality badge + chevron */}
+            <div className="flex items-start gap-1.5">
+              {rank && (
+                <span className="shrink-0 text-[13px] font-bold text-foreground/40 tabular-nums leading-snug">
+                  {rank}
+                </span>
+              )}
+              <h3 className="flex-1 min-w-0 text-[13px] font-semibold text-foreground leading-snug line-clamp-2">
                 {topic.topic_name}
               </h3>
-              <div className="shrink-0 pt-0.5 text-muted-foreground">
-                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              <div className="shrink-0 flex items-center gap-1.5">
+                {virality != null && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white"
+                          style={{ backgroundColor: vColor }}
+                        >
+                          x{formatNumber(virality)}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        <p className="font-semibold">Virality Factor: x{formatNumber(virality)}</p>
+                        <p className="text-[10px] opacity-70">Avg. views per post · Color reflects sentiment</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <div className="text-muted-foreground/40">
+                  {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </div>
               </div>
             </div>
 
             {/* Metrics row */}
-            <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground">
-              <span>{topic.post_count} posts</span>
+            <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
+              <span className="font-medium">{topic.post_count} posts</span>
               {sentiment && (
                 <span className="flex items-center gap-1">
                   <span
@@ -139,30 +194,18 @@ export function TopicCard({ topic, collectionId, onViewPosts }: TopicCardProps) 
                   {sentiment.pct}% {sentiment.key}
                 </span>
               )}
-            </div>
-
-            {/* Mini sentiment bar */}
-            {sentiment && <MiniSentimentBar topic={topic} />}
-
-            {/* Engagement */}
-            <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground">
               {topic.total_views != null && topic.total_views > 0 && (
                 <span className="flex items-center gap-1">
                   <Eye className="h-3 w-3" /> {formatNumber(topic.total_views)}
-                </span>
-              )}
-              {topic.total_likes != null && topic.total_likes > 0 && (
-                <span className="flex items-center gap-1">
-                  <ThumbsUp className="h-3 w-3" /> {formatNumber(topic.total_likes)}
                 </span>
               )}
             </div>
 
             {/* Keywords */}
             {visibleKeywords.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1">
                 {visibleKeywords.map((kw) => (
-                  <Badge key={kw} variant="secondary" className="text-[10px] px-1.5 py-0">
+                  <Badge key={kw} variant="secondary" className="text-[10px] px-1.5 py-0 font-medium">
                     {kw}
                   </Badge>
                 ))}
@@ -176,28 +219,32 @@ export function TopicCard({ topic, collectionId, onViewPosts }: TopicCardProps) 
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="mt-3 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px] text-muted-foreground" onClick={handleViewPosts}>
+        {/* Action buttons — pinned to bottom edge */}
+        <div className="flex items-center gap-1 border-t border-border/40 mx-3 mt-2 pt-1.5 pb-1.5" onClick={(e) => e.stopPropagation()}>
+          <Button variant="ghost" size="sm" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground" onClick={handleViewPosts}>
             <List className="h-3 w-3" />
             Posts
+          </Button>
+          <Button variant="ghost" size="sm" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground" onClick={handleViewPosts}>
+            <Table2 className="h-3 w-3" />
+            Data
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-2 text-[11px] text-muted-foreground"
+            className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
             onClick={handleDashboard}
             disabled={!artifacts.some((a) => a.type === 'dashboard')}
           >
             <BarChart3 className="h-3 w-3" />
-            Dashboard
+            Analytics
           </Button>
-          <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px] text-muted-foreground" onClick={handleAskAI}>
+          <Button variant="ghost" size="sm" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground" onClick={handleAskAI}>
             <Sparkles className="h-3 w-3" />
             Ask AI
           </Button>
         </div>
-      </button>
+      </div>
 
       {/* Expanded detail */}
       {expanded && (
@@ -207,29 +254,6 @@ export function TopicCard({ topic, collectionId, onViewPosts }: TopicCardProps) 
   );
 }
 
-function MiniSentimentBar({ topic }: { topic: TopicCluster }) {
-  const counts = [
-    { key: 'positive', count: topic.positive_count ?? 0 },
-    { key: 'negative', count: topic.negative_count ?? 0 },
-    { key: 'neutral', count: topic.neutral_count ?? 0 },
-    { key: 'mixed', count: topic.mixed_count ?? 0 },
-  ];
-  const total = counts.reduce((s, c) => s + c.count, 0);
-  if (!total) return null;
-  const segments = counts.filter((s) => s.count > 0);
-
-  return (
-    <div className="mt-1 flex h-1 overflow-hidden rounded-full bg-secondary">
-      {segments.map((s) => (
-        <div
-          key={s.key}
-          className="h-full"
-          style={{ width: `${(s.count / total) * 100}%`, backgroundColor: SENTIMENT_COLORS[s.key] }}
-        />
-      ))}
-    </div>
-  );
-}
 
 function TopicDetail({ clusterId, collectionId, topicSummary }: { clusterId: string; collectionId: string; topicSummary: string }) {
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
@@ -365,9 +389,16 @@ function SentimentBar({ totals }: { totals: { positive_count: number; negative_c
 
 function TopicPostRow({ post }: { post: TopicPost }) {
   const thumbSrc = resolvePostThumbnail(post);
+  const Wrapper = post.post_url ? 'a' : 'div';
+  const wrapperProps = post.post_url
+    ? { href: post.post_url, target: '_blank' as const, rel: 'noopener noreferrer', onClick: (e: React.MouseEvent) => e.stopPropagation() }
+    : {};
 
   return (
-    <div className="flex items-start gap-2 rounded-lg bg-muted/30 px-3 py-2">
+    <Wrapper
+      {...wrapperProps}
+      className="flex items-start gap-2 rounded-lg bg-secondary px-3 py-2 transition-colors hover:bg-secondary/80 cursor-pointer no-underline"
+    >
       {thumbSrc && (
         <img
           src={thumbSrc}
@@ -404,20 +435,14 @@ function TopicPostRow({ post }: { post: TopicPost }) {
         </div>
       </div>
       {post.post_url && (
-        <a
-          href={post.post_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="shrink-0 text-muted-foreground/50">
           <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
             <polyline points="15 3 21 3 21 9" />
             <line x1="10" y1="14" x2="21" y2="3" />
           </svg>
-        </a>
+        </div>
       )}
-    </div>
+    </Wrapper>
   );
 }

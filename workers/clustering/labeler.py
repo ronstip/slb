@@ -152,17 +152,58 @@ def label_topics(
                 logger.warning("Empty response for batch %d", batch_idx + 1)
 
         except Exception:
-            logger.exception("Gemini labeling failed for batch %d", batch_idx + 1)
-            # Fallback: generate placeholder labels
+            logger.exception("Gemini labeling failed for batch %d, retrying individually", batch_idx + 1)
+            # Retry each cluster individually before falling back to placeholder
             for cluster in batch:
-                all_labels.append({
-                    "cluster_index": cluster["cluster_index"],
-                    "topic_name": f"Topic {cluster['cluster_index'] + 1}",
-                    "topic_summary": "Topic labeling failed — placeholder.",
-                    "topic_keywords": [],
-                })
+                label = _retry_single_cluster(client, model, cluster)
+                all_labels.append(label)
+                if not label["topic_name"].startswith("Topic "):
+                    prior_names.append(label["topic_name"])
 
     return all_labels
+
+
+def _retry_single_cluster(
+    client: genai.Client,
+    model: str,
+    cluster: dict[str, Any],
+) -> dict[str, Any]:
+    """Retry labeling a single cluster. Returns a placeholder on failure."""
+    idx = cluster["cluster_index"]
+    try:
+        section = _build_clusters_section([cluster])
+        prompt = LABELING_PROMPT.format(
+            prior_names_section="",
+            clusters_section=section,
+        )
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=1024,
+                response_mime_type="application/json",
+                response_schema=TopicLabelsResponse,
+            ),
+        )
+        parsed = response.parsed
+        if parsed and parsed.topics:
+            t = parsed.topics[0]
+            return {
+                "cluster_index": idx,
+                "topic_name": t.topic_name,
+                "topic_summary": t.topic_summary,
+                "topic_keywords": t.topic_keywords,
+            }
+    except Exception:
+        logger.exception("Single-cluster retry also failed for cluster %d", idx)
+
+    return {
+        "cluster_index": idx,
+        "topic_name": f"Topic {idx + 1}",
+        "topic_summary": "Topic labeling failed — placeholder.",
+        "topic_keywords": [],
+    }
 
 
 def _build_clusters_section(batch: list[dict[str, Any]]) -> str:

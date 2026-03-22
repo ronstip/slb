@@ -156,8 +156,14 @@ async def list_topics(
             topic["thumbnail_url"] = thumb_map[cid].get("thumbnail_url")
             topic["thumbnail_gcs_uri"] = thumb_map[cid].get("thumbnail_gcs_uri")
 
-    # Sort by post_count descending
-    topics.sort(key=lambda t: t.get("post_count", 0), reverse=True)
+    # Sort: real topic names first (by post_count desc), then generic "Topic N" names last
+    import re
+    def _sort_key(t):
+        name = t.get("topic_name", "")
+        is_generic = bool(re.match(r"^Topic \d+$", name))
+        return (is_generic, -t.get("post_count", 0))
+
+    topics.sort(key=_sort_key)
     return topics
 
 

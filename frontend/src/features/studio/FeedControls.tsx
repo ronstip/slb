@@ -31,6 +31,7 @@ interface FeedControlsProps {
   onPlatformChange: (platform: string) => void;
   onSentimentChange: (sentiment: string) => void;
   totalCount: number;
+  topicCount?: number;
   activeSources: Source[];
   collectionFilter: string[];
   onCollectionFilterChange: (ids: string[]) => void;
@@ -46,6 +47,7 @@ export function FeedControls({
   onPlatformChange,
   onSentimentChange,
   totalCount,
+  topicCount,
   activeSources,
   collectionFilter,
   onCollectionFilterChange,
@@ -94,78 +96,84 @@ export function FeedControls({
         </button>
       </div>
 
-      {/* Sort */}
-      <Select value={sort} onValueChange={(v) => onSortChange(v as FeedParams['sort'])}>
-        <SelectTrigger className="h-6 w-auto min-w-0 gap-1 px-2 text-[11px]">
-          <span className="text-muted-foreground/60">Sort:</span>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="views">Most Viewed</SelectItem>
-          <SelectItem value="engagement">Engagement</SelectItem>
-          <SelectItem value="recent">Most Recent</SelectItem>
-          <SelectItem value="sentiment">Sentiment</SelectItem>
-        </SelectContent>
-      </Select>
+      {viewMode === 'posts' && (
+        <>
+          {/* Sort */}
+          <Select value={sort} onValueChange={(v) => onSortChange(v as FeedParams['sort'])}>
+            <SelectTrigger className="h-6 w-auto min-w-0 gap-1 px-2 text-[11px]">
+              <span className="text-muted-foreground/60">Sort:</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="views">Most Viewed</SelectItem>
+              <SelectItem value="engagement">Engagement</SelectItem>
+              <SelectItem value="recent">Most Recent</SelectItem>
+              <SelectItem value="sentiment">Sentiment</SelectItem>
+            </SelectContent>
+          </Select>
 
-      {/* Filter */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="relative h-6 gap-1 px-2 text-[11px] text-muted-foreground"
-          >
-            <SlidersHorizontal className="h-3 w-3" />
-            Filter
-            {hasActiveFilter && (
-              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent-vibrant" />
-            )}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48">
-          {/* Collection filter — only when 2+ active */}
-          {activeSources.length >= 2 && (
-            <>
-              <DropdownMenuLabel className="text-[10px]">Collection</DropdownMenuLabel>
-              {activeSources.map((src) => (
-                <DropdownMenuCheckboxItem
-                  key={src.collectionId}
-                  checked={isCollectionShown(src.collectionId)}
-                  onCheckedChange={() => toggleCollection(src.collectionId)}
-                  className="text-[11px]"
-                >
-                  <span className="truncate">{src.title}</span>
-                </DropdownMenuCheckboxItem>
-              ))}
+          {/* Filter */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="relative h-6 gap-1 px-2 text-[11px] text-muted-foreground"
+              >
+                <SlidersHorizontal className="h-3 w-3" />
+                Filter
+                {hasActiveFilter && (
+                  <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent-vibrant" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              {/* Collection filter — only when 2+ active */}
+              {activeSources.length >= 2 && (
+                <>
+                  <DropdownMenuLabel className="text-[10px]">Collection</DropdownMenuLabel>
+                  {activeSources.map((src) => (
+                    <DropdownMenuCheckboxItem
+                      key={src.collectionId}
+                      checked={isCollectionShown(src.collectionId)}
+                      onCheckedChange={() => toggleCollection(src.collectionId)}
+                      className="text-[11px]"
+                    >
+                      <span className="truncate">{src.title}</span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                </>
+              )}
+
+              <DropdownMenuLabel className="text-[10px]">Platform</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={platform} onValueChange={onPlatformChange}>
+                <DropdownMenuRadioItem value="all">All Platforms</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="instagram">Instagram</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="tiktok">TikTok</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="twitter">Twitter/X</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="reddit">Reddit</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="youtube">YouTube</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
-            </>
-          )}
+              <DropdownMenuLabel className="text-[10px]">Sentiment</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={sentiment} onValueChange={onSentimentChange}>
+                <DropdownMenuRadioItem value="all">All Sentiment</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="positive">Positive</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="negative">Negative</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="neutral">Neutral</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="mixed">Mixed</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
 
-          <DropdownMenuLabel className="text-[10px]">Platform</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={platform} onValueChange={onPlatformChange}>
-            <DropdownMenuRadioItem value="all">All Platforms</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="instagram">Instagram</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="tiktok">TikTok</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="twitter">Twitter/X</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="reddit">Reddit</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="youtube">YouTube</DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[10px]">Sentiment</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={sentiment} onValueChange={onSentimentChange}>
-            <DropdownMenuRadioItem value="all">All Sentiment</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="positive">Positive</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="negative">Negative</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="neutral">Neutral</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="mixed">Mixed</DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Post count */}
+      {/* Count */}
       <span className="ml-auto shrink-0 text-[11px] text-muted-foreground/50">
-        {formatNumber(totalCount)}
+        {viewMode === 'topics'
+          ? topicCount != null ? `${topicCount} topics` : ''
+          : formatNumber(totalCount)}
       </span>
     </div>
   );
