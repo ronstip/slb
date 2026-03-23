@@ -15,6 +15,9 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   generate_report: 'Generating insight report',
   generate_dashboard: 'Creating interactive dashboard',
   ask_user: 'Preparing questions',
+  create_task_protocol: 'Writing task protocol',
+  get_task_status: 'Checking task status',
+  set_active_task: 'Loading task context',
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {

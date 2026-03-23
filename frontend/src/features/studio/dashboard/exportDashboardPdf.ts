@@ -70,12 +70,12 @@ export async function exportDashboardPdf(
     const logoY = PAGE_MARGIN + 5
     pdf.addImage(logoDataUrl, 'PNG', logoX, logoY, logoW, logoH)
 
-    // Logo text: "InsightStream"
+    // Logo text: "Veille"
     const textX = logoX + logoW + 6
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(18)
     pdf.setTextColor('#171717')
-    pdf.text('InsightStream', textX, PAGE_MARGIN + 18)
+    pdf.text('Veille', textX, PAGE_MARGIN + 18)
 
     // Project name + date (right-aligned)
     const dateStr = new Date().toLocaleDateString('en-GB', {

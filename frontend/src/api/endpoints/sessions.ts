@@ -9,6 +9,7 @@ export interface SessionListItem {
   updated_at: string | null;
   message_count: number;
   preview: string | null;
+  task_id?: string | null;
 }
 
 /** Raw ADK event shape from Firestore events_json */

@@ -26,7 +26,7 @@ from api.agent.tools.ask_user import ask_user
 from api.agent.tools.cancel_collection import cancel_collection
 from api.agent.tools.compose_email import compose_email
 from api.agent.tools.create_chart import create_chart
-from api.agent.tools.design_research import design_research
+from api.agent.tools.create_task_protocol import create_task_protocol
 from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
@@ -34,7 +34,9 @@ from api.agent.tools.generate_report import generate_report
 from api.agent.tools.get_collection_stats import get_collection_stats
 from api.agent.tools.get_past_collections import get_collection_details
 from api.agent.tools.get_progress import get_progress
+from api.agent.tools.get_task_status import get_task_status
 from api.agent.tools.refresh_engagements import refresh_engagements
+from api.agent.tools.set_active_task import set_active_task
 from api.agent.tools.set_working_collections import set_working_collections
 from api.auth.session_service import FirestoreSessionService
 from config.settings import get_settings
@@ -62,10 +64,13 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
 
     # ─── Tool list ───────────────────────────────────────────────────
     tools = [
+        # Task management
+        create_task_protocol,
+        get_task_status,
+        set_active_task,
         # Research & context
         get_collection_details,
         ask_user,
-        design_research,
         # Data & analysis
         bq_toolset,
         # Collection lifecycle
@@ -102,9 +107,9 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         model=model_name,
         name="meta_agent",
         description=(
-            "Social listening research assistant that helps users "
-            "understand brand perception, competitor analysis, and "
-            "sentiment trends across social media."
+            "Veille — autonomous social analyst agent that executes "
+            "tasks for users: brand tracking, competitor analysis, "
+            "sentiment monitoring, and campaign measurement."
         ),
         static_instruction=META_AGENT_STATIC_PROMPT,
         instruction=dynamic_prompt,

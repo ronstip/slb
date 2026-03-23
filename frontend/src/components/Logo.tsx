@@ -38,7 +38,7 @@ export function Logo({ size = 'md', showText = true, inverted = false, className
         </svg>
       </div>
       {showText && (
-        <span className={`font-semibold ${dim.text} ${inverted ? 'text-white' : ''}`}>InsightStream</span>
+        <span className={`font-semibold ${dim.text} ${inverted ? 'text-white' : ''}`}>Veille</span>
       )}
     </div>
   );

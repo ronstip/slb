@@ -7,7 +7,7 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isTaskProtocolResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 export function useSSEChat() {
@@ -270,6 +270,11 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
+              } else if (isTaskProtocolResult(toolName, result)) {
+                chatState.addCard(messageId, {
+                  type: 'task_protocol',
+                  data: result,
+                });
               } else if (isStructuredPromptResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'structured_prompt',

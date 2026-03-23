@@ -203,6 +203,126 @@ class FirestoreClient:
             logger.exception("Failed to claim collection %s for run", collection_id)
             return False
 
+    # --- Task methods ---
+
+    def create_task(self, task_id: str, data: dict) -> None:
+        doc_ref = self._db.collection("tasks").document(task_id)
+        now = datetime.now(timezone.utc)
+        data.setdefault("created_at", now)
+        data.setdefault("updated_at", now)
+        data.setdefault("status", "seed")
+        data.setdefault("collection_ids", [])
+        data.setdefault("artifact_ids", [])
+        data.setdefault("session_ids", [])
+        data.setdefault("run_count", 0)
+        data.setdefault("run_history", [])
+        doc_ref.set(data)
+        logger.info("Created task %s", task_id)
+
+    def get_task(self, task_id: str) -> dict | None:
+        doc = self._db.collection("tasks").document(task_id).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["task_id"] = doc.id
+        for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def update_task(self, task_id: str, **fields) -> None:
+        doc_ref = self._db.collection("tasks").document(task_id)
+        fields["updated_at"] = datetime.now(timezone.utc)
+        doc_ref.update(fields)
+        logger.debug("Updated task %s: %s", task_id, list(fields.keys()))
+
+    def list_user_tasks(self, user_id: str, org_id: str | None = None) -> list[dict]:
+        """List tasks visible to the user: own + org-shared."""
+        seen: set[str] = set()
+        results: list[dict] = []
+
+        for doc in self._db.collection("tasks").where("user_id", "==", user_id).stream():
+            data = doc.to_dict()
+            data["task_id"] = doc.id
+            for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            seen.add(doc.id)
+            results.append(data)
+
+        if org_id:
+            for doc in (
+                self._db.collection("tasks")
+                .where("org_id", "==", org_id)
+                .stream()
+            ):
+                if doc.id in seen:
+                    continue
+                data = doc.to_dict()
+                data["task_id"] = doc.id
+                for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
+                    if key in data and hasattr(data[key], "isoformat"):
+                        data[key] = data[key].isoformat()
+                results.append(data)
+
+        results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return results
+
+    def delete_task(self, task_id: str) -> None:
+        self._db.collection("tasks").document(task_id).delete()
+        logger.info("Deleted task %s", task_id)
+
+    def add_task_collection(self, task_id: str, collection_id: str) -> None:
+        """Append a collection_id to the task's collection_ids array."""
+        from google.cloud.firestore_v1 import transforms
+        self._db.collection("tasks").document(task_id).update({
+            "collection_ids": transforms.ArrayUnion([collection_id]),
+            "updated_at": datetime.now(timezone.utc),
+        })
+
+    def add_task_artifact(self, task_id: str, artifact_id: str) -> None:
+        """Append an artifact_id to the task's artifact_ids array."""
+        from google.cloud.firestore_v1 import transforms
+        self._db.collection("tasks").document(task_id).update({
+            "artifact_ids": transforms.ArrayUnion([artifact_id]),
+            "updated_at": datetime.now(timezone.utc),
+        })
+
+    def add_task_session(self, task_id: str, session_id: str) -> None:
+        """Append a session_id to the task's session_ids array."""
+        from google.cloud.firestore_v1 import transforms
+        self._db.collection("tasks").document(task_id).update({
+            "session_ids": transforms.ArrayUnion([session_id]),
+            "updated_at": datetime.now(timezone.utc),
+        })
+
+    def get_due_recurring_tasks(self) -> list[dict]:
+        """Return recurring tasks whose next_run_at is in the past and status is 'monitoring'."""
+        now = datetime.now(timezone.utc)
+        try:
+            docs = (
+                self._db.collection("tasks")
+                .where("task_type", "==", "recurring")
+                .where("status", "==", "monitoring")
+                .stream()
+            )
+            due = []
+            for doc in docs:
+                data = doc.to_dict()
+                next_run_at = data.get("next_run_at")
+                if next_run_at is None:
+                    continue
+                if hasattr(next_run_at, "isoformat"):
+                    if getattr(next_run_at, "tzinfo", None) is None:
+                        next_run_at = next_run_at.replace(tzinfo=timezone.utc)
+                    if next_run_at <= now:
+                        data["task_id"] = doc.id
+                        due.append(data)
+            return due
+        except Exception as e:
+            logger.warning("Failed to query due recurring tasks: %s", e)
+            return []
+
     def get_session(self, session_id: str) -> dict | None:
         doc_ref = self._db.collection("sessions").document(session_id)
         doc = doc_ref.get()

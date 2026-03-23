@@ -112,7 +112,7 @@ async def lifespan(app_: FastAPI):
     yield
 
 
-app = FastAPI(title="Social Listening Platform", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Veille", version="0.1.0", lifespan=lifespan)
 
 # Rate limiting
 app.state.limiter = limiter
@@ -202,6 +202,7 @@ def _maybe_persist_artifact(
     user_id: str,
     org_id: str | None,
     session_id: str,
+    task_id: str | None = None,
 ) -> str | None:
     """If the tool result is an artifact, persist to Firestore. Returns artifact_id or None."""
     if result.get("status") != "success":
@@ -278,6 +279,9 @@ def _maybe_persist_artifact(
     try:
         fs = get_fs()
         fs.create_artifact(artifact_id, doc)
+        # Link artifact to active task if one exists
+        if task_id:
+            fs.add_task_artifact(task_id, artifact_id)
     except Exception as e:
         logger.warning("Failed to persist artifact %s: %s", artifact_id, e)
         return None
@@ -292,13 +296,26 @@ def _maybe_persist_artifact(
 
 def _build_user_context(user_id: str, org_id: str) -> dict:
     """Build user context for agent personalization at session start."""
-    context: dict = {"display_name": "", "preferences": {}, "collections_index": []}
+    context: dict = {"display_name": "", "preferences": {}, "collections_index": [], "tasks_index": []}
     try:
         fs = get_fs()
         user_doc = fs.get_user(user_id)
         if user_doc:
             context["display_name"] = user_doc.get("display_name", "")
             context["preferences"] = user_doc.get("preferences") or {}
+
+        # Build lightweight tasks index
+        tasks = fs.list_user_tasks(user_id, org_id or None)
+        tasks_index = []
+        for t in tasks[:10]:
+            tasks_index.append({
+                "task_id": t.get("task_id"),
+                "title": t.get("title", "untitled"),
+                "status": t.get("status", "unknown"),
+                "task_type": t.get("task_type", "one_shot"),
+                "created_at": t.get("created_at", ""),
+            })
+        context["tasks_index"] = tasks_index
 
         # Build lightweight collections index from last 10 collections
         from api.agent.tools.get_past_collections import fetch_user_collections
@@ -469,6 +486,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "first_message": None,
                 "user_display_name": user_context.get("display_name", ""),
                 "user_collections_index": user_context.get("collections_index", []),
+                "user_tasks_index": user_context.get("tasks_index", []),
                 "user_preferences": user_context.get("preferences", {}),
             },
         )
@@ -566,8 +584,10 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         tr_name = event_data.get("metadata", {}).get("name", "")
                         tr_result = event_data.get("metadata", {}).get("result", {})
                         if isinstance(tr_result, dict):
+                            active_task_id = session.state.get("active_task_id") if session else None
                             aid = _maybe_persist_artifact(
-                                tr_name, tr_result, user_id, user.org_id, session_id
+                                tr_name, tr_result, user_id, user.org_id, session_id,
+                                task_id=active_task_id,
                             )
                             if aid:
                                 tr_result["_artifact_id"] = aid
@@ -1331,6 +1351,195 @@ async def get_multi_collection_feed(
 
 
 # ---------------------------------------------------------------------------
+# Task endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/tasks")
+async def list_tasks(user: CurrentUser = Depends(get_current_user)):
+    """List all tasks visible to the user."""
+    from api.services.task_service import list_tasks as _list_tasks
+
+    tasks = _list_tasks(user.uid, user.org_id)
+    return tasks
+
+
+@app.post("/tasks")
+async def create_task_endpoint(
+    request: dict,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Create a new task."""
+    from api.services.task_service import create_task
+
+    task = create_task(
+        user_id=user.uid,
+        seed=request.get("seed", ""),
+        title=request.get("title", "Untitled Task"),
+        task_type=request.get("task_type", "one_shot"),
+        protocol=request.get("protocol", ""),
+        data_scope=request.get("data_scope"),
+        schedule=request.get("schedule"),
+        org_id=user.org_id,
+        session_id=request.get("session_id"),
+        status=request.get("status", "seed"),
+    )
+    return task
+
+
+@app.get("/tasks/{task_id}")
+async def get_task_endpoint(task_id: str, user: CurrentUser = Depends(get_current_user)):
+    """Get a task by ID."""
+    from api.services.task_service import get_task
+
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    # Access check: owner or org member
+    if task.get("user_id") != user.uid and task.get("org_id") != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return task
+
+
+@app.patch("/tasks/{task_id}")
+async def update_task_endpoint(
+    task_id: str,
+    updates: dict,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Update a task's fields."""
+    from api.services.task_service import get_task, update_task
+
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the task owner can update")
+
+    # Only allow safe fields to be updated
+    allowed = {
+        "title", "status", "protocol", "data_scope", "schedule",
+        "task_type", "context_summary",
+    }
+    safe_updates = {k: v for k, v in updates.items() if k in allowed}
+    if safe_updates:
+        update_task(task_id, **safe_updates)
+    return {"ok": True}
+
+
+@app.post("/tasks/approve-protocol")
+async def approve_task_protocol(
+    request: dict,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Approve a task protocol — creates the task and optionally starts collections."""
+    from api.services.task_service import create_task
+    from api.services.collection_service import create_collection_from_request, _compute_next_run_at
+    from api.schemas.requests import CreateCollectionRequest
+
+    title = request.get("title", "Untitled Task")
+    protocol = request.get("protocol", "")
+    task_type = request.get("task_type", "one_shot")
+    data_scope = request.get("data_scope", {})
+    schedule = request.get("schedule")
+    session_id = request.get("session_id")
+    run_now = request.get("run_now", True)
+
+    # Create the task
+    task = create_task(
+        user_id=user.uid,
+        seed=protocol[:200],  # First 200 chars as seed
+        title=title,
+        task_type=task_type,
+        protocol=protocol,
+        data_scope=data_scope,
+        schedule=schedule,
+        org_id=user.org_id,
+        session_id=session_id,
+        status="approved",
+    )
+    task_id = task["task_id"]
+
+    # Link session to task
+    if session_id:
+        fs = get_fs()
+        fs.save_session(session_id, {"task_id": task_id})
+
+    # Create collections from data_scope searches
+    collection_ids = []
+    searches = data_scope.get("searches", [])
+    if run_now and searches:
+        for search_def in searches:
+            platforms = search_def.get("platforms", [])
+            keywords = search_def.get("keywords", [])
+            if not platforms or not keywords:
+                continue
+
+            req = CreateCollectionRequest(
+                description=title,
+                platforms=platforms,
+                keywords=keywords,
+                channel_urls=search_def.get("channels"),
+                time_range_days=search_def.get("time_range_days", 90),
+                geo_scope=search_def.get("geo_scope", "global"),
+                n_posts=search_def.get("n_posts", 0),
+                include_comments=True,
+            )
+
+            # Pass extra_config with task_id
+            extra_config = {}
+            custom_fields = data_scope.get("custom_fields")
+            if custom_fields:
+                extra_config["custom_fields"] = custom_fields
+
+            result = create_collection_from_request(
+                request=req,
+                user_id=user.uid,
+                org_id=user.org_id,
+                session_id=session_id or "",
+                extra_config=extra_config,
+            )
+            cid = result["collection_id"]
+            collection_ids.append(cid)
+
+            # Link collection to task (both directions)
+            fs = get_fs()
+            fs.add_task_collection(task_id, cid)
+            fs.update_collection_status(cid, task_id=task_id)
+
+        # Update task status to executing
+        from api.services.task_service import update_task
+        update_task(task_id, status="executing", collection_ids=collection_ids)
+
+    elif not run_now and schedule and task_type == "recurring":
+        # Schedule first run
+        from api.services.task_service import update_task
+        now = datetime.now(timezone.utc)
+        next_run = _compute_next_run_at(schedule.get("frequency"), now)
+        update_task(task_id, status="monitoring", next_run_at=next_run)
+
+    return {
+        "task_id": task_id,
+        "collection_ids": collection_ids,
+        "status": "executing" if run_now and collection_ids else "approved",
+    }
+
+
+@app.delete("/tasks/{task_id}")
+async def delete_task_endpoint(task_id: str, user: CurrentUser = Depends(get_current_user)):
+    """Delete a task."""
+    from api.services.task_service import get_task, delete_task
+
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the task owner can delete")
+    delete_task(task_id)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # Organization endpoints
 # ---------------------------------------------------------------------------
 
@@ -1471,7 +1680,36 @@ async def scheduler_tick():
         dispatched.append(collection_id)
         logger.info("Scheduler: dispatched pipeline for collection %s", collection_id)
 
+    # Also check recurring tasks
+    from api.scheduler import _check_due_tasks
+    try:
+        _check_due_tasks(fs, settings)
+    except Exception:
+        logger.exception("Scheduler tick: recurring task check failed")
+
     return {"dispatched": len(dispatched), "collection_ids": dispatched}
+
+
+@app.post("/internal/task/continue")
+async def task_continue(request: dict):
+    """Continue a task after all collections complete.
+
+    Called by Cloud Tasks in production, or directly in dev mode.
+    """
+    task_id = request.get("task_id")
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id required")
+
+    import threading
+    from workers.task_continuation import _run_agent_continuation
+    thread = threading.Thread(
+        target=_run_agent_continuation,
+        args=(task_id,),
+        daemon=True,
+        name=f"task-continue-{task_id[:8]}",
+    )
+    thread.start()
+    return {"ok": True, "task_id": task_id}
 
 
 @app.get("/media/{path:path}")

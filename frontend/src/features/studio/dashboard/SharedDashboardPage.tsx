@@ -90,7 +90,7 @@ export function SharedDashboardPage() {
             This link may have been revoked or doesn't exist.
           </p>
           <Button className="mt-6" onClick={() => window.open('/', '_blank')}>
-            Try InsightStream
+            Try Veille
           </Button>
         </div>
       )}
@@ -135,7 +135,7 @@ export function SharedDashboardPage() {
             <div className="mx-auto max-w-6xl px-6 py-10 text-center">
               <h2 className="text-base font-semibold">Like what you see?</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                InsightStream gives you AI-powered social listening dashboards like this one &mdash; no coding required.
+                Veille gives you AI-powered social intelligence dashboards like this one &mdash; no coding required.
               </p>
               <Button
                 className="mt-4"

@@ -116,7 +116,7 @@ export function AboutPage() {
         {/* Footer */}
         <footer className="border-t border-border/50 backdrop-blur-sm px-8 py-6">
           <div className="mx-auto max-w-6xl flex items-center justify-between text-sm text-muted-foreground">
-            <p>&copy; 2026 InsightStream. All rights reserved.</p>
+            <p>&copy; 2026 Veille. All rights reserved.</p>
             <div className="flex gap-6">
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>

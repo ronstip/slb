@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 # ─── Tool priority groups for phase-based reordering ─────────────────
 # Tools listed first in the schema are naturally favoured by the model.
 
+TASK_TOOLS = {"create_task_protocol", "get_task_status", "set_active_task"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search"}
-RESEARCH_DESIGN_TOOLS = {"design_research"}
+RESEARCH_DESIGN_TOOLS: set[str] = set()  # design_research removed (internal only)
 COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
 OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
 
@@ -68,6 +69,16 @@ def _summarize_tool_result(tool_name: str, tool_response: dict) -> str | None:
     if tool_name == "execute_sql":
         # ADK BigQuery tool returns results differently
         return None  # Handled by model's own context
+    elif tool_name == "create_task_protocol":
+        title = tool_response.get("title", "?")
+        return f"create_task_protocol: \"{title}\" ready for user approval"
+    elif tool_name == "get_task_status":
+        title = tool_response.get("title", "?")
+        ts = tool_response.get("task_status", "?")
+        return f"get_task_status: \"{title}\" — {ts}"
+    elif tool_name == "set_active_task":
+        title = tool_response.get("title", "?")
+        return f"set_active_task: now working on \"{title}\""
     elif tool_name == "get_collection_stats":
         total = tool_response.get("total_posts", "?")
         neg_pct = tool_response.get("negative_sentiment_pct", "?")
@@ -145,6 +156,16 @@ def collection_state_tracker(
                 tool_response.get("active_collections") or []
             )
 
+    elif tool_name == "create_task_protocol":
+        if isinstance(tool_response, dict) and tool_response.get("status") == "needs_approval":
+            # Signal the before_model_callback to stop the ReAct loop.
+            # The user must approve/edit/reject before the agent continues.
+            tool_context.state["awaiting_user_input"] = True
+
+    elif tool_name == "set_active_task":
+        if isinstance(tool_response, dict) and tool_response.get("status") == "success":
+            tool_context.state["active_task_id"] = tool_response.get("task_id")
+
     elif tool_name == "ask_user":
         # Signal the before_model_callback to stop the ReAct loop.
         # The user must respond before the agent continues.
@@ -177,6 +198,16 @@ def gate_expensive_tools(
             "message": (
                 "A collection is currently running. The UI shows live progress. "
                 "Do NOT call collection tools — confirm to the user and move on."
+            ),
+        }
+
+    # Block ask_user in autonomous mode (server-side agent invocation)
+    if tool.name == "ask_user" and tool_context.state.get("autonomous_mode"):
+        return {
+            "status": "blocked",
+            "message": (
+                "Running in autonomous mode — cannot ask the user questions. "
+                "Proceed with the analysis using your best judgment and the task protocol."
             ),
         }
 
@@ -265,6 +296,37 @@ def enforce_collection_access(
 def _build_context_block(state: dict) -> Optional[str]:
     """Build a context block from session state, or None if nothing to inject."""
     blocks: list[str] = []
+
+    # ── Active Task context ─────────────────────────────────────────
+    active_task_id = state.get("active_task_id")
+    if active_task_id:
+        title = state.get("active_task_title", "")
+        task_status = state.get("active_task_status", "")
+        task_type = state.get("active_task_type", "one_shot")
+        context_summary = state.get("active_task_context_summary", "")
+
+        lines = [
+            f"## Active Task: \"{title}\"",
+            f"- Task ID: `{active_task_id}`",
+            f"- Status: **{task_status}** | Type: {task_type}",
+        ]
+        if context_summary:
+            lines.append(f"- Summary: {context_summary}")
+        lines.append("")
+        blocks.append("\n".join(lines))
+
+    # ── Task Library ────────────────────────────────────────────────
+    tasks_index: list[dict] = state.get("user_tasks_index", [])
+    if tasks_index:
+        lines = ["## Task Library"]
+        for t in tasks_index:
+            lines.append(
+                f"- `{t.get('task_id', '?')}` | {t.get('title', 'untitled')} "
+                f"| {t.get('status', '?')} | {t.get('task_type', '?')} "
+                f"| {t.get('created_at', '?')[:10] if t.get('created_at') else '?'}"
+            )
+        lines.append("")
+        blocks.append("\n".join(lines))
 
     # ── Collection context ──────────────────────────────────────────
     collection_id = state.get("active_collection_id")
@@ -397,15 +459,15 @@ def _get_phase_priority(state: dict) -> list[set[str]]:
     )
 
     if not has_collection:
-        # Research phase — context tools first, design tool last (after conversation)
-        return [RESEARCH_SUPPORT_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS]
+        # Research/task phase — task tools and context first
+        return [TASK_TOOLS, RESEARCH_SUPPORT_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS]
     elif collection_status in ("collecting", "enriching"):
         # Collection in progress — push collection tools LAST so the agent
         # doesn't loop on get_progress. The UI handles progress display.
-        return [CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS, COLLECTION_TOOLS]
+        return [TASK_TOOLS, CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS, COLLECTION_TOOLS]
     else:
         # Collection complete (or unknown) — analysis + output first
-        return [CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_SUPPORT_TOOLS, RESEARCH_DESIGN_TOOLS]
+        return [TASK_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_SUPPORT_TOOLS, RESEARCH_DESIGN_TOOLS]
 
 
 def _tool_sort_key(tool_obj, priority_order: list[set[str]]) -> int:

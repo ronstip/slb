@@ -6,7 +6,7 @@ import { useSSEChat } from './hooks/useSSEChat.ts';
 import { MessageList } from './MessageList.tsx';
 import { MessageInput } from './MessageInput.tsx';
 import { WelcomeScreen } from './WelcomeScreen.tsx';
-import { CollectionSelector } from './CollectionSelector.tsx';
+import { TaskSelector } from './TaskSelector.tsx';
 import { StructuredPromptPanel } from './StructuredPromptPanel.tsx';
 
 export function ChatPanel() {
@@ -23,9 +23,9 @@ export function ChatPanel() {
 
   return (
     <main data-testid="chat-panel" className="flex min-w-[480px] flex-1 flex-col bg-background">
-      {/* Top bar — collection selector (always visible) */}
-      <div className="flex shrink-0 items-center px-4 py-2">
-        <CollectionSelector />
+      {/* Top bar — task selector */}
+      <div className="flex shrink-0 items-center gap-2 px-4 py-2">
+        <TaskSelector />
       </div>
 
       {isRestoring ? (

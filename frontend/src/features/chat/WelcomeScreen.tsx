@@ -12,10 +12,10 @@ interface WelcomeScreenProps {
 /* ── Data ────────────────────────────────────────────────── */
 
 const COLLECT_PROMPTS = [
-  { label: 'Track my brand', prompt: 'I want to track what people are saying about my brand on social media' },
-  { label: 'Compare competitors', prompt: 'I want to compare my brand against competitors on social media' },
-  { label: 'Measure a campaign', prompt: 'I want to measure my campaign performance on social media' },
-  { label: 'Track a topic', prompt: 'I want to track a specific topic on social media' },
+  { label: 'Track my brand', prompt: 'Track what people are saying about my brand across social media' },
+  { label: 'Compare competitors', prompt: 'Compare my brand against competitors on social media' },
+  { label: 'Measure a campaign', prompt: 'Measure how our latest campaign is performing on social media' },
+  { label: 'Monitor for crises', prompt: 'Monitor social media for any negative sentiment or crisis around my brand' },
 ];
 
 const ANALYZE_PROMPTS = [
@@ -170,11 +170,11 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
       <div className="flex flex-col items-center mb-10">
         <Logo size="lg" showText={false} />
         <h1 className="mt-3 text-2xl font-bold tracking-tight text-foreground">
-          Meet Stip
+          Veille
         </h1>
         <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
           <Sparkles className="h-4 w-4 text-primary/60" />
-          Tell me what to track - I'll collect, analyze, and report.
+          Tell me what you need done — I'll handle the rest.
         </p>
       </div>
 

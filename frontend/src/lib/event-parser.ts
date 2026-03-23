@@ -46,3 +46,10 @@ export function isStructuredPromptResult(
 ): result is Record<string, unknown> & StructuredPromptResult {
   return toolName === 'ask_user' && result?.status === 'needs_input' && Array.isArray(result?.prompts);
 }
+
+export function isTaskProtocolResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'create_task_protocol' && result?.status === 'needs_approval' && !!result?.protocol;
+}

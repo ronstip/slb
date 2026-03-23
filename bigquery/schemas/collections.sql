@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS social_listening.collections (
     session_id STRING,
     original_question STRING NOT NULL,
     config JSON NOT NULL,
+    task_id STRING,
     created_at TIMESTAMP )
 PARTITION BY DATE(created_at)
 CLUSTER BY user_id;

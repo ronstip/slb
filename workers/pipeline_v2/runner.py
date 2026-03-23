@@ -139,6 +139,13 @@ class PipelineRunner:
         # Final status
         self._set_final_status()
 
+        # Check if this collection is part of a task — trigger continuation if all done
+        try:
+            from workers.task_continuation import check_task_completion
+            check_task_completion(self.collection_id)
+        except Exception:
+            logger.exception("Task continuation check failed for %s", self.collection_id)
+
         # Cleanup post states (transient data)
         try:
             self.state_manager.cleanup_post_states()

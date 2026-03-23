@@ -15,6 +15,7 @@ import {
   isChartResult,
   isReportResult,
   isDashboardResult,
+  isTaskProtocolResult,
 } from './event-parser.ts';
 
 /** Tools that produce thinking entries (mirrors THINKING_TOOLS in main.py). */
@@ -198,6 +199,8 @@ export function reconstructSession(
             collectionNames: result.collection_names as Record<string, string>,
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
+        } else if (isTaskProtocolResult(toolName, result)) {
+          msg.cards.push({ type: 'task_protocol', data: result });
         }
         continue;
       }

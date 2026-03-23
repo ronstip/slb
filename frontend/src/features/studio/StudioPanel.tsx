@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles, Presentation, BarChart3, Mail } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.ts';
-import { useStudioStore } from '../../stores/studio-store.ts';
+import { useStudioStore, type StudioTab } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { FeedTab } from './FeedTab.tsx';
 import { ArtifactsTab } from './ArtifactsTab.tsx';
+import { ProtocolView } from './ProtocolView.tsx';
 import { ChartDialog } from './ChartDialog.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs.tsx';
@@ -20,6 +21,7 @@ export function StudioPanel() {
   const toggle = useUIStore((s) => s.toggleStudioPanel);
   const activeTab = useStudioStore((s) => s.activeTab);
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
+  const hasProtocol = useStudioStore((s) => !!s.protocolContent);
   const { sendMessage } = useSSEChat();
   const [chartOpen, setChartOpen] = useState(false);
 
@@ -79,10 +81,13 @@ export function StudioPanel() {
       {!collapsed && (
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'feed' | 'artifacts')} className="flex flex-1 flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as StudioTab)} className="flex flex-1 flex-col overflow-hidden">
             <TabsList className="w-full">
               <TabsTrigger value="feed" className="data-[state=active]:bg-white">Feed</TabsTrigger>
               <TabsTrigger value="artifacts" className="data-[state=active]:bg-white">Artifacts</TabsTrigger>
+              {hasProtocol && (
+                <TabsTrigger value="protocol" className="data-[state=active]:bg-white">Protocol</TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="feed" className="overflow-y-auto">
@@ -91,6 +96,11 @@ export function StudioPanel() {
             <TabsContent value="artifacts" className="overflow-y-auto">
               <ArtifactsTab />
             </TabsContent>
+            {hasProtocol && (
+              <TabsContent value="protocol" className="overflow-y-auto">
+                <ProtocolView />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       )}

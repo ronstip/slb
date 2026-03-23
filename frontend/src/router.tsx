@@ -7,6 +7,7 @@ import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
 import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
 import { StandaloneArtifactPage } from './features/artifacts/StandaloneArtifactPage.tsx';
+import { TasksPage } from './features/tasks/TasksPage.tsx';
 
 // Wrapper for invite handler to extract code from params
 function InviteRoute() {
@@ -47,6 +48,10 @@ export const router = createBrowserRouter([
       {
         path: '/artifact/:artifactId',
         element: <StandaloneArtifactPage />,
+      },
+      {
+        path: '/tasks',
+        element: <TasksPage />,
       },
       {
         path: '/session/:sessionId',
