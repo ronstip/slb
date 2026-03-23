@@ -145,6 +145,7 @@ class PipelineRunner:
         except Exception:
             logger.exception("Failed to cleanup post states for %s", self.collection_id)
 
+
         logger.info(
             "━━━ Pipeline V2 DONE %s — total=%.1fs ━━━",
             self.collection_id,

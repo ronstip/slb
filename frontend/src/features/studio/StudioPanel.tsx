@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles, Presentation, BarChart3 } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles, Presentation, BarChart3, Mail } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
@@ -61,6 +61,10 @@ export function StudioPanel() {
                 <DropdownMenuItem onClick={() => setChartOpen(true)}>
                   <BarChart3 className="mr-2 h-3.5 w-3.5" />
                   Chart
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => sendMessage('Send me an email summary of the key findings for the selected sources. Ask me for my email address first.')}>
+                  <Mail className="mr-2 h-3.5 w-3.5" />
+                  Send Email
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled>
                   <Presentation className="mr-2 h-3.5 w-3.5" />

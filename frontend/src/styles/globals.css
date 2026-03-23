@@ -180,7 +180,7 @@
 
 /* Paragraphs */
 .agent-prose p {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .agent-prose p:last-child {
   margin-bottom: 0;
@@ -188,29 +188,29 @@
 
 /* Headings */
 .agent-prose h1 {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--foreground);
+  margin-top: 36px;
+  margin-bottom: 16px;
+}
+.agent-prose h2 {
+  font-size: 22px;
+  font-weight: 650;
   line-height: 1.3;
+  letter-spacing: -0.01em;
   color: var(--foreground);
   margin-top: 32px;
   margin-bottom: 12px;
 }
-.agent-prose h2 {
-  font-size: 17px;
+.agent-prose h3 {
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.35;
-  letter-spacing: -0.01em;
   color: var(--foreground);
-  margin-top: 28px;
-  margin-bottom: 8px;
-}
-.agent-prose h3 {
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--foreground);
-  margin-top: 20px;
-  margin-bottom: 6px;
+  margin-top: 24px;
+  margin-bottom: 10px;
 }
 .agent-prose > h1:first-child,
 .agent-prose > h2:first-child,
@@ -222,12 +222,12 @@
 .agent-prose ul {
   padding-inline-start: 1.25em;
   list-style-type: disc;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .agent-prose ol {
   padding-inline-start: 1.25em;
   list-style-type: decimal;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .agent-prose ul ul {
   list-style-type: circle;
@@ -239,7 +239,7 @@
   margin-bottom: 0;
 }
 .agent-prose li + li {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .agent-prose li > ul,
 .agent-prose li > ol {

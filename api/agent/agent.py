@@ -24,6 +24,7 @@ from api.agent.prompts.meta_agent import (
 )
 from api.agent.tools.ask_user import ask_user
 from api.agent.tools.cancel_collection import cancel_collection
+from api.agent.tools.compose_email import compose_email
 from api.agent.tools.create_chart import create_chart
 from api.agent.tools.design_research import design_research
 from api.agent.tools.enrich_collection import enrich_collection
@@ -75,6 +76,7 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         # Output & visualization
         create_chart,
         export_data,
+        compose_email,
         get_collection_stats,
         generate_report,
         generate_dashboard,

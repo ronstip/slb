@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # Super admin — comma-separated emails with platform-wide admin access
     super_admin_emails: str = ""
 
+    # Email notifications (SendGrid)
+    sendgrid_api_key: str = ""
+    sendgrid_from_email: str = "ronnstip@gmail.com"
+    sendgrid_from_name: str = "SLB"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     def model_post_init(self, __context) -> None:

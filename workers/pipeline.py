@@ -346,3 +346,4 @@ def run_pipeline(collection_id: str) -> None:
                     _time.monotonic() - t0, result.get("topics_count", 0))
     except Exception:
         logger.exception("Topic clustering failed for %s", collection_id)
+
