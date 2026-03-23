@@ -9,6 +9,7 @@ interface TopicsSectionCardProps {
 }
 
 const INITIAL_COUNT = 5;
+const MIN_POSTS_PER_TOPIC = 5;
 
 export function TopicsSectionCard({ data }: TopicsSectionCardProps) {
   const collectionId = data.collection_id as string;
@@ -34,8 +35,16 @@ export function TopicsSectionCard({ data }: TopicsSectionCardProps) {
 
   if (!topics || topics.length === 0) return null;
 
-  const visible = showAll ? topics : topics.slice(0, INITIAL_COUNT);
-  const hasMore = topics.length > INITIAL_COUNT;
+  const filtered = topics.filter((t) => (t.post_count ?? 0) >= MIN_POSTS_PER_TOPIC);
+  if (filtered.length === 0) return null;
+
+  const sorted = [...filtered].sort((a, b) => {
+    const va = (a.total_views && a.post_count) ? a.total_views / a.post_count : 0;
+    const vb = (b.total_views && b.post_count) ? b.total_views / b.post_count : 0;
+    return vb - va;
+  });
+  const visible = showAll ? sorted : sorted.slice(0, INITIAL_COUNT);
+  const hasMore = sorted.length > INITIAL_COUNT;
 
   return (
     <div className="mt-3 space-y-2">
@@ -50,7 +59,7 @@ export function TopicsSectionCard({ data }: TopicsSectionCardProps) {
           {showAll ? (
             <>Show less <ChevronUp className="h-3 w-3" /></>
           ) : (
-            <>Show {topics.length - INITIAL_COUNT} more topics <ChevronDown className="h-3 w-3" /></>
+            <>Show {sorted.length - INITIAL_COUNT} more topics <ChevronDown className="h-3 w-3" /></>
           )}
         </button>
       )}

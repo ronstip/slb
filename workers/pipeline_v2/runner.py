@@ -35,6 +35,7 @@ from workers.shared.gcs_client import GCSClient
 logger = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_FAILURES = 3
+PIPELINE_LOOP_TIMEOUT = 3600  # 1 hour max for the processing loop
 
 
 class PipelineRunner:
@@ -56,10 +57,27 @@ class PipelineRunner:
         self._total_posts_collected = 0
 
     def run(self) -> None:
-        """Main entry point — runs the full pipeline."""
+        """Main entry point — runs the full pipeline.
+
+        Wraps the entire pipeline in a try/except so that any crash
+        (unhandled exception, transient error, etc.) always results in
+        a final status update rather than leaving the collection stuck
+        at 'processing' forever.
+        """
         logger.info("━━━ Pipeline V2 START %s ━━━", self.collection_id)
         pipeline_start = _time.monotonic()
+        try:
+            self._run_pipeline(pipeline_start)
+        except Exception as e:
+            elapsed = round(_time.monotonic() - pipeline_start, 1)
+            logger.exception(
+                "━━━ Pipeline V2 CRASHED %s after %.1fs ━━━",
+                self.collection_id, elapsed,
+            )
+            self._set_crashed_status(str(e))
 
+    def _run_pipeline(self, pipeline_start: float) -> None:
+        """Inner pipeline logic — called by run() inside try/except."""
         # Load config
         self._load_config()
         self._load_custom_fields()
@@ -339,26 +357,47 @@ class PipelineRunner:
     # ------------------------------------------------------------------
 
     def _run_loop(self, ctx: StepContext) -> None:
-        """Process posts through DAG steps until all terminal."""
+        """Process posts through DAG steps until all terminal or timeout."""
         logger.info("── Processing loop started for %s", self.collection_id)
+        loop_start = _time.monotonic()
 
         while True:
-            # Check cancellation
-            status = self.fs.get_collection_status(self.collection_id)
+            # Check timeout
+            elapsed = _time.monotonic() - loop_start
+            if elapsed > PIPELINE_LOOP_TIMEOUT:
+                logger.error(
+                    "Processing loop timed out for %s after %.0fs", self.collection_id, elapsed
+                )
+                break
+
+            # Check cancellation / failure (with resilience to transient Firestore errors)
+            try:
+                status = self.fs.get_collection_status(self.collection_id)
+            except Exception:
+                logger.warning("Transient error reading status for %s, continuing", self.collection_id, exc_info=True)
+                status = None
+
             if status and status.get("status") == "cancelled":
                 logger.info("Pipeline %s cancelled during processing", self.collection_id)
                 return
 
-            # Check if collection failed during crawl (0 posts)
             if status and status.get("status") == "failed":
                 logger.info("Pipeline %s failed during crawl, stopping loop", self.collection_id)
                 return
 
             any_work = False
             for step in PIPELINE_STEPS:
-                ready = self.state_manager.get_posts_by_state(
-                    step.input_states, limit=step.batch_size
-                )
+                try:
+                    ready = self.state_manager.get_posts_by_state(
+                        step.input_states, limit=step.batch_size
+                    )
+                except Exception:
+                    logger.warning(
+                        "Transient error querying state for step '%s' in %s, skipping iteration",
+                        step.name, self.collection_id, exc_info=True,
+                    )
+                    continue
+
                 if not ready:
                     continue
 
@@ -383,7 +422,15 @@ class PipelineRunner:
                     if extra and "media_refs" in extra:
                         media_refs[post_id] = extra["media_refs"]
 
-                self.state_manager.transition_batch(transitions, media_refs=media_refs)
+                try:
+                    self.state_manager.transition_batch(transitions, media_refs=media_refs)
+                except Exception:
+                    logger.exception(
+                        "Failed to transition %d posts for step '%s' in %s",
+                        len(transitions), step.name, self.collection_id,
+                    )
+                    # Don't crash the loop — posts will be re-picked up next iteration
+                    continue
 
                 # After download step, persist GCS URIs back to BQ (background — don't block loop)
                 if step.name == "download" and media_refs:
@@ -446,6 +493,32 @@ class PipelineRunner:
                         "media_refs BQ update failed: %s", err_str[:200]
                     )
                     return
+
+    # ------------------------------------------------------------------
+    # Crash recovery
+    # ------------------------------------------------------------------
+
+    def _set_crashed_status(self, error: str) -> None:
+        """Set status to failed after an unhandled crash.
+
+        Best-effort — if even this fails, we log and give up.
+        """
+        try:
+            # Reconcile counters so the UI shows accurate numbers
+            self.state_manager.recount()
+        except Exception:
+            logger.warning("Could not recount after crash for %s", self.collection_id)
+
+        try:
+            self.fs.update_collection_status(
+                self.collection_id,
+                status="failed",
+                error_message=f"Pipeline crashed: {error[:500]}",
+            )
+        except Exception:
+            logger.exception(
+                "CRITICAL: Could not update status after crash for %s", self.collection_id
+            )
 
     # ------------------------------------------------------------------
     # Collection gates

@@ -128,6 +128,51 @@ class FirestoreClient:
             logger.warning("Failed to query due ongoing collections: %s", e)
             return []
 
+    def get_stale_pipelines(self, max_age_minutes: int = 60) -> list[dict]:
+        """Find collections stuck in 'collecting' or 'processing' past max_age_minutes.
+
+        These are likely orphaned by a process crash. Returns list of dicts
+        with collection_id and current status.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+        stale = []
+        for status_val in ("collecting", "processing"):
+            try:
+                docs = (
+                    self._db.collection("collection_status")
+                    .where("status", "==", status_val)
+                    .stream()
+                )
+                for doc in docs:
+                    data = doc.to_dict()
+                    updated_at = data.get("updated_at")
+                    if updated_at and hasattr(updated_at, "timestamp"):
+                        if updated_at.replace(tzinfo=timezone.utc) < cutoff:
+                            stale.append({
+                                "collection_id": doc.id,
+                                "status": status_val,
+                                "updated_at": updated_at.isoformat(),
+                            })
+                    elif updated_at and isinstance(updated_at, str):
+                        from datetime import datetime as dt
+                        try:
+                            ts = dt.fromisoformat(updated_at)
+                            if ts.tzinfo is None:
+                                ts = ts.replace(tzinfo=timezone.utc)
+                            if ts < cutoff:
+                                stale.append({
+                                    "collection_id": doc.id,
+                                    "status": status_val,
+                                    "updated_at": updated_at,
+                                })
+                        except ValueError:
+                            pass
+            except Exception:
+                logger.warning("Failed to query stale pipelines for status=%s", status_val, exc_info=True)
+        return stale
+
     def claim_for_run(self, collection_id: str) -> bool:
         """Atomically claim a monitoring collection for execution.
 

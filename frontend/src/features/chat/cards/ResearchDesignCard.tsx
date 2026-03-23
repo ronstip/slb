@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Play, Edit2, ChevronDown, ChevronUp, Search, Loader2 } from 'lucide-react';
-import type { DesignResearchResult, CreateCollectionRequest } from '../../../api/types.ts';
+import type { DesignResearchResult, CreateCollectionRequest, CollectionConfig } from '../../../api/types.ts';
 import { PLATFORM_LABELS } from '../../../lib/constants.ts';
 import { createCollection } from '../../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
@@ -20,18 +20,33 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [localConfig, setLocalConfig] = useState<CollectionConfig>(data.config);
   const formContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleUpdate = (config: CollectionConfig) => {
+    setLocalConfig(config);
+    setFormVisible(false);
+  };
 
   const addSource = useSourcesStore((s) => s.addSource);
 
   const submitted = submitting || !!collectionId;
+
+  const timeRangeDays = Math.max(1, Math.round(
+    (new Date(localConfig.time_range.end).getTime() - new Date(localConfig.time_range.start).getTime()) / 86_400_000,
+  ));
+  const timeRangeLabel = timeRangeDays === 1 ? '24 hours'
+    : timeRangeDays <= 7 ? `${timeRangeDays} days`
+    : timeRangeDays <= 30 ? `${Math.round(timeRangeDays / 7)} weeks`
+    : timeRangeDays <= 365 ? `${Math.round(timeRangeDays / 30)} months`
+    : `${Math.round(timeRangeDays / 365)} years`;
 
   const handleDirectStart = async () => {
     if (submitting) return;
     setSubmitting(true);
     setError(null);
     try {
-      const cfg = data.config;
+      const cfg = localConfig;
       const timeRangeDays = Math.max(1, Math.round(
         (new Date(cfg.time_range.end).getTime() - new Date(cfg.time_range.start).getTime()) / 86_400_000,
       ));
@@ -97,13 +112,13 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
           <h4 className="shrink-0 text-[13px] font-semibold text-foreground">Research Design</h4>
 
           <div className="flex items-center gap-1.5">
-            {data.summary.platforms.map((p) => (
+            {localConfig.platforms.map((p) => (
               <PlatformIcon key={p} platform={p} className="h-3.5 w-3.5" />
             ))}
           </div>
 
           <span className="hidden truncate text-[11px] text-muted-foreground sm:block">
-            {data.summary.estimated_posts} posts · {data.summary.time_range}
+            {data.summary.estimated_posts} posts · {timeRangeLabel}
           </span>
         </div>
 
@@ -139,10 +154,10 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
       {/* ── Collapsable config details ── */}
       {detailsOpen && (
         <div className="border-t border-border/30 px-3 py-2 space-y-2">
-          {data.summary.keywords.length > 0 && (
+          {localConfig.keywords.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground/60 mr-1">Keywords</span>
-              {data.summary.keywords.map((kw) => (
+              {localConfig.keywords.map((kw) => (
                 <Badge key={kw} variant="outline" className="text-[11px] font-normal text-muted-foreground">
                   {kw}
                 </Badge>
@@ -151,7 +166,7 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
           )}
 
           <div className="flex flex-wrap items-center gap-3">
-            {data.summary.platforms.map((p) => (
+            {localConfig.platforms.map((p) => (
               <span key={p} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <PlatformIcon platform={p} className="h-3 w-3" />
                 {PLATFORM_LABELS[p] || p}
@@ -162,7 +177,7 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
           <div className="grid grid-cols-3 gap-3 rounded-md bg-muted/40 px-2.5 py-1.5">
             <div>
               <p className="text-[10px] text-muted-foreground/60">Time range</p>
-              <p className="text-[12px] font-medium text-foreground">{data.summary.time_range}</p>
+              <p className="text-[12px] font-medium text-foreground">{timeRangeLabel}</p>
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground/60">Est. posts</p>
@@ -174,11 +189,11 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
             </div>
           </div>
 
-          {data.config.custom_fields && data.config.custom_fields.length > 0 && (
+          {localConfig.custom_fields && localConfig.custom_fields.length > 0 && (
             <div>
               <span className="text-[11px] text-muted-foreground/60">Custom enrichment</span>
               <div className="mt-1 flex flex-wrap gap-1.5">
-                {data.config.custom_fields.map((f) => (
+                {localConfig.custom_fields!.map((f) => (
                   <Badge key={f.name} variant="outline" className="text-[11px] font-normal text-muted-foreground" title={f.description}>
                     {f.name}
                   </Badge>
@@ -202,10 +217,11 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
       {formVisible && !submitted && (
         <div ref={formContainerRef} className="border-t border-border/30">
           <CollectionForm
-            prefill={data.config}
+            prefill={localConfig}
             onClose={() => setFormVisible(false)}
             variant="inline"
             suppressSystemMessage
+            onUpdate={handleUpdate}
             onSubmitStart={() => {
               setFormVisible(false);
               setSubmitting(true);
