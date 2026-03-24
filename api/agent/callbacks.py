@@ -324,13 +324,28 @@ def _build_context_block(state: dict) -> Optional[str]:
             "Focus entirely on the user's current request."
         )
 
-    # ── Task Library ────────────────────────────────────────────────
+    # ── Context isolation fence ──────────────────────────────────
     tasks_index: list[dict] = state.get("user_tasks_index", [])[:5]
+    collections_index_peek: list[dict] = state.get("user_collections_index", [])[:5]
+    if tasks_index or collections_index_peek:
+        blocks.append(
+            "## CONTEXT ISOLATION\n"
+            "The libraries below are REFERENCE ONLY for when the user explicitly "
+            "asks about past work. They have ZERO relevance to the current request. "
+            "When creating a new task, derive ALL keywords, titles, and protocols "
+            "exclusively from the user's CURRENT message and your web research. "
+            "NEVER reuse titles, keywords, or themes from past tasks or collections."
+        )
+
+    # ── Task Library ────────────────────────────────────────────────
+    is_new_task_flow = not active_task_id
     if tasks_index:
         lines = ["## Task Library"]
         for t in tasks_index:
+            # Redact titles when in new-task flow to prevent contamination
+            title_display = "[past task]" if is_new_task_flow else t.get("title", "untitled")
             lines.append(
-                f"- `{t.get('task_id', '?')}` | {t.get('title', 'untitled')} "
+                f"- `{t.get('task_id', '?')}` | {title_display} "
                 f"| {t.get('status', '?')} | {t.get('task_type', '?')} "
                 f"| {t.get('created_at', '?')[:10] if t.get('created_at') else '?'}"
             )
@@ -436,12 +451,10 @@ def _build_context_block(state: dict) -> Optional[str]:
                 f"| {c.get('status', '?')} | {platforms_str} "
                 f"| {c.get('posts', 0)} posts | {c.get('created', '?')}{own_marker}"
             )
-            kw = c.get("keywords", [])
-            if kw:
-                lines.append(f"  Keywords: {', '.join(kw)}")
-            channels = c.get("channels", [])
-            if channels:
-                lines.append(f"  Channels: {', '.join(channels)}")
+            # Keywords and channels intentionally omitted to prevent
+            # past collection context from contaminating new task creation.
+            # Agent can call get_collection_details() when user explicitly
+            # references a past collection.
         lines.append("")
         lines.append(
             "Only reference these if the user EXPLICITLY asks about a past collection "
@@ -557,17 +570,17 @@ def inject_collection_context(
     if context_block:
         existing = llm_request.config.system_instruction or ""
         if isinstance(existing, str):
-            llm_request.config.system_instruction = context_block + "\n\n" + existing
+            llm_request.config.system_instruction = existing + "\n\n" + context_block
         else:
-            # system_instruction could be a Content object — prepend as text
+            # system_instruction could be a Content object — append as text
             from google.genai import types
 
             context_part = types.Part.from_text(text=context_block)
             if hasattr(existing, "parts"):
-                existing.parts.insert(0, context_part)
+                existing.parts.append(context_part)
             else:
                 llm_request.config.system_instruction = (
-                    context_block + "\n\n" + str(existing)
+                    str(existing) + "\n\n" + context_block
                 )
 
     # ── Anti-repetition for ReAct continuations ──────────────────

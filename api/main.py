@@ -338,11 +338,9 @@ def _build_user_context(user_id: str, org_id: str) -> dict:
                 channels = []
             index.append({
                 "id": c.get("collection_id"),
-                "label": c.get("original_question") or ", ".join(kw[:3]) or "untitled",
+                "label": c.get("original_question") or (kw[0] if kw else "untitled"),
                 "status": c.get("status", "unknown"),
                 "platforms": platforms,
-                "keywords": kw[:10],
-                "channels": channels[:5],
                 "posts": c.get("posts_collected", 0),
                 "created": (c.get("created_at") or "")[:10],
                 "own": c.get("is_own", True),
@@ -507,8 +505,8 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             session.state.pop(key, None)
 
     # Window conversation history to prevent old context from overwhelming new requests.
-    # 40 events ≈ 3-4 complete task flows (ask_user → response → create_protocol → approve).
-    MAX_RECENT_EVENTS = 40
+    # 20 events ≈ 1-2 complete task flows (ask_user → response → create_protocol → approve).
+    MAX_RECENT_EVENTS = 20
     if len(session.events) > MAX_RECENT_EVENTS:
         session.events = session.events[-MAX_RECENT_EVENTS:]
 
