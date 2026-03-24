@@ -496,19 +496,42 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         # Update selected_sources in session state
         if chat_request.selected_sources is not None:
             session.state["selected_sources"] = chat_request.selected_sources
-        # Clear active task context to prevent old task from biasing new requests.
-        # The agent can re-establish context from conversation history or Task Library.
-        for key in (
-            "active_task_id", "active_task_title", "active_task_status",
-            "active_task_protocol", "active_task_type", "active_task_context_summary",
-        ):
-            session.state.pop(key, None)
 
-    # Window conversation history to prevent old context from overwhelming new requests.
-    # 20 events ≈ 1-2 complete task flows (ask_user → response → create_protocol → approve).
-    MAX_RECENT_EVENTS = 20
-    if len(session.events) > MAX_RECENT_EVENTS:
-        session.events = session.events[-MAX_RECENT_EVENTS:]
+        # Detect whether this message is a response to an ask_user prompt.
+        # If so, preserve the agent's working state (todos, task context, etc.)
+        # so the multi-step flow isn't destroyed mid-conversation.
+        is_ask_user_response = session.state.get("awaiting_user_input", False)
+
+        if not is_ask_user_response:
+            # Clear prior-task state to prevent context leakage between tasks.
+            # The agent re-establishes context from the user's current message.
+            for key in (
+                "active_task_id", "active_task_title", "active_task_status",
+                "active_task_protocol", "active_task_type", "active_task_context_summary",
+                "todos", "tool_result_history",
+                "active_collection_id", "agent_selected_sources",
+                "collection_status", "collection_running",
+                "posts_collected", "posts_enriched", "posts_embedded",
+                "autonomous_mode",
+            ):
+                session.state.pop(key, None)
+
+    # Window conversation history by user-message boundaries to prevent
+    # prior task context from contaminating new requests.  Keep events from
+    # the last N user messages (each user message spawns ~5-10 tool/model
+    # events).  This isolates task flows far better than a raw event count.
+    # Use a wider window when the agent is mid-flow (ask_user round-trips
+    # can span 3-4 user turns: original request, ask_user response(s), approval).
+    is_mid_flow = session.state.get("awaiting_user_input", False) or session.state.get("active_task_id")
+    MAX_USER_TURNS = 6 if is_mid_flow else 4
+    if session.events:
+        user_turn_starts: list[int] = [
+            i for i, e in enumerate(session.events)
+            if e.content and e.content.role == "user"
+        ]
+        if len(user_turn_starts) > MAX_USER_TURNS:
+            cutoff = user_turn_starts[-MAX_USER_TURNS]
+            session.events = session.events[cutoff:]
 
     logger.info("PERF session_init=%.3fs events=%d", _time.perf_counter() - t0, len(session.events))
 
@@ -1390,15 +1413,13 @@ async def create_task_endpoint(
 
     task = create_task(
         user_id=user.uid,
-        seed=request.get("seed", ""),
         title=request.get("title", "Untitled Task"),
         task_type=request.get("task_type", "one_shot"),
-        protocol=request.get("protocol", ""),
         data_scope=request.get("data_scope"),
         schedule=request.get("schedule"),
         org_id=user.org_id,
         session_id=request.get("session_id"),
-        status=request.get("status", "seed"),
+        status=request.get("status", "approved"),
     )
     return task
 
@@ -1448,12 +1469,14 @@ async def approve_task_protocol(
     request: dict,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Approve a task protocol — creates the task and optionally starts collections."""
+    """Approve a task — creates the task and optionally starts collections.
+
+    Legacy endpoint kept for backwards compat. New flow uses start_task tool directly.
+    """
     from api.services.task_service import create_task, dispatch_task_run, update_task
     from api.services.collection_service import _compute_next_run_at
 
     title = request.get("title", "Untitled Task")
-    protocol = request.get("protocol", "")
     task_type = request.get("task_type", "one_shot")
     data_scope = request.get("data_scope", {})
     schedule = request.get("schedule")
@@ -1463,10 +1486,8 @@ async def approve_task_protocol(
     # Create the task
     task = create_task(
         user_id=user.uid,
-        seed=protocol[:200],  # First 200 chars as seed
         title=title,
         task_type=task_type,
-        protocol=protocol,
         data_scope=data_scope,
         schedule=schedule,
         org_id=user.org_id,

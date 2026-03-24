@@ -15,7 +15,7 @@ import {
   isChartResult,
   isReportResult,
   isDashboardResult,
-  isTaskProtocolResult,
+  isStartTaskResult,
   isTodoResult,
 } from './event-parser.ts';
 
@@ -25,7 +25,7 @@ const THINKING_TOOLS = new Set([
   'google_search', 'design_research', 'start_collection',
   'get_progress', 'enrich_collection', 'get_collection_details',
   'create_chart', 'generate_report', 'generate_dashboard',
-  'export_data', 'create_task_protocol', 'get_task_status',
+  'export_data', 'start_task', 'get_task_status',
   'set_active_task', 'refresh_engagements', 'cancel_collection',
   'compose_email', 'send_email',
 ]);
@@ -61,9 +61,9 @@ function buildThinkingFromCall(toolName: string, args: Record<string, unknown>):
     const title = (args.title ?? '') as string;
     return title ? `Building dashboard: *${title.slice(0, 60)}*` : 'Building interactive dashboard...';
   }
-  if (toolName === 'create_task_protocol') {
+  if (toolName === 'start_task') {
     const title = (args.title ?? '') as string;
-    return title ? `Writing task protocol: *${title.slice(0, 60)}*` : 'Writing task protocol...';
+    return title ? `Starting task: *${title.slice(0, 60)}*` : 'Starting task...';
   }
   // Generic fallback for other thinking tools
   return getToolDisplayText(toolName);
@@ -81,7 +81,7 @@ const TOOL_RESULT_MESSAGES: Record<string, string> = {
   generate_report: 'Report generated',
   generate_dashboard: 'Dashboard built',
   export_data: 'Data exported',
-  create_task_protocol: 'Task protocol ready',
+  start_task: 'Task started',
   get_task_status: 'Task status retrieved',
   set_active_task: 'Task context loaded',
   refresh_engagements: 'Engagements refreshed',
@@ -252,8 +252,9 @@ export function reconstructSession(
             collectionNames: result.collection_names as Record<string, string>,
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
-        } else if (isTaskProtocolResult(toolName, result)) {
-          msg.cards.push({ type: 'task_protocol', data: result });
+        } else if (isStartTaskResult(toolName, result)) {
+          // start_task doesn't produce a card — it's an action, not a UI element.
+          // Collections were already added to sources during the live session.
         } else if (isTodoResult(toolName, result)) {
           // Keep only the latest todo card per message
           const existingIdx = msg.cards.findIndex((c) => c.type === 'todo');

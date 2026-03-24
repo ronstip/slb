@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Tools listed first in the schema are naturally favoured by the model.
 
 PLANNING_TOOLS = {"update_todos"}
-TASK_TOOLS = {"create_task_protocol", "get_task_status", "set_active_task"}
+TASK_TOOLS = {"start_task", "get_task_status", "set_active_task"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
 RESEARCH_DESIGN_TOOLS: set[str] = set()  # design_research removed (internal only)
@@ -70,9 +70,10 @@ def _summarize_tool_result(tool_name: str, tool_response: dict) -> str | None:
     if tool_name == "execute_sql":
         # ADK BigQuery tool returns results differently
         return None  # Handled by model's own context
-    elif tool_name == "create_task_protocol":
+    elif tool_name == "start_task":
         title = tool_response.get("title", "?")
-        return f"create_task_protocol: \"{title}\" ready for user approval"
+        n = len(tool_response.get("collection_ids", []))
+        return f"start_task: \"{title}\" started — {n} collection(s) dispatched"
     elif tool_name == "get_task_status":
         title = tool_response.get("title", "?")
         ts = tool_response.get("task_status", "?")
@@ -162,20 +163,14 @@ def collection_state_tracker(
     elif tool_name == "update_todos":
         pass  # State updated inside the tool
 
-    elif tool_name == "create_task_protocol":
-        if isinstance(tool_response, dict) and tool_response.get("status") == "needs_approval":
-            # Signal the before_model_callback to stop the ReAct loop.
-            # The user must approve/edit/reject before the agent continues.
-            tool_context.state["awaiting_user_input"] = True
-            # Clear previous active task context — we're creating a new task.
-            # Without this, the old task's context bleeds into the system
-            # instruction and biases the model toward the previous protocol.
-            for key in (
-                "active_task_id", "active_task_title", "active_task_status",
-                "active_task_protocol", "active_task_type", "active_task_context_summary",
-            ):
-                if key in tool_context.state:
-                    del tool_context.state[key]
+    elif tool_name == "start_task":
+        if isinstance(tool_response, dict) and tool_response.get("status") == "success":
+            tool_context.state["active_task_id"] = tool_response.get("task_id")
+            tool_context.state["collection_running"] = True
+            cids = tool_response.get("collection_ids", [])
+            if cids:
+                tool_context.state["active_collection_id"] = cids[0]
+                tool_context.state["agent_selected_sources"] = cids
 
     elif tool_name == "set_active_task":
         if isinstance(tool_response, dict) and tool_response.get("status") == "success":
@@ -186,16 +181,6 @@ def collection_state_tracker(
         # The user must respond before the agent continues.
         if isinstance(tool_response, dict) and tool_response.get("status") == "needs_input":
             tool_context.state["awaiting_user_input"] = True
-            # Clear active task context when asking user questions for a new
-            # task setup (platforms, time range, etc.). This prevents the
-            # previous task's context from biasing the next create_task_protocol
-            # call. The ask_user tool is the first step in a new task flow.
-            for key in (
-                "active_task_id", "active_task_title", "active_task_status",
-                "active_task_protocol", "active_task_type", "active_task_context_summary",
-            ):
-                if key in tool_context.state:
-                    del tool_context.state[key]
 
     return None
 
@@ -481,15 +466,13 @@ def _build_context_block(state: dict) -> Optional[str]:
         for c in collections_index:
             platforms_str = ", ".join(c.get("platforms", []))
             own_marker = "" if c.get("own", True) else " [shared]"
+            # Redact labels in new-task flow to prevent topic contamination
+            label_display = "[past collection]" if is_new_task_flow else c.get("label", "untitled")
             lines.append(
-                f"- `{c['id']}` | {c.get('label', 'untitled')} "
+                f"- `{c['id']}` | {label_display} "
                 f"| {c.get('status', '?')} | {platforms_str} "
                 f"| {c.get('posts', 0)} posts | {c.get('created', '?')}{own_marker}"
             )
-            # Keywords and channels intentionally omitted to prevent
-            # past collection context from contaminating new task creation.
-            # Agent can call get_collection_details() when user explicitly
-            # references a past collection.
         lines.append("")
         lines.append(
             "Only reference these if the user EXPLICITLY asks about a past collection "

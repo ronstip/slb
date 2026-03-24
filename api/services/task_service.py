@@ -14,15 +14,14 @@ logger = logging.getLogger(__name__)
 
 def create_task(
     user_id: str,
-    seed: str,
     title: str,
     task_type: str = "one_shot",
-    protocol: str = "",
     data_scope: dict | None = None,
     schedule: dict | None = None,
     org_id: str | None = None,
     session_id: str | None = None,
-    status: str = "seed",
+    todos: list | None = None,
+    status: str = "approved",
 ) -> dict:
     """Create a new task in Firestore and BigQuery. Returns the task dict."""
     fs = get_fs()
@@ -35,19 +34,14 @@ def create_task(
         "user_id": user_id,
         "org_id": org_id,
         "title": title,
-        "seed": seed,
         "task_type": task_type,
         "status": status,
-        "protocol": protocol,
         "data_scope": data_scope or {},
         "schedule": schedule,
+        "todos": todos or [],
         "collection_ids": [],
         "artifact_ids": [],
-        "session_ids": [session_id] if session_id else [],
-        "primary_session_id": session_id or "",
-        "run_count": 0,
-        "run_history": [],
-        "context_summary": "",
+        "session_id": session_id or "",
     }
 
     # Firestore (real-time state)
@@ -62,8 +56,6 @@ def create_task(
                 "user_id": user_id,
                 "org_id": org_id,
                 "title": title,
-                "seed": seed,
-                "protocol": protocol,
                 "data_scope": json.dumps(data_scope) if data_scope else None,
                 "status": status,
                 "task_type": task_type,
@@ -111,7 +103,7 @@ def dispatch_task_run(task_id: str, task: dict) -> list[str]:
     schedule = task.get("schedule") or {}
     user_id = task.get("user_id", "")
     org_id = task.get("org_id")
-    session_id = task.get("primary_session_id", "")
+    session_id = task.get("session_id") or task.get("primary_session_id", "")
     title = task.get("title", "")
     task_type = task.get("task_type", "one_shot")
 

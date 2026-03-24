@@ -7,7 +7,7 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isTaskProtocolResult, isTodoResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 export function useSSEChat() {
@@ -274,10 +274,17 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
-              } else if (isTaskProtocolResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'task_protocol',
-                  data: result,
+              } else if (isStartTaskResult(toolName, result)) {
+                // Task started — add collections to sources
+                const cids = result.collection_ids as string[] | undefined;
+                if (cids?.length) {
+                  for (const cid of cids) {
+                    useSourcesStore.getState().addToSession(cid);
+                  }
+                }
+                // Refresh task list
+                import('../../../stores/task-store.ts').then(({ useTaskStore }) => {
+                  useTaskStore.getState().fetchTasks();
                 });
               } else if (isTodoResult(toolName, result)) {
                 // Replace previous todo card in this message (only show latest state)

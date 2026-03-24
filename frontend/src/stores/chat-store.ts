@@ -12,6 +12,7 @@ export interface ToolIndicator {
 
 export interface MessageCard {
   type: 'research_design' | 'data_export' | 'chart' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress' | 'structured_prompt' | 'topics_section' | 'metrics_section' | 'task_protocol' | 'todo';
+  // Note: 'task_protocol' kept for backwards compat with old sessions
   data: Record<string, unknown>;
 }
 

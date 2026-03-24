@@ -11,9 +11,9 @@ def get_task_status(
 ) -> dict:
     """Get the current status and details of a task.
 
-    Returns the task's status, protocol summary, collection progress,
-    and artifact list. Use this to check on a task's progress or to
-    load context about a task before continuing work on it.
+    Returns the task's status, todos, collection progress, and artifact
+    count. Use this to check on a task's progress or to load context
+    about a task before continuing work on it.
 
     Args:
         task_id: The task ID to check.
@@ -52,11 +52,9 @@ def get_task_status(
         "title": task.get("title", ""),
         "task_status": task.get("status", "unknown"),
         "task_type": task.get("task_type", "one_shot"),
-        "protocol_preview": (task.get("protocol", "") or "")[:500],
+        "todos": task.get("todos", []),
         "collections": collection_statuses,
         "all_collections_complete": all_complete,
         "artifact_count": len(task.get("artifact_ids", [])),
-        "run_count": task.get("run_count", 0),
         "created_at": task.get("created_at"),
-        "context_summary": task.get("context_summary", ""),
     }

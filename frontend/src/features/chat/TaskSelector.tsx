@@ -15,7 +15,6 @@ const STATUS_LABELS: Record<string, string> = {
   executing: 'Running',
   monitoring: 'Monitoring',
   completed: 'Done',
-  review: 'Review',
   approved: 'Approved',
   paused: 'Paused',
 };

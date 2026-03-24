@@ -119,14 +119,13 @@ async def _async_agent_continuation(task_id: str) -> None:
         logger.error("Task %s not found for continuation", task_id)
         return
 
-    session_id = task.get("primary_session_id")
+    session_id = task.get("session_id") or task.get("primary_session_id")
     user_id = task.get("user_id", "")
     org_id = task.get("org_id")
     title = task.get("title", "")
-    protocol = task.get("protocol", "")
 
     if not session_id:
-        logger.error("Task %s has no primary_session_id", task_id)
+        logger.error("Task %s has no session_id", task_id)
         return
 
     # Build the continuation message
@@ -142,8 +141,8 @@ async def _async_agent_continuation(task_id: str) -> None:
     continuation_message = (
         f"All data collection for task \"{title}\" is complete.\n\n"
         + "\n".join(collection_summaries) + "\n\n"
-        "Proceed with the analysis and deliverables as defined in the protocol. "
-        "Generate the insight report and any other deliverables specified."
+        "Proceed with the analysis. Generate a dashboard, export the data, "
+        "and summarize key findings."
     )
 
     logger.info("Task %s: invoking agent with continuation message", task_id)
@@ -172,7 +171,6 @@ async def _async_agent_continuation(task_id: str) -> None:
     session.state["active_task_id"] = task_id
     session.state["active_task_title"] = title
     session.state["active_task_status"] = "executing"
-    session.state["active_task_protocol"] = protocol
     session.state["active_task_type"] = task.get("task_type", "one_shot")
     session.state["autonomous_mode"] = True  # Signal no ask_user
 
@@ -212,24 +210,12 @@ async def _async_agent_continuation(task_id: str) -> None:
             task_id,
             status="completed",
             completed_at=datetime.now(timezone.utc),
-            context_summary="Analysis complete. Deliverables generated.",
         )
         fs.add_task_log(task_id, "Task completed", source="continuation")
     else:
-        # Recurring — update run history, keep monitoring
-        from google.cloud.firestore_v1 import transforms
-        run_entry = {
-            "run_at": datetime.now(timezone.utc).isoformat(),
-            "summary": "Automated analysis completed",
-            "status": "completed",
-        }
-        fs.update_task(
-            task_id,
-            status="monitoring",
-            run_count=transforms.Increment(1),
-            run_history=transforms.ArrayUnion([run_entry]),
-            context_summary=f"Run completed at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
-        )
+        # Recurring — keep monitoring
+        fs.update_task(task_id, status="monitoring")
+        fs.add_task_log(task_id, "Recurring run completed", source="continuation")
 
     # Send notification email
     _notify_task_completion(task_id, task, user_id)

@@ -12,9 +12,9 @@ def set_active_task(
     """Set the active task context for the current session.
 
     This loads the task's collections into the working set and makes the
-    task's protocol and artifacts available in context. Use this when the
-    user wants to work on a specific task or when resuming work on a
-    previously created task.
+    task's artifacts available in context. Use this when the user wants
+    to work on a specific task or when resuming work on a previously
+    created task.
 
     Args:
         task_id: The task ID to activate.
@@ -41,9 +41,7 @@ def set_active_task(
         tool_context.state["active_task_id"] = task_id
         tool_context.state["active_task_title"] = task.get("title", "")
         tool_context.state["active_task_status"] = task.get("status", "")
-        tool_context.state["active_task_protocol"] = task.get("protocol", "")
         tool_context.state["active_task_type"] = task.get("task_type", "one_shot")
-        tool_context.state["active_task_context_summary"] = task.get("context_summary", "")
 
         # Set working collections from the task
         collection_ids = task.get("collection_ids", [])
@@ -64,7 +62,6 @@ def set_active_task(
         "task_type": task.get("task_type", "one_shot"),
         "collection_ids": task.get("collection_ids", []),
         "artifact_ids": task.get("artifact_ids", []),
-        "protocol_preview": (task.get("protocol", "") or "")[:500],
-        "context_summary": task.get("context_summary", ""),
+        "todos": task.get("todos", []),
         "message": f"Now working on task: **{task.get('title', 'Untitled')}**",
     }

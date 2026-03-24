@@ -4,9 +4,6 @@ import type { ArtifactListItem } from './artifacts.ts';
 // --- Types ---
 
 export type TaskStatus =
-  | 'seed'
-  | 'drafting'
-  | 'review'
   | 'approved'
   | 'executing'
   | 'completed'
@@ -33,31 +30,40 @@ export interface TaskSchedule {
   auto_report: boolean;
 }
 
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
 export interface Task {
   task_id: string;
   user_id: string;
   org_id: string | null;
   title: string;
-  seed: string;
   task_type: TaskType;
   status: TaskStatus;
-  protocol: string;
   data_scope: {
     searches: SearchDef[];
     custom_fields?: Array<{ name: string; type: string; description: string }> | null;
   };
   schedule: TaskSchedule | null;
+  todos: TodoItem[];
   collection_ids: string[];
   artifact_ids: string[];
-  session_ids: string[];
-  primary_session_id: string;
-  run_count: number;
-  run_history: Array<{ run_at: string; summary: string; status: string }>;
-  context_summary: string;
+  session_id: string;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
   next_run_at: string | null;
+  // Legacy fields (may exist on old tasks)
+  seed?: string;
+  protocol?: string;
+  session_ids?: string[];
+  primary_session_id?: string;
+  run_count?: number;
+  run_history?: Array<{ run_at: string; summary: string; status: string }>;
+  context_summary?: string;
 }
 
 // --- API Functions ---
@@ -71,10 +77,8 @@ export function getTask(taskId: string): Promise<Task> {
 }
 
 export function createTask(data: {
-  seed: string;
   title: string;
   task_type?: TaskType;
-  protocol?: string;
   data_scope?: Record<string, unknown>;
   schedule?: TaskSchedule;
   session_id?: string;
@@ -85,7 +89,7 @@ export function createTask(data: {
 
 export function updateTask(
   taskId: string,
-  updates: Partial<Pick<Task, 'title' | 'status' | 'protocol' | 'data_scope' | 'schedule' | 'task_type' | 'context_summary'>>,
+  updates: Partial<Pick<Task, 'title' | 'status' | 'data_scope' | 'schedule' | 'task_type'>>,
 ): Promise<{ ok: boolean }> {
   return apiPatch<{ ok: boolean }>(`/tasks/${taskId}`, updates);
 }

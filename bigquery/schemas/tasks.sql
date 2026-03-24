@@ -3,8 +3,6 @@ CREATE TABLE IF NOT EXISTS social_listening.tasks (
     user_id STRING NOT NULL,
     org_id STRING,
     title STRING NOT NULL,
-    seed STRING NOT NULL,
-    protocol STRING,
     data_scope JSON,
     status STRING,
     task_type STRING,

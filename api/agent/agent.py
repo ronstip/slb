@@ -2,14 +2,12 @@ import logging
 from datetime import datetime, timezone
 
 from google.adk.agents import LlmAgent
-from google.adk.agents.context_cache_config import ContextCacheConfig
 from google.adk.apps.app import App
 from google.adk.memory import InMemoryMemoryService, VertexAiMemoryBankService
 from google.adk.runners import Runner
 from google.adk.tools.bigquery import BigQueryToolset
 from google.adk.tools.bigquery.config import BigQueryToolConfig, WriteMode
 from google.adk.tools.google_search_tool import GoogleSearchTool
-from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
 from api.agent.callbacks import (
     collection_state_tracker,
@@ -26,7 +24,7 @@ from api.agent.tools.ask_user import ask_user
 from api.agent.tools.cancel_collection import cancel_collection
 from api.agent.tools.compose_email import compose_email
 from api.agent.tools.create_chart import create_chart
-from api.agent.tools.create_task_protocol import create_task_protocol
+from api.agent.tools.start_task import start_task
 from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
@@ -50,7 +48,6 @@ APP_NAME = "social_listening"
 def create_agent(model_override: str | None = None) -> LlmAgent:
     settings = get_settings()
     model_name = model_override or settings.meta_agent_model
-    memory_tool = PreloadMemoryTool()
 
     # ─── BigQuery Toolset ────────────────────────────────────────────
     bq_toolset = BigQueryToolset(
@@ -68,7 +65,7 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         # Planning
         update_todos,
         # Task management
-        create_task_protocol,
+        start_task,
         get_task_status,
         set_active_task,
         # Research & context
@@ -90,8 +87,6 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         generate_dashboard,
         # Context management
         set_working_collections,
-        # Memory
-        memory_tool,
     ]
 
     # Google Search — direct on the meta-agent for full context awareness
@@ -128,14 +123,14 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
 def create_app(model_override: str | None = None) -> App:
     """Create an App with context caching for the meta-agent."""
     agent = create_agent(model_override)
+    # Context caching disabled: the App/Runner is a singleton shared across
+    # all users. ContextCacheConfig caches the system instruction (including
+    # dynamically injected per-user context from before_model_callback) and
+    # can serve one user's context to another user's request.  Re-enable
+    # only after scoping the cache per-session or per-user.
     return App(
         name=APP_NAME,
         root_agent=agent,
-        context_cache_config=ContextCacheConfig(
-            cache_intervals=10,   # Reuse cache for 10 invocations
-            ttl_seconds=3600,     # 1 hour TTL
-            min_tokens=0,         # Attempt caching regardless of size
-        ),
     )
 
 

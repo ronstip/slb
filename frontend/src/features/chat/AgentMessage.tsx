@@ -20,7 +20,7 @@ import { DashboardCard } from './cards/DashboardCard.tsx';
 import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
 import { TopicsSectionCard } from './cards/TopicsSectionCard.tsx';
 import { MetricsSectionCard } from './cards/MetricsSectionCard.tsx';
-import { TaskProtocolCard } from './cards/TaskProtocolCard.tsx';
+// TaskProtocolCard removed — task_protocol kept for backwards compat rendering only
 import { TodoCard } from './cards/TodoCard.tsx';
 import { PromptAnsweredSummary } from './StructuredPromptPanel.tsx';
 import { useChatStore } from '../../stores/chat-store.ts';
@@ -172,7 +172,8 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
                   case 'collection_progress':
                     return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
                   case 'task_protocol':
-                    return <TaskProtocolCard key={`other-${i}`} data={card.data} onAction={onSuggestionClick} />;
+                    // Legacy: old sessions may have task_protocol cards — render as inert text
+                    return <div key={`other-${i}`} className="text-xs text-muted-foreground italic mt-2">Task protocol: {(card.data.title as string) || 'approved'}</div>;
                   case 'todo':
                     return <TodoCard key={`other-${i}`} data={card.data} />;
                   case 'structured_prompt': {

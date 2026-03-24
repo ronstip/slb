@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,6 +8,7 @@ import {
   BarChart3,
   Check,
   CheckCircle2,
+  Circle,
   CircleDot,
   ClipboardList,
   Clock,
@@ -69,9 +68,6 @@ import type { Source } from '../../stores/sources-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 
 const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-  seed: { icon: <Pencil className="h-3 w-3" />, label: 'Draft', color: 'text-muted-foreground' },
-  drafting: { icon: <Loader className="h-3 w-3" />, label: 'Drafting', color: 'text-blue-500' },
-  review: { icon: <ClipboardList className="h-3 w-3" />, label: 'Review', color: 'text-yellow-500' },
   approved: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Approved', color: 'text-blue-500' },
   executing: { icon: <Play className="h-3 w-3" />, label: 'Running', color: 'text-amber-500' },
   completed: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Completed', color: 'text-green-500' },
@@ -81,7 +77,7 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; colo
 };
 
 function StatusBadge({ status }: { status: TaskStatus }) {
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.seed;
+  const config = STATUS_CONFIG[status] || STATUS_CONFIG.approved;
   return (
     <Badge variant="outline" className={`gap-1 text-[10px] ${config.color}`}>
       {config.icon}
@@ -91,8 +87,8 @@ function StatusBadge({ status }: { status: TaskStatus }) {
 }
 
 const ALL_STATUSES: TaskStatus[] = [
-  'executing', 'monitoring', 'review', 'approved',
-  'completed', 'paused', 'archived', 'seed', 'drafting',
+  'executing', 'monitoring', 'approved',
+  'completed', 'paused', 'archived',
 ];
 
 const RUNNABLE_STATUSES: TaskStatus[] = ['completed', 'monitoring', 'paused', 'approved', 'executing'];
@@ -111,9 +107,6 @@ function formatLastRun(runHistory: Task['run_history']): string {
 
 /** Status color used for the accent bar at the top of the drawer */
 const STATUS_ACCENT: Record<string, string> = {
-  seed: 'bg-muted-foreground/30',
-  drafting: 'bg-muted-foreground/30',
-  review: 'bg-yellow-500',
   approved: 'bg-blue-500',
   executing: 'bg-amber-500',
   completed: 'bg-green-500',
@@ -170,7 +163,7 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
   const [statsCollectionId, setStatsCollectionId] = useState<string | null>(null);
   const [tableCollectionId, setTableCollectionId] = useState<string | null>(null);
   const [showAllLogs, setShowAllLogs] = useState(false);
-  const [protocolExpanded, setProtocolExpanded] = useState(false);
+  // protocolExpanded removed — protocol section no longer exists
 
   // Live refresh while task is executing
   const { data: freshTask } = useQuery({
@@ -211,12 +204,14 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
   const allCollectionIds = [...(displayTask.collection_ids || [])].reverse();
   const collectionsToShow = showAllCollections ? allCollectionIds : allCollectionIds.slice(0, 6);
 
-  // Sessions for multi-conversation support
-  const sessionIds = displayTask.session_ids?.length
-    ? displayTask.session_ids
-    : displayTask.primary_session_id
-      ? [displayTask.primary_session_id]
-      : [];
+  // Session link — single session per task (legacy tasks may have session_ids array)
+  const sessionIds = displayTask.session_id
+    ? [displayTask.session_id]
+    : displayTask.session_ids?.length
+      ? displayTask.session_ids
+      : displayTask.primary_session_id
+        ? [displayTask.primary_session_id]
+        : [];
 
   const canRun = RUNNABLE_STATUSES.includes(displayTask.status);
 
@@ -295,8 +290,8 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
               <div className="text-[10px] text-muted-foreground">Artifacts</div>
             </div>
             <div className="rounded-lg bg-muted/40 p-3 text-center">
-              <div className="text-xl font-bold">{displayTask.run_count || 0}</div>
-              <div className="text-[10px] text-muted-foreground">Runs</div>
+              <div className="text-xl font-bold">{displayTask.todos?.length || 0}</div>
+              <div className="text-[10px] text-muted-foreground">Steps</div>
             </div>
           </div>
 
@@ -331,7 +326,7 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
                         navigate(`/session/${sid}`);
                       }}
                     >
-                      {sid === displayTask.primary_session_id ? 'Primary Conversation' : `Conversation ${i + 1}`}
+                      {i === 0 ? 'Conversation' : `Conversation ${i + 1}`}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -498,42 +493,23 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
             )}
           </div>
 
-          {/* Protocol — collapsible sneak peek */}
-          {displayTask.protocol && (
+          {/* Todos snapshot */}
+          {displayTask.todos && displayTask.todos.length > 0 && (
             <div className="mt-6">
-              <button
-                className="flex w-full items-center justify-between mb-2 group"
-                onClick={() => setProtocolExpanded((v) => !v)}
-              >
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Protocol</h3>
-                {protocolExpanded ? (
-                  <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                )}
-              </button>
-              <div className="relative rounded-lg border p-4 prose prose-sm dark:prose-invert prose-headings:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground max-w-none overflow-hidden"
-                style={protocolExpanded ? undefined : { maxHeight: '120px' }}
-              >
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayTask.protocol}</ReactMarkdown>
-                {!protocolExpanded && (
-                  <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Run History */}
-          {displayTask.run_history && displayTask.run_history.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Run History</h3>
-              <div className="space-y-1.5">
-                {displayTask.run_history.map((run, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg border px-3 py-2 text-xs">
-                    <span className="text-muted-foreground">
-                      {run.run_at ? new Date(run.run_at).toLocaleString() : `Run ${i + 1}`}
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Plan</h3>
+              <div className="space-y-1">
+                {displayTask.todos.map((todo) => (
+                  <div key={todo.id} className="flex items-center gap-2 text-xs">
+                    {todo.status === 'completed' ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+                    ) : todo.status === 'in_progress' ? (
+                      <Play className="h-3 w-3 text-amber-500 shrink-0" />
+                    ) : (
+                      <Circle className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                    )}
+                    <span className={todo.status === 'completed' ? 'text-muted-foreground line-through' : 'text-foreground'}>
+                      {todo.content}
                     </span>
-                    <Badge variant="outline" className="text-[10px]">{run.status}</Badge>
                   </div>
                 ))}
               </div>
@@ -591,10 +567,7 @@ export function TasksPage() {
     if (statusFilter.size > 0 && !statusFilter.has(t.status)) return false;
     if (search) {
       const q = search.toLowerCase();
-      return (
-        t.title.toLowerCase().includes(q) ||
-        (t.seed || '').toLowerCase().includes(q)
-      );
+      return t.title.toLowerCase().includes(q);
     }
     return true;
   });
@@ -734,7 +707,7 @@ export function TasksPage() {
                 <th className="text-left px-3 py-2.5 w-28">Status</th>
                 <th className="text-left px-3 py-2.5 w-24">Type</th>
                 <th className="text-left px-3 py-2.5 w-24">Collections</th>
-                <th className="text-left px-3 py-2.5 w-24">Last Run</th>
+                <th className="text-left px-3 py-2.5 w-24">Artifacts</th>
                 <th className="text-left px-3 py-2.5 w-28">Created</th>
                 <th className="text-right px-3 py-2.5 w-36">Actions</th>
               </tr>
@@ -769,7 +742,7 @@ export function TasksPage() {
                       {task.collection_ids?.length || 0}
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {formatLastRun(task.run_history)}
+                      {task.artifact_ids?.length || 0}
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {createdDate}
@@ -777,14 +750,14 @@ export function TasksPage() {
                     <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <TooltipProvider delayDuration={300}>
-                          {task.primary_session_id && (
+                          {(task.session_id || task.primary_session_id) && (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
-                                  onClick={() => navigate(`/session/${task.primary_session_id}`)}
+                                  onClick={() => navigate(`/session/${task.session_id || task.primary_session_id}`)}
                                 >
                                   <MessageSquare className="h-3.5 w-3.5" />
                                 </Button>
