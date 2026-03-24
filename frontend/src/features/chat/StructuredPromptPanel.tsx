@@ -19,6 +19,7 @@ const OTHER_VALUE = '__other__';
 /** Prompts that need an explicit "Done" tap before the panel can close */
 function needsExplicitSubmit(p: StructuredPrompt): boolean {
   if (p.type === 'tag_input') return true;
+  if (p.type === 'toggle_row') return true;
   if (p.multi_select) return true;
   if (p.preselected && p.preselected.length > 0) return true;
   return false;
@@ -95,6 +96,7 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
         if (needsExplicitSubmit(p) && !submitted.has(p.id)) return false;
       }
       if (p.type === 'tag_input' && !submitted.has(p.id)) return false;
+      if (p.type === 'toggle_row' && !submitted.has(p.id)) return false;
     }
     return true;
   }, [prompts, selections, otherText, submitted]);
@@ -161,6 +163,7 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
         if (needsExplicitSubmit(p) && !nextSubmitted.has(p.id)) return false;
       }
       if (p.type === 'tag_input' && !nextSubmitted.has(p.id)) return false;
+      if (p.type === 'toggle_row' && !nextSubmitted.has(p.id)) return false;
       return true;
     });
 
@@ -179,9 +182,10 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
     }
   }, [prompts, submitted, selections, otherText, formatAnswer, onSubmit]);
 
-  // Check if any "Other" text input is active (user is typing)
-  const hasActiveOther = Object.entries(selections).some(
-    ([id, sel]) => sel.includes(OTHER_VALUE) && !(otherText[id] ?? '').trim(),
+  // Block auto-submit whenever any prompt has "Other" selected — the user is
+  // composing free text and should never be interrupted by auto-submit.
+  const hasActiveOther = Object.values(selections).some(
+    (sel) => sel.includes(OTHER_VALUE),
   );
 
   // Auto-submit when all fields are complete:
@@ -269,6 +273,8 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
           <div className="px-4 pt-3">
             {prompts.map((prompt) => {
               const explicit = needsExplicitSubmit(prompt);
+              const hasOtherSelected = (selections[prompt.id] ?? []).includes(OTHER_VALUE);
+              const showConfirm = explicit || hasOtherSelected;
               const isConfirmed = submitted.has(prompt.id);
               const hasSel = isPromptFilled(prompt);
               return (
@@ -287,7 +293,7 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
                     onSetToggle={(id, v) => setToggles((prev) => ({ ...prev, [id]: v }))}
                     onSetOtherText={(id, v) => setOtherText((prev) => ({ ...prev, [id]: v }))}
                   />
-                  {explicit && (
+                  {showConfirm && (
                     <div className="mt-3 flex justify-end">
                       <button
                         type="button"

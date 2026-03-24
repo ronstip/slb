@@ -8,6 +8,8 @@ import { useUIStore } from '../../stores/ui-store.ts';
 /**
  * Polls collection status for all active (non-terminal) sources.
  * Updates source status in the store. Auto-opens Studio when a collection completes.
+ * Dispatches a 'collection-complete' CustomEvent when a task-linked collection finishes,
+ * which the chat panel listens for to trigger agent continuation.
  */
 export function useCollectionPolling() {
   const sources = useSourcesStore((s) => s.sources);
@@ -81,6 +83,16 @@ export function useCollectionPolling() {
         setActiveTab('feed');
         if (studioPanelCollapsed) {
           toggleStudioPanel();
+        }
+      }
+
+      // Trigger agent continuation when a task-linked collection completes
+      if (isNewlyComplete) {
+        const source = useSourcesStore.getState().sources.find((s) => s.collectionId === collectionId);
+        if (source?.taskId) {
+          window.dispatchEvent(new CustomEvent('collection-complete', {
+            detail: { collectionId, taskId: source.taskId, title: source.title, postsCollected: data.posts_collected },
+          }));
         }
       }
     }

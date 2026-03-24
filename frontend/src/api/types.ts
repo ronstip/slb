@@ -9,6 +9,7 @@ export interface ChatRequest {
   message: string;
   session_id?: string;
   selected_sources?: string[];
+  is_system?: boolean;
 }
 
 export interface UserPreferences {

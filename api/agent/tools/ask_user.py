@@ -107,7 +107,7 @@ def ask_user(
 
         custom_questions: JSON object mapping prompt ID to custom question text.
             Overrides the template's default question.
-            Example: '{"platforms": "Where is Glossier most discussed?"}'
+            Example: '{"platforms": "Where is this brand most discussed?"}'
 
         custom_prompts: JSON array for fully custom prompts not covered by
             templates. Each object needs: id, type, question, and options

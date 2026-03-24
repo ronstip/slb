@@ -6,6 +6,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     selected_sources: list[str] | None = None
     model: str | None = None  # "flash" (default) or "pro"
+    is_system: bool = False  # True for system-generated messages (e.g., collection continuation)
 
 
 class VendorConfig(BaseModel):

@@ -17,6 +17,7 @@ export interface Source {
   errorMessage?: string;
   visibility?: 'private' | 'org';
   userId?: string;
+  taskId?: string;
   lastRunAt?: string;
   nextRunAt?: string;
   totalRuns?: number;

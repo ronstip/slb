@@ -25,7 +25,7 @@ export function useSSEChat() {
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: { isSystem?: boolean }) => {
       // Abort any existing stream
       abortRef.current?.abort();
       const abortController = new AbortController();
@@ -35,8 +35,10 @@ export function useSSEChat() {
       // Action functions are stable references — no re-renders from store changes.
       const cs = useChatStore.getState();
 
-      // Add user message
-      cs.sendUserMessage(text);
+      // Add user message (skip for system-generated messages)
+      if (!opts?.isSystem) {
+        cs.sendUserMessage(text);
+      }
 
       // Start agent message
       const messageId = cs.startAgentMessage();
@@ -52,6 +54,7 @@ export function useSSEChat() {
             message: text,
             session_id: cs.sessionId ?? undefined,
             selected_sources: selectedSources,
+            is_system: opts?.isSystem,
           },
           getToken,
           abortController.signal,
@@ -275,11 +278,15 @@ export function useSSEChat() {
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
               } else if (isStartTaskResult(toolName, result)) {
-                // Task started — add collections to sources
+                // Task started — add collections to sources and link taskId
                 const cids = result.collection_ids as string[] | undefined;
+                const taskId = result.task_id as string | undefined;
                 if (cids?.length) {
                   for (const cid of cids) {
                     useSourcesStore.getState().addToSession(cid);
+                    if (taskId) {
+                      useSourcesStore.getState().updateSource(cid, { taskId });
+                    }
                   }
                 }
                 // Refresh task list
@@ -350,6 +357,12 @@ export function useSSEChat() {
     [getToken, navigate],
   );
 
+  /** Send a system-generated message (no user bubble, full event processing). */
+  const sendSystemMessage = useCallback(
+    (text: string) => sendMessage(text, { isSystem: true }),
+    [sendMessage],
+  );
+
   const cancelStream = useCallback(() => {
     abortRef.current?.abort();
     if (activeMessageRef.current) {
@@ -357,5 +370,5 @@ export function useSSEChat() {
     }
   }, []);
 
-  return { sendMessage, cancelStream };
+  return { sendMessage, sendSystemMessage, cancelStream };
 }

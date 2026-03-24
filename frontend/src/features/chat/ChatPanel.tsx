@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
@@ -13,7 +13,20 @@ export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
   const activePromptData = useChatStore((s) => s.activePromptData);
   const isRestoring = useSessionStore((s) => s.isRestoring);
-  const { sendMessage, cancelStream } = useSSEChat();
+  const { sendMessage, sendSystemMessage, cancelStream } = useSSEChat();
+
+  // Listen for collection completion events from useCollectionPolling
+  // to trigger agent continuation in the user's session.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { postsCollected } = (e as CustomEvent).detail;
+      sendSystemMessage(
+        `[CONTINUE] Collection complete. ${postsCollected} posts collected and enriched. Resume remaining todos.`,
+      );
+    };
+    window.addEventListener('collection-complete', handler);
+    return () => window.removeEventListener('collection-complete', handler);
+  }, [sendSystemMessage]);
   const hasMessages = messages.length > 0;
 
   const cancelPrompt = useCallback(() => {

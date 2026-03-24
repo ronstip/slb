@@ -33,7 +33,7 @@ from google.adk.runners import Runner
 from google.genai import types
 from sse_starlette.sse import EventSourceResponse
 
-from api.agent.agent import APP_NAME, create_memory_service, create_runner
+from api.agent.agent import APP_NAME, create_runner
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs, get_gcs
 from api.rate_limiting import limiter
@@ -153,7 +153,6 @@ else:
     logger.info("CORS origins: %s", _cors_origins)
 
 _runners: dict[str, Runner] = {}
-_memory_service = None
 _session_service = None
 
 # Model aliases for the ChatRequest.model field
@@ -176,19 +175,16 @@ THINKING_TOOLS = {
 
 def get_runner(model: str | None = None) -> Runner:
     """Return a cached Runner for the given model (or default)."""
-    global _memory_service, _session_service
+    global _session_service
     from api.auth.session_service import FirestoreSessionService
 
     model_key = model or "default"
     if model_key not in _runners:
         if _session_service is None:
             _session_service = FirestoreSessionService()
-        if _memory_service is None:
-            _memory_service = create_memory_service()
         _runners[model_key] = create_runner(
             model_override=model if model != "default" else None,
             session_service=_session_service,
-            memory_service=_memory_service,
         )
     return _runners[model_key]
 
@@ -468,6 +464,8 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     except Exception:
         session = None
 
+    is_continuation = False  # Set in existing-session branch; used below for windowing
+
     if session is None:
         # Load user context for agent personalization
         user_context = _build_user_context(user_id, user.org_id)
@@ -497,22 +495,40 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         if chat_request.selected_sources is not None:
             session.state["selected_sources"] = chat_request.selected_sources
 
-        # Detect whether this message is a response to an ask_user prompt.
-        # If so, preserve the agent's working state (todos, task context, etc.)
-        # so the multi-step flow isn't destroyed mid-conversation.
+        # Detect whether this message is a response to an ask_user prompt or
+        # a system continuation (collection complete). Both preserve task state.
         is_ask_user_response = session.state.get("awaiting_user_input", False)
+        is_continuation = chat_request.is_system and "[CONTINUE]" in chat_request.message
 
-        if not is_ask_user_response:
+        if is_ask_user_response:
+            session.state["awaiting_user_input"] = False
+
+        if is_continuation:
+            # Strip the prefix, set continuation mode, restore todos if needed
+            chat_request.message = chat_request.message.replace("[CONTINUE]", "").strip()
+            session.state["continuation_mode"] = True
+            session.state["collection_running"] = False
+            # Restore todos from task document if cleared from session
+            task_id = session.state.get("active_task_id")
+            if task_id and not session.state.get("todos"):
+                _task = get_fs().get_task(task_id)
+                if _task and _task.get("todos"):
+                    session.state["todos"] = _task["todos"]
+            # Mark the task as picked up so the offline fallback doesn't fire
+            if task_id:
+                get_fs().update_task(task_id, status="analyzing")
+
+        if not is_ask_user_response and not is_continuation:
             # Clear prior-task state to prevent context leakage between tasks.
             # The agent re-establishes context from the user's current message.
             for key in (
                 "active_task_id", "active_task_title", "active_task_status",
                 "active_task_protocol", "active_task_type", "active_task_context_summary",
-                "todos", "tool_result_history",
+                "todos",
                 "active_collection_id", "agent_selected_sources",
                 "collection_status", "collection_running",
                 "posts_collected", "posts_enriched", "posts_embedded",
-                "autonomous_mode",
+                "autonomous_mode", "continuation_mode",
             ):
                 session.state.pop(key, None)
 
@@ -522,8 +538,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     # events).  This isolates task flows far better than a raw event count.
     # Use a wider window when the agent is mid-flow (ask_user round-trips
     # can span 3-4 user turns: original request, ask_user response(s), approval).
-    is_mid_flow = session.state.get("awaiting_user_input", False) or session.state.get("active_task_id")
+    is_mid_flow = session.state.get("awaiting_user_input", False) or session.state.get("active_task_id") or is_continuation
     MAX_USER_TURNS = 6 if is_mid_flow else 4
+    _trimmed_prefix = []  # Events trimmed for LLM context window — restored before persistence
     if session.events:
         user_turn_starts: list[int] = [
             i for i, e in enumerate(session.events)
@@ -531,7 +548,27 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         ]
         if len(user_turn_starts) > MAX_USER_TURNS:
             cutoff = user_turn_starts[-MAX_USER_TURNS]
+            _trimmed_prefix = session.events[:cutoff]
             session.events = session.events[cutoff:]
+
+    # Fetch live collection status once per turn (not per ReAct step).
+    # The before_model_callback reads from state only.
+    _cid = session.state.get("active_collection_id")
+    if not _cid:
+        _eff = list(dict.fromkeys(
+            (session.state.get("selected_sources") or []) +
+            (session.state.get("agent_selected_sources") or [])
+        ))
+        _cid = _eff[0] if _eff else None
+    if _cid:
+        _live = get_fs().get_collection_status(_cid)
+        if _live:
+            session.state["collection_status"] = _live.get("status", "unknown")
+            session.state["posts_collected"] = _live.get("posts_collected", 0)
+            session.state["posts_enriched"] = _live.get("posts_enriched", 0)
+            session.state["posts_embedded"] = _live.get("posts_embedded", 0)
+            if _live.get("status") in ("completed", "completed_with_errors", "failed", "cancelled"):
+                session.state["collection_running"] = False
 
     logger.info("PERF session_init=%.3fs events=%d", _time.perf_counter() - t0, len(session.events))
 
@@ -699,18 +736,20 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         _time.perf_counter() - t_runner_start,
                     )
 
-                    # Flush session to Firestore once (replaces per-event writes)
+                    # Restore full event history before persisting — the trimming
+                    # was only for the LLM context window, not for storage.
+                    if _trimmed_prefix:
+                        session.events = _trimmed_prefix + session.events
                     runner.session_service.flush(session)
 
-                    # Fire-and-forget background tasks
-                    asyncio.create_task(
-                        _save_to_memory(runner, user_id, session_id)
-                    )
+                    # Fire-and-forget: name the session in background
                     asyncio.create_task(
                         _name_session_background(runner, user_id, session_id)
                     )
         except Exception as e:
             logger.exception("Error in event stream")
+            if _trimmed_prefix:
+                session.events = _trimmed_prefix + session.events
             runner.session_service.flush(session)
             yield {
                 "event": "error",
@@ -1779,6 +1818,12 @@ async def task_continue(request: dict):
     if not task_id:
         raise HTTPException(status_code=400, detail="task_id required")
 
+    # Check if the frontend already picked up the continuation
+    task = get_fs().get_task(task_id)
+    if task and task.get("status") not in ("awaiting_analysis",):
+        logger.info("Task %s: skipping continuation — status is %s (frontend likely handled it)", task_id, task.get("status"))
+        return {"ok": True, "task_id": task_id, "skipped": True}
+
     import threading
     from workers.task_continuation import _run_agent_continuation
     thread = threading.Thread(
@@ -1858,99 +1903,6 @@ async def proxy_media(url: str = Query(...)):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-async def _save_to_memory(runner: Runner, user_id: str, session_id: str):
-    """Fire-and-forget: summarise session, persist summary to state, then save to memory bank."""
-    try:
-        if _memory_service is None:
-            return
-        session = await runner.session_service.get_session(
-            app_name=APP_NAME, user_id=user_id, session_id=session_id
-        )
-        if not session:
-            return
-
-        # Generate a structured session summary via a lightweight LLM call
-        try:
-            await _write_session_summary(runner, session)
-        except Exception:
-            logger.warning("Session summary generation failed for %s — saving without summary", session_id)
-
-        await _memory_service.add_session_to_memory(session)
-        logger.info("Saved session %s to memory bank", session_id)
-    except Exception:
-        logger.exception("Failed to save session %s to memory", session_id)
-
-
-async def _write_session_summary(runner: Runner, session) -> None:
-    """Generate a structured session summary and write it to session state.
-
-    Uses Gemini Flash for a fast, cheap summary of the conversation so far.
-    The summary is persisted in ``session.state["session_summary"]`` and will
-    be included next time the session is loaded into the memory bank.
-    """
-    # Skip if already summarised this turn (idempotent)
-    if session.state.get("session_summary"):
-        return
-
-    # Build a compact transcript from session events
-    turns: list[str] = []
-    for event in session.events:
-        role = getattr(event, "author", "system")
-        # Only include user and agent text turns (skip tool internals)
-        parts_text = ""
-        for part in getattr(event, "content", None) or []:
-            text = getattr(part, "text", None)
-            if text:
-                parts_text += text
-        if parts_text.strip():
-            turns.append(f"[{role}] {parts_text[:500]}")
-
-    if not turns:
-        return
-
-    transcript = "\n".join(turns[-30:])  # last 30 turns max
-
-    from google import genai
-
-    settings = get_settings()
-    client = genai.Client(
-        vertexai=True,
-        project=settings.gcp_project_id,
-        location=settings.gemini_location,
-    )
-
-    response = client.models.generate_content(
-        model=settings.gemini_model,  # Flash — fast and cheap
-        contents=(
-            "You are summarising a social-listening research session. "
-            "Write a concise structured summary in JSON with these fields:\n"
-            '  "topics": list of 1-5 research topics discussed,\n'
-            '  "collections": list of collection names created or referenced,\n'
-            '  "key_findings": list of 1-5 key findings or insights discovered,\n'
-            '  "actions_taken": list of 1-5 actions the agent performed (e.g. "collected 120 posts from Reddit"),\n'
-            '  "open_threads": list of 0-3 unresolved questions or next steps.\n'
-            "Reply with ONLY valid JSON, nothing else.\n\n"
-            f"Session transcript:\n{transcript}"
-        ),
-    )
-
-    raw = response.text.strip()
-    # Strip markdown code fences if present
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-
-    try:
-        summary = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse session summary JSON: %s", raw[:200])
-        return
-
-    session.state["session_summary"] = summary
-    runner.session_service._write_session(session)
-    logger.info("Wrote session summary for %s: %d topics, %d findings",
-                session.id, len(summary.get("topics", [])), len(summary.get("key_findings", [])))
 
 
 async def _name_session_background(runner: Runner, user_id: str, session_id: str) -> None:

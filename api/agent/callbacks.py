@@ -61,49 +61,6 @@ TOOLS_WITH_COLLECTION_IDS = {
 # ---------------------------------------------------------------------------
 
 
-def _summarize_tool_result(tool_name: str, tool_response: dict) -> str | None:
-    """Return a 1-line summary of a tool result for context injection."""
-    status = tool_response.get("status", "unknown") if isinstance(tool_response, dict) else "unknown"
-    if status == "error":
-        return f"{tool_name}: ERROR — {tool_response.get('message', 'unknown error')}"
-
-    if tool_name == "execute_sql":
-        # ADK BigQuery tool returns results differently
-        return None  # Handled by model's own context
-    elif tool_name == "start_task":
-        title = tool_response.get("title", "?")
-        n = len(tool_response.get("collection_ids", []))
-        return f"start_task: \"{title}\" started — {n} collection(s) dispatched"
-    elif tool_name == "get_task_status":
-        title = tool_response.get("title", "?")
-        ts = tool_response.get("task_status", "?")
-        return f"get_task_status: \"{title}\" — {ts}"
-    elif tool_name == "set_active_task":
-        title = tool_response.get("title", "?")
-        return f"set_active_task: now working on \"{title}\""
-    elif tool_name == "get_collection_stats":
-        total = tool_response.get("total_posts", "?")
-        neg_pct = tool_response.get("negative_sentiment_pct", "?")
-        return f"get_collection_stats: {total} posts, {neg_pct}% negative sentiment"
-    elif tool_name == "create_chart":
-        ct = tool_response.get("chart_type", "?")
-        return f"create_chart: rendered {ct}"
-    elif tool_name == "design_research":
-        return f"design_research: config ready for user approval"
-    elif tool_name == "get_collection_details":
-        cid = tool_response.get("collection_id", "?")
-        cstatus = tool_response.get("collection_status", "?")
-        return f"get_collection_details: {cid} ({cstatus})"
-    elif tool_name == "update_todos":
-        return f"update_todos: {tool_response.get('progress', '?')}"
-    elif tool_name in ("generate_report", "generate_dashboard", "export_data"):
-        return f"{tool_name}: completed"
-    return None
-
-
-MAX_TOOL_HISTORY = 8  # Keep last N tool summaries in context
-
-
 def collection_state_tracker(
     tool: BaseTool,
     args: dict[str, Any],
@@ -114,16 +71,8 @@ def collection_state_tracker(
 
     The meta-agent calls collection tools directly. This callback captures
     results so inject_collection_context can prepend them to future turns.
-    Also maintains a rolling summary of recent tool results for context.
     """
     tool_name = tool.name
-
-    # Track tool result summary for context injection
-    summary = _summarize_tool_result(tool_name, tool_response if isinstance(tool_response, dict) else {})
-    if summary:
-        history: list[str] = tool_context.state.get("tool_result_history", [])
-        history.append(summary)
-        tool_context.state["tool_result_history"] = history[-MAX_TOOL_HISTORY:]
 
     if tool_name == "get_progress":
         if tool_response.get("status") == "success":
@@ -218,6 +167,18 @@ def gate_expensive_tools(
             "message": (
                 "Running in autonomous mode — cannot ask the user questions. "
                 "Proceed with the analysis using your best judgment and the task protocol."
+            ),
+        }
+
+    # Soft guidance for ask_user in continuation mode (user is online but
+    # agent should avoid unnecessary questions)
+    if tool.name == "ask_user" and tool_context.state.get("continuation_mode"):
+        return {
+            "status": "blocked",
+            "message": (
+                "You are continuing after data collection. The user already approved "
+                "the strategy — proceed with analysis and delivery. Only ask the user "
+                "if you encounter something truly unexpected that requires their input."
             ),
         }
 
@@ -331,49 +292,22 @@ def _build_context_block(state: dict) -> Optional[str]:
             )
         elif completed == total:
             lines.append(
-                "\nAll todos complete. Summarize results for the user."
+                "\nAll todos complete. Verify you've answered the original question, "
+                "then wrap up with a concise summary."
             )
 
         blocks.append("\n".join(lines))
 
-    # ── Active Task context ─────────────────────────────────────────
-    active_task_id = state.get("active_task_id")
-    if active_task_id:
-        blocks.append(
-            "Note: A previous task existed in this session. "
-            "Focus entirely on the user's current request."
-        )
-
-    # ── Context isolation fence ──────────────────────────────────
-    tasks_index: list[dict] = state.get("user_tasks_index", [])[:5]
-    collections_index_peek: list[dict] = state.get("user_collections_index", [])[:5]
-    if tasks_index or collections_index_peek:
-        blocks.append(
-            "## CONTEXT ISOLATION\n"
-            "The libraries below are REFERENCE ONLY for when the user explicitly "
-            "asks about past work. They have ZERO relevance to the current request. "
-            "When creating a new task, derive ALL keywords, titles, and protocols "
-            "exclusively from the user's CURRENT message and your web research. "
-            "NEVER reuse titles, keywords, or themes from past tasks or collections."
-        )
-
     # ── Task Library ────────────────────────────────────────────────
-    is_new_task_flow = not active_task_id
+    tasks_index: list[dict] = state.get("user_tasks_index", [])[:5]
     if tasks_index:
         lines = ["## Task Library"]
         for t in tasks_index:
-            # Redact titles when in new-task flow to prevent contamination
-            title_display = "[past task]" if is_new_task_flow else t.get("title", "untitled")
             lines.append(
-                f"- `{t.get('task_id', '?')}` | {title_display} "
+                f"- `{t.get('task_id', '?')}` | {t.get('title', 'untitled')} "
                 f"| {t.get('status', '?')} | {t.get('task_type', '?')} "
                 f"| {t.get('created_at', '?')[:10] if t.get('created_at') else '?'}"
             )
-        lines.append("")
-        lines.append(
-            "Only reference past tasks if the user explicitly asks. "
-            "New requests are independent."
-        )
         blocks.append("\n".join(lines))
 
     # ── Collection context ──────────────────────────────────────────
@@ -389,21 +323,8 @@ def _build_context_block(state: dict) -> Optional[str]:
         collection_id = effective_sources[0]
 
     if collection_id or effective_sources:
-        # Fetch live status from Firestore for the active collection
-        # instead of relying on stale session state
-        if collection_id:
-            from api.deps import get_fs
-            fs = get_fs()
-            live = fs.get_collection_status(collection_id)
-            if live:
-                state["collection_status"] = live.get("status", "unknown")
-                state["posts_collected"] = live.get("posts_collected", 0)
-                state["posts_enriched"] = live.get("posts_enriched", 0)
-                state["posts_embedded"] = live.get("posts_embedded", 0)
-                # Clear running flag when pipeline finishes
-                if live.get("status") in ("completed", "completed_with_errors", "failed", "cancelled"):
-                    state["collection_running"] = False
-
+        # Collection status is fetched once per turn in main.py (not here,
+        # since this callback fires on every ReAct step within a turn).
         status = state.get("collection_status", "unknown")
         posts = state.get("posts_collected", 0)
         enriched = state.get("posts_enriched", 0)
@@ -444,6 +365,16 @@ def _build_context_block(state: dict) -> Optional[str]:
         )
         blocks.append("\n".join(lines))
 
+    # ── Continuation mode ──────────────────────────────────────────
+    if state.get("continuation_mode"):
+        blocks.append(
+            "## Continuation\n"
+            "Data collection is complete. Resume from your todo list. "
+            "Think critically about the data — consider alternative explanations "
+            "and potential biases before drawing conclusions. "
+            "Deliver what fits the original question."
+        )
+
     # ── User context ──────────────────────────────────────────────
     display_name = state.get("user_display_name", "")
     preferences = state.get("user_preferences", {})
@@ -459,35 +390,14 @@ def _build_context_block(state: dict) -> Optional[str]:
     collections_index: list[dict] = state.get("user_collections_index", [])[:5]
     if collections_index:
         lines = ["## Collections Library"]
-        lines.append(
-            "Your available collections (use `get_collection_details(collection_id)` for full config):"
-        )
-        lines.append("")
         for c in collections_index:
             platforms_str = ", ".join(c.get("platforms", []))
             own_marker = "" if c.get("own", True) else " [shared]"
-            # Redact labels in new-task flow to prevent topic contamination
-            label_display = "[past collection]" if is_new_task_flow else c.get("label", "untitled")
             lines.append(
-                f"- `{c['id']}` | {label_display} "
+                f"- `{c['id']}` | {c.get('label', 'untitled')} "
                 f"| {c.get('status', '?')} | {platforms_str} "
                 f"| {c.get('posts', 0)} posts | {c.get('created', '?')}{own_marker}"
             )
-        lines.append("")
-        lines.append(
-            "Only reference these if the user EXPLICITLY asks about a past collection "
-            "by name or ID. Do NOT proactively connect new requests to these collections."
-        )
-        blocks.append("\n".join(lines))
-
-    # ── Tool result history ───────────────────────────────────────
-    tool_history: list[str] = state.get("tool_result_history", [])
-    if tool_history:
-        lines = ["## Recent Tool Results (working memory)"]
-        for entry in tool_history:
-            lines.append(f"- {entry}")
-        lines.append("")
-        lines.append("Use this to avoid re-running queries you already executed.")
         blocks.append("\n".join(lines))
 
     return "\n\n".join(blocks) if blocks else None
@@ -573,7 +483,9 @@ def inject_collection_context(
     # continuing.  Return an empty LlmResponse (no tool calls) to
     # end the ReAct loop immediately.
     if state.get("awaiting_user_input", False):
-        state["awaiting_user_input"] = False
+        # Do NOT clear the flag here — it must persist so the chat endpoint
+        # can detect the next message as an ask_user response and preserve
+        # task state.  The chat endpoint clears it at the start of the next turn.
         from google.genai import types as genai_types
 
         return LlmResponse(

@@ -7,7 +7,7 @@ invokes the agent server-side to continue execution (analyze, report, etc.).
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from config.settings import get_settings
 
@@ -66,27 +66,56 @@ def check_task_completion(collection_id: str) -> None:
         )
         return
 
-    logger.info("Task %s: all collections complete — triggering agent continuation", task_id)
-    fs.add_task_log(task_id, "All collections complete — starting analysis agent", source="continuation")
+    logger.info("Task %s: all collections complete — signaling for continuation", task_id)
+    fs.add_task_log(task_id, "All collections complete — ready for analysis", source="continuation")
 
-    # Dispatch agent continuation
+    # Signal continuation readiness via Firestore.
+    # The frontend detects this via collection polling and re-engages the agent
+    # in the user's session. The server-side agent is a fallback for offline users.
+    fs.update_task(
+        task_id,
+        status="awaiting_analysis",
+        continuation_ready=True,
+        continuation_ready_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    # Schedule offline fallback — if the task is still awaiting_analysis after
+    # 5 minutes, the user likely isn't watching. Run the agent server-side.
     if settings.is_dev:
         thread = threading.Thread(
-            target=_run_agent_continuation,
+            target=_delayed_fallback,
             args=(task_id,),
             daemon=True,
-            name=f"task-continue-{task_id[:8]}",
+            name=f"task-fallback-{task_id[:8]}",
         )
         thread.start()
     else:
-        _dispatch_continuation_task(settings, task_id)
+        _dispatch_continuation_task(settings, task_id, delay_seconds=300)
+
+
+def _delayed_fallback(task_id: str, delay_seconds: int = 300) -> None:
+    """Wait, then run agent continuation if the frontend hasn't picked it up."""
+    import time
+    time.sleep(delay_seconds)
+
+    from workers.shared.firestore_client import FirestoreClient
+    fs = FirestoreClient(get_settings())
+    task = fs.get_task(task_id)
+    if not task:
+        return
+    # If still awaiting_analysis, the user isn't online — run server-side
+    if task.get("status") == "awaiting_analysis":
+        logger.info("Task %s: offline fallback — running agent server-side", task_id)
+        _run_agent_continuation(task_id)
+    else:
+        logger.info("Task %s: frontend already picked up continuation", task_id)
 
 
 def _run_agent_continuation(task_id: str) -> None:
     """Run the agent server-side to continue a task after collections complete.
 
-    This creates a new message in the task's session as if the system is
-    telling the agent "collections are done, proceed with analysis."
+    This is a FALLBACK for when the user is not online. The primary path is
+    frontend-triggered continuation in the user's session.
     """
     import asyncio
 
@@ -141,8 +170,8 @@ async def _async_agent_continuation(task_id: str) -> None:
     continuation_message = (
         f"All data collection for task \"{title}\" is complete.\n\n"
         + "\n".join(collection_summaries) + "\n\n"
-        "Proceed with the analysis. Generate a dashboard, export the data, "
-        "and summarize key findings."
+        "Continue with the remaining todos for this task. "
+        "Analyze the data, validate findings, and deliver based on the original question."
     )
 
     logger.info("Task %s: invoking agent with continuation message", task_id)
@@ -172,7 +201,7 @@ async def _async_agent_continuation(task_id: str) -> None:
     session.state["active_task_title"] = title
     session.state["active_task_status"] = "executing"
     session.state["active_task_type"] = task.get("task_type", "one_shot")
-    session.state["autonomous_mode"] = True  # Signal no ask_user
+    session.state["continuation_mode"] = True  # Softer signal — prefer not to ask user, but don't hard-block
 
     # Set working collections
     collection_ids = task.get("collection_ids", [])
@@ -280,8 +309,11 @@ def _notify_task_completion(task_id: str, task: dict, user_id: str) -> None:
         logger.debug("Email notification skipped for task %s (not configured)", task_id)
 
 
-def _dispatch_continuation_task(settings, task_id: str) -> None:
-    """Dispatch agent continuation via Cloud Tasks (production)."""
+def _dispatch_continuation_task(settings, task_id: str, delay_seconds: int = 0) -> None:
+    """Dispatch agent continuation via Cloud Tasks (production).
+
+    When delay_seconds > 0, the task is scheduled for the future (offline fallback).
+    """
     import json
     from google.cloud import tasks_v2
 
@@ -303,6 +335,11 @@ def _dispatch_continuation_task(settings, task_id: str) -> None:
             "service_account_email": settings.cloud_tasks_service_account,
             "audience": worker_url,
         }
-    task = {"http_request": http_request}
-    client.create_task(parent=parent, task=task)
-    logger.info("Dispatched Cloud Task for task continuation %s", task_id)
+    task_config: dict = {"http_request": http_request}
+    if delay_seconds > 0:
+        from google.protobuf import timestamp_pb2
+        schedule_time = timestamp_pb2.Timestamp()
+        schedule_time.FromDatetime(datetime.now(timezone.utc) + timedelta(seconds=delay_seconds))
+        task_config["schedule_time"] = schedule_time
+    client.create_task(parent=parent, task=task_config)
+    logger.info("Dispatched Cloud Task for task continuation %s (delay=%ds)", task_id, delay_seconds)

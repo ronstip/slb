@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 from google.adk.agents import LlmAgent
 from google.adk.apps.app import App
-from google.adk.memory import InMemoryMemoryService, VertexAiMemoryBankService
 from google.adk.runners import Runner
 from google.adk.tools.bigquery import BigQueryToolset
 from google.adk.tools.bigquery.config import BigQueryToolConfig, WriteMode
@@ -134,27 +133,9 @@ def create_app(model_override: str | None = None) -> App:
     )
 
 
-def create_memory_service():
-    """Create the appropriate memory service based on environment."""
-    settings = get_settings()
-    if settings.is_dev:
-        logger.info("Using InMemoryMemoryService (dev mode)")
-        return InMemoryMemoryService()
-    if not settings.agent_engine_id:
-        logger.warning("No agent_engine_id configured — using in-memory fallback")
-        return InMemoryMemoryService()
-    logger.info("Using VertexAiMemoryBankService (engine=%s)", settings.agent_engine_id)
-    return VertexAiMemoryBankService(
-        project=settings.gcp_project_id,
-        location=settings.gcp_region,
-        agent_engine_id=settings.agent_engine_id,
-    )
-
-
 def create_runner(
     model_override: str | None = None,
     session_service=None,
-    memory_service=None,
 ) -> Runner:
     app = create_app(model_override)
     if session_service is None:
@@ -162,5 +143,4 @@ def create_runner(
     return Runner(
         app=app,
         session_service=session_service,
-        memory_service=memory_service,
     )
