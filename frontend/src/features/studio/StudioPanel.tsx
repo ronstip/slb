@@ -77,12 +77,12 @@ export function StudioPanel() {
       </div>
 
       {!collapsed && (
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'feed' | 'artifacts')} className="flex flex-1 flex-col overflow-hidden">
-            <TabsList className="w-full">
-              <TabsTrigger value="feed" className="data-[state=active]:bg-white">Feed</TabsTrigger>
-              <TabsTrigger value="artifacts" className="data-[state=active]:bg-white">Artifacts</TabsTrigger>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'feed' | 'artifacts')} className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <TabsList className="w-full min-w-0">
+              <TabsTrigger value="feed" className="min-w-0 truncate data-[state=active]:bg-white">Feed</TabsTrigger>
+              <TabsTrigger value="artifacts" className="min-w-0 truncate data-[state=active]:bg-white">Artifacts</TabsTrigger>
             </TabsList>
 
             <TabsContent value="feed" className="overflow-y-auto">

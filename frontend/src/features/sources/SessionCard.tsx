@@ -69,12 +69,12 @@ export function SessionCard({ session }: SessionCardProps) {
         )}
 
         <div className="min-w-0 flex-1 overflow-hidden pl-1">
-          {/* Title */}
+          {/* Title or first-message preview for untitled sessions */}
           <span className={cn(
             'block truncate text-[13px] leading-tight',
             isActive ? 'font-semibold' : 'font-medium text-foreground',
           )}>
-            {session.title}
+            {session.title || session.preview || 'New session'}
           </span>
 
           {/* Meta row */}

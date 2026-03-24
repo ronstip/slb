@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -16,9 +17,11 @@ import {
   ChevronUp,
   Filter,
   FileText,
+  Loader,
   MessageSquare,
   MoreHorizontal,
   Pause,
+  Pencil,
   Play,
   Plus,
   Radio,
@@ -27,6 +30,7 @@ import {
   StopCircle,
   Table2,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useTaskStore } from '../../stores/task-store.ts';
 import type { Task, TaskStatus } from '../../api/endpoints/tasks.ts';
@@ -65,8 +69,8 @@ import type { Source } from '../../stores/sources-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 
 const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-  seed: { icon: <ClipboardList className="h-3 w-3" />, label: 'Draft', color: 'text-muted-foreground' },
-  drafting: { icon: <ClipboardList className="h-3 w-3" />, label: 'Drafting', color: 'text-muted-foreground' },
+  seed: { icon: <Pencil className="h-3 w-3" />, label: 'Draft', color: 'text-muted-foreground' },
+  drafting: { icon: <Loader className="h-3 w-3" />, label: 'Drafting', color: 'text-blue-500' },
   review: { icon: <ClipboardList className="h-3 w-3" />, label: 'Review', color: 'text-yellow-500' },
   approved: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Approved', color: 'text-blue-500' },
   executing: { icon: <Play className="h-3 w-3" />, label: 'Running', color: 'text-amber-500' },
@@ -563,6 +567,7 @@ export function TasksPage() {
   const navigate = useNavigate();
   const tasks = useTaskStore((s) => s.tasks);
   const isLoading = useTaskStore((s) => s.isLoading);
+  const error = useTaskStore((s) => s.error);
   const fetchTasks = useTaskStore((s) => s.fetchTasks);
 
   const [search, setSearch] = useState('');
@@ -627,7 +632,7 @@ export function TasksPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div className="flex h-screen w-full flex-col overflow-x-hidden bg-background">
       {/* Header */}
       <div className="flex items-center gap-3 border-b px-6 py-4">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('/')}>
@@ -636,7 +641,7 @@ export function TasksPage() {
         <ClipboardList className="h-5 w-5 text-primary" />
         <h1 className="text-lg font-semibold">Tasks</h1>
         <div className="flex-1" />
-        <Button size="sm" onClick={() => navigate('/')}>
+        <Button size="sm" onClick={() => { toast('Start a conversation to set up recurring monitoring or scheduled automation.'); navigate('/'); }}>
           <Plus className="mr-1.5 h-3.5 w-3.5" />
           New Task
         </Button>
@@ -678,9 +683,28 @@ export function TasksPage() {
                 </span>
               </DropdownMenuCheckboxItem>
             ))}
+            {statusFilter.size > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setStatusFilter(new Set())}>
+                  <X className="mr-2 h-3.5 w-3.5" />
+                  Clear filters
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Error state */}
+      {error && (
+        <div className="flex items-center justify-between px-6 py-3 bg-destructive/10 border-b border-destructive/20 text-sm text-destructive">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => fetchTasks()}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-y-auto">
@@ -699,7 +723,7 @@ export function TasksPage() {
             <p className="text-xs mt-1">
               {search || statusFilter.size > 0
                 ? 'Try adjusting your search or filters'
-                : 'Start a new conversation and describe what you need done'}
+                : 'Ask the AI to set up recurring monitoring or automate a scheduled report to create a task'}
             </p>
           </div>
         ) : (

@@ -76,7 +76,9 @@ export function TaskProtocolCard({ data, onAction }: TaskProtocolCardProps) {
   const handleReject = () => {
     if (action) return;
     setAction('reject');
-    onAction?.('I want to change the approach. Let me explain what I need differently.');
+    onAction?.(
+      `I'm rejecting the task protocol "${title}". The protocol needs changes — let me explain what I need differently.`
+    );
   };
 
   const isRecurring = taskType === 'recurring';
@@ -110,6 +112,12 @@ export function TaskProtocolCard({ data, onAction }: TaskProtocolCardProps) {
           {isRecurring && schedule && (
             <div className="text-[10px] text-muted-foreground">
               Schedule: {(schedule.frequency_label as string) || (schedule.frequency as string)}
+            </div>
+          )}
+
+          {!isRecurring && (
+            <div className="text-[10px] text-muted-foreground">
+              This task will run immediately upon approval.
             </div>
           )}
 

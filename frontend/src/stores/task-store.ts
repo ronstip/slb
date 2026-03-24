@@ -13,6 +13,7 @@ interface TaskStore {
   activeTaskId: string | null;
   activeTask: Task | null;
   isLoading: boolean;
+  error: string | null;
 
   fetchTasks: () => Promise<void>;
   setActiveTask: (id: string | null) => void;
@@ -28,18 +29,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   activeTaskId: null,
   activeTask: null,
   isLoading: false,
+  error: null,
 
   fetchTasks: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
     try {
       const tasks = await listTasks();
       const { activeTaskId } = get();
       const activeTask = activeTaskId
         ? tasks.find((t) => t.task_id === activeTaskId) ?? null
         : null;
-      set({ tasks, activeTask, isLoading: false });
+      set({ tasks, activeTask, isLoading: false, error: null });
     } catch {
-      set({ isLoading: false });
+      set({ isLoading: false, error: 'Failed to load tasks. Please try again.' });
     }
   },
 
@@ -109,6 +111,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       activeTaskId: null,
       activeTask: null,
       isLoading: false,
+      error: null,
     });
   },
 }));
