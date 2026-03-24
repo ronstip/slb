@@ -9,6 +9,7 @@ import { reconstructSession } from '../lib/session-reconstructor.ts';
 import { useChatStore } from './chat-store.ts';
 import { useStudioStore } from './studio-store.ts';
 import { useSourcesStore } from './sources-store.ts';
+import { useTaskStore } from './task-store.ts';
 
 interface SessionStore {
   sessions: SessionListItem[];
@@ -67,6 +68,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       useStudioStore.getState().setArtifacts(artifacts);
       useSourcesStore.getState().selectByIds(selectedSourceIds);
 
+      // Restore task context from session state (or clear if none)
+      const sessionTaskId = (detail.state?.active_task_id as string) || null;
+      useTaskStore.getState().setActiveTask(sessionTaskId);
+
       set({
         activeSessionId: id,
         activeSessionTitle: detail.title || 'New Session',
@@ -83,6 +88,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
     useSourcesStore.getState().setAgentSelectedSources([]);
+    useTaskStore.getState().setActiveTask(null);
 
     set({
       activeSessionId: null,

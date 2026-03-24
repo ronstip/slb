@@ -8,6 +8,7 @@ import type { DesignResearchResult } from '../../api/types.ts';
 import { ToolIndicator } from './ToolIndicator.tsx';
 import { ThinkingBox } from './ThinkingBox.tsx';
 import { StatusLine } from './StatusLine.tsx';
+import { IntentBanner } from './IntentBanner.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
 import { DataExportCard } from './cards/DataExportCard.tsx';
 import { ChartCard } from './cards/ChartCard.tsx';
@@ -37,7 +38,7 @@ interface AgentMessageProps {
 export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) {
   const activePromptMessageId = useChatStore((s) => s.activePromptMessageId);
   const agentLabel = message.activeAgent
-    ? AGENT_DISPLAY_NAMES[message.activeAgent] || formatAgentName(message.activeAgent)
+    ? (message.activeAgent in AGENT_DISPLAY_NAMES ? AGENT_DISPLAY_NAMES[message.activeAgent] : formatAgentName(message.activeAgent))
     : null;
 
   // Extract error portion from content (appended as "\n\nError: ..." or "\n\nConnection error: ...")
@@ -70,6 +71,11 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               {agentLabel}
             </span>
           </div>
+        )}
+
+        {/* Intent banner — persistent high-level goal for multi-step tasks */}
+        {message.intentLine && (
+          <IntentBanner text={message.intentLine} />
         )}
 
         {/* Status line — contextual description of what the agent is doing */}

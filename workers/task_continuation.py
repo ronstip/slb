@@ -67,6 +67,7 @@ def check_task_completion(collection_id: str) -> None:
         return
 
     logger.info("Task %s: all collections complete — triggering agent continuation", task_id)
+    fs.add_task_log(task_id, "All collections complete — starting analysis agent", source="continuation")
 
     # Dispatch agent continuation
     if settings.is_dev:
@@ -199,6 +200,7 @@ async def _async_agent_continuation(task_id: str) -> None:
         events.append(event)
 
     logger.info("Task %s: agent continuation completed with %d events", task_id, len(events))
+    fs.add_task_log(task_id, "Analysis agent completed", source="continuation")
 
     # Persist artifacts from agent output
     _persist_continuation_artifacts(events, user_id, org_id, session_id, task_id)
@@ -212,6 +214,7 @@ async def _async_agent_continuation(task_id: str) -> None:
             completed_at=datetime.now(timezone.utc),
             context_summary="Analysis complete. Deliverables generated.",
         )
+        fs.add_task_log(task_id, "Task completed", source="continuation")
     else:
         # Recurring — update run history, keep monitoring
         from google.cloud.firestore_v1 import transforms

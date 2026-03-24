@@ -6,6 +6,7 @@ import {
   updateTask as patchTask,
   deleteTask as removeTask,
 } from '../api/endpoints/tasks.ts';
+import { useSourcesStore } from './sources-store.ts';
 
 interface TaskStore {
   tasks: Task[];
@@ -45,6 +46,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   setActiveTask: (id: string | null) => {
     const task = id ? get().tasks.find((t) => t.task_id === id) ?? null : null;
     set({ activeTaskId: id, activeTask: task });
+    // Activate the task's collections in the feed panel
+    const collectionIds = task?.collection_ids ?? [];
+    useSourcesStore.getState().selectByIds(collectionIds);
   },
 
   loadTask: async (id: string) => {

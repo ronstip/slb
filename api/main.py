@@ -165,7 +165,11 @@ MODEL_ALIASES: dict[str, str] = {
 THINKING_TOOLS = {
     "execute_sql", "get_table_info", "list_table_ids",
     "google_search", "design_research", "start_collection",
-    "get_progress", "enrich_collection",
+    "get_progress", "enrich_collection", "get_collection_details",
+    "create_chart", "generate_report", "generate_dashboard",
+    "export_data", "create_task_protocol", "get_task_status",
+    "set_active_task", "refresh_engagements", "cancel_collection",
+    "compose_email", "send_email",
     "get_collection_details", "generate_report", "generate_dashboard", "get_sql_reference",
 }
 
@@ -494,6 +498,20 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         # Update selected_sources in session state
         if chat_request.selected_sources is not None:
             session.state["selected_sources"] = chat_request.selected_sources
+        # Clear active task context to prevent old task from biasing new requests.
+        # The agent can re-establish context from conversation history or Task Library.
+        for key in (
+            "active_task_id", "active_task_title", "active_task_status",
+            "active_task_protocol", "active_task_type", "active_task_context_summary",
+        ):
+            session.state.pop(key, None)
+
+    # Window conversation history to prevent old context from overwhelming new requests.
+    # 40 events ≈ 3-4 complete task flows (ask_user → response → create_protocol → approve).
+    MAX_RECENT_EVENTS = 40
+    if len(session.events) > MAX_RECENT_EVENTS:
+        session.events = session.events[-MAX_RECENT_EVENTS:]
+
     logger.info("PERF session_init=%.3fs events=%d", _time.perf_counter() - t0, len(session.events))
 
     content = types.Content(
@@ -1433,9 +1451,8 @@ async def approve_task_protocol(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Approve a task protocol — creates the task and optionally starts collections."""
-    from api.services.task_service import create_task
-    from api.services.collection_service import create_collection_from_request, _compute_next_run_at
-    from api.schemas.requests import CreateCollectionRequest
+    from api.services.task_service import create_task, dispatch_task_run, update_task
+    from api.services.collection_service import _compute_next_run_at
 
     title = request.get("title", "Untitled Task")
     protocol = request.get("protocol", "")
@@ -1465,55 +1482,11 @@ async def approve_task_protocol(
         fs = get_fs()
         fs.save_session(session_id, {"task_id": task_id})
 
-    # Create collections from data_scope searches
+    # Dispatch collections
     collection_ids = []
-    searches = data_scope.get("searches", [])
-    if run_now and searches:
-        for search_def in searches:
-            platforms = search_def.get("platforms", [])
-            keywords = search_def.get("keywords", [])
-            if not platforms or not keywords:
-                continue
-
-            req = CreateCollectionRequest(
-                description=title,
-                platforms=platforms,
-                keywords=keywords,
-                channel_urls=search_def.get("channels"),
-                time_range_days=search_def.get("time_range_days", 90),
-                geo_scope=search_def.get("geo_scope", "global"),
-                n_posts=search_def.get("n_posts", 0),
-                include_comments=True,
-            )
-
-            # Pass extra_config with task_id
-            extra_config = {}
-            custom_fields = data_scope.get("custom_fields")
-            if custom_fields:
-                extra_config["custom_fields"] = custom_fields
-
-            result = create_collection_from_request(
-                request=req,
-                user_id=user.uid,
-                org_id=user.org_id,
-                session_id=session_id or "",
-                extra_config=extra_config,
-            )
-            cid = result["collection_id"]
-            collection_ids.append(cid)
-
-            # Link collection to task (both directions)
-            fs = get_fs()
-            fs.add_task_collection(task_id, cid)
-            fs.update_collection_status(cid, task_id=task_id)
-
-        # Update task status to executing
-        from api.services.task_service import update_task
-        update_task(task_id, status="executing", collection_ids=collection_ids)
-
+    if run_now and data_scope.get("searches"):
+        collection_ids = dispatch_task_run(task_id, task)
     elif not run_now and schedule and task_type == "recurring":
-        # Schedule first run
-        from api.services.task_service import update_task
         now = datetime.now(timezone.utc)
         next_run = _compute_next_run_at(schedule.get("frequency"), now)
         update_task(task_id, status="monitoring", next_run_at=next_run)
@@ -1521,7 +1494,7 @@ async def approve_task_protocol(
     return {
         "task_id": task_id,
         "collection_ids": collection_ids,
-        "status": "executing" if run_now and collection_ids else "approved",
+        "status": "executing" if collection_ids else "approved",
     }
 
 
@@ -1537,6 +1510,93 @@ async def delete_task_endpoint(task_id: str, user: CurrentUser = Depends(get_cur
         raise HTTPException(status_code=403, detail="Only the task owner can delete")
     delete_task(task_id)
     return {"ok": True}
+
+
+@app.post("/tasks/{task_id}/run")
+@limiter.limit("3/minute")
+async def run_task_endpoint(
+    request: Request,
+    task_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Manually trigger a new run for a task (re-run one-shot or run-now recurring).
+
+    If the task is stuck in 'executing' but all its collections are done,
+    the re-run is allowed (handles server-restart edge cases).
+    """
+    from api.services.task_service import get_task, dispatch_task_run
+
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("user_id") != user.uid and task.get("org_id") != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # If task says 'executing', check if it's actually stuck
+    if task.get("status") == "executing":
+        fs = get_fs()
+        terminal = {"completed", "completed_with_errors", "failed", "monitoring"}
+        all_done = all(
+            (fs.get_collection_status(cid) or {}).get("status") in terminal
+            for cid in (task.get("collection_ids") or [])
+        )
+        if not all_done:
+            raise HTTPException(status_code=409, detail="Task is already running")
+
+    collection_ids = dispatch_task_run(task_id, task)
+    return {"task_id": task_id, "collection_ids": collection_ids, "status": "executing"}
+
+
+@app.get("/tasks/{task_id}/artifacts")
+async def get_task_artifacts(
+    task_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Return the artifacts belonging to a task."""
+    from api.services.task_service import get_task
+
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("user_id") != user.uid and task.get("org_id") != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    artifact_ids = task.get("artifact_ids") or []
+    if not artifact_ids:
+        return []
+
+    fs = get_fs()
+    artifacts = []
+    for aid in artifact_ids:
+        doc = fs._db.collection("artifacts").document(aid).get()
+        if doc.exists:
+            data = doc.to_dict()
+            data["artifact_id"] = doc.id
+            # Convert timestamps
+            for key in ("created_at", "updated_at"):
+                if hasattr(data.get(key), "isoformat"):
+                    data[key] = data[key].isoformat()
+            artifacts.append(data)
+    return artifacts
+
+
+@app.get("/tasks/{task_id}/logs")
+async def get_task_logs(
+    task_id: str,
+    limit: int = 50,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Return activity log entries for a task, newest first."""
+    from api.services.task_service import get_task
+
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("user_id") != user.uid and task.get("org_id") != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    fs = get_fs()
+    return fs.get_task_logs(task_id, limit=min(limit, 200))
 
 
 # ---------------------------------------------------------------------------
@@ -1998,6 +2058,36 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
         if tool_name == "get_collection_details":
             cid = args.get("collection_id", "")
             return f"Loading details for `{cid}`" if cid else "Loading collection details..."
+        if tool_name == "create_chart":
+            ct = args.get("chart_type", "chart")
+            title = args.get("title", "")
+            return f"Creating {ct}: *{title[:60]}*" if title else f"Creating {ct}..."
+        if tool_name == "generate_report":
+            title = args.get("title", "")
+            return f"Generating report: *{title[:60]}*" if title else "Generating insight report..."
+        if tool_name == "generate_dashboard":
+            title = args.get("title", "")
+            return f"Building dashboard: *{title[:60]}*" if title else "Building interactive dashboard..."
+        if tool_name == "export_data":
+            return "Preparing data export..."
+        if tool_name == "create_task_protocol":
+            title = args.get("title", "")
+            return f"Writing task protocol: *{title[:60]}*" if title else "Writing task protocol..."
+        if tool_name == "get_task_status":
+            tid = args.get("task_id", "")
+            return f"Checking task `{tid}`" if tid else "Checking task status..."
+        if tool_name == "set_active_task":
+            tid = args.get("task_id", "")
+            return f"Loading task `{tid}`" if tid else "Loading task context..."
+        if tool_name == "refresh_engagements":
+            return "Refreshing engagement metrics..."
+        if tool_name == "cancel_collection":
+            cid = args.get("collection_id", "")
+            return f"Cancelling collection `{cid}`" if cid else "Cancelling collection..."
+        if tool_name == "compose_email":
+            return "Composing email..."
+        if tool_name == "send_email":
+            return "Sending email..."
     elif event_type == "tool_result":
         result = event_data.get("metadata", {}).get("result", {})
         if tool_name == "execute_sql":
@@ -2014,6 +2104,28 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
             return "Enrichment complete"
         if tool_name == "get_collection_details":
             return "Collection details loaded"
+        if tool_name == "create_chart":
+            return "Chart created"
+        if tool_name == "generate_report":
+            return "Report generated"
+        if tool_name == "generate_dashboard":
+            return "Dashboard built"
+        if tool_name == "export_data":
+            return "Data exported"
+        if tool_name == "create_task_protocol":
+            return "Task protocol ready"
+        if tool_name == "get_task_status":
+            return "Task status retrieved"
+        if tool_name == "set_active_task":
+            return "Task context loaded"
+        if tool_name == "refresh_engagements":
+            return "Engagements refreshed"
+        if tool_name == "cancel_collection":
+            return "Collection cancelled"
+        if tool_name == "compose_email":
+            return "Email composed"
+        if tool_name == "send_email":
+            return "Email sent"
     return None
 
 
@@ -2064,6 +2176,16 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
                     results.append({
                         "event_type": "status",
                         "content": status_match.group(1).strip(),
+                        "author": event.author,
+                    })
+
+                # Extract <!-- intent: ... --> markers and emit as intent events
+                for intent_match in re.finditer(
+                    r"<!--\s*intent:\s*([\s\S]*?)\s*-->", raw
+                ):
+                    results.append({
+                        "event_type": "intent",
+                        "content": intent_match.group(1).strip(),
                         "author": event.author,
                     })
 

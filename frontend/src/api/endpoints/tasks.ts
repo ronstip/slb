@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../client.ts';
+import type { ArtifactListItem } from './artifacts.ts';
 
 // --- Types ---
 
@@ -91,4 +92,29 @@ export function updateTask(
 
 export function deleteTask(taskId: string): Promise<{ ok: boolean }> {
   return apiDelete<{ ok: boolean }>(`/tasks/${taskId}`);
+}
+
+export function runTask(taskId: string): Promise<{ task_id: string; collection_ids: string[]; status: string }> {
+  return apiPost<{ task_id: string; collection_ids: string[]; status: string }>(`/tasks/${taskId}/run`, {});
+}
+
+// --- Task Artifacts ---
+
+export function getTaskArtifacts(taskId: string): Promise<ArtifactListItem[]> {
+  return apiGet<ArtifactListItem[]>(`/tasks/${taskId}/artifacts`);
+}
+
+// --- Task Activity Logs ---
+
+export interface TaskLogEntry {
+  id: string;
+  message: string;
+  level: 'info' | 'warning' | 'error';
+  source: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function getTaskLogs(taskId: string, limit = 50): Promise<TaskLogEntry[]> {
+  return apiGet<TaskLogEntry[]>(`/tasks/${taskId}/logs`, { limit: String(limit) });
 }

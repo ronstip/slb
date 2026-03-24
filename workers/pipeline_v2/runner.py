@@ -76,11 +76,28 @@ class PipelineRunner:
             )
             self._set_crashed_status(str(e))
 
+    def _get_task_id(self) -> str | None:
+        """Return the task_id linked to this collection, if any."""
+        status = self.fs.get_collection_status(self.collection_id)
+        return (status or {}).get("task_id")
+
+    def _log_task(self, message: str, level: str = "info", metadata: dict | None = None) -> None:
+        """Write to the parent task's activity log (no-op if no task_id)."""
+        task_id = self._get_task_id()
+        if not task_id:
+            return
+        try:
+            self.fs.add_task_log(task_id, message, source="pipeline", level=level, metadata=metadata)
+        except Exception:
+            logger.debug("Failed to write task log for collection %s", self.collection_id, exc_info=True)
+
     def _run_pipeline(self, pipeline_start: float) -> None:
         """Inner pipeline logic — called by run() inside try/except."""
         # Load config
         self._load_config()
         self._load_custom_fields()
+
+        self._log_task(f"Collection {self.collection_id[:8]}: starting data collection")
 
         # Initialize counts on the Firestore doc
         self.fs.update_collection_status(
@@ -152,6 +169,11 @@ class PipelineRunner:
         except Exception:
             logger.exception("Failed to cleanup post states for %s", self.collection_id)
 
+
+        self._log_task(
+            f"Collection {self.collection_id[:8]}: pipeline complete — {self._total_posts_collected} posts collected",
+            metadata={"posts_collected": self._total_posts_collected},
+        )
 
         logger.info(
             "━━━ Pipeline V2 DONE %s — total=%.1fs ━━━",

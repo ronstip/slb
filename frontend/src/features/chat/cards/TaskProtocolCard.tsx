@@ -1,14 +1,20 @@
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ClipboardList, Check, ExternalLink, Play, Repeat } from 'lucide-react';
 import { Card } from '../../../components/ui/card.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Badge } from '../../../components/ui/badge.tsx';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '../../../components/ui/sheet.tsx';
 import { apiPost } from '../../../api/client.ts';
 import { useTaskStore } from '../../../stores/task-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
-import { useUIStore } from '../../../stores/ui-store.ts';
-import { useStudioStore } from '../../../stores/studio-store.ts';
 
 interface TaskProtocolCardProps {
   data: Record<string, unknown>;
@@ -24,6 +30,7 @@ export function TaskProtocolCard({ data, onAction }: TaskProtocolCardProps) {
 
   const [action, setAction] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const sessionId = useSessionStore.getState().activeSessionId;
 
@@ -47,10 +54,8 @@ export function TaskProtocolCard({ data, onAction }: TaskProtocolCardProps) {
 
       setAction(runNow ? 'run' : 'approve');
 
-      // Add task to store
       await useTaskStore.getState().fetchTasks();
 
-      // Add collections to sources store
       if (result.collection_ids?.length) {
         for (const cid of result.collection_ids) {
           useSourcesStore.getState().addToSession(cid);
@@ -68,12 +73,6 @@ export function TaskProtocolCard({ data, onAction }: TaskProtocolCardProps) {
     }
   };
 
-  const handleViewProtocol = () => {
-    useUIStore.getState().expandStudioPanel();
-    useStudioStore.getState().setActiveTab('protocol');
-    useStudioStore.getState().setProtocolContent(protocol);
-  };
-
   const handleReject = () => {
     if (action) return;
     setAction('reject');
@@ -83,87 +82,104 @@ export function TaskProtocolCard({ data, onAction }: TaskProtocolCardProps) {
   const isRecurring = taskType === 'recurring';
 
   return (
-    <Card className="mt-3 overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border/30 bg-accent-vibrant/5 px-4 py-2">
-        <ClipboardList className="h-3.5 w-3.5 text-accent-vibrant" />
-        <span className="text-[11px] font-medium text-accent-vibrant">Task Protocol</span>
-        <Badge variant="outline" className="ml-auto h-5 text-[10px]">
-          {isRecurring ? (
-            <><Repeat className="mr-1 h-2.5 w-2.5" />recurring</>
-          ) : (
-            'one-shot'
-          )}
-        </Badge>
-      </div>
+    <>
+      <Card className="mt-3 overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-border/30 bg-accent-vibrant/5 px-4 py-2">
+          <ClipboardList className="h-3.5 w-3.5 text-accent-vibrant" />
+          <span className="text-[11px] font-medium text-accent-vibrant">Task Protocol</span>
+          <Badge variant="outline" className="ml-auto h-5 text-[10px]">
+            {isRecurring ? (
+              <><Repeat className="mr-1 h-2.5 w-2.5" />recurring</>
+            ) : (
+              'one-shot'
+            )}
+          </Badge>
+        </div>
 
-      <div className="p-4 space-y-3">
-        <p className="text-[13px] font-semibold text-foreground">
-          {title}
-        </p>
-
-        {summary && (
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            {summary}
+        <div className="p-4 space-y-3">
+          <p className="text-[13px] font-semibold text-foreground">
+            {title}
           </p>
-        )}
 
-        {isRecurring && schedule && (
-          <div className="text-[10px] text-muted-foreground">
-            Schedule: {(schedule.frequency_label as string) || (schedule.frequency as string)}
-          </div>
-        )}
+          {summary && (
+            <div className="text-[11px] leading-relaxed text-muted-foreground prose prose-xs dark:prose-invert max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+            </div>
+          )}
 
-        <div className="flex items-center gap-2 pt-1">
-          {!action ? (
-            <>
-              <Button
-                size="sm"
-                className="h-7 text-xs"
-                disabled={isLoading}
-                onClick={() => handleApprove(true)}
-              >
-                <Play className="mr-1 h-3 w-3" />
-                {isLoading ? 'Creating...' : 'Approve & Run'}
-              </Button>
-              {isRecurring && (
+          {isRecurring && schedule && (
+            <div className="text-[10px] text-muted-foreground">
+              Schedule: {(schedule.frequency_label as string) || (schedule.frequency as string)}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            {!action ? (
+              <>
                 <Button
-                  variant="outline"
                   size="sm"
                   className="h-7 text-xs"
                   disabled={isLoading}
-                  onClick={() => handleApprove(false)}
+                  onClick={() => handleApprove(true)}
                 >
-                  Approve
+                  <Play className="mr-1 h-3 w-3" />
+                  {isLoading ? 'Creating...' : 'Approve & Run'}
                 </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs text-muted-foreground"
-                onClick={handleViewProtocol}
-              >
-                <ExternalLink className="mr-1 h-3 w-3" />
-                View Protocol
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-auto h-7 text-xs text-muted-foreground"
-                onClick={handleReject}
-              >
-                Reject
-              </Button>
-            </>
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Check className="h-3.5 w-3.5 text-green-500" />
-              {action === 'run' && 'Approved & running'}
-              {action === 'approve' && 'Approved & scheduled'}
-              {action === 'reject' && 'Rejected'}
-            </div>
-          )}
+                {isRecurring && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={isLoading}
+                    onClick={() => handleApprove(false)}
+                  >
+                    Approve
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => setDrawerOpen(true)}
+                >
+                  <ExternalLink className="mr-1 h-3 w-3" />
+                  View Protocol
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto h-7 text-xs text-muted-foreground"
+                  onClick={handleReject}
+                >
+                  Reject
+                </Button>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Check className="h-3.5 w-3.5 text-green-500" />
+                {action === 'run' && 'Approved & running'}
+                {action === 'approve' && 'Approved & scheduled'}
+                {action === 'reject' && 'Rejected'}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </Card>
+      </Card>
+
+      {/* Protocol drawer */}
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent side="right" className="w-[500px] sm:w-[600px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4" />
+              {title}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 prose prose-sm dark:prose-invert prose-headings:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{protocol}</ReactMarkdown>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

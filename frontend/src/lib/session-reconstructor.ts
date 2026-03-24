@@ -19,7 +19,15 @@ import {
 } from './event-parser.ts';
 
 /** Tools that produce thinking entries (mirrors THINKING_TOOLS in main.py). */
-const THINKING_TOOLS = new Set(['execute_sql', 'get_table_info', 'list_table_ids']);
+const THINKING_TOOLS = new Set([
+  'execute_sql', 'get_table_info', 'list_table_ids',
+  'google_search', 'design_research', 'start_collection',
+  'get_progress', 'enrich_collection', 'get_collection_details',
+  'create_chart', 'generate_report', 'generate_dashboard',
+  'export_data', 'create_task_protocol', 'get_task_status',
+  'set_active_task', 'refresh_engagements', 'cancel_collection',
+  'compose_email', 'send_email',
+]);
 
 function buildThinkingFromCall(toolName: string, args: Record<string, unknown>): string | null {
   if (!THINKING_TOOLS.has(toolName)) return null;
@@ -35,13 +43,55 @@ function buildThinkingFromCall(toolName: string, args: Record<string, unknown>):
     const dataset = (args.dataset_id ?? 'social_listening') as string;
     return `Listing tables in \`${dataset}\``;
   }
-  return null;
+  if (toolName === 'google_search') {
+    const query = (args.query ?? '') as string;
+    return query ? `Searching: *${query}*` : 'Searching the web...';
+  }
+  if (toolName === 'create_chart') {
+    const ct = (args.chart_type ?? 'chart') as string;
+    const title = (args.title ?? '') as string;
+    return title ? `Creating ${ct}: *${title.slice(0, 60)}*` : `Creating ${ct}...`;
+  }
+  if (toolName === 'generate_report') {
+    const title = (args.title ?? '') as string;
+    return title ? `Generating report: *${title.slice(0, 60)}*` : 'Generating insight report...';
+  }
+  if (toolName === 'generate_dashboard') {
+    const title = (args.title ?? '') as string;
+    return title ? `Building dashboard: *${title.slice(0, 60)}*` : 'Building interactive dashboard...';
+  }
+  if (toolName === 'create_task_protocol') {
+    const title = (args.title ?? '') as string;
+    return title ? `Writing task protocol: *${title.slice(0, 60)}*` : 'Writing task protocol...';
+  }
+  // Generic fallback for other thinking tools
+  return getToolDisplayText(toolName);
 }
+
+const TOOL_RESULT_MESSAGES: Record<string, string> = {
+  execute_sql: 'Query completed',
+  google_search: 'Search results received',
+  design_research: 'Research design complete',
+  start_collection: 'Collection started',
+  get_progress: 'Progress retrieved',
+  enrich_collection: 'Enrichment complete',
+  get_collection_details: 'Collection details loaded',
+  create_chart: 'Chart created',
+  generate_report: 'Report generated',
+  generate_dashboard: 'Dashboard built',
+  export_data: 'Data exported',
+  create_task_protocol: 'Task protocol ready',
+  get_task_status: 'Task status retrieved',
+  set_active_task: 'Task context loaded',
+  refresh_engagements: 'Engagements refreshed',
+  cancel_collection: 'Collection cancelled',
+  compose_email: 'Email composed',
+  send_email: 'Email sent',
+};
 
 function buildThinkingFromResult(toolName: string): string | null {
   if (!THINKING_TOOLS.has(toolName)) return null;
-  if (toolName === 'execute_sql') return 'Query completed';
-  return null;
+  return TOOL_RESULT_MESSAGES[toolName] ?? null;
 }
 
 export interface ReconstructedSession {
@@ -83,6 +133,7 @@ export function reconstructSession(
         cards: [],
         thinkingEntries: [],
         statusLine: null,
+        intentLine: null,
         suggestions: [],
       };
     }
@@ -119,6 +170,7 @@ export function reconstructSession(
           name: part.function_call.name,
           displayText: getToolDisplayText(part.function_call.name),
           resolved: false,
+          startedAt: event.timestamp ? event.timestamp * 1000 : Date.now(),
         });
         // Reconstruct thinking entry from tool call args
         const thinking = buildThinkingFromCall(
@@ -214,6 +266,12 @@ export function reconstructSession(
         while ((thinkingMatch = thinkingRe.exec(part.text)) !== null) {
           msg.thinkingEntries.push(thinkingMatch[1].trim());
         }
+        // Extract intent markers
+        const intentRe = /<!--\s*intent:\s*([\s\S]*?)\s*-->/g;
+        let intentMatch;
+        while ((intentMatch = intentRe.exec(part.text)) !== null) {
+          msg.intentLine = intentMatch[1].trim();
+        }
         // Strip all HTML comments (status, thinking, plan, etc.) from visible text
         const cleanText = part.text.replace(/<!--[\s\S]*?-->/g, '');
         msg.content += cleanText;
@@ -230,7 +288,7 @@ export function reconstructSession(
   // (e.g. Google Search grounding metadata failing model_dump).
   for (const msg of messages) {
     msg.toolIndicators = msg.toolIndicators.map((t) =>
-      t.resolved ? t : { ...t, resolved: true },
+      t.resolved ? t : { ...t, resolved: true, startedAt: t.startedAt || Date.now() },
     );
   }
 

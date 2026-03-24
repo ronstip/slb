@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 TASK_TOOLS = {"create_task_protocol", "get_task_status", "set_active_task"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
-RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search"}
+RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
 RESEARCH_DESIGN_TOOLS: set[str] = set()  # design_research removed (internal only)
 COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
 OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
@@ -161,6 +161,15 @@ def collection_state_tracker(
             # Signal the before_model_callback to stop the ReAct loop.
             # The user must approve/edit/reject before the agent continues.
             tool_context.state["awaiting_user_input"] = True
+            # Clear previous active task context — we're creating a new task.
+            # Without this, the old task's context bleeds into the system
+            # instruction and biases the model toward the previous protocol.
+            for key in (
+                "active_task_id", "active_task_title", "active_task_status",
+                "active_task_protocol", "active_task_type", "active_task_context_summary",
+            ):
+                if key in tool_context.state:
+                    del tool_context.state[key]
 
     elif tool_name == "set_active_task":
         if isinstance(tool_response, dict) and tool_response.get("status") == "success":
@@ -171,6 +180,16 @@ def collection_state_tracker(
         # The user must respond before the agent continues.
         if isinstance(tool_response, dict) and tool_response.get("status") == "needs_input":
             tool_context.state["awaiting_user_input"] = True
+            # Clear active task context when asking user questions for a new
+            # task setup (platforms, time range, etc.). This prevents the
+            # previous task's context from biasing the next create_task_protocol
+            # call. The ask_user tool is the first step in a new task flow.
+            for key in (
+                "active_task_id", "active_task_title", "active_task_status",
+                "active_task_protocol", "active_task_type", "active_task_context_summary",
+            ):
+                if key in tool_context.state:
+                    del tool_context.state[key]
 
     return None
 
@@ -300,23 +319,13 @@ def _build_context_block(state: dict) -> Optional[str]:
     # ── Active Task context ─────────────────────────────────────────
     active_task_id = state.get("active_task_id")
     if active_task_id:
-        title = state.get("active_task_title", "")
-        task_status = state.get("active_task_status", "")
-        task_type = state.get("active_task_type", "one_shot")
-        context_summary = state.get("active_task_context_summary", "")
-
-        lines = [
-            f"## Active Task: \"{title}\"",
-            f"- Task ID: `{active_task_id}`",
-            f"- Status: **{task_status}** | Type: {task_type}",
-        ]
-        if context_summary:
-            lines.append(f"- Summary: {context_summary}")
-        lines.append("")
-        blocks.append("\n".join(lines))
+        blocks.append(
+            "Note: A previous task existed in this session. "
+            "Focus entirely on the user's current request."
+        )
 
     # ── Task Library ────────────────────────────────────────────────
-    tasks_index: list[dict] = state.get("user_tasks_index", [])
+    tasks_index: list[dict] = state.get("user_tasks_index", [])[:5]
     if tasks_index:
         lines = ["## Task Library"]
         for t in tasks_index:
@@ -326,6 +335,10 @@ def _build_context_block(state: dict) -> Optional[str]:
                 f"| {t.get('created_at', '?')[:10] if t.get('created_at') else '?'}"
             )
         lines.append("")
+        lines.append(
+            "Only reference past tasks if the user explicitly asks. "
+            "New requests are independent."
+        )
         blocks.append("\n".join(lines))
 
     # ── Collection context ──────────────────────────────────────────
@@ -408,7 +421,7 @@ def _build_context_block(state: dict) -> Optional[str]:
         blocks.append("\n".join(lines))
 
     # ── Collections Library ──────────────────────────────────────
-    collections_index: list[dict] = state.get("user_collections_index", [])
+    collections_index: list[dict] = state.get("user_collections_index", [])[:5]
     if collections_index:
         lines = ["## Collections Library"]
         lines.append(
@@ -431,8 +444,8 @@ def _build_context_block(state: dict) -> Optional[str]:
                 lines.append(f"  Channels: {', '.join(channels)}")
         lines.append("")
         lines.append(
-            "Reference these when the user mentions past research. "
-            "Do NOT call a tool to discover collections — this list is current."
+            "Only reference these if the user EXPLICITLY asks about a past collection "
+            "by name or ID. Do NOT proactively connect new requests to these collections."
         )
         blocks.append("\n".join(lines))
 

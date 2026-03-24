@@ -296,6 +296,51 @@ class FirestoreClient:
             "updated_at": datetime.now(timezone.utc),
         })
 
+    def add_task_log(
+        self,
+        task_id: str,
+        message: str,
+        source: str = "system",
+        level: str = "info",
+        metadata: dict | None = None,
+    ) -> str:
+        """Append a log entry to the tasks/{task_id}/logs subcollection."""
+        doc_ref = (
+            self._db.collection("tasks")
+            .document(task_id)
+            .collection("logs")
+            .document()
+        )
+        doc_ref.set({
+            "message": message,
+            "level": level,
+            "source": source,
+            "timestamp": datetime.now(timezone.utc),
+            "metadata": metadata or {},
+        })
+        return doc_ref.id
+
+    def get_task_logs(self, task_id: str, limit: int = 50) -> list[dict]:
+        """Read log entries for a task, newest first."""
+        docs = (
+            self._db.collection("tasks")
+            .document(task_id)
+            .collection("logs")
+            .order_by("timestamp", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+            .stream()
+        )
+        results = []
+        for doc in docs:
+            entry = doc.to_dict()
+            entry["id"] = doc.id
+            # Convert Firestore timestamp to ISO string
+            ts = entry.get("timestamp")
+            if hasattr(ts, "isoformat"):
+                entry["timestamp"] = ts.isoformat()
+            results.append(entry)
+        return results
+
     def get_due_recurring_tasks(self) -> list[dict]:
         """Return recurring tasks whose next_run_at is in the past and status is 'monitoring'."""
         now = datetime.now(timezone.utc)

@@ -5,6 +5,9 @@ export interface ToolIndicator {
   name: string;
   displayText: string;
   resolved: boolean;
+  startedAt: number;
+  durationMs?: number;
+  error?: string;
 }
 
 export interface MessageCard {
@@ -22,6 +25,7 @@ export interface ChatMessage {
   cards: MessageCard[];
   thinkingEntries: string[];
   statusLine: string | null;
+  intentLine: string | null;
   suggestions: string[];
   activeAgent?: string;
 }
@@ -45,6 +49,7 @@ interface ChatStore {
   addCard: (messageId: string, card: MessageCard) => void;
   appendThinking: (messageId: string, content: string) => void;
   setStatusLine: (messageId: string, status: string | null) => void;
+  setIntentLine: (messageId: string, intent: string | null) => void;
   setSuggestions: (messageId: string, suggestions: string[]) => void;
   finalizeMessage: (messageId: string) => void;
   addAgentMessage: (text: string, cards?: MessageCard[]) => string;
@@ -86,6 +91,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           cards: [],
           thinkingEntries: [],
           statusLine: null,
+          intentLine: null,
           suggestions: [],
         },
       ],
@@ -106,6 +112,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           cards: [],
           thinkingEntries: [],
           statusLine: null,
+          intentLine: null,
           suggestions: [],
         },
       ],
@@ -136,25 +143,31 @@ export const useChatStore = create<ChatStore>((set) => ({
               ...m,
               toolIndicators: [
                 ...m.toolIndicators,
-                { name, displayText, resolved: false },
+                { name, displayText, resolved: false, startedAt: Date.now() },
               ],
             }
           : m,
       ),
     })),
 
-  resolveToolCall: (messageId, name, _result) =>
+  resolveToolCall: (messageId, name, result) =>
     set((s) => ({
       messages: s.messages.map((m) => {
         if (m.id !== messageId) return m;
         // Resolve only the first unresolved indicator matching the name
         let resolved = false;
+        const isError = result?.status === 'error';
         return {
           ...m,
           toolIndicators: m.toolIndicators.map((t) => {
             if (!resolved && t.name === name && !t.resolved) {
               resolved = true;
-              return { ...t, resolved: true };
+              return {
+                ...t,
+                resolved: true,
+                durationMs: Date.now() - t.startedAt,
+                error: isError ? ((result?.message as string) || 'Tool failed') : undefined,
+              };
             }
             return t;
           }),
@@ -207,6 +220,13 @@ export const useChatStore = create<ChatStore>((set) => ({
       ),
     })),
 
+  setIntentLine: (messageId, intent) =>
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId ? { ...m, intentLine: intent } : m,
+      ),
+    })),
+
   setSuggestions: (messageId, suggestions) =>
     set((s) => ({
       messages: s.messages.map((m) =>
@@ -246,6 +266,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           cards: cards ?? [],
           thinkingEntries: [],
           statusLine: null,
+          intentLine: null,
           suggestions: [],
         },
       ],
@@ -267,6 +288,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           cards: cards ?? [],
           thinkingEntries: [],
           statusLine: null,
+          intentLine: null,
           suggestions: [],
         },
       ],

@@ -101,74 +101,8 @@ def _check_due_tasks(fs, settings) -> None:
 
 def _dispatch_recurring_task_run(fs, settings, task_id: str, task: dict) -> None:
     """Create new collections for a recurring task run and dispatch pipelines."""
-    from datetime import datetime, timezone
-    from api.schemas.requests import CreateCollectionRequest
-    from api.services.collection_service import create_collection_from_request, _compute_next_run_at
+    from api.services.task_service import dispatch_task_run
 
-    data_scope = task.get("data_scope") or {}
-    searches = data_scope.get("searches", [])
-    schedule = task.get("schedule") or {}
-    user_id = task.get("user_id", "")
-    org_id = task.get("org_id")
-    session_id = task.get("primary_session_id", "")
-    title = task.get("title", "")
-
-    if not searches:
-        logger.warning("Recurring task %s has no searches defined", task_id)
-        return
-
-    # Update task status to executing
-    fs.update_task(task_id, status="executing")
-
-    # Create new collections for this run
-    collection_ids = []
-    for search_def in searches:
-        platforms = search_def.get("platforms", [])
-        keywords = search_def.get("keywords", [])
-        if not platforms or not keywords:
-            continue
-
-        req = CreateCollectionRequest(
-            description=f"{title} (scheduled run)",
-            platforms=platforms,
-            keywords=keywords,
-            channel_urls=search_def.get("channels"),
-            time_range_days=search_def.get("time_range_days", 90),
-            geo_scope=search_def.get("geo_scope", "global"),
-            n_posts=search_def.get("n_posts", 0),
-            include_comments=True,
-        )
-
-        extra_config = {}
-        custom_fields = data_scope.get("custom_fields")
-        if custom_fields:
-            extra_config["custom_fields"] = custom_fields
-
-        result = create_collection_from_request(
-            request=req,
-            user_id=user_id,
-            org_id=org_id,
-            session_id=session_id,
-            extra_config=extra_config,
-        )
-        cid = result["collection_id"]
-        collection_ids.append(cid)
-
-        # Link collection to task
-        fs.add_task_collection(task_id, cid)
-        fs.update_collection_status(cid, task_id=task_id)
-
-    # Update task with new collection IDs
-    from google.cloud.firestore_v1 import transforms
-    now = datetime.now(timezone.utc)
-    next_run = _compute_next_run_at(schedule.get("frequency"), now)
-    fs.update_task(
-        task_id,
-        collection_ids=transforms.ArrayUnion(collection_ids),
-        next_run_at=next_run,
-    )
-
-    logger.info(
-        "Recurring task %s: created %d collections, next run at %s",
-        task_id, len(collection_ids), next_run.isoformat(),
-    )
+    fs.add_task_log(task_id, "Scheduled run triggered by scheduler", source="scheduler")
+    collection_ids = dispatch_task_run(task_id, task)
+    logger.info("Recurring task %s: dispatched %d collections", task_id, len(collection_ids))

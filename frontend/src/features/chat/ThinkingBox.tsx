@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Brain, ChevronDown, ChevronRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,9 +18,6 @@ function summarize(text: string, maxLen = 60): string {
 export function ThinkingBox({ entries, isStreaming, hasMainContent = false }: ThinkingBoxProps) {
   const [boxOpen, setBoxOpen] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
-  // Track whether we auto-opened so we can auto-close later
-  const autoOpenedRef = useRef(false);
-
   // Auto-expand only the latest step (collapse previous ones during streaming)
   useEffect(() => {
     if (entries.length > 0) {
@@ -29,21 +26,12 @@ export function ThinkingBox({ entries, isStreaming, hasMainContent = false }: Th
     }
   }, [entries.length]);
 
-  // Auto-open: when streaming, entries arrive, and no main content yet
+  // Auto-open when streaming and entries arrive (no main content yet)
   useEffect(() => {
     if (isStreaming && entries.length > 0 && !hasMainContent && !boxOpen) {
       setBoxOpen(true);
-      autoOpenedRef.current = true;
     }
   }, [isStreaming, entries.length, hasMainContent, boxOpen]);
-
-  // Auto-close: when main content arrives (only if we auto-opened)
-  useEffect(() => {
-    if (hasMainContent && autoOpenedRef.current) {
-      setBoxOpen(false);
-      autoOpenedRef.current = false;
-    }
-  }, [hasMainContent]);
 
   if (entries.length === 0) return null;
 
@@ -63,11 +51,7 @@ export function ThinkingBox({ entries, isStreaming, hasMainContent = false }: Th
     <div className="mb-2 rounded-md border border-dashed border-border/60 bg-muted/30">
       {/* Master header */}
       <button
-        onClick={() => {
-          setBoxOpen(!boxOpen);
-          // Manual toggle overrides auto behavior
-          autoOpenedRef.current = false;
-        }}
+        onClick={() => setBoxOpen(!boxOpen)}
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
       >
         <Brain className="h-3 w-3 text-muted-foreground/60" />

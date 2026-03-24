@@ -103,6 +103,10 @@ export function useSSEChat() {
               chatState.setStatusLine(messageId, event.content);
               break;
 
+            case 'intent':
+              chatState.setIntentLine(messageId, event.content);
+              break;
+
             case 'needs_decision':
               chatState.addCard(messageId, {
                 type: 'decision',
