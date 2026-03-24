@@ -38,6 +38,7 @@ from api.agent.tools.get_task_status import get_task_status
 from api.agent.tools.refresh_engagements import refresh_engagements
 from api.agent.tools.set_active_task import set_active_task
 from api.agent.tools.set_working_collections import set_working_collections
+from api.agent.tools.update_todos import update_todos
 from api.auth.session_service import FirestoreSessionService
 from config.settings import get_settings
 
@@ -64,6 +65,8 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
 
     # ─── Tool list ───────────────────────────────────────────────────
     tools = [
+        # Planning
+        update_todos,
         # Task management
         create_task_protocol,
         get_task_status,

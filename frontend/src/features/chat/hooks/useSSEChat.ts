@@ -7,7 +7,7 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isTaskProtocolResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isTaskProtocolResult, isTodoResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 export function useSSEChat() {
@@ -279,6 +279,15 @@ export function useSSEChat() {
                   type: 'task_protocol',
                   data: result,
                 });
+              } else if (isTodoResult(toolName, result)) {
+                // Replace previous todo card in this message (only show latest state)
+                const msg = chatState.messages.find((m) => m.id === messageId);
+                const existingIdx = msg?.cards.findIndex((c) => c.type === 'todo') ?? -1;
+                if (existingIdx >= 0) {
+                  chatState.updateCard(messageId, existingIdx, result);
+                } else {
+                  chatState.addCard(messageId, { type: 'todo', data: result });
+                }
               } else if (isStructuredPromptResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'structured_prompt',

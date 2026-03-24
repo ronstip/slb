@@ -16,6 +16,7 @@ import {
   isReportResult,
   isDashboardResult,
   isTaskProtocolResult,
+  isTodoResult,
 } from './event-parser.ts';
 
 /** Tools that produce thinking entries (mirrors THINKING_TOOLS in main.py). */
@@ -253,6 +254,14 @@ export function reconstructSession(
           });
         } else if (isTaskProtocolResult(toolName, result)) {
           msg.cards.push({ type: 'task_protocol', data: result });
+        } else if (isTodoResult(toolName, result)) {
+          // Keep only the latest todo card per message
+          const existingIdx = msg.cards.findIndex((c) => c.type === 'todo');
+          if (existingIdx >= 0) {
+            msg.cards[existingIdx] = { type: 'todo', data: result };
+          } else {
+            msg.cards.push({ type: 'todo', data: result });
+          }
         }
         continue;
       }

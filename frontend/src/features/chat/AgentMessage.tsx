@@ -21,6 +21,7 @@ import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
 import { TopicsSectionCard } from './cards/TopicsSectionCard.tsx';
 import { MetricsSectionCard } from './cards/MetricsSectionCard.tsx';
 import { TaskProtocolCard } from './cards/TaskProtocolCard.tsx';
+import { TodoCard } from './cards/TodoCard.tsx';
 import { PromptAnsweredSummary } from './StructuredPromptPanel.tsx';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { FollowUpChips } from './FollowUpChips.tsx';
@@ -172,6 +173,8 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
                     return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
                   case 'task_protocol':
                     return <TaskProtocolCard key={`other-${i}`} data={card.data} onAction={onSuggestionClick} />;
+                  case 'todo':
+                    return <TodoCard key={`other-${i}`} data={card.data} />;
                   case 'structured_prompt': {
                     if (activePromptMessageId === message.id) return null;
                     return <PromptAnsweredSummary key={`other-${i}`} data={card.data} />;

@@ -53,3 +53,10 @@ export function isTaskProtocolResult(
 ): boolean {
   return toolName === 'create_task_protocol' && result?.status === 'needs_approval' && !!result?.protocol;
 }
+
+export function isTodoResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'update_todos' && result?.status === 'success' && !!result?.progress;
+}

@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # ─── Tool priority groups for phase-based reordering ─────────────────
 # Tools listed first in the schema are naturally favoured by the model.
 
+PLANNING_TOOLS = {"update_todos"}
 TASK_TOOLS = {"create_task_protocol", "get_task_status", "set_active_task"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
@@ -92,6 +93,8 @@ def _summarize_tool_result(tool_name: str, tool_response: dict) -> str | None:
         cid = tool_response.get("collection_id", "?")
         cstatus = tool_response.get("collection_status", "?")
         return f"get_collection_details: {cid} ({cstatus})"
+    elif tool_name == "update_todos":
+        return f"update_todos: {tool_response.get('progress', '?')}"
     elif tool_name in ("generate_report", "generate_dashboard", "export_data"):
         return f"{tool_name}: completed"
     return None
@@ -155,6 +158,9 @@ def collection_state_tracker(
             tool_context.state["agent_selected_sources"] = (
                 tool_response.get("active_collections") or []
             )
+
+    elif tool_name == "update_todos":
+        pass  # State updated inside the tool
 
     elif tool_name == "create_task_protocol":
         if isinstance(tool_response, dict) and tool_response.get("status") == "needs_approval":
@@ -315,6 +321,35 @@ def enforce_collection_access(
 def _build_context_block(state: dict) -> Optional[str]:
     """Build a context block from session state, or None if nothing to inject."""
     blocks: list[str] = []
+
+    # ── Todo List ──────────────────────────────────────────────────
+    todos: list[dict] = state.get("todos", [])
+    if todos:
+        completed = sum(1 for t in todos if t.get("status") == "completed")
+        total = len(todos)
+        current = next(
+            (t for t in todos if t.get("status") in ("pending", "in_progress")),
+            None,
+        )
+
+        lines = [f"## Todo List ({completed}/{total} done)"]
+        for t in todos:
+            icon = {"completed": "[x]", "in_progress": "[>]"}.get(
+                t.get("status", ""), "[ ]"
+            )
+            lines.append(f"- {icon} {t['content']}")
+
+        if current:
+            lines.append(f"\n>> CURRENT: {current['content']}")
+            lines.append(
+                "Focus on this. Call `update_todos` when done to mark progress."
+            )
+        elif completed == total:
+            lines.append(
+                "\nAll todos complete. Summarize results for the user."
+            )
+
+        blocks.append("\n".join(lines))
 
     # ── Active Task context ─────────────────────────────────────────
     active_task_id = state.get("active_task_id")
@@ -486,14 +521,14 @@ def _get_phase_priority(state: dict) -> list[set[str]]:
 
     if not has_collection:
         # Research/task phase — task tools and context first
-        return [TASK_TOOLS, RESEARCH_SUPPORT_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS]
+        return [PLANNING_TOOLS, TASK_TOOLS, RESEARCH_SUPPORT_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS]
     elif collection_status in ("collecting", "enriching"):
         # Collection in progress — push collection tools LAST so the agent
         # doesn't loop on get_progress. The UI handles progress display.
-        return [TASK_TOOLS, CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS, COLLECTION_TOOLS]
+        return [PLANNING_TOOLS, TASK_TOOLS, CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS, COLLECTION_TOOLS]
     else:
         # Collection complete (or unknown) — analysis + output first
-        return [TASK_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_SUPPORT_TOOLS, RESEARCH_DESIGN_TOOLS]
+        return [PLANNING_TOOLS, TASK_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_SUPPORT_TOOLS, RESEARCH_DESIGN_TOOLS]
 
 
 def _tool_sort_key(tool_obj, priority_order: list[set[str]]) -> int:
