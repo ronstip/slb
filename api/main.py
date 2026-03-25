@@ -465,6 +465,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         session = None
 
     is_continuation = False  # Set in existing-session branch; used below for windowing
+    is_ask_user_response = False  # Set in existing-session branch; used below for windowing
 
     if session is None:
         # Load user context for agent personalization
@@ -524,7 +525,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             for key in (
                 "active_task_id", "active_task_title", "active_task_status",
                 "active_task_protocol", "active_task_type", "active_task_context_summary",
-                "todos",
+                "todos", "tool_result_history",
                 "active_collection_id", "agent_selected_sources",
                 "collection_status", "collection_running",
                 "posts_collected", "posts_enriched", "posts_embedded",
@@ -538,8 +539,8 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     # events).  This isolates task flows far better than a raw event count.
     # Use a wider window when the agent is mid-flow (ask_user round-trips
     # can span 3-4 user turns: original request, ask_user response(s), approval).
-    is_mid_flow = session.state.get("awaiting_user_input", False) or session.state.get("active_task_id") or is_continuation
-    MAX_USER_TURNS = 6 if is_mid_flow else 4
+    is_mid_flow = is_ask_user_response or session.state.get("active_task_id") or is_continuation
+    MAX_USER_TURNS = 6 if is_mid_flow else 2
     _trimmed_prefix = []  # Events trimmed for LLM context window — restored before persistence
     if session.events:
         user_turn_starts: list[int] = [
@@ -585,11 +586,10 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     if user.is_anonymous and session.state.get("message_count", 0) > 15:
         raise HTTPException(status_code=429, detail="Sign up for a free account to continue chatting")
 
-    # Persist state changes in background — runner reads from the
-    # in-memory session object, not Firestore.
-    threading.Thread(
-        target=runner.session_service._write_session, args=(session,), daemon=True
-    ).start()
+    # NOTE: Pre-persist removed. Writing the session here raced with the
+    # post-agent flush() — the background thread could serialize stale events
+    # and overwrite the flush's correct state (including awaiting_user_input).
+    # Session is persisted once at end-of-turn via runner.session_service.flush().
 
     # Track usage in background (3 Firestore writes)
     from api.services.usage_service import track_query
@@ -746,6 +746,14 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     asyncio.create_task(
                         _name_session_background(runner, user_id, session_id)
                     )
+            # If the runner ends without emitting a final_response (e.g., when
+            # the before_model_callback stops the ReAct loop after ask_user),
+            # we still need to flush the session so state persists for the
+            # next turn.
+            if _trimmed_prefix:
+                session.events = _trimmed_prefix + session.events
+            runner.session_service.flush(session)
+
         except Exception as e:
             logger.exception("Error in event stream")
             if _trimmed_prefix:

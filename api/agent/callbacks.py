@@ -298,17 +298,12 @@ def _build_context_block(state: dict) -> Optional[str]:
 
         blocks.append("\n".join(lines))
 
-    # ── Task Library ────────────────────────────────────────────────
-    tasks_index: list[dict] = state.get("user_tasks_index", [])[:5]
-    if tasks_index:
-        lines = ["## Task Library"]
-        for t in tasks_index:
-            lines.append(
-                f"- `{t.get('task_id', '?')}` | {t.get('title', 'untitled')} "
-                f"| {t.get('status', '?')} | {t.get('task_type', '?')} "
-                f"| {t.get('created_at', '?')[:10] if t.get('created_at') else '?'}"
-            )
-        blocks.append("\n".join(lines))
+    # ── Task Library / Collections Library ─────────────────────────
+    # NOTE: Removed from automatic injection. Showing old tasks and
+    # collections on every ReAct step caused the model to jump tracks
+    # and work on unrelated past tasks. The agent can still discover
+    # past work via get_task_status, get_collection_details, and
+    # set_active_task tools when the user explicitly asks.
 
     # ── Collection context ──────────────────────────────────────────
     collection_id = state.get("active_collection_id")
@@ -384,20 +379,6 @@ def _build_context_block(state: dict) -> Optional[str]:
         lines.append(f"- Name: **{display_name}**")
         if preferences:
             lines.append(f"- Preferences: {preferences}")
-        blocks.append("\n".join(lines))
-
-    # ── Collections Library ──────────────────────────────────────
-    collections_index: list[dict] = state.get("user_collections_index", [])[:5]
-    if collections_index:
-        lines = ["## Collections Library"]
-        for c in collections_index:
-            platforms_str = ", ".join(c.get("platforms", []))
-            own_marker = "" if c.get("own", True) else " [shared]"
-            lines.append(
-                f"- `{c['id']}` | {c.get('label', 'untitled')} "
-                f"| {c.get('status', '?')} | {platforms_str} "
-                f"| {c.get('posts', 0)} posts | {c.get('created', '?')}{own_marker}"
-            )
         blocks.append("\n".join(lines))
 
     return "\n\n".join(blocks) if blocks else None

@@ -75,9 +75,8 @@ def get_collection_details(collection_id: str) -> dict:
     - Inspecting custom enrichment fields or exact keyword lists
     - Checking detailed run log / platform-level stats
 
-    Do NOT use this to discover what collections exist — the Collections
-    Library injected into your context already lists all available collections
-    with their IDs, labels, status, platforms, keywords, and post counts.
+    Use this when you need to look up a specific collection's details, or
+    when the user asks about past collections.
 
     Args:
         collection_id: The ID of the collection to look up.

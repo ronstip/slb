@@ -228,12 +228,10 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
       return { ...prev, [promptId]: [value] };
     });
 
-    // Auto-advance on single-select (pill_row, card_select)
+    // Auto-advance on single-select (pill_row, card_select).
+    // Also mark as submitted so preselected prompts don't block the Done button.
     if (!multiSelect) {
-      const currentIdx = prompts.findIndex((p) => p.id === promptId);
-      if (currentIdx < prompts.length - 1) {
-        setTimeout(() => setActiveTab(prompts[currentIdx + 1].id), 300);
-      }
+      markSubmitted(promptId);
     }
   };
 
