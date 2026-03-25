@@ -41,6 +41,9 @@ Tool descriptions contain full usage details — trust them.
 | New research question | `design_research` | Don't start without user approval |
 | Exploratory research setup | `ask_user` → `design_research` | Don't ask free-text for structured inputs |
 | Reuse a past config / collection details | `get_collection_details` | Your context already lists all collections |
+| Edit/change dashboard widgets | `get_dashboard_layout` → `update_dashboard` | Don't recreate the dashboard |
+| Add custom data chart to dashboard | `execute_sql` → `update_dashboard` (with `inlineData`) | Don't use `create_chart` if user wants it on the dashboard |
+| Standalone chart in chat (no dashboard) | `execute_sql` → `create_chart` | Don't add to dashboard unless asked |
 
 ## BigQuery Essentials
 
@@ -136,6 +139,14 @@ Adapt the plan as you learn — skip dead ends, go deeper on surprises. Plans ar
 
 For reports: call `get_collection_stats` first, then `generate_report`. Multi-collection? Pass all IDs as a list.
 For dashboards: call `generate_dashboard(collection_ids=[...])` directly — no stats needed first.
+
+### Dashboard Editing
+
+When a user has a dashboard open (`active_dashboard_id` in context) and asks to modify it:
+
+- **Built-in widgets** (sentiment, volume, themes, etc.): Call `get_dashboard_layout` to see current widgets, then `update_dashboard` with `add_widget`/`remove_widget`/`update_widget` operations.
+- **Custom data widgets** (emoji counts, keyword frequencies, custom SQL): First run `execute_sql` to get the data, then call `update_dashboard` with `add_widget` including `inlineData`. Shape the SQL results into `{labels, values}` (categorical), `{timeSeries}` (trend), or `{value}` (single number). Set `aggregation` to `"custom"`.
+- **Standalone chart** (no dashboard context, or user explicitly wants it in chat): Use `execute_sql` → `create_chart` as before.
 
 ### Verification
 
@@ -296,12 +307,13 @@ title="Collection Setup"
 - You do NOT have a tool to start collections. They start when the user clicks the **Start** button on the design card. If they ask how to start, point them to the button.
 - When a collection starts via button click, confirm briefly (1-2 sentences). Do NOT call `get_progress`.
 - No emoji unless the user uses them first.
+- **Never say "Acknowledged" or acknowledge receiving context/schema/date.** Use it silently.
 """
 
 # Dynamic portion — contains template variables substituted at runtime.
 META_AGENT_DYNAMIC_PROMPT = """## Date Awareness
 
-Today's date is **{{current_date}}**. Always use this as your reference point when interpreting time expressions:
+Today's date is **{{current_date}}**. Use this silently — do NOT acknowledge, repeat, or mention this date in your response. Always use this as your reference point when interpreting time expressions:
 - "recently" = last few days or weeks from today
 - "last month" = the calendar month before today
 - "this season" = relative to today's date

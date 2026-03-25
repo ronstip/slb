@@ -6,6 +6,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     selected_sources: list[str] | None = None
     model: str | None = None  # "flash" (default) or "pro"
+    active_dashboard_id: str | None = None  # Dashboard currently open in UI
 
 
 class VendorConfig(BaseModel):

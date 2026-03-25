@@ -129,10 +129,11 @@ interface SocialChartWidgetProps {
   chartType: SocialChartType;
   data: WidgetData | undefined;
   accent?: string;
+  colorOverrides?: Record<string, string>;
   barOrientation?: 'horizontal' | 'vertical';
 }
 
-export function SocialChartWidget({ chartType, data, accent, barOrientation = 'horizontal' }: SocialChartWidgetProps) {
+export function SocialChartWidget({ chartType, data, accent, colorOverrides, barOrientation = 'horizontal' }: SocialChartWidgetProps) {
   const { accentColor, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -317,7 +318,10 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
     // Pie / Doughnut
     if (chartType === 'doughnut' || chartType === 'pie') {
       const total = values.reduce((a, b) => a + b, 0);
-      const chartColors = colors.slice(0, labels.length);
+      const paletteColors = colors.slice(0, labels.length);
+      const chartColors = colorOverrides
+        ? labels.map((l, i) => colorOverrides[l.toLowerCase()] ?? colorOverrides[l] ?? paletteColors[i])
+        : paletteColors;
       const cardBg = resolveThemeColor('--card');
       const legendPosition = labels.length <= 6 ? 'bottom' as const : 'right' as const;
 
@@ -382,12 +386,15 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
 
     // Bar (horizontal or vertical)
     const isHorizontal = barOrientation !== 'horizontal';
+    const barColors = colorOverrides
+      ? labels.map((l, i) => colorOverrides[l.toLowerCase()] ?? colorOverrides[l] ?? colors[i])
+      : colors.slice(0, labels.length);
     const chartData = {
       labels: labels.map((l) => (l.length > 30 ? l.substring(0, 30) + '…' : l)),
       datasets: [{
         label: 'Value',
         data: values,
-        backgroundColor: colors.slice(0, labels.length),
+        backgroundColor: barColors,
         borderWidth: 0,
         borderRadius: 6,
         barPercentage: 0.65,

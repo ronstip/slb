@@ -81,8 +81,19 @@ export function SocialDashboardView({
   const { data: layoutData, isLoading: layoutLoading } = useDashboardLayout(artifactId);
   const { mutate: saveLayout, isPending: isSaving } = useSaveDashboardLayout(artifactId);
 
-  // Initialise widgets from persisted layout or defaults
+  // Initialise widgets from persisted layout or defaults.
+  // initialised.current prevents local edits from being overwritten by React Query cache updates.
+  // It is reset when the agent externally updates the layout (via 'dashboard-agent-updated' event).
   const initialised = useRef(false);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { dashboardId } = (e as CustomEvent).detail ?? {};
+      if (dashboardId === artifactId) initialised.current = false;
+    };
+    window.addEventListener('dashboard-agent-updated', handler);
+    return () => window.removeEventListener('dashboard-agent-updated', handler);
+  }, [artifactId]);
+
   useEffect(() => {
     if (layoutLoading || initialised.current) return;
     initialised.current = true;

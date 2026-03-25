@@ -40,6 +40,20 @@ export function isDashboardResult(
   return toolName === 'generate_dashboard' && result?.status === 'success' && !!result?.dashboard_id;
 }
 
+export function isUpdateDashboardResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'update_dashboard' && result?.status === 'success' && !!result?.artifact_id;
+}
+
+export function isGetDashboardLayoutResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'get_dashboard_layout' && result?.status === 'success';
+}
+
 export function isStructuredPromptResult(
   toolName: string,
   result?: Record<string, unknown>,

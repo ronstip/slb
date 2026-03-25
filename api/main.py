@@ -476,6 +476,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         # Update selected_sources in session state
         if chat_request.selected_sources is not None:
             session.state["selected_sources"] = chat_request.selected_sources
+
+    # Always update active_dashboard_id so agent knows which dashboard is open
+    session.state["active_dashboard_id"] = chat_request.active_dashboard_id
     logger.info("PERF session_init=%.3fs events=%d", _time.perf_counter() - t0, len(session.events))
 
     content = types.Content(

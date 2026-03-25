@@ -10,6 +10,7 @@ import { ChartArtifactView } from '../studio/ChartArtifactView.tsx';
 import { InsightReportView } from '../studio/InsightReportView.tsx';
 import { DataExportView } from '../studio/DataExportView.tsx';
 import { DashboardView } from '../studio/dashboard/DashboardView.tsx';
+import { DashboardChatOverlay } from './DashboardChatOverlay.tsx';
 import { cn } from '../../lib/utils.ts';
 import type { Artifact } from '../../stores/studio-store.ts';
 
@@ -73,9 +74,11 @@ export function StandaloneArtifactPage() {
       {/* Artifact content */}
       {!isLoading && !error && artifact && style && (
         isDashboard ? (
-          /* Dashboard: standalone toolbar shows title + controls, no separate title bar */
-          <main className="mx-auto max-w-6xl w-full flex-1 flex flex-col min-h-0">
+          /* Dashboard: standalone toolbar shows title + controls, no separate title bar.
+             pb-28 leaves room for the floating chat bar at the bottom. */
+          <main className="mx-auto max-w-6xl w-full flex-1 flex flex-col min-h-0 pb-28">
             <DashboardView artifact={artifact} standalone />
+            {artifactId && <DashboardChatOverlay artifactId={artifactId} />}
           </main>
         ) : (
           <>

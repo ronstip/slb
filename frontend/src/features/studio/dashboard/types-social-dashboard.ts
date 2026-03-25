@@ -218,10 +218,20 @@ export interface SocialDashboardWidget {
   description?: string;
   /** Optional color accent for number cards */
   accent?: string;
+  /** Per-label color overrides for pie/doughnut/bar charts.
+   *  Keys are the label values (case-insensitive), values are hex colors.
+   *  Example: { positive: "#22c55e", negative: "#ef4444", neutral: "#94a3b8" } */
+  colorOverrides?: Record<string, string>;
   /** Per-widget filters applied on top of global filtered posts */
   filters?: SocialWidgetFilters;
   /** Custom chart configuration — set when aggregation === 'custom' */
   customConfig?: CustomChartConfig;
+  /** Pre-computed chart data supplied by the agent (e.g. from execute_sql).
+   *  When present, the widget renders this data directly instead of
+   *  computing from the posts array via client-side aggregation. */
+  inlineData?: WidgetData;
+  /** The SQL query that produced inlineData (for transparency / debugging) */
+  sourceSQL?: string;
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────

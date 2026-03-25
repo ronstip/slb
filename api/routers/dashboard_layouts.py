@@ -41,8 +41,9 @@ async def get_dashboard_layout(
 
     data = doc.to_dict()
 
-    # Verify ownership
-    if data.get("user_id") != user.uid:
+    # Verify ownership — allow access when no user_id stored (agent-created docs)
+    stored_uid = data.get("user_id")
+    if stored_uid and stored_uid != user.uid:
         raise HTTPException(status_code=403, detail="Access denied")
 
     return LayoutResponse(

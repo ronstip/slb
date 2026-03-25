@@ -30,6 +30,8 @@ from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
 from api.agent.tools.generate_report import generate_report
+from api.agent.tools.get_dashboard_layout import get_dashboard_layout
+from api.agent.tools.update_dashboard import update_dashboard
 from api.agent.tools.get_collection_stats import get_collection_stats
 from api.agent.tools.get_past_collections import get_collection_details
 from api.agent.tools.get_progress import get_progress
@@ -78,6 +80,8 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         get_collection_stats,
         generate_report,
         generate_dashboard,
+        get_dashboard_layout,
+        update_dashboard,
         # Context management
         set_working_collections,
         # Memory

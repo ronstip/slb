@@ -218,6 +218,55 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
   );
 }
 
+function InlineDataWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps) {
+  const data = widget.inlineData ?? undefined;
+
+  if (widget.chartType === 'number-card') {
+    const syntheticKpi = { label: widget.title, value: data?.value ?? 0, icon: 'posts' as const, sparklineData: [] };
+    return (
+      <SocialKpiCard
+        kpi={syntheticKpi}
+        accent={widget.accent}
+        isEditMode={isEditMode}
+        onConfigure={onConfigure}
+        onRemove={onRemove}
+        onDuplicate={onDuplicate}
+      />
+    );
+  }
+
+  if (widget.chartType === 'word-cloud') {
+    const cloudData = data?.labels?.map((text, i) => ({ text, value: data.values?.[i] ?? 0 })) ?? [];
+    return (
+      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+        <SocialWordCloudWidget data={cloudData} />
+      </SocialWidgetFrame>
+    );
+  }
+
+  if (widget.chartType === 'progress-list') {
+    return (
+      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+        <SocialProgressListWidget data={data} />
+      </SocialWidgetFrame>
+    );
+  }
+
+  if (widget.chartType === 'table') {
+    return (
+      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+        <GenericTableView data={data} />
+      </SocialWidgetFrame>
+    );
+  }
+
+  return (
+    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialChartWidget chartType={widget.chartType} data={data} accent={widget.accent} colorOverrides={widget.colorOverrides} barOrientation={widget.customConfig?.barOrientation} />
+    </SocialWidgetFrame>
+  );
+}
+
 function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
   const config = widget.customConfig;
   const data = useMemo<WidgetData | null>(() => {
@@ -284,7 +333,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   return (
     <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
-      <SocialChartWidget chartType={widget.chartType} data={data ?? undefined} accent={widget.accent} barOrientation={widget.customConfig?.barOrientation} />
+      <SocialChartWidget chartType={widget.chartType} data={data ?? undefined} accent={widget.accent} colorOverrides={widget.colorOverrides} barOrientation={widget.customConfig?.barOrientation} />
     </SocialWidgetFrame>
   );
 }
@@ -364,7 +413,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
 
   return (
     <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
-      <SocialChartWidget chartType={widget.chartType} data={chartData ?? undefined} accent={widget.accent} barOrientation={widget.customConfig?.barOrientation} />
+      <SocialChartWidget chartType={widget.chartType} data={chartData ?? undefined} accent={widget.accent} colorOverrides={widget.colorOverrides} barOrientation={widget.customConfig?.barOrientation} />
     </SocialWidgetFrame>
   );
 }
@@ -397,6 +446,11 @@ export function SocialWidgetRenderer({
   );
 
   const frameProps = { widget, isEditMode, onConfigure, onRemove, onDuplicate };
+
+  // Widgets with pre-computed inline data skip client-side aggregation entirely
+  if (widget.inlineData) {
+    return <InlineDataWidget {...frameProps} />;
+  }
 
   if (widget.aggregation === 'custom') {
     return <CustomWidget {...frameProps} posts={widgetPosts} />;

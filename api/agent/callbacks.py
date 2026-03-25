@@ -374,6 +374,18 @@ def _build_context_block(state: dict) -> Optional[str]:
         )
         blocks.append("\n".join(lines))
 
+    # ── Active Dashboard Context ──────────────────────────────────
+    active_dashboard_id = state.get("active_dashboard_id")
+    if active_dashboard_id:
+        lines = [
+            "## Active Dashboard",
+            f"- Dashboard currently open in UI: `{active_dashboard_id}`",
+            f"- ONLY use this exact ID (`{active_dashboard_id}`) for dashboard tools. Ignore any dashboard IDs from earlier in the conversation.",
+            "- For layout/widget changes: call `get_dashboard_layout` first, then `update_dashboard`.",
+            "- After dashboard edits, respond in ONE short sentence confirming what changed. No analysis, no date/schema acknowledgment.",
+        ]
+        blocks.append("\n".join(lines))
+
     # ── Tool result history ───────────────────────────────────────
     tool_history: list[str] = state.get("tool_result_history", [])
     if tool_history:

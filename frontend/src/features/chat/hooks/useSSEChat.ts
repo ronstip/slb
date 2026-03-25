@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
@@ -7,7 +8,7 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isUpdateDashboardResult, isStructuredPromptResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 export function useSSEChat() {
@@ -15,6 +16,7 @@ export function useSSEChat() {
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Clean up refs on unmount to prevent stale message finalization
   useEffect(() => {
@@ -47,11 +49,17 @@ export function useSSEChat() {
         .map((s) => s.collectionId);
 
       try {
+        // Pass the currently-open dashboard so the agent knows what to edit
+        const studioState = useStudioStore.getState();
+        const expandedArtifact = studioState.artifacts.find(a => a.id === studioState.expandedReportId);
+        const activeDashboardId = expandedArtifact?.type === 'dashboard' ? expandedArtifact.id : undefined;
+
         const stream = streamChat(
           {
             message: text,
             session_id: cs.sessionId ?? undefined,
             selected_sources: selectedSources,
+            active_dashboard_id: activeDashboardId,
           },
           getToken,
           abortController.signal,
@@ -70,15 +78,18 @@ export function useSSEChat() {
 
           switch (event.event_type) {
             case 'partial_text': {
-              // Streaming text chunk — append directly for typewriter effect.
-              // Markers are invisible (remarkStripComments strips HTML comments).
-              chatState.setStatusLine(messageId, null);
-              chatState.appendText(messageId, event.content);
+              // Strip all HTML comments (<!-- thinking: -->, <!-- status: -->, etc.)
+              // before appending so they never appear during streaming.
+              const partialClean = event.content.replace(/<!--[\s\S]*?-->/g, '');
+              if (partialClean) {
+                chatState.setStatusLine(messageId, null);
+                chatState.appendText(messageId, partialClean);
+              }
               break;
             }
 
             case 'text': {
-              // Final aggregated text — extract thinking markers.
+              // Final aggregated text — extract thinking markers, strip all HTML comments.
               // The visible text was already streamed via partial_text events,
               // so we only process markers here (text is suppressed server-side).
               const thinkingRe = /<!--\s*thinking:\s*([\s\S]*?)\s*-->/g;
@@ -86,7 +97,7 @@ export function useSSEChat() {
               while ((thinkingMatch = thinkingRe.exec(event.content)) !== null) {
                 chatState.appendThinking(messageId, thinkingMatch[1].trim());
               }
-              const cleanText = event.content.replace(/<!--\s*thinking:\s*[\s\S]*?\s*-->/g, '').trimEnd();
+              const cleanText = event.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd();
               if (cleanText) {
                 // Clear status line once real text arrives
                 chatState.setStatusLine(messageId, null);
@@ -256,6 +267,17 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
+              } else if (isUpdateDashboardResult(toolName, result)) {
+                const dashboardId = result.artifact_id as string;
+                // Signal SocialDashboardView to accept the next layout refetch
+                window.dispatchEvent(new CustomEvent('dashboard-agent-updated', { detail: { dashboardId } }));
+                // Force immediate refetch so the dashboard updates live
+                queryClient.invalidateQueries({ queryKey: ['dashboard-layout', dashboardId] });
+                queryClient.refetchQueries({ queryKey: ['dashboard-layout', dashboardId] });
+                // Bring the dashboard into view if it's not already
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
+                useStudioStore.getState().expandReport(dashboardId);
               } else if (isStructuredPromptResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'structured_prompt',
