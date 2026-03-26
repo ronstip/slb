@@ -59,8 +59,6 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
         geo_scope: cfg.geo_scope,
         n_posts: cfg.n_posts ?? 0,
         include_comments: cfg.include_comments,
-        ongoing: cfg.ongoing,
-        schedule: cfg.schedule,
         custom_fields: cfg.custom_fields,
         video_params: cfg.video_params,
         reasoning_level: cfg.reasoning_level,

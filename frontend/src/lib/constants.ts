@@ -98,5 +98,25 @@ export function formatSchedule(schedule?: string | null): string {
   const { unit, interval, time } = parseScheduleString(schedule);
   if (unit === 'minute') return `Every ${interval === 1 ? 'minute' : `${interval} minutes`}`;
   if (unit === 'hour') return `Every ${interval === 1 ? 'hour' : `${interval} hours`}`;
+  if (interval === 7) return `Every week at ${time} UTC`;
   return `Every ${interval === 1 ? 'day' : `${interval} days`} at ${time} UTC`;
+}
+
+export type SchedulePreset = 'hourly' | 'daily' | 'weekly';
+
+/** Build a schedule string from a preset frequency */
+export function buildScheduleFromPreset(preset: SchedulePreset, time: string): string {
+  if (preset === 'hourly') return '1h';
+  if (preset === 'daily') return `1d@${time}`;
+  return `7d@${time}`; // weekly
+}
+
+/** Reverse-map a schedule string to a preset + time */
+export function parseToPreset(schedule?: string | null): { preset: SchedulePreset; time: string } {
+  const parsed = parseScheduleString(schedule);
+  if (parsed.unit === 'hour' || parsed.unit === 'minute')
+    return { preset: 'hourly', time: '09:00' };
+  if (parsed.interval >= 7)
+    return { preset: 'weekly', time: parsed.time };
+  return { preset: 'daily', time: parsed.time };
 }

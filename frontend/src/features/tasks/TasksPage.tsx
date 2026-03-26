@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Archive,
   BarChart3,
+  CalendarClock,
   Check,
   CheckCircle2,
   Circle,
@@ -27,11 +28,13 @@ import {
   Repeat,
   Search,
   StopCircle,
+  Compass,
   Table2,
   Trash2,
   X,
 } from 'lucide-react';
 import { useTaskStore } from '../../stores/task-store.ts';
+import { TaskDataExplorer } from './TaskDataExplorer.tsx';
 import type { Task, TaskStatus } from '../../api/endpoints/tasks.ts';
 import { deleteTask, getTask, runTask, updateTask as patchTask, getTaskArtifacts, getTaskLogs } from '../../api/endpoints/tasks.ts';
 import type { TaskLogEntry } from '../../api/endpoints/tasks.ts';
@@ -45,6 +48,20 @@ import {
   SheetTitle,
   SheetDescription,
 } from '../../components/ui/sheet.tsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog.tsx';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select.tsx';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,6 +83,14 @@ import { ARTIFACT_STYLES } from '../artifacts/artifact-utils.ts';
 import type { ArtifactListItem } from '../../api/endpoints/artifacts.ts';
 import type { Source } from '../../stores/sources-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
+import type { CollectionConfig } from '../../api/types.ts';
+import {
+  formatSchedule,
+  buildScheduleFromPreset,
+  parseToPreset,
+  SCHEDULE_UTC_TIMES,
+} from '../../lib/constants.ts';
+import type { SchedulePreset } from '../../lib/constants.ts';
 
 const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
   approved: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Approved', color: 'text-blue-500' },
@@ -105,6 +130,19 @@ function formatLastRun(runHistory: Task['run_history']): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/** Relative time for future dates (e.g. "in 6h", "Tomorrow") */
+function formatRelativeTime(iso: string): string {
+  const diffMs = new Date(iso).getTime() - Date.now();
+  if (diffMs < 0) return 'now';
+  const diffMin = Math.round(diffMs / 60_000);
+  if (diffMin < 60) return `in ${diffMin}m`;
+  const diffH = Math.round(diffMs / 3_600_000);
+  if (diffH < 24) return `in ${diffH}h`;
+  if (diffH < 48) return 'Tomorrow';
+  const diffD = Math.round(diffMs / 86_400_000);
+  return `in ${diffD}d`;
+}
+
 /** Status color used for the accent bar at the top of the drawer */
 const STATUS_ACCENT: Record<string, string> = {
   approved: 'bg-blue-500',
@@ -138,7 +176,7 @@ function buildSourceForCollection(collectionId: string): Source {
   return {
     collectionId,
     status: 'completed',
-    config: { platforms: [], keywords: [], time_range_days: 7 } as Source['config'],
+    config: { platforms: [], keywords: [], channel_urls: [], time_range: { start: '', end: '' }, include_comments: false, geo_scope: 'global' } as CollectionConfig,
     title: collectionId.slice(0, 8),
     postsCollected: 0,
     totalViews: 0,
@@ -149,10 +187,12 @@ function buildSourceForCollection(collectionId: string): Source {
   };
 }
 
-function TaskDetailDrawer({ task, open, onOpenChange }: {
+function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, onExploreData }: {
   task: Task | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  autoOpenSchedule?: boolean;
+  onExploreData?: (task: Task) => void;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -163,7 +203,19 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
   const [statsCollectionId, setStatsCollectionId] = useState<string | null>(null);
   const [tableCollectionId, setTableCollectionId] = useState<string | null>(null);
   const [showAllLogs, setShowAllLogs] = useState(false);
-  // protocolExpanded removed — protocol section no longer exists
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [editPreset, setEditPreset] = useState<SchedulePreset>('daily');
+  const [editTime, setEditTime] = useState('09:00');
+  const [editRunNow, setEditRunNow] = useState(true);
+  const [isPauseToggling, setIsPauseToggling] = useState(false);
+
+  // Auto-open schedule dialog when requested from table action
+  useEffect(() => {
+    if (autoOpenSchedule && open && task) {
+      handleOpenScheduleDialog();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenSchedule, open, task?.task_id]);
 
   // Live refresh while task is executing
   const { data: freshTask } = useQuery({
@@ -241,6 +293,60 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
     }
   };
 
+  const handleOpenScheduleDialog = () => {
+    if (displayTask.schedule) {
+      const { preset, time } = parseToPreset(displayTask.schedule.frequency);
+      setEditPreset(preset);
+      setEditTime(time);
+      setEditRunNow(false); // existing recurring task
+    } else {
+      setEditPreset('daily');
+      setEditTime('09:00');
+      setEditRunNow(true);
+    }
+    setScheduleDialogOpen(true);
+  };
+
+  const handleScheduleSave = async () => {
+    const frequency = buildScheduleFromPreset(editPreset, editTime);
+    try {
+      const updates: Record<string, unknown> = {
+        schedule: {
+          frequency,
+          frequency_label: formatSchedule(frequency),
+          auto_report: false,
+        },
+      };
+      if (displayTask.task_type !== 'recurring') {
+        updates.task_type = 'recurring';
+        updates.status = 'monitoring';
+      }
+      await patchTask(displayTask.task_id, updates as Parameters<typeof patchTask>[1]);
+      if (editRunNow) {
+        try { await runTask(displayTask.task_id); } catch { /* 409 = already running */ }
+      }
+      queryClient.invalidateQueries({ queryKey: ['task-detail', displayTask.task_id] });
+      fetchTasks();
+      setScheduleDialogOpen(false);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handlePauseResume = async () => {
+    setIsPauseToggling(true);
+    const newStatus = displayTask.status === 'monitoring' ? 'paused' : 'monitoring';
+    try {
+      await patchTask(displayTask.task_id, { status: newStatus });
+      queryClient.invalidateQueries({ queryKey: ['task-detail', displayTask.task_id] });
+      fetchTasks();
+    } catch {
+      // ignore
+    } finally {
+      setIsPauseToggling(false);
+    }
+  };
+
   // Timeline text
   const startDate = formatDate(displayTask.created_at);
   const endDate = displayTask.completed_at ? formatDate(displayTask.completed_at) : null;
@@ -294,6 +400,47 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
               <div className="text-[10px] text-muted-foreground">Steps</div>
             </div>
           </div>
+
+          {/* Schedule */}
+          {displayTask.task_type === 'recurring' && (
+            <div className="mt-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Schedule</h3>
+              <div className="rounded-lg border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">
+                    {displayTask.schedule ? formatSchedule(displayTask.schedule.frequency) : 'No schedule'}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={handleOpenScheduleDialog}>
+                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                  </Button>
+                </div>
+                {displayTask.schedule?.auto_report && (
+                  <div className="text-[10px] text-muted-foreground">Auto-report enabled</div>
+                )}
+                {displayTask.next_run_at && displayTask.status === 'monitoring' && (
+                  <div className="text-xs text-muted-foreground">
+                    Next run: {new Date(displayTask.next_run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {new Date(displayTask.next_run_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
+                  </div>
+                )}
+                {/* Run History */}
+                {displayTask.run_history && displayTask.run_history.length > 0 && (
+                  <>
+                    <div className="border-t pt-2 mt-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Run History</div>
+                      <div className="space-y-1">
+                        {displayTask.run_history.slice(-5).reverse().map((run, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className={`h-1.5 w-1.5 rounded-full ${run.status === 'started' || run.status === 'completed' ? 'bg-green-500' : 'bg-amber-500'}`} />
+                            <span>{formatDate(run.run_at)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="mt-4 flex gap-2">
@@ -357,6 +504,44 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
                 ) : (
                   <><Repeat className="mr-1.5 h-3 w-3" />Re-run</>
                 )}
+              </Button>
+            )}
+
+            {displayTask.task_type === 'recurring' && (displayTask.status === 'monitoring' || displayTask.status === 'paused') && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handlePauseResume}
+                disabled={isPauseToggling}
+              >
+                {displayTask.status === 'monitoring' ? (
+                  <><Pause className="mr-1.5 h-3 w-3" />Pause</>
+                ) : (
+                  <><Play className="mr-1.5 h-3 w-3" />Resume</>
+                )}
+              </Button>
+            )}
+
+            {/* Option B: Enable Schedule for one-shot tasks */}
+            {displayTask.task_type !== 'recurring' && ['completed', 'approved'].includes(displayTask.status) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOpenScheduleDialog}
+              >
+                <CalendarClock className="mr-1.5 h-3 w-3" />
+                Enable Schedule
+              </Button>
+            )}
+
+            {(displayTask.collection_ids?.length ?? 0) > 0 && onExploreData && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { onOpenChange(false); onExploreData(displayTask); }}
+              >
+                <Compass className="mr-1.5 h-3 w-3" />
+                Explore Data
               </Button>
             )}
           </div>
@@ -535,6 +720,75 @@ function TaskDetailDrawer({ task, open, onOpenChange }: {
           onClose={() => setTableCollectionId(null)}
         />
       )}
+
+      {/* Schedule Edit Dialog */}
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set Schedule</DialogTitle>
+            <DialogDescription>
+              Set how often this task runs automatically
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Task overview */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Task overview</label>
+              <div className="rounded-md bg-muted p-3 text-sm">
+                {displayTask.context_summary
+                  || displayTask.title
+                  + (displayTask.data_scope?.searches?.length
+                    ? ` — ${displayTask.data_scope.searches.map((s) => s.keywords.join(', ')).join('; ')}`
+                    : '')}
+              </div>
+            </div>
+            {/* Frequency preset */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Frequency</label>
+              <Select value={editPreset} onValueChange={(v) => setEditPreset(v as SchedulePreset)}>
+                <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hourly">Hourly</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Time picker (daily / weekly only) */}
+            {editPreset !== 'hourly' && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Run at (UTC)</label>
+                <Select value={editTime} onValueChange={setEditTime}>
+                  <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULE_UTC_TIMES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {/* Preview */}
+            <div className="text-xs text-muted-foreground">
+              Runs: {formatSchedule(buildScheduleFromPreset(editPreset, editTime))}
+            </div>
+            {/* Run now toggle */}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={editRunNow}
+                onChange={(e) => setEditRunNow(e.target.checked)}
+                className="rounded"
+              />
+              Run the first task now
+            </label>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setScheduleDialogOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleScheduleSave}>Set Schedule</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }
@@ -550,6 +804,8 @@ export function TasksPage() {
   const [statusFilter, setStatusFilter] = useState<Set<TaskStatus>>(new Set());
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [openScheduleOnDrawer, setOpenScheduleOnDrawer] = useState(false);
+  const [explorerTask, setExplorerTask] = useState<Task | null>(null);
 
   useEffect(() => {
     fetchTasks();
@@ -563,14 +819,29 @@ export function TasksPage() {
     return () => clearInterval(interval);
   }, [tasks, fetchTasks]);
 
-  const filteredTasks = tasks.filter((t) => {
-    if (statusFilter.size > 0 && !statusFilter.has(t.status)) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return t.title.toLowerCase().includes(q);
-    }
-    return true;
-  });
+  const filteredTasks = tasks
+    .filter((t) => {
+      if (statusFilter.size > 0 && !statusFilter.has(t.status)) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return t.title.toLowerCase().includes(q);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      // Monitoring tasks first
+      const aMonitoring = a.status === 'monitoring' ? 0 : 1;
+      const bMonitoring = b.status === 'monitoring' ? 0 : 1;
+      if (aMonitoring !== bMonitoring) return aMonitoring - bMonitoring;
+      // Then by next_run_at ascending (nulls last)
+      if (a.next_run_at && b.next_run_at) {
+        const diff = new Date(a.next_run_at).getTime() - new Date(b.next_run_at).getTime();
+        if (diff !== 0) return diff;
+      } else if (a.next_run_at) return -1;
+      else if (b.next_run_at) return 1;
+      // Then by created_at descending
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
   const toggleStatus = (status: TaskStatus) => {
     setStatusFilter((prev) => {
@@ -583,6 +854,13 @@ export function TasksPage() {
 
   const handleRowClick = (task: Task) => {
     setSelectedTask(task);
+    setOpenScheduleOnDrawer(false);
+    setDrawerOpen(true);
+  };
+
+  const handleScheduleFromTable = (task: Task) => {
+    setSelectedTask(task);
+    setOpenScheduleOnDrawer(true);
     setDrawerOpen(true);
   };
 
@@ -705,18 +983,21 @@ export function TasksPage() {
               <tr className="text-[11px] text-muted-foreground font-medium">
                 <th className="text-left px-6 py-2.5">Title</th>
                 <th className="text-left px-3 py-2.5 w-28">Status</th>
-                <th className="text-left px-3 py-2.5 w-24">Type</th>
+                <th className="text-left px-3 py-2.5 w-28">
+                  <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3" />Schedule</span>
+                </th>
+                <th className="text-left px-3 py-2.5 w-24">Next Run</th>
+                <th className="text-left px-3 py-2.5 w-24">Last Run</th>
                 <th className="text-left px-3 py-2.5 w-24">Collections</th>
                 <th className="text-left px-3 py-2.5 w-24">Artifacts</th>
-                <th className="text-left px-3 py-2.5 w-28">Created</th>
                 <th className="text-right px-3 py-2.5 w-36">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredTasks.map((task) => {
-                const createdDate = task.created_at
-                  ? new Date(task.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                  : '';
+                const lastRun = task.run_history?.length
+                  ? task.run_history[task.run_history.length - 1]
+                  : null;
 
                 return (
                   <tr
@@ -733,19 +1014,30 @@ export function TasksPage() {
                       <StatusBadge status={task.status} />
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        {task.task_type === 'recurring' && <Repeat className="h-3 w-3" />}
-                        {task.task_type === 'recurring' ? 'Recurring' : 'One-shot'}
-                      </div>
+                      {task.task_type === 'recurring' && task.schedule
+                        ? formatSchedule(task.schedule.frequency)
+                        : '\u2014'}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">
+                      {task.status === 'paused'
+                        ? 'Paused'
+                        : task.status === 'monitoring' && task.next_run_at
+                          ? formatRelativeTime(task.next_run_at)
+                          : '\u2014'}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">
+                      {lastRun ? (
+                        <span className="flex items-center gap-1.5">
+                          <span className={`inline-block h-1.5 w-1.5 rounded-full ${lastRun.status === 'started' || lastRun.status === 'completed' ? 'bg-green-500' : 'bg-amber-500'}`} />
+                          {formatLastRun(task.run_history)}
+                        </span>
+                      ) : '\u2014'}
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {task.collection_ids?.length || 0}
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {task.artifact_ids?.length || 0}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {createdDate}
                     </td>
                     <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
@@ -780,6 +1072,21 @@ export function TasksPage() {
                               <TooltipContent>{task.task_type === 'recurring' ? 'Run Now' : 'Re-run'}</TooltipContent>
                             </Tooltip>
                           )}
+                          {task.task_type !== 'recurring' && ['completed', 'approved'].includes(task.status) && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => handleScheduleFromTable(task)}
+                                >
+                                  <CalendarClock className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Enable Schedule</TooltipContent>
+                            </Tooltip>
+                          )}
                           {(task.artifact_ids?.length ?? 0) > 0 && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -795,6 +1102,21 @@ export function TasksPage() {
                               <TooltipContent>View Artifacts</TooltipContent>
                             </Tooltip>
                           )}
+                          {(task.collection_ids?.length ?? 0) > 0 && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => setExplorerTask(task)}
+                                >
+                                  <Compass className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Explore Data</TooltipContent>
+                            </Tooltip>
+                          )}
                         </TooltipProvider>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -806,6 +1128,12 @@ export function TasksPage() {
                             <DropdownMenuItem onClick={() => handleRowClick(task)}>
                               View Details
                             </DropdownMenuItem>
+                            {(task.collection_ids?.length ?? 0) > 0 && (
+                              <DropdownMenuItem onClick={() => setExplorerTask(task)}>
+                                <Compass className="mr-2 h-3.5 w-3.5" />
+                                Explore Data
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-destructive"
@@ -831,6 +1159,14 @@ export function TasksPage() {
         task={selectedTask}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+        autoOpenSchedule={openScheduleOnDrawer}
+        onExploreData={setExplorerTask}
+      />
+
+      <TaskDataExplorer
+        task={explorerTask}
+        open={!!explorerTask}
+        onClose={() => setExplorerTask(null)}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-"""Background scheduler for ongoing collections (dev mode).
+"""Background scheduler for recurring tasks (dev mode).
 
 In production, Cloud Scheduler calls POST /internal/scheduler/tick instead.
 """
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class OngoingScheduler:
-    """Daemon thread that checks for due ongoing collections and recurring tasks."""
+    """Daemon thread that checks for due recurring tasks."""
 
     def __init__(self) -> None:
         self._thread = threading.Thread(target=self._run, daemon=True, name="ongoing-scheduler")
@@ -23,7 +23,6 @@ class OngoingScheduler:
         logger.info("OngoingScheduler started")
 
     def _run(self) -> None:
-        from workers.pipeline import run_pipeline as _run_pipeline
         from workers.shared.firestore_client import FirestoreClient
 
         settings = get_settings()
@@ -46,25 +45,6 @@ class OngoingScheduler:
                     except Exception:
                         logger.exception("Scheduler: stale pipeline recovery failed")
 
-                # Check due ongoing collections
-                due = fs.get_due_ongoing_collections()
-                if due:
-                    logger.info("Scheduler: %d ongoing collection(s) due for next run", len(due))
-                for doc in due:
-                    collection_id = doc["collection_id"]
-                    # Atomically claim (prevents race with manual trigger or concurrent tick)
-                    if not fs.claim_for_run(collection_id):
-                        logger.info("Scheduler: collection %s already claimed, skipping", collection_id)
-                        continue
-                    thread = threading.Thread(
-                        target=_run_pipeline,
-                        args=(collection_id,),
-                        daemon=True,
-                        name=f"pipeline-{collection_id[:8]}",
-                    )
-                    thread.start()
-                    logger.info("Scheduler: dispatched pipeline for collection %s", collection_id)
-
                 # Check due recurring tasks (every ~60 seconds = 4 ticks)
                 ticks_since_task_check += 1
                 if ticks_since_task_check >= 4:
@@ -80,8 +60,6 @@ class OngoingScheduler:
 
 def _check_due_tasks(fs, settings) -> None:
     """Check for recurring tasks that are due for their next run."""
-    from datetime import datetime, timezone
-
     due_tasks = fs.get_due_recurring_tasks()
     if not due_tasks:
         return

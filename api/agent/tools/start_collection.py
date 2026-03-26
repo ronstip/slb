@@ -64,8 +64,6 @@ def start_collection(
         geo_scope=config.get("geo_scope", "global"),
         n_posts=config.get("n_posts", 0),
         include_comments=config.get("include_comments", True),
-        ongoing=config.get("ongoing", False),
-        schedule=config.get("schedule"),
     )
 
     resolved_org_id = org_id if org_id else None

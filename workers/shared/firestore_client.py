@@ -32,12 +32,6 @@ class FirestoreClient:
                 "posts_embedded": 0,
                 "config": config,
                 "visibility": "private",
-                "ongoing": config.get("ongoing", False),
-                "last_run_at": None,
-                "next_run_at": None,
-                "total_runs": 0,
-                "run_history": [],
-                "consecutive_failures": 0,
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
             }
@@ -57,7 +51,7 @@ class FirestoreClient:
             return None
         data = doc.to_dict()
         # Convert Firestore timestamps to ISO strings
-        for key in ("created_at", "updated_at", "last_run_at", "next_run_at"):
+        for key in ("created_at", "updated_at"):
             if key in data and hasattr(data[key], "isoformat"):
                 data[key] = data[key].isoformat()
         return data
@@ -98,35 +92,6 @@ class FirestoreClient:
             data["_signature_id"] = doc.id
             return data
         return None
-
-    def get_due_ongoing_collections(self) -> list[dict]:
-        """Return ongoing collections whose next_run_at is in the past and status is 'monitoring'."""
-        now = datetime.now(timezone.utc)
-        try:
-            docs = (
-                self._db.collection("collection_status")
-                .where("ongoing", "==", True)
-                .where("status", "==", "monitoring")
-                .stream()
-            )
-            due = []
-            for doc in docs:
-                data = doc.to_dict()
-                next_run_at = data.get("next_run_at")
-                if next_run_at is None:
-                    continue
-                # next_run_at may be a Firestore Timestamp or already a datetime
-                if hasattr(next_run_at, "isoformat"):
-                    # It's a datetime-like object; make timezone-aware if needed
-                    if getattr(next_run_at, "tzinfo", None) is None:
-                        next_run_at = next_run_at.replace(tzinfo=timezone.utc)
-                    if next_run_at <= now:
-                        data["collection_id"] = doc.id
-                        due.append(data)
-            return due
-        except Exception as e:
-            logger.warning("Failed to query due ongoing collections: %s", e)
-            return []
 
     def get_stale_pipelines(self, max_age_minutes: int = 60) -> list[dict]:
         """Find collections stuck in 'collecting' or 'processing' past max_age_minutes.
@@ -172,36 +137,6 @@ class FirestoreClient:
             except Exception:
                 logger.warning("Failed to query stale pipelines for status=%s", status_val, exc_info=True)
         return stale
-
-    def claim_for_run(self, collection_id: str) -> bool:
-        """Atomically claim a monitoring collection for execution.
-
-        Uses a Firestore transaction to check status == 'monitoring' and
-        set it to 'collecting'. Returns True if claimed, False if another
-        process already claimed it.
-        """
-        doc_ref = self._db.collection("collection_status").document(collection_id)
-
-        @firestore.transactional
-        def _claim(transaction):
-            snapshot = doc_ref.get(transaction=transaction)
-            if not snapshot.exists:
-                return False
-            data = snapshot.to_dict()
-            if data.get("status") != "monitoring":
-                return False
-            transaction.update(doc_ref, {
-                "status": "collecting",
-                "updated_at": datetime.now(timezone.utc),
-            })
-            return True
-
-        transaction = self._db.transaction()
-        try:
-            return _claim(transaction)
-        except Exception:
-            logger.exception("Failed to claim collection %s for run", collection_id)
-            return False
 
     # --- Task methods ---
 
@@ -476,7 +411,7 @@ class FirestoreClient:
         for doc in docs:
             data = doc.to_dict()
             data["collection_id"] = doc.id
-            for key in ("created_at", "updated_at", "last_run_at", "next_run_at"):
+            for key in ("created_at", "updated_at"):
                 if key in data and hasattr(data[key], "isoformat"):
                     data[key] = data[key].isoformat()
             results.append(data)

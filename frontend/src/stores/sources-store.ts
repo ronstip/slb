@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CollectionConfig, CollectionStatus, RunHistoryEntry } from '../api/types.ts';
+import type { CollectionConfig, CollectionStatus } from '../api/types.ts';
 
 export interface Source {
   collectionId: string;
@@ -18,10 +18,6 @@ export interface Source {
   visibility?: 'private' | 'org';
   userId?: string;
   taskId?: string;
-  lastRunAt?: string;
-  nextRunAt?: string;
-  totalRuns?: number;
-  runHistory?: RunHistoryEntry[];
 }
 
 interface SourcesStore {

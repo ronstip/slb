@@ -23,9 +23,10 @@ type DashboardArtifact = Extract<Artifact, { type: 'dashboard' }>;
 interface DashboardViewProps {
   artifact: DashboardArtifact;
   standalone?: boolean;
+  defaultLayout?: import('./types-social-dashboard.ts').SocialDashboardWidget[];
 }
 
-export function DashboardView({ artifact, standalone = false }: DashboardViewProps) {
+export function DashboardView({ artifact, standalone = false, defaultLayout }: DashboardViewProps) {
   const collapseReport = useStudioStore((s) => s.collapseReport);
   const updateArtifactTitle = useStudioStore((s) => s.updateArtifactTitle);
   const gridRef = useRef<HTMLElement | null>(null);
@@ -259,6 +260,7 @@ export function DashboardView({ artifact, standalone = false }: DashboardViewPro
             onLayoutLoaded={handleLayoutLoaded}
             onToolbarReady={handleToolbarReady}
             gridRef={gridRef}
+            defaultLayout={defaultLayout}
           />
         )}
       </div>

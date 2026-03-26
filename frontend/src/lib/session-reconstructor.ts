@@ -17,83 +17,9 @@ import {
   isDashboardResult,
   isStartTaskResult,
   isTodoResult,
+  isMetricsResult,
+  isTopicsResult,
 } from './event-parser.ts';
-
-/** Tools that produce thinking entries (mirrors THINKING_TOOLS in main.py). */
-const THINKING_TOOLS = new Set([
-  'execute_sql', 'get_table_info', 'list_table_ids',
-  'google_search', 'design_research', 'start_collection',
-  'get_progress', 'enrich_collection', 'get_collection_details',
-  'create_chart', 'generate_report', 'generate_dashboard',
-  'export_data', 'start_task', 'get_task_status',
-  'set_active_task', 'refresh_engagements', 'cancel_collection',
-  'compose_email', 'send_email',
-]);
-
-function buildThinkingFromCall(toolName: string, args: Record<string, unknown>): string | null {
-  if (!THINKING_TOOLS.has(toolName)) return null;
-  if (toolName === 'execute_sql') {
-    const query = (args.query ?? args.sql ?? '') as string;
-    return query ? `Running SQL query:\n\`\`\`sql\n${query}\n\`\`\`` : 'Running SQL query...';
-  }
-  if (toolName === 'get_table_info') {
-    const table = (args.table_id ?? args.table_name ?? '') as string;
-    return `Inspecting schema for \`${table}\``;
-  }
-  if (toolName === 'list_table_ids') {
-    const dataset = (args.dataset_id ?? 'social_listening') as string;
-    return `Listing tables in \`${dataset}\``;
-  }
-  if (toolName === 'google_search') {
-    const query = (args.query ?? '') as string;
-    return query ? `Searching: *${query}*` : 'Searching the web...';
-  }
-  if (toolName === 'create_chart') {
-    const ct = (args.chart_type ?? 'chart') as string;
-    const title = (args.title ?? '') as string;
-    return title ? `Creating ${ct}: *${title.slice(0, 60)}*` : `Creating ${ct}...`;
-  }
-  if (toolName === 'generate_report') {
-    const title = (args.title ?? '') as string;
-    return title ? `Generating report: *${title.slice(0, 60)}*` : 'Generating insight report...';
-  }
-  if (toolName === 'generate_dashboard') {
-    const title = (args.title ?? '') as string;
-    return title ? `Building dashboard: *${title.slice(0, 60)}*` : 'Building interactive dashboard...';
-  }
-  if (toolName === 'start_task') {
-    const title = (args.title ?? '') as string;
-    return title ? `Starting task: *${title.slice(0, 60)}*` : 'Starting task...';
-  }
-  // Generic fallback for other thinking tools
-  return getToolDisplayText(toolName);
-}
-
-const TOOL_RESULT_MESSAGES: Record<string, string> = {
-  execute_sql: 'Query completed',
-  google_search: 'Search results received',
-  design_research: 'Research design complete',
-  start_collection: 'Collection started',
-  get_progress: 'Progress retrieved',
-  enrich_collection: 'Enrichment complete',
-  get_collection_details: 'Collection details loaded',
-  create_chart: 'Chart created',
-  generate_report: 'Report generated',
-  generate_dashboard: 'Dashboard built',
-  export_data: 'Data exported',
-  start_task: 'Task started',
-  get_task_status: 'Task status retrieved',
-  set_active_task: 'Task context loaded',
-  refresh_engagements: 'Engagements refreshed',
-  cancel_collection: 'Collection cancelled',
-  compose_email: 'Email composed',
-  send_email: 'Email sent',
-};
-
-function buildThinkingFromResult(toolName: string): string | null {
-  if (!THINKING_TOOLS.has(toolName)) return null;
-  return TOOL_RESULT_MESSAGES[toolName] ?? null;
-}
 
 export interface ReconstructedSession {
   messages: ChatMessage[];
@@ -130,11 +56,10 @@ export function reconstructSession(
         content: '',
         timestamp: new Date(timestamp ? timestamp * 1000 : Date.now()),
         isStreaming: false,
-        toolIndicators: [],
         cards: [],
-        thinkingEntries: [],
-        statusLine: null,
         intentLine: null,
+        todos: [],
+        activityLog: [],
         suggestions: [],
       };
     }
@@ -154,10 +79,10 @@ export function reconstructSession(
           content: part.text,
           timestamp: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           isStreaming: false,
-          toolIndicators: [],
           cards: [],
-          thinkingEntries: [],
-          statusLine: null,
+          intentLine: null,
+          todos: [],
+          activityLog: [],
           suggestions: [],
         });
         continue;
@@ -167,18 +92,8 @@ export function reconstructSession(
       if (part.function_call) {
         if (part.function_call.name === 'transfer_to_agent') continue;
         const msg = ensureAgentMsg(event.timestamp);
-        msg.toolIndicators.push({
-          name: part.function_call.name,
-          displayText: getToolDisplayText(part.function_call.name),
-          resolved: false,
-          startedAt: event.timestamp ? event.timestamp * 1000 : Date.now(),
-        });
-        // Reconstruct thinking entry from tool call args
-        const thinking = buildThinkingFromCall(
-          part.function_call.name,
-          (part.function_call.args ?? {}) as Record<string, unknown>,
-        );
-        if (thinking) msg.thinkingEntries.push(thinking);
+        // Activity log: tool entry (will be resolved when result arrives)
+        msg.activityLog.push({ kind: 'tool', text: getToolDisplayText(part.function_call.name), toolName: part.function_call.name, resolved: false, ts: event.timestamp ? event.timestamp * 1000 : Date.now() });
         continue;
       }
 
@@ -189,14 +104,17 @@ export function reconstructSession(
         const result = (part.function_response.response ?? {}) as Record<string, unknown>;
         const msg = ensureAgentMsg(event.timestamp);
 
-        // Resolve the matching tool indicator
-        msg.toolIndicators = msg.toolIndicators.map((t) =>
-          t.name === toolName && !t.resolved ? { ...t, resolved: true } : t,
-        );
-
-        // Reconstruct thinking from tool result
-        const thinkResult = buildThinkingFromResult(toolName);
-        if (thinkResult) msg.thinkingEntries.push(thinkResult);
+        // Activity log: resolve the tool entry
+        for (let i = msg.activityLog.length - 1; i >= 0; i--) {
+          if (msg.activityLog[i].kind === 'tool' && msg.activityLog[i].toolName === toolName && !msg.activityLog[i].resolved) {
+            msg.activityLog[i] = {
+              ...msg.activityLog[i],
+              resolved: true,
+              error: result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined,
+            };
+            break;
+          }
+        }
 
         // Create cards + artifacts (mirrors useSSEChat logic)
         if (isDesignResearchResult(toolName, result)) {
@@ -256,13 +174,19 @@ export function reconstructSession(
           // start_task doesn't produce a card — it's an action, not a UI element.
           // Collections were already added to sources during the live session.
         } else if (isTodoResult(toolName, result)) {
-          // Keep only the latest todo card per message
-          const existingIdx = msg.cards.findIndex((c) => c.type === 'todo');
-          if (existingIdx >= 0) {
-            msg.cards[existingIdx] = { type: 'todo', data: result };
-          } else {
-            msg.cards.push({ type: 'todo', data: result });
-          }
+          // Populate todos on the message — displayed in ActivityBar
+          const todos = (result.todos as Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>) ?? [];
+          msg.todos = todos;
+          msg.activityLog.push({
+            kind: 'todo_update',
+            text: (result.progress as string) || `${todos.filter(t => t.status === 'completed').length}/${todos.length}`,
+            todos,
+            ts: event.timestamp ? event.timestamp * 1000 : Date.now(),
+          });
+        } else if (isMetricsResult(toolName, result)) {
+          msg.cards.push({ type: 'metrics_section', data: result });
+        } else if (isTopicsResult(toolName, result)) {
+          msg.cards.push({ type: 'topics_section', data: result });
         }
         continue;
       }
@@ -274,13 +198,15 @@ export function reconstructSession(
         const thinkingRe = /<!--\s*thinking:\s*([\s\S]*?)\s*-->/g;
         let thinkingMatch;
         while ((thinkingMatch = thinkingRe.exec(part.text)) !== null) {
-          msg.thinkingEntries.push(thinkingMatch[1].trim());
+          const thought = thinkingMatch[1].trim();
+          msg.activityLog.push({ kind: 'thinking', text: thought, ts: event.timestamp ? event.timestamp * 1000 : Date.now() });
         }
         // Extract intent markers
         const intentRe = /<!--\s*intent:\s*([\s\S]*?)\s*-->/g;
         let intentMatch;
         while ((intentMatch = intentRe.exec(part.text)) !== null) {
           msg.intentLine = intentMatch[1].trim();
+          // Intent shown as pinned header, not in log
         }
         // Strip all HTML comments (status, thinking, plan, etc.) from visible text
         const cleanText = part.text.replace(/<!--[\s\S]*?-->/g, '');
@@ -292,14 +218,14 @@ export function reconstructSession(
   // Flush any remaining agent message
   flushAgent();
 
-  // Auto-resolve all tool indicators — we're restoring a completed session,
-  // so every tool call has finished. This handles cases where the
-  // function_response event was dropped during Firestore serialization
-  // (e.g. Google Search grounding metadata failing model_dump).
+  // Auto-resolve all activity tool entries — we're restoring a completed session,
+  // so every tool call has finished.
   for (const msg of messages) {
-    msg.toolIndicators = msg.toolIndicators.map((t) =>
-      t.resolved ? t : { ...t, resolved: true, startedAt: t.startedAt || Date.now() },
-    );
+    for (const entry of msg.activityLog) {
+      if (entry.kind === 'tool' && !entry.resolved) {
+        entry.resolved = true;
+      }
+    }
   }
 
   return {

@@ -7,8 +7,21 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
+
+// Auto-generated thinking entries from backend _build_thinking_content() — system noise, not agent reasoning
+const AUTO_THINKING_NOISE = new Set([
+  'Query completed', 'Search results received', 'Research design complete',
+  'Collection started', 'Progress retrieved', 'Enrichment complete',
+  'Collection details loaded', 'Chart created', 'Report generated',
+  'Dashboard built', 'Data exported', 'Task started', 'Task status retrieved',
+  'Task context loaded', 'Engagements refreshed', 'Collection cancelled',
+  'Email composed', 'Email sent',
+]);
+
+// Tools that are internal plumbing — skip from activity log
+const INTERNAL_TOOLS = new Set(['update_todos', 'set_working_collections']);
 
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
@@ -73,77 +86,40 @@ export function useSSEChat() {
 
           switch (event.event_type) {
             case 'partial_text': {
-              // Streaming text chunk — append directly for typewriter effect.
-              // Markers are invisible (remarkStripComments strips HTML comments).
-              chatState.setStatusLine(messageId, null);
               chatState.appendText(messageId, event.content);
               break;
             }
 
             case 'text': {
-              // Final aggregated text — extract thinking markers.
-              // The visible text was already streamed via partial_text events,
-              // so we only process markers here (text is suppressed server-side).
-              const thinkingRe = /<!--\s*thinking:\s*([\s\S]*?)\s*-->/g;
-              let thinkingMatch;
-              while ((thinkingMatch = thinkingRe.exec(event.content)) !== null) {
-                chatState.appendThinking(messageId, thinkingMatch[1].trim());
-              }
-              const cleanText = event.content.replace(/<!--\s*thinking:\s*[\s\S]*?\s*-->/g, '').trimEnd();
+              // Final aggregated text — strip markers, append clean text only.
+              // Thinking markers are handled via dedicated SSE thinking events.
+              const cleanText = event.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd();
               if (cleanText) {
-                // Clear status line once real text arrives
-                chatState.setStatusLine(messageId, null);
                 chatState.appendText(messageId, cleanText);
               }
               break;
             }
 
-            case 'thinking':
-              chatState.appendThinking(messageId, event.content);
+            case 'thinking': {
+              // Skip auto-generated system noise — only log real agent reasoning
+              if (!AUTO_THINKING_NOISE.has(event.content) && !event.content.startsWith('Running SQL query')) {
+                chatState.appendActivityEntry(messageId, { kind: 'thinking', text: event.content, ts: Date.now() });
+              }
               break;
+            }
 
             case 'status':
-              chatState.setStatusLine(messageId, event.content);
+              // Status events are redundant with tool activity — ignored
               break;
 
             case 'intent':
               chatState.setIntentLine(messageId, event.content);
+              // Not added to activityLog — shown as pinned header
               break;
 
-            case 'needs_decision':
-              chatState.addCard(messageId, {
-                type: 'decision',
-                data: event.metadata,
-              });
-              break;
-
-            case 'finding':
-              chatState.addCard(messageId, {
-                type: 'finding',
-                data: event.metadata,
-              });
-              break;
-
-            case 'plan':
-              chatState.addCard(messageId, {
-                type: 'plan',
-                data: event.metadata,
-              });
-              break;
-
-            case 'topics_section':
-              chatState.addCard(messageId, {
-                type: 'topics_section',
-                data: event.metadata,
-              });
-              break;
-
-            case 'metrics_section':
-              chatState.addCard(messageId, {
-                type: 'metrics_section',
-                data: event.metadata,
-              });
-              break;
+            // Removed marker-based card events: needs_decision, finding, plan
+            // topics_section and metrics_section now come via tool results
+            // Old events silently ignored for backward compat
 
             case 'context_update': {
               // Agent changed its working collection set — validate IDs exist
@@ -166,7 +142,9 @@ export function useSSEChat() {
 
             case 'tool_call': {
               const toolName = event.metadata.name;
-              chatState.addToolCall(messageId, toolName, getToolDisplayText(toolName));
+              if (!INTERNAL_TOOLS.has(toolName)) {
+                chatState.appendActivityEntry(messageId, { kind: 'tool', text: getToolDisplayText(toolName), toolName, resolved: false, ts: Date.now() });
+              }
               break;
             }
 
@@ -174,20 +152,22 @@ export function useSSEChat() {
               const toolName = event.metadata.name;
               const result = event.metadata.result;
 
-              // Blocked tool calls (e.g. gate rejected) — remove the indicator silently
+              // Blocked tool calls (e.g. gate rejected) — remove silently
               if (result?.status === 'blocked') {
-                chatState.removeToolCall(messageId, toolName);
+                chatState.removeActivityTool(messageId, toolName);
                 break;
               }
 
               // Anonymous user tried to start a collection — open sign-up prompt
               if (result?.status === 'auth_required') {
-                chatState.removeToolCall(messageId, toolName);
+                chatState.removeActivityTool(messageId, toolName);
                 useUIStore.getState().openSignUpPrompt();
                 break;
               }
 
-              chatState.resolveToolCall(messageId, toolName, result);
+              // Resolve the activity entry (computes duration from entry.ts)
+              const errorMsg = result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined;
+              chatState.resolveActivityTool(messageId, toolName, errorMsg);
 
               // Handle special tool results
               if (isDesignResearchResult(toolName, result)) {
@@ -294,14 +274,25 @@ export function useSSEChat() {
                   useTaskStore.getState().fetchTasks();
                 });
               } else if (isTodoResult(toolName, result)) {
-                // Replace previous todo card in this message (only show latest state)
-                const msg = chatState.messages.find((m) => m.id === messageId);
-                const existingIdx = msg?.cards.findIndex((c) => c.type === 'todo') ?? -1;
-                if (existingIdx >= 0) {
-                  chatState.updateCard(messageId, existingIdx, result);
-                } else {
-                  chatState.addCard(messageId, { type: 'todo', data: result });
-                }
+                // Update todos on the message — displayed in ActivityBar
+                const todos = (result.todos as Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>) ?? [];
+                chatState.updateTodos(messageId, todos);
+                chatState.appendActivityEntry(messageId, {
+                  kind: 'todo_update',
+                  text: (result.progress as string) || `${todos.filter(t => t.status === 'completed').length}/${todos.length}`,
+                  todos,
+                  ts: Date.now(),
+                });
+              } else if (isMetricsResult(toolName, result)) {
+                chatState.addCard(messageId, {
+                  type: 'metrics_section',
+                  data: result,
+                });
+              } else if (isTopicsResult(toolName, result)) {
+                chatState.addCard(messageId, {
+                  type: 'topics_section',
+                  data: result,
+                });
               } else if (isStructuredPromptResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'structured_prompt',

@@ -1,18 +1,17 @@
 import { useState, type KeyboardEvent } from 'react';
-import { RefreshCw, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { CollectionConfig, CreateCollectionRequest } from '../../api/types.ts';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
 import { createCollection } from '../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useChatStore } from '../../stores/chat-store.ts';
-import { PLATFORMS, PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, buildScheduleString, type ScheduleUnit } from '../../lib/constants.ts';
+import { PLATFORMS, PLATFORM_LABELS } from '../../lib/constants.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Textarea } from '../../components/ui/textarea.tsx';
 import { Label } from '../../components/ui/label.tsx';
 import { Badge } from '../../components/ui/badge.tsx';
 import { Checkbox } from '../../components/ui/checkbox.tsx';
 import { Input } from '../../components/ui/input.tsx';
-import { Switch } from '../../components/ui/switch.tsx';
 import {
   Select,
   SelectContent,
@@ -63,20 +62,12 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
   const [geoScope, setGeoScope] = useState(prefill?.geo_scope || 'global');
   const [nPosts, setNPosts] = useState(prefill?.n_posts ?? 0);
   const [includeComments, setIncludeComments] = useState(prefill?.include_comments ?? true);
-  const [ongoing, setOngoing] = useState(prefill?.ongoing ?? false);
-
-  const parsed = parseScheduleString(prefill?.schedule);
-  const [scheduleUnit, setScheduleUnit] = useState<ScheduleUnit>(parsed.unit);
-  const [scheduleInterval, setScheduleInterval] = useState(parsed.interval);
-  const [scheduleTimeUtc, setScheduleTimeUtc] = useState(parsed.time);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const addSource = useSourcesStore((s) => s.addSource);
   const addSystemMessage = useChatStore((s) => s.addSystemMessage);
-
-  const scheduleStr = buildScheduleString(scheduleUnit, scheduleInterval, scheduleTimeUtc);
 
   const togglePlatform = (p: string) => {
     setPlatforms((prev) =>
@@ -125,8 +116,6 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
     n_posts: nPosts,
     include_comments: includeComments,
     geo_scope: geoScope,
-    ongoing,
-    schedule: ongoing ? scheduleStr : undefined,
   });
 
   const handleUpdate = () => {
@@ -150,8 +139,6 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
         geo_scope: geoScope,
         n_posts: nPosts,
         include_comments: includeComments,
-        ongoing,
-        schedule: ongoing ? scheduleStr : undefined,
       };
 
       const result = await createCollection(req);
@@ -170,8 +157,6 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
           n_posts: nPosts,
           include_comments: includeComments,
           geo_scope: geoScope,
-          ongoing,
-          schedule: ongoing ? scheduleStr : undefined,
         },
         title: description || keywords.join(', ') || 'New Collection',
         postsCollected: 0,
@@ -339,64 +324,6 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
           />
           <span className="text-sm text-foreground">Include Comments</span>
         </label>
-      </div>
-
-      {/* Ongoing Monitoring */}
-      <div className={`rounded-lg border px-4 py-3 transition-colors ${inline ? 'mb-3' : 'mb-5'} ${ongoing ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-muted/30'}`}>
-        <div className="flex items-center gap-3">
-          <Switch checked={ongoing} onCheckedChange={setOngoing} />
-          <div className="flex items-center gap-2">
-            <RefreshCw className={`h-3.5 w-3.5 ${ongoing ? 'text-emerald-600' : 'text-muted-foreground'}`} />
-            <span className={`text-sm font-medium ${ongoing ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground'}`}>
-              Ongoing Monitoring
-            </span>
-          </div>
-        </div>
-        {ongoing && (
-          <div className="mt-3">
-            <Label className="mb-2 text-xs text-muted-foreground">Refresh schedule</Label>
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Every</span>
-              <input
-                type="number"
-                min={1}
-                max={scheduleUnit === 'minute' ? 1440 : scheduleUnit === 'hour' ? 168 : 90}
-                value={scheduleInterval}
-                onChange={(e) => setScheduleInterval(Math.max(1, Number(e.target.value) || 1))}
-                className="w-14 rounded border border-input bg-card px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              <Select value={scheduleUnit} onValueChange={(v) => setScheduleUnit(v as ScheduleUnit)}>
-                <SelectTrigger className="w-24 h-7 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="minute">{scheduleInterval === 1 ? 'minute' : 'minutes'}</SelectItem>
-                  <SelectItem value="hour">{scheduleInterval === 1 ? 'hour' : 'hours'}</SelectItem>
-                  <SelectItem value="day">{scheduleInterval === 1 ? 'day' : 'days'}</SelectItem>
-                </SelectContent>
-              </Select>
-              {scheduleUnit === 'day' && (
-                <>
-                  <span className="text-muted-foreground">at</span>
-                  <Select value={scheduleTimeUtc} onValueChange={setScheduleTimeUtc}>
-                    <SelectTrigger className="w-28 h-7 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-xs text-muted-foreground">UTC</span>
-                </>
-              )}
-            </div>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              Time range above sets the initial backfill window. Subsequent runs collect only new posts.
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Error */}

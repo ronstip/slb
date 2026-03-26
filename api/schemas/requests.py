@@ -23,8 +23,6 @@ class CreateCollectionRequest(BaseModel):
     geo_scope: str = "global"
     n_posts: int = 0
     include_comments: bool = True
-    ongoing: bool = False
-    schedule: str | None = None  # "daily" | "weekly"
     vendor_config: VendorConfig | None = None
     # Enrichment config (optional, set by design_research)
     custom_fields: list[dict] | None = None
@@ -32,10 +30,6 @@ class CreateCollectionRequest(BaseModel):
     reasoning_level: str | None = None
     min_likes: int | None = None
 
-
-class UpdateCollectionModeRequest(BaseModel):
-    ongoing: bool
-    schedule: str | None = None  # required when ongoing=True
 
 
 # --- Settings ---

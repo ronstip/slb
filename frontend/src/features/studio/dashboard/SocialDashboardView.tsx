@@ -54,6 +54,8 @@ interface SocialDashboardViewProps {
   onLayoutLoaded?: (filterBarFilters: string[]) => void;
   onToolbarReady?: (handlers: DashboardToolbarHandlers) => void;
   gridRef?: React.RefObject<HTMLElement | null>;
+  /** Custom default layout used when no saved layout exists */
+  defaultLayout?: SocialDashboardWidget[];
 }
 
 export function SocialDashboardView({
@@ -69,6 +71,7 @@ export function SocialDashboardView({
   onLayoutLoaded,
   onToolbarReady,
   gridRef,
+  defaultLayout,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
 
@@ -89,7 +92,7 @@ export function SocialDashboardView({
     if (layoutData?.layout && layoutData.layout.length > 0) {
       setWidgets(migrateWidgets(layoutData.layout));
     } else {
-      setWidgets(getDefaultLayout());
+      setWidgets(defaultLayout ?? getDefaultLayout());
     }
     if (onLayoutLoaded) {
       const persisted = layoutData?.filterBarFilters;
@@ -145,10 +148,10 @@ export function SocialDashboardView({
   }, [setEditMode, saveLayout]);
 
   const handleResetToDefaults = useCallback(() => {
-    const defaults = getDefaultLayout();
+    const defaults = defaultLayout ?? getDefaultLayout();
     setWidgets(defaults);
     scheduleAutoSave(defaults);
-  }, [scheduleAutoSave]);
+  }, [defaultLayout, scheduleAutoSave]);
 
   const handleRemoveWidget = useCallback((widgetId: string) => {
     setWidgets((prev) => {
