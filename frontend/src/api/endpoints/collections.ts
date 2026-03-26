@@ -46,20 +46,6 @@ export async function refreshCollectionStats(
   return apiPost(`/collection/${collectionId}/stats/refresh`, {});
 }
 
-export async function triggerCollection(
-  collectionId: string,
-): Promise<{ status: string; message: string }> {
-  return apiPost(`/collection/${collectionId}/trigger`, {});
-}
-
-export async function updateCollectionMode(
-  collectionId: string,
-  ongoing: boolean,
-  schedule?: string,
-): Promise<{ ongoing: boolean; schedule: string | null }> {
-  return apiPatch(`/collection/${collectionId}/mode`, { ongoing, schedule });
-}
-
 export async function downloadCollection(
   collectionId: string,
   titleHint: string,

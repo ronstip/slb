@@ -129,8 +129,6 @@ export interface CreateCollectionRequest {
   geo_scope: string;
   n_posts?: number;
   include_comments: boolean;
-  ongoing?: boolean;
-  schedule?: string;
   // Enrichment config (optional, set by design_research)
   custom_fields?: { name: string; description: string; type: string }[];
   video_params?: { fps: number; start_offset_sec: number; end_offset_sec: number };
@@ -154,8 +152,6 @@ export type CollectionStatus =
   | 'enriching'
   | 'completed'
   | 'completed_with_errors'
-  | 'monitoring'
-  | 'paused'
   | 'failed'
   | 'cancelled';
 
@@ -167,8 +163,6 @@ export interface CollectionConfig {
   n_posts?: number;
   include_comments: boolean;
   geo_scope: string;
-  ongoing?: boolean;
-  schedule?: string;
   video_params?: {
     fps: number;
     start_offset_sec: number;
@@ -177,12 +171,6 @@ export interface CollectionConfig {
   reasoning_level?: string;
   min_likes?: number;
   custom_fields?: { name: string; description: string; type: string }[];
-}
-
-export interface RunHistoryEntry {
-  run_at: string;
-  posts_added: number;
-  status: string;
 }
 
 export interface CollectionStatusResponse {
@@ -196,11 +184,6 @@ export interface CollectionStatusResponse {
   created_at?: string;
   visibility?: 'private' | 'org';
   user_id?: string;
-  ongoing?: boolean;
-  last_run_at?: string;
-  next_run_at?: string;
-  total_runs?: number;
-  run_history?: RunHistoryEntry[];
 }
 
 export interface MediaRef {
@@ -747,7 +730,6 @@ export interface AdminCollection {
   posts_collected: number;
   posts_enriched: number;
   platforms: string[];
-  ongoing: boolean;
   created_at: string;
   error_message: string | null;
 }

@@ -144,5 +144,31 @@ export function getDefaultLayout(): SocialDashboardWidget[] {
       chartType: 'line',
       title: 'Engagement Rate Over Time',
     },
+
+  ];
+}
+
+/**
+ * Compact explorer layout for task data explorer.
+ * Row 1: 4 KPI cards
+ * Row 2: Sentiment + Platform + Themes (3 charts)
+ * Row 3: Posts table (hero, fills lower half)
+ */
+export function getExplorerDefaultLayout(): SocialDashboardWidget[] {
+  _idCounter = 0;
+  return [
+    // ── Row 1: KPI cards (y=0, h=2) ──────────────────────────────────
+    { i: uid(), x: 0, y: 0, w: 3, h: 2, aggregation: 'kpi', kpiIndex: 0, chartType: 'number-card', title: 'Total Posts' },
+    { i: uid(), x: 3, y: 0, w: 3, h: 2, aggregation: 'kpi', kpiIndex: 1, chartType: 'number-card', title: 'Total Views' },
+    { i: uid(), x: 6, y: 0, w: 3, h: 2, aggregation: 'kpi', kpiIndex: 2, chartType: 'number-card', title: 'Total Engagement' },
+    { i: uid(), x: 9, y: 0, w: 3, h: 2, aggregation: 'kpi', kpiIndex: 3, chartType: 'number-card', title: 'Engagement Rate' },
+
+    // ── Row 2: Charts (y=2, h=5) ─────────────────────────────────────
+    { i: uid(), x: 0, y: 2, w: 4, h: 5, aggregation: 'sentiment', chartType: 'doughnut', title: 'Sentiment' },
+    { i: uid(), x: 4, y: 2, w: 4, h: 5, aggregation: 'platform', chartType: 'bar', title: 'Platform' },
+    { i: uid(), x: 8, y: 2, w: 4, h: 5, aggregation: 'themes', chartType: 'bar', title: 'Top Themes' },
+
+    // ── Row 3: Posts table — hero (y=7, h=14) ────────────────────────
+    { i: uid(), x: 0, y: 7, w: 12, h: 14, aggregation: 'posts', chartType: 'data-table', title: 'Posts' },
   ];
 }

@@ -14,7 +14,6 @@ import time as _time
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from google.cloud.firestore_v1 import transforms
 
 from config.settings import get_settings
 from workers.collection.models import Post
@@ -25,7 +24,6 @@ from workers.collection.normalizer import (
 )
 from workers.collection.wrapper import DataProviderWrapper
 from workers.pipeline_v2.post_state import FAILURE_STATES, TERMINAL_STATES, PostState
-from workers.pipeline_v2.schedule_utils import compute_next_run_at
 from workers.pipeline_v2.state_manager import StateManager
 from workers.pipeline_v2.steps import PIPELINE_STEPS, StepContext
 from workers.shared.bq_client import BQClient
@@ -34,7 +32,6 @@ from workers.shared.gcs_client import GCSClient
 
 logger = logging.getLogger(__name__)
 
-MAX_CONSECUTIVE_FAILURES = 3
 PIPELINE_LOOP_TIMEOUT = 3600  # 1 hour max for the processing loop
 
 
@@ -198,14 +195,7 @@ class PipelineRunner:
         if isinstance(config, str):
             config = json.loads(config)
 
-        # For ongoing collections on 2nd+ runs, use incremental window
         self._status_doc = self.fs.get_collection_status(self.collection_id) or {}
-        last_run_at = self._status_doc.get("last_run_at")
-        if last_run_at and config.get("ongoing"):
-            config = dict(config)
-            config["time_range"] = dict(config.get("time_range", {}))
-            config["time_range"]["start"] = last_run_at[:10]
-
         self._config = config
 
     def _load_custom_fields(self) -> None:
@@ -237,9 +227,6 @@ class PipelineRunner:
 
         owner_user_id = self._status_doc.get("user_id")
         owner_org_id = self._status_doc.get("org_id")
-        existing_posts = 0
-        if self._status_doc.get("ongoing"):
-            existing_posts = self._status_doc.get("posts_collected", 0) or 0
 
         seen_post_ids: set[str] = set()
         seen_channel_ids: set[str] = set()
@@ -304,7 +291,7 @@ class PipelineRunner:
             # Update collection-level progress
             self.fs.update_collection_status(
                 self.collection_id,
-                posts_collected=existing_posts + total_posts,
+                posts_collected=total_posts,
                 last_run_posts_added=total_posts,
             )
 
@@ -635,70 +622,5 @@ class PipelineRunner:
             for s in FAILURE_STATES
         )
 
-        ongoing_flag = (status or {}).get("ongoing", False)
-        if not ongoing_flag and not config.get("ongoing"):
-            final = "completed_with_errors" if has_failures else "completed"
-            self.fs.update_collection_status(self.collection_id, status=final)
-            return
-
-        if config.get("ongoing"):
-            schedule = config.get("schedule", "daily")
-            now = datetime.now(timezone.utc)
-
-            prev_next_run = (status or {}).get("next_run_at")
-            if prev_next_run:
-                if isinstance(prev_next_run, str):
-                    prev_next_run = datetime.fromisoformat(prev_next_run)
-                base_time = prev_next_run
-            else:
-                base_time = now
-            next_run_at = compute_next_run_at(schedule, base_time)
-            if next_run_at <= now:
-                next_run_at = compute_next_run_at(schedule, now)
-
-            run_status = "completed" if not has_failures else "completed_with_errors"
-            run_entry = {
-                "run_at": now.isoformat(),
-                "posts_added": (status or {}).get("last_run_posts_added", 0),
-                "status": run_status,
-            }
-
-            consecutive_failures = (status or {}).get("consecutive_failures", 0)
-            if has_failures:
-                consecutive_failures += 1
-            else:
-                consecutive_failures = 0
-
-            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                self.fs.update_collection_status(
-                    self.collection_id,
-                    status="paused",
-                    error_message=f"Auto-paused after {consecutive_failures} consecutive failures.",
-                    consecutive_failures=consecutive_failures,
-                    total_runs=transforms.Increment(1),
-                    run_history=transforms.ArrayUnion([run_entry]),
-                    last_run_at=now,
-                )
-                logger.warning(
-                    "Ongoing collection %s paused after %d failures",
-                    self.collection_id, consecutive_failures,
-                )
-                return
-
-            self.fs.update_collection_status(
-                self.collection_id,
-                status="monitoring",
-                last_run_at=now,
-                next_run_at=next_run_at,
-                total_runs=transforms.Increment(1),
-                run_history=transforms.ArrayUnion([run_entry]),
-                consecutive_failures=consecutive_failures,
-            )
-            logger.info(
-                "Ongoing collection %s → monitoring; next run at %s",
-                self.collection_id, next_run_at.isoformat(),
-            )
-        elif not has_failures:
-            self.fs.update_collection_status(self.collection_id, status="completed")
-        else:
-            self.fs.update_collection_status(self.collection_id, status="completed_with_errors")
+        final = "completed_with_errors" if has_failures else "completed"
+        self.fs.update_collection_status(self.collection_id, status=final)

@@ -11,9 +11,7 @@ import {
   Library,
   MoreHorizontal,
   Plus,
-  RefreshCw,
   Search,
-  StopCircle,
   Table2,
   Trash2,
   X,
@@ -26,11 +24,9 @@ import {
   deleteCollection,
   downloadCollection,
   setCollectionVisibility,
-  triggerCollection,
-  updateCollectionMode,
 } from '../../api/endpoints/collections.ts';
 import { mapCollectionToSource } from '../collections/utils.ts';
-import { PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, buildScheduleString, type ScheduleUnit } from '../../lib/constants.ts';
+import { PLATFORM_LABELS } from '../../lib/constants.ts';
 import { formatNumber } from '../../lib/format.ts';
 import { cn } from '../../lib/utils.ts';
 import { Button } from '../../components/ui/button.tsx';
@@ -50,13 +46,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog.tsx';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select.tsx';
 import { StatsModal } from '../sources/StatsModal.tsx';
 import { TableModal } from '../sources/TableModal.tsx';
 
@@ -64,10 +53,6 @@ type RowAction =
   | 'stats'
   | 'table'
   | 'download'
-  | 'trigger'
-  | 'edit-schedule'
-  | 'stop-monitoring'
-  | 'set-schedule'
   | 'toggle-visibility'
   | 'delete';
 
@@ -87,7 +72,6 @@ function CollectionRow({
   const isProcessing = source.status === 'collecting' || source.status === 'enriching' || source.status === 'pending';
   const isReady = source.status === 'completed';
   const isFailed = source.status === 'failed';
-  const isMonitoring = source.status === 'monitoring';
   const isShared = source.visibility === 'org';
 
   const statusDot = isProcessing
@@ -169,30 +153,6 @@ function CollectionRow({
 
           <DropdownMenuSeparator />
 
-          {isOwner && isMonitoring && (
-            <>
-              <DropdownMenuItem onSelect={() => onAction('trigger')}>
-                <RefreshCw className="mr-2 h-3.5 w-3.5" /> Run Now
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction('edit-schedule')}>
-                <RefreshCw className="mr-2 h-3.5 w-3.5" /> Edit Schedule
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction('stop-monitoring')}>
-                <StopCircle className="mr-2 h-3.5 w-3.5" /> Stop Monitoring
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
-
-          {isOwner && isReady && !source.config.ongoing && (
-            <>
-              <DropdownMenuItem onSelect={() => onAction('set-schedule')}>
-                <RefreshCw className="mr-2 h-3.5 w-3.5" /> Set Schedule...
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
-
           {isOwner && isInOrg && (
             <DropdownMenuItem onSelect={() => onAction('toggle-visibility')}>
               {isShared ? (
@@ -240,11 +200,6 @@ export function CollectionSelector() {
   const [tableOpen, setTableOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
-  const [togglingMode, setTogglingMode] = useState(false);
-  const [scheduleUnit, setScheduleUnit] = useState<ScheduleUnit>('day');
-  const [scheduleInterval, setScheduleInterval] = useState(1);
-  const [scheduleTime, setScheduleTime] = useState('06:00');
 
   // Fetch collections when dropdown opens (same query key as CollectionsLibrary — cached/deduped)
   const { data: allCollections } = useQuery({
@@ -329,16 +284,6 @@ export function CollectionSelector() {
     }
   };
 
-  const handleTriggerNow = async (source: Source) => {
-    try {
-      await triggerCollection(source.collectionId);
-      updateSource(source.collectionId, { status: 'collecting' });
-      queryClient.invalidateQueries({ queryKey: ['collection-status', source.collectionId] });
-    } catch {
-      // handle error
-    }
-  };
-
   const handleToggleVisibility = async (source: Source) => {
     const newVisibility = source.visibility === 'org' ? 'private' : 'org';
     try {
@@ -347,36 +292,6 @@ export function CollectionSelector() {
       queryClient.invalidateQueries({ queryKey: ['collections'] });
     } catch {
       // handle error
-    }
-  };
-
-  const handleStopMonitoring = async (source: Source) => {
-    try {
-      await updateCollectionMode(source.collectionId, false);
-      updateSource(source.collectionId, {
-        status: 'completed',
-        config: { ...source.config, ongoing: false, schedule: undefined },
-      });
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-    } catch {
-      // handle error
-    }
-  };
-
-  const handleStartMonitoring = async (schedule: string) => {
-    if (!modalSource) return;
-    setTogglingMode(true);
-    try {
-      await updateCollectionMode(modalSource.collectionId, true, schedule);
-      updateSource(modalSource.collectionId, {
-        status: 'monitoring',
-        config: { ...modalSource.config, ongoing: true, schedule },
-      });
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-    } catch {
-      // handle error
-    } finally {
-      setTogglingMode(false);
     }
   };
 
@@ -394,23 +309,6 @@ export function CollectionSelector() {
         break;
       case 'download':
         handleDownload(source);
-        break;
-      case 'trigger':
-        handleTriggerNow(source);
-        break;
-      case 'edit-schedule':
-      case 'set-schedule': {
-        const existing = parseScheduleString(source.config.schedule);
-        setScheduleUnit(existing.unit);
-        setScheduleInterval(existing.interval);
-        setScheduleTime(existing.time);
-        setModalSource(source);
-        setScheduleDialogOpen(true);
-        setOpen(false);
-        break;
-      }
-      case 'stop-monitoring':
-        handleStopMonitoring(source);
         break;
       case 'toggle-visibility':
         handleToggleVisibility(source);
@@ -565,70 +463,6 @@ export function CollectionSelector() {
         <>
           <StatsModal source={modalSource} open={statsOpen} onClose={() => { setStatsOpen(false); setModalSource(null); }} />
           <TableModal source={modalSource} open={tableOpen} onClose={() => { setTableOpen(false); setModalSource(null); }} />
-
-          {/* Schedule Dialog */}
-          <Dialog open={scheduleDialogOpen} onOpenChange={(v) => { setScheduleDialogOpen(v); if (!v) setModalSource(null); }}>
-            <DialogContent className="max-w-sm">
-              <DialogHeader>
-                <DialogTitle>Monitoring Schedule</DialogTitle>
-                <DialogDescription>
-                  Configure when this collection automatically refreshes.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-2">
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Every</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={scheduleUnit === 'minute' ? 1440 : scheduleUnit === 'hour' ? 168 : 90}
-                    value={scheduleInterval}
-                    onChange={(e) => setScheduleInterval(Math.max(1, Number(e.target.value) || 1))}
-                    className="w-14 rounded border border-input bg-background px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                  <Select value={scheduleUnit} onValueChange={(v) => setScheduleUnit(v as ScheduleUnit)}>
-                    <SelectTrigger className="w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="minute">{scheduleInterval === 1 ? 'minute' : 'minutes'}</SelectItem>
-                      <SelectItem value="hour">{scheduleInterval === 1 ? 'hour' : 'hours'}</SelectItem>
-                      <SelectItem value="day">{scheduleInterval === 1 ? 'day' : 'days'}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {scheduleUnit === 'day' && (
-                    <>
-                      <span className="text-muted-foreground">at</span>
-                      <Select value={scheduleTime} onValueChange={setScheduleTime}>
-                        <SelectTrigger className="w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
-                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <span className="text-xs text-muted-foreground">UTC</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => { setScheduleDialogOpen(false); setModalSource(null); }}>Cancel</Button>
-                <Button
-                  onClick={() => {
-                    handleStartMonitoring(buildScheduleString(scheduleUnit, scheduleInterval, scheduleTime));
-                    setScheduleDialogOpen(false);
-                    setModalSource(null);
-                  }}
-                  disabled={togglingMode}
-                >
-                  {modalSource.status === 'monitoring' ? 'Update Schedule' : 'Start Monitoring'}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
 
           {/* Delete Confirmation */}
           <Dialog open={deleteDialogOpen} onOpenChange={(v) => { setDeleteDialogOpen(v); if (!v) setModalSource(null); }}>

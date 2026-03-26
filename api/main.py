@@ -49,7 +49,7 @@ import io
 from api.routers import sessions as sessions_router
 from api.routers import artifacts as artifacts_router
 from api.routers import topics as topics_router
-from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionModeRequest
+from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest
 from api.schemas.responses import (
     BreakdownItem,
     CollectionStatsResponse,
@@ -60,9 +60,6 @@ from api.schemas.responses import (
 )
 from api.services.collection_service import (
     create_collection_from_request,
-    is_valid_schedule,
-    trigger_collection_now,
-    update_collection_mode,
 )
 from config.settings import get_settings
 
@@ -803,56 +800,6 @@ async def set_collection_visibility(
     return {"status": "updated", "visibility": visibility}
 
 
-@app.post("/collection/{collection_id}/trigger")
-@limiter.limit("5/minute")
-async def trigger_collection(
-    request: Request,
-    collection_id: str,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Immediately trigger the next run of an ongoing collection. Owner only."""
-    fs = get_fs()
-    status = fs.get_collection_status(collection_id)
-    if not status:
-        raise HTTPException(status_code=404, detail="Collection not found")
-    if status.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Only the collection owner can trigger a run")
-    try:
-        trigger_collection_now(collection_id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"status": "collecting", "message": "Run triggered"}
-
-
-@app.patch("/collection/{collection_id}/mode")
-async def set_collection_mode(
-    collection_id: str,
-    request: UpdateCollectionModeRequest,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Switch a collection between ongoing and normal mode. Owner only."""
-    if request.ongoing and not request.schedule:
-        raise HTTPException(status_code=400, detail="schedule is required when ongoing=true")
-    if request.ongoing and not is_valid_schedule(request.schedule):
-        raise HTTPException(
-            status_code=400,
-            detail="schedule must be 'daily', 'weekly', or 'Nd@HH:MM' format (e.g. '1d@09:00')",
-        )
-
-    fs = get_fs()
-    status = fs.get_collection_status(collection_id)
-    if not status:
-        raise HTTPException(status_code=404, detail="Collection not found")
-    if status.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Only the collection owner can change mode")
-
-    try:
-        update_collection_mode(collection_id, request.ongoing, request.schedule)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"ongoing": request.ongoing, "schedule": request.schedule}
-
-
 @app.delete("/collection/{collection_id}")
 async def delete_collection(
     collection_id: str,
@@ -932,11 +879,6 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
                 created_at=created_at_str,
                 visibility=data.get("visibility", "private"),
                 user_id=data.get("user_id"),
-                ongoing=data.get("ongoing", False),
-                last_run_at=data.get("last_run_at"),
-                next_run_at=data.get("next_run_at"),
-                total_runs=data.get("total_runs", 0),
-                run_history=data.get("run_history", []),
             )
         )
 
@@ -1123,11 +1065,6 @@ async def get_collection_status(
         config=status.get("config"),
         visibility=status.get("visibility", "private"),
         user_id=status.get("user_id"),
-        ongoing=status.get("ongoing", False),
-        last_run_at=status.get("last_run_at"),
-        next_run_at=status.get("next_run_at"),
-        total_runs=status.get("total_runs", 0),
-        run_history=status.get("run_history", []),
     )
 
 
@@ -1506,6 +1443,17 @@ async def update_task_endpoint(
         "task_type", "context_summary",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
+
+    # Recompute next_run_at when schedule changes on a recurring task
+    # (also handles one-shot → recurring conversion where task_type is being set in the same update)
+    effective_task_type = safe_updates.get("task_type", task.get("task_type"))
+    if "schedule" in safe_updates and effective_task_type == "recurring":
+        new_schedule = safe_updates["schedule"]
+        if new_schedule and isinstance(new_schedule, dict) and new_schedule.get("frequency"):
+            from workers.pipeline_v2.schedule_utils import compute_next_run_at
+            now = datetime.now(timezone.utc)
+            safe_updates["next_run_at"] = compute_next_run_at(new_schedule["frequency"], now)
+
     if safe_updates:
         update_task(task_id, **safe_updates)
     return {"ok": True}
@@ -1521,7 +1469,7 @@ async def approve_task_protocol(
     Legacy endpoint kept for backwards compat. New flow uses start_task tool directly.
     """
     from api.services.task_service import create_task, dispatch_task_run, update_task
-    from api.services.collection_service import _compute_next_run_at
+    from workers.pipeline_v2.schedule_utils import compute_next_run_at
 
     title = request.get("title", "Untitled Task")
     task_type = request.get("task_type", "one_shot")
@@ -1554,7 +1502,7 @@ async def approve_task_protocol(
         collection_ids = dispatch_task_run(task_id, task)
     elif not run_now and schedule and task_type == "recurring":
         now = datetime.now(timezone.utc)
-        next_run = _compute_next_run_at(schedule.get("frequency"), now)
+        next_run = compute_next_run_at(schedule.get("frequency"), now)
         update_task(task_id, status="monitoring", next_run_at=next_run)
 
     return {
@@ -1772,48 +1720,20 @@ async def health():
 
 @app.post("/internal/scheduler/tick")
 async def scheduler_tick():
-    """Check for due ongoing collections and dispatch them.
+    """Check for due recurring tasks and dispatch them.
 
     Called by Cloud Scheduler in production (every 5 minutes).
-    Protected by Cloud Run IAM (--no-allow-unauthenticated not needed here
-    since the API service is public, but Cloud Scheduler authenticates via OIDC).
     """
-    from api.services.collection_service import _dispatch_cloud_task
-    from workers.pipeline import run_pipeline as _run_pipeline
-
     settings = get_settings()
     fs = get_fs()
 
-    due = fs.get_due_ongoing_collections()
-    dispatched = []
-    for doc in due:
-        collection_id = doc["collection_id"]
-        if not fs.claim_for_run(collection_id):
-            logger.info("Scheduler tick: collection %s already claimed, skipping", collection_id)
-            continue
-        if settings.is_dev:
-            import threading
-
-            thread = threading.Thread(
-                target=_run_pipeline,
-                args=(collection_id,),
-                daemon=True,
-                name=f"pipeline-{collection_id[:8]}",
-            )
-            thread.start()
-        else:
-            _dispatch_cloud_task(settings, collection_id)
-        dispatched.append(collection_id)
-        logger.info("Scheduler: dispatched pipeline for collection %s", collection_id)
-
-    # Also check recurring tasks
     from api.scheduler import _check_due_tasks
     try:
         _check_due_tasks(fs, settings)
     except Exception:
         logger.exception("Scheduler tick: recurring task check failed")
 
-    return {"dispatched": len(dispatched), "collection_ids": dispatched}
+    return {"status": "ok"}
 
 
 @app.post("/internal/task/continue")
@@ -2178,80 +2098,9 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
                         "author": event.author,
                     })
 
-                # Extract <!-- needs_decision: {...} --> markers
-                for decision_match in re.finditer(
-                    r"<!--\s*needs_decision:\s*(\{[\s\S]*?\})\s*-->", raw
-                ):
-                    try:
-                        payload = json.loads(decision_match.group(1))
-                        results.append({
-                            "event_type": "needs_decision",
-                            "content": payload.get("question", ""),
-                            "metadata": payload,
-                            "author": event.author,
-                        })
-                    except json.JSONDecodeError:
-                        pass
-
-                # Extract <!-- finding: {...} --> markers
-                for finding_match in re.finditer(
-                    r"<!--\s*finding:\s*(\{[\s\S]*?\})\s*-->", raw
-                ):
-                    try:
-                        payload = json.loads(finding_match.group(1))
-                        results.append({
-                            "event_type": "finding",
-                            "content": payload.get("summary", ""),
-                            "metadata": payload,
-                            "author": event.author,
-                        })
-                    except json.JSONDecodeError:
-                        pass
-
-                # Extract <!-- plan: {...} --> markers
-                for plan_match in re.finditer(
-                    r"<!--\s*plan:\s*(\{[\s\S]*?\})\s*-->", raw
-                ):
-                    try:
-                        payload = json.loads(plan_match.group(1))
-                        results.append({
-                            "event_type": "plan",
-                            "content": payload.get("objective", ""),
-                            "metadata": payload,
-                            "author": event.author,
-                        })
-                    except json.JSONDecodeError:
-                        pass
-
-                # Extract <!-- topics_section: {...} --> markers
-                for topics_match in re.finditer(
-                    r"<!--\s*topics_section:\s*(\{[\s\S]*?\})\s*-->", raw
-                ):
-                    try:
-                        payload = json.loads(topics_match.group(1))
-                        results.append({
-                            "event_type": "topics_section",
-                            "content": "",
-                            "metadata": payload,
-                            "author": event.author,
-                        })
-                    except json.JSONDecodeError:
-                        pass
-
-                # Extract <!-- metrics_section: {...} --> markers
-                for metrics_match in re.finditer(
-                    r"<!--\s*metrics_section:\s*(\{[\s\S]*?\})\s*-->", raw
-                ):
-                    try:
-                        payload = json.loads(metrics_match.group(1))
-                        results.append({
-                            "event_type": "metrics_section",
-                            "content": "",
-                            "metadata": payload,
-                            "author": event.author,
-                        })
-                    except json.JSONDecodeError:
-                        pass
+                # Removed: needs_decision, finding, plan, topics_section, metrics_section
+                # These are now handled via tool calls (ask_user, update_todos,
+                # show_topics, show_metrics) instead of fragile HTML comment markers.
 
                 # Strip all comment markers from the visible text
                 clean = re.sub(r"<!--[\s\S]*?-->", "", raw).strip()

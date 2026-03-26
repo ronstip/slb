@@ -88,7 +88,6 @@ export function CollectionsSection() {
                       className={cn('text-xs', STATUS_COLORS[c.status] || '')}
                     >
                       {c.status}
-                      {c.ongoing && ' (ongoing)'}
                     </Badge>
                   </td>
                   <td className="px-3 py-2">

@@ -110,7 +110,6 @@ def get_collection_details(collection_id: str) -> dict:
             "posts_embedded": status_doc.get("posts_embedded", 0),
             "error_message": status_doc.get("error_message"),
             "created_at": created_at,
-            "ongoing": status_doc.get("ongoing", False),
             "visibility": status_doc.get("visibility", "private"),
             "run_log": status_doc.get("run_log"),
         }

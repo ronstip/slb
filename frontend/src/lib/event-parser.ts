@@ -60,3 +60,17 @@ export function isTodoResult(
 ): boolean {
   return toolName === 'update_todos' && result?.status === 'success' && !!result?.progress;
 }
+
+export function isMetricsResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'show_metrics' && result?.status === 'success' && result?.display === 'metrics';
+}
+
+export function isTopicsResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'show_topics' && result?.status === 'success' && result?.display === 'topics';
+}

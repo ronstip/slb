@@ -24,6 +24,9 @@ import { SocialProgressListWidget } from './SocialProgressListWidget.tsx';
 import { EntityTableWidget, ChannelTableWidget } from './SocialTableWidget.tsx';
 import { SocialWordCloudWidget } from './SocialWordCloudWidget.tsx';
 import { SocialWidgetFrame } from './SocialWidgetFrame.tsx';
+import { DataTable } from '../../../components/DataTable/DataTable.tsx';
+import { postColumns } from '../../../components/DataTable/columns.tsx';
+import { ExpandedPostRow } from '../../../components/DataTable/ExpandedPostRow.tsx';
 
 // ── Generic table for custom widgets ──────────────────────────────────────────
 
@@ -369,6 +372,68 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
   );
 }
 
+// ── Posts table widget ────────────────────────────────────────────────────────
+
+interface PostTableRow {
+  post_id: string;
+  platform: string;
+  channel_handle: string;
+  title?: string | null;
+  content?: string | null;
+  post_url: string;
+  posted_at: string;
+  likes: number;
+  views: number;
+  comments_count: number;
+  sentiment?: string | null;
+  themes?: string[];
+  entities?: string[];
+  emotion?: string | null;
+  content_type?: string | null;
+  key_quotes?: string[];
+}
+
+function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
+  return posts.map((p) => ({
+    post_id: p.post_id,
+    platform: p.platform,
+    channel_handle: p.channel_handle,
+    title: p.title,
+    content: p.content,
+    post_url: '',
+    posted_at: p.posted_at,
+    likes: p.like_count,
+    views: p.view_count,
+    comments_count: p.comment_count,
+    sentiment: p.sentiment,
+    themes: p.themes,
+    entities: p.entities,
+    emotion: p.emotion,
+    content_type: p.content_type,
+    key_quotes: p.key_quotes,
+  }));
+}
+
+const POST_TABLE_COLUMNS = postColumns<PostTableRow>({ summaryField: 'content', summaryLabel: 'Content', showEntities: false });
+
+function PostsTableWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
+  const rows = useMemo(() => toPostTableRows(posts), [posts]);
+  return (
+    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <DataTable
+        data={rows}
+        columns={POST_TABLE_COLUMNS}
+        getRowKey={(r) => r.post_id}
+        defaultSortKey="views"
+        defaultSortDir="desc"
+        pageSize={25}
+        renderExpandedRow={(row) => <ExpandedPostRow row={row} />}
+        emptyMessage="No posts to display"
+      />
+    </SocialWidgetFrame>
+  );
+}
+
 // ── Main renderer ─────────────────────────────────────────────────────────────
 
 interface SocialWidgetRendererProps {
@@ -398,6 +463,9 @@ export function SocialWidgetRenderer({
 
   const frameProps = { widget, isEditMode, onConfigure, onRemove, onDuplicate };
 
+  if (widget.aggregation === 'posts') {
+    return <PostsTableWidget {...frameProps} posts={widgetPosts} />;
+  }
   if (widget.aggregation === 'custom') {
     return <CustomWidget {...frameProps} posts={widgetPosts} />;
   }

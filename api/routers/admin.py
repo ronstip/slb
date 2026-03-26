@@ -375,7 +375,6 @@ async def admin_collections(
             "posts_collected": c.get("posts_collected", 0),
             "posts_enriched": c.get("posts_enriched", 0),
             "platforms": platforms if isinstance(platforms, list) else [],
-            "ongoing": c.get("ongoing", False),
             "created_at": c.get("created_at", ""),
             "error_message": c.get("error_message"),
         })

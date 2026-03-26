@@ -94,7 +94,8 @@ def dispatch_task_run(task_id: str, task: dict) -> list[str]:
     Sets task status to 'executing' and returns the new collection_ids.
     """
     from api.schemas.requests import CreateCollectionRequest
-    from api.services.collection_service import create_collection_from_request, _compute_next_run_at
+    from api.services.collection_service import create_collection_from_request
+    from workers.pipeline_v2.schedule_utils import compute_next_run_at
 
     fs = get_fs()
 
@@ -151,13 +152,21 @@ def dispatch_task_run(task_id: str, task: dict) -> list[str]:
         fs.add_task_collection(task_id, cid)
         fs.update_collection_status(cid, task_id=task_id)
 
-    # Update task with new collection IDs + next_run_at for recurring
+    # Update task with new collection IDs + next_run_at for recurring + run_history
+    now = datetime.now(timezone.utc)
     update_fields: dict = {
         "collection_ids": transforms.ArrayUnion(collection_ids),
     }
     if task_type == "recurring" and schedule.get("frequency"):
-        now = datetime.now(timezone.utc)
-        update_fields["next_run_at"] = _compute_next_run_at(schedule["frequency"], now)
+        update_fields["next_run_at"] = compute_next_run_at(schedule["frequency"], now)
+
+    # Append to run_history
+    run_entry = {
+        "run_at": now.isoformat(),
+        "collection_ids": collection_ids,
+        "status": "started",
+    }
+    update_fields["run_history"] = transforms.ArrayUnion([run_entry])
 
     fs.update_task(task_id, **update_fields)
 

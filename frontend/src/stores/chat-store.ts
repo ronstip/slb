@@ -1,18 +1,29 @@
 import { create } from 'zustand';
 import type { StructuredPromptResult } from '../api/types.ts';
 
-export interface ToolIndicator {
-  name: string;
-  displayText: string;
-  resolved: boolean;
-  startedAt: number;
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+export type ActivityEntryKind = 'tool' | 'thinking' | 'todo_update';
+
+export interface ActivityEntry {
+  kind: ActivityEntryKind;
+  text: string;
+  ts: number;
+  // Tool-specific
+  toolName?: string;
+  resolved?: boolean;
   durationMs?: number;
   error?: string;
+  // Todo-specific
+  todos?: TodoItem[];
 }
 
 export interface MessageCard {
-  type: 'research_design' | 'data_export' | 'chart' | 'decision' | 'finding' | 'plan' | 'insight_report' | 'dashboard' | 'collection_progress' | 'structured_prompt' | 'topics_section' | 'metrics_section' | 'task_protocol' | 'todo';
-  // Note: 'task_protocol' kept for backwards compat with old sessions
+  type: 'research_design' | 'data_export' | 'chart' | 'insight_report' | 'dashboard' | 'collection_progress' | 'structured_prompt' | 'topics_section' | 'metrics_section';
   data: Record<string, unknown>;
 }
 
@@ -22,11 +33,10 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   isStreaming: boolean;
-  toolIndicators: ToolIndicator[];
   cards: MessageCard[];
-  thinkingEntries: string[];
-  statusLine: string | null;
   intentLine: string | null;
+  todos: TodoItem[];
+  activityLog: ActivityEntry[];
   suggestions: string[];
   activeAgent?: string;
 }
@@ -44,13 +54,12 @@ interface ChatStore {
   startAgentMessage: () => string;
   appendText: (messageId: string, text: string) => void;
   setActiveAgent: (messageId: string, agent: string) => void;
-  addToolCall: (messageId: string, name: string, displayText: string) => void;
-  resolveToolCall: (messageId: string, name: string, result?: Record<string, unknown>) => void;
-  removeToolCall: (messageId: string, name: string) => void;
   addCard: (messageId: string, card: MessageCard) => void;
-  appendThinking: (messageId: string, content: string) => void;
-  setStatusLine: (messageId: string, status: string | null) => void;
   setIntentLine: (messageId: string, intent: string | null) => void;
+  appendActivityEntry: (messageId: string, entry: ActivityEntry) => void;
+  resolveActivityTool: (messageId: string, toolName: string, error?: string) => void;
+  removeActivityTool: (messageId: string, toolName: string) => void;
+  updateTodos: (messageId: string, todos: TodoItem[]) => void;
   setSuggestions: (messageId: string, suggestions: string[]) => void;
   finalizeMessage: (messageId: string) => void;
   addAgentMessage: (text: string, cards?: MessageCard[]) => string;
@@ -88,11 +97,10 @@ export const useChatStore = create<ChatStore>((set) => ({
           content: text,
           timestamp: new Date(),
           isStreaming: false,
-          toolIndicators: [],
           cards: [],
-          thinkingEntries: [],
-          statusLine: null,
           intentLine: null,
+          todos: [],
+          activityLog: [],
           suggestions: [],
         },
       ],
@@ -109,11 +117,10 @@ export const useChatStore = create<ChatStore>((set) => ({
           content: '',
           timestamp: new Date(),
           isStreaming: true,
-          toolIndicators: [],
           cards: [],
-          thinkingEntries: [],
-          statusLine: null,
           intentLine: null,
+          todos: [],
+          activityLog: [],
           suggestions: [],
         },
       ],
@@ -136,66 +143,6 @@ export const useChatStore = create<ChatStore>((set) => ({
       ),
     })),
 
-  addToolCall: (messageId, name, displayText) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? {
-              ...m,
-              toolIndicators: [
-                ...m.toolIndicators,
-                { name, displayText, resolved: false, startedAt: Date.now() },
-              ],
-            }
-          : m,
-      ),
-    })),
-
-  resolveToolCall: (messageId, name, result) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
-        // Resolve only the first unresolved indicator matching the name
-        let resolved = false;
-        const isError = result?.status === 'error';
-        return {
-          ...m,
-          toolIndicators: m.toolIndicators.map((t) => {
-            if (!resolved && t.name === name && !t.resolved) {
-              resolved = true;
-              return {
-                ...t,
-                resolved: true,
-                durationMs: Date.now() - t.startedAt,
-                error: isError ? ((result?.message as string) || 'Tool failed') : undefined,
-              };
-            }
-            return t;
-          }),
-        };
-      }),
-    })),
-
-  removeToolCall: (messageId, name) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
-        // Remove the last unresolved indicator matching the name
-        let idx = -1;
-        for (let i = m.toolIndicators.length - 1; i >= 0; i--) {
-          if (m.toolIndicators[i].name === name && !m.toolIndicators[i].resolved) {
-            idx = i;
-            break;
-          }
-        }
-        if (idx === -1) return m;
-        return {
-          ...m,
-          toolIndicators: m.toolIndicators.filter((_, i) => i !== idx),
-        };
-      }),
-    })),
-
   addCard: (messageId, card) =>
     set((s) => ({
       messages: s.messages.map((m) =>
@@ -205,26 +152,59 @@ export const useChatStore = create<ChatStore>((set) => ({
       ),
     })),
 
-  appendThinking: (messageId, content) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? { ...m, thinkingEntries: [...m.thinkingEntries, content] }
-          : m,
-      ),
-    })),
-
-  setStatusLine: (messageId, status) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId ? { ...m, statusLine: status } : m,
-      ),
-    })),
-
   setIntentLine: (messageId, intent) =>
     set((s) => ({
       messages: s.messages.map((m) =>
         m.id === messageId ? { ...m, intentLine: intent } : m,
+      ),
+    })),
+
+  appendActivityEntry: (messageId, entry) =>
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId
+          ? { ...m, activityLog: [...m.activityLog, entry] }
+          : m,
+      ),
+    })),
+
+  resolveActivityTool: (messageId, toolName, error) =>
+    set((s) => ({
+      messages: s.messages.map((m) => {
+        if (m.id !== messageId) return m;
+        let found = false;
+        const log = [...m.activityLog];
+        for (let i = log.length - 1; i >= 0; i--) {
+          if (log[i].kind === 'tool' && log[i].toolName === toolName && !log[i].resolved) {
+            log[i] = { ...log[i], resolved: true, durationMs: Date.now() - log[i].ts, error };
+            found = true;
+            break;
+          }
+        }
+        return found ? { ...m, activityLog: log } : m;
+      }),
+    })),
+
+  removeActivityTool: (messageId, toolName) =>
+    set((s) => ({
+      messages: s.messages.map((m) => {
+        if (m.id !== messageId) return m;
+        let idx = -1;
+        for (let i = m.activityLog.length - 1; i >= 0; i--) {
+          if (m.activityLog[i].kind === 'tool' && m.activityLog[i].toolName === toolName && !m.activityLog[i].resolved) {
+            idx = i;
+            break;
+          }
+        }
+        if (idx === -1) return m;
+        return { ...m, activityLog: m.activityLog.filter((_, i) => i !== idx) };
+      }),
+    })),
+
+  updateTodos: (messageId, todos) =>
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId ? { ...m, todos } : m,
       ),
     })),
 
@@ -244,7 +224,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           ? {
               ...m,
               isStreaming: false,
-              statusLine: null,
+              intentLine: null,
               content: m.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd(),
             }
           : m,
@@ -263,11 +243,10 @@ export const useChatStore = create<ChatStore>((set) => ({
           content: text,
           timestamp: new Date(),
           isStreaming: false,
-          toolIndicators: [],
           cards: cards ?? [],
-          thinkingEntries: [],
-          statusLine: null,
           intentLine: null,
+          todos: [],
+          activityLog: [],
           suggestions: [],
         },
       ],
@@ -285,11 +264,10 @@ export const useChatStore = create<ChatStore>((set) => ({
           content: text,
           timestamp: new Date(),
           isStreaming: false,
-          toolIndicators: [],
           cards: cards ?? [],
-          thinkingEntries: [],
-          statusLine: null,
           intentLine: null,
+          todos: [],
+          activityLog: [],
           suggestions: [],
         },
       ],

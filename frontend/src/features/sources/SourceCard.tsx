@@ -3,7 +3,7 @@ import { useSourcesStore, type Source } from '../../stores/sources-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useAuth } from '../../auth/useAuth.ts';
-import { PLATFORM_LABELS, SCHEDULE_UTC_TIMES, parseScheduleString, buildScheduleString, formatSchedule, type ScheduleUnit } from '../../lib/constants.ts';
+import { PLATFORM_LABELS } from '../../lib/constants.ts';
 import { formatNumber, shortDate } from '../../lib/format.ts';
 import {
   BarChart2,
@@ -15,9 +15,7 @@ import {
   Loader2,
   LogOut,
   MoreHorizontal,
-  RefreshCw,
   Sparkles,
-  StopCircle,
   Table2,
   Trash2,
   Users,
@@ -38,18 +36,9 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog.tsx';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select.tsx';
-import {
   setCollectionVisibility,
   deleteCollection,
   downloadCollection,
-  triggerCollection,
-  updateCollectionMode,
 } from '../../api/endpoints/collections.ts';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '../../lib/utils.ts';
@@ -77,18 +66,8 @@ export function SourceCard({ source }: SourceCardProps) {
   const [statsOpen, setStatsOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [triggering, setTriggering] = useState(false);
-  const [togglingMode, setTogglingMode] = useState(false);
-  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
-
-  // Schedule dialog state — init from existing config if available
-  const existingSchedule = parseScheduleString(source.config.schedule);
-  const [scheduleUnit, setScheduleUnit] = useState<ScheduleUnit>(existingSchedule.unit);
-  const [scheduleInterval, setScheduleInterval] = useState(existingSchedule.interval);
-  const [scheduleTime, setScheduleTime] = useState(existingSchedule.time);
 
   const isProcessing = source.status === 'collecting' || source.status === 'enriching' || source.status === 'pending';
-  const isMonitoring = source.status === 'monitoring';
   const isPaused = source.status === 'paused';
   const isReady = source.status === 'completed';
   const isFailed = source.status === 'failed';
@@ -146,109 +125,34 @@ export function SourceCard({ source }: SourceCardProps) {
     }
   };
 
-  const handleTriggerNow = async () => {
-    setTriggering(true);
-    try {
-      await triggerCollection(source.collectionId);
-      updateSource(source.collectionId, { status: 'collecting' });
-      queryClient.invalidateQueries({ queryKey: ['collection-status', source.collectionId] });
-    } catch {
-      // handle error
-    } finally {
-      setTriggering(false);
-    }
-  };
-
-  const handleStopMonitoring = async () => {
-    setTogglingMode(true);
-    try {
-      await updateCollectionMode(source.collectionId, false);
-      updateSource(source.collectionId, {
-        status: 'completed',
-        config: { ...source.config, ongoing: false, schedule: undefined },
-      });
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-    } catch {
-      // handle error
-    } finally {
-      setTogglingMode(false);
-    }
-  };
-
-  const handleStartMonitoring = async (schedule: string) => {
-    setTogglingMode(true);
-    try {
-      await updateCollectionMode(source.collectionId, true, schedule);
-      updateSource(source.collectionId, {
-        status: 'monitoring',
-        config: { ...source.config, ongoing: true, schedule },
-      });
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-    } catch {
-      // handle error
-    } finally {
-      setTogglingMode(false);
-    }
-  };
-
   const statusDot = isProcessing
     ? 'bg-amber-500 animate-pulse'
-    : isMonitoring
-      ? 'bg-emerald-500 animate-pulse'
-      : isPaused
-        ? 'bg-amber-500'
-        : isReady
-          ? 'bg-emerald-500'
-          : isFailed
-            ? 'bg-red-500'
-            : 'bg-muted-foreground';
+    : isPaused
+      ? 'bg-amber-500'
+      : isReady
+        ? 'bg-emerald-500'
+        : isFailed
+          ? 'bg-red-500'
+          : 'bg-muted-foreground';
 
   const statusLabel = isProcessing
     ? 'Processing'
-    : isMonitoring
-      ? 'Monitoring'
-      : isPaused
-        ? 'Paused'
-        : isReady
-          ? 'Ready'
-          : isFailed
-            ? 'Failed'
-            : source.status;
-
-  // Relative time helpers for monitoring meta line
-  const relativeTime = (iso: string | undefined): string => {
-    if (!iso) return '';
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.round(diff / 60_000);
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.round(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.round(hrs / 24)}d ago`;
-  };
-
-  const timeUntil = (iso: string | undefined): string => {
-    if (!iso) return '';
-    const diff = new Date(iso).getTime() - Date.now();
-    if (diff <= 0) return 'soon';
-    const mins = Math.round(diff / 60_000);
-    if (mins < 60) return `in ${mins}m`;
-    const hrs = Math.round(mins / 60);
-    if (hrs < 24) return `in ${hrs}h`;
-    return `in ${Math.round(hrs / 24)}d`;
-  };
+    : isPaused
+      ? 'Paused'
+      : isReady
+        ? 'Ready'
+        : isFailed
+          ? 'Failed'
+          : source.status;
 
   return (
     <>
       <div
         className={cn(
           'group relative flex cursor-pointer items-start rounded-lg border py-1.5 pl-3.5 pr-2 transition-all',
-          isMonitoring
-            ? source.active
-              ? 'border-emerald-500/30 bg-emerald-500/5'
-              : 'border-emerald-500/10 hover:border-emerald-500/30 hover:bg-emerald-500/5'
-            : source.active
-              ? 'border-accent-vibrant/30 bg-accent-vibrant/5'
-              : 'border-transparent hover:border-border/60 hover:bg-muted/50',
+          source.active
+            ? 'border-accent-vibrant/30 bg-accent-vibrant/5'
+            : 'border-transparent hover:border-border/60 hover:bg-muted/50',
         )}
         onClick={handleCardClick}
       >
@@ -257,7 +161,7 @@ export function SourceCard({ source }: SourceCardProps) {
           className={cn(
             'absolute left-1 top-[12%] bottom-[12%] w-[3px] rounded-full transition-all duration-200',
             source.active
-              ? isMonitoring ? 'bg-emerald-500' : 'bg-accent-vibrant'
+              ? 'bg-accent-vibrant'
               : 'bg-transparent',
           )}
         />
@@ -275,12 +179,8 @@ export function SourceCard({ source }: SourceCardProps) {
             className={cn(
               'flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border-2 transition-all duration-150',
               source.active
-                ? isMonitoring
-                  ? 'border-emerald-500 bg-emerald-500'
-                  : 'border-foreground bg-foreground'
-                : isMonitoring
-                  ? 'border-muted-foreground/30 bg-transparent hover:border-emerald-500/60'
-                  : 'border-muted-foreground/30 bg-transparent hover:border-foreground/60',
+                ? 'border-foreground bg-foreground'
+                : 'border-muted-foreground/30 bg-transparent hover:border-foreground/60',
             )}
           >
             {source.active && <Check className="h-2.5 w-2.5 text-primary-foreground stroke-[3]" />}
@@ -326,23 +226,6 @@ export function SourceCard({ source }: SourceCardProps) {
             )}
           </div>
 
-          {/* Monitoring schedule meta */}
-          {isMonitoring && (
-            <div className="mt-0.5 text-[10px] text-emerald-600 dark:text-emerald-400">
-              {source.config.schedule && (
-                <span>{formatSchedule(source.config.schedule)}</span>
-              )}
-              {(source.lastRunAt || source.nextRunAt) && (
-                <span className="text-muted-foreground">
-                  {source.config.schedule && <span className="mx-1 text-border">·</span>}
-                  {source.lastRunAt && <span>Updated {relativeTime(source.lastRunAt)}</span>}
-                  {source.lastRunAt && source.nextRunAt && <span className="mx-1 text-border">·</span>}
-                  {source.nextRunAt && <span>Next {timeUntil(source.nextRunAt)}</span>}
-                </span>
-              )}
-            </div>
-          )}
-
           {/* Shared badge */}
           {!isOwner && (
             <div className="mt-0.5">
@@ -382,38 +265,6 @@ export function SourceCard({ source }: SourceCardProps) {
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
-
-              {/* Ongoing monitoring actions */}
-              {isOwner && isMonitoring && (
-                <>
-                  <DropdownMenuItem onSelect={handleTriggerNow} disabled={triggering}>
-                    {triggering ? (
-                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                    )}
-                    Run Now
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setScheduleDialogOpen(true)} disabled={togglingMode}>
-                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                    Edit Schedule
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={handleStopMonitoring} disabled={togglingMode}>
-                    <StopCircle className="mr-2 h-3.5 w-3.5" />
-                    Stop Monitoring
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              {isOwner && isReady && !source.config.ongoing && (
-                <>
-                  <DropdownMenuItem onSelect={() => setScheduleDialogOpen(true)} disabled={togglingMode}>
-                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                    Set Schedule...
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
 
               {/* Session */}
               <DropdownMenuItem onSelect={() => removeFromSession(source.collectionId)}>
@@ -459,71 +310,6 @@ export function SourceCard({ source }: SourceCardProps) {
       {/* Modals */}
       <StatsModal source={source} open={statsOpen} onClose={() => setStatsOpen(false)} />
       <TableModal source={source} open={tableOpen} onClose={() => setTableOpen(false)} />
-
-      {/* Schedule Dialog */}
-      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Monitoring Schedule</DialogTitle>
-            <DialogDescription>
-              Configure when this collection automatically refreshes.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-2">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Every</span>
-              <input
-                type="number"
-                min={1}
-                max={scheduleUnit === 'minute' ? 1440 : scheduleUnit === 'hour' ? 168 : 90}
-                value={scheduleInterval}
-                onChange={(e) => setScheduleInterval(Math.max(1, Number(e.target.value) || 1))}
-                className="w-14 rounded border border-input bg-background px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              <Select value={scheduleUnit} onValueChange={(v) => setScheduleUnit(v as ScheduleUnit)}>
-                <SelectTrigger className="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="minute">{scheduleInterval === 1 ? 'minute' : 'minutes'}</SelectItem>
-                  <SelectItem value="hour">{scheduleInterval === 1 ? 'hour' : 'hours'}</SelectItem>
-                  <SelectItem value="day">{scheduleInterval === 1 ? 'day' : 'days'}</SelectItem>
-                </SelectContent>
-              </Select>
-              {scheduleUnit === 'day' && (
-                <>
-                  <span className="text-muted-foreground">at</span>
-                  <Select value={scheduleTime} onValueChange={setScheduleTime}>
-                    <SelectTrigger className="w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SCHEDULE_UTC_TIMES.map(({ label, value }) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-xs text-muted-foreground">UTC</span>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                handleStartMonitoring(buildScheduleString(scheduleUnit, scheduleInterval, scheduleTime));
-                setScheduleDialogOpen(false);
-              }}
-              disabled={togglingMode}
-            >
-              {isMonitoring ? 'Update Schedule' : 'Start Monitoring'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Confirmation */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

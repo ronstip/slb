@@ -44,45 +44,6 @@ def _post_to_enrichment_data(post):
     )
 
 
-def _parse_schedule(schedule: str | None) -> tuple[str, int, int | None, int | None]:
-    """Return (unit, interval, hour_utc, minute_utc) for a schedule string."""
-    import re
-    if not schedule or schedule == "daily":
-        return ("d", 1, 9, 0)
-    if schedule == "weekly":
-        return ("d", 7, 9, 0)
-    m = re.match(r"^(\d+)m$", schedule)
-    if m:
-        return ("m", int(m.group(1)), None, None)
-    m = re.match(r"^(\d+)h$", schedule)
-    if m:
-        return ("h", int(m.group(1)), None, None)
-    m = re.match(r"^(\d+)d@(\d{2}):(\d{2})$", schedule)
-    if m:
-        return ("d", int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    return ("d", 1, 9, 0)
-
-
-def _compute_next_run_at(schedule: str | None, from_time: datetime) -> datetime:
-    """Return the next future run datetime for the given schedule."""
-    from datetime import timedelta
-    unit, interval, hour, minute = _parse_schedule(schedule)
-
-    if unit == "m":
-        candidate = from_time + timedelta(minutes=interval)
-        return candidate.replace(second=0, microsecond=0)
-    if unit == "h":
-        candidate = from_time + timedelta(hours=interval)
-        return candidate.replace(second=0, microsecond=0)
-
-    assert hour is not None and minute is not None
-    candidate = from_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    candidate += timedelta(days=interval)
-    while candidate <= from_time:
-        candidate += timedelta(days=1)
-    return candidate
-
-
 def run_pipeline(collection_id: str) -> None:
     """Run collection + parallel enrichment + embedding pipeline."""
     settings = get_settings()
@@ -90,7 +51,6 @@ def run_pipeline(collection_id: str) -> None:
         from workers.pipeline_v2.pipeline import run_pipeline_v2
         return run_pipeline_v2(collection_id)
 
-    from google.cloud.firestore_v1 import transforms
     fs = FirestoreClient(settings)
     bq = BQClient(settings)
 
@@ -214,100 +174,16 @@ def run_pipeline(collection_id: str) -> None:
     except Exception:
         logger.exception("Statistical signature computation failed for %s", collection_id)
 
-    # Step 4: Decide final status based on ongoing flag (set completed BEFORE embedding)
+    # Step 4: Set final status (completed BEFORE embedding so UX is not blocked)
     status = fs.get_collection_status(collection_id)
     current_status = (status or {}).get("status")
-    config = (status or {}).get("config") or {}
 
-    # Don't reschedule if user cancelled or collection failed fatally
-    if current_status in ("cancelled", "failed"):
-        logger.info(
-            "Collection %s has status '%s' — skipping reschedule",
-            collection_id, current_status,
-        )
-        return
+    if current_status not in ("cancelled", "failed", "completed_with_errors"):
+        final_status = "completed_with_errors" if enrichment_failed else "completed"
+        fs.update_collection_status(collection_id, status=final_status)
+    else:
+        final_status = current_status
 
-    # Check if user toggled ongoing off mid-run
-    ongoing_flag = (status or {}).get("ongoing", False)
-    if not ongoing_flag and not config.get("ongoing"):
-        if current_status != "completed_with_errors":
-            fs.update_collection_status(collection_id, status="completed")
-        return
-
-    if config.get("ongoing"):
-        schedule = config.get("schedule", "daily")
-        now = datetime.now(timezone.utc)
-
-        # Use the previous next_run_at as the base to maintain cadence
-        # (avoids drift from pipeline duration)
-        prev_next_run = (status or {}).get("next_run_at")
-        if prev_next_run:
-            if isinstance(prev_next_run, str):
-                prev_next_run = datetime.fromisoformat(prev_next_run)
-            base_time = prev_next_run
-        else:
-            base_time = now
-        next_run_at = _compute_next_run_at(schedule, base_time)
-        # Safety: if computed time is already in the past, fall back to now
-        if next_run_at <= now:
-            next_run_at = _compute_next_run_at(schedule, now)
-        logger.info(
-            "Schedule computation for %s: schedule=%r, base_time=%s, next_run_at=%s",
-            collection_id, schedule, base_time.isoformat(), next_run_at.isoformat(),
-        )
-
-        run_status = "completed" if not enrichment_failed else "completed_with_errors"
-        run_entry = {
-            "run_at": now.isoformat(),
-            "posts_added": (status or {}).get("last_run_posts_added", 0),
-            "status": run_status,
-        }
-
-        # Track consecutive failures for auto-pause
-        consecutive_failures = (status or {}).get("consecutive_failures", 0)
-        if enrichment_failed or current_status == "completed_with_errors":
-            consecutive_failures += 1
-        else:
-            consecutive_failures = 0
-
-        MAX_CONSECUTIVE_FAILURES = 3
-        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-            fs.update_collection_status(
-                collection_id,
-                status="paused",
-                error_message=f"Auto-paused after {consecutive_failures} consecutive failures. "
-                              "Review errors and resume monitoring manually.",
-                consecutive_failures=consecutive_failures,
-                total_runs=transforms.Increment(1),
-                run_history=transforms.ArrayUnion([run_entry]),
-                last_run_at=now,
-            )
-            logger.warning(
-                "Ongoing collection %s paused after %d consecutive failures",
-                collection_id, consecutive_failures,
-            )
-            return
-
-        fs.update_collection_status(
-            collection_id,
-            status="monitoring",
-            last_run_at=now,
-            next_run_at=next_run_at,
-            total_runs=transforms.Increment(1),
-            run_history=transforms.ArrayUnion([run_entry]),
-            consecutive_failures=consecutive_failures,
-        )
-        logger.info(
-            "Ongoing collection %s set to monitoring; next run at %s (run: %s)",
-            collection_id, next_run_at.isoformat(), run_status,
-        )
-    elif current_status != "completed_with_errors":
-        # Don't overwrite completed_with_errors from enrichment step
-        fs.update_collection_status(collection_id, status="completed")
-
-    final_status = current_status if config.get("ongoing") else (
-        "completed_with_errors" if enrichment_failed else "completed"
-    )
     logger.info("━━━ Pipeline DONE %s — status=%s total=%.1fs ━━━",
                 collection_id, final_status, _time.monotonic() - pipeline_start)
 

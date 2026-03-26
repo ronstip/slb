@@ -5,23 +5,12 @@ import { AlertCircle } from 'lucide-react';
 import { Logo } from '../../components/Logo.tsx';
 import type { ChatMessage } from '../../stores/chat-store.ts';
 import type { DesignResearchResult } from '../../api/types.ts';
-import { ToolIndicator } from './ToolIndicator.tsx';
-import { ThinkingBox } from './ThinkingBox.tsx';
-import { StatusLine } from './StatusLine.tsx';
-import { IntentBanner } from './IntentBanner.tsx';
+import { ActivityBar } from './ActivityBar.tsx';
+import { ArtifactCard } from './cards/ArtifactCard.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
-import { DataExportCard } from './cards/DataExportCard.tsx';
-import { ChartCard } from './cards/ChartCard.tsx';
-import { DecisionCard } from './cards/DecisionCard.tsx';
-import { FindingChip } from './cards/FindingChip.tsx';
-import { PlanCard } from './cards/PlanCard.tsx';
-import { InsightReportCard } from './cards/InsightReportCard.tsx';
-import { DashboardCard } from './cards/DashboardCard.tsx';
 import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
 import { TopicsSectionCard } from './cards/TopicsSectionCard.tsx';
 import { MetricsSectionCard } from './cards/MetricsSectionCard.tsx';
-// TaskProtocolCard removed — task_protocol kept for backwards compat rendering only
-import { TodoCard } from './cards/TodoCard.tsx';
 import { PromptAnsweredSummary } from './StructuredPromptPanel.tsx';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { FollowUpChips } from './FollowUpChips.tsx';
@@ -53,9 +42,17 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
     .replace(/<!--[\s\S]*$/g, '')
     .trim();
 
-  const hasActivity = cleanContent || errorText || message.toolIndicators.length > 0 || message.cards.length > 0;
-  // Show thinking dots only when streaming, no activity, AND no status line
-  const isThinking = message.isStreaming && !hasActivity && !message.statusLine;
+  // ── Card classification ──
+  const ARTIFACT_TYPES = new Set(['chart', 'insight_report', 'data_export', 'dashboard']);
+  const artifactCards: typeof message.cards = [];
+  const otherCards: typeof message.cards = [];
+  message.cards.forEach((card) => {
+    if (ARTIFACT_TYPES.has(card.type)) artifactCards.push(card);
+    else otherCards.push(card);
+  });
+  // Ensure metrics always renders above topics
+  const CARD_ORDER: Record<string, number> = { metrics_section: 0, topics_section: 1 };
+  otherCards.sort((a, b) => (CARD_ORDER[a.type] ?? 0.5) - (CARD_ORDER[b.type] ?? 0.5));
 
   return (
     <div className="flex gap-3 overflow-hidden max-w-3xl">
@@ -74,55 +71,14 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           </div>
         )}
 
-        {/* Intent banner — persistent high-level goal for multi-step tasks */}
-        {message.intentLine && (
-          <IntentBanner text={message.intentLine} />
-        )}
+        {/* ── Zone 1: ACTIVITY BAR ── */}
+        <ActivityBar
+          activityLog={message.activityLog}
+          intentLine={message.intentLine}
+          isStreaming={message.isStreaming}
+        />
 
-        {/* Status line — contextual description of what the agent is doing */}
-        {message.isStreaming && message.statusLine && (
-          <StatusLine text={message.statusLine} />
-        )}
-
-        {/* Thinking indicator — before any content or tools appear */}
-        {isThinking && (
-          <div className="flex items-center gap-2 py-0.5">
-            <div className="flex items-center gap-1">
-              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-vibrant/50" />
-              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-vibrant/50 [animation-delay:150ms]" />
-              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-vibrant/50 [animation-delay:300ms]" />
-            </div>
-            <span className="text-xs text-muted-foreground/60">Thinking</span>
-          </div>
-        )}
-
-        {/* Thinking box — collapsible SQL/tool activity log — shown at top before content */}
-        {message.thinkingEntries.length > 0 && (
-          <ThinkingBox
-            entries={message.thinkingEntries}
-            isStreaming={message.isStreaming}
-            hasMainContent={!!message.content}
-          />
-        )}
-
-        {/* Tool indicators */}
-        {message.toolIndicators.length > 0 && (
-          <div className="mb-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2 space-y-0.5">
-            {message.toolIndicators.map((indicator, idx) => {
-              const sameNameAll = message.toolIndicators.filter((t) => t.name === indicator.name);
-              const sameNameIdx = message.toolIndicators.slice(0, idx).filter((t) => t.name === indicator.name).length;
-              const suffix = sameNameAll.length > 1 ? ` (${sameNameIdx + 1}/${sameNameAll.length})` : '';
-              return (
-                <ToolIndicator
-                  key={`${indicator.name}-${idx}`}
-                  indicator={{ ...indicator, displayText: indicator.displayText + suffix }}
-                />
-              );
-            })}
-          </div>
-        )}
-
-        {/* Markdown content */}
+        {/* ── Zone 2: VOICE ── */}
         {cleanContent && (
           <div dir="auto" className="agent-prose max-w-none break-words">
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
@@ -139,82 +95,48 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           </div>
         )}
 
-        {/* Structured cards — split into artifact cards (2-col grid) and other cards (full-width) */}
-        {(() => {
-          const ARTIFACT_TYPES = new Set(['chart', 'insight_report', 'data_export', 'dashboard']);
-          const artifactCards: typeof message.cards = [];
-          const otherCards: typeof message.cards = [];
-          message.cards.forEach((card) => {
-            if (ARTIFACT_TYPES.has(card.type)) artifactCards.push(card);
-            else otherCards.push(card);
-          });
-          // Ensure metrics always renders above topics
-          const CARD_ORDER: Record<string, number> = { metrics_section: 0, topics_section: 1 };
-          otherCards.sort((a, b) => (CARD_ORDER[a.type] ?? 0.5) - (CARD_ORDER[b.type] ?? 0.5));
+        {/* ── Zone 3: DELIVERABLES ── */}
+        {/* Full-width cards */}
+        {otherCards.map((card, i) => {
+          switch (card.type) {
+            case 'research_design':
+              return <ResearchDesignCard key={`other-${i}`} data={card.data as unknown as DesignResearchResult} onCollectionStarted={onSuggestionClick} />;
+            case 'metrics_section':
+              return <MetricsSectionCard key={`other-${i}`} data={card.data} />;
+            case 'topics_section':
+              return <TopicsSectionCard key={`other-${i}`} data={card.data} />;
+            case 'collection_progress':
+              return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
+            case 'structured_prompt': {
+              if (activePromptMessageId === message.id) return null;
+              return <PromptAnsweredSummary key={`other-${i}`} data={card.data} />;
+            }
+            default:
+              // Silently skip removed card types (decision, finding, plan, todo, task_protocol)
+              return null;
+          }
+        })}
 
-          return (
-            <>
-              {/* Full-width cards */}
-              {otherCards.map((card, i) => {
-                switch (card.type) {
-                  case 'research_design':
-                    return <ResearchDesignCard key={`other-${i}`} data={card.data as unknown as DesignResearchResult} onCollectionStarted={onSuggestionClick} />;
-                  case 'decision':
-                    return <DecisionCard key={`other-${i}`} data={card.data} onSelect={onSuggestionClick} />;
-                  case 'finding':
-                    return <FindingChip key={`other-${i}`} data={card.data} />;
-                  case 'plan':
-                    return <PlanCard key={`other-${i}`} data={card.data} onSelect={onSuggestionClick} />;
-                  case 'metrics_section':
-                    return <MetricsSectionCard key={`other-${i}`} data={card.data} />;
-                  case 'topics_section':
-                    return <TopicsSectionCard key={`other-${i}`} data={card.data} />;
-                  case 'collection_progress':
-                    return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
-                  case 'task_protocol':
-                    // Legacy: old sessions may have task_protocol cards — render as inert text
-                    return <div key={`other-${i}`} className="text-xs text-muted-foreground italic mt-2">Task protocol: {(card.data.title as string) || 'approved'}</div>;
-                  case 'todo':
-                    return <TodoCard key={`other-${i}`} data={card.data} />;
-                  case 'structured_prompt': {
-                    if (activePromptMessageId === message.id) return null;
-                    return <PromptAnsweredSummary key={`other-${i}`} data={card.data} />;
-                  }
-                  default:
-                    return null;
-                }
-              })}
+        {/* Artifact cards — 2-column grid */}
+        {artifactCards.length > 0 && (
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
+            {artifactCards.map((card, i) => (
+              <ArtifactCard
+                key={`artifact-${i}`}
+                type={card.type as 'chart' | 'insight_report' | 'data_export' | 'dashboard'}
+                data={card.data}
+              />
+            ))}
+          </div>
+        )}
 
-              {/* Artifact cards — 2-column grid */}
-              {artifactCards.length > 0 && (
-                <div className="mt-3 grid grid-cols-2 gap-2.5">
-                  {artifactCards.map((card, i) => {
-                    switch (card.type) {
-                      case 'chart':
-                        return <ChartCard key={`artifact-${i}`} data={card.data} />;
-                      case 'insight_report':
-                        return <InsightReportCard key={`artifact-${i}`} data={card.data} />;
-                      case 'data_export':
-                        return <DataExportCard key={`artifact-${i}`} data={card.data} />;
-                      case 'dashboard':
-                        return <DashboardCard key={`artifact-${i}`} data={card.data} />;
-                      default:
-                        return null;
-                    }
-                  })}
-                </div>
-              )}
-            </>
-          );
-        })()}
-
-        {/* Follow-up suggestions */}
+        {/* ── Zone 4: INPUT ── */}
         {!message.isStreaming && message.suggestions.length > 0 && onSuggestionClick && (
           <FollowUpChips suggestions={message.suggestions} onSelect={onSuggestionClick} />
         )}
 
         {/* Streaming cursor — shown between tool completion and text arrival */}
-        {message.isStreaming && !cleanContent && !message.statusLine && message.toolIndicators.length > 0 && message.toolIndicators.every(t => t.resolved) && (
+        {message.isStreaming && !cleanContent && message.activityLog.some(e => e.kind === 'tool') && message.activityLog.filter(e => e.kind === 'tool').every(e => e.resolved) && (
           <div className="flex items-center py-1">
             <div className="h-4 w-0.5 animate-[blink_1s_steps(1)_infinite] rounded-full bg-accent-vibrant/60" />
           </div>

@@ -3,12 +3,6 @@ from typing import Any
 from pydantic import BaseModel
 
 
-class RunHistoryEntry(BaseModel):
-    run_at: str
-    posts_added: int = 0
-    status: str = "completed"
-
-
 class CollectionStatusResponse(BaseModel):
     collection_id: str
     status: str
@@ -20,11 +14,6 @@ class CollectionStatusResponse(BaseModel):
     created_at: str | None = None
     visibility: str = "private"
     user_id: str | None = None
-    ongoing: bool = False
-    last_run_at: str | None = None
-    next_run_at: str | None = None
-    total_runs: int = 0
-    run_history: list[RunHistoryEntry] = []
 
 
 class FeedPostResponse(BaseModel):

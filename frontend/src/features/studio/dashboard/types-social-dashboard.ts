@@ -14,6 +14,7 @@ export type SocialAggregation =
   | 'content-type'
   | 'language'
   | 'engagement-rate'
+  | 'posts'
   | 'custom';
 
 export type SocialChartType =
@@ -24,7 +25,8 @@ export type SocialChartType =
   | 'word-cloud'
   | 'table'
   | 'number-card'
-  | 'progress-list';
+  | 'progress-list'
+  | 'data-table';
 
 // ─── Custom chart config (used when aggregation === 'custom') ─────────────────
 
@@ -81,7 +83,7 @@ export const METRIC_META: Record<CustomMetric, { label: string; description: str
 };
 
 const ALL_CHART_TYPES: SocialChartType[] = [
-  'number-card', 'bar', 'line', 'pie', 'doughnut', 'progress-list', 'word-cloud', 'table',
+  'number-card', 'bar', 'line', 'pie', 'doughnut', 'progress-list', 'word-cloud', 'table', 'data-table',
 ];
 
 export function getValidChartTypesForCustom(
@@ -124,6 +126,8 @@ export function presetToCustomConfig(
       return { customConfig: { dimension: 'posted_at', metric: 'post_count', timeBucket: 'day' }, chartType: 'line' };
     case 'engagement-rate':
       return { customConfig: { dimension: 'posted_at', metric: 'engagement_total', timeBucket: 'day' }, chartType: 'line' };
+    case 'posts':
+      return { customConfig: { metric: 'post_count' }, chartType: 'data-table' };
     default:
       return { customConfig: { metric: 'post_count' }, chartType: 'bar' };
   }
@@ -260,6 +264,7 @@ export const VALID_CHART_TYPES: Record<SocialAggregation, SocialChartType[]> = {
   'content-type': ['doughnut', 'pie', 'bar', 'progress-list'],
   'language': ['pie', 'doughnut', 'bar', 'progress-list'],
   'engagement-rate': ['line'],
+  'posts': ['data-table'],
   'custom': ['bar', 'pie', 'doughnut', 'line', 'number-card', 'progress-list', 'word-cloud'],
 };
 
@@ -378,6 +383,14 @@ export const AGGREGATION_META: Record<SocialAggregation, AggregationMeta> = {
     defaultChartType: 'line',
     defaultTitle: 'Engagement Rate',
     defaultSize: { w: 12, h: 6 },
+  },
+  'posts': {
+    label: 'Posts Table',
+    description: 'Sortable table of all posts with full details',
+    icon: 'Table2',
+    defaultChartType: 'data-table',
+    defaultTitle: 'Posts',
+    defaultSize: { w: 12, h: 10 },
   },
   'custom': {
     label: 'Custom Chart',

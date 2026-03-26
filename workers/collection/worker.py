@@ -66,24 +66,14 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
     if isinstance(config, str):
         config = json.loads(config)
 
-    # For ongoing collections on 2nd+ runs, use incremental window (since last run)
     status_doc = fs.get_collection_status(collection_id)
     owner_user_id = status_doc.get("user_id") if status_doc else None
     owner_org_id = status_doc.get("org_id") if status_doc else None
-    last_run_at = status_doc.get("last_run_at") if status_doc else None
-    if last_run_at and config.get("ongoing"):
-        config = dict(config)
-        config["time_range"] = dict(config.get("time_range", {}))
-        config["time_range"]["start"] = last_run_at[:10]  # YYYY-MM-DD
 
     fs.update_collection_status(collection_id, status="collecting")
     logger.info("Starting collection %s", collection_id)
 
     wrapper = DataProviderWrapper(config=config)
-    # For ongoing collections, start from existing count so posts_collected is cumulative
-    existing_posts = 0
-    if status_doc and status_doc.get("ongoing"):
-        existing_posts = status_doc.get("posts_collected", 0) or 0
     total_posts = 0
     total_dupes = 0
     seen_post_ids: set[str] = set()
@@ -126,7 +116,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                 dupe_posts = [p for p in new_posts if p.post_id in existing_ids]
                 refresh_rows = [post_to_engagement_row(p) for p in dupe_posts]
                 for row in refresh_rows:
-                    row["source"] = "ongoing_refresh"
+                    row["source"] = "dedup_refresh"
                 if refresh_rows:
                     bq.insert_rows("post_engagements", refresh_rows)
 
@@ -177,8 +167,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
             total_dupes += dupes_in_batch
             fs.update_collection_status(
                 collection_id,
-                posts_collected=existing_posts + total_posts,
-                last_run_posts_added=total_posts,
+                posts_collected=total_posts,
             )
 
             # Track usage for billing + analytics (fire-and-forget)
