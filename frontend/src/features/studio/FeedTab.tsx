@@ -112,7 +112,7 @@ export function FeedTab() {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center px-4">
         <p className="text-sm text-muted-foreground">
-          Check at least one collection in the Sources panel to see posts.
+          No active collection. Ask the agent to start a data collection to see posts here.
         </p>
       </div>
     );

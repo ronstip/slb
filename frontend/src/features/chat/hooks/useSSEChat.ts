@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
@@ -15,6 +16,7 @@ export function useSSEChat() {
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Clean up refs on unmount to prevent stale message finalization
   useEffect(() => {
@@ -278,14 +280,26 @@ export function useSSEChat() {
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
               } else if (isStartTaskResult(toolName, result)) {
-                // Task started — add collections to sources and link taskId
+                // Task started — add collections to sources and link taskId + sessionId
                 const cids = result.collection_ids as string[] | undefined;
                 const taskId = result.task_id as string | undefined;
+                const currentSessionId = useChatStore.getState().sessionId ?? undefined;
                 if (cids?.length) {
                   for (const cid of cids) {
-                    useSourcesStore.getState().addToSession(cid);
-                    if (taskId) {
-                      useSourcesStore.getState().updateSource(cid, { taskId });
+                    const sourcesState = useSourcesStore.getState();
+                    const alreadyInStore = sourcesState.sources.some((s) => s.collectionId === cid);
+                    if (alreadyInStore) {
+                      sourcesState.addToSession(cid);
+                      if (taskId) {
+                        sourcesState.updateSource(cid, { taskId, sessionId: currentSessionId });
+                      }
+                    } else if (taskId) {
+                      // Collection was just created — store a pending link to be applied
+                      // when useCollectionsSync next syncs this collection into the store.
+                      // Then force an immediate refetch so the collection enters the store
+                      // (and polling) without waiting for the 30s stale timer.
+                      sourcesState.setPendingLink(cid, taskId, currentSessionId);
+                      queryClient.invalidateQueries({ queryKey: ['collections'] });
                     }
                   }
                 }

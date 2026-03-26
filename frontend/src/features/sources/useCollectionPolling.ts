@@ -91,7 +91,13 @@ export function useCollectionPolling() {
         const source = useSourcesStore.getState().sources.find((s) => s.collectionId === collectionId);
         if (source?.taskId) {
           window.dispatchEvent(new CustomEvent('collection-complete', {
-            detail: { collectionId, taskId: source.taskId, title: source.title, postsCollected: data.posts_collected },
+            detail: {
+              collectionId,
+              taskId: source.taskId,
+              title: source.title,
+              postsCollected: data.posts_collected,
+              sessionId: source.sessionId,
+            },
           }));
         }
       }

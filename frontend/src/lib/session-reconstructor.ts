@@ -17,6 +17,7 @@ import {
   isDashboardResult,
   isStartTaskResult,
   isTodoResult,
+  isStructuredPromptResult,
 } from './event-parser.ts';
 
 /** Tools that produce thinking entries (mirrors THINKING_TOOLS in main.py). */
@@ -255,6 +256,9 @@ export function reconstructSession(
         } else if (isStartTaskResult(toolName, result)) {
           // start_task doesn't produce a card — it's an action, not a UI element.
           // Collections were already added to sources during the live session.
+        } else if (isStructuredPromptResult(toolName, result)) {
+          // Show the answered structured prompt card (read-only — already submitted)
+          msg.cards.push({ type: 'structured_prompt', data: result });
         } else if (isTodoResult(toolName, result)) {
           // Keep only the latest todo card per message
           const existingIdx = msg.cards.findIndex((c) => c.type === 'todo');

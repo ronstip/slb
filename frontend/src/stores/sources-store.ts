@@ -18,6 +18,8 @@ export interface Source {
   visibility?: 'private' | 'org';
   userId?: string;
   taskId?: string;
+  /** Session that started this collection — used to route collection-complete events */
+  sessionId?: string;
   lastRunAt?: string;
   nextRunAt?: string;
   totalRuns?: number;
@@ -30,6 +32,11 @@ interface SourcesStore {
   pendingSelectedIds: string[] | null;
   /** Collection IDs autonomously selected by the agent */
   agentSelectedIds: string[];
+  /**
+   * Pending task/session links for collections not yet in the store.
+   * Applied when the collection is first added via setSources.
+   */
+  pendingLinks: Record<string, { taskId: string; sessionId?: string }>;
 
   addSource: (source: Source) => void;
   updateSource: (id: string, updates: Partial<Source>) => void;
@@ -46,6 +53,11 @@ interface SourcesStore {
   setSources: (sources: Source[]) => void;
   /** Update agent-selected collections (from SSE context_update event) */
   setAgentSelectedSources: (ids: string[]) => void;
+  /**
+   * Store a pending taskId+sessionId for a collection not yet in the store.
+   * When the collection syncs in, it will be auto-added to the session with this link.
+   */
+  setPendingLink: (collectionId: string, taskId: string, sessionId?: string) => void;
   reset: () => void;
 }
 
@@ -56,6 +68,7 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
   },
   pendingSelectedIds: null,
   agentSelectedIds: [],
+  pendingLinks: {},
 
   addSource: (source) =>
     set((s) => ({ sources: [source, ...s.sources] })),
@@ -122,17 +135,38 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
   setSources: (sources) =>
     set((s) => {
       const pending = s.pendingSelectedIds;
+      const pendingLinks = s.pendingLinks;
+      const hasPendingLinks = Object.keys(pendingLinks).length > 0;
+
+      // Apply pending task/session links to any matching sources (typically newly created collections)
+      let processedSources = hasPendingLinks
+        ? sources.map((src) => {
+            const link = pendingLinks[src.collectionId];
+            if (link) {
+              return { ...src, taskId: link.taskId, sessionId: link.sessionId, selected: true, active: true };
+            }
+            return src;
+          })
+        : sources;
+
+      // Remove applied links; keep only those not yet matched
+      const newPendingLinks = hasPendingLinks
+        ? Object.fromEntries(
+            Object.entries(pendingLinks).filter(
+              ([cid]) => !processedSources.some((s) => s.collectionId === cid),
+            ),
+          )
+        : pendingLinks;
+
       if (pending) {
-        return {
-          sources: sources.map((src) => ({
-            ...src,
-            selected: pending.includes(src.collectionId),
-            active: pending.includes(src.collectionId),
-          })),
-          pendingSelectedIds: null,
-        };
+        processedSources = processedSources.map((src) => ({
+          ...src,
+          selected: pending.includes(src.collectionId),
+          active: pending.includes(src.collectionId),
+        }));
+        return { sources: processedSources, pendingSelectedIds: null, pendingLinks: newPendingLinks };
       }
-      return { sources };
+      return { sources: processedSources, pendingLinks: newPendingLinks };
     }),
 
   setAgentSelectedSources: (ids) =>
@@ -151,5 +185,10 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
       };
     }),
 
-  reset: () => set({ sources: [], pendingSelectedIds: null, agentSelectedIds: [] }),
+  setPendingLink: (collectionId, taskId, sessionId) =>
+    set((s) => ({
+      pendingLinks: { ...s.pendingLinks, [collectionId]: { taskId, sessionId } },
+    })),
+
+  reset: () => set({ sources: [], pendingSelectedIds: null, agentSelectedIds: [], pendingLinks: {} }),
 }));

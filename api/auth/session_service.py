@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 SESSIONS_COLLECTION = "sessions"
 
+# Sentinel returned by _strip_non_serializable to signal "drop this value"
+_SENTINEL = object()
+
 
 class FirestoreSessionService(BaseSessionService):
     """Persists ADK sessions in Firestore."""
@@ -186,30 +189,65 @@ class FirestoreSessionService(BaseSessionService):
     # Serialization helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _strip_non_serializable(obj: Any) -> Any:
+        """Recursively drop keys/items that are not JSON-serializable.
+
+        Unlike ``json.dumps(..., default=str)``, this method drops offending
+        values rather than converting them to strings.  A string stored where
+        Pydantic expects a dict will cause a ValidationError on deserialisation;
+        a missing key is far less harmful.
+        """
+        if isinstance(obj, dict):
+            result = {}
+            for k, v in obj.items():
+                clean = FirestoreSessionService._strip_non_serializable(v)
+                if clean is not _SENTINEL:
+                    result[k] = clean
+            return result
+        if isinstance(obj, list):
+            items = []
+            for item in obj:
+                clean = FirestoreSessionService._strip_non_serializable(item)
+                if clean is not _SENTINEL:
+                    items.append(clean)
+            return items
+        try:
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return _SENTINEL  # signal: drop this value
+
     def _write_session(self, session: Session) -> None:
         """Serialize and persist a session to Firestore."""
         t0 = time.perf_counter()
 
-        # Serialize events via JSON round-trip to ensure all values are
-        # Firestore-compatible primitives (strips non-serializable objects
-        # like GroundingMetadata / protobuf instances).
+        # Serialize events: exclude grounding_metadata (GroundingMetadata is a
+        # non-Pydantic protobuf that model_dump leaves as a Python object and
+        # cannot survive a JSON round-trip without corruption).
         events_safe = []
         for e in session.events:
             try:
                 dumped = e.model_dump(mode="json", exclude_none=True)
-                # Round-trip through json to force everything to primitives
-                events_safe.append(json.loads(json.dumps(dumped, default=str)))
+                dumped.pop("grounding_metadata", None)
+                events_safe.append(json.loads(json.dumps(dumped)))
             except Exception:
                 logger.warning("Failed to serialize event, skipping")
 
         t1 = time.perf_counter()
         session.last_update_time = time.time()
 
+        # Sanitize state: drop non-serializable values rather than stringifying
+        # them. Converting GroundingMetadata to str passes Firestore writes but
+        # breaks Pydantic validation when the ADK re-validates Events on the
+        # next turn.
+        state_safe = self._strip_non_serializable(session.state)
+
         data = {
             "session_id": session.id,
             "app_name": session.app_name,
             "user_id": session.user_id,
-            "state": session.state,
+            "state": state_safe,
             "last_update_time": session.last_update_time,
             "events_json": events_safe,
         }
