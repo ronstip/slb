@@ -24,15 +24,12 @@ export interface Source {
   visibility?: 'private' | 'org';
   userId?: string;
   taskId?: string;
-<<<<<<< HEAD
   /** Session that started this collection — used to route collection-complete events */
   sessionId?: string;
   lastRunAt?: string;
   nextRunAt?: string;
   totalRuns?: number;
   runHistory?: RunHistoryEntry[];
-=======
->>>>>>> c310f0114c3f6908b353aa4001e911ff77d05226
 }
 
 interface SourcesStore {
