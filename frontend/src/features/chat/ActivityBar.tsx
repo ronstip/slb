@@ -71,38 +71,57 @@ function buildDisplayEntries(log: ActivityEntry[]): { entries: DisplayEntry[]; t
   }
 
   const nonTodo = log.filter((e) => e.kind !== 'todo_update');
-  const entries: DisplayEntry[] = [];
-  let i = 0;
 
-  while (i < nonTodo.length) {
+  // Pass 1: count total occurrences of each resolved tool (no errors)
+  const resolvedToolCounts = new Map<string, number>();
+  for (const e of nonTodo) {
+    if (e.kind === 'tool' && e.resolved && !e.error && e.toolName) {
+      resolvedToolCounts.set(e.toolName, (resolvedToolCounts.get(e.toolName) ?? 0) + 1);
+    }
+  }
+
+  // Pass 2: build display entries, collapsing resolved same-tool entries
+  // For tools with multiple resolved calls, keep only the last occurrence
+  // and show the total count. This handles non-consecutive duplicates too.
+  const resolvedToolSeen = new Map<string, number>();
+  const entries: DisplayEntry[] = [];
+
+  // Find the last index of each resolved tool to place the collapsed entry there
+  const lastResolvedIdx = new Map<string, number>();
+  for (let i = nonTodo.length - 1; i >= 0; i--) {
+    const e = nonTodo[i];
+    if (e.kind === 'tool' && e.resolved && !e.error && e.toolName && !lastResolvedIdx.has(e.toolName)) {
+      lastResolvedIdx.set(e.toolName, i);
+    }
+  }
+
+  for (let i = 0; i < nonTodo.length; i++) {
     const entry = nonTodo[i];
 
-    // Collapse consecutive resolved same-tool entries
-    if (entry.kind === 'tool' && entry.resolved && !entry.error) {
-      let count = 1;
-      while (
-        i + count < nonTodo.length &&
-        nonTodo[i + count].kind === 'tool' &&
-        nonTodo[i + count].toolName === entry.toolName &&
-        nonTodo[i + count].resolved &&
-        !nonTodo[i + count].error
-      ) {
-        count++;
+    if (entry.kind === 'tool' && entry.resolved && !entry.error && entry.toolName) {
+      const total = resolvedToolCounts.get(entry.toolName) ?? 1;
+      const seen = (resolvedToolSeen.get(entry.toolName) ?? 0) + 1;
+      resolvedToolSeen.set(entry.toolName, seen);
+
+      if (total <= 1) {
+        // Single occurrence — show normally
+        entries.push({ ...entry, count: 1 });
+      } else if (i === lastResolvedIdx.get(entry.toolName)) {
+        // Last occurrence of a multi-call tool — show collapsed with total count
+        entries.push({
+          kind: 'tool',
+          text: entry.text,
+          toolName: entry.toolName,
+          resolved: true,
+          durationMs: entry.durationMs,
+          count: total,
+        });
       }
-      entries.push({
-        kind: 'tool',
-        text: entry.text,
-        toolName: entry.toolName,
-        resolved: true,
-        durationMs: entry.durationMs,
-        count,
-      });
-      i += count;
+      // Skip all other occurrences (not the last one)
       continue;
     }
 
     entries.push({ ...entry, count: 1 });
-    i++;
   }
 
   return { entries, todos: lastTodos };
@@ -135,9 +154,10 @@ function textColor(entry: DisplayEntry): string {
 interface ActivityBarProps {
   activityLog: ActivityEntry[];
   isStreaming: boolean;
+  showTodos?: boolean;
 }
 
-export function ActivityBar({ activityLog, isStreaming }: ActivityBarProps) {
+export function ActivityBar({ activityLog, isStreaming, showTodos = true }: ActivityBarProps) {
   const [expanded, setExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -205,8 +225,8 @@ export function ActivityBar({ activityLog, isStreaming }: ActivityBarProps) {
             </div>
           )}
 
-          {/* Todo / Plan section — indented with checkbox style */}
-          {todos.length > 0 && (
+          {/* Todo / Plan section — only shown on the latest message to avoid duplication */}
+          {showTodos && todos.length > 0 && (
             <div className={`pl-6 ${entries.length > 0 ? 'mt-2.5 border-t border-border/20 pt-2.5' : ''}`}>
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Plan

@@ -182,7 +182,13 @@ export const useChatStore = create<ChatStore>((set) => ({
           }
         }
         if (idx === -1) return m;
-        return { ...m, activityLog: m.activityLog.filter((_, i) => i !== idx) };
+        // Also remove the thinking entry that immediately follows the tool entry —
+        // it was emitted from the tool_call event and would otherwise linger.
+        const toRemove = new Set([idx]);
+        if (idx + 1 < m.activityLog.length && m.activityLog[idx + 1].kind === 'thinking') {
+          toRemove.add(idx + 1);
+        }
+        return { ...m, activityLog: m.activityLog.filter((_, i) => !toRemove.has(i)) };
       }),
     })),
 

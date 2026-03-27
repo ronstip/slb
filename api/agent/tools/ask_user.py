@@ -36,6 +36,7 @@ PROMPT_TEMPLATES: dict[str, dict] = {
         "options": [
             {"value": "1", "label": "24 hours"},
             {"value": "7", "label": "7 days"},
+            {"value": "14", "label": "14 days"},
             {"value": "30", "label": "30 days"},
             {"value": "90", "label": "90 days"},
             {"value": "365", "label": "1 year"},
@@ -173,7 +174,7 @@ def ask_user(
     # ── Validate ──────────────────────────────────────────────────────
     if not prompts:
         return {
-            "status": "error",
+            "status": "blocked",
             "message": (
                 "No valid prompts. Provide template IDs via prompt_ids "
                 "(available: " + ", ".join(PROMPT_TEMPLATES.keys()) + ") "

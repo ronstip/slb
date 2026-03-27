@@ -151,36 +151,15 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
   }, [canSubmit, formatAnswer, onSubmit, onCancel]);
 
   const markSubmitted = useCallback((promptId: string) => {
-    const nextSubmitted = new Set(submitted).add(promptId);
-    setSubmitted(nextSubmitted);
+    setSubmitted((prev) => new Set(prev).add(promptId));
 
-    // Check if this was the last pending field — if so, submit immediately
-    const allReady = prompts.every((p) => {
-      if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
-        const sel = selections[p.id] ?? [];
-        if (sel.length === 0) return false;
-        if (sel.includes(OTHER_VALUE) && !(otherText[p.id] ?? '').trim()) return false;
-        if (needsExplicitSubmit(p) && !nextSubmitted.has(p.id)) return false;
-      }
-      if (p.type === 'tag_input' && !nextSubmitted.has(p.id)) return false;
-      if (p.type === 'toggle_row' && !nextSubmitted.has(p.id)) return false;
-      return true;
-    });
-
-    if (allReady) {
-      setTimeout(() => {
-        const text = formatAnswer();
-        useChatStore.getState().setActivePrompt(null);
-        useChatStore.getState().setActivePromptData(null);
-        onSubmit(text);
-      }, 200);
-    } else {
-      const idx = prompts.findIndex((p) => p.id === promptId);
-      if (idx < prompts.length - 1) {
-        setTimeout(() => setActiveTab(prompts[idx + 1].id), 200);
-      }
+    // Advance to next tab if there is one — the useEffect auto-submit
+    // handles final submission after React processes state updates.
+    const idx = prompts.findIndex((p) => p.id === promptId);
+    if (idx < prompts.length - 1) {
+      setTimeout(() => setActiveTab(prompts[idx + 1].id), 200);
     }
-  }, [prompts, submitted, selections, otherText, formatAnswer, onSubmit]);
+  }, [prompts]);
 
   // Block auto-submit whenever any prompt has "Other" selected — the user is
   // composing free text and should never be interrupted by auto-submit.

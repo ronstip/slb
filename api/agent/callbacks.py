@@ -38,7 +38,8 @@ OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
 # ─── Hard gate: tools blocked while a collection pipeline is running ──
 # cancel_collection is intentionally excluded — user can always cancel.
 COLLECTION_RUNNING_BLOCKED = {
-    "get_progress", "enrich_collection", "refresh_engagements",
+    "get_progress", "get_task_status", "get_collection_stats",
+    "enrich_collection", "refresh_engagements",
 }
 
 
@@ -467,6 +468,22 @@ def inject_collection_context(
         # Do NOT clear the flag here — it must persist so the chat endpoint
         # can detect the next message as an ask_user response and preserve
         # task state.  The chat endpoint clears it at the start of the next turn.
+        from google.genai import types as genai_types
+
+        return LlmResponse(
+            content=genai_types.Content(
+                role="model",
+                parts=[genai_types.Part.from_text(text="")],
+            )
+        )
+
+    # ── Hard stop while collection is running ────────────────────
+    # After start_task succeeds, data collection runs asynchronously
+    # in a background worker.  The LLM must not re-enter the ReAct
+    # loop to poll get_task_status / get_progress — that causes dozens
+    # of blocked tool calls.  End the turn immediately; main.py will
+    # resume the agent once the collection completes.
+    if state.get("collection_running") and _is_react_continuation(llm_request):
         from google.genai import types as genai_types
 
         return LlmResponse(

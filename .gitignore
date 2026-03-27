@@ -70,8 +70,10 @@ e2e/playwright-report/
 e2e/blob-report/
 e2e/screenshots/
 
-# Playwright MCP logs
+# Playwright MCP logs & screenshots
 .playwright-mcp/
+screenshots/
+*.png
 
 # Memory Bank - dev-specific context
 memory-bank/active-context.md

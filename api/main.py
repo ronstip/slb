@@ -1979,6 +1979,10 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
             return "Sending email..."
     elif event_type == "tool_result":
         result = event_data.get("metadata", {}).get("result", {})
+        # Blocked tool calls are silently removed by the frontend — don't emit
+        # a thinking entry that would linger after the tool entry is removed.
+        if isinstance(result, dict) and result.get("status") in ("blocked", "auth_required"):
+            return None
         if tool_name == "execute_sql":
             return "Query completed"
         if tool_name == "google_search":

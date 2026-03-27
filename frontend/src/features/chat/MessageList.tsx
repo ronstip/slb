@@ -41,12 +41,13 @@ export function MessageList({ onSendMessage }: MessageListProps) {
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
-        {messages.map((msg) => {
+        {messages.map((msg, index) => {
+          const isLatest = index === messages.length - 1;
           switch (msg.role) {
             case 'user':
               return <UserMessage key={msg.id} message={msg} />;
             case 'agent':
-              return <AgentMessage key={msg.id} message={msg} onSuggestionClick={onSendMessage} />;
+              return <AgentMessage key={msg.id} message={msg} onSuggestionClick={onSendMessage} isLatestMessage={isLatest} />;
             case 'system':
               return <SystemMessage key={msg.id} message={msg} onSendMessage={onSendMessage} />;
           }

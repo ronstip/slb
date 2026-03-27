@@ -268,6 +268,13 @@ class BrightDataClient:
         last_log_elapsed = 0.0
         t_poll_start = time.monotonic()
 
+        # Track time spent in "closing" state — BD sometimes stalls here.
+        # We attempt early downloads periodically, but NEVER give up — the
+        # snapshot may legitimately take a long time to finalize.  We rely on
+        # poll_max_wait_sec as the only hard timeout.
+        _CLOSING_DOWNLOAD_THRESHOLD = 120  # seconds in "closing" before we try downloading
+        closing_entered_at: float | None = None
+
         while elapsed < self._poll_max_wait_sec:
             time.sleep(interval)
             elapsed += interval
@@ -295,6 +302,48 @@ class BrightDataClient:
                 raise BrightDataAPIError(
                     0, f"Snapshot {snapshot_id} failed: {status}", snapshot_id
                 )
+            elif state == "closing":
+                # BD "closing" means data collection finished but the snapshot
+                # is being finalised.  If it stays here too long, the data is
+                # likely downloadable already — attempt an early download.
+                if closing_entered_at is None:
+                    closing_entered_at = elapsed
+                elif (elapsed - closing_entered_at) >= _CLOSING_DOWNLOAD_THRESHOLD:
+                    logger.warning(
+                        "BD snapshot %s stuck in 'closing' for %.0fs — attempting download",
+                        snapshot_id, elapsed - closing_entered_at,
+                    )
+                    try:
+                        records = self.download_snapshot(snapshot_id)
+                        # Filter out BrightData "not ready yet" error items — these look
+                        # like real records but are actually status messages indicating the
+                        # snapshot isn't actually ready.  Returning them would cause the
+                        # caller to retry with a new scrape, creating a cascade of retries.
+                        valid_records = [
+                            r for r in records
+                            if not (isinstance(r, dict) and r.get("status") in ("closing", "building"))
+                        ]
+                        if valid_records:
+                            total_elapsed = time.monotonic() - t_trigger
+                            logger.info(
+                                "BD early download succeeded: %d records (total=%.1fs)",
+                                len(valid_records), total_elapsed,
+                            )
+                            return valid_records
+                        if records:
+                            logger.info(
+                                "BD early download returned only error items (%d) — will keep polling",
+                                len(records),
+                            )
+                        else:
+                            logger.info("BD early download returned 0 records — will keep polling")
+                    except BrightDataAPIError as e:
+                        logger.info("BD early download failed (%s) — will keep polling", e)
+                    # Reset so we don't hammer download every poll cycle
+                    closing_entered_at = elapsed
+            else:
+                # Any other state resets the closing tracker
+                closing_entered_at = None
 
             interval = min(interval * poll_backoff, max_poll_interval)
 

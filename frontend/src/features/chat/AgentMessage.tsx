@@ -22,9 +22,10 @@ function formatAgentName(name: string): string {
 interface AgentMessageProps {
   message: ChatMessage;
   onSuggestionClick?: (text: string) => void;
+  isLatestMessage?: boolean;
 }
 
-export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) {
+export function AgentMessage({ message, onSuggestionClick, isLatestMessage }: AgentMessageProps) {
   const activePromptMessageId = useChatStore((s) => s.activePromptMessageId);
   const agentLabel = message.activeAgent
     ? (message.activeAgent in AGENT_DISPLAY_NAMES ? AGENT_DISPLAY_NAMES[message.activeAgent] : formatAgentName(message.activeAgent))
@@ -74,6 +75,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
         <ActivityBar
           activityLog={message.activityLog}
           isStreaming={message.isStreaming}
+          showTodos={isLatestMessage !== false}
         />
 
         {/* ── Zone 2: VOICE ── */}

@@ -5,6 +5,7 @@ import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { PostCard } from './PostCard.tsx';
 import { FeedControls } from './FeedControls.tsx';
 import { TopicsFeed } from './TopicsFeed.tsx';
+import { formatNumber } from '../../lib/format.ts';
 import type { FeedParams, FeedPost } from '../../api/types.ts';
 import type { FeedViewMode } from './FeedControls.tsx';
 
@@ -22,6 +23,23 @@ export function FeedTab() {
   // Auto-refetch while any active collection is still collecting/enriching
   const isAnyCollecting = activeSources.some((s) => s.status === 'pending' || s.status === 'collecting' || s.status === 'enriching');
   const activeIds = activeSources.map((s) => s.collectionId);
+
+  // Grace period: keep the "Collecting posts…" spinner briefly after collection
+  // finishes so the UI doesn't flash "No posts found." while BigQuery writes land.
+  const [collectingGrace, setCollectingGrace] = useState(false);
+  const wasCollectingRef = useRef(false);
+  useEffect(() => {
+    if (isAnyCollecting) {
+      wasCollectingRef.current = true;
+      setCollectingGrace(false);
+    } else if (wasCollectingRef.current) {
+      wasCollectingRef.current = false;
+      setCollectingGrace(true);
+      const t = setTimeout(() => setCollectingGrace(false), 15_000);
+      return () => clearTimeout(t);
+    }
+  }, [isAnyCollecting]);
+  const showCollectingSpinner = isAnyCollecting || collectingGrace;
 
   const [viewMode, setViewMode] = useState<FeedViewMode>('posts');
   const [sort, setSort] = useState<FeedParams['sort']>('views');
@@ -80,7 +98,7 @@ export function FeedTab() {
     },
     initialPageParam: 0,
     enabled: effectiveIds.length > 0,
-    refetchInterval: isAnyCollecting ? 3000 : false,
+    refetchInterval: showCollectingSpinner ? 3000 : false,
   });
 
   const allPosts = useMemo(() => {
@@ -171,6 +189,26 @@ export function FeedTab() {
         </div>
       ) : (
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>
+        {/* Collection progress banner — shown above posts while collecting */}
+        {showCollectingSpinner && allPosts.length > 0 && (() => {
+          const phase = activeSources.some((s) => s.status === 'enriching')
+            ? 'Enriching'
+            : activeSources.some((s) => s.status === 'collecting')
+              ? 'Collecting'
+              : 'Starting';
+          return (
+            <div className="mt-3 flex items-center gap-3 rounded-lg border border-accent-vibrant/20 bg-accent-vibrant/5 px-3 py-2">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-vibrant opacity-50" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-vibrant" />
+              </span>
+              <span className="text-xs font-medium text-foreground/80">
+                {phase}
+                {totalCount > 0 && <> — {formatNumber(totalCount)} posts</>}
+              </span>
+            </div>
+          );
+        })()}
         {isLoading ? (
           <div className={colCount > 1 ? `${gridClass} gap-4 pt-4` : 'flex flex-col gap-4 pt-4'}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -181,20 +219,29 @@ export function FeedTab() {
           <p className="py-12 text-center text-sm text-muted-foreground">
             Failed to load posts. Try adjusting the filters.
           </p>
-        ) : allPosts.length === 0 && isAnyCollecting ? (
-          <div className="flex flex-col items-center gap-4 pt-8">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-vibrant opacity-50" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-vibrant" />
-              </span>
-              Collecting posts…
-            </div>
-            <div className={colCount > 1 ? `${gridClass} gap-4 w-full` : 'flex flex-col gap-4 w-full'}>
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-32 animate-pulse rounded-xl bg-secondary" />
-              ))}
-            </div>
+        ) : allPosts.length === 0 && showCollectingSpinner ? (
+          <div className="flex flex-col items-center gap-3 pt-12 px-6">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-vibrant opacity-50" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent-vibrant" />
+            </span>
+            <p className="text-sm font-medium text-foreground/80">Collecting posts…</p>
+            {(() => {
+              const collectingCount = activeSources.reduce((sum, s) => sum + (s.postsCollected ?? 0), 0);
+              const statusLabel = activeSources.some((s) => s.status === 'enriching')
+                ? 'Enriching'
+                : activeSources.some((s) => s.status === 'collecting')
+                  ? 'Collecting'
+                  : 'Starting';
+              return (
+                <div className="flex flex-col items-center gap-1.5">
+                  {collectingCount > 0 && (
+                    <span className="text-lg font-semibold text-foreground tabular-nums">{collectingCount} posts</span>
+                  )}
+                  <span className="text-xs text-muted-foreground">{statusLabel} — posts will appear here automatically</span>
+                </div>
+              );
+            })()}
           </div>
         ) : allPosts.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
