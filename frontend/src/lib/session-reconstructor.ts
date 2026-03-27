@@ -58,10 +58,8 @@ export function reconstructSession(
         timestamp: new Date(timestamp ? timestamp * 1000 : Date.now()),
         isStreaming: false,
         cards: [],
-        intentLine: null,
         todos: [],
         activityLog: [],
-        suggestions: [],
       };
     }
     return currentAgentMsg!;
@@ -81,10 +79,8 @@ export function reconstructSession(
           timestamp: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           isStreaming: false,
           cards: [],
-          intentLine: null,
           todos: [],
           activityLog: [],
-          suggestions: [],
         });
         continue;
       }
@@ -196,23 +192,9 @@ export function reconstructSession(
       }
 
       // --- Agent text ---
-      if (part.text && event.content.role !== 'user') {
+      if (part.text && event.content.role !== 'user' && !part.thought) {
         const msg = ensureAgentMsg(event.timestamp);
-        // Extract thinking markers and strip them from visible text
-        const thinkingRe = /<!--\s*thinking:\s*([\s\S]*?)\s*-->/g;
-        let thinkingMatch;
-        while ((thinkingMatch = thinkingRe.exec(part.text)) !== null) {
-          const thought = thinkingMatch[1].trim();
-          msg.activityLog.push({ kind: 'thinking', text: thought, ts: event.timestamp ? event.timestamp * 1000 : Date.now() });
-        }
-        // Extract intent markers
-        const intentRe = /<!--\s*intent:\s*([\s\S]*?)\s*-->/g;
-        let intentMatch;
-        while ((intentMatch = intentRe.exec(part.text)) !== null) {
-          msg.intentLine = intentMatch[1].trim();
-          // Intent shown as pinned header, not in log
-        }
-        // Strip all HTML comments (status, thinking, plan, etc.) from visible text
+        // Strip any stray HTML comments from visible text
         const cleanText = part.text.replace(/<!--[\s\S]*?-->/g, '');
         msg.content += cleanText;
       }

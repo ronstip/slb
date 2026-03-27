@@ -70,20 +70,39 @@ def _cleanup_stuck_collections() -> None:
     """Mark collections stuck in transient states as completed_with_errors.
 
     On startup no pipeline is running, so any collection still in
-    'collecting' or 'enriching' was orphaned by a prior crash/restart.
+    'collecting', 'enriching', or 'processing' was orphaned by a prior crash/restart.
+    First attempts to recover any pending BrightData snapshots before marking failed.
     """
     from workers.shared.firestore_client import FirestoreClient
-    from google.cloud import firestore as _firestore
 
     settings = get_settings()
     fs = FirestoreClient(settings)
     db = fs._db
 
-    stuck_statuses = ["collecting", "enriching"]
+    # First: attempt to recover any pending BD snapshots from crashed pipelines
+    try:
+        from workers.recovery import recover_snapshots
+        recovered = recover_snapshots()
+        if recovered:
+            logger.info("Startup: recovered %d BD snapshot(s)", recovered)
+    except Exception:
+        logger.exception("Startup snapshot recovery failed (non-fatal)")
+
+    # Then: mark remaining stuck collections (skip those with pending snapshots)
+    stuck_statuses = ["collecting", "enriching", "processing"]
     for status in stuck_statuses:
         docs = db.collection("collection_status").where("status", "==", status).stream()
         for doc in docs:
             doc_id = doc.id
+            # Check if this collection still has pending snapshots — defer to scheduler
+            pending = fs.get_pending_snapshots(collection_id=doc_id)
+            if pending:
+                logger.info(
+                    "Startup cleanup: collection %s has %d pending snapshot(s) — deferring to scheduler",
+                    doc_id, len(pending),
+                )
+                continue
+
             logger.warning(
                 "Startup cleanup: collection %s stuck in '%s' — marking completed_with_errors",
                 doc_id, status,
@@ -91,7 +110,7 @@ def _cleanup_stuck_collections() -> None:
             fs.update_collection_status(
                 doc_id,
                 status="completed_with_errors",
-                error_message=f"Collection was interrupted (server restart). Partial data may be available.",
+                error_message="Collection was interrupted (server restart). Partial data may be available.",
             )
 
 
@@ -617,11 +636,8 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if part.text and getattr(part, "thought", False):
-                                # Thought tokens → thinking panel
-                                thought_text = re.sub(
-                                    r"<!--\s*thinking:\s*([\s\S]*?)\s*-->",
-                                    r"\1", part.text,
-                                ).strip()
+                                # Native Gemini thought tokens → thinking panel
+                                thought_text = part.text.strip()
                                 if thought_text:
                                     yield {
                                         "event": "thinking",
@@ -711,17 +727,12 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     # Use existing title or "New Session" — naming happens in background
                     session_title = session.state.get("session_title", "New Session")
 
-                    # Extract follow-up suggestions if the agent embedded them
-                    _, suggestions = _extract_suggestions(text)
-
                     done_payload: dict = {
                         "event_type": "done",
                         "session_id": session_id,
                         "session_title": session_title,
                         "content": text,
                     }
-                    if suggestions:
-                        done_payload["suggestions"] = suggestions
 
                     yield {
                         "event": "done",
@@ -872,6 +883,7 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
                 collection_id=doc.id,
                 status=data.get("status", "unknown"),
                 posts_collected=data.get("posts_collected", 0),
+                posts_enriched=data.get("posts_enriched", 0),
                 total_views=data.get("total_views", 0),
                 positive_pct=data.get("positive_pct"),
                 error_message=data.get("error_message"),
@@ -1059,6 +1071,7 @@ async def get_collection_status(
         collection_id=collection_id,
         status=status.get("status", "unknown"),
         posts_collected=status.get("posts_collected", 0),
+        posts_enriched=status.get("posts_enriched", 0),
         total_views=status.get("total_views", 0),
         positive_pct=status.get("positive_pct"),
         error_message=status.get("error_message"),
@@ -1897,29 +1910,6 @@ async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> 
     return "New Session"
 
 
-_SUGGESTIONS_RE = re.compile(
-    r"<!--\s*suggestions:\s*(\[.*?\])\s*-->",
-    re.DOTALL,
-)
-
-
-def _extract_suggestions(text: str) -> tuple[str, list[str]]:
-    """Parse <!-- suggestions: [...] --> from agent text.
-
-    Returns (cleaned_text, suggestions_list).
-    """
-    match = _SUGGESTIONS_RE.search(text)
-    if not match:
-        return text, []
-    try:
-        suggestions = json.loads(match.group(1))
-        if isinstance(suggestions, list):
-            cleaned = text[: match.start()] + text[match.end() :]
-            return cleaned.rstrip(), [s for s in suggestions if isinstance(s, str)]
-    except (json.JSONDecodeError, TypeError):
-        pass
-    return text, []
-
 
 
 def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -> str | None:
@@ -2050,60 +2040,18 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
     results = []
     for part in event.content.parts:
         if part.text:
-            # Gemini thought parts (part.thought=True) are native model reasoning —
-            # route them directly to the thinking panel, not the chat body.
+            # Native Gemini thought tokens → thinking panel, not chat body.
             if getattr(part, "thought", False):
-                # Strip <!-- thinking: ... --> wrapper if the model wrote it in
-                # its thought tokens so we show only the clean content.
-                thought_text = re.sub(
-                    r"<!--\s*thinking:\s*([\s\S]*?)\s*-->",
-                    r"\1",
-                    part.text,
-                ).strip() or part.text.strip()
-                results.append({
-                    "event_type": "thinking",
-                    "content": thought_text,
-                    "author": event.author,
-                })
-            else:
-                raw = part.text
-
-                # Extract <!-- status: ... --> markers and emit as status events
-                for status_match in re.finditer(
-                    r"<!--\s*status:\s*([\s\S]*?)\s*-->", raw
-                ):
-                    results.append({
-                        "event_type": "status",
-                        "content": status_match.group(1).strip(),
-                        "author": event.author,
-                    })
-
-                # Extract <!-- intent: ... --> markers and emit as intent events
-                for intent_match in re.finditer(
-                    r"<!--\s*intent:\s*([\s\S]*?)\s*-->", raw
-                ):
-                    results.append({
-                        "event_type": "intent",
-                        "content": intent_match.group(1).strip(),
-                        "author": event.author,
-                    })
-
-                # Extract <!-- thinking: ... --> markers and emit as thinking events
-                for think_match in re.finditer(
-                    r"<!--\s*thinking:\s*([\s\S]*?)\s*-->", raw
-                ):
+                thought_text = part.text.strip()
+                if thought_text:
                     results.append({
                         "event_type": "thinking",
-                        "content": think_match.group(1).strip(),
+                        "content": thought_text,
                         "author": event.author,
                     })
-
-                # Removed: needs_decision, finding, plan, topics_section, metrics_section
-                # These are now handled via tool calls (ask_user, update_todos,
-                # show_topics, show_metrics) instead of fragile HTML comment markers.
-
-                # Strip all comment markers from the visible text
-                clean = re.sub(r"<!--[\s\S]*?-->", "", raw).strip()
+            else:
+                # Strip any stray HTML comments from the visible text
+                clean = re.sub(r"<!--[\s\S]*?-->", "", part.text).strip()
                 if clean and not suppress_text:
                     results.append({
                         "event_type": "text",
@@ -2144,8 +2092,11 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
 
 
 def _extract_text(event) -> str:
-    """Extract text content from a final response event."""
+    """Extract text content from a final response event (excludes thought tokens)."""
     if not event.content or not event.content.parts:
         return ""
-    texts = [part.text for part in event.content.parts if part.text]
+    texts = [
+        part.text for part in event.content.parts
+        if part.text and not getattr(part, "thought", False)
+    ]
     return "\n".join(texts)

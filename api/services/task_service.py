@@ -137,6 +137,9 @@ def dispatch_task_run(task_id: str, task: dict) -> list[str]:
         custom_fields = data_scope.get("custom_fields")
         if custom_fields:
             extra_config["custom_fields"] = custom_fields
+        enrichment_context = data_scope.get("enrichment_context")
+        if enrichment_context:
+            extra_config["enrichment_context"] = enrichment_context
 
         result = create_collection_from_request(
             request=req,

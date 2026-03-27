@@ -34,10 +34,8 @@ export interface ChatMessage {
   timestamp: Date;
   isStreaming: boolean;
   cards: MessageCard[];
-  intentLine: string | null;
   todos: TodoItem[];
   activityLog: ActivityEntry[];
-  suggestions: string[];
   activeAgent?: string;
 }
 
@@ -55,12 +53,10 @@ interface ChatStore {
   appendText: (messageId: string, text: string) => void;
   setActiveAgent: (messageId: string, agent: string) => void;
   addCard: (messageId: string, card: MessageCard) => void;
-  setIntentLine: (messageId: string, intent: string | null) => void;
   appendActivityEntry: (messageId: string, entry: ActivityEntry) => void;
   resolveActivityTool: (messageId: string, toolName: string, error?: string) => void;
   removeActivityTool: (messageId: string, toolName: string) => void;
   updateTodos: (messageId: string, todos: TodoItem[]) => void;
-  setSuggestions: (messageId: string, suggestions: string[]) => void;
   finalizeMessage: (messageId: string) => void;
   addAgentMessage: (text: string, cards?: MessageCard[]) => string;
   addSystemMessage: (text: string, cards?: MessageCard[]) => void;
@@ -98,10 +94,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           timestamp: new Date(),
           isStreaming: false,
           cards: [],
-          intentLine: null,
           todos: [],
           activityLog: [],
-          suggestions: [],
         },
       ],
     })),
@@ -118,10 +112,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           timestamp: new Date(),
           isStreaming: true,
           cards: [],
-          intentLine: null,
           todos: [],
           activityLog: [],
-          suggestions: [],
         },
       ],
       isAgentResponding: true,
@@ -149,13 +141,6 @@ export const useChatStore = create<ChatStore>((set) => ({
         m.id === messageId
           ? { ...m, cards: [...m.cards, card] }
           : m,
-      ),
-    })),
-
-  setIntentLine: (messageId, intent) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId ? { ...m, intentLine: intent } : m,
       ),
     })),
 
@@ -208,15 +193,6 @@ export const useChatStore = create<ChatStore>((set) => ({
       ),
     })),
 
-  setSuggestions: (messageId, suggestions) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? { ...m, suggestions }
-          : m,
-      ),
-    })),
-
   finalizeMessage: (messageId) =>
     set((s) => ({
       messages: s.messages.map((m) =>
@@ -224,7 +200,6 @@ export const useChatStore = create<ChatStore>((set) => ({
           ? {
               ...m,
               isStreaming: false,
-              intentLine: null,
               content: m.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd(),
             }
           : m,
@@ -244,10 +219,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           timestamp: new Date(),
           isStreaming: false,
           cards: cards ?? [],
-          intentLine: null,
           todos: [],
           activityLog: [],
-          suggestions: [],
         },
       ],
     }));
@@ -265,10 +238,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           timestamp: new Date(),
           isStreaming: false,
           cards: cards ?? [],
-          intentLine: null,
           todos: [],
           activityLog: [],
-          suggestions: [],
         },
       ],
     })),

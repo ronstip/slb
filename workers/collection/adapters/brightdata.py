@@ -9,7 +9,6 @@ Platforms are collected in parallel via ThreadPoolExecutor.
 
 import logging
 import queue
-import re
 import threading
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -49,7 +48,7 @@ class BrightDataAdapter(DataProviderAdapter):
         "reddit": (parse_brightdata_reddit_post, parse_brightdata_reddit_channel),
     }
 
-    def __init__(self):
+    def __init__(self, snapshot_tracker: "callable | None" = None):
         settings = get_settings()
         if not settings.brightdata_api_token:
             raise ValueError("BRIGHTDATA_API_TOKEN not configured")
@@ -58,6 +57,7 @@ class BrightDataAdapter(DataProviderAdapter):
             poll_max_wait_sec=settings.brightdata_poll_max_wait_sec,
             poll_initial_interval_sec=settings.brightdata_poll_initial_interval_sec,
         )
+        self._snapshot_tracker = snapshot_tracker
         self._platform_stats: dict[str, dict] = {}
         self._collection_errors: list[dict] = []
         self._stats_lock = threading.Lock()
@@ -155,18 +155,12 @@ class BrightDataAdapter(DataProviderAdapter):
 
         num_per_kw = config.get("max_posts_per_keyword") or 0
 
-        # Expand keywords with hashtag variants for broader discovery
-        hashtags = _expand_keywords_to_hashtags(keywords)
-        all_search_terms = keywords + hashtags
         logger.info(
-            "[tiktok] search terms: %s (keywords=%d + hashtags=%d), num_per_kw=%s, "
-            "expected_max=%s",
-            all_search_terms, len(keywords), len(hashtags), num_per_kw or "unlimited",
-            (num_per_kw * len(all_search_terms)) if num_per_kw else "unlimited",
+            "[tiktok] keywords: %s, num_per_kw=%s, expected_max=%s",
+            keywords, num_per_kw or "unlimited",
+            (num_per_kw * len(keywords)) if num_per_kw else "unlimited",
         )
 
-        # Split into per-keyword batches (parallel) to avoid huge single jobs
-        # that exceed BrightData's processing time → poll timeout
         def _fetch_tiktok_keyword(kw: str) -> list[dict]:
             inp: dict = {"search_keyword": kw}
             if num_per_kw > 0:
@@ -176,16 +170,17 @@ class BrightDataAdapter(DataProviderAdapter):
                 inputs=[inp],
                 discover_by="keyword",
                 limit_per_input=num_per_kw if num_per_kw > 0 else None,
+                snapshot_callback=self._snapshot_tracker,
             )
             valid = [r for r in results if not _is_error_item(r)]
             logger.info("[tiktok] keyword %r → %d/%d posts", kw, len(valid), len(results))
             return valid
 
         all_results: list[dict] = []
-        with ThreadPoolExecutor(max_workers=min(len(all_search_terms), 4)) as pool:
+        with ThreadPoolExecutor(max_workers=min(len(keywords), _MAX_WORKERS_KEYWORDS)) as pool:
             futures = {
                 pool.submit(_fetch_tiktok_keyword, kw): kw
-                for kw in all_search_terms
+                for kw in keywords
             }
             for future in as_completed(futures):
                 kw = futures[future]
@@ -216,68 +211,36 @@ class BrightDataAdapter(DataProviderAdapter):
         start = _to_bd_date_mmddyyyy(time_range.get("start"))
         end = _to_bd_date_mmddyyyy(time_range.get("end"))
 
-        # Expand keywords with hashtag variants for hashtag discovery
-        hashtags = _expand_keywords_to_hashtags(keywords)
         logger.info(
-            "[youtube] keywords=%s, hashtags=%s, num_per_kw=%s, date_range=%s→%s, "
+            "[youtube] keywords=%s, num_per_kw=%s, date_range=%s→%s, "
             "expected_max=%s",
-            keywords, hashtags, num_per_kw or "unlimited", start, end,
-            (num_per_kw * (len(keywords) + len(hashtags))) if num_per_kw else "unlimited",
+            keywords, num_per_kw or "unlimited", start, end,
+            (num_per_kw * len(keywords)) if num_per_kw else "unlimited",
         )
 
-        def _fetch_keywords_batch() -> list[dict]:
-            """Keyword-based search: all keywords in one API call."""
-            inputs = []
-            for kw in keywords:
-                inp: dict = {"keyword": kw, "start_date": start, "end_date": end}
-                if num_per_kw > 0:
-                    inp["num_of_posts"] = num_per_kw
-                inputs.append(inp)
+        inputs = []
+        for kw in keywords:
+            inp: dict = {"keyword": kw, "start_date": start, "end_date": end}
+            if num_per_kw > 0:
+                inp["num_of_posts"] = num_per_kw
+            inputs.append(inp)
+
+        all_results: list[dict] = []
+        try:
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
                 inputs=inputs,
                 discover_by="keyword",
                 limit_per_input=num_per_kw if num_per_kw > 0 else None,
+                snapshot_callback=self._snapshot_tracker,
             )
             valid = [r for r in results if not _is_error_item(r)]
             logger.info("[youtube] keyword batch → %d/%d posts", len(valid), len(results))
-            return valid
-
-        def _fetch_hashtag_batch() -> list[dict]:
-            """Hashtag discovery: returns different results than keyword search."""
-            if not hashtags:
-                return []
-            inputs = []
-            for tag in hashtags:
-                inp: dict = {"hashtag": tag}
-                if num_per_kw > 0:
-                    inp["num_of_posts"] = num_per_kw
-                inputs.append(inp)
-            results = self._client.scrape_and_wait(
-                dataset_id=self._DATASET_IDS["youtube"]["posts"],
-                inputs=inputs,
-                discover_by="hashtag",
-                limit_per_input=num_per_kw if num_per_kw > 0 else None,
-            )
-            valid = [r for r in results if not _is_error_item(r)]
-            logger.info("[youtube] hashtag batch → %d/%d posts", len(valid), len(results))
-            return valid
-
-        # Run keyword + hashtag discovery in parallel
-        all_results: list[dict] = []
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = {
-                pool.submit(_fetch_keywords_batch): "keyword",
-                pool.submit(_fetch_hashtag_batch): "hashtag",
-            }
-            for future in as_completed(futures):
-                label = futures[future]
-                try:
-                    all_results.extend(future.result())
-                except BrightDataAPIError as e:
-                    logger.error("BrightData YouTube %s batch failed: %s", label, e)
-                except Exception:
-                    logger.exception("Unexpected error fetching YouTube %s batch", label)
+            all_results.extend(valid)
+        except BrightDataAPIError as e:
+            logger.error("BrightData YouTube keyword batch failed: %s", e)
+        except Exception:
+            logger.exception("Unexpected error fetching YouTube keyword batch")
 
         if not all_results:
             return
@@ -320,6 +283,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 inputs=inputs,
                 discover_by="keyword",
                 limit_per_input=num_per_kw if num_per_kw > 0 else None,
+                snapshot_callback=self._snapshot_tracker,
             )
             logger.info("[reddit] keywords (%d) → %d raw results", len(keywords), len(results))
             all_results.extend(results)
@@ -339,6 +303,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 inputs=inputs,
                 discover_by="subreddit_url",
                 limit_per_input=num_per_kw if num_per_kw > 0 else None,
+                snapshot_callback=self._snapshot_tracker,
             )
             logger.info("[reddit] subreddits (%d) → %d raw results", len(subreddit_urls), len(results))
             all_results.extend(results)
@@ -574,18 +539,3 @@ def _detect_platform_from_url(url: str) -> str | None:
     return None
 
 
-def _expand_keywords_to_hashtags(keywords: list[str]) -> list[str]:
-    """Expand keywords into hashtag variants for broader discovery.
-
-    "Mark Zuckerberg" → "#markzuckerberg"
-    Already-hashtag keywords are kept as-is.
-    Returns only the NEW hashtag variants (not the originals).
-    """
-    hashtags: list[str] = []
-    for kw in keywords:
-        if kw.startswith("#"):
-            continue
-        # Strip spaces and lowercase to form a hashtag
-        tag = "#" + re.sub(r"\s+", "", kw).lower()
-        hashtags.append(tag)
-    return hashtags

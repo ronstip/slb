@@ -110,18 +110,8 @@ export function useSSEChat() {
               break;
             }
 
-            case 'status':
-              // Status events are redundant with tool activity — ignored
-              break;
-
-            case 'intent':
-              chatState.setIntentLine(messageId, event.content);
-              // Not added to activityLog — shown as pinned header
-              break;
-
-            // Removed marker-based card events: needs_decision, finding, plan
-            // topics_section and metrics_section now come via tool results
-            // Old events silently ignored for backward compat
+            // Removed marker-based events (status, intent, suggestions).
+            // Native Gemini thinking replaces markers; tools handle the rest.
 
             case 'context_update': {
               // Agent changed its working collection set — validate IDs exist
@@ -319,9 +309,6 @@ export function useSSEChat() {
             }
 
             case 'done': {
-              if (event.suggestions?.length) {
-                chatState.setSuggestions(messageId, event.suggestions);
-              }
               chatState.setSessionId(event.session_id);
               chatState.finalizeMessage(messageId);
               const sessionStore = useSessionStore.getState();

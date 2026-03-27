@@ -57,14 +57,16 @@ def run_pipeline(collection_id: str) -> None:
     logger.info("━━━ Pipeline START %s ━━━", collection_id)
     pipeline_start = _time.monotonic()
 
-    # Load custom field definitions from collection config
+    # Load custom field definitions and enrichment context from collection config
     status_doc = fs.get_collection_status(collection_id)
     custom_fields_defs = None
+    enrichment_context = None
     if status_doc:
         config = status_doc.get("config") or {}
         raw_cf = config.get("custom_fields")
         if raw_cf:
             custom_fields_defs = [CustomFieldDef(**f) for f in raw_cf]
+        enrichment_context = config.get("enrichment_context")
 
     # Thread pool for parallel enrichment batches
     enrichment_executor = ThreadPoolExecutor(max_workers=settings.enrichment_batch_workers)
@@ -77,7 +79,7 @@ def run_pipeline(collection_id: str) -> None:
         post_data = [_post_to_enrichment_data(p) for p in new_posts]
         enrichment_batch_sizes.append(len(post_data))
         future = enrichment_executor.submit(
-            run_enrichment_inline, post_data, collection_id, custom_fields_defs,
+            run_enrichment_inline, post_data, collection_id, custom_fields_defs, enrichment_context,
         )
         enrichment_futures.append(future)
 

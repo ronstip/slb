@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS social_listening.enriched_posts (
     language STRING,
     content_type STRING,
     key_quotes ARRAY<STRING>,
-    is_related_to_keyword BOOL,
+    is_related_to_task BOOL,
     detected_brands ARRAY<STRING>,
     channel_type STRING,
     custom_fields JSON,
@@ -21,3 +21,4 @@ CLUSTER BY post_id;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS emotion STRING;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS key_quotes ARRAY<STRING>;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS custom_fields JSON;
+-- ALTER TABLE social_listening.enriched_posts RENAME COLUMN is_related_to_keyword TO is_related_to_task;

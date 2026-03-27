@@ -9,6 +9,7 @@ import { WelcomeScreen } from './WelcomeScreen.tsx';
 import { TaskSelector } from './TaskSelector.tsx';
 import { CollectionSelector } from './CollectionSelector.tsx';
 import { StructuredPromptPanel } from './StructuredPromptPanel.tsx';
+import { TaskProgressPill } from './TaskProgressPill.tsx';
 
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
@@ -55,6 +56,7 @@ export function ChatPanel() {
       ) : hasMessages ? (
         <>
           <MessageList onSendMessage={sendMessage} />
+          <TaskProgressPill />
           {activePromptData ? (
             <StructuredPromptPanel onSubmit={sendMessage} onCancel={cancelPrompt} />
           ) : (

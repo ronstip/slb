@@ -45,6 +45,15 @@ class OngoingScheduler:
                     except Exception:
                         logger.exception("Scheduler: stale pipeline recovery failed")
 
+                    # Recover any pending BrightData snapshots from crashed pipelines
+                    try:
+                        from workers.recovery import recover_snapshots
+                        recovered_snaps = recover_snapshots()
+                        if recovered_snaps:
+                            logger.info("Scheduler: recovered %d BD snapshot(s)", recovered_snaps)
+                    except Exception:
+                        logger.exception("Scheduler: snapshot recovery failed")
+
                 # Check due recurring tasks (every ~60 seconds = 4 ticks)
                 ticks_since_task_check += 1
                 if ticks_since_task_check >= 4:

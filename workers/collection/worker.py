@@ -19,6 +19,7 @@ from workers.collection.normalizer import (
     channel_to_bq_row,
     post_to_bq_row,
     post_to_engagement_row,
+    seed_media_refs,
 )
 from workers.collection.wrapper import DataProviderWrapper
 from workers.shared.bq_client import BQClient
@@ -73,7 +74,10 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
     fs.update_collection_status(collection_id, status="collecting")
     logger.info("Starting collection %s", collection_id)
 
-    wrapper = DataProviderWrapper(config=config)
+    def _track_snapshot(snapshot_id, dataset_id, discover_by):
+        fs.save_snapshot(collection_id, snapshot_id, dataset_id, discover_by)
+
+    wrapper = DataProviderWrapper(config=config, snapshot_tracker=_track_snapshot)
     total_posts = 0
     total_dupes = 0
     seen_post_ids: set[str] = set()
@@ -140,11 +144,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
 
             # Seed media_refs from original CDN URLs so posts display images immediately
             for p in new_posts:
-                if p.media_urls and not p.media_refs:
-                    p.media_refs = [
-                        {"original_url": url, "media_type": "video" if any(ext in url.lower() for ext in (".mp4", ".mov", ".webm", "mime_type=video", "googlevideo.com", "videoplayback", "v.redd.it")) else "image", "content_type": ""}
-                        for url in p.media_urls
-                    ]
+                seed_media_refs(p)
             # Insert posts FIRST so they appear in the feed immediately
             failed_posts = 0
             post_rows = [post_to_bq_row(p, collection_id) for p in new_posts]

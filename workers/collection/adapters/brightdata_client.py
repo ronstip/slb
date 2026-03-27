@@ -215,6 +215,22 @@ class BrightDataClient:
 
         return []  # unreachable but satisfies type checker
 
+    def try_download_snapshot(self, snapshot_id: str) -> list[dict] | None:
+        """Attempt to download a known snapshot. Returns records if ready, None otherwise."""
+        try:
+            status = self.poll_snapshot(snapshot_id)
+            state = status.get("status")
+            if state == "ready":
+                return self.download_snapshot(snapshot_id)
+            if state == "failed":
+                logger.warning("Snapshot %s has failed status", snapshot_id)
+                return None
+            logger.debug("Snapshot %s not ready yet (status=%s)", snapshot_id, state)
+            return None
+        except BrightDataAPIError as e:
+            logger.warning("Failed to check snapshot %s: %s", snapshot_id, e)
+            return None
+
     def scrape_and_wait(
         self,
         dataset_id: str,
@@ -222,6 +238,7 @@ class BrightDataClient:
         discover_by: str = "keyword",
         include_errors: bool = True,
         limit_per_input: int | None = None,
+        snapshot_callback: "callable | None" = None,
     ) -> list[dict]:
         """High-level: trigger + poll with exponential backoff + download."""
         t_trigger = time.monotonic()
@@ -236,6 +253,13 @@ class BrightDataClient:
 
         # Async — poll until ready
         snapshot_id = result
+
+        # Persist snapshot ID for crash recovery before polling starts
+        if snapshot_callback:
+            try:
+                snapshot_callback(snapshot_id, dataset_id, discover_by)
+            except Exception:
+                logger.warning("snapshot_callback failed for %s", snapshot_id, exc_info=True)
         interval = self._poll_initial_interval_sec
         elapsed = 0.0
         poll_backoff = 1.15

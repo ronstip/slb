@@ -134,11 +134,10 @@ function textColor(entry: DisplayEntry): string {
 
 interface ActivityBarProps {
   activityLog: ActivityEntry[];
-  intentLine: string | null;
   isStreaming: boolean;
 }
 
-export function ActivityBar({ activityLog, intentLine, isStreaming }: ActivityBarProps) {
+export function ActivityBar({ activityLog, isStreaming }: ActivityBarProps) {
   const [expanded, setExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -150,7 +149,7 @@ export function ActivityBar({ activityLog, intentLine, isStreaming }: ActivityBa
 
   const { entries, todos } = useMemo(() => buildDisplayEntries(activityLog), [activityLog]);
 
-  if (entries.length === 0 && todos.length === 0 && !intentLine) return null;
+  if (entries.length === 0 && todos.length === 0) return null;
 
   const maxH = expanded ? 'max-h-72' : 'max-h-36';
   const hasOverflow = activityLog.length > 5;
@@ -160,12 +159,6 @@ export function ActivityBar({ activityLog, intentLine, isStreaming }: ActivityBa
       className="mb-2.5 rounded-lg border border-border/30 bg-card/40 overflow-hidden cursor-pointer select-none"
       onClick={() => setExpanded(!expanded)}
     >
-      {intentLine && (
-        <div className="px-3.5 py-2 border-b border-border/20 bg-muted/15">
-          <span className="text-xs font-medium text-muted-foreground">{intentLine}</span>
-        </div>
-      )}
-
       {(entries.length > 0 || todos.length > 0) && (
         <div
           ref={scrollRef}

@@ -51,6 +51,7 @@ class PipelineRunner:
         self._config: dict = {}
         self._status_doc: dict = {}
         self._custom_fields = None
+        self._enrichment_context: str | None = None
         self._total_posts_collected = 0
 
     def run(self) -> None:
@@ -112,6 +113,7 @@ class PipelineRunner:
             gcs=self.gcs,
             state_manager=self.state_manager,
             custom_fields=self._custom_fields,
+            enrichment_context=self._enrichment_context,
             settings=self.settings,
         )
 
@@ -204,6 +206,7 @@ class PipelineRunner:
         raw_cf = self._config.get("custom_fields")
         if raw_cf:
             self._custom_fields = [CustomFieldDef(**f) for f in raw_cf]
+        self._enrichment_context = self._config.get("enrichment_context")
 
     # ------------------------------------------------------------------
     # Crawl
@@ -223,7 +226,10 @@ class PipelineRunner:
             self._crawl_complete.set()
 
     def _do_crawl(self) -> None:
-        wrapper = DataProviderWrapper(config=self._config)
+        def _track_snapshot(snapshot_id, dataset_id, discover_by):
+            self.fs.save_snapshot(self.collection_id, snapshot_id, dataset_id, discover_by)
+
+        wrapper = DataProviderWrapper(config=self._config, snapshot_tracker=_track_snapshot)
 
         owner_user_id = self._status_doc.get("user_id")
         owner_org_id = self._status_doc.get("org_id")

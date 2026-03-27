@@ -18,6 +18,7 @@ def start_task(
     task_type: str = "one_shot",
     schedule: str = "",
     custom_fields: str = "",
+    enrichment_context: str = "",
     tool_context: ToolContext = None,
 ) -> dict:
     """Start a new task — create it and dispatch data collection.
@@ -42,6 +43,12 @@ def start_task(
             [{"name": "purchase_intent", "type": "str",
               "description": "Whether post indicates intent to buy"}]
             Leave empty if not needed.
+        enrichment_context: A concise description of what makes posts relevant
+            to this task. Used during enrichment to judge post relevance.
+            Example: "Posts about Nike brand perception in the running shoe
+            market. Relevant: product reviews, athlete endorsements.
+            Irrelevant: general sports news, unrelated apparel."
+            Leave empty if not needed — falls back to search keyword.
 
     Returns:
         A dict with task_id, collection_ids, and status.
@@ -83,6 +90,8 @@ def start_task(
     data_scope = {"searches": searches_list}
     if custom_fields_list:
         data_scope["custom_fields"] = custom_fields_list
+    if enrichment_context:
+        data_scope["enrichment_context"] = enrichment_context
 
     # Get identity from session state
     state = tool_context.state if tool_context else {}

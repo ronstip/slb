@@ -13,7 +13,6 @@ import { TopicsSectionCard } from './cards/TopicsSectionCard.tsx';
 import { MetricsSectionCard } from './cards/MetricsSectionCard.tsx';
 import { PromptAnsweredSummary } from './StructuredPromptPanel.tsx';
 import { useChatStore } from '../../stores/chat-store.ts';
-import { FollowUpChips } from './FollowUpChips.tsx';
 import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
 
 function formatAgentName(name: string): string {
@@ -74,7 +73,6 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
         {/* ── Zone 1: ACTIVITY BAR ── */}
         <ActivityBar
           activityLog={message.activityLog}
-          intentLine={message.intentLine}
           isStreaming={message.isStreaming}
         />
 
@@ -128,11 +126,6 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               />
             ))}
           </div>
-        )}
-
-        {/* ── Zone 4: INPUT ── */}
-        {!message.isStreaming && message.suggestions.length > 0 && onSuggestionClick && (
-          <FollowUpChips suggestions={message.suggestions} onSelect={onSuggestionClick} />
         )}
 
         {/* Streaming cursor — shown between tool completion and text arrival */}

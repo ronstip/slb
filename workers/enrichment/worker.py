@@ -68,7 +68,7 @@ def _write_results_via_values(
             f"'{_esc(r.language)}' AS language, "
             f"'{_esc(r.content_type)}' AS content_type, "
             f"[{quotes_arr}] AS key_quotes, "
-            f"{'TRUE' if r.is_related_to_keyword else 'FALSE'} AS is_related_to_keyword, "
+            f"{'TRUE' if r.is_related_to_task else 'FALSE'} AS is_related_to_task, "
             f"[{brands_arr}] AS detected_brands, "
             f"'{_esc(r.channel_type)}' AS channel_type, "
             f"{custom_sql} AS custom_fields"
@@ -83,8 +83,8 @@ USING (
 ) AS source
 ON target.post_id = source.post_id
 WHEN NOT MATCHED THEN
-    INSERT (post_id, sentiment, emotion, entities, themes, ai_summary, language, content_type, key_quotes, is_related_to_keyword, detected_brands, channel_type, custom_fields, enriched_at)
-    VALUES (source.post_id, source.sentiment, source.emotion, source.entities, source.themes, source.ai_summary, source.language, source.content_type, source.key_quotes, source.is_related_to_keyword, source.detected_brands, source.channel_type, source.custom_fields, CURRENT_TIMESTAMP())
+    INSERT (post_id, sentiment, emotion, entities, themes, ai_summary, language, content_type, key_quotes, is_related_to_task, detected_brands, channel_type, custom_fields, enriched_at)
+    VALUES (source.post_id, source.sentiment, source.emotion, source.entities, source.themes, source.ai_summary, source.language, source.content_type, source.key_quotes, source.is_related_to_task, source.detected_brands, source.channel_type, source.custom_fields, CURRENT_TIMESTAMP())
 WHEN MATCHED THEN
     UPDATE SET
         sentiment              = source.sentiment,
@@ -95,7 +95,7 @@ WHEN MATCHED THEN
         language               = source.language,
         content_type           = source.content_type,
         key_quotes             = source.key_quotes,
-        is_related_to_keyword  = source.is_related_to_keyword,
+        is_related_to_task  = source.is_related_to_task,
         detected_brands        = source.detected_brands,
         channel_type           = source.channel_type,
         custom_fields          = source.custom_fields,
@@ -194,11 +194,13 @@ def run_enrichment_inline(
     posts: list[PostData],
     collection_id: str = "",
     custom_fields: list[CustomFieldDef] | None = None,
+    enrichment_context: str | None = None,
 ) -> list[tuple[str, EnrichmentResult]]:
     """Enrich posts from in-memory data. Used by parallel pipeline callback.
 
     No BQ read needed — post data is passed directly from collection.
     custom_fields: per-collection custom field definitions from config.
+    enrichment_context: task-level context for relevance judgement.
     """
     if not posts:
         return []
@@ -207,7 +209,7 @@ def run_enrichment_inline(
     bq = BQClient(settings)
 
     start = time.monotonic()
-    results = enrich_posts(posts, custom_fields=custom_fields)
+    results = enrich_posts(posts, custom_fields=custom_fields, enrichment_context=enrichment_context)
     _write_results_to_bq(bq, results)
     logger.info("Enrichment batch: %d/%d ok in %.1fs", len(results), len(posts), round(time.monotonic() - start, 1))
     return results
@@ -225,6 +227,15 @@ def _load_custom_fields(fs: FirestoreClient, collection_id: str) -> list[CustomF
     return [CustomFieldDef(**f) for f in raw_fields]
 
 
+def _load_enrichment_context(fs: FirestoreClient, collection_id: str) -> str | None:
+    """Load enrichment context from collection config in Firestore."""
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        return None
+    config = status.get("config") or {}
+    return config.get("enrichment_context")
+
+
 def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50) -> None:
     """Enrich all qualifying posts in a collection. Reads from BQ (standalone mode).
 
@@ -237,6 +248,7 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
 
     fs.update_collection_status(collection_id, status="enriching")
     custom_fields = _load_custom_fields(fs, collection_id)
+    enrichment_context = _load_enrichment_context(fs, collection_id)
 
     try:
         posts = _read_posts_from_bq(bq, collection_id, min_likes)
@@ -246,7 +258,7 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
         all_results = []
         for i in range(0, len(posts), batch_size):
             batch = posts[i : i + batch_size]
-            batch_results = enrich_posts(batch, custom_fields=custom_fields)
+            batch_results = enrich_posts(batch, custom_fields=custom_fields, enrichment_context=enrichment_context)
             _write_results_to_bq(bq, batch_results)
             all_results.extend(batch_results)
             logger.info(
@@ -309,14 +321,16 @@ def run_enrichment_for_posts(
     bq = BQClient(settings)
 
     custom_fields = None
+    enrichment_context = None
     if collection_id:
         fs = FirestoreClient(settings)
         custom_fields = _load_custom_fields(fs, collection_id)
+        enrichment_context = _load_enrichment_context(fs, collection_id)
 
     posts = _read_posts_from_bq_by_ids(bq, post_ids)
     logger.info("Enriching %d posts by ID", len(posts))
 
-    results = enrich_posts(posts, custom_fields=custom_fields)
+    results = enrich_posts(posts, custom_fields=custom_fields, enrichment_context=enrichment_context)
     _write_results_to_bq(bq, results)
     logger.info("Enriched %d/%d posts by ID", len(results), len(posts))
 

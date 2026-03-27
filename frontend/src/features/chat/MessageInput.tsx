@@ -72,7 +72,7 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
   };
 
   return (
-    <div className={cn(centered ? 'w-full max-w-2xl px-4' : 'px-6 pb-5 pt-2')}>
+    <div className={cn(centered ? 'w-full max-w-2xl px-4' : 'mx-auto w-full max-w-2xl px-6 pb-5 pt-2')}>
       {/* Context bar — active source pills above the input */}
       <div className={cn(
         'flex min-h-[24px] flex-wrap items-center justify-center gap-1.5',

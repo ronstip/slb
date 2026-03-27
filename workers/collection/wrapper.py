@@ -18,6 +18,7 @@ class DataProviderWrapper:
         self,
         providers: list[DataProviderAdapter] | None = None,
         config: dict | None = None,
+        snapshot_tracker: "callable | None" = None,
     ):
         settings = get_settings()
         self.config = config or {}
@@ -30,7 +31,7 @@ class DataProviderWrapper:
             # BrightData first — default for tiktok, youtube, reddit
             if settings.brightdata_api_token:
                 try:
-                    self._providers.append(BrightDataAdapter())
+                    self._providers.append(BrightDataAdapter(snapshot_tracker=snapshot_tracker))
                     logger.info("BrightDataAdapter initialized (dev mode)")
                 except ValueError:
                     logger.warning("BrightDataAdapter init failed, skipping")
@@ -48,7 +49,7 @@ class DataProviderWrapper:
             # BrightData first in production too
             if settings.brightdata_api_token:
                 try:
-                    self._providers.append(BrightDataAdapter())
+                    self._providers.append(BrightDataAdapter(snapshot_tracker=snapshot_tracker))
                     logger.info("BrightDataAdapter initialized (production mode)")
                 except ValueError:
                     logger.warning("BrightDataAdapter init failed, skipping")

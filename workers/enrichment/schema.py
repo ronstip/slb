@@ -51,7 +51,7 @@ class EnrichmentResult(BaseModel):
     language: str
     content_type: str
     key_quotes: list[str]
-    is_related_to_keyword: bool = True
+    is_related_to_task: bool = True
     detected_brands: list[str] = []
     channel_type: Literal["official", "media", "ugc"] = "ugc"
     custom_fields: dict | None = None

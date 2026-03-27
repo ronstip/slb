@@ -125,7 +125,7 @@ Instructions:
 - language: ISO code of the post language (e.g. en, es, he)
 - content_type: review/tutorial/meme/ad/unboxing/comparison/testimonial/other
 - key_quotes: 1-3 notable direct quotes from the post text (empty array if none)
-- is_related_to_keyword: Whether this post is genuinely related to the search keyword "{search_keyword}". True if the post discusses, references, or is meaningfully about the keyword topic. False if the keyword match is coincidental, the post is spam, or the content is unrelated despite containing the keyword.
+- is_related_to_task: Whether this post is genuinely related to the task. Task context: "{enrichment_context}". Search keyword: "{search_keyword}". True if the post is meaningfully about what the task is investigating — consider the broader task context, not just the individual keyword. False if the keyword match is coincidental, the post is spam, or the content is unrelated to the task's purpose.
 - detected_brands: All brand names mentioned, referenced, shown, or visible in the post content or media. Include both text mentions and brands visible in images/video (logos, products, packaging).
 - channel_type: Classify the posting channel/account. "official" for verified brand or entity accounts, "media" for news outlets and media channels, "ugc" for regular users and creators.
 
@@ -136,6 +136,7 @@ Post:
   Title: {title}
   Content: {content}
   Search Keyword: {search_keyword}
+  Task Context: {enrichment_context}
   Media:
 
 """
@@ -215,6 +216,7 @@ def _build_content_parts(
     post: PostData,
     custom_fields: list[CustomFieldDef] | None = None,
     skip_video: bool = False,
+    enrichment_context: str | None = None,
 ) -> list[types.Part]:
     """Build multimodal content parts for a single post.
 
@@ -225,6 +227,7 @@ def _build_content_parts(
     parts: list[types.Part] = []
 
     # Text prompt with post metadata
+    effective_context = enrichment_context or post.search_keyword or "N/A"
     prompt_text = ENRICHMENT_PROMPT.format(
         platform=post.platform,
         channel_handle=post.channel_handle or "unknown",
@@ -232,6 +235,7 @@ def _build_content_parts(
         title=post.title or "",
         content=post.content or "",
         search_keyword=post.search_keyword or "N/A",
+        enrichment_context=effective_context,
     )
 
     # Append custom field instructions if defined
@@ -363,6 +367,7 @@ def _enrich_single_post(
     config: types.GenerateContentConfig,
     post: PostData,
     custom_fields: list[CustomFieldDef] | None = None,
+    enrichment_context: str | None = None,
 ) -> tuple[str, EnrichmentResult | None]:
     """Enrich a single post. Returns (post_id, result) or (post_id, None) on failure.
 
@@ -376,7 +381,7 @@ def _enrich_single_post(
     On PERMISSION_DENIED (e.g. restricted YouTube video), retries once without video.
     """
     settings = get_settings()
-    parts = _build_content_parts(post, custom_fields)
+    parts = _build_content_parts(post, custom_fields, enrichment_context=enrichment_context)
     contents = types.Content(role="user", parts=parts)
     semaphore = _get_global_semaphore()
     general_limiter = _get_general_rate_limiter()
@@ -418,7 +423,7 @@ def _enrich_single_post(
                     "PERMISSION_DENIED for post %s — retrying without video part",
                     post.post_id,
                 )
-                parts_no_video = _build_content_parts(post, custom_fields, skip_video=True)
+                parts_no_video = _build_content_parts(post, custom_fields, skip_video=True, enrichment_context=enrichment_context)
                 contents = types.Content(role="user", parts=parts_no_video)
                 has_video = False
                 video_limiter = None
@@ -449,6 +454,7 @@ def _enrich_single_post(
 def enrich_posts(
     posts: list[PostData],
     custom_fields: list[CustomFieldDef] | None = None,
+    enrichment_context: str | None = None,
 ) -> list[tuple[str, EnrichmentResult]]:
     """Enrich a batch of posts via Gemini API.
 
@@ -496,7 +502,7 @@ def enrich_posts(
 
     with ThreadPoolExecutor(max_workers=settings.enrichment_concurrency) as executor:
         futures = {
-            executor.submit(_enrich_single_post, client, model, config, post, custom_fields): post
+            executor.submit(_enrich_single_post, client, model, config, post, custom_fields, enrichment_context): post
             for post in posts
         }
 

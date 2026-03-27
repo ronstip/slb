@@ -177,6 +177,7 @@ export interface CollectionStatusResponse {
   collection_id: string;
   status: CollectionStatus;
   posts_collected: number;
+  posts_enriched: number;
   total_views: number;
   positive_pct: number | null;
   error_message?: string;

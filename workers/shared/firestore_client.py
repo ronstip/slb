@@ -138,6 +138,60 @@ class FirestoreClient:
                 logger.warning("Failed to query stale pipelines for status=%s", status_val, exc_info=True)
         return stale
 
+    # --- BrightData snapshot recovery methods ---
+
+    def save_snapshot(
+        self,
+        collection_id: str,
+        snapshot_id: str,
+        dataset_id: str,
+        discover_by: str,
+    ) -> None:
+        """Persist a BrightData snapshot ID for crash recovery."""
+        self._db.collection("bd_snapshots").document(snapshot_id).set({
+            "collection_id": collection_id,
+            "snapshot_id": snapshot_id,
+            "dataset_id": dataset_id,
+            "discover_by": discover_by,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc),
+        })
+        logger.debug("Saved BD snapshot %s for collection %s", snapshot_id, collection_id)
+
+    def get_pending_snapshots(self, collection_id: str | None = None) -> list[dict]:
+        """Get snapshots that were triggered but never downloaded (< 24h old)."""
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        query = self._db.collection("bd_snapshots").where("status", "==", "pending")
+        if collection_id:
+            query = query.where("collection_id", "==", collection_id)
+
+        results = []
+        try:
+            for doc in query.stream():
+                data = doc.to_dict()
+                created = data.get("created_at")
+                # Skip snapshots older than 24h (BD may have purged them)
+                if created and hasattr(created, "timestamp"):
+                    if created.replace(tzinfo=timezone.utc) < cutoff:
+                        continue
+                data["snapshot_id"] = doc.id
+                results.append(data)
+        except Exception:
+            logger.warning("Failed to query pending snapshots", exc_info=True)
+        return results
+
+    def mark_snapshot_downloaded(self, snapshot_id: str) -> None:
+        """Mark a snapshot as successfully downloaded."""
+        try:
+            self._db.collection("bd_snapshots").document(snapshot_id).update({
+                "status": "downloaded",
+                "downloaded_at": datetime.now(timezone.utc),
+            })
+        except Exception:
+            logger.warning("Failed to mark snapshot %s as downloaded", snapshot_id, exc_info=True)
+
     # --- Task methods ---
 
     def create_task(self, task_id: str, data: dict) -> None:

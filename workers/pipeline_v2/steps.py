@@ -24,6 +24,7 @@ class StepContext:
     gcs: Any  # GCSClient
     state_manager: Any  # StateManager
     custom_fields: list | None
+    enrichment_context: str | None
     settings: Settings
 
 
@@ -228,7 +229,7 @@ def action_enrich(posts: list[dict], ctx: StepContext) -> list[StepResult]:
 
     # Call existing enrichment (handles Gemini rate limiting, writes to BQ)
     enrichment_results = run_enrichment_inline(
-        post_data_list, ctx.collection_id, ctx.custom_fields
+        post_data_list, ctx.collection_id, ctx.custom_fields, ctx.enrichment_context
     )
     enriched_ids = {pid for pid, _ in enrichment_results}
 

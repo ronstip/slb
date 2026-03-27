@@ -19,6 +19,7 @@ export interface RawADKEvent {
     role?: string;
     parts?: Array<{
       text?: string;
+      thought?: boolean;
       function_call?: { name: string; args: Record<string, unknown> };
       function_response?: { name: string; response: Record<string, unknown> };
     }>;

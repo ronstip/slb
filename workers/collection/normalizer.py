@@ -4,6 +4,22 @@ from datetime import datetime, timezone
 from workers.collection.models import Channel, Post
 
 
+_VIDEO_EXTENSIONS = (".mp4", ".mov", ".webm", "mime_type=video", "googlevideo.com", "videoplayback", "v.redd.it")
+
+
+def seed_media_refs(post: Post) -> None:
+    """Populate media_refs from media_urls if not already set."""
+    if post.media_urls and not post.media_refs:
+        post.media_refs = [
+            {
+                "original_url": url,
+                "media_type": "video" if any(ext in url.lower() for ext in _VIDEO_EXTENSIONS) else "image",
+                "content_type": "",
+            }
+            for url in post.media_urls
+        ]
+
+
 def post_to_bq_row(post: Post, collection_id: str) -> dict:
     """Convert a Post to a BigQuery row dict."""
     return {
