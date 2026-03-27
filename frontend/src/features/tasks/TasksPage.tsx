@@ -7,6 +7,7 @@ import {
   Archive,
   BarChart3,
   CalendarClock,
+  Timer,
   Check,
   CheckCircle2,
   Circle,
@@ -982,15 +983,15 @@ export function TasksPage() {
             <thead className="sticky top-0 bg-background border-b">
               <tr className="text-[11px] text-muted-foreground font-medium">
                 <th className="text-left px-6 py-2.5">Title</th>
+                <th className="text-center px-3 py-2.5 w-36">Actions</th>
                 <th className="text-left px-3 py-2.5 w-28">Status</th>
                 <th className="text-left px-3 py-2.5 w-28">
-                  <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3" />Schedule</span>
+                  <span className="flex items-center gap-1"><Timer className="h-3 w-3" />Schedule</span>
                 </th>
                 <th className="text-left px-3 py-2.5 w-24">Next Run</th>
                 <th className="text-left px-3 py-2.5 w-24">Last Run</th>
                 <th className="text-left px-3 py-2.5 w-24">Collections</th>
                 <th className="text-left px-3 py-2.5 w-24">Artifacts</th>
-                <th className="text-right px-3 py-2.5 w-36">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1008,6 +1009,108 @@ export function TasksPage() {
                     <td className="px-6 py-3">
                       <div className="text-sm font-medium text-foreground truncate max-w-md">
                         {task.title}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-0.5">
+                        <TooltipProvider delayDuration={300}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                disabled={!(task.session_id || task.primary_session_id)}
+                                onClick={() => navigate(`/session/${task.session_id || task.primary_session_id}`)}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Open Session</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                disabled={!RUNNABLE_STATUSES.includes(task.status)}
+                                onClick={() => handleRun(task)}
+                              >
+                                <Play className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{task.task_type === 'recurring' ? 'Run Now' : 'Re-run'}</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                disabled={task.task_type === 'recurring' || !['completed', 'approved'].includes(task.status)}
+                                onClick={() => handleScheduleFromTable(task)}
+                              >
+                                <Timer className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Enable Schedule</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                disabled={(task.artifact_ids?.length ?? 0) === 0}
+                                onClick={() => handleRowClick(task)}
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>View Artifacts</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                disabled={(task.collection_ids?.length ?? 0) === 0}
+                                onClick={() => setExplorerTask(task)}
+                              >
+                                <Compass className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Explore Data</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem onClick={() => handleRowClick(task)}>
+                              View Details
+                            </DropdownMenuItem>
+                            {(task.collection_ids?.length ?? 0) > 0 && (
+                              <DropdownMenuItem onClick={() => setExplorerTask(task)}>
+                                <Compass className="mr-2 h-3.5 w-3.5" />
+                                Explore Data
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleDelete(task)}
+                            >
+                              <Trash2 className="mr-2 h-3.5 w-3.5" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                     <td className="px-3 py-3">
@@ -1038,113 +1141,6 @@ export function TasksPage() {
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {task.artifact_ids?.length || 0}
-                    </td>
-                    <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <TooltipProvider delayDuration={300}>
-                          {(task.session_id || task.primary_session_id) && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => navigate(`/session/${task.session_id || task.primary_session_id}`)}
-                                >
-                                  <MessageSquare className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Open Session</TooltipContent>
-                            </Tooltip>
-                          )}
-                          {RUNNABLE_STATUSES.includes(task.status) && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => handleRun(task)}
-                                >
-                                  <Play className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{task.task_type === 'recurring' ? 'Run Now' : 'Re-run'}</TooltipContent>
-                            </Tooltip>
-                          )}
-                          {task.task_type !== 'recurring' && ['completed', 'approved'].includes(task.status) && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => handleScheduleFromTable(task)}
-                                >
-                                  <CalendarClock className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Enable Schedule</TooltipContent>
-                            </Tooltip>
-                          )}
-                          {(task.artifact_ids?.length ?? 0) > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => handleRowClick(task)}
-                                >
-                                  <FileText className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>View Artifacts</TooltipContent>
-                            </Tooltip>
-                          )}
-                          {(task.collection_ids?.length ?? 0) > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => setExplorerTask(task)}
-                                >
-                                  <Compass className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Explore Data</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </TooltipProvider>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleRowClick(task)}>
-                              View Details
-                            </DropdownMenuItem>
-                            {(task.collection_ids?.length ?? 0) > 0 && (
-                              <DropdownMenuItem onClick={() => setExplorerTask(task)}>
-                                <Compass className="mr-2 h-3.5 w-3.5" />
-                                Explore Data
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => handleDelete(task)}
-                            >
-                              <Trash2 className="mr-2 h-3.5 w-3.5" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
                     </td>
                   </tr>
                 );
