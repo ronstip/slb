@@ -66,19 +66,12 @@ const TYPE_CONFIG: Record<ArtifactType, {
 };
 
 const CHART_TYPE_LABELS: Record<string, string> = {
-  sentiment_pie: 'Sentiment',
-  sentiment_bar: 'Sentiment',
-  volume_chart: 'Volume over time',
-  line_chart: 'Trend',
-  histogram: 'Distribution',
-  theme_bar: 'Themes',
-  platform_bar: 'Platform breakdown',
-  content_type_donut: 'Content types',
-  language_pie: 'Languages',
-  engagement_metrics: 'Engagement',
-  channel_table: 'Top channels',
-  entity_table: 'Top entities',
-  value_count: 'Distribution',
+  bar: 'Bar chart',
+  line: 'Line chart',
+  pie: 'Pie chart',
+  doughnut: 'Donut chart',
+  table: 'Table',
+  number: 'KPI',
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────

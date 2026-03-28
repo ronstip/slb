@@ -49,10 +49,10 @@ export function ArtifactPreviewIllustration({
 type ChartCategory = 'bar' | 'pie' | 'line' | 'table' | 'metrics';
 
 function getChartCategory(chartType: string): ChartCategory {
-  if (['sentiment_pie', 'content_type_donut', 'language_pie'].includes(chartType)) return 'pie';
-  if (['volume_chart', 'line_chart'].includes(chartType)) return 'line';
-  if (['channel_table', 'entity_table'].includes(chartType)) return 'table';
-  if (chartType === 'engagement_metrics') return 'metrics';
+  if (['pie', 'doughnut'].includes(chartType)) return 'pie';
+  if (chartType === 'line') return 'line';
+  if (chartType === 'table') return 'table';
+  if (chartType === 'number') return 'metrics';
   return 'bar';
 }
 

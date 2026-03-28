@@ -13,19 +13,55 @@ import { NarrativeSection } from '../chat/cards/report/NarrativeSection.tsx';
 import { KeyFindingCard } from '../chat/cards/report/KeyFindingCard.tsx';
 import { TopPostsTable } from '../chat/cards/report/TopPostsTable.tsx';
 
-// Chart components
-import { SentimentPie } from './charts/SentimentPie.tsx';
-import { SentimentBar } from './charts/SentimentBar.tsx';
-import { VolumeChart } from './charts/VolumeChart.tsx';
-import { LineChart } from './charts/LineChart.tsx';
-import { Histogram } from './charts/Histogram.tsx';
-import { ThemeBar } from './charts/ThemeBar.tsx';
-import { PlatformBar } from './charts/PlatformBar.tsx';
-import { ContentTypeDonut } from './charts/ContentTypeDonut.tsx';
-import { LanguagePie } from './charts/LanguagePie.tsx';
-import { EngagementMetrics } from './charts/EngagementMetrics.tsx';
-import { ChannelTable } from './charts/ChannelTable.tsx';
-import { EntityTable } from './charts/EntityTable.tsx';
+// Chart components — unified on SocialChartWidget (Chart.js)
+import { SocialChartWidget } from './dashboard/SocialChartWidget.tsx';
+import type { SocialChartType, WidgetData } from './dashboard/types-social-dashboard.ts';
+import { formatNumber } from '../../lib/format.ts';
+
+/** Normalize snake_case → camelCase for WidgetData. */
+function toWidgetData(raw: Record<string, unknown>): WidgetData {
+  return {
+    labels: raw.labels as string[] | undefined,
+    values: raw.values as number[] | undefined,
+    value: raw.value as number | undefined,
+    timeSeries: (raw.timeSeries ?? raw.time_series) as WidgetData['timeSeries'],
+    groupedTimeSeries: (raw.groupedTimeSeries ?? raw.grouped_time_series) as WidgetData['groupedTimeSeries'],
+  };
+}
+
+/** Generic chart types rendered by SocialChartWidget. */
+const CHARTJS_TYPES = new Set(['bar', 'line', 'pie', 'doughnut']);
+
+/** Report table card (columns + rows). */
+function ReportTable({ data }: { data: Record<string, unknown> }) {
+  const columns = (data.columns ?? []) as string[];
+  const rows = (data.rows ?? []) as unknown[][];
+  if (!columns.length || !rows.length) return null;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border/50">
+            {columns.map((col) => (
+              <th key={col} className="px-3 py-2 text-left font-medium text-muted-foreground">{col}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b border-border/20 last:border-0">
+              {row.map((cell, j) => (
+                <td key={j} className="px-3 py-1.5 text-foreground">
+                  {typeof cell === 'number' ? formatNumber(cell) : String(cell ?? '')}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const REPORT_CARD_COMPONENTS: Partial<Record<ReportCardType, React.ComponentType<{ data: any }>>> = {
@@ -33,18 +69,6 @@ const REPORT_CARD_COMPONENTS: Partial<Record<ReportCardType, React.ComponentType
   narrative: NarrativeSection,
   key_finding: KeyFindingCard,
   top_posts_table: TopPostsTable,
-  sentiment_pie: ({ data }) => <SentimentPie data={data.data ?? data} />,
-  sentiment_bar: ({ data }) => <SentimentBar data={data.data ?? data} />,
-  volume_chart: ({ data }) => <VolumeChart data={data.data ?? data} />,
-  line_chart: ({ data }) => <LineChart data={data.data ?? data} />,
-  histogram: ({ data }) => <Histogram data={data.data ?? data} />,
-  theme_bar: ({ data }) => <ThemeBar data={data.data ?? data} />,
-  platform_bar: ({ data }) => <PlatformBar data={data.data ?? data} />,
-  content_type_donut: ({ data }) => <ContentTypeDonut data={data.data ?? data} />,
-  language_pie: ({ data }) => <LanguagePie data={data.data ?? data} />,
-  engagement_metrics: ({ data }) => <EngagementMetrics data={data.data ?? data} />,
-  channel_table: ({ data }) => <ChannelTable data={data.data ?? data} />,
-  entity_table: ({ data }) => <EntityTable data={data.data ?? data} />,
 };
 
 type InsightReportArtifact = Extract<Artifact, { type: 'insight_report' }>;
@@ -166,17 +190,13 @@ export function InsightReportView({ artifact }: InsightReportViewProps) {
 }
 
 function CardRenderer({ card }: { card: ReportCard }) {
+  // Non-chart components (kpi_grid, narrative, key_finding, top_posts_table)
   const Component = REPORT_CARD_COMPONENTS[card.card_type];
-  if (!Component) return null;
+  if (Component) return <Component data={card.data} />;
 
-  const isChart = !(
-    card.card_type === 'kpi_grid' ||
-    card.card_type === 'narrative' ||
-    card.card_type === 'key_finding' ||
-    card.card_type === 'top_posts_table'
-  );
-
-  if (isChart) {
+  // Generic chart types → SocialChartWidget
+  if (CHARTJS_TYPES.has(card.card_type)) {
+    const widgetData = toWidgetData(card.data as Record<string, unknown>);
     return (
       <div className="rounded-lg border border-border bg-card p-4">
         {card.title && (
@@ -184,10 +204,49 @@ function CardRenderer({ card }: { card: ReportCard }) {
             {card.title}
           </h5>
         )}
-        <Component data={card.data} />
+        <div className="h-[280px]">
+          <SocialChartWidget
+            chartType={card.card_type as SocialChartType}
+            data={widgetData}
+          />
+        </div>
       </div>
     );
   }
 
-  return <Component data={card.data} />;
+  // Table type
+  if (card.card_type === 'table') {
+    return (
+      <div className="rounded-lg border border-border bg-card p-4">
+        {card.title && (
+          <h5 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {card.title}
+          </h5>
+        )}
+        <ReportTable data={card.data as Record<string, unknown>} />
+      </div>
+    );
+  }
+
+  // Number type
+  if (card.card_type === 'number') {
+    const numData = card.data as Record<string, unknown>;
+    return (
+      <div className="rounded-lg border border-border bg-card p-4 text-center">
+        {card.title && (
+          <h5 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {card.title}
+          </h5>
+        )}
+        <span className="text-3xl font-bold text-foreground">
+          {formatNumber((numData.value as number) ?? 0)}
+        </span>
+        {numData.label && (
+          <p className="mt-1 text-xs text-muted-foreground">{numData.label as string}</p>
+        )}
+      </div>
+    );
+  }
+
+  return null;
 }

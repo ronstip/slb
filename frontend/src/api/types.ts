@@ -441,19 +441,13 @@ export type ReportCardType =
   | 'narrative'
   | 'key_finding'
   | 'top_posts_table'
-  // Existing chart types (reused)
-  | 'sentiment_pie'
-  | 'sentiment_bar'
-  | 'volume_chart'
-  | 'line_chart'
-  | 'histogram'
-  | 'theme_bar'
-  | 'platform_bar'
-  | 'content_type_donut'
-  | 'language_pie'
-  | 'engagement_metrics'
-  | 'channel_table'
-  | 'entity_table';
+  // Generic chart types
+  | 'bar'
+  | 'line'
+  | 'pie'
+  | 'doughnut'
+  | 'table'
+  | 'number';
 
 export interface ReportCard {
   id: string;

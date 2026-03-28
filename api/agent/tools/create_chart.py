@@ -2,114 +2,63 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-VALID_CHART_TYPES = {
-    "sentiment_pie",
-    "sentiment_bar",
-    "volume_chart",
-    "line_chart",
-    "histogram",
-    "theme_bar",
-    "platform_bar",
-    "content_type_donut",
-    "language_pie",
-    "engagement_metrics",
-    "channel_table",
-    "entity_table",
-    "value_count",
-}
+VALID_CHART_TYPES = {"bar", "line", "pie", "doughnut", "table", "number"}
 
 
-def create_chart(chart_type: str, data: list[dict], title: str = "", collection_ids: list[str] | None = None, filter_sql: str = "", source_sql: str = "") -> dict:
-    """Render a standalone chart card in the chat.
+def create_chart(
+    chart_type: str,
+    data: dict,
+    title: str = "",
+    collection_ids: list[str] | None = None,
+    source_sql: str = "",
+    bar_orientation: str = "horizontal",
+) -> dict:
+    """Render a standalone chart inline in the chat.
 
     WHEN TO USE: After execute_sql when results have 2+ data points that benefit
     from visualization. ALWAYS chart distributions, trends, and comparisons.
     WHEN NOT TO USE: Single numbers, simple yes/no answers, or data already
     shown via generate_report's standard charts.
 
-    Data shape → chart type mapping:
-    - Sentiment counts by label → sentiment_pie or sentiment_bar
-    - Post counts by date (trend) → line_chart
-    - Post counts by date (bars) → volume_chart
-    - Theme/topic counts → theme_bar
-    - Post counts by platform → platform_bar
-    - Content type distribution → content_type_donut
-    - Language distribution → language_pie
-    - Engagement totals/averages → engagement_metrics
-    - Channel-level stats → channel_table
-    - Entity mention counts → entity_table
-    - Numeric distribution (likes, views) → histogram
-    - Generic category counts (entity mentions, keyword frequencies, etc.) → value_count
+    Chart types and their expected data format:
+
+        bar / pie / doughnut — categorical data:
+            {"labels": ["Category A", "Category B", ...],
+             "values": [10, 20, ...]}
+
+        line — time series data:
+            Single series:
+                {"time_series": [{"date": "2026-01-15", "value": 42}, ...]}
+            Multiple series:
+                {"grouped_time_series": {
+                    "Series A": [{"date": "2026-01-15", "value": 42}, ...],
+                    "Series B": [{"date": "2026-01-15", "value": 18}, ...]
+                }}
+
+        table — tabular data:
+            {"columns": ["Name", "Count", "Avg Views"],
+             "rows": [["Entity A", 42, 1500], ["Entity B", 30, 900], ...]}
+
+        number — single KPI value:
+            {"value": 1234, "label": "Total Posts"}
 
     Args:
-        chart_type: One of the supported chart types. Each expects a specific
-            data schema:
+        chart_type: One of: bar, line, pie, doughnut, table, number.
 
-            - sentiment_pie / sentiment_bar: Array of
-              {sentiment: str, count: int, percentage: float}
+        data: Chart data dict matching the format for the chosen chart_type
+            (see above). This is passed directly to the frontend chart
+            component with no transformation.
 
-            - volume_chart: Array of
-              {post_date: str, platform: str, post_count: int}
+        title: Title displayed above the chart.
 
-            - line_chart: Array of
-              {post_date: str, platform: str, post_count: int}
-              (same shape as volume_chart — use when trend line is more useful than bars)
+        collection_ids: Optional list of collection IDs that sourced this
+            chart's data. Enables "Show underlying data" in the studio view.
 
-            - histogram: Array of
-              {bucket: str, count: int}
-              (use for numeric distributions: likes ranges, view counts, etc.)
+        source_sql: The full SQL query that produced this chart's data.
+            Stored for transparency and debugging.
 
-            - theme_bar: Array of
-              {theme: str, post_count: int, percentage: float}
-
-            - platform_bar: Array of
-              {platform: str, post_count: int}
-
-            - content_type_donut: Array of
-              {content_type: str, count: int, percentage: float}
-
-            - language_pie: Array of
-              {language: str, post_count: int, percentage: float}
-
-            - engagement_metrics: Array of
-              {platform: str, total_posts: int, total_likes: int,
-               total_shares: int, total_views: int, total_comments: int,
-               avg_likes: float, avg_views: float, max_likes: int,
-               max_views: int}
-
-            - channel_table: Array of
-              {channel_handle: str, platform: str, subscribers: int,
-               channel_url: str, collected_posts: int, avg_likes: float,
-               avg_views: float}
-
-            - entity_table: Array of
-              {entity: str, mentions: int, total_views: int,
-               total_likes: int}
-
-            - value_count: Array of
-              {bucket: str, count: int}
-              (vertical bar chart for any generic categorical count — entity
-               mentions, emotion counts, keyword frequencies, custom field values,
-               etc. Use when the data doesn't fit a more specific chart type.
-               Same data shape as histogram.)
-
-        data: The chart data as a list of dictionaries matching the schema
-            for the chosen chart_type.
-
-        title: Optional title displayed above the chart.
-
-        collection_ids: Optional list of collection IDs that sourced this chart's
-            data. Pass the collection IDs used in the underlying SQL query so the
-            artifact can reconstruct the original dataset via "Show underlying data".
-
-        filter_sql: Optional WHERE clause fragment from the underlying SQL query
-            that filters the data beyond collection_id scoping. Uses table aliases
-            `p` (posts), `ep` (enriched_posts), `eng` (post_engagements).
-            Example: "EXISTS(SELECT 1 FROM UNNEST(ep.themes) t WHERE LOWER(t) LIKE '%review%')"
-            Do NOT include collection_id or date filters — those are handled automatically.
-
-        source_sql: Optional full SQL query that was executed to produce this chart's
-            data. Stored for transparency and debugging.
+        bar_orientation: For bar charts only. "horizontal" (default) or
+            "vertical".
 
     Returns:
         A dictionary with chart rendering metadata.
@@ -126,7 +75,7 @@ def create_chart(chart_type: str, data: list[dict], title: str = "", collection_
             "message": "No data provided for chart.",
         }
 
-    logger.info("create_chart: type=%s rows=%d title=%r", chart_type, len(data), title)
+    logger.info("create_chart: type=%s title=%r", chart_type, title)
 
     return {
         "status": "success",
@@ -134,7 +83,7 @@ def create_chart(chart_type: str, data: list[dict], title: str = "", collection_
         "data": data,
         "title": title,
         "collection_ids": collection_ids or [],
-        "filter_sql": filter_sql,
         "source_sql": source_sql,
+        "bar_orientation": bar_orientation,
         "message": "Chart rendered successfully.",
     }

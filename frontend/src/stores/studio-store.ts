@@ -17,10 +17,9 @@ interface ChartArtifact {
   type: 'chart';
   title: string;
   chartType: string;
-  data: unknown[];
-  colorOverrides?: Record<string, string>;
+  data: Record<string, unknown>;
+  barOrientation?: string;
   collectionIds?: string[];
-  filterSql?: string;
   sourceSql?: string;
   createdAt: Date;
 }

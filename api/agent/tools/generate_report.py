@@ -49,73 +49,63 @@ _META_SQL = (
     "GROUP BY c.collection_id, c.original_question"
 )
 
-# Valid chart types — same set as create_chart
-_VALID_CHART_TYPES = {
-    "sentiment_pie", "sentiment_bar", "volume_chart", "line_chart", "histogram",
-    "theme_bar", "platform_bar", "content_type_donut", "language_pie",
-    "engagement_metrics", "channel_table", "entity_table",
-}
+# Valid chart types — same generic set as create_chart
+_VALID_CHART_TYPES = {"bar", "line", "pie", "doughnut", "table", "number"}
 
 
-# ─── Signature → chart data transformers ────────────────────────────────────
-
-def _pct(count: int, total: int) -> float:
-    return round(count / total * 100, 1) if total > 0 else 0.0
-
-
-def _sig_to_platform_bar(platform_breakdown: list[dict]) -> list[dict]:
-    return [{"platform": b["value"], "post_count": b["post_count"]} for b in platform_breakdown]
+# ─── Signature → WidgetData transformers ─────────────────────────────────────
+# Each returns a dict in WidgetData format (labels/values, time_series, etc.)
+# that the frontend passes directly to SocialChartWidget.
 
 
-def _sig_to_sentiment_pie(sentiment_breakdown: list[dict]) -> list[dict]:
-    total = sum(b["post_count"] for b in sentiment_breakdown)
-    return [
-        {"sentiment": b["value"], "count": b["post_count"], "percentage": _pct(b["post_count"], total)}
-        for b in sentiment_breakdown
-    ]
+def _sig_to_categorical(breakdown: list[dict], label_key: str = "value", value_key: str = "post_count") -> dict:
+    """Convert a breakdown list to WidgetData {labels, values}."""
+    return {
+        "labels": [b[label_key] for b in breakdown],
+        "values": [b[value_key] for b in breakdown],
+    }
 
 
-def _sig_to_theme_bar(top_themes: list[dict]) -> list[dict]:
-    total = sum(t["post_count"] for t in top_themes)
-    return [
-        {"theme": t["value"], "post_count": t["post_count"], "percentage": _pct(t["post_count"], total)}
-        for t in top_themes
-    ]
+def _sig_to_volume_line(daily_volume: list[dict]) -> dict:
+    """Convert daily volume to WidgetData grouped_time_series by platform."""
+    groups: dict[str, list[dict]] = {}
+    for d in daily_volume:
+        platform = d.get("platform", "unknown")
+        groups.setdefault(platform, []).append({
+            "date": d["post_date"],
+            "value": d["post_count"],
+        })
+    if len(groups) == 1:
+        return {"time_series": list(groups.values())[0]}
+    return {"grouped_time_series": groups}
 
 
-def _sig_to_entity_table(top_entities: list[dict]) -> list[dict]:
-    return [
-        {"entity": e["value"], "mentions": e["post_count"],
-         "total_views": e["view_count"], "total_likes": e["like_count"]}
-        for e in top_entities
-    ]
+def _sig_to_entity_table(top_entities: list[dict]) -> dict:
+    """Convert entities to WidgetData table format."""
+    return {
+        "columns": ["Entity", "Mentions", "Views", "Likes"],
+        "rows": [
+            [e["value"], e["post_count"], e.get("view_count", 0), e.get("like_count", 0)]
+            for e in top_entities
+        ],
+    }
 
 
-def _sig_to_content_type_donut(content_type_breakdown: list[dict]) -> list[dict]:
-    total = sum(b["post_count"] for b in content_type_breakdown)
-    return [
-        {"content_type": b["value"], "count": b["post_count"], "percentage": _pct(b["post_count"], total)}
-        for b in content_type_breakdown
-    ]
-
-
-def _sig_to_language_pie(language_breakdown: list[dict]) -> list[dict]:
-    total = sum(b["post_count"] for b in language_breakdown)
-    return [
-        {"language": b["value"], "post_count": b["post_count"], "percentage": _pct(b["post_count"], total)}
-        for b in language_breakdown
-    ]
-
-
-def _sig_to_volume_chart(daily_volume: list[dict]) -> list[dict]:
-    # Already in correct shape: {post_date, platform, post_count}
-    return [{"post_date": d["post_date"], "platform": d["platform"], "post_count": d["post_count"]}
-            for d in daily_volume]
-
-
-def _sig_to_channel_table(top_channels: list[dict]) -> list[dict]:
-    # Already in correct shape for channel_table chart
-    return top_channels
+def _sig_to_channel_table(top_channels: list[dict]) -> dict:
+    """Convert channels to WidgetData table format."""
+    return {
+        "columns": ["Channel", "Platform", "Posts", "Avg Likes", "Avg Views"],
+        "rows": [
+            [
+                c.get("channel_handle", ""),
+                c.get("platform", ""),
+                c.get("collected_posts", c.get("post_count", 0)),
+                round(c.get("avg_likes", 0), 1),
+                round(c.get("avg_views", 0), 1),
+            ]
+            for c in top_channels
+        ],
+    }
 
 
 # ─── Key findings (heuristics on signature data) ────────────────────────────
@@ -274,9 +264,11 @@ def generate_report(
         narrative: Agent-written markdown narrative (3-5 bullet insights with numbers).
                    Leave empty only if there are genuinely no meaningful observations.
         custom_charts: Optional list of 0-2 additional chart cards chosen by the agent.
-                       Each item: {"chart_type": str, "data": list[dict], "title": str}
-                       Use only when the user's question requires a data slice the standard
-                       9 charts don't cover. Chart types and schemas match create_chart.
+                       Each item: {"chart_type": str, "data": dict, "title": str}
+                       chart_type: bar | line | pie | doughnut | table | number.
+                       data: WidgetData format (same as create_chart).
+                       Use only when the user's question needs a visualization the
+                       standard charts don't cover.
 
     Returns:
         A structured report payload with report_id, title, metadata, and cards array.
@@ -345,51 +337,59 @@ def generate_report(
     if kpi_card:
         cards.append(kpi_card)
 
-    # 2. Standard chart cards (body, fixed order)
-    def _chart(card_id, card_type, card_title, data, width="full"):
-        if not data:
+    # 2. Standard chart cards (body, fixed order) — using generic types + WidgetData
+    def _chart(card_id, card_type, card_title, widget_data, width="full"):
+        if not widget_data:
+            return None
+        # Skip empty categorical charts
+        if isinstance(widget_data, dict) and not widget_data.get("labels") and not widget_data.get("time_series") and not widget_data.get("grouped_time_series") and not widget_data.get("columns"):
             return None
         return {
             "id": card_id,
             "card_type": card_type,
             "title": card_title,
-            "data": {"data": data},
+            "data": widget_data,
             "layout": {"width": width, "zone": "body"},
         }
 
+    sentiment_bd = sig.get("sentiment_breakdown", [])
+    content_bd = sig.get("content_type_breakdown", [])
+    language_bd = sig.get("language_breakdown", [])
+    platform_bd = sig.get("platform_breakdown", [])
+
     standard_charts = [
-        _chart("chart-sentiment", "sentiment_pie", "Sentiment Distribution",
-               _sig_to_sentiment_pie(sig.get("sentiment_breakdown", [])), "half"),
-        _chart("chart-content-types", "content_type_donut", "Content Types",
-               _sig_to_content_type_donut(sig.get("content_type_breakdown", [])), "half"),
-        _chart("chart-languages", "language_pie", "Languages",
-               _sig_to_language_pie(sig.get("language_breakdown", [])), "half"),
-        _chart("chart-platforms", "platform_bar", "Posts by Platform",
-               _sig_to_platform_bar(sig.get("platform_breakdown", [])), "half"),
-        _chart("chart-volume", "volume_chart", "Volume Over Time",
-               _sig_to_volume_chart(sig.get("daily_volume", []))),
-        _chart("chart-themes", "theme_bar", "Top Themes",
-               _sig_to_theme_bar(sig.get("top_themes", []))),
-        _chart("chart-entities", "entity_table", "Top Entities",
-               _sig_to_entity_table(sig.get("top_entities", []))),
-        _chart("chart-channels", "channel_table", "Top Channels",
-               _sig_to_channel_table(sig.get("top_channels", []))),
+        _chart("chart-sentiment", "pie", "Sentiment Distribution",
+               _sig_to_categorical(sentiment_bd) if sentiment_bd else None, "half"),
+        _chart("chart-content-types", "doughnut", "Content Types",
+               _sig_to_categorical(content_bd) if content_bd else None, "half"),
+        _chart("chart-languages", "pie", "Languages",
+               _sig_to_categorical(language_bd) if language_bd else None, "half"),
+        _chart("chart-platforms", "bar", "Posts by Platform",
+               _sig_to_categorical(platform_bd) if platform_bd else None, "half"),
+        _chart("chart-volume", "line", "Volume Over Time",
+               _sig_to_volume_line(sig.get("daily_volume", [])) if sig.get("daily_volume") else None),
+        _chart("chart-themes", "bar", "Top Themes",
+               _sig_to_categorical(sig.get("top_themes", []), value_key="post_count") if sig.get("top_themes") else None),
+        _chart("chart-entities", "table", "Top Entities",
+               _sig_to_entity_table(sig.get("top_entities", [])) if sig.get("top_entities") else None),
+        _chart("chart-channels", "table", "Top Channels",
+               _sig_to_channel_table(sig.get("top_channels", [])) if sig.get("top_channels") else None),
     ]
     cards.extend(c for c in standard_charts if c is not None)
 
-    # 3. Agent custom charts (0-2, body zone)
+    # 3. Agent custom charts (0-2, body zone) — generic types + WidgetData
     if custom_charts:
         for i, cc in enumerate((custom_charts or [])[:2]):
             chart_type = cc.get("chart_type", "")
-            data = cc.get("data", [])
-            if chart_type not in _VALID_CHART_TYPES or not data:
+            chart_data = cc.get("data", {})
+            if chart_type not in _VALID_CHART_TYPES or not chart_data:
                 logger.warning("generate_report: skipping invalid custom chart %d (type=%r)", i, chart_type)
                 continue
             cards.append({
                 "id": f"custom-chart-{i}",
                 "card_type": chart_type,
                 "title": cc.get("title", ""),
-                "data": {"data": data},
+                "data": chart_data,
                 "layout": {"width": "full", "zone": "body"},
             })
 

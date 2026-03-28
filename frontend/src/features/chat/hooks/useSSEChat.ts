@@ -195,22 +195,18 @@ export function useSSEChat() {
                   type: 'chart',
                   data: { ...result, _artifactId: chartId },
                 });
-                // Auto-save chart as artifact
+                // Save chart as artifact (no auto-open — chart renders inline)
                 useStudioStore.getState().addArtifact({
                   id: chartId,
                   type: 'chart',
                   title: (result?.title as string) || 'Chart',
                   chartType: result?.chart_type as string,
-                  data: result?.data as unknown[],
+                  data: (result?.data as Record<string, unknown>) ?? {},
+                  barOrientation: (result?.bar_orientation as string | undefined) || undefined,
                   collectionIds: (result?.collection_ids as string[] | undefined) ?? undefined,
-                  filterSql: (result?.filter_sql as string | undefined) || undefined,
                   sourceSql: (result?.source_sql as string | undefined) || undefined,
                   createdAt: new Date(),
                 });
-                // Open studio panel, switch to artifacts, expand the chart
-                useUIStore.getState().expandStudioPanel();
-                useStudioStore.getState().setActiveTab('artifacts');
-                useStudioStore.getState().expandReport(chartId);
               } else if (isReportResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'insight_report',

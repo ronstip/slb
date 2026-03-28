@@ -7,6 +7,7 @@ import type { ChatMessage } from '../../stores/chat-store.ts';
 import type { DesignResearchResult } from '../../api/types.ts';
 import { ActivityBar } from './ActivityBar.tsx';
 import { ArtifactCard } from './cards/ArtifactCard.tsx';
+import { InlineChart } from './cards/InlineChart.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
 import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
 import { TopicsSectionCard } from './cards/TopicsSectionCard.tsx';
@@ -43,7 +44,7 @@ export function AgentMessage({ message, onSuggestionClick, isLatestMessage }: Ag
     .trim();
 
   // ── Card classification ──
-  const ARTIFACT_TYPES = new Set(['chart', 'insight_report', 'data_export', 'dashboard']);
+  const ARTIFACT_TYPES = new Set(['insight_report', 'data_export', 'dashboard']);
   const artifactCards: typeof message.cards = [];
   const otherCards: typeof message.cards = [];
   message.cards.forEach((card) => {
@@ -51,7 +52,7 @@ export function AgentMessage({ message, onSuggestionClick, isLatestMessage }: Ag
     else otherCards.push(card);
   });
   // Ensure metrics always renders above topics
-  const CARD_ORDER: Record<string, number> = { metrics_section: 0, topics_section: 1 };
+  const CARD_ORDER: Record<string, number> = { metrics_section: 0, topics_section: 1, chart: 2 };
   otherCards.sort((a, b) => (CARD_ORDER[a.type] ?? 0.5) - (CARD_ORDER[b.type] ?? 0.5));
 
   return (
@@ -107,6 +108,8 @@ export function AgentMessage({ message, onSuggestionClick, isLatestMessage }: Ag
               return <TopicsSectionCard key={`other-${i}`} data={card.data} />;
             case 'collection_progress':
               return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
+            case 'chart':
+              return <InlineChart key={`other-${i}`} data={card.data} />;
             case 'structured_prompt': {
               if (activePromptMessageId === message.id) return null;
               return <PromptAnsweredSummary key={`other-${i}`} data={card.data} />;
