@@ -180,7 +180,7 @@ export function ArtifactCard({ type, data }: ArtifactCardProps) {
     }
   }, [type, data, title, downloading]);
 
-  const hasDownload = type === 'insight_report' || (type === 'data_export' && data.collection_id);
+  const hasDownload = type === 'insight_report' || (type === 'data_export' && !!data.collection_id);
 
   // Empty data export
   if (type === 'data_export' && (data.row_count as number) === 0) {

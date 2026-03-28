@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Eye, Heart, MessageCircle, Share2 } from 'lucide-react';
 import { getCollectionStats } from '../../../api/endpoints/collections.ts';
 import { formatNumber } from '../../../lib/format.ts';
 

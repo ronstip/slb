@@ -469,7 +469,7 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
     } else if (dimension === 'posted_at') {
       add(bucketDate(p.posted_at ?? '', timeBucket), val);
     } else {
-      const key = (p as Record<string, unknown>)[dimension] as string ?? 'unknown';
+      const key = (p as unknown as Record<string, unknown>)[dimension] as string ?? 'unknown';
       add(key, val);
     }
   }

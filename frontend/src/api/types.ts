@@ -153,7 +153,9 @@ export type CollectionStatus =
   | 'completed'
   | 'completed_with_errors'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'monitoring'
+  | 'paused';
 
 export interface CollectionConfig {
   platforms: string[];
@@ -185,6 +187,10 @@ export interface CollectionStatusResponse {
   created_at?: string;
   visibility?: 'private' | 'org';
   user_id?: string;
+  last_run_at?: string;
+  next_run_at?: string;
+  total_runs?: number;
+  run_history?: Array<{ run_at: string; summary: string; status: string }>;
 }
 
 export interface MediaRef {

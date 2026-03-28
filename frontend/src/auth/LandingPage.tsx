@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useAuth } from './useAuth.ts';
 import { Logo } from '../components/Logo.tsx';
 import { Button } from '../components/ui/button.tsx';
@@ -19,7 +19,7 @@ import {
 type AnimDir = 'up' | 'left' | 'right' | 'scale' | 'fade';
 
 /** Returns a ref + boolean that flips true once the element enters the viewport. */
-function useInView(threshold = 0.15): { ref: RefObject<HTMLDivElement>; inView: boolean } {
+function useInView(threshold = 0.15): { ref: React.RefObject<HTMLDivElement | null>; inView: boolean } {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
 
@@ -54,7 +54,7 @@ function AnimateIn({
   className = '',
   threshold,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   direction?: AnimDir;
   delay?: number;
   className?: string;

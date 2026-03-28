@@ -162,6 +162,7 @@ export function useSSEChat() {
               chatState.resolveActivityTool(messageId, toolName, errorMsg);
 
               // Handle special tool results
+              if (!result) break;
               if (isDesignResearchResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'research_design',

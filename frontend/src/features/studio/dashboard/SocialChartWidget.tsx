@@ -228,8 +228,8 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
         tooltip: {
           ...getTooltipStyle(),
           callbacks: {
-            label: (ctx: { dataset: { label: string }; parsed: { y: number } }) =>
-              ` ${ctx.dataset.label}: ${formatNumber(ctx.parsed.y)}`,
+            label: (ctx: { dataset: { label?: string }; parsed: { y: number | null } }) =>
+              ` ${ctx.dataset.label ?? ''}: ${formatNumber(ctx.parsed.y ?? 0)}`,
           },
         },
       },
@@ -282,7 +282,7 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
         legend: { display: false },
         tooltip: {
           ...getTooltipStyle(),
-          callbacks: { label: (ctx: { parsed: { y: number } }) => ` ${formatNumber(ctx.parsed.y)}` },
+          callbacks: { label: (ctx: { parsed: { y: number | null } }) => ` ${formatNumber(ctx.parsed.y ?? 0)}` },
         },
       },
       scales: {
@@ -412,8 +412,8 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
           ...getTooltipStyle(),
           callbacks: {
             label: isHorizontal
-              ? (ctx: { parsed: { x: number } }) => ` ${formatNumber(ctx.parsed.x)}`
-              : (ctx: { parsed: { y: number } }) => ` ${formatNumber(ctx.parsed.y)}`,
+              ? (ctx: { parsed: { x: number | null } }) => ` ${formatNumber(ctx.parsed.x ?? 0)}`
+              : (ctx: { parsed: { y: number | null } }) => ` ${formatNumber(ctx.parsed.y ?? 0)}`,
           },
         },
       },

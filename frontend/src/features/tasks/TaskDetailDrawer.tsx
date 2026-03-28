@@ -7,8 +7,6 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Circle,
   CircleDot,
   Clock,

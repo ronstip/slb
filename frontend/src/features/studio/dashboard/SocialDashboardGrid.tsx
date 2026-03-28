@@ -1,18 +1,18 @@
 import { useCallback, useRef, useState } from 'react';
 import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
-import type { Layout } from 'react-grid-layout';
+import type { Layout, LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import type { DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget } from './types-social-dashboard.ts';
 import { SocialWidgetRenderer } from './SocialWidgetRenderer.tsx';
 
-function mergeRefs<T>(...refs: Array<React.Ref<T> | undefined | null>) {
-  return (node: T) => {
+function mergeRefs<T>(...refs: Array<React.Ref<T | null> | undefined | null>) {
+  return (node: T | null) => {
     refs.forEach((ref) => {
       if (!ref) return;
       if (typeof ref === 'function') ref(node);
-      else (ref as React.MutableRefObject<T>).current = node;
+      else (ref as React.MutableRefObject<T | null>).current = node;
     });
   };
 }
@@ -22,12 +22,12 @@ const COLS = { lg: 12, md: 8, sm: 4, xs: 2 };
 const ROW_HEIGHT = 48;
 const MARGIN: [number, number] = [8, 8];
 
-function buildCompactLayout(widgets: SocialDashboardWidget[], cols: number): Layout[] {
+function buildCompactLayout(widgets: SocialDashboardWidget[], cols: number): LayoutItem[] {
   const isNumberCard = (w: SocialDashboardWidget) => w.chartType === 'number-card';
   const cards = widgets.filter(isNumberCard);
   const charts = widgets.filter((w) => !isNumberCard(w));
 
-  const layout: Layout[] = [];
+  const layout: LayoutItem[] = [];
   let y = 0;
 
   const cardW = Math.max(1, Math.floor(cols / Math.max(cards.length, 1)));
@@ -71,7 +71,7 @@ export function SocialDashboardGrid({
   const isDragging = useRef(false);
   const { width, containerRef } = useContainerWidth({ initialWidth: 1280 });
 
-  const lgLayout: Layout[] = widgets.map((w) => ({
+  const lgLayout: LayoutItem[] = widgets.map((w) => ({
     i: w.i,
     x: w.x,
     y: w.y,
@@ -91,7 +91,7 @@ export function SocialDashboardGrid({
   };
 
   const handleLayoutChange = useCallback(
-    (layout: Layout[]) => {
+    (layout: Layout) => {
       // Only persist lg-breakpoint positions — compact layouts are auto-derived
       if (!isEditMode || isDragging.current || currentBreakpoint !== 'lg') return;
       const updated = widgets.map((w) => {
@@ -104,6 +104,8 @@ export function SocialDashboardGrid({
     [widgets, isEditMode, onLayoutChange, currentBreakpoint],
   );
 
+  const canInteract = isEditMode && currentBreakpoint === 'lg';
+
   return (
     <div ref={mergeRefs(containerRef, gridRef)} className="w-full">
       <ResponsiveGridLayout
@@ -115,9 +117,8 @@ export function SocialDashboardGrid({
         rowHeight={ROW_HEIGHT}
         margin={MARGIN}
         containerPadding={[16, 16]}
-        isDraggable={isEditMode && currentBreakpoint === 'lg'}
-        isResizable={isEditMode && currentBreakpoint === 'lg'}
-        draggableHandle=".drag-handle"
+        dragConfig={{ enabled: canInteract, handle: '.drag-handle' }}
+        resizeConfig={{ enabled: canInteract }}
         onBreakpointChange={(bp) => setCurrentBreakpoint(bp)}
         onLayoutChange={handleLayoutChange}
         onDragStart={() => { isDragging.current = true; }}
