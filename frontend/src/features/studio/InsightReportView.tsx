@@ -241,8 +241,8 @@ function CardRenderer({ card }: { card: ReportCard }) {
         <span className="text-3xl font-bold text-foreground">
           {formatNumber((numData.value as number) ?? 0)}
         </span>
-        {numData.label && (
-          <p className="mt-1 text-xs text-muted-foreground">{String(numData.label)}</p>
+        {typeof numData.label === 'string' && numData.label && (
+          <p className="mt-1 text-xs text-muted-foreground">{numData.label}</p>
         )}
       </div>
     );
