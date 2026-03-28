@@ -186,8 +186,6 @@ def _run_underlying_data_query(
             row["themes"] = "; ".join(row["themes"])
         if isinstance(row.get("entities"), list):
             row["entities"] = "; ".join(row["entities"])
-        if isinstance(row.get("key_quotes"), list):
-            row["key_quotes"] = "; ".join(row["key_quotes"])
         if isinstance(row.get("media_refs"), list):
             row["media_refs"] = json.dumps(row["media_refs"])
 

@@ -51,8 +51,6 @@ def _write_results_via_values(
     for post_id, r in results:
         entities_arr = ", ".join(f"'{_esc(e)}'" for e in r.entities)
         themes_arr = ", ".join(f"'{_esc(t)}'" for t in r.themes)
-        quotes_arr = ", ".join(f"'{_esc(q)}'" for q in r.key_quotes)
-
         brands_arr = ", ".join(f"'{_esc(b)}'" for b in r.detected_brands)
 
         custom_json = json.dumps(r.custom_fields) if r.custom_fields else None
@@ -60,6 +58,7 @@ def _write_results_via_values(
 
         selects.append(
             f"SELECT '{_esc(post_id)}' AS post_id, "
+            f"'{_esc(r.context)}' AS context, "
             f"'{_esc(r.sentiment)}' AS sentiment, "
             f"'{_esc(r.emotion)}' AS emotion, "
             f"[{entities_arr}] AS entities, "
@@ -67,7 +66,6 @@ def _write_results_via_values(
             f"'{_esc(r.ai_summary)}' AS ai_summary, "
             f"'{_esc(r.language)}' AS language, "
             f"'{_esc(r.content_type)}' AS content_type, "
-            f"[{quotes_arr}] AS key_quotes, "
             f"{'TRUE' if r.is_related_to_task else 'FALSE'} AS is_related_to_task, "
             f"[{brands_arr}] AS detected_brands, "
             f"'{_esc(r.channel_type)}' AS channel_type, "
@@ -83,10 +81,11 @@ USING (
 ) AS source
 ON target.post_id = source.post_id
 WHEN NOT MATCHED THEN
-    INSERT (post_id, sentiment, emotion, entities, themes, ai_summary, language, content_type, key_quotes, is_related_to_task, detected_brands, channel_type, custom_fields, enriched_at)
-    VALUES (source.post_id, source.sentiment, source.emotion, source.entities, source.themes, source.ai_summary, source.language, source.content_type, source.key_quotes, source.is_related_to_task, source.detected_brands, source.channel_type, source.custom_fields, CURRENT_TIMESTAMP())
+    INSERT (post_id, context, sentiment, emotion, entities, themes, ai_summary, language, content_type, is_related_to_task, detected_brands, channel_type, custom_fields, enriched_at)
+    VALUES (source.post_id, source.context, source.sentiment, source.emotion, source.entities, source.themes, source.ai_summary, source.language, source.content_type, source.is_related_to_task, source.detected_brands, source.channel_type, source.custom_fields, CURRENT_TIMESTAMP())
 WHEN MATCHED THEN
     UPDATE SET
+        context                = source.context,
         sentiment              = source.sentiment,
         emotion                = source.emotion,
         entities               = source.entities,
@@ -94,8 +93,7 @@ WHEN MATCHED THEN
         ai_summary             = source.ai_summary,
         language               = source.language,
         content_type           = source.content_type,
-        key_quotes             = source.key_quotes,
-        is_related_to_task  = source.is_related_to_task,
+        is_related_to_task     = source.is_related_to_task,
         detected_brands        = source.detected_brands,
         channel_type           = source.channel_type,
         custom_fields          = source.custom_fields,

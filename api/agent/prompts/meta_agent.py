@@ -378,7 +378,7 @@ Dataset: `social_listening`
   Columns: post_id, collection_id, platform, channel_handle, channel_id, title, content, post_url, posted_at, post_type, parent_post_id, media_refs (JSON), platform_metadata (JSON), collected_at
 
 - `social_listening.enriched_posts` — AI-enriched post data (joined via post_id)
-  Columns: post_id, sentiment, emotion, entities (ARRAY<STRING>), themes (ARRAY<STRING>), ai_summary, language, content_type, key_quotes (ARRAY<STRING>), is_related_to_task (BOOL), detected_brands (ARRAY<STRING>), channel_type (STRING: "official"/"media"/"ugc"), custom_fields (JSON), enriched_at
+  Columns: post_id, context, sentiment, emotion, entities (ARRAY<STRING>), themes (ARRAY<STRING>), ai_summary, language, content_type, is_related_to_task (BOOL), detected_brands (ARRAY<STRING>), channel_type (STRING: "official"/"media"/"influencer"/"ugc"), custom_fields (JSON), enriched_at
   - `is_related_to_task`: TRUE if the post is genuinely related to the task, FALSE if it's garbage/unrelated. Use `WHERE ep.is_related_to_task IS NOT FALSE` to filter out irrelevant posts in analysis queries.
   - `detected_brands`: Brands mentioned, referenced, or visible in the post content and media. Query with `UNNEST(ep.detected_brands)`.
   - `custom_fields` stores per-collection custom enrichment data as JSON. Query with: `JSON_EXTRACT_SCALAR(ep.custom_fields, '$.field_name')`

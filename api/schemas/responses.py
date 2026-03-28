@@ -40,7 +40,6 @@ class FeedPostResponse(BaseModel):
     entities: list[str] = []
     ai_summary: str | None = None
     content_type: str | None = None
-    key_quotes: list[str] = []
     custom_fields: dict | None = None
     collection_id: str | None = None
 
@@ -66,7 +65,6 @@ class DashboardPostResponse(BaseModel):
     entities: list[str] = []
     language: str | None = None
     content_type: str | None = None
-    key_quotes: list[str] = []
     like_count: int = 0
     view_count: int = 0
     comment_count: int = 0

@@ -12,7 +12,6 @@ interface ExpandableRow {
   title?: string | null;
   content?: string | null;
   ai_summary?: string | null;
-  key_quotes?: string[] | null;
   emotion?: string | null;
   themes?: string | string[] | null;
   entities?: string | string[] | null;
@@ -44,16 +43,6 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
           <>
             <span className="font-medium text-muted-foreground">AI Summary</span>
             <p className="text-foreground">{row.ai_summary}</p>
-          </>
-        )}
-        {row.key_quotes && row.key_quotes.length > 0 && (
-          <>
-            <span className="font-medium text-muted-foreground">Key Quotes</span>
-            <div className="flex flex-col gap-1">
-              {row.key_quotes.map((q, i) => (
-                <p key={i} className="italic text-foreground/80">"{q}"</p>
-              ))}
-            </div>
           </>
         )}
         {row.emotion && (

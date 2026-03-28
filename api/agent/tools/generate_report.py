@@ -31,7 +31,7 @@ WITH latest_engagement AS (
 SELECT p.post_id, p.platform, p.channel_handle, p.title, p.post_url,
        p.posted_at, p.post_type, e.likes, e.shares, e.views, e.comments_count,
        COALESCE(e.likes, 0) + COALESCE(e.shares, 0) + COALESCE(e.views, 0) AS total_engagement,
-       ep.sentiment, ep.emotion, ep.themes, ep.content_type, ep.key_quotes, ep.custom_fields
+       ep.sentiment, ep.emotion, ep.themes, ep.content_type, ep.custom_fields
 FROM social_listening.posts p
 LEFT JOIN latest_engagement e ON e.post_id = p.post_id AND e.rn = 1
 LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id

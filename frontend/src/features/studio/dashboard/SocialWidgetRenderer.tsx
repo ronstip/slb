@@ -390,7 +390,6 @@ interface PostTableRow {
   entities?: string[];
   emotion?: string | null;
   content_type?: string | null;
-  key_quotes?: string[];
 }
 
 function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
@@ -410,7 +409,6 @@ function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
     entities: p.entities,
     emotion: p.emotion,
     content_type: p.content_type,
-    key_quotes: p.key_quotes,
   }));
 }
 

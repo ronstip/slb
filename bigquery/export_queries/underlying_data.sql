@@ -42,8 +42,7 @@ SELECT
     ep.themes,
     ep.entities,
     ep.ai_summary,
-    ep.content_type,
-    ep.key_quotes
+    ep.content_type
 FROM deduped_posts p
 LEFT JOIN deduped_engagements eng ON eng.post_id = p.post_id AND eng._rn = 1
 LEFT JOIN deduped_enriched ep ON ep.post_id = p.post_id AND ep._rn = 1

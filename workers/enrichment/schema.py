@@ -43,15 +43,18 @@ class CustomFieldDef(BaseModel):
 class EnrichmentResult(BaseModel):
     """Structured enrichment output from Gemini."""
 
+    context: str
     ai_summary: str
+    language: str
     sentiment: Literal["positive", "negative", "neutral"]
-    emotion: str
+    emotion: Literal[
+        "joy", "anger", "frustration", "excitement", "disappointment",
+        "surprise", "trust", "fear", "neutral",
+    ]
     entities: list[str]
     themes: list[str]
-    language: str
     content_type: str
-    key_quotes: list[str]
-    is_related_to_task: bool = True
+    is_related_to_task: bool
     detected_brands: list[str] = []
-    channel_type: Literal["official", "media", "ugc"] = "ugc"
+    channel_type: Literal["official", "media", "influencer", "ugc"] = "ugc"
     custom_fields: dict | None = None

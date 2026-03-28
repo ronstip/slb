@@ -224,7 +224,6 @@ export interface FeedPost {
   entities?: string[];
   ai_summary?: string;
   content_type?: string;
-  key_quotes?: string[];
   custom_fields?: Record<string, unknown> | null;
   collection_id?: string;
 }
@@ -507,7 +506,6 @@ export interface DashboardPost {
   entities?: string[];
   language?: string;
   content_type?: string;
-  key_quotes?: string[];
   like_count: number;
   view_count: number;
   comment_count: number;
@@ -587,7 +585,6 @@ export interface DataExportRow {
   entities: string | null;
   ai_summary: string | null;
   content_type: string | null;
-  key_quotes: string[] | null;
   media_refs?: string | MediaRef[];
   custom_fields?: Record<string, unknown> | null;
 }

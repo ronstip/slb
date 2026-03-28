@@ -562,6 +562,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         user_turn_starts: list[int] = [
             i for i, e in enumerate(session.events)
             if e.content and e.content.role == "user"
+            and not any(getattr(p, "function_response", None) for p in (e.content.parts or []))
         ]
         if len(user_turn_starts) > MAX_USER_TURNS:
             cutoff = user_turn_starts[-MAX_USER_TURNS]
@@ -973,7 +974,6 @@ async def get_collection_posts(
         ep.entities,
         ep.ai_summary,
         ep.content_type,
-        ep.key_quotes,
         ep.custom_fields,
         COUNT(*) OVER() as _total
     FROM (
@@ -1179,7 +1179,7 @@ async def download_collection(
         COALESCE(pe.views, 0) as views,
         COALESCE(pe.comments_count, 0) as comments_count,
         COALESCE(pe.saves, 0) as saves,
-        ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.key_quotes, ep.custom_fields
+        ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
         FROM social_listening.posts
@@ -1307,8 +1307,7 @@ async def get_multi_collection_feed(
         COALESCE(pe.comments_count, 0) as comments_count,
         COALESCE(pe.saves, 0) as saves,
         COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
-        ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.key_quotes, ep.custom_fields,
-        ep.custom_fields,
+        ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields,
         COUNT(*) OVER() as _total
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn

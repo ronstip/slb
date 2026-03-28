@@ -112,31 +112,30 @@ def _get_general_rate_limiter() -> _TokenBucketRateLimiter:
     return _general_rate_limiter
 
 ENRICHMENT_PROMPT = """\
-Your task is to analyze the attached social media post to determine its primary content, context, intent, tone, and cultural relevance and narrative.
+Your job is to analyze the attached social media post to determine its primary content, context, intent, tone, and cultural relevance and narrative.
 
-IMPORTANT: All output fields MUST be in English, regardless of the post's original language. Translate content, quotes, themes, and entities into English. The only exception is the "language" field, which should report the ISO code of the post's original language.
 
-Instructions:
+Fields of the analysis:
+- context: the context and background which the post content is living in and referring to. to be used later to fill in the rest of analysis.
 - ai_summary: A summary paragraph of the post, its content, context, and narrative
-- sentiment: overall sentiment (positive/negative/neutral)
-- emotion: primary emotion (joy/anger/frustration/excitement/disappointment/surprise/trust/fear/neutral)
-- entities: brands, products, people mentioned (in text or visible in media)
-- themes: topic themes (e.g. "skincare routine", "product review")
 - language: ISO code of the post language (e.g. en, es, he)
-- content_type: review/tutorial/meme/ad/unboxing/comparison/testimonial/other
-- key_quotes: 1-3 notable direct quotes from the post text (empty array if none)
-- is_related_to_task: Whether this post is genuinely related to the task. Task context: "{enrichment_context}". Search keyword: "{search_keyword}". True if the post is meaningfully about what the task is investigating — consider the broader task context, not just the individual keyword. False if the keyword match is coincidental, the post is spam, or the content is unrelated to the task's purpose.
+- sentiment: The sentiment of the post towards the main entity of the task. You should determine the sentiment of the post is from their POV. Positive: A proactive support toward the entity or its proxy, that make its perceived reputation and opinion more positive. Neutral: Content that its opinion about the entity is ambiguous, ambivalent, or is not opinionated at all like facts. Negative: Explicit or implicit criticism, bad or negative reaction towards the entity or its proxy. Content that is harming the reputation of the entity
+- emotion: primary emotion (joy/anger/frustration/excitement/disappointment/surprise/trust/fear/neutral)
+- entities: brands, products, people mentioned (in text, visual or transcript)
+- themes: topic themes (e.g. "skincare routine", "product review")
+- content_type: The type, category of the content.
+- is_related_to_task: Whether this post is genuinely related to the task: "{enrichment_context}". True if the post is meaningfully about what the task is focusing. Combine the information about the post such as context, content, publish time, entities with the web information to determine if relevant or not. 
 - detected_brands: All brand names mentioned, referenced, shown, or visible in the post content or media. Include both text mentions and brands visible in images/video (logos, products, packaging).
-- channel_type: Classify the posting channel/account. "official" for verified brand or entity accounts, "media" for news outlets and media channels, "ugc" for regular users and creators.
+- channel_type: Classify the posting channel/account. "official" for brand or entity accounts, "media" for news outlets and media channels. "Influencer" for Individuals which are known to work as influencer for their living. "ugc" for regular users and creators.
+
+IMPORTANT: All output fields MUST be in English, regardless of the post's original language.
+
 
 Post:
   Platform: {platform}
   Channel: {channel_handle}
   Posted at: {posted_at}
-  Title: {title}
-  Content: {content}
-  Search Keyword: {search_keyword}
-  Task Context: {enrichment_context}
+  Content: {title} {content}
   Media:
 
 """
@@ -234,7 +233,6 @@ def _build_content_parts(
         posted_at=post.posted_at or "unknown",
         title=post.title or "",
         content=post.content or "",
-        search_keyword=post.search_keyword or "N/A",
         enrichment_context=effective_context,
     )
 
