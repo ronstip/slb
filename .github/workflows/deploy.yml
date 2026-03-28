@@ -30,6 +30,8 @@ jobs:
 
       - name: Build frontend (dev mode - no Firebase)
         working-directory: frontend
+        env:
+          VITE_FIREBASE_API_KEY: ''
         run: npx vite build
 
       - name: Install E2E deps
