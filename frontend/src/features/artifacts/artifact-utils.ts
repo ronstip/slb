@@ -39,7 +39,7 @@ export function convertToStudioArtifact(detail: ArtifactDetail): Artifact {
         ...base,
         type: 'chart',
         chartType: p.chart_type as string,
-        data: (p.data ?? []) as unknown[],
+        data: (p.data ?? {}) as Record<string, unknown>,
         colorOverrides: p.color_overrides as Record<string, string> | undefined,
         collectionIds: detail.collection_ids,
       } as Extract<Artifact, { type: 'chart' }>;
