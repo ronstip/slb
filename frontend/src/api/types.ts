@@ -506,6 +506,7 @@ export interface DashboardPost {
   entities?: string[];
   language?: string;
   content_type?: string;
+  custom_fields?: Record<string, unknown> | null;
   like_count: number;
   view_count: number;
   comment_count: number;

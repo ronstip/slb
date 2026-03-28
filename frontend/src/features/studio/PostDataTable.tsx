@@ -109,5 +109,6 @@ function rowToFeedPost(row: DataExportRow): FeedPost {
     entities: row.entities ? row.entities.split(';').map((e) => e.trim()).filter(Boolean) : undefined,
     ai_summary: row.ai_summary ?? undefined,
     content_type: row.content_type ?? undefined,
+    custom_fields: row.custom_fields ?? undefined,
   };
 }

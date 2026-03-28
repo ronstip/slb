@@ -8,6 +8,9 @@ import json
 import logging
 
 from google.adk.tools.tool_context import ToolContext
+from pydantic import ValidationError
+
+from workers.enrichment.schema import CustomFieldDef
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +42,12 @@ def start_task(
             {"frequency": "7d@09:00", "frequency_label": "Weekly at 9 AM UTC",
              "auto_report": true}
             Leave empty for one-shot tasks.
-        custom_fields: JSON array of custom enrichment fields. Format:
-            [{"name": "purchase_intent", "type": "str",
-              "description": "Whether post indicates intent to buy"}]
+        custom_fields: JSON array of custom enrichment fields. Each object has:
+            "name" (snake_case), "type" (str/bool/int/float/list[str]/literal),
+            "description". For type "literal", include "options" array.
+            Example: [{"name": "purchase_intent", "type": "literal",
+              "options": ["high", "medium", "low", "none"],
+              "description": "Level of purchase intent"}]
             Leave empty if not needed.
         enrichment_context: A concise description of what makes posts relevant
             to this task. Used during enrichment to judge post relevance.
@@ -80,11 +86,15 @@ def start_task(
     except (json.JSONDecodeError, TypeError):
         schedule_obj = None
 
-    # Parse custom fields
-    try:
-        custom_fields_list = json.loads(custom_fields) if custom_fields else None
-    except (json.JSONDecodeError, TypeError):
-        custom_fields_list = None
+    # Parse and validate custom fields
+    custom_fields_list = None
+    if custom_fields:
+        try:
+            raw = json.loads(custom_fields) if isinstance(custom_fields, str) else custom_fields
+            custom_fields_list = [CustomFieldDef(**f).model_dump(exclude_none=True) for f in raw]
+        except (json.JSONDecodeError, ValidationError, TypeError) as e:
+            logger.warning("Invalid custom_fields in start_task: %s", e)
+            custom_fields_list = None
 
     # Build data scope
     data_scope = {"searches": searches_list}

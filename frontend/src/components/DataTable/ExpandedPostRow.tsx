@@ -1,3 +1,5 @@
+import { Fragment } from 'react';
+
 import type { MediaRef } from '../../api/types.ts';
 import { PostMedia } from '../../features/studio/PostCard.tsx';
 import { parseStringList } from './cells.tsx';
@@ -16,6 +18,7 @@ interface ExpandableRow {
   themes?: string | string[] | null;
   entities?: string | string[] | null;
   content_type?: string | null;
+  custom_fields?: Record<string, unknown> | null;
   media_refs?: string | MediaRef[];
   post_url: string;
 }
@@ -77,6 +80,16 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
             <span className="capitalize text-foreground">{row.content_type}</span>
           </>
         )}
+        {row.custom_fields && Object.keys(row.custom_fields).length > 0 && (
+          <>
+            {Object.entries(row.custom_fields).map(([key, value]) => (
+              <Fragment key={key}>
+                <span className="font-medium text-muted-foreground">{key.replace(/_/g, ' ')}</span>
+                <span className="capitalize text-foreground">{formatFieldValue(value)}</span>
+              </Fragment>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Right side: media */}
@@ -92,6 +105,13 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
+
+function formatFieldValue(value: unknown): string {
+  if (value === null || value === undefined) return '\u2014';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.join(', ');
+  return String(value);
+}
 
 export function parseMediaRefs(raw?: string | MediaRef[]): MediaRef[] | undefined {
   if (!raw) return undefined;

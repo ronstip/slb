@@ -4,9 +4,10 @@ PostData: input to enricher (post content + media references)
 EnrichmentResult: structured output from Gemini
 """
 
+import re
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class MediaRef(BaseModel):
@@ -32,12 +33,33 @@ class PostData(BaseModel):
     media_refs: list[MediaRef] = []
 
 
+CustomFieldType = Literal["str", "bool", "int", "float", "list[str]", "literal"]
+
+
 class CustomFieldDef(BaseModel):
-    """Definition of a custom enrichment field (per-collection)."""
+    """Definition of a custom enrichment field (per-collection/task)."""
 
     name: str
     description: str
-    type: str = "str"  # str, bool, int, float, list[str]
+    type: CustomFieldType = "str"
+    options: list[str] | None = None  # Required when type="literal"
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if not re.match(r"^[a-z][a-z0-9_]{0,63}$", v):
+            raise ValueError(
+                f"Field name must be lowercase alphanumeric + underscores, 1-64 chars: '{v}'"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_literal_options(self) -> "CustomFieldDef":
+        if self.type == "literal" and not self.options:
+            raise ValueError("'options' is required when type is 'literal'")
+        if self.type != "literal" and self.options:
+            self.options = None
+        return self
 
 
 class EnrichmentResult(BaseModel):

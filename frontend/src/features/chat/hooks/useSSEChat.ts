@@ -274,9 +274,12 @@ export function useSSEChat() {
                     }
                   }
                 }
-                // Refresh task list
-                import('../../../stores/task-store.ts').then(({ useTaskStore }) => {
-                  useTaskStore.getState().fetchTasks();
+                // Refresh task list, then set newly created task as active context
+                import('../../../stores/task-store.ts').then(async ({ useTaskStore }) => {
+                  await useTaskStore.getState().fetchTasks();
+                  if (taskId) {
+                    useTaskStore.getState().setActiveTask(taskId);
+                  }
                 });
               } else if (isTodoResult(toolName, result)) {
                 // Update todos on the message — displayed in ActivityBar

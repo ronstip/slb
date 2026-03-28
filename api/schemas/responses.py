@@ -65,6 +65,7 @@ class DashboardPostResponse(BaseModel):
     entities: list[str] = []
     language: str | None = None
     content_type: str | None = None
+    custom_fields: dict | None = None
     like_count: int = 0
     view_count: int = 0
     comment_count: int = 0

@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
 from google.genai import types
+from typing import Literal
+
 from pydantic import BaseModel, create_model
 
 from config.settings import get_settings
@@ -169,11 +171,18 @@ def _is_video(media_type: str, content_type: str) -> bool:
 
 
 def _build_custom_fields_prompt(custom_fields: list[CustomFieldDef]) -> str:
-    """Build prompt section for custom fields."""
-    lines = ["\nCustom fields to extract (return in the \"custom_fields\" JSON object):"]
+    """Build prompt section for custom fields, formatted as analysis fields."""
+    lines = [
+        "",
+        "Custom fields (task-specific fields that provide flexibility to classify, label, or extract any information needed for the task goal):",
+    ]
     for f in custom_fields:
-        lines.append(f"- {f.name} ({f.type}): {f.description}")
-    return "\n".join(lines) + "\n"
+        if f.type == "literal" and f.options:
+            type_hint = f"one of: {', '.join(f.options)}"
+        else:
+            type_hint = f.type
+        lines.append(f"- {f.name} ({type_hint}): {f.description}")
+    return "\n".join(lines)
 
 
 def _build_custom_fields_model(custom_fields: list[CustomFieldDef]) -> type[BaseModel]:
@@ -184,7 +193,13 @@ def _build_custom_fields_model(custom_fields: list[CustomFieldDef]) -> type[Base
     """
     field_definitions = {}
     for f in custom_fields:
-        python_type = _CUSTOM_FIELD_TYPE_MAP.get(f.type, str)
+        if f.type == "literal" and f.options:
+            python_type = Literal[tuple(f.options)]
+        else:
+            python_type = _CUSTOM_FIELD_TYPE_MAP.get(f.type)
+            if python_type is None:
+                logger.warning("Unknown custom field type '%s' for field '%s', skipping", f.type, f.name)
+                continue
         field_definitions[f.name] = (python_type | None, None)
 
     return create_model("CustomFields", **field_definitions)
@@ -236,9 +251,13 @@ def _build_content_parts(
         enrichment_context=effective_context,
     )
 
-    # Append custom field instructions if defined
+    # Inject custom field instructions inline, before the IMPORTANT marker
     if custom_fields:
-        prompt_text += _build_custom_fields_prompt(custom_fields)
+        custom_section = _build_custom_fields_prompt(custom_fields)
+        prompt_text = prompt_text.replace(
+            "\nIMPORTANT: All output fields",
+            f"{custom_section}\n\nIMPORTANT: All output fields",
+        )
 
     parts.append(types.Part.from_text(text=prompt_text))
 

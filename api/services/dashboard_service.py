@@ -21,6 +21,7 @@ SELECT
     ep.entities,
     ep.language,
     ep.content_type,
+    ep.custom_fields,
     COALESCE(pe.likes, 0) AS like_count,
     COALESCE(pe.views, 0) AS view_count,
     COALESCE(pe.comments_count, 0) AS comment_count,
@@ -51,6 +52,18 @@ WHERE collection_id IN UNNEST(@collection_ids)
 """
 
 
+def _parse_custom_fields(value) -> dict | None:
+    if isinstance(value, dict):
+        return value or None
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) and parsed else None
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return None
+
+
 def parse_json_field(value) -> list:
     if isinstance(value, list):
         return value
@@ -77,6 +90,7 @@ def build_post_response(row: dict) -> DashboardPostResponse:
         entities=parse_json_field(row.get("entities")),
         language=row.get("language"),
         content_type=row.get("content_type"),
+        custom_fields=_parse_custom_fields(row.get("custom_fields")),
         like_count=row.get("like_count", 0),
         view_count=row.get("view_count", 0),
         comment_count=row.get("comment_count", 0),

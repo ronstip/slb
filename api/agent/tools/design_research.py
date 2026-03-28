@@ -1,5 +1,10 @@
+import json
 import logging
 from datetime import datetime, timedelta, timezone
+
+from pydantic import ValidationError
+
+from workers.enrichment.schema import CustomFieldDef
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +51,10 @@ def design_research(
             "standard", or "deep".
         min_likes: Minimum likes threshold for enrichment eligibility. Default 0
             (enrich all posts). Set higher to enrich only popular posts.
-        custom_fields: Pipe-separated custom enrichment fields. Each field is
-            "name:type:description". Supported types: str, bool, int, float, list[str].
-            Example: "purchase_intent:str:Whether intent to buy|is_sponsored:bool:Appears sponsored".
+        custom_fields: JSON array of custom enrichment field definitions.
+            Each object has: "name" (snake_case), "type" (str/bool/int/float/list[str]/literal),
+            "description". For type "literal", include "options" array with allowed values.
+            Example: [{"name": "purchase_intent", "type": "literal", "options": ["high", "medium", "low", "none"], "description": "Level of purchase intent expressed"}]
             These are extracted by Gemini alongside the standard enrichment fields.
 
     Returns:
@@ -60,24 +66,14 @@ def design_research(
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=time_range_days)
 
-    # Parse custom fields: "name:type:description|name:type:description"
+    # Parse and validate custom fields
     custom_fields_list = []
     if custom_fields:
-        for entry in custom_fields.split("|"):
-            parts = entry.strip().split(":", 2)
-            if len(parts) == 3:
-                custom_fields_list.append({
-                    "name": parts[0].strip(),
-                    "type": parts[1].strip(),
-                    "description": parts[2].strip(),
-                })
-            elif len(parts) == 2:
-                # Default type to str if omitted
-                custom_fields_list.append({
-                    "name": parts[0].strip(),
-                    "type": "str",
-                    "description": parts[1].strip(),
-                })
+        try:
+            raw = json.loads(custom_fields) if isinstance(custom_fields, str) else custom_fields
+            custom_fields_list = [CustomFieldDef(**f).model_dump(exclude_none=True) for f in raw]
+        except (json.JSONDecodeError, ValidationError, TypeError) as e:
+            logger.warning("Invalid custom_fields in design_research: %s", e)
 
     # Compute per-keyword-per-platform post limit from n_posts
     from math import ceil
