@@ -59,6 +59,7 @@ class DashboardPostResponse(BaseModel):
     posted_at: str = ""
     title: str | None = None
     content: str | None = None
+    post_url: str = ""
     sentiment: str | None = None
     emotion: str | None = None
     themes: list[str] = []

@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2, Maximize2, Pencil } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2, Maximize2, Pencil, X } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import type { Artifact } from '../../../stores/studio-store.ts';
 import { updateArtifact } from '../../../api/endpoints/artifacts.ts';
@@ -24,9 +24,10 @@ interface DashboardViewProps {
   artifact: DashboardArtifact;
   standalone?: boolean;
   defaultLayout?: import('./types-social-dashboard.ts').SocialDashboardWidget[];
+  onClose?: () => void;
 }
 
-export function DashboardView({ artifact, standalone = false, defaultLayout }: DashboardViewProps) {
+export function DashboardView({ artifact, standalone = false, defaultLayout, onClose }: DashboardViewProps) {
   const collapseReport = useStudioStore((s) => s.collapseReport);
   const updateArtifactTitle = useStudioStore((s) => s.updateArtifactTitle);
   const gridRef = useRef<HTMLElement | null>(null);
@@ -192,6 +193,14 @@ export function DashboardView({ artifact, standalone = false, defaultLayout }: D
             {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             PDF
           </Button>
+          {onClose && (
+            <>
+              <div className="h-4 w-px bg-border shrink-0" />
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose}>
+                <X className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
 

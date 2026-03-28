@@ -27,8 +27,8 @@ export function TaskDataExplorer({ task, open, onClose }: TaskDataExplorerProps)
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="flex h-[95vh] w-[98vw] max-w-[1800px] sm:max-w-[1800px] flex-col gap-0 p-0 overflow-hidden">
-        <DashboardView artifact={artifact} standalone defaultLayout={getExplorerDefaultLayout()} />
+      <DialogContent showCloseButton={false} className="flex h-[95vh] w-[98vw] max-w-[1800px] sm:max-w-[1800px] flex-col gap-0 p-0 overflow-hidden">
+        <DashboardView artifact={artifact} standalone defaultLayout={getExplorerDefaultLayout()} onClose={onClose} />
       </DialogContent>
     </Dialog>
   );

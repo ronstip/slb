@@ -35,7 +35,7 @@ function GenericTableView({ data }: { data: WidgetData | undefined }) {
     return <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No data</div>;
   }
   return (
-    <div className="overflow-y-auto h-full">
+    <div className="overflow-auto h-full">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border text-left text-muted-foreground">
@@ -400,7 +400,7 @@ function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
     channel_handle: p.channel_handle,
     title: p.title,
     content: p.content,
-    post_url: '',
+    post_url: p.post_url ?? '',
     posted_at: p.posted_at,
     likes: p.like_count,
     views: p.view_count,

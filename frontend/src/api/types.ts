@@ -500,6 +500,7 @@ export interface DashboardPost {
   posted_at: string;
   title?: string;
   content?: string;
+  post_url?: string;
   sentiment?: string;
   emotion?: string;
   themes?: string[];
