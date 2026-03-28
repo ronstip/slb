@@ -19,7 +19,7 @@ function InviteRoute() {
 // Smart home route: shows LandingPage for anonymous/unauthenticated users,
 // AppShell for signed-in users. Auth state changes trigger automatic re-render.
 function HomeRoute() {
-  const { loading, isAnonymous } = useAuth();
+  const { loading, isAnonymous, devMode } = useAuth();
 
   if (loading) {
     return (
@@ -29,7 +29,8 @@ function HomeRoute() {
     );
   }
 
-  return isAnonymous ? <LandingPage /> : <AppShell />;
+  // In dev mode (no Firebase configured), go straight to app
+  return (isAnonymous && !devMode) ? <LandingPage /> : <AppShell />;
 }
 
 // Static router — never recreated. Auth is handled by the AuthGate layout route.
