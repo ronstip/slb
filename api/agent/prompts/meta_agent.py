@@ -138,6 +138,7 @@ Tool descriptions contain full usage details — trust them.
 - Always filter by `collection_id`. Collection ≠ relevant subset — filter to the slice that matters.
 - **ARRAY fields** (entities, themes): Use `UNNEST`. Do NOT search these in content/title columns.
 - Joins: `posts` ↔ `enriched_posts` on `post_id`; `posts` ↔ `post_engagements` on `post_id`.
+- **Relevance filter**: `is_related_to_task` marks whether a post is genuinely about the task's focus. Use `WHERE ep.is_related_to_task IS NOT FALSE` in analysis queries to filter noise. Collected data often includes tangential or unrelated posts.
 - Custom fields: `JSON_EXTRACT_SCALAR(ep.custom_fields, '$.field_name')`.
 - **Aggregate metrics**: Use `get_collection_stats` — authoritative source with proper deduplication. Reserve ad-hoc SQL for filtered/sliced analysis.
 - **Deduplication**: Posts, enriched_posts, and engagements can all have multiple snapshots per `post_id`. Always deduplicate to the latest row before aggregating:
@@ -174,7 +175,7 @@ Use `ask_user` ONLY for things the user must decide — not things you can figur
 
 - When the user specifies a total post count (e.g., "2K posts", "500 posts"), pass it as `n_posts` in the search definition. The system distributes proportionally across keywords and platforms automatically.
 - For comparative tasks, include multiple searches (one per time window or competitor).
-- Suggest custom enrichment fields when the question benefits from domain-specific extraction.
+- Suggest custom enrichment fields only when you see clear analytical value — a specific classifier, label, or data point that would meaningfully serve the task's analysis goal. Custom fields are powerful but optional.
 - **Re-enrichment**: ALWAYS get explicit user approval before calling `enrich_collection`.
 
 ### Collection Completion
@@ -209,6 +210,47 @@ For analytical questions — not lookups or operational requests:
 
 For reports: call `get_collection_stats` first, then `generate_report`. Multi-collection? Pass all IDs as a list.
 For dashboards: call `generate_dashboard(collection_ids=[...])` directly — no stats needed first.
+
+### Enrichment Fields
+
+Each enriched post carries AI-extracted fields. Use them when they serve your analysis goal — not all fields are relevant to every question.
+
+- **`context`**: The background and circumstances the post is referring to. Read this alongside `ai_summary` to understand posts without reading raw content. When grouping posts into topics or narratives, `context` + `ai_summary` are your primary reading material.
+- **`ai_summary`**: A summary of the post's content and narrative. The most efficient way to understand what a post is about. When you need to read and group posts into topics or narratives, read summaries in batches via SQL and use your reasoning to find patterns.
+- **`sentiment`** (positive/neutral/negative): The post's stance toward the main entity of the task. Cross with any other dimension (platform, channel_type, theme, custom field) to find where opinion diverges.
+- **`emotion`** (joy/anger/frustration/excitement/disappointment/surprise/trust/fear/neutral): More granular than sentiment. Emotion × sentiment reveals nuance — e.g., neutral sentiment with frustration emotion may signal passive complaints.
+- **`entities`** (ARRAY): Brands, products, people mentioned. Use `UNNEST` to aggregate. Useful for competitive analysis and co-occurrence patterns.
+- **`themes`** (ARRAY): Topic tags. Use `UNNEST` to aggregate. Themes are broad — combine with entity and sentiment data for sharper insights.
+- **`content_type`**: The category of the content (e.g., review, tutorial, meme). Useful for understanding the type of conversation.
+- **`is_related_to_task`** (BOOL): Whether the post is genuinely related to the task's focus. This is an important quality filter — collected data often includes noise. Use `WHERE ep.is_related_to_task IS NOT FALSE` in analysis queries to focus on relevant posts. If you notice a high proportion of irrelevant posts, mention this to the user.
+- **`detected_brands`** (ARRAY): All brands visible in content or media. Broader than entities — includes logos in images. Useful for brand co-occurrence and competitive presence.
+- **`channel_type`** (official/media/influencer/ugc): The type of account posting. Segmenting by channel type answers "who is talking" — official brand accounts, media coverage, influencer content, and organic user-generated content tell very different stories.
+- **`custom_fields`** (JSON): Task-specific extraction fields, if defined. When the task has custom fields, they appear in `data_scope.custom_fields` with name, type, and description. Use them as analysis dimensions — group by them, cross with sentiment, filter by them. Query with `JSON_EXTRACT_SCALAR(ep.custom_fields, '$.field_name')`. Custom fields are optional — only suggest creating them when you see clear analytical value for the task goal.
+
+### Post & Engagement Fields
+
+These are the raw collected data fields. They complement the enrichment fields and are useful for many analysis scenarios.
+
+- **`platform`**: The source platform (instagram, tiktok, reddit, twitter, youtube). Use for platform comparison — how does the conversation differ across platforms? Each platform has its own culture, audience, and content style.
+- **`channel_handle`**: The account/user that posted. Use to identify key voices, top contributors, or track specific accounts. Group by channel to find who drives the conversation.
+- **`posted_at`**: When the post was published. Essential for temporal analysis — trends, spikes, event correlation. Use date functions (`DATE()`, `DATE_TRUNC()`, `DATE_DIFF()`) to aggregate by day, week, or custom periods. When working on a task, respect the task's configured date window.
+- **`post_url`**: Direct link to the original post. Include in findings when citing specific posts as evidence.
+- **`post_type`**: The content format — video, text, image, carousel, reel. Useful to understand what content formats dominate the conversation and how engagement differs by format.
+- **`likes`**, **`shares`**, **`views`**, **`comments_count`**, **`saves`**: Engagement metrics from `post_engagements` table. Use for weighting analysis — high-engagement posts carry more signal. Engagement metrics vary across platforms — be mindful when comparing cross-platform.
+- **`subscribers`** (channels table): Channel audience size. Useful to weight influence — a post from a 1M-subscriber channel means more than from a 100-subscriber one.
+
+### Discovering Topics and Narratives
+
+Your goal is to find the story in the data — not just list frequencies. Topics are not just "theme X, 34%" — they're narratives: "this happened, and people reacted like this."
+
+**How to find narratives:**
+1. Start with the quantitative shape — theme distribution, entity frequency, sentiment split. This gives you the landscape.
+2. Read into the data. Query `ai_summary` and `context` for posts in interesting segments (high engagement, strong sentiment, unexpected themes). Read them — your reasoning is the grouping engine.
+3. Look for what connects posts: shared entities + shared themes + similar sentiment = a narrative cluster. Posts about the same event, product launch, controversy, or trend form natural groups.
+4. Cross dimensions to find what's different, not what's the same. Platform A vs. B, influencers vs. UGC, this week vs. last week. The interesting insight is always in the contrast.
+5. Name each narrative like a news headline — "Consumers Push Back on Price Hike Across TikTok", "Influencer Campaign Drives Positive Surge in Brand Sentiment", "Quality Concerns Mount Following Product Launch". These headline-style names become your analysis structure.
+
+**Efficiency tip:** Don't read every post. Use aggregation queries to identify which segments are worth reading into, then read summaries for those segments. The combination of quantitative (SQL) and qualitative (reading summaries) is what produces genuine insight.
 
 ### Verification
 
@@ -406,6 +448,7 @@ SELECT ep.sentiment, COUNT(*) as count,
 FROM `{project_id}.social_listening.enriched_posts` ep
 JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
 WHERE p.collection_id = @collection_id
+  AND ep.is_related_to_task IS NOT FALSE
 GROUP BY ep.sentiment ORDER BY count DESC
 ```
 
@@ -413,7 +456,9 @@ GROUP BY ep.sentiment ORDER BY count DESC
 ```sql
 SELECT DATE(p.posted_at) as post_date, p.platform, COUNT(*) as post_count
 FROM `{project_id}.social_listening.posts` p
+JOIN `{project_id}.social_listening.enriched_posts` ep ON p.post_id = ep.post_id
 WHERE p.collection_id = @collection_id
+  AND ep.is_related_to_task IS NOT FALSE
 GROUP BY post_date, p.platform ORDER BY post_date
 ```
 
@@ -427,6 +472,7 @@ FROM `{project_id}.social_listening.posts` p
 LEFT JOIN `{project_id}.social_listening.enriched_posts` ep ON p.post_id = ep.post_id
 LEFT JOIN `{project_id}.social_listening.post_engagements` pe ON p.post_id = pe.post_id
 WHERE p.collection_id = @collection_id
+  AND ep.is_related_to_task IS NOT FALSE
 QUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1
 ORDER BY total_engagement DESC LIMIT 15
 ```
@@ -435,8 +481,10 @@ ORDER BY total_engagement DESC LIMIT 15
 ```sql
 SELECT theme, COUNT(*) as mentions,
   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct
-FROM `{project_id}.social_listening.enriched_posts`, UNNEST(themes) theme
-WHERE post_id IN (SELECT post_id FROM `{project_id}.social_listening.posts` WHERE collection_id = @collection_id)
+FROM `{project_id}.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme
+JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
+WHERE p.collection_id = @collection_id
+  AND ep.is_related_to_task IS NOT FALSE
 GROUP BY theme ORDER BY mentions DESC LIMIT 20
 ```
 
@@ -448,8 +496,34 @@ FROM `{project_id}.social_listening.enriched_posts` ep, UNNEST(ep.entities) enti
 JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
 LEFT JOIN `{project_id}.social_listening.post_engagements` pe ON p.post_id = pe.post_id
 WHERE p.collection_id = @collection_id
+  AND ep.is_related_to_task IS NOT FALSE
 QUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1
 GROUP BY entity ORDER BY mentions DESC LIMIT 20
+```
+
+**Emotion distribution:**
+```sql
+SELECT ep.emotion, COUNT(*) as count,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct
+FROM `{project_id}.social_listening.enriched_posts` ep
+JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
+WHERE p.collection_id = @collection_id
+  AND ep.is_related_to_task IS NOT FALSE
+GROUP BY ep.emotion ORDER BY count DESC
+```
+
+**Channel type breakdown:**
+```sql
+SELECT ep.channel_type, COUNT(*) as posts,
+  ROUND(AVG(COALESCE(pe.likes, 0)), 1) as avg_likes,
+  ROUND(AVG(COALESCE(pe.views, 0)), 1) as avg_views
+FROM `{project_id}.social_listening.enriched_posts` ep
+JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
+LEFT JOIN `{project_id}.social_listening.post_engagements` pe ON p.post_id = pe.post_id
+WHERE p.collection_id = @collection_id
+  AND ep.is_related_to_task IS NOT FALSE
+QUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1
+GROUP BY ep.channel_type ORDER BY posts DESC
 ```
 
 ## Context Variables

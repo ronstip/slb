@@ -361,6 +361,52 @@ def _build_context_block(state: dict) -> Optional[str]:
         )
         blocks.append("\n".join(lines))
 
+    # ── Task data scope ──────────────────────────────────────────
+    data_scope = state.get("active_task_data_scope")
+    if data_scope:
+        lines = ["## Task Context"]
+        enrichment_ctx = data_scope.get("enrichment_context", "")
+        if enrichment_ctx:
+            lines.append(f"- Focus: {enrichment_ctx}")
+
+        # Date window from searches
+        searches = data_scope.get("searches", [])
+        if searches:
+            task_created = state.get("active_task_created_at", "")
+            for i, s in enumerate(searches):
+                platforms = ", ".join(s.get("platforms", []))
+                keywords = ", ".join(s.get("keywords", []))
+                start = s.get("start_date", "")
+                end = s.get("end_date", "")
+                days = s.get("time_range_days")
+                date_info = f"{start} to {end}" if start and end else f"last {days} days from task creation" if days else ""
+                if platforms or keywords:
+                    label = f"Search {i+1}" if len(searches) > 1 else "Search"
+                    parts = []
+                    if keywords:
+                        parts.append(f"keywords=[{keywords}]")
+                    if platforms:
+                        parts.append(f"platforms=[{platforms}]")
+                    if date_info:
+                        parts.append(date_info)
+                    lines.append(f"- {label}: {', '.join(parts)}")
+
+        custom_fields = data_scope.get("custom_fields", [])
+        if custom_fields:
+            cf_parts = []
+            for cf in custom_fields:
+                name = cf.get("name", "")
+                ctype = cf.get("type", "str")
+                if ctype == "literal":
+                    opts = cf.get("options", [])
+                    cf_parts.append(f"{name} (one of: {', '.join(opts)})")
+                else:
+                    cf_parts.append(f"{name} ({ctype})")
+            lines.append(f"- Custom fields: {', '.join(cf_parts)}")
+
+        if len(lines) > 1:
+            blocks.append("\n".join(lines))
+
     # ── Continuation mode ──────────────────────────────────────────
     if state.get("continuation_mode"):
         blocks.append(

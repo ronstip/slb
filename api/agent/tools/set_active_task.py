@@ -37,11 +37,13 @@ def set_active_task(
         return {"status": "error", "message": "Access denied to this task"}
 
     # Set task context in session state
+    data_scope = task.get("data_scope", {})
     if tool_context:
         tool_context.state["active_task_id"] = task_id
         tool_context.state["active_task_title"] = task.get("title", "")
         tool_context.state["active_task_status"] = task.get("status", "")
         tool_context.state["active_task_type"] = task.get("task_type", "one_shot")
+        tool_context.state["active_task_data_scope"] = data_scope
 
         # Set working collections from the task
         collection_ids = task.get("collection_ids", [])
@@ -54,6 +56,23 @@ def set_active_task(
     if session_id and session_id not in (task.get("session_ids") or []):
         fs.add_task_session(task_id, session_id)
 
+    # Build data_scope summary for agent awareness
+    data_scope_summary = {
+        "enrichment_context": data_scope.get("enrichment_context", ""),
+        "custom_fields": data_scope.get("custom_fields", []),
+        "searches": [
+            {
+                "keywords": s.get("keywords", []),
+                "platforms": s.get("platforms", []),
+                "time_range_days": s.get("time_range_days"),
+                "start_date": s.get("start_date"),
+                "end_date": s.get("end_date"),
+            }
+            for s in data_scope.get("searches", [])
+            if isinstance(s, dict)
+        ],
+    }
+
     return {
         "status": "success",
         "task_id": task_id,
@@ -63,5 +82,6 @@ def set_active_task(
         "collection_ids": task.get("collection_ids", []),
         "artifact_ids": task.get("artifact_ids", []),
         "todos": task.get("todos", []),
+        "data_scope": data_scope_summary,
         "message": f"Now working on task: **{task.get('title', 'Untitled')}**",
     }
