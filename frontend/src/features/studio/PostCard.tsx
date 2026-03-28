@@ -185,12 +185,15 @@ function resolveUrl(m: MediaRef): string {
   return m.original_url || '';
 }
 
-export function PostMedia({ media, postUrl }: { media: MediaRef[]; postUrl: string }) {
+export function PostMedia({ media, postUrl, autoPlay = false }: { media: MediaRef[]; postUrl: string; autoPlay?: boolean }) {
   const videos = media.filter((m) => m.media_type === 'video');
   const images = media.filter((m) => m.media_type !== 'video');
 
-  // If there's a video, show it with thumbnail image as preview
+  // If there's a video, show it with thumbnail image as preview (or directly if autoPlay)
   if (videos.length > 0) {
+    if (autoPlay) {
+      return <InlineVideo media={videos[0]} postUrl={postUrl} thumbnailMedia={images[0]} defaultPlaying />;
+    }
     return <VideoPlayer media={videos[0]} postUrl={postUrl} thumbnailMedia={images[0]} />;
   }
 
@@ -314,9 +317,9 @@ function VideoPlayer({ media, postUrl, thumbnailMedia }: { media: MediaRef; post
   );
 }
 
-function InlineVideo({ media, postUrl, thumbnailMedia }: { media: MediaRef; postUrl: string; thumbnailMedia?: MediaRef }) {
+function InlineVideo({ media, postUrl, thumbnailMedia, defaultPlaying = false }: { media: MediaRef; postUrl: string; thumbnailMedia?: MediaRef; defaultPlaying?: boolean }) {
   const primarySrc = resolveUrl(media);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(defaultPlaying);
   const [failed, setFailed] = useState(false);
 
   if (failed) {

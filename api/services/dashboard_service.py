@@ -23,6 +23,8 @@ SELECT
     ep.language,
     ep.content_type,
     ep.custom_fields,
+    ep.ai_summary,
+    p.media_refs,
     COALESCE(pe.likes, 0) AS like_count,
     COALESCE(pe.views, 0) AS view_count,
     COALESCE(pe.comments_count, 0) AS comment_count,
@@ -76,6 +78,18 @@ def parse_json_field(value) -> list:
     return []
 
 
+def _serialize_media_refs(value) -> str | None:
+    """Return media_refs as a JSON string (or None)."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def build_post_response(row: dict) -> DashboardPostResponse:
     return DashboardPostResponse(
         post_id=row["post_id"],
@@ -97,4 +111,6 @@ def build_post_response(row: dict) -> DashboardPostResponse:
         view_count=row.get("view_count", 0),
         comment_count=row.get("comment_count", 0),
         share_count=row.get("share_count", 0),
+        ai_summary=row.get("ai_summary"),
+        media_refs=_serialize_media_refs(row.get("media_refs")),
     )

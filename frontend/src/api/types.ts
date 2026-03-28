@@ -508,6 +508,8 @@ export interface DashboardPost {
   language?: string;
   content_type?: string;
   custom_fields?: Record<string, unknown> | null;
+  ai_summary?: string;
+  media_refs?: string;
   like_count: number;
   view_count: number;
   comment_count: number;

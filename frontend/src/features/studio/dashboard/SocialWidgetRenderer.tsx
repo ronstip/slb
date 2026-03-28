@@ -391,6 +391,8 @@ interface PostTableRow {
   emotion?: string | null;
   content_type?: string | null;
   custom_fields?: Record<string, unknown> | null;
+  ai_summary?: string | null;
+  media_refs?: string;
 }
 
 function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
@@ -411,6 +413,8 @@ function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
     emotion: p.emotion,
     content_type: p.content_type,
     custom_fields: p.custom_fields,
+    ai_summary: p.ai_summary,
+    media_refs: p.media_refs,
   }));
 }
 
