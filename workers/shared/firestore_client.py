@@ -156,6 +156,11 @@ class FirestoreClient:
             "status": "pending",
             "created_at": datetime.now(timezone.utc),
         })
+        # Track snapshot count on the collection for budget enforcement
+        from google.cloud.firestore_v1 import transforms
+        self._db.collection("collection_status").document(collection_id).update({
+            "snapshot_count": transforms.Increment(1),
+        })
         logger.debug("Saved BD snapshot %s for collection %s", snapshot_id, collection_id)
 
     def get_pending_snapshots(self, collection_id: str | None = None) -> list[dict]:
@@ -191,6 +196,21 @@ class FirestoreClient:
             })
         except Exception:
             logger.warning("Failed to mark snapshot %s as downloaded", snapshot_id, exc_info=True)
+
+    def get_task_snapshot_count(self, task_id: str) -> int:
+        """Sum snapshot_count across all collections linked to a task."""
+        task_doc = self._db.collection("tasks").document(task_id).get()
+        if not task_doc.exists:
+            return 0
+        collection_ids = (task_doc.to_dict() or {}).get("collection_ids", [])
+        if not collection_ids:
+            return 0
+        total = 0
+        for cid in collection_ids:
+            doc = self._db.collection("collection_status").document(cid).get()
+            if doc.exists:
+                total += (doc.to_dict() or {}).get("snapshot_count", 0)
+        return total
 
     # --- Task methods ---
 

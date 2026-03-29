@@ -48,7 +48,7 @@ class BrightDataAdapter(DataProviderAdapter):
         "reddit": (parse_brightdata_reddit_post, parse_brightdata_reddit_channel),
     }
 
-    def __init__(self, snapshot_tracker: "callable | None" = None):
+    def __init__(self, snapshot_tracker: "callable | None" = None, max_snapshots: int = 0):
         settings = get_settings()
         if not settings.brightdata_api_token:
             raise ValueError("BRIGHTDATA_API_TOKEN not configured")
@@ -61,7 +61,23 @@ class BrightDataAdapter(DataProviderAdapter):
         self._platform_stats: dict[str, dict] = {}
         self._collection_errors: list[dict] = []
         self._stats_lock = threading.Lock()
-        logger.info("BrightDataAdapter initialized")
+        # Snapshot budget enforcement
+        self._max_snapshots = max_snapshots or settings.brightdata_max_snapshots_per_collection
+        self._snapshot_count = 0
+        self._snapshot_count_lock = threading.Lock()
+        logger.info("BrightDataAdapter initialized (max_snapshots=%d)", self._max_snapshots)
+
+    def _check_snapshot_budget(self) -> bool:
+        """Return True if we can trigger another snapshot, False if budget exhausted."""
+        with self._snapshot_count_lock:
+            if self._snapshot_count >= self._max_snapshots:
+                logger.warning(
+                    "Snapshot budget exhausted: %d/%d used — skipping further scrapes",
+                    self._snapshot_count, self._max_snapshots,
+                )
+                return False
+            self._snapshot_count += 1
+            return True
 
     def supported_platforms(self) -> list[str]:
         return ["tiktok", "youtube", "reddit"]
@@ -162,6 +178,8 @@ class BrightDataAdapter(DataProviderAdapter):
         )
 
         def _fetch_tiktok_keyword(kw: str) -> list[dict]:
+            if not self._check_snapshot_budget():
+                return []
             inp: dict = {"search_keyword": kw}
             if num_per_kw > 0:
                 inp["num_of_posts"] = num_per_kw
@@ -226,6 +244,8 @@ class BrightDataAdapter(DataProviderAdapter):
             inputs.append(inp)
 
         all_results: list[dict] = []
+        if not self._check_snapshot_budget():
+            return
         try:
             results = self._client.scrape_and_wait(
                 dataset_id=self._DATASET_IDS["youtube"]["posts"],
@@ -271,7 +291,7 @@ class BrightDataAdapter(DataProviderAdapter):
         all_results: list[dict] = []
 
         # Strategy 1: keyword-based discovery (preferred when keywords provided)
-        if keywords:
+        if keywords and self._check_snapshot_budget():
             inputs = []
             for kw in keywords:
                 inp: dict = {"keyword": kw, "date": reddit_date}
@@ -289,7 +309,7 @@ class BrightDataAdapter(DataProviderAdapter):
             all_results.extend(results)
 
         # Strategy 2: subreddit URL discovery (when explicit subreddits provided)
-        if subreddit_urls:
+        if subreddit_urls and self._check_snapshot_budget():
             inputs = []
             for url in subreddit_urls:
                 if not url.startswith("http"):

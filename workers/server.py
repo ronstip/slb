@@ -6,7 +6,6 @@ wraps the corresponding CLI worker script.
 
 import logging
 import os
-import traceback
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -42,8 +41,11 @@ async def run_collection_handler(request: Request):
         logger.info("Collection worker completed for %s", collection_id)
         return {"status": "ok", "collection_id": collection_id}
     except Exception as e:
+        # Always return 200 so Cloud Tasks does NOT retry.
+        # The pipeline manages its own failure states in Firestore.
+        # Retrying a failed pipeline causes duplicate BrightData snapshots and wasted money.
         logger.exception("Collection worker failed for %s", collection_id)
-        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
+        return {"status": "error", "collection_id": collection_id, "error": str(e)}
 
 
 @app.post("/enrichment/run")
@@ -69,7 +71,7 @@ async def run_enrichment_handler(request: Request):
         return {"status": "ok"}
     except Exception as e:
         logger.exception("Enrichment worker failed")
-        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
+        return {"status": "error", "error": str(e)}
 
 
 @app.post("/engagement/run")
@@ -86,7 +88,7 @@ async def run_engagement_handler(request: Request):
         return {"status": "ok"}
     except Exception as e:
         logger.exception("Engagement worker failed")
-        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
+        return {"status": "error", "error": str(e)}
 
 
 @app.get("/health")

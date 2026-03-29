@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     brightdata_api_token: str = ""
     brightdata_poll_max_wait_sec: int = 1800
     brightdata_poll_initial_interval_sec: float = 1.5
+    brightdata_max_snapshots_per_collection: int = 20
+    brightdata_max_snapshots_per_task: int = 50
 
     environment: str = "development"
     enable_search_grounding: bool = True

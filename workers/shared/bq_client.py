@@ -1,7 +1,10 @@
 import json
 import logging
+import ssl
+import time
 from pathlib import Path
 
+from google.api_core import exceptions as gcp_exceptions
 from google.cloud import bigquery
 
 from config.settings import Settings, get_settings
@@ -9,6 +12,51 @@ from config.settings import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 SQL_BASE_DIR = Path(__file__).resolve().parent.parent.parent / "bigquery"
+
+# Transient errors that should be retried automatically.
+_TRANSIENT_EXCEPTIONS = (
+    ssl.SSLError,
+    ConnectionResetError,
+    ConnectionError,
+    gcp_exceptions.ServiceUnavailable,
+    gcp_exceptions.InternalServerError,
+    gcp_exceptions.TooManyRequests,
+)
+
+# Retry config
+_MAX_RETRIES = 3
+_BACKOFF_BASE = 2.0  # seconds: 2, 4, 8
+_BACKOFF_MAX = 30.0
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Check if an exception is transient and worth retrying."""
+    if isinstance(exc, _TRANSIENT_EXCEPTIONS):
+        return True
+    # Catch SSL errors wrapped in other exceptions (e.g. urllib3, requests)
+    err_str = str(exc).lower()
+    if "ssl" in err_str or "eof occurred" in err_str or "connection reset" in err_str:
+        return True
+    return False
+
+
+def _retry(func, *args, **kwargs):
+    """Execute func with retry on transient errors."""
+    last_exc = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if not _is_transient(e) or attempt == _MAX_RETRIES:
+                raise
+            last_exc = e
+            wait = min(_BACKOFF_BASE * (2 ** attempt), _BACKOFF_MAX)
+            logger.warning(
+                "BQ transient error (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1, _MAX_RETRIES + 1, wait, str(e)[:200],
+            )
+            time.sleep(wait)
+    raise last_exc  # unreachable but satisfies type checker
 
 
 class BQClient:
@@ -31,9 +79,10 @@ class BQClient:
 
         Raises RuntimeError only if ALL rows fail (likely a connectivity/auth issue).
         Partial failures are logged as warnings — successfully inserted rows are kept.
+        Retries automatically on transient network errors (SSL, connection reset).
         """
         table_ref = self.table_ref(table)
-        errors = self._client.insert_rows_json(table_ref, rows)
+        errors = _retry(self._client.insert_rows_json, table_ref, rows)
         if errors:
             failed = len(errors)
             if failed >= len(rows):
@@ -107,8 +156,8 @@ class BQClient:
         for i, ref in enumerate(models):
             sql = sql.replace(f"{model_placeholder}{i}", ref)
 
-        query_job = self._client.query(sql, job_config=job_config)
-        results = query_job.result()
+        query_job = _retry(self._client.query, sql, job_config=job_config)
+        results = _retry(query_job.result)
 
         rows = []
         for row in results:

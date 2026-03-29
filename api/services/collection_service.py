@@ -133,6 +133,11 @@ def _dispatch_cloud_task(settings, collection_id: str) -> None:
             "service_account_email": settings.cloud_tasks_service_account,
             "audience": worker_url,
         }
-    task = {"http_request": http_request}
+    task = {
+        "http_request": http_request,
+        # Match the Cloud Run worker timeout (3600s) so Cloud Tasks doesn't
+        # time out and retry before the pipeline finishes.
+        "dispatch_deadline": {"seconds": 3600},
+    }
     client.create_task(parent=parent, task=task)
     logger.info("Dispatched Cloud Task for collection %s", collection_id)

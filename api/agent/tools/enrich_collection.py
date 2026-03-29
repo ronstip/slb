@@ -124,6 +124,9 @@ def _dispatch_enrichment_task(settings, collection_id: str, post_ids: str, min_l
             "service_account_email": settings.cloud_tasks_service_account,
             "audience": worker_url,
         }
-    task = {"http_request": http_request}
+    task = {
+        "http_request": http_request,
+        "dispatch_deadline": {"seconds": 3600},
+    }
     client.create_task(parent=parent, task=task)
     logger.info("Dispatched Cloud Task for enrichment")

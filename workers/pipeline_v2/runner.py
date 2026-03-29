@@ -32,7 +32,7 @@ from workers.shared.gcs_client import GCSClient
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_LOOP_TIMEOUT = 3600  # 1 hour max for the processing loop
+PIPELINE_LOOP_TIMEOUT = 3500  # Just under Cloud Run timeout (3600s) to allow graceful cleanup
 
 
 class PipelineRunner:
@@ -89,8 +89,70 @@ class PipelineRunner:
         except Exception:
             logger.debug("Failed to write task log for collection %s", self.collection_id, exc_info=True)
 
+    def _acquire_pipeline_lock(self) -> bool:
+        """Check if this pipeline should run, preventing duplicate executions.
+
+        Returns True if this instance should proceed, False if it should abort.
+        Prevents the Cloud Tasks retry loop that caused 17x duplicate runs in production.
+        """
+        TERMINAL_STATUSES = {"completed", "completed_with_errors", "failed", "cancelled"}
+        ACTIVE_STATUSES = {"collecting", "processing", "enriching"}
+        STALE_THRESHOLD_SEC = 300  # 5 minutes
+
+        status_doc = self.fs.get_collection_status(self.collection_id)
+        if not status_doc:
+            logger.warning("Pipeline lock: no status doc for %s — proceeding", self.collection_id)
+            return True
+
+        current_status = status_doc.get("status", "")
+
+        # Already finished — don't re-run
+        if current_status in TERMINAL_STATUSES:
+            logger.info(
+                "Pipeline lock: %s already in terminal state '%s' — skipping duplicate run",
+                self.collection_id, current_status,
+            )
+            return False
+
+        # Another instance may be running — check if it's recent
+        if current_status in ACTIVE_STATUSES:
+            updated_at = status_doc.get("updated_at")
+            if updated_at:
+                age_sec = (datetime.now(timezone.utc) - updated_at).total_seconds()
+                if age_sec < STALE_THRESHOLD_SEC:
+                    logger.info(
+                        "Pipeline lock: %s is actively running (status='%s', updated %.0fs ago) — skipping duplicate",
+                        self.collection_id, current_status, age_sec,
+                    )
+                    return False
+                logger.warning(
+                    "Pipeline lock: %s appears stale (status='%s', updated %.0fs ago) — proceeding",
+                    self.collection_id, current_status, age_sec,
+                )
+
+        # Write our pipeline_run_id to claim this run
+        run_id = str(uuid4())
+        self.fs.update_collection_status(self.collection_id, pipeline_run_id=run_id)
+
+        # Re-read to verify we won the race (simple optimistic lock)
+        status_doc = self.fs.get_collection_status(self.collection_id)
+        actual_run_id = (status_doc or {}).get("pipeline_run_id")
+        if actual_run_id and actual_run_id != run_id:
+            logger.info(
+                "Pipeline lock: %s claimed by another instance (our=%s, theirs=%s) — aborting",
+                self.collection_id, run_id[:8], actual_run_id[:8],
+            )
+            return False
+
+        logger.info("Pipeline lock: acquired for %s (run_id=%s)", self.collection_id, run_id[:8])
+        return True
+
     def _run_pipeline(self, pipeline_start: float) -> None:
         """Inner pipeline logic — called by run() inside try/except."""
+        # Idempotency guard — prevent duplicate runs from Cloud Tasks retries
+        if not self._acquire_pipeline_lock():
+            return
+
         # Load config
         self._load_config()
         self._load_custom_fields()
@@ -150,6 +212,7 @@ class PipelineRunner:
         self.state_manager.recount()
 
         # Collection gates
+        self._log_task("Computing analytics and generating insights...", metadata={"phase": "analytics"})
         self._run_collection_gates()
 
         # Final status
@@ -225,11 +288,59 @@ class PipelineRunner:
         finally:
             self._crawl_complete.set()
 
+    def _count_downloaded_snapshots(self) -> int:
+        """Count how many snapshots have already been downloaded for this collection."""
+        try:
+            db = self.fs._db
+            docs = (
+                db.collection("bd_snapshots")
+                .where("collection_id", "==", self.collection_id)
+                .where("status", "==", "downloaded")
+                .stream()
+            )
+            return sum(1 for _ in docs)
+        except Exception:
+            logger.warning("Failed to count downloaded snapshots", exc_info=True)
+            return 0
+
     def _do_crawl(self) -> None:
+        # Skip crawl if this collection already has snapshots (prevents duplicate scraping on retries)
+        existing_snapshots = self.fs.get_pending_snapshots(collection_id=self.collection_id)
+        downloaded_count = self._count_downloaded_snapshots()
+        if existing_snapshots:
+            logger.info(
+                "Crawl skipped for %s: %d pending snapshots exist (recovery will handle them)",
+                self.collection_id, len(existing_snapshots),
+            )
+            self._crawl_complete.set()
+            return
+        if downloaded_count > 0:
+            logger.info(
+                "Crawl skipped for %s: %d snapshots already downloaded (data already in BQ)",
+                self.collection_id, downloaded_count,
+            )
+            self._crawl_complete.set()
+            return
+
         def _track_snapshot(snapshot_id, dataset_id, discover_by):
             self.fs.save_snapshot(self.collection_id, snapshot_id, dataset_id, discover_by)
 
-        wrapper = DataProviderWrapper(config=self._config, snapshot_tracker=_track_snapshot)
+        # Compute remaining snapshot budget (per-task aggregate)
+        max_snapshots = self.settings.brightdata_max_snapshots_per_collection
+        task_id = self._status_doc.get("task_id")
+        if task_id:
+            try:
+                task_total = self.fs.get_task_snapshot_count(task_id)
+                task_remaining = max(0, self.settings.brightdata_max_snapshots_per_task - task_total)
+                max_snapshots = min(max_snapshots, task_remaining)
+                logger.info(
+                    "Snapshot budget: task %s used %d/%d, this collection gets %d",
+                    task_id[:8], task_total, self.settings.brightdata_max_snapshots_per_task, max_snapshots,
+                )
+            except Exception:
+                logger.warning("Failed to compute task snapshot budget, using per-collection default", exc_info=True)
+
+        wrapper = DataProviderWrapper(config=self._config, snapshot_tracker=_track_snapshot, max_snapshots=max_snapshots)
 
         owner_user_id = self._status_doc.get("user_id")
         owner_org_id = self._status_doc.get("org_id")
@@ -321,6 +432,14 @@ class PipelineRunner:
                         logger.warning("Failed to log posts_collected event", exc_info=True)
                 threading.Thread(target=_log_event, daemon=True).start()
 
+            # Log progress to task activity feed (every 3 batches to avoid spam)
+            if batch_index % 3 == 1 or batch_index == 1:
+                platforms_str = ", ".join(sorted({p.platform for p in new_posts}))
+                self._log_task(
+                    f"Collected {total_posts} posts so far ({platforms_str})",
+                    metadata={"phase": "collecting", "posts_collected": total_posts},
+                )
+
             logger.info(
                 "Batch %d: %d posts written to BQ, states set in Firestore",
                 batch_index, len(new_posts),
@@ -362,6 +481,21 @@ class PipelineRunner:
             run_log=run_log,
         )
 
+        # Task activity: crawl complete summary
+        if errors:
+            error_platforms = [e.get("platform", "unknown") for e in errors]
+            self._log_task(
+                f"Data collection complete: {total_posts} posts. Some sources had issues ({', '.join(error_platforms)}) — continuing with available data.",
+                level="warning",
+                metadata={"phase": "collecting", "posts_collected": total_posts, "errors": len(errors)},
+            )
+        elif total_posts > 0:
+            platform_summary = ", ".join(f"{p}: {s.get('posts', 0)}" for p, s in stats.items())
+            self._log_task(
+                f"Data collection complete: {total_posts} posts ({platform_summary}). Processing...",
+                metadata={"phase": "processing", "posts_collected": total_posts},
+            )
+
         if total_posts == 0:
             self.fs.update_collection_status(
                 self.collection_id,
@@ -383,6 +517,7 @@ class PipelineRunner:
         """Process posts through DAG steps until all terminal or timeout."""
         logger.info("── Processing loop started for %s", self.collection_id)
         loop_start = _time.monotonic()
+        last_progress_log = 0.0  # monotonic timestamp of last progress log
 
         while True:
             # Check timeout
@@ -455,6 +590,20 @@ class PipelineRunner:
                     # Don't crash the loop — posts will be re-picked up next iteration
                     continue
 
+                # Periodic progress log to task activity (every 30s)
+                now = _time.monotonic()
+                if now - last_progress_log > 30:
+                    last_progress_log = now
+                    counts = self.state_manager.get_counts()
+                    done = counts.get("DONE", 0)
+                    total = self.state_manager.get_total_posts()
+                    enriched = counts.get("ENRICHED", 0) + done
+                    if total > 0:
+                        self._log_task(
+                            f"Processing: {enriched}/{total} posts enriched",
+                            metadata={"phase": "processing", "enriched": enriched, "total": total},
+                        )
+
                 # After download step, persist GCS URIs back to BQ (background — don't block loop)
                 if step.name == "download" and media_refs:
                     refs_copy = dict(media_refs)
@@ -521,6 +670,20 @@ class PipelineRunner:
     # Crash recovery
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _friendly_error(error: str) -> str:
+        """Map raw exception strings to user-friendly messages."""
+        err_lower = error.lower()
+        if "ssl" in err_lower or "eof occurred" in err_lower or "connection reset" in err_lower:
+            return "Temporary connection issue with our infrastructure. Your data is safe — please retry."
+        if "timeout" in err_lower and "brightdata" in err_lower:
+            return "Data collection took longer than expected. Partial results may be available."
+        if "429" in error or "too many requests" in err_lower or "rate limit" in err_lower:
+            return "Rate limited by the social platform. Please try again in a few minutes."
+        if "quota" in err_lower:
+            return "API quota exceeded. Please try again later."
+        return f"Pipeline error: {error[:300]}"
+
     def _set_crashed_status(self, error: str) -> None:
         """Set status to failed after an unhandled crash.
 
@@ -532,16 +695,27 @@ class PipelineRunner:
         except Exception:
             logger.warning("Could not recount after crash for %s", self.collection_id)
 
+        friendly = self._friendly_error(error)
+
+        # If we have partial data, mark as completed_with_errors instead of failed
+        final_status = "failed"
+        if self._total_posts_collected > 0:
+            final_status = "completed_with_errors"
+            friendly = f"{friendly} ({self._total_posts_collected} posts collected before the error.)"
+
         try:
             self.fs.update_collection_status(
                 self.collection_id,
-                status="failed",
-                error_message=f"Pipeline crashed: {error[:500]}",
+                status=final_status,
+                error_message=friendly,
             )
         except Exception:
             logger.exception(
                 "CRITICAL: Could not update status after crash for %s", self.collection_id
             )
+
+        # Log to task activity
+        self._log_task(friendly, level="error")
 
     # ------------------------------------------------------------------
     # Collection gates

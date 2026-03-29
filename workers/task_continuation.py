@@ -55,7 +55,7 @@ def check_task_completion(collection_id: str) -> None:
         if not cs:
             all_complete = False
             break
-        if cs.get("status") not in ("completed", "completed_with_errors", "monitoring"):
+        if cs.get("status") not in ("completed", "completed_with_errors", "failed", "monitoring"):
             all_complete = False
             break
 
