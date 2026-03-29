@@ -72,7 +72,7 @@ def _dispatch_engagement_task(settings, collection_id: str) -> None:
         }
     task = {
         "http_request": http_request,
-        "dispatch_deadline": {"seconds": 3600},
+        "dispatch_deadline": {"seconds": 1800},
     }
     client.create_task(parent=parent, task=task)
     logger.info("Dispatched Cloud Task for engagement refresh %s", collection_id)
