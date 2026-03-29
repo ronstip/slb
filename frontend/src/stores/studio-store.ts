@@ -47,7 +47,7 @@ interface DashboardArtifact {
   createdAt: Date;
 }
 
-export type StudioTab = 'feed' | 'artifacts' | 'protocol';
+export type StudioTab = 'feed' | 'artifacts' | 'stats' | 'protocol';
 export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact | DashboardArtifact;
 
 export interface PendingTopicFilter {

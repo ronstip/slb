@@ -135,7 +135,7 @@ export function useSSEChat() {
             case 'tool_call': {
               const toolName = event.metadata.name;
               if (!INTERNAL_TOOLS.has(toolName)) {
-                chatState.appendActivityEntry(messageId, { kind: 'tool', text: getToolDisplayText(toolName), toolName, resolved: false, ts: Date.now() });
+                chatState.appendActivityEntry(messageId, { kind: 'tool_start', text: getToolDisplayText(toolName), toolName, ts: Date.now() });
               }
               break;
             }
@@ -144,22 +144,33 @@ export function useSSEChat() {
               const toolName = event.metadata.name;
               const result = event.metadata.result;
 
-              // Blocked tool calls (e.g. gate rejected) — remove silently
+              // Compute duration from matching tool_start entry
+              const log = useChatStore.getState().messages.find(m => m.id === messageId)?.activityLog ?? [];
+              const startEntry = [...log].reverse().find(
+                e => e.kind === 'tool_start' && e.toolName === toolName
+              );
+              const durationMs = startEntry ? Date.now() - startEntry.ts : 0;
+
+              // Blocked tool calls (e.g. gate rejected)
               if (result?.status === 'blocked') {
-                chatState.removeActivityTool(messageId, toolName);
+                chatState.appendActivityEntry(messageId, { kind: 'tool_blocked', toolName, text: getToolDisplayText(toolName), ts: Date.now() });
                 break;
               }
 
               // Anonymous user tried to start a collection — open sign-up prompt
               if (result?.status === 'auth_required') {
-                chatState.removeActivityTool(messageId, toolName);
+                chatState.appendActivityEntry(messageId, { kind: 'tool_blocked', toolName, text: getToolDisplayText(toolName), ts: Date.now() });
                 useUIStore.getState().openSignUpPrompt();
                 break;
               }
 
-              // Resolve the activity entry (computes duration from entry.ts)
+              // Append completion or error entry
               const errorMsg = result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined;
-              chatState.resolveActivityTool(messageId, toolName, errorMsg);
+              if (errorMsg) {
+                chatState.appendActivityEntry(messageId, { kind: 'tool_error', toolName, text: getToolDisplayText(toolName), error: errorMsg, durationMs, ts: Date.now() });
+              } else {
+                chatState.appendActivityEntry(messageId, { kind: 'tool_complete', toolName, text: getToolDisplayText(toolName), durationMs, ts: Date.now() });
+              }
 
               // Handle special tool results
               if (!result) break;
@@ -279,15 +290,9 @@ export function useSSEChat() {
                   }
                 });
               } else if (isTodoResult(toolName, result)) {
-                // Update todos on the message — displayed in ActivityBar
+                // Update todos on the message — diff logic in updateTodos auto-appends todo_change entries
                 const todos = (result.todos as Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>) ?? [];
                 chatState.updateTodos(messageId, todos);
-                chatState.appendActivityEntry(messageId, {
-                  kind: 'todo_update',
-                  text: (result.progress as string) || `${todos.filter(t => t.status === 'completed').length}/${todos.length}`,
-                  todos,
-                  ts: Date.now(),
-                });
               } else if (isMetricsResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'metrics_section',

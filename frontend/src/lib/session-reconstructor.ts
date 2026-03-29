@@ -2,9 +2,12 @@
  * Reconstructs frontend UI state (chat messages, artifacts) from raw ADK
  * events stored in Firestore. This mirrors the logic in useSSEChat.ts but
  * operates on the persisted event format instead of live SSE events.
+ *
+ * Uses append-only activity log — tool_start / tool_complete / tool_error /
+ * tool_blocked are separate entries; todo changes are diffed inline.
  */
 
-import type { ChatMessage } from '../stores/chat-store.ts';
+import type { ChatMessage, TodoItem, ActivityEntry } from '../stores/chat-store.ts';
 import type { Artifact } from '../stores/studio-store.ts';
 import type { DataExportRow, ReportCard } from '../api/types.ts';
 import type { RawADKEvent } from '../api/endpoints/sessions.ts';
@@ -31,6 +34,21 @@ export interface ReconstructedSession {
 let msgCounter = 0;
 function nextId(): string {
   return `restored-${Date.now()}-${++msgCounter}`;
+}
+
+/** Diff old vs new todos and return todo_change activity entries. */
+function diffTodos(oldTodos: TodoItem[], newTodos: TodoItem[], ts: number): ActivityEntry[] {
+  const oldMap = new Map(oldTodos.map((t) => [t.id, t]));
+  const changes: ActivityEntry[] = [];
+  for (const t of newTodos) {
+    const old = oldMap.get(t.id);
+    if (!old) {
+      changes.push({ kind: 'todo_change', ts, todoId: t.id, content: t.content, fromStatus: null, toStatus: t.status });
+    } else if (old.status !== t.status) {
+      changes.push({ kind: 'todo_change', ts, todoId: t.id, content: t.content, fromStatus: old.status, toStatus: t.status });
+    }
+  }
+  return changes;
 }
 
 export function reconstructSession(
@@ -89,8 +107,8 @@ export function reconstructSession(
       if (part.function_call) {
         if (part.function_call.name === 'transfer_to_agent') continue;
         const msg = ensureAgentMsg(event.timestamp);
-        // Activity log: tool entry (will be resolved when result arrives)
-        msg.activityLog.push({ kind: 'tool', text: getToolDisplayText(part.function_call.name), toolName: part.function_call.name, resolved: false, ts: event.timestamp ? event.timestamp * 1000 : Date.now() });
+        const ts = event.timestamp ? event.timestamp * 1000 : Date.now();
+        msg.activityLog.push({ kind: 'tool_start', text: getToolDisplayText(part.function_call.name), toolName: part.function_call.name, ts });
         continue;
       }
 
@@ -100,17 +118,21 @@ export function reconstructSession(
         const toolName = part.function_response.name;
         const result = (part.function_response.response ?? {}) as Record<string, unknown>;
         const msg = ensureAgentMsg(event.timestamp);
+        const ts = event.timestamp ? event.timestamp * 1000 : Date.now();
 
-        // Activity log: resolve the tool entry
-        for (let i = msg.activityLog.length - 1; i >= 0; i--) {
-          if (msg.activityLog[i].kind === 'tool' && msg.activityLog[i].toolName === toolName && !msg.activityLog[i].resolved) {
-            msg.activityLog[i] = {
-              ...msg.activityLog[i],
-              resolved: true,
-              error: result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined,
-            };
-            break;
-          }
+        // Compute duration from matching tool_start
+        const startEntry = [...msg.activityLog].reverse().find(
+          e => e.kind === 'tool_start' && e.toolName === toolName
+        );
+        const durationMs = startEntry ? ts - startEntry.ts : 0;
+
+        // Append completion/error/blocked entry
+        if (result?.status === 'blocked' || result?.status === 'auth_required') {
+          msg.activityLog.push({ kind: 'tool_blocked', toolName, text: getToolDisplayText(toolName), ts });
+        } else if (result?.status === 'error') {
+          msg.activityLog.push({ kind: 'tool_error', toolName, text: getToolDisplayText(toolName), error: (result?.message as string) || 'Failed', durationMs, ts });
+        } else {
+          msg.activityLog.push({ kind: 'tool_complete', toolName, text: getToolDisplayText(toolName), durationMs, ts });
         }
 
         // Create cards + artifacts (mirrors useSSEChat logic)
@@ -174,15 +196,11 @@ export function reconstructSession(
           // Show the answered structured prompt card (read-only — already submitted)
           msg.cards.push({ type: 'structured_prompt', data: result });
         } else if (isTodoResult(toolName, result)) {
-          // Populate todos on the message — displayed in ActivityBar
-          const todos = (result.todos as Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>) ?? [];
-          msg.todos = todos;
-          msg.activityLog.push({
-            kind: 'todo_update',
-            text: (result.progress as string) || `${todos.filter(t => t.status === 'completed').length}/${todos.length}`,
-            todos,
-            ts: event.timestamp ? event.timestamp * 1000 : Date.now(),
-          });
+          // Diff old vs new todos and append todo_change entries
+          const newTodos = (result.todos as Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>) ?? [];
+          const changes = diffTodos(msg.todos, newTodos, ts);
+          msg.activityLog.push(...changes);
+          msg.todos = newTodos;
         } else if (isMetricsResult(toolName, result)) {
           msg.cards.push({ type: 'metrics_section', data: result });
         } else if (isTopicsResult(toolName, result)) {
@@ -203,16 +221,6 @@ export function reconstructSession(
 
   // Flush any remaining agent message
   flushAgent();
-
-  // Auto-resolve all activity tool entries — we're restoring a completed session,
-  // so every tool call has finished.
-  for (const msg of messages) {
-    for (const entry of msg.activityLog) {
-      if (entry.kind === 'tool' && !entry.resolved) {
-        entry.resolved = true;
-      }
-    }
-  }
 
   return {
     messages,

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles, Presentation, BarChart3, Mail } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.ts';
-import { useStudioStore } from '../../stores/studio-store.ts';
+import { useStudioStore, type StudioTab } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { FeedTab } from './FeedTab.tsx';
 import { ArtifactsTab } from './ArtifactsTab.tsx';
+import { StatsTab } from './StatsTab.tsx';
 import { ChartDialog } from './ChartDialog.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs.tsx';
@@ -79,10 +80,11 @@ export function StudioPanel() {
       {!collapsed && (
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'feed' | 'artifacts')} className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as StudioTab)} className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <TabsList className="w-full min-w-0">
               <TabsTrigger value="feed" className="min-w-0 truncate data-[state=active]:bg-white">Feed</TabsTrigger>
               <TabsTrigger value="artifacts" className="min-w-0 truncate data-[state=active]:bg-white">Artifacts</TabsTrigger>
+              <TabsTrigger value="stats" className="min-w-0 truncate data-[state=active]:bg-white">Stats</TabsTrigger>
             </TabsList>
 
             <TabsContent value="feed" className="overflow-y-auto">
@@ -90,6 +92,9 @@ export function StudioPanel() {
             </TabsContent>
             <TabsContent value="artifacts" className="overflow-y-auto">
               <ArtifactsTab />
+            </TabsContent>
+            <TabsContent value="stats" className="overflow-y-auto">
+              <StatsTab />
             </TabsContent>
           </Tabs>
         </div>

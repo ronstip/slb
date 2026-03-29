@@ -26,7 +26,7 @@ interface AgentMessageProps {
   isLatestMessage?: boolean;
 }
 
-export function AgentMessage({ message, onSuggestionClick, isLatestMessage }: AgentMessageProps) {
+export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) {
   const activePromptMessageId = useChatStore((s) => s.activePromptMessageId);
   const agentLabel = message.activeAgent
     ? (message.activeAgent in AGENT_DISPLAY_NAMES ? AGENT_DISPLAY_NAMES[message.activeAgent] : formatAgentName(message.activeAgent))
@@ -76,7 +76,6 @@ export function AgentMessage({ message, onSuggestionClick, isLatestMessage }: Ag
         <ActivityBar
           activityLog={message.activityLog}
           isStreaming={message.isStreaming}
-          showTodos={isLatestMessage !== false}
         />
 
         {/* ── Zone 2: VOICE ── */}
@@ -134,7 +133,14 @@ export function AgentMessage({ message, onSuggestionClick, isLatestMessage }: Ag
         )}
 
         {/* Streaming cursor — shown between tool completion and text arrival */}
-        {message.isStreaming && !cleanContent && message.activityLog.some(e => e.kind === 'tool') && message.activityLog.filter(e => e.kind === 'tool').every(e => e.resolved) && (
+        {message.isStreaming && !cleanContent &&
+          message.activityLog.some(e => e.kind === 'tool_start') &&
+          message.activityLog.filter(e => e.kind === 'tool_start').every(start =>
+            message.activityLog.some(e =>
+              (e.kind === 'tool_complete' || e.kind === 'tool_error' || e.kind === 'tool_blocked') &&
+              e.toolName === start.toolName
+            )
+          ) && (
           <div className="flex items-center py-1">
             <div className="h-4 w-0.5 animate-[blink_1s_steps(1)_infinite] rounded-full bg-accent-vibrant/60" />
           </div>
