@@ -203,6 +203,7 @@ export function useSSEChat() {
                   chartType: result?.chart_type as string,
                   data: (result?.data as Record<string, unknown>) ?? {},
                   barOrientation: (result?.bar_orientation as string | undefined) || undefined,
+                  stacked: result?.stacked as boolean | undefined,
                   collectionIds: (result?.collection_ids as string[] | undefined) ?? undefined,
                   sourceSql: (result?.source_sql as string | undefined) || undefined,
                   createdAt: new Date(),

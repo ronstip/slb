@@ -102,6 +102,7 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
           chartType={chartType as SocialChartType}
           data={widgetData}
           barOrientation={(artifact.barOrientation as 'horizontal' | 'vertical') ?? 'horizontal'}
+          stacked={artifact.stacked ?? true}
         />
       </div>
     );

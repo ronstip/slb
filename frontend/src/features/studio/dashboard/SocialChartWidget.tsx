@@ -19,6 +19,15 @@ import 'chartjs-adapter-date-fns';
 import type { SocialChartType, WidgetData } from './types-social-dashboard.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { generateChartPalette } from '../../../lib/accent-colors.ts';
+import { SENTIMENT_COLORS } from '../../../lib/constants.ts';
+
+/** Resolve colors for a set of labels — uses semantic colors for sentiment, accent palette otherwise. */
+function resolveSeriesColors(labels: string[], accentColors: string[]): string[] {
+  return labels.map((l, i) => {
+    const key = l.toLowerCase();
+    return key in SENTIMENT_COLORS ? SENTIMENT_COLORS[key] : accentColors[i % accentColors.length];
+  });
+}
 
 ChartJS.register(
   CategoryScale,
@@ -130,9 +139,10 @@ interface SocialChartWidgetProps {
   data: WidgetData | undefined;
   accent?: string;
   barOrientation?: 'horizontal' | 'vertical';
+  stacked?: boolean;
 }
 
-export function SocialChartWidget({ chartType, data, accent, barOrientation = 'horizontal' }: SocialChartWidgetProps) {
+export function SocialChartWidget({ chartType, data, accent, barOrientation = 'horizontal', stacked = true }: SocialChartWidgetProps) {
   const { accentColor, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -212,12 +222,13 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
       .sort(([, a], [, b]) => (b[b.length - 1]?.value ?? 0) - (a[a.length - 1]?.value ?? 0))
       .slice(0, 10);
 
+    const seriesColors = resolveSeriesColors(groups.map(([n]) => n), colors);
     const chartData = {
       datasets: groups.map(([name, series], i) => ({
         label: name,
         data: series.map((p) => ({ x: new Date(p.date), y: p.value })),
-        borderColor: colors[i % colors.length],
-        backgroundColor: colors[i % colors.length] + '15',
+        borderColor: seriesColors[i],
+        backgroundColor: seriesColors[i] + '15',
         borderWidth: 2,
         pointRadius: 0,
         pointHoverRadius: 4,
@@ -332,14 +343,20 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
     }
 
     const isHorizontal = barOrientation !== 'horizontal';
-    // Spread color indices across the palette to maximize contrast between datasets
-    const stride = datasets.length > 1 ? Math.floor(colors.length / datasets.length) : 1;
+
+    // Spread color indices across the *base* palette (5 unique shades) to maximize contrast
+    const basePaletteSize = 5;
+    const stride = datasets.length > 1 ? Math.max(1, Math.floor(basePaletteSize / datasets.length)) : 1;
+    const datasetColors = resolveSeriesColors(
+      datasets.map(ds => ds.label),
+      datasets.map((_, i) => colors[(i * stride) % basePaletteSize]),
+    );
     const chartData = {
       labels: labels.map((l) => (l.length > 30 ? l.substring(0, 30) + '…' : l)),
       datasets: datasets.map((ds, i) => ({
         label: ds.label,
         data: ds.values,
-        backgroundColor: colors[(i * stride) % colors.length],
+        backgroundColor: datasetColors[i],
         borderWidth: 0,
         borderRadius: 4,
         barPercentage: 0.75,
@@ -379,12 +396,12 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
         },
       },
       scales: {
-        x: isHorizontal ? valueAxisCfg : categoryAxisCfg,
-        y: isHorizontal ? categoryAxisCfg : valueAxisCfg,
+        x: { ...(isHorizontal ? valueAxisCfg : categoryAxisCfg), stacked },
+        y: { ...(isHorizontal ? categoryAxisCfg : valueAxisCfg), stacked },
       },
     };
 
-    return <div key={`bar-grouped-${barOrientation}`} className="h-full w-full"><Bar ref={barRef as never} data={chartData} options={options} /></div>;
+    return <div key={`bar-grouped-${barOrientation}-${stacked}`} className="h-full w-full"><Bar ref={barRef as never} data={chartData} options={options} /></div>;
   }
 
   // ── Categorical charts ────────────────────────────────────────────────────
@@ -402,7 +419,7 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
     // Pie / Doughnut
     if (chartType === 'doughnut' || chartType === 'pie') {
       const total = values.reduce((a, b) => a + b, 0);
-      const chartColors = colors.slice(0, labels.length);
+      const chartColors = resolveSeriesColors(labels, colors);
       const cardBg = resolveThemeColor('--card');
       const legendPosition = labels.length <= 6 ? 'bottom' as const : 'right' as const;
 
@@ -472,7 +489,7 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
       datasets: [{
         label: 'Value',
         data: values,
-        backgroundColor: colors.slice(0, labels.length),
+        backgroundColor: resolveSeriesColors(labels, colors),
         borderWidth: 0,
         borderRadius: 6,
         barPercentage: 0.65,
