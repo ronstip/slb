@@ -59,6 +59,8 @@ export interface CustomChartConfig {
   timeBucket?: 'day' | 'week' | 'month';
   /** Bar orientation — default 'horizontal' */
   barOrientation?: 'horizontal' | 'vertical';
+  /** Optional second dimension to split bars/slices into sub-groups */
+  breakdownDimension?: CustomDimension;
 }
 
 export const DIMENSION_META: Record<CustomDimension, { label: string; icon: string; description: string }> = {
@@ -235,6 +237,11 @@ export interface TimeSeriesPoint {
   value: number;
 }
 
+export interface GroupedCategoricalDataset {
+  label: string;
+  values: number[];
+}
+
 export interface WidgetData {
   /** Single numeric value (for number-card) */
   value?: number;
@@ -246,6 +253,11 @@ export interface WidgetData {
   timeSeries?: TimeSeriesPoint[];
   /** Multi-series time series (grouped line charts) */
   groupedTimeSeries?: Record<string, TimeSeriesPoint[]>;
+  /** Grouped categorical data (bar charts with breakdown dimension) */
+  groupedCategorical?: {
+    labels: string[];
+    datasets: GroupedCategoricalDataset[];
+  };
 }
 
 // ─── Valid chart types per aggregation ───────────────────────────────────────

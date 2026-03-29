@@ -44,6 +44,10 @@ export function DataSourceForm({ config, onChange, onChartTypeChange }: DataSour
     } else if (!next.timeBucket) {
       next.timeBucket = 'day';
     }
+    // Clear breakdown if it conflicts with the new dimension
+    if (!dimension || dimension === 'posted_at' || next.breakdownDimension === dimension) {
+      delete next.breakdownDimension;
+    }
     // Ensure chart type is valid for new dimension
     const validTypes = getValidChartTypesForCustom(dimension, config.metric);
     if (!validTypes.includes(config.metric as unknown as SocialChartType)) {
@@ -118,6 +122,31 @@ export function DataSourceForm({ config, onChange, onChartTypeChange }: DataSour
           </SelectContent>
         </Select>
       </div>
+
+      {/* Breakdown (hue) — only when a non-time primary dimension is set */}
+      {config.dimension && config.dimension !== 'posted_at' && (
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Breakdown</Label>
+          <Select
+            value={config.breakdownDimension ?? 'none'}
+            onValueChange={(v) =>
+              onChange({ ...config, breakdownDimension: v === 'none' ? undefined : (v as CustomDimension) })
+            }
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              {ALL_DIMENSIONS.filter((d) => d !== config.dimension && d !== 'posted_at').map((dim) => (
+                <SelectItem key={dim} value={dim}>
+                  {DIMENSION_META[dim].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* Time bucket (only when grouped by posted_at) */}
       {config.dimension === 'posted_at' && (

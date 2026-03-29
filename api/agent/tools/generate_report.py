@@ -118,7 +118,7 @@ def _detect_findings(sig: dict, top_posts: list[dict]) -> list[dict]:
     if sentiment:
         top = sentiment[0]
         total = sum(b["post_count"] for b in sentiment)
-        pct = _pct(top["post_count"], total)
+        pct = round(top["post_count"] / total * 100, 1) if total > 0 else 0
         sent_label = top.get("value") or "unknown"
         if pct >= 70:
             findings.append({

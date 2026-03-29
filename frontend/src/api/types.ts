@@ -503,6 +503,10 @@ export interface DashboardPost {
   content_type?: string;
   custom_fields?: Record<string, unknown> | null;
   ai_summary?: string;
+  context?: string;
+  is_related_to_task?: boolean;
+  detected_brands?: string[];
+  channel_type?: string;
   media_refs?: string;
   like_count: number;
   view_count: number;

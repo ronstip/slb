@@ -68,9 +68,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       useStudioStore.getState().setArtifacts(artifacts);
       useSourcesStore.getState().selectByIds(selectedSourceIds);
 
-      // Restore task context from session state (or clear if none)
+      // Restore task context from session state (or clear if none).
+      // Must fetch tasks first so setActiveTask can find the task in the list.
       const sessionTaskId = (detail.state?.active_task_id as string) || null;
-      useTaskStore.getState().setActiveTask(sessionTaskId);
+      if (sessionTaskId) {
+        await useTaskStore.getState().fetchTasks();
+        useTaskStore.getState().setActiveTask(sessionTaskId);
+        // If task wasn't in the list (e.g. cross-org), load it directly
+        if (!useTaskStore.getState().activeTask) {
+          await useTaskStore.getState().loadTask(sessionTaskId);
+          useTaskStore.getState().setActiveTask(sessionTaskId);
+        }
+      } else {
+        useTaskStore.getState().setActiveTask(null);
+      }
 
       set({
         activeSessionId: id,

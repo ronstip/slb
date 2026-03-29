@@ -385,6 +385,7 @@ interface PostTableRow {
   likes: number;
   views: number;
   comments_count: number;
+  shares: number;
   sentiment?: string | null;
   themes?: string[];
   entities?: string[];
@@ -392,6 +393,10 @@ interface PostTableRow {
   content_type?: string | null;
   custom_fields?: Record<string, unknown> | null;
   ai_summary?: string | null;
+  context?: string | null;
+  is_related_to_task?: boolean | null;
+  detected_brands?: string[];
+  channel_type?: string | null;
   media_refs?: string;
 }
 
@@ -407,6 +412,7 @@ function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
     likes: p.like_count,
     views: p.view_count,
     comments_count: p.comment_count,
+    shares: p.share_count,
     sentiment: p.sentiment,
     themes: p.themes,
     entities: p.entities,
@@ -414,6 +420,10 @@ function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
     content_type: p.content_type,
     custom_fields: p.custom_fields,
     ai_summary: p.ai_summary,
+    context: p.context,
+    is_related_to_task: p.is_related_to_task,
+    detected_brands: p.detected_brands,
+    channel_type: p.channel_type,
     media_refs: p.media_refs,
   }));
 }

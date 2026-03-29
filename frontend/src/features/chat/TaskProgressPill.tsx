@@ -51,6 +51,7 @@ export function TaskProgressPill() {
   const currentSessionId = useChatStore((s) => s.sessionId);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [elapsed, setElapsed] = useState('');
+  const [dismissed, setDismissed] = useState(false);
   const toastFiredRef = useRef<Set<string>>(new Set());
 
   // Only show executing tasks that belong to the current session
@@ -102,6 +103,27 @@ export function TaskProgressPill() {
   const phase = phaseLabel(collections);
   const progressPct = avgProgress(collections);
 
+  // No collections = zombie task (creation failed), don't show pill
+  const noCollections = collectionIds.length === 0;
+
+  // Don't show pill while collection data is still loading
+  const collectionsLoading = collectionIds.length > 0 &&
+    collectionQueries.some((q) => q.isLoading);
+
+  // Hide pill when all collections have reached terminal state
+  const allTerminal = collectionIds.length > 0 &&
+    collections.length === collectionIds.length &&
+    collections.every(c => TERMINAL.has(c.status));
+
+  // Auto-dismiss 2s after all collections complete (show "Complete" briefly)
+  useEffect(() => {
+    if (allTerminal && !dismissed) {
+      const timeout = setTimeout(() => setDismissed(true), 2000);
+      return () => clearTimeout(timeout);
+    }
+    if (!allTerminal) setDismissed(false);
+  }, [allTerminal, dismissed]);
+
   // Toast when individual collections complete
   // Use collectionIds + statuses as stable dependency instead of the collections array
   const collectionStatuses = collections.map((c) => `${c.collection_id}:${c.status}`).join(',');
@@ -132,8 +154,8 @@ export function TaskProgressPill() {
     return () => clearInterval(interval);
   }, [activeTask]);
 
-  // Nothing to show
-  if (!activeTask) return null;
+  // Nothing to show — hide when no active task, no collections, still loading, or done
+  if (!activeTask || noCollections || collectionsLoading || dismissed) return null;
 
   const isFailed = phase === 'Failed';
 

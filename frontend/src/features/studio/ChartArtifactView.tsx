@@ -20,6 +20,7 @@ function toWidgetData(raw: Record<string, unknown>): WidgetData {
     value: raw.value as number | undefined,
     timeSeries: (raw.timeSeries ?? raw.time_series) as WidgetData['timeSeries'],
     groupedTimeSeries: (raw.groupedTimeSeries ?? raw.grouped_time_series) as WidgetData['groupedTimeSeries'],
+    groupedCategorical: (raw.groupedCategorical ?? raw.grouped_categorical) as WidgetData['groupedCategorical'],
   };
 }
 

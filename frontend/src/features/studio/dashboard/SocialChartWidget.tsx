@@ -159,10 +159,27 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
     };
   }, []);
 
-  // Normalise: convert timeSeries → labels/values for non-line types
+  // Normalise: convert timeSeries → labels/values for non-line types,
+  // and flatten groupedCategorical for non-bar types (pie/doughnut).
   const normalizedData = useMemo(() => {
     if (!data) return data;
     if (data.labels && data.values) return data;
+    if (data.groupedCategorical && chartType !== 'bar') {
+      // Flatten grouped categorical into "Primary – Breakdown" labels for pie/doughnut
+      const { labels: primaryLabels, datasets } = data.groupedCategorical;
+      const flatLabels: string[] = [];
+      const flatValues: number[] = [];
+      for (const ds of datasets) {
+        for (let i = 0; i < primaryLabels.length; i++) {
+          if (ds.values[i] > 0) {
+            flatLabels.push(`${primaryLabels[i]} – ${ds.label}`);
+            flatValues.push(ds.values[i]);
+          }
+        }
+      }
+      return { ...data, labels: flatLabels, values: flatValues, groupedCategorical: undefined };
+    }
+    if (data.groupedCategorical && chartType === 'bar') return data;
     if (data.timeSeries && data.timeSeries.length > 0 && chartType !== 'line') {
       return {
         ...data,
@@ -300,6 +317,74 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
     };
 
     return <div className="h-full w-full"><Line ref={lineRef as never} data={chartData} options={options} /></div>;
+  }
+
+  // ── Grouped categorical bar charts (breakdown / hue) ─────────────────────
+  if (normalizedData.groupedCategorical && chartType === 'bar') {
+    const { labels, datasets } = normalizedData.groupedCategorical;
+
+    if (labels.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+          No data available
+        </div>
+      );
+    }
+
+    const isHorizontal = barOrientation !== 'horizontal';
+    // Spread color indices across the palette to maximize contrast between datasets
+    const stride = datasets.length > 1 ? Math.floor(colors.length / datasets.length) : 1;
+    const chartData = {
+      labels: labels.map((l) => (l.length > 30 ? l.substring(0, 30) + '…' : l)),
+      datasets: datasets.map((ds, i) => ({
+        label: ds.label,
+        data: ds.values,
+        backgroundColor: colors[(i * stride) % colors.length],
+        borderWidth: 0,
+        borderRadius: 4,
+        barPercentage: 0.75,
+        categoryPercentage: 0.85,
+      })),
+    };
+
+    const valueAxisCfg = {
+      beginAtZero: true,
+      ...getAxisStyle(),
+      ticks: { ...getAxisStyle().ticks, callback: (v: string | number) => formatNumber(Number(v)) },
+    };
+    const categoryAxisCfg = { ...getAxisStyle(), grid: { display: false }, ticks: { ...getAxisStyle().ticks, font: { size: 12 } } };
+
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false,
+      ...(isHorizontal ? { indexAxis: 'y' as const } : {}),
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom' as const,
+          labels: {
+            color: resolveThemeColor('--foreground'),
+            font: { size: 10 },
+            boxWidth: 8, boxHeight: 8, padding: 8,
+            borderRadius: 2, useBorderRadius: true,
+          },
+        },
+        tooltip: {
+          ...getTooltipStyle(),
+          callbacks: {
+            label: isHorizontal
+              ? (ctx: { dataset: { label?: string }; parsed: { x: number | null } }) => ` ${ctx.dataset.label ?? ''}: ${formatNumber(ctx.parsed.x ?? 0)}`
+              : (ctx: { dataset: { label?: string }; parsed: { y: number | null } }) => ` ${ctx.dataset.label ?? ''}: ${formatNumber(ctx.parsed.y ?? 0)}`,
+          },
+        },
+      },
+      scales: {
+        x: isHorizontal ? valueAxisCfg : categoryAxisCfg,
+        y: isHorizontal ? categoryAxisCfg : valueAxisCfg,
+      },
+    };
+
+    return <div key={`bar-grouped-${barOrientation}`} className="h-full w-full"><Bar ref={barRef as never} data={chartData} options={options} /></div>;
   }
 
   // ── Categorical charts ────────────────────────────────────────────────────

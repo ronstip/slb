@@ -26,6 +26,24 @@ def create_chart(
             {"labels": ["Category A", "Category B", ...],
              "values": [10, 20, ...]}
 
+        bar / pie / doughnut — two dimensions (e.g. sentiment by platform):
+            When SQL groups by TWO columns, you MUST use grouped_categorical.
+            Do NOT flatten into labels/values — that produces wrong charts.
+            Pivot the SQL cross-tab so:
+              - "labels" = unique values of the primary dimension (x-axis)
+              - each dataset = one value of the breakdown dimension (legend)
+              - dataset.values[i] = metric for labels[i] within that group
+
+            Example: SQL returns (entity, sentiment, views) rows →
+            {"grouped_categorical": {
+                "labels": ["Bennett", "Lapid"],
+                "datasets": [
+                    {"label": "positive", "values": [2600000, 1300000]},
+                    {"label": "neutral", "values": [200000, 1300000]},
+                    {"label": "negative", "values": [1500000, 1900000]}
+                ]
+            }}
+
         line — time series data:
             Single series:
                 {"time_series": [{"date": "2026-01-15", "value": 42}, ...]}

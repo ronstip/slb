@@ -1,5 +1,5 @@
 import type { DashboardPost } from '../../../api/types.ts';
-import type { CustomChartConfig, WidgetData } from './types-social-dashboard.ts';
+import type { CustomChartConfig, CustomDimension, WidgetData } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
 
@@ -434,8 +434,37 @@ function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartConfig['
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function getDimensionKeys(p: DashboardPost, dim: CustomDimension, timeBucket: string): string[] {
+  if (dim === 'themes') return p.themes?.length ? p.themes : [];
+  if (dim === 'entities') return p.entities?.length ? p.entities : [];
+  if (dim === 'posted_at') return [bucketDate(p.posted_at ?? '', timeBucket as NonNullable<CustomChartConfig['timeBucket']>)];
+  const key = (p as unknown as Record<string, unknown>)[dim] as string ?? 'unknown';
+  return [key];
+}
+
+type Stats = { sum: number; count: number; min: number; max: number };
+
+function resolveAgg(s: Stats, metricAgg: string): number {
+  switch (metricAgg) {
+    case 'avg': return s.count > 0 ? Math.round(s.sum / s.count) : 0;
+    case 'min': return s.min === Infinity ? 0 : s.min;
+    case 'max': return s.max === -Infinity ? 0 : s.max;
+    case 'count': return s.count;
+    default: return s.sum;
+  }
+}
+
+function addToStats(map: Map<string, Stats>, key: string, val: number) {
+  const cur = map.get(key) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity };
+  cur.sum += val;
+  cur.count += 1;
+  cur.min = Math.min(cur.min, val);
+  cur.max = Math.max(cur.max, val);
+  map.set(key, cur);
+}
+
 export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfig): WidgetData {
-  const { dimension, metric, metricAgg = 'sum', timeBucket = 'day' } = config;
+  const { dimension, metric, metricAgg = 'sum', timeBucket = 'day', breakdownDimension } = config;
 
   if (!dimension) {
     if (metricAgg === 'count') return { value: posts.length, labels: ['Count'], values: [posts.length] };
@@ -450,41 +479,71 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
     return { value, labels: [metric], values: [value] };
   }
 
-  const acc = new Map<string, { sum: number; count: number; min: number; max: number }>();
-  const add = (key: string, val: number) => {
-    const cur = acc.get(key) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity };
-    cur.sum += val;
-    cur.count += 1;
-    cur.min = Math.min(cur.min, val);
-    cur.max = Math.max(cur.max, val);
-    acc.set(key, cur);
-  };
+  // ── Two-dimensional pivot (breakdown) ─────────────────────────────────
+  if (breakdownDimension && breakdownDimension !== dimension && dimension !== 'posted_at') {
+    const acc2d = new Map<string, Map<string, Stats>>();
+    const breakdownTotals = new Map<string, number>();
+
+    for (const p of posts) {
+      const val = getMetricValue(p, metric);
+      const primaryKeys = getDimensionKeys(p, dimension, timeBucket);
+      const bKeys = getDimensionKeys(p, breakdownDimension, timeBucket);
+      for (const pk of primaryKeys) {
+        if (!acc2d.has(pk)) acc2d.set(pk, new Map());
+        const inner = acc2d.get(pk)!;
+        for (const bk of bKeys) {
+          addToStats(inner, bk, val);
+          breakdownTotals.set(bk, (breakdownTotals.get(bk) ?? 0) + val);
+        }
+      }
+    }
+
+    // Sort primary labels by total value descending
+    const primaryLabels = [...acc2d.keys()]
+      .map((label) => {
+        const inner = acc2d.get(label)!;
+        let total = 0;
+        for (const s of inner.values()) total += resolveAgg(s, metricAgg);
+        return { label, total };
+      })
+      .sort((a, b) => b.total - a.total)
+      .map((r) => r.label);
+
+    // Top 10 breakdown groups by total
+    const topBreakdowns = [...breakdownTotals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([k]) => k);
+
+    const datasets = topBreakdowns.map((bk) => ({
+      label: bk,
+      values: primaryLabels.map((pk) => {
+        const s = acc2d.get(pk)?.get(bk);
+        return s ? resolveAgg(s, metricAgg) : 0;
+      }),
+    }));
+
+    const grandTotal = datasets.reduce((s, ds) => s + ds.values.reduce((a, b) => a + b, 0), 0);
+
+    return {
+      value: grandTotal,
+      groupedCategorical: { labels: primaryLabels, datasets },
+    };
+  }
+
+  // ── Single-dimension aggregation (existing logic) ─────────────────────
+  const acc = new Map<string, Stats>();
 
   for (const p of posts) {
     const val = getMetricValue(p, metric);
-    if (dimension === 'themes') {
-      for (const t of p.themes ?? []) add(t, val);
-    } else if (dimension === 'entities') {
-      for (const e of p.entities ?? []) add(e, val);
-    } else if (dimension === 'posted_at') {
-      add(bucketDate(p.posted_at ?? '', timeBucket), val);
-    } else {
-      const key = (p as unknown as Record<string, unknown>)[dimension] as string ?? 'unknown';
-      add(key, val);
+    for (const key of getDimensionKeys(p, dimension, timeBucket)) {
+      addToStats(acc, key, val);
     }
   }
 
   const resolved: Array<{ label: string; value: number }> = [];
-  for (const [label, { sum, count, min, max }] of acc) {
-    let value: number;
-    switch (metricAgg) {
-      case 'avg': value = count > 0 ? Math.round(sum / count) : 0; break;
-      case 'min': value = min === Infinity ? 0 : min; break;
-      case 'max': value = max === -Infinity ? 0 : max; break;
-      case 'count': value = count; break;
-      default: value = sum; break;
-    }
-    resolved.push({ label, value });
+  for (const [label, s] of acc) {
+    resolved.push({ label, value: resolveAgg(s, metricAgg) });
   }
 
   const total = resolved.reduce((s, r) => s + r.value, 0);

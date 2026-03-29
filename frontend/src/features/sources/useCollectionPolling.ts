@@ -4,6 +4,7 @@ import { getCollectionStatus } from '../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
+import { useTaskStore } from '../../stores/task-store.ts';
 
 /**
  * Polls collection status for all active (non-terminal) sources.
@@ -36,6 +37,8 @@ export function useCollectionPolling() {
 
   // Track previous data to skip no-op updates
   const prevDataRef = useRef<Map<string, string>>(new Map());
+  // Track which tasks have already fired continuation (once per task)
+  const taskContinuationFiredRef = useRef<Set<string>>(new Set());
 
   const queryResults = useQueries({
     queries: activeSourceIds.map((id) => ({
@@ -86,20 +89,38 @@ export function useCollectionPolling() {
         }
       }
 
-      // Trigger agent continuation when a task-linked collection completes
-      if (isNewlyComplete) {
-        const source = useSourcesStore.getState().sources.find((s) => s.collectionId === collectionId);
-        if (source?.taskId) {
-          window.dispatchEvent(new CustomEvent('collection-complete', {
-            detail: {
-              collectionId,
-              taskId: source.taskId,
-              title: source.title,
-              postsCollected: data.posts_collected,
-              sessionId: source.sessionId,
-            },
-          }));
-        }
+    }
+
+    // Trigger agent continuation once when ALL collections in a task are terminal
+    const TERMINAL_STATUSES = new Set(['completed', 'completed_with_errors', 'failed', 'monitoring']);
+    const allSources = useSourcesStore.getState().sources;
+    const taskGroups = new Map<string, { total: number; terminal: number; totalPosts: number; title: string; sessionId?: string }>();
+
+    for (const source of allSources) {
+      if (!source.taskId) continue;
+      if (!taskGroups.has(source.taskId)) {
+        taskGroups.set(source.taskId, { total: 0, terminal: 0, totalPosts: 0, title: source.title ?? '', sessionId: source.sessionId });
+      }
+      const group = taskGroups.get(source.taskId)!;
+      group.total++;
+      if (TERMINAL_STATUSES.has(source.status ?? '')) {
+        group.terminal++;
+        group.totalPosts += source.postsCollected ?? 0;
+      }
+    }
+
+    for (const [taskId, group] of taskGroups) {
+      if (group.total > 0 && group.total === group.terminal && !taskContinuationFiredRef.current.has(taskId)) {
+        taskContinuationFiredRef.current.add(taskId);
+        useTaskStore.getState().fetchTasks();
+        window.dispatchEvent(new CustomEvent('collection-complete', {
+          detail: {
+            taskId,
+            title: group.title,
+            totalPosts: group.totalPosts,
+            sessionId: group.sessionId,
+          },
+        }));
       }
     }
 

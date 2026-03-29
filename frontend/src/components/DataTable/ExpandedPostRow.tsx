@@ -14,6 +14,7 @@ interface ExpandableRow {
   title?: string | null;
   content?: string | null;
   ai_summary?: string | null;
+  context?: string | null;
   emotion?: string | null;
   themes?: string | string[] | null;
   entities?: string | string[] | null;
@@ -24,11 +25,15 @@ interface ExpandableRow {
   /* Row-level fields (optional for backward compat with other callers) */
   platform?: string | null;
   channel_handle?: string | null;
+  channel_type?: string | null;
   posted_at?: string | null;
   likes?: number | null;
   views?: number | null;
+  shares?: number | null;
   comments_count?: number | null;
   sentiment?: string | null;
+  is_related_to_task?: boolean | null;
+  detected_brands?: string | string[] | null;
 }
 
 interface ExpandedPostRowProps {
@@ -50,6 +55,7 @@ function formatDate(dateStr: string): string {
 export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
   const themes = parseStringList(row.themes);
   const entities = parseStringList(row.entities);
+  const brands = parseStringList(row.detected_brands);
   const media = parseMediaRefs(row.media_refs)?.filter((m) => m?.original_url || m?.gcs_uri) ?? [];
 
   return (
@@ -62,6 +68,9 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
               <Row label="Platform">
                 {PLATFORM_LABELS[row.platform] || row.platform}
               </Row>
+            )}
+            {row.channel_type && (
+              <Row label="Channel Type"><span className="capitalize">{row.channel_type}</span></Row>
             )}
             {row.channel_handle && (
               <Row label="Handle">@{row.channel_handle}</Row>
@@ -77,6 +86,20 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
             {row.ai_summary && (
               <Row label="AI Summary">{row.ai_summary}</Row>
             )}
+            {row.context && (
+              <Row label="Context"><p className="whitespace-pre-wrap">{row.context}</p></Row>
+            )}
+            {row.is_related_to_task != null && (
+              <Row label="Relevance">
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  row.is_related_to_task
+                    ? 'bg-emerald-500/10 text-emerald-600'
+                    : 'bg-muted text-muted-foreground'
+                }`}>
+                  {row.is_related_to_task ? 'Related to task' : 'Not related'}
+                </span>
+              </Row>
+            )}
             {row.sentiment && (
               <Row label="Sentiment"><SentimentBadge sentiment={row.sentiment} /></Row>
             )}
@@ -91,6 +114,9 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
             )}
             {(row.views != null && row.views > 0) && (
               <Row label="Views">{formatNumber(row.views)}</Row>
+            )}
+            {(row.shares != null && row.shares > 0) && (
+              <Row label="Shares">{formatNumber(row.shares)}</Row>
             )}
             {(row.comments_count != null && row.comments_count > 0) && (
               <Row label="Comments">{formatNumber(row.comments_count)}</Row>
@@ -113,6 +139,15 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
                 </div>
               </Row>
             )}
+            {brands.length > 0 && (
+              <Row label="Brands">
+                <div className="flex flex-wrap gap-1">
+                  {brands.map((b) => (
+                    <span key={b} className="rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-600">{b}</span>
+                  ))}
+                </div>
+              </Row>
+            )}
             {row.custom_fields && Object.keys(row.custom_fields).length > 0 && (
               <>
                 {Object.entries(row.custom_fields).map(([key, value]) => (
@@ -121,6 +156,13 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
                   </Row>
                 ))}
               </>
+            )}
+            {row.post_url && (
+              <Row label="Source">
+                <a href={row.post_url} target="_blank" rel="noopener noreferrer" className="text-accent-vibrant hover:underline">
+                  View original post &rarr;
+                </a>
+              </Row>
             )}
           </tbody>
         </table>

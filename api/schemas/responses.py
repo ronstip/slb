@@ -68,6 +68,10 @@ class DashboardPostResponse(BaseModel):
     content_type: str | None = None
     custom_fields: dict | None = None
     ai_summary: str | None = None
+    context: str | None = None
+    is_related_to_task: bool | None = None
+    detected_brands: list[str] = []
+    channel_type: str | None = None
     media_refs: str | None = None
     like_count: int = 0
     view_count: int = 0

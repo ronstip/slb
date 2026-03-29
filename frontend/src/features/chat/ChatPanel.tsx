@@ -21,14 +21,14 @@ export function ChatPanel() {
   // to trigger agent continuation in the originating session only.
   useEffect(() => {
     const handler = (e: Event) => {
-      const { postsCollected, sessionId: sourceSessionId } = (e as CustomEvent).detail;
+      const { totalPosts, title, sessionId: sourceSessionId } = (e as CustomEvent).detail;
       // Guard: only resume in the session that started the collection.
       // If the user has navigated to a different session, ignore the event
       // to prevent the wrong agent from receiving a context-less continuation.
       const currentSessionId = useChatStore.getState().sessionId;
       if (sourceSessionId && sourceSessionId !== currentSessionId) return;
       sendSystemMessage(
-        `[CONTINUE] Collection complete. ${postsCollected} posts collected and enriched. Resume remaining todos.`,
+        `[CONTINUE] All collections for task "${title ?? 'unknown'}" complete. ${totalPosts ?? 0} posts collected and enriched. Resume remaining todos — analyze the data and deliver findings.`,
       );
     };
     window.addEventListener('collection-complete', handler);
