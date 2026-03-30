@@ -226,13 +226,16 @@ class FirestoreSessionService(BaseSessionService):
         # non-Pydantic protobuf that model_dump leaves as a Python object and
         # cannot survive a JSON round-trip without corruption).
         events_safe = []
-        for e in session.events:
+        for idx, e in enumerate(session.events):
             try:
                 dumped = e.model_dump(mode="json", exclude_none=True)
                 dumped.pop("grounding_metadata", None)
                 events_safe.append(json.loads(json.dumps(dumped)))
-            except Exception:
-                logger.warning("Failed to serialize event, skipping")
+            except Exception as exc:
+                logger.warning(
+                    "Failed to serialize event %d (author=%s) in session %s: %s — skipping",
+                    idx, getattr(e, "author", "?"), session.id, exc,
+                )
 
         t1 = time.perf_counter()
         session.last_update_time = time.time()

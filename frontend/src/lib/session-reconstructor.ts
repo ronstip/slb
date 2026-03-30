@@ -84,7 +84,10 @@ export function reconstructSession(
   }
 
   for (const event of events) {
-    if (!event.content?.parts) continue;
+    if (!event.content?.parts) {
+      console.debug('[reconstruct] skipping event without content.parts:', event.author, event.id);
+      continue;
+    }
 
     for (const part of event.content.parts) {
       // --- User message ---

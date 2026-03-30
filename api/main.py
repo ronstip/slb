@@ -619,6 +619,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     logger.info("PERF pre_runner=%.3fs", _time.perf_counter() - t_start)
 
     async def event_stream():
+        _flushed = False
         try:
             run_config = RunConfig(streaming_mode=StreamingMode.SSE)
             streamed_text = False  # Track if text was streamed via partial events
@@ -683,6 +684,8 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                             )
                             if aid:
                                 tr_result["_artifact_id"] = aid
+                                # Write back to ADK event so it persists in _write_session()
+                                _write_artifact_id_to_event(event, tr_name, aid)
 
                     yield {
                         "event": et,
@@ -752,6 +755,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     if _trimmed_prefix:
                         session.events = _trimmed_prefix + session.events
                     runner.session_service.flush(session)
+                    _flushed = True
 
                     # Fire-and-forget: name the session in background
                     asyncio.create_task(
@@ -761,19 +765,27 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             # the before_model_callback stops the ReAct loop after ask_user),
             # we still need to flush the session so state persists for the
             # next turn.
-            if _trimmed_prefix:
-                session.events = _trimmed_prefix + session.events
-            runner.session_service.flush(session)
+            if not _flushed:
+                if _trimmed_prefix:
+                    session.events = _trimmed_prefix + session.events
+                runner.session_service.flush(session)
+                _flushed = True
 
         except Exception as e:
             logger.exception("Error in event stream")
-            if _trimmed_prefix:
-                session.events = _trimmed_prefix + session.events
-            runner.session_service.flush(session)
             yield {
                 "event": "error",
                 "data": json.dumps({"event_type": "error", "content": str(e)}),
             }
+        finally:
+            if not _flushed:
+                logger.warning("event_stream finalizer: flushing session %s (stream interrupted)", session_id)
+                if _trimmed_prefix:
+                    session.events = _trimmed_prefix + session.events
+                try:
+                    runner.session_service.flush(session)
+                except Exception:
+                    logger.exception("Failed to flush session %s in finally block", session_id)
 
     return EventSourceResponse(event_stream())
 
@@ -2071,6 +2083,18 @@ def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -
         if tool_name == "send_email":
             return "Email sent"
     return None
+
+
+def _write_artifact_id_to_event(event, tool_name: str, artifact_id: str) -> None:
+    """Write _artifact_id back to the ADK event's function_response so it survives session persistence."""
+    if not event.content or not event.content.parts:
+        return
+    for part in event.content.parts:
+        if (part.function_response
+                and part.function_response.name == tool_name
+                and part.function_response.response is not None):
+            part.function_response.response["_artifact_id"] = artifact_id
+            break
 
 
 def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
