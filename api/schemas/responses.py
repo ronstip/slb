@@ -41,6 +41,10 @@ class FeedPostResponse(BaseModel):
     ai_summary: str | None = None
     content_type: str | None = None
     custom_fields: dict | None = None
+    context: str | None = None
+    is_related_to_task: bool | None = None
+    detected_brands: list[str] = []
+    channel_type: str | None = None
     collection_id: str | None = None
 
 
@@ -93,6 +97,17 @@ class DashboardShareResponse(BaseModel):
     created_at: str
     share_url: str
     active: bool = True
+
+
+class FeedLinkResponse(BaseModel):
+    token: str
+    title: str
+    collection_ids: list[str]
+    filters: dict = {}
+    created_at: str
+    share_url: str
+    active: bool = True
+    access_count: int = 0
 
 
 class SharedDashboardMetaResponse(BaseModel):

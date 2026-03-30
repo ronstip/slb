@@ -48,8 +48,9 @@ import io
 
 from api.routers import sessions as sessions_router
 from api.routers import artifacts as artifacts_router
+from api.routers import feed_links as feed_links_router
 from api.routers import topics as topics_router
-from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest
+from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionRequest
 from api.schemas.responses import (
     BreakdownItem,
     CollectionStatsResponse,
@@ -145,6 +146,7 @@ app.include_router(dashboard_shares_router.router)
 app.include_router(dashboard_layouts_router.router)
 app.include_router(artifacts_router.router)
 app.include_router(topics_router.router)
+app.include_router(feed_links_router.router)
 
 # CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
 _settings = get_settings()
@@ -812,6 +814,39 @@ async def set_collection_visibility(
     return {"status": "updated", "visibility": visibility}
 
 
+@app.patch("/collection/{collection_id}")
+async def update_collection(
+    collection_id: str,
+    request: UpdateCollectionRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Update collection metadata (title, visibility). Only the owner can update."""
+    fs = get_fs()
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if status.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the collection owner can update")
+
+    updates = {}
+    if request.title is not None:
+        updates["title"] = request.title
+    if request.visibility is not None:
+        if request.visibility not in ("private", "org"):
+            raise HTTPException(status_code=400, detail="Visibility must be 'private' or 'org'")
+        if request.visibility == "org" and not user.org_id:
+            raise HTTPException(status_code=400, detail="You must be in an organization to share collections")
+        updates["visibility"] = request.visibility
+        if request.visibility == "org":
+            updates["org_id"] = user.org_id
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    fs.update_collection_status(collection_id, **updates)
+    return {"status": "updated"}
+
+
 @app.delete("/collection/{collection_id}")
 async def delete_collection(
     collection_id: str,
@@ -975,6 +1010,10 @@ async def get_collection_posts(
         ep.ai_summary,
         ep.content_type,
         ep.custom_fields,
+        ep.context,
+        ep.is_related_to_task,
+        ep.detected_brands,
+        ep.channel_type,
         COUNT(*) OVER() as _total
     FROM (
         SELECT *,
@@ -1044,10 +1083,16 @@ async def get_collection_posts(
                 saves=row.get("saves", 0),
                 total_engagement=row.get("total_engagement", 0),
                 sentiment=row.get("sentiment"),
+                emotion=row.get("emotion"),
                 themes=themes if isinstance(themes, list) else [],
                 entities=entities if isinstance(entities, list) else [],
                 ai_summary=row.get("ai_summary"),
                 content_type=row.get("content_type"),
+                custom_fields=row.get("custom_fields") if isinstance(row.get("custom_fields"), dict) else None,
+                context=row.get("context"),
+                is_related_to_task=row.get("is_related_to_task"),
+                detected_brands=row.get("detected_brands") if isinstance(row.get("detected_brands"), list) else [],
+                channel_type=row.get("channel_type"),
             )
         )
 
@@ -1308,6 +1353,7 @@ async def get_multi_collection_feed(
         COALESCE(pe.saves, 0) as saves,
         COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
         ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields,
+        ep.context, ep.is_related_to_task, ep.detected_brands, ep.channel_type,
         COUNT(*) OVER() as _total
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
@@ -1374,10 +1420,16 @@ async def get_multi_collection_feed(
                 saves=row.get("saves", 0),
                 total_engagement=row.get("total_engagement", 0),
                 sentiment=row.get("sentiment"),
+                emotion=row.get("emotion"),
                 themes=themes if isinstance(themes, list) else [],
                 entities=entities if isinstance(entities, list) else [],
                 ai_summary=row.get("ai_summary"),
                 content_type=row.get("content_type"),
+                custom_fields=row.get("custom_fields") if isinstance(row.get("custom_fields"), dict) else None,
+                context=row.get("context"),
+                is_related_to_task=row.get("is_related_to_task"),
+                detected_brands=row.get("detected_brands") if isinstance(row.get("detected_brands"), list) else [],
+                channel_type=row.get("channel_type"),
                 collection_id=row.get("collection_id"),
             )
         )

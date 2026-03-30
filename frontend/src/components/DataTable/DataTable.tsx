@@ -9,7 +9,7 @@ import { useTableSort, type SortDir } from './use-table-sort.ts';
 
 export interface ColumnDef<T> {
   key: string;
-  header: string;
+  header: string | ReactNode;
   width?: string;
   align?: 'left' | 'right';
   sortable?: boolean;
@@ -90,8 +90,8 @@ export function DataTable<T>({
               <col key={col.key} className={col.width ?? ''} />
             ))}
           </colgroup>
-          <thead className="sticky top-0 z-10 bg-card">
-            <tr className="border-b text-muted-foreground">
+          <thead className="sticky top-0 z-10 bg-muted">
+            <tr className="border-b border-border/60 text-muted-foreground">
               {columns.map((col) => {
                 const isSortable = col.sortable && hasSorting;
                 const colSortKey = col.sortKey ?? col.key;
@@ -129,7 +129,7 @@ export function DataTable<T>({
               return (
                 <RowGroup key={rowId}>
                   <tr
-                    className={`${rowBg} ${isExpandable || onRowClick ? 'cursor-pointer' : ''} transition-colors hover:bg-accent/30`}
+                    className={`${rowBg} border-b border-border/20 ${isExpandable || onRowClick ? 'cursor-pointer' : ''} transition-colors hover:bg-primary/[0.04]`}
                     onClick={() => {
                       if (isExpandable) toggleRow(rowId);
                       onRowClick?.(row);
@@ -138,7 +138,7 @@ export function DataTable<T>({
                     {columns.map((col) => (
                       <td
                         key={col.key}
-                        className={`px-2 py-1.5 ${col.align === 'right' ? 'text-right' : ''}`}
+                        className={`px-2 py-1.5 overflow-hidden ${col.align === 'right' ? 'text-right' : ''}`}
                       >
                         {col.render(row, idx)}
                       </td>
@@ -166,9 +166,10 @@ export function DataTable<T>({
       </div>
 
       {hasPagination && (
-        <div className="flex shrink-0 items-center justify-between border-t px-3 py-2">
-          <span className="text-xs text-muted-foreground">
-            Page {safePage + 1} of {totalPages}
+        <div className="flex shrink-0 items-center justify-between border-t border-border/60 bg-muted/20 px-3 py-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            Page <span className="font-medium text-foreground">{safePage + 1}</span> of {totalPages}
+            <span className="ml-2 text-[10px]">({rows.length} rows)</span>
           </span>
           <div className="flex gap-1">
             <Button

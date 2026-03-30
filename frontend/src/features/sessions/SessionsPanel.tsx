@@ -47,7 +47,7 @@ export function SessionsPanel() {
   const toggle = useUIStore((s) => s.toggleSourcesPanel);
   const openSearch = useUIStore((s) => s.openSessionSearch);
   const openArtifactLibrary = useUIStore((s) => s.openArtifactLibrary);
-  const openCollectionsLibrary = useUIStore((s) => s.openCollectionsLibrary);
+  const navigateToCollections = () => navigate('/collections');
   const openSignUpPrompt = useUIStore((s) => s.openSignUpPrompt);
   const sessions = useSessionStore((s) => s.sessions);
   const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
@@ -215,7 +215,7 @@ export function SessionsPanel() {
         {/* Collections */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={openCollectionsLibrary}>
+            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={navigateToCollections}>
               <Database className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -319,7 +319,7 @@ export function SessionsPanel() {
           Search
         </button>
         <button
-          onClick={openCollectionsLibrary}
+          onClick={navigateToCollections}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <Database className="h-4 w-4 shrink-0" />

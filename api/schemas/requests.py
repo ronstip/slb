@@ -72,3 +72,14 @@ class CreateDashboardShareRequest(BaseModel):
     dashboard_id: str
     collection_ids: list[str]
     title: str
+
+
+class CreateFeedLinkRequest(BaseModel):
+    collection_ids: list[str]
+    filters: dict = {}
+    title: str
+
+
+class UpdateCollectionRequest(BaseModel):
+    title: str | None = None
+    visibility: str | None = None

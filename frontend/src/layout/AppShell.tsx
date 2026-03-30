@@ -8,7 +8,7 @@ import { ChatPanel } from '../features/chat/ChatPanel.tsx';
 import { SessionsPanel } from '../features/sessions/SessionsPanel.tsx';
 import { StudioPanel } from '../features/studio/StudioPanel.tsx';
 import { CollectionModal } from '../features/sources/CollectionModal.tsx';
-import { CollectionsLibrary } from '../features/collections/CollectionsLibrary.tsx';
+
 import { ArtifactLibrary } from '../features/artifacts/ArtifactLibrary.tsx';
 import { SignUpPrompt } from '../auth/SignUpPrompt.tsx';
 import { useCollectionPolling } from '../features/sources/useCollectionPolling.ts';
@@ -210,9 +210,6 @@ export function AppShell() {
 
       {/* Collection Modal Overlay */}
       {collectionModalOpen && <CollectionModal />}
-
-      {/* Collections Library Drawer */}
-      <CollectionsLibrary />
 
       {/* Artifact Library Dialog */}
       <ArtifactLibrary />

@@ -225,6 +225,10 @@ export interface FeedPost {
   ai_summary?: string;
   content_type?: string;
   custom_fields?: Record<string, unknown> | null;
+  context?: string;
+  is_related_to_task?: boolean;
+  detected_brands?: string[];
+  channel_type?: string;
   collection_id?: string;
 }
 
@@ -280,6 +284,19 @@ export interface CollectionStats {
     median_likes: number;
     median_views: number;
   };
+}
+
+// --- Feed Links ---
+
+export interface FeedLinkInfo {
+  token: string;
+  title: string;
+  collection_ids: string[];
+  filters: Record<string, string>;
+  created_at: string;
+  share_url: string;
+  active: boolean;
+  access_count: number;
 }
 
 // --- SSE Events ---
