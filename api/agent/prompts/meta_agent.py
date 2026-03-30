@@ -207,9 +207,9 @@ For analytical questions — not lookups or operational requests:
    - **Chart types**: `bar`, `line`, `pie`, `doughnut`, `table`, `number`. Use the type the user asks for when specified.
    - **Data format** (WidgetData — passed directly to the chart component):
      - **bar / pie / doughnut** (one dimension): `{"labels": ["Cat A", "Cat B"], "values": [10, 20]}`
-     - **bar / pie / doughnut** (two dimensions — e.g. sentiment by platform): use `grouped_categorical`. Do NOT flatten two-dimensional data into flat labels/values.
-       `{"grouped_categorical": {"labels": ["positive", "negative"], "datasets": [{"label": "twitter", "values": [50, 20]}, {"label": "linkedin", "values": [30, 15]}]}}`
-       `labels` = primary x-axis categories, each dataset = one breakdown group (legend entry), `dataset.values[i]` = metric for `labels[i]` within that group. You must pivot your SQL cross-tab results into this shape.
+     - **bar / pie / doughnut** (two dimensions — e.g. sentiment by entity, platform by emotion): use the `breakdown` shorthand — pass your SQL rows and name the columns. The tool pivots them into a grouped chart automatically.
+       `{"breakdown": {"primary": "entity", "breakdown": "sentiment", "value": "views", "rows": [{"entity": "Bennett", "sentiment": "positive", "views": 2600000}, ...]}}`
+       `primary` = x-axis grouping, `breakdown` = color/legend grouping, `value` = the metric. Each row is one SQL result row.
      - **line** (single series): `{"time_series": [{"date": "2026-01-15", "value": 42}, ...]}`
      - **line** (multi-series): `{"grouped_time_series": {"Series A": [{"date": "...", "value": 42}], "Series B": [...]}}`
      - **table**: `{"columns": ["Name", "Count"], "rows": [["A", 42], ["B", 30]]}`
@@ -350,16 +350,24 @@ GROUP BY p.platform, ep.sentiment
 ORDER BY p.platform, post_count DESC
 ```
 
-*Results come back as rows — platform/sentiment/count. Two dimensions → use `grouped_categorical` so both show in the chart:*
+*Results come back as rows — two dimensions, so pass them as a breakdown:*
 
 *Calls `create_chart` with `chart_type="bar"`, data:*
 ```json
-{"grouped_categorical": {
-  "labels": ["Reddit", "Twitter", "TikTok"],
-  "datasets": [
-    {"label": "positive", "values": [60, 120, 90]},
-    {"label": "neutral", "values": [30, 45, 35]},
-    {"label": "negative", "values": [110, 85, 50]}
+{"breakdown": {
+  "primary": "platform",
+  "breakdown": "sentiment",
+  "value": "post_count",
+  "rows": [
+    {"platform": "Reddit", "sentiment": "positive", "post_count": 60},
+    {"platform": "Reddit", "sentiment": "neutral", "post_count": 30},
+    {"platform": "Reddit", "sentiment": "negative", "post_count": 110},
+    {"platform": "Twitter", "sentiment": "positive", "post_count": 120},
+    {"platform": "Twitter", "sentiment": "neutral", "post_count": 45},
+    {"platform": "Twitter", "sentiment": "negative", "post_count": 85},
+    {"platform": "TikTok", "sentiment": "positive", "post_count": 90},
+    {"platform": "TikTok", "sentiment": "neutral", "post_count": 35},
+    {"platform": "TikTok", "sentiment": "negative", "post_count": 50}
   ]
 }}
 ```

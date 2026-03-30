@@ -88,6 +88,7 @@ export function InlineChart({ data }: InlineChartProps) {
   const title = data.title as string | undefined;
   const artifactId = data._artifactId as string | undefined;
   const barOrientation = data.bar_orientation as string | undefined;
+  const stacked = data.stacked as boolean | undefined;
 
   const handleOpenInStudio = useCallback(() => {
     if (!artifactId) return;
@@ -107,6 +108,7 @@ export function InlineChart({ data }: InlineChartProps) {
           chartType={chartType as SocialChartType}
           data={widgetData}
           barOrientation={(barOrientation as 'horizontal' | 'vertical') ?? 'horizontal'}
+          stacked={stacked ?? true}
         />
       </div>
     );

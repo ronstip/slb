@@ -19,6 +19,7 @@ interface ChartArtifact {
   chartType: string;
   data: Record<string, unknown>;
   barOrientation?: string;
+  stacked?: boolean;
   collectionIds?: string[];
   sourceSql?: string;
   createdAt: Date;
@@ -46,7 +47,7 @@ interface DashboardArtifact {
   createdAt: Date;
 }
 
-export type StudioTab = 'feed' | 'artifacts' | 'protocol';
+export type StudioTab = 'feed' | 'artifacts' | 'stats' | 'protocol';
 export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact | DashboardArtifact;
 
 export interface PendingTopicFilter {

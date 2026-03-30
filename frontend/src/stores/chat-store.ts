@@ -7,20 +7,68 @@ export interface TodoItem {
   status: 'pending' | 'in_progress' | 'completed';
 }
 
-export type ActivityEntryKind = 'tool' | 'thinking' | 'todo_update';
+// ── Append-only activity entry types ─────────────────────────────────
 
-export interface ActivityEntry {
+export type ActivityEntryKind =
+  | 'tool_start'
+  | 'tool_complete'
+  | 'tool_error'
+  | 'tool_blocked'
+  | 'thinking'
+  | 'todo_change';
+
+interface ActivityEntryBase {
   kind: ActivityEntryKind;
-  text: string;
   ts: number;
-  // Tool-specific
-  toolName?: string;
-  resolved?: boolean;
-  durationMs?: number;
-  error?: string;
-  // Todo-specific
-  todos?: TodoItem[];
 }
+
+export interface ToolStartEntry extends ActivityEntryBase {
+  kind: 'tool_start';
+  toolName: string;
+  text: string;
+}
+
+export interface ToolCompleteEntry extends ActivityEntryBase {
+  kind: 'tool_complete';
+  toolName: string;
+  text: string;
+  durationMs: number;
+}
+
+export interface ToolErrorEntry extends ActivityEntryBase {
+  kind: 'tool_error';
+  toolName: string;
+  text: string;
+  error: string;
+  durationMs: number;
+}
+
+export interface ToolBlockedEntry extends ActivityEntryBase {
+  kind: 'tool_blocked';
+  toolName: string;
+  text: string;
+}
+
+export interface ThinkingEntry extends ActivityEntryBase {
+  kind: 'thinking';
+  text: string;
+}
+
+export interface TodoChangeEntry extends ActivityEntryBase {
+  kind: 'todo_change';
+  todoId: string;
+  content: string;
+  fromStatus: TodoItem['status'] | null; // null = newly created
+  toStatus: TodoItem['status'];
+}
+
+export type ActivityEntry =
+  | ToolStartEntry
+  | ToolCompleteEntry
+  | ToolErrorEntry
+  | ToolBlockedEntry
+  | ThinkingEntry
+  | TodoChangeEntry;
 
 export interface MessageCard {
   type: 'research_design' | 'data_export' | 'chart' | 'insight_report' | 'dashboard' | 'collection_progress' | 'structured_prompt' | 'topics_section' | 'metrics_section';
@@ -54,8 +102,6 @@ interface ChatStore {
   setActiveAgent: (messageId: string, agent: string) => void;
   addCard: (messageId: string, card: MessageCard) => void;
   appendActivityEntry: (messageId: string, entry: ActivityEntry) => void;
-  resolveActivityTool: (messageId: string, toolName: string, error?: string) => void;
-  removeActivityTool: (messageId: string, toolName: string) => void;
   updateTodos: (messageId: string, todos: TodoItem[]) => void;
   finalizeMessage: (messageId: string) => void;
   addAgentMessage: (text: string, cards?: MessageCard[]) => string;
@@ -153,50 +199,27 @@ export const useChatStore = create<ChatStore>((set) => ({
       ),
     })),
 
-  resolveActivityTool: (messageId, toolName, error) =>
+  updateTodos: (messageId, newTodos) =>
     set((s) => ({
       messages: s.messages.map((m) => {
         if (m.id !== messageId) return m;
-        let found = false;
-        const log = [...m.activityLog];
-        for (let i = log.length - 1; i >= 0; i--) {
-          if (log[i].kind === 'tool' && log[i].toolName === toolName && !log[i].resolved) {
-            log[i] = { ...log[i], resolved: true, durationMs: Date.now() - log[i].ts, error };
-            found = true;
-            break;
+        const oldMap = new Map(m.todos.map((t) => [t.id, t]));
+        const changes: ActivityEntry[] = [];
+        const now = Date.now();
+        for (const t of newTodos) {
+          const old = oldMap.get(t.id);
+          if (!old) {
+            changes.push({ kind: 'todo_change', ts: now, todoId: t.id, content: t.content, fromStatus: null, toStatus: t.status });
+          } else if (old.status !== t.status) {
+            changes.push({ kind: 'todo_change', ts: now, todoId: t.id, content: t.content, fromStatus: old.status, toStatus: t.status });
           }
         }
-        return found ? { ...m, activityLog: log } : m;
+        return {
+          ...m,
+          todos: newTodos,
+          activityLog: changes.length > 0 ? [...m.activityLog, ...changes] : m.activityLog,
+        };
       }),
-    })),
-
-  removeActivityTool: (messageId, toolName) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
-        let idx = -1;
-        for (let i = m.activityLog.length - 1; i >= 0; i--) {
-          if (m.activityLog[i].kind === 'tool' && m.activityLog[i].toolName === toolName && !m.activityLog[i].resolved) {
-            idx = i;
-            break;
-          }
-        }
-        if (idx === -1) return m;
-        // Also remove the thinking entry that immediately follows the tool entry —
-        // it was emitted from the tool_call event and would otherwise linger.
-        const toRemove = new Set([idx]);
-        if (idx + 1 < m.activityLog.length && m.activityLog[idx + 1].kind === 'thinking') {
-          toRemove.add(idx + 1);
-        }
-        return { ...m, activityLog: m.activityLog.filter((_, i) => !toRemove.has(i)) };
-      }),
-    })),
-
-  updateTodos: (messageId, todos) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId ? { ...m, todos } : m,
-      ),
     })),
 
   finalizeMessage: (messageId) =>
