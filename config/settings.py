@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     enrichment_max_output_tokens: int = 4096
     enrichment_media_resolution: str = "medium"  # low, medium, high
     enrichment_thinking_level: str = "medium"  # minimal, low, medium, high (empty = disabled)
+
+    # Meta-agent thinking
+    agent_thinking_level: str = "medium"  # minimal, low, medium, high (empty = disabled)
     enrichment_max_media_per_post: int = 5
     enrichment_video_start_offset: str = "0s"
     enrichment_video_end_offset: str = "180s"

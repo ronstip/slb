@@ -88,16 +88,15 @@ export function useSSEChat() {
 
           switch (event.event_type) {
             case 'partial_text': {
-              chatState.appendText(messageId, event.content);
+              chatState.appendTextBlock(messageId, event.content);
               break;
             }
 
             case 'text': {
               // Final aggregated text — strip markers, append clean text only.
-              // Thinking markers are handled via dedicated SSE thinking events.
               const cleanText = event.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd();
               if (cleanText) {
-                chatState.appendText(messageId, cleanText);
+                chatState.appendTextBlock(messageId, cleanText);
               }
               break;
             }
@@ -105,7 +104,9 @@ export function useSSEChat() {
             case 'thinking': {
               // Skip auto-generated system noise — only log real agent reasoning
               if (!AUTO_THINKING_NOISE.has(event.content) && !event.content.startsWith('Running SQL query')) {
-                chatState.appendActivityEntry(messageId, { kind: 'thinking', text: event.content, ts: Date.now() });
+                const entry = { kind: 'thinking' as const, text: event.content, ts: Date.now() };
+                chatState.appendActivityEntry(messageId, entry);
+                chatState.appendActivityBlock(messageId, entry);
               }
               break;
             }
@@ -135,7 +136,9 @@ export function useSSEChat() {
             case 'tool_call': {
               const toolName = event.metadata.name;
               if (!INTERNAL_TOOLS.has(toolName)) {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_start', text: getToolDisplayText(toolName), toolName, ts: Date.now() });
+                const entry = { kind: 'tool_start' as const, text: getToolDisplayText(toolName), toolName, ts: Date.now() };
+                chatState.appendActivityEntry(messageId, entry);
+                chatState.appendActivityBlock(messageId, entry);
               }
               break;
             }
@@ -153,13 +156,17 @@ export function useSSEChat() {
 
               // Blocked tool calls (e.g. gate rejected)
               if (result?.status === 'blocked') {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_blocked', toolName, text: getToolDisplayText(toolName), ts: Date.now() });
+                const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
+                chatState.appendActivityEntry(messageId, entry);
+                chatState.appendActivityBlock(messageId, entry);
                 break;
               }
 
               // Anonymous user tried to start a collection — open sign-up prompt
               if (result?.status === 'auth_required') {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_blocked', toolName, text: getToolDisplayText(toolName), ts: Date.now() });
+                const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
+                chatState.appendActivityEntry(messageId, entry);
+                chatState.appendActivityBlock(messageId, entry);
                 useUIStore.getState().openSignUpPrompt();
                 break;
               }
@@ -167,9 +174,13 @@ export function useSSEChat() {
               // Append completion or error entry
               const errorMsg = result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined;
               if (errorMsg) {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_error', toolName, text: getToolDisplayText(toolName), error: errorMsg, durationMs, ts: Date.now() });
+                const entry = { kind: 'tool_error' as const, toolName, text: getToolDisplayText(toolName), error: errorMsg, durationMs, ts: Date.now() };
+                chatState.appendActivityEntry(messageId, entry);
+                chatState.appendActivityBlock(messageId, entry);
               } else {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_complete', toolName, text: getToolDisplayText(toolName), durationMs, ts: Date.now() });
+                const entry = { kind: 'tool_complete' as const, toolName, text: getToolDisplayText(toolName), durationMs, ts: Date.now() };
+                chatState.appendActivityEntry(messageId, entry);
+                chatState.appendActivityBlock(messageId, entry);
               }
 
               // Handle special tool results

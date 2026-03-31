@@ -5,7 +5,7 @@ import { AlertCircle } from 'lucide-react';
 import { Logo } from '../../components/Logo.tsx';
 import type { ChatMessage } from '../../stores/chat-store.ts';
 import type { DesignResearchResult } from '../../api/types.ts';
-import { ActivityBar } from './ActivityBar.tsx';
+import { ActivityBlock } from './ActivityBar.tsx';
 import { ArtifactCard } from './cards/ArtifactCard.tsx';
 import { InlineChart } from './cards/InlineChart.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
@@ -20,6 +20,14 @@ function formatAgentName(name: string): string {
   return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function cleanText(raw: string): string {
+  return raw
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!--[\s\S]*$/g, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .trim();
+}
+
 interface AgentMessageProps {
   message: ChatMessage;
   onSuggestionClick?: (text: string) => void;
@@ -32,16 +40,9 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
     ? (message.activeAgent in AGENT_DISPLAY_NAMES ? AGENT_DISPLAY_NAMES[message.activeAgent] : formatAgentName(message.activeAgent))
     : null;
 
-  // Extract error portion from content (appended as "\n\nError: ..." or "\n\nConnection error: ...")
+  // Extract error portion from content
   const errorMatch = message.content.match(/\n\n((?:Connection )?[Ee]rror:\s*.+)$/s);
   const errorText = errorMatch ? errorMatch[1] : null;
-  const rawContent = errorText ? message.content.slice(0, -errorMatch![0].length) : message.content;
-  // Strip HTML comments (e.g. <!-- status: ... -->) that leak through during streaming.
-  // Also strip trailing unclosed comments from in-progress chunks.
-  const cleanContent = rawContent
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<!--[\s\S]*$/g, '')
-    .trim();
 
   // ── Card classification ──
   const ARTIFACT_TYPES = new Set(['insight_report', 'data_export', 'dashboard']);
@@ -51,9 +52,12 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
     if (ARTIFACT_TYPES.has(card.type)) artifactCards.push(card);
     else otherCards.push(card);
   });
-  // Ensure metrics always renders above topics
   const CARD_ORDER: Record<string, number> = { metrics_section: 0, topics_section: 1, chart: 2 };
   otherCards.sort((a, b) => (CARD_ORDER[a.type] ?? 0.5) - (CARD_ORDER[b.type] ?? 0.5));
+
+  // ── Determine render mode ──
+  // New messages have blocks; old/restored messages may not.
+  const blocks = message.blocks && message.blocks.length > 0 ? message.blocks : null;
 
   return (
     <div className="flex gap-3 overflow-hidden max-w-3xl">
@@ -72,19 +76,58 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           </div>
         )}
 
-        {/* ── Zone 1: ACTIVITY BAR ── */}
-        <ActivityBar
-          activityLog={message.activityLog}
-          isStreaming={message.isStreaming}
-        />
-
-        {/* ── Zone 2: VOICE ── */}
-        {cleanContent && (
-          <div dir="auto" className="agent-prose max-w-none break-words">
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
-              {cleanContent}
-            </ReactMarkdown>
-          </div>
+        {/* ── CHRONOLOGICAL BLOCKS (new model) ── */}
+        {blocks ? (
+          <>
+            {blocks.map((block, i) => {
+              if (block.type === 'text') {
+                const cleaned = cleanText(block.content);
+                if (!cleaned) return null;
+                return (
+                  <div key={i} dir="auto" className="agent-prose max-w-none break-words">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
+                      {cleaned}
+                    </ReactMarkdown>
+                  </div>
+                );
+              }
+              if (block.type === 'activity') {
+                // Find the latest todos snapshot at this point in the stream
+                // (todos are stored on the message, shown on the last activity block)
+                const isLastActivityBlock = !blocks.slice(i + 1).some(b => b.type === 'activity');
+                return (
+                  <ActivityBlock
+                    key={i}
+                    entries={block.entries}
+                    todos={isLastActivityBlock ? message.todos : []}
+                    isStreaming={message.isStreaming && i === blocks.length - 1}
+                  />
+                );
+              }
+              return null;
+            })}
+          </>
+        ) : (
+          <>
+            {/* ── LEGACY FALLBACK (old messages without blocks) ── */}
+            <ActivityBlock
+              activityLog={message.activityLog}
+              todos={message.todos}
+              isStreaming={message.isStreaming}
+            />
+            {(() => {
+              const rawContent = errorText ? message.content.slice(0, -errorMatch![0].length) : message.content;
+              const cleaned = cleanText(rawContent);
+              if (!cleaned) return null;
+              return (
+                <div dir="auto" className="agent-prose max-w-none break-words">
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
+                    {cleaned}
+                  </ReactMarkdown>
+                </div>
+              );
+            })()}
+          </>
         )}
 
         {/* Error banner */}
@@ -95,8 +138,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           </div>
         )}
 
-        {/* ── Zone 3: DELIVERABLES ── */}
-        {/* Full-width cards */}
+        {/* ── DELIVERABLES ── */}
         {otherCards.map((card, i) => {
           switch (card.type) {
             case 'research_design':
@@ -114,7 +156,6 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               return <PromptAnsweredSummary key={`other-${i}`} data={card.data} />;
             }
             default:
-              // Silently skip removed card types (decision, finding, plan, todo, task_protocol)
               return null;
           }
         })}
@@ -132,8 +173,8 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           </div>
         )}
 
-        {/* Streaming cursor — shown between tool completion and text arrival */}
-        {message.isStreaming && !cleanContent &&
+        {/* Streaming cursor */}
+        {message.isStreaming && !message.content &&
           message.activityLog.some(e => e.kind === 'tool_start') &&
           message.activityLog.filter(e => e.kind === 'tool_start').every(start =>
             message.activityLog.some(e =>

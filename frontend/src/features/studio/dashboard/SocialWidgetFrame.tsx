@@ -28,7 +28,7 @@ export function SocialWidgetFrame({
   children,
 }: SocialWidgetFrameProps) {
   return (
-    <Card className={`h-full flex flex-col overflow-hidden relative group py-0 gap-1 ${
+    <Card className={`h-full flex flex-col overflow-hidden relative group py-0 gap-0 ${
       isEditMode ? 'ring-1 ring-dashed ring-primary/30' : ''
     }`}>
       {isEditMode && (
@@ -59,7 +59,7 @@ export function SocialWidgetFrame({
         </div>
       )}
 
-      <CardHeader className={`flex-row items-center gap-2 space-y-0 shrink-0 pt-3 pb-2 px-3 !pb-2 border-b border-border/40 ${
+      <CardHeader className={`flex-row items-center gap-2 space-y-0 shrink-0 pt-1.5 pb-1 px-3 !pb-1 border-b border-border/40 ${
         isEditMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''
       }`}>
         <div className="flex-1 min-w-0">
@@ -70,7 +70,7 @@ export function SocialWidgetFrame({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden px-3 pb-2 pt-1">
+      <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden px-3 pb-1.5 pt-1">
         {children}
       </CardContent>
     </Card>

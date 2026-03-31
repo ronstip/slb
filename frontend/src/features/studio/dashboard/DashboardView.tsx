@@ -107,7 +107,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-border bg-card/50 px-4 py-2.5">
+      <div className="flex items-center gap-2 border-b border-border bg-card/50 px-4 py-1.5">
         {!standalone && (
           <>
             <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={collapseReport}>

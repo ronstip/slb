@@ -439,7 +439,7 @@ export function DashboardFilterBar({
   const showArrows = canScrollLeft || canScrollRight;
 
   return (
-    <div className="flex items-center gap-1 border-b border-border px-4 py-2.5 min-w-0">
+    <div className="flex items-center gap-1 border-b border-border px-4 py-1.5 min-w-0">
       <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0 hidden sm:block mr-1" />
 
       {/* Left arrow */}

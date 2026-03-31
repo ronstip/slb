@@ -486,9 +486,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     is_ask_user_response = False  # Set in existing-session branch; used below for windowing
 
     if session is None:
-        # Load user context for agent personalization
-        user_context = _build_user_context(user_id, user.org_id)
-
         session = await runner.session_service.create_session(
             app_name=APP_NAME,
             user_id=user_id,
@@ -503,10 +500,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "message_count": 0,
                 "first_message": None,
-                "user_display_name": user_context.get("display_name", ""),
-                "user_collections_index": user_context.get("collections_index", []),
-                "user_tasks_index": user_context.get("tasks_index", []),
-                "user_preferences": user_context.get("preferences", {}),
             },
         )
     else:
@@ -623,6 +616,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         try:
             run_config = RunConfig(streaming_mode=StreamingMode.SSE)
             streamed_text = False  # Track if text was streamed via partial events
+            streamed_thinking = False  # Track if thinking was streamed via partial events
             t_runner_start = _time.perf_counter()
             t_first_token = None
 
@@ -643,6 +637,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                                 # Native Gemini thought tokens → thinking panel
                                 thought_text = part.text.strip()
                                 if thought_text:
+                                    streamed_thinking = True
                                     yield {
                                         "event": "thinking",
                                         "data": json.dumps({
@@ -668,7 +663,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 # final aggregated text with full marker extraction).
                 # If text was already streamed, suppress the text event from
                 # the aggregated final to avoid duplication.
-                for event_data in _extract_event_data(event, suppress_text=streamed_text):
+                for event_data in _extract_event_data(event, suppress_text=streamed_text, suppress_thinking=streamed_thinking):
                     et = event_data["event_type"]
 
                     # Persist artifacts BEFORE yielding so the Firestore
@@ -722,10 +717,11 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                                     }),
                                 }
 
-                    # Reset streaming flag after tool results so the next
-                    # text segment (post-tool) streams fresh
+                    # Reset streaming flags after tool results so the next
+                    # text/thinking segment (post-tool) streams fresh
                     if et == "tool_result":
                         streamed_text = False
+                        streamed_thinking = False
 
                 if event.is_final_response():
                     text = _extract_text(event)
@@ -2097,7 +2093,7 @@ def _write_artifact_id_to_event(event, tool_name: str, artifact_id: str) -> None
             break
 
 
-def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
+def _extract_event_data(event, suppress_text: bool = False, suppress_thinking: bool = False) -> list[dict]:
     """Extract structured data from all parts of an ADK event.
 
     An event may contain multiple parts (e.g. a text/thinking part followed by
@@ -2110,8 +2106,8 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
         event: The ADK event to process.
         suppress_text: If True, skip emitting 'text' events (used when text
             was already streamed via partial events to avoid duplication).
-            Structured events (status, thinking, finding, etc.) are still
-            extracted and emitted.
+        suppress_thinking: If True, skip emitting 'thinking' events (used when
+            thinking was already streamed via partial events to avoid duplication).
     """
     if not event.content or not event.content.parts:
         return []
@@ -2121,13 +2117,14 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
         if part.text:
             # Native Gemini thought tokens → thinking panel, not chat body.
             if getattr(part, "thought", False):
-                thought_text = part.text.strip()
-                if thought_text:
-                    results.append({
-                        "event_type": "thinking",
-                        "content": thought_text,
-                        "author": event.author,
-                    })
+                if not suppress_thinking:
+                    thought_text = part.text.strip()
+                    if thought_text:
+                        results.append({
+                            "event_type": "thinking",
+                            "content": thought_text,
+                            "author": event.author,
+                        })
             else:
                 # Strip any stray HTML comments from the visible text
                 clean = re.sub(r"<!--[\s\S]*?-->", "", part.text).strip()

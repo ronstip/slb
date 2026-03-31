@@ -76,6 +76,15 @@ PROMPT_TEMPLATES: dict[str, dict] = {
             {"value": "100", "label": "100"},
         ],
     },
+    "approve_plan": {
+        "id": "approve_plan",
+        "type": "pill_row",
+        "question": "Ready to proceed?",
+        "options": [
+            {"value": "approve", "label": "Approve & Run", "recommended": True},
+            {"value": "adjust", "label": "Adjust"},
+        ],
+    },
 }
 
 

@@ -418,15 +418,10 @@ def _build_context_block(state: dict) -> Optional[str]:
         )
 
     # ── User context ──────────────────────────────────────────────
-    display_name = state.get("user_display_name", "")
-    preferences = state.get("user_preferences", {})
-
-    if display_name:
-        lines = ["## User Context"]
-        lines.append(f"- Name: **{display_name}**")
-        if preferences:
-            lines.append(f"- Preferences: {preferences}")
-        blocks.append("\n".join(lines))
+    # Removed: display_name and preferences injection.
+    # Injecting user history/preferences caused the agent to project
+    # past research interests onto unrelated tasks (context leakage).
+    # The agent discovers past work on-demand via tools instead.
 
     return "\n\n".join(blocks) if blocks else None
 
@@ -491,9 +486,9 @@ def _is_react_continuation(llm_request: LlmRequest) -> bool:
 _ANTI_REPEAT_INSTRUCTION = (
     "\n\n## Continuation Reminder\n"
     "You have already generated text visible to the user earlier in this turn. "
-    "That text is still displayed — it accumulates, not replaces. "
-    "Do NOT restate your earlier analysis. Either proceed directly to your "
-    "next tool call, or add only genuinely new insights from the latest results."
+    "Do NOT repeat findings or restate analysis. "
+    "DO share brief new observations from the latest results, "
+    "or proceed directly to your next action."
 )
 
 

@@ -20,7 +20,7 @@ function mergeRefs<T>(...refs: Array<React.Ref<T | null> | undefined | null>) {
 const BREAKPOINTS = { lg: 600, md: 480, sm: 360, xs: 0 };
 const COLS = { lg: 12, md: 8, sm: 4, xs: 2 };
 const ROW_HEIGHT = 48;
-const MARGIN: [number, number] = [8, 8];
+const MARGIN: [number, number] = [6, 6];
 
 function buildCompactLayout(widgets: SocialDashboardWidget[], cols: number): LayoutItem[] {
   const isNumberCard = (w: SocialDashboardWidget) => w.chartType === 'number-card';
@@ -116,7 +116,7 @@ export function SocialDashboardGrid({
         cols={COLS}
         rowHeight={ROW_HEIGHT}
         margin={MARGIN}
-        containerPadding={[16, 16]}
+        containerPadding={[12, 8]}
         dragConfig={{ enabled: canInteract, handle: '.drag-handle' }}
         resizeConfig={{ enabled: canInteract }}
         onBreakpointChange={(bp) => setCurrentBreakpoint(bp)}

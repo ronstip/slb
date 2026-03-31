@@ -90,9 +90,9 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, isEditMode, onConfigu
         </div>
       )}
 
-      <div className="flex items-center gap-3.5 h-full pl-5 pr-4 py-3">
+      <div className="flex items-center gap-2.5 h-full pl-4 pr-3 py-2">
         <div
-          className="shrink-0 flex items-center justify-center rounded-xl h-11 w-11"
+          className="shrink-0 flex items-center justify-center rounded-lg h-9 w-9"
           style={{
             background: `linear-gradient(135deg, ${color}33, ${color}15)`,
             boxShadow: `inset 0 0 0 1.5px ${color}30`,

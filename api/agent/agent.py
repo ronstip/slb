@@ -7,6 +7,7 @@ from google.adk.runners import Runner
 from google.adk.tools.bigquery import BigQueryToolset
 from google.adk.tools.bigquery.config import BigQueryToolConfig, WriteMode
 from google.adk.tools.google_search_tool import GoogleSearchTool
+from google.genai import types as genai_types
 
 from api.agent.callbacks import (
     collection_state_tracker,
@@ -102,6 +103,18 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
     dynamic_prompt = META_AGENT_DYNAMIC_PROMPT.replace("{{current_date}}", current_date)
     dynamic_prompt = dynamic_prompt.replace("{project_id}", settings.gcp_project_id)
 
+    # ─── Thinking config ───────────────────────────────────────────────
+    thinking_level_str = settings.agent_thinking_level.upper() if settings.agent_thinking_level else ""
+    thinking_level = getattr(genai_types.ThinkingLevel, thinking_level_str, None)
+    gen_config = None
+    if thinking_level:
+        gen_config = genai_types.GenerateContentConfig(
+            thinking_config=genai_types.ThinkingConfig(
+                thinking_level=thinking_level,
+                include_thoughts=True,
+            ),
+        )
+
     # ─── Meta-Agent (single brain) ───────────────────────────────────
     # One agent handles the full lifecycle: research → collection → analysis.
     # No routing, no sub-agents, no handoffs. ReAct loop with direct tool access.
@@ -116,6 +129,7 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         static_instruction=META_AGENT_STATIC_PROMPT,
         instruction=dynamic_prompt,
         tools=tools,
+        generate_content_config=gen_config,
         before_tool_callback=[enforce_collection_access, gate_expensive_tools],
         before_model_callback=inject_collection_context,
         after_tool_callback=[collection_state_tracker, log_tool_invocation],
