@@ -115,12 +115,17 @@ def collection_state_tracker(
 
     elif tool_name == "start_task":
         if isinstance(tool_response, dict) and tool_response.get("status") == "success":
-            tool_context.state["active_task_id"] = tool_response.get("task_id")
+            task_id = tool_response.get("task_id")
+            tool_context.state["active_task_id"] = task_id
             tool_context.state["collection_running"] = True
             cids = tool_response.get("collection_ids", [])
             if cids:
                 tool_context.state["active_collection_id"] = cids[0]
                 tool_context.state["agent_selected_sources"] = cids
+            logger.info(
+                "start_task succeeded: task=%s collections=%s — collection_running=True, turn will end",
+                task_id, cids,
+            )
 
     elif tool_name == "set_active_task":
         if isinstance(tool_response, dict) and tool_response.get("status") == "success":
@@ -152,14 +157,20 @@ def gate_expensive_tools(
 
     Returns a dict (tool response override) to block, or None to allow.
     """
-    if tool.name in COLLECTION_RUNNING_BLOCKED and tool_context.state.get("collection_running"):
-        return {
-            "status": "blocked",
-            "message": (
-                "A collection is currently running. The UI shows live progress. "
-                "Do NOT call collection tools — confirm to the user and move on."
-            ),
-        }
+    if tool_context.state.get("collection_running"):
+        if tool.name in COLLECTION_RUNNING_BLOCKED:
+            return {
+                "status": "blocked",
+                "message": (
+                    "A collection is currently running. The UI shows live progress. "
+                    "Do NOT call collection tools — confirm to the user and move on."
+                ),
+            }
+        if tool.name == "ask_user":
+            return {
+                "status": "blocked",
+                "message": "Collection is running. Do not ask questions — confirm briefly and wait.",
+            }
 
     # Block ask_user in autonomous mode (server-side agent invocation)
     if tool.name == "ask_user" and tool_context.state.get("autonomous_mode"):

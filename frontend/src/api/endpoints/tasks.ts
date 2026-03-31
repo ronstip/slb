@@ -6,6 +6,8 @@ import type { ArtifactListItem } from './artifacts.ts';
 export type TaskStatus =
   | 'approved'
   | 'executing'
+  | 'awaiting_analysis'
+  | 'analyzing'
   | 'completed'
   | 'monitoring'
   | 'paused'

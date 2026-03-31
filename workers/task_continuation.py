@@ -93,7 +93,7 @@ def check_task_completion(collection_id: str) -> None:
         _dispatch_continuation_task(settings, task_id, delay_seconds=300)
 
 
-def _delayed_fallback(task_id: str, delay_seconds: int = 300) -> None:
+def _delayed_fallback(task_id: str, delay_seconds: int = 60) -> None:
     """Wait, then run agent continuation if the frontend hasn't picked it up."""
     import time
     time.sleep(delay_seconds)
