@@ -178,17 +178,6 @@ MODEL_ALIASES: dict[str, str] = {
     "pro": "gemini-3-pro-preview",
 }
 
-# Tools whose invocations are surfaced in the "thinking" panel
-THINKING_TOOLS = {
-    "execute_sql", "get_table_info", "list_table_ids",
-    "google_search", "design_research", "start_collection",
-    "get_progress", "enrich_collection", "get_collection_details",
-    "create_chart", "generate_report", "generate_dashboard",
-    "export_data", "create_task_protocol", "get_task_status",
-    "set_active_task", "refresh_engagements", "cancel_collection",
-    "compose_email", "send_email",
-    "get_collection_details", "generate_report", "generate_dashboard", "get_sql_reference",
-}
 
 
 def get_runner(model: str | None = None) -> Runner:
@@ -687,21 +676,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         "data": json.dumps(event_data),
                     }
 
-                    # Emit a thinking event for analytical tools
+                    # Emit context_update when agent changes its working set
                     if et in ("tool_call", "tool_result"):
                         tool_name = event_data.get("metadata", {}).get("name", "")
-                        thinking = _build_thinking_content(et, tool_name, event_data)
-                        if thinking:
-                            yield {
-                                "event": "thinking",
-                                "data": json.dumps({
-                                    "event_type": "thinking",
-                                    "content": thinking,
-                                    "author": event_data.get("author", ""),
-                                }),
-                            }
-
-                        # Emit context_update when agent changes its working set
                         if (
                             et == "tool_result"
                             and tool_name == "set_working_collections"
@@ -1969,116 +1946,6 @@ async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> 
     return "New Session"
 
 
-
-
-def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -> str | None:
-    """Format a thinking entry for analytical tools."""
-    if tool_name not in THINKING_TOOLS:
-        return None
-
-    if event_type == "tool_call":
-        args = event_data.get("metadata", {}).get("args", {})
-        if tool_name == "execute_sql":
-            query = args.get("query", args.get("sql", ""))
-            if query:
-                return f"Running SQL query:\n```sql\n{query}\n```"
-            return "Running SQL query..."
-        if tool_name == "get_table_info":
-            table = args.get("table_id", args.get("table_name", ""))
-            return f"Inspecting schema for `{table}`"
-        if tool_name == "list_table_ids":
-            dataset = args.get("dataset_id", "social_listening")
-            return f"Listing tables in `{dataset}`"
-        if tool_name == "google_search":
-            query = args.get("query", "")
-            return f"Searching: *{query}*" if query else "Searching the web..."
-        if tool_name == "design_research":
-            q = args.get("question", args.get("research_question", ""))
-            return f"Designing research: *{q[:80]}*" if q else "Designing research plan..."
-        if tool_name == "start_collection":
-            return "Starting data collection..."
-        if tool_name == "get_progress":
-            cid = args.get("collection_id", "")
-            return f"Checking progress for `{cid}`" if cid else "Checking collection progress..."
-        if tool_name == "enrich_collection":
-            cid = args.get("collection_id", "")
-            return f"Running AI enrichment on `{cid}`" if cid else "Running AI enrichment..."
-        if tool_name == "get_collection_details":
-            cid = args.get("collection_id", "")
-            return f"Loading details for `{cid}`" if cid else "Loading collection details..."
-        if tool_name == "create_chart":
-            ct = args.get("chart_type", "chart")
-            title = args.get("title", "")
-            return f"Creating {ct}: *{title[:60]}*" if title else f"Creating {ct}..."
-        if tool_name == "generate_report":
-            title = args.get("title", "")
-            return f"Generating report: *{title[:60]}*" if title else "Generating insight report..."
-        if tool_name == "generate_dashboard":
-            title = args.get("title", "")
-            return f"Building dashboard: *{title[:60]}*" if title else "Building interactive dashboard..."
-        if tool_name == "export_data":
-            return "Preparing data export..."
-        if tool_name == "create_task_protocol":
-            title = args.get("title", "")
-            return f"Writing task protocol: *{title[:60]}*" if title else "Writing task protocol..."
-        if tool_name == "get_task_status":
-            tid = args.get("task_id", "")
-            return f"Checking task `{tid}`" if tid else "Checking task status..."
-        if tool_name == "set_active_task":
-            tid = args.get("task_id", "")
-            return f"Loading task `{tid}`" if tid else "Loading task context..."
-        if tool_name == "refresh_engagements":
-            return "Refreshing engagement metrics..."
-        if tool_name == "cancel_collection":
-            cid = args.get("collection_id", "")
-            return f"Cancelling collection `{cid}`" if cid else "Cancelling collection..."
-        if tool_name == "compose_email":
-            return "Composing email..."
-        if tool_name == "send_email":
-            return "Sending email..."
-    elif event_type == "tool_result":
-        result = event_data.get("metadata", {}).get("result", {})
-        # Blocked tool calls are silently removed by the frontend — don't emit
-        # a thinking entry that would linger after the tool entry is removed.
-        if isinstance(result, dict) and result.get("status") in ("blocked", "auth_required"):
-            return None
-        if tool_name == "execute_sql":
-            return "Query completed"
-        if tool_name == "google_search":
-            return "Search results received"
-        if tool_name == "design_research":
-            return "Research design complete"
-        if tool_name == "start_collection":
-            return "Collection started"
-        if tool_name == "get_progress":
-            return "Progress retrieved"
-        if tool_name == "enrich_collection":
-            return "Enrichment complete"
-        if tool_name == "get_collection_details":
-            return "Collection details loaded"
-        if tool_name == "create_chart":
-            return "Chart created"
-        if tool_name == "generate_report":
-            return "Report generated"
-        if tool_name == "generate_dashboard":
-            return "Dashboard built"
-        if tool_name == "export_data":
-            return "Data exported"
-        if tool_name == "create_task_protocol":
-            return "Task protocol ready"
-        if tool_name == "get_task_status":
-            return "Task status retrieved"
-        if tool_name == "set_active_task":
-            return "Task context loaded"
-        if tool_name == "refresh_engagements":
-            return "Engagements refreshed"
-        if tool_name == "cancel_collection":
-            return "Collection cancelled"
-        if tool_name == "compose_email":
-            return "Email composed"
-        if tool_name == "send_email":
-            return "Email sent"
-    return None
 
 
 def _write_artifact_id_to_event(event, tool_name: str, artifact_id: str) -> None:

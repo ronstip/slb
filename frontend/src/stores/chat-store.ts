@@ -26,6 +26,7 @@ export interface ToolStartEntry extends ActivityEntryBase {
   kind: 'tool_start';
   toolName: string;
   text: string;
+  description?: string;
 }
 
 export interface ToolCompleteEntry extends ActivityEntryBase {
@@ -33,6 +34,7 @@ export interface ToolCompleteEntry extends ActivityEntryBase {
   toolName: string;
   text: string;
   durationMs: number;
+  description?: string;
 }
 
 export interface ToolErrorEntry extends ActivityEntryBase {
@@ -113,6 +115,7 @@ interface ChatStore {
   setActiveAgent: (messageId: string, agent: string) => void;
   addCard: (messageId: string, card: MessageCard) => void;
   appendActivityEntry: (messageId: string, entry: ActivityEntry) => void;
+  replaceToolEntry: (messageId: string, toolName: string, entry: ActivityEntry) => void;
   updateTodos: (messageId: string, todos: TodoItem[]) => void;
   finalizeMessage: (messageId: string) => void;
   addAgentMessage: (text: string, cards?: MessageCard[]) => string;
@@ -244,6 +247,39 @@ export const useChatStore = create<ChatStore>((set) => ({
           ? { ...m, activityLog: [...m.activityLog, entry] }
           : m,
       ),
+    })),
+
+  // Replace the last tool_start entry for a given toolName with its completion entry
+  // in both activityLog and blocks, so we get one row per tool instead of two.
+  replaceToolEntry: (messageId, toolName, entry) =>
+    set((s) => ({
+      messages: s.messages.map((m) => {
+        if (m.id !== messageId) return m;
+
+        // Replace last matching tool_start in flat log
+        const log = [...m.activityLog];
+        for (let i = log.length - 1; i >= 0; i--) {
+          if (log[i].kind === 'tool_start' && 'toolName' in log[i] && (log[i] as { toolName: string }).toolName === toolName) {
+            log[i] = entry;
+            break;
+          }
+        }
+
+        // Replace last matching tool_start in blocks
+        const blocks = (m.blocks || []).map((block) => {
+          if (block.type !== 'activity') return block;
+          const entries = [...block.entries];
+          for (let i = entries.length - 1; i >= 0; i--) {
+            if (entries[i].kind === 'tool_start' && 'toolName' in entries[i] && (entries[i] as { toolName: string }).toolName === toolName) {
+              entries[i] = entry;
+              return { ...block, entries };
+            }
+          }
+          return block;
+        });
+
+        return { ...m, activityLog: log, blocks };
+      }),
     })),
 
   updateTodos: (messageId, newTodos) =>

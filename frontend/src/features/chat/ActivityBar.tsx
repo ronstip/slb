@@ -1,25 +1,37 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, CheckCircle2, Circle, Loader2 } from 'lucide-react';
 import type { ActivityEntry, TodoItem } from '../../stores/chat-store.ts';
+import { TOOL_CATEGORY } from '../../lib/constants.ts';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-/** Parse inline `code`, ```block```, and **bold** from thinking text into React nodes. */
-function renderThinkingText(text: string): ReactNode[] {
+/**
+ * Split thinking text into a bold header (first **bold** segment) and the rest as body.
+ * Returns { header, body } where body contains inline markdown rendering.
+ */
+function parseThinkingText(text: string): { header: string | null; bodyNodes: ReactNode[] } {
+  // Extract the first **bold** segment as the header
+  const headerMatch = text.match(/^\s*\*\*([^*]+)\*\*/);
+  const header = headerMatch ? headerMatch[1] : null;
+  const bodyText = headerMatch ? text.slice(headerMatch[0].length).trimStart() : text;
+
+  if (!bodyText) return { header, bodyNodes: [] };
+
+  // Render remaining body with inline markdown
   const nodes: ReactNode[] = [];
   const re = /```(\w*)\n?([\s\S]*?)```|`([^`]+)`|\*\*([^*]+)\*\*/g;
   let last = 0;
   let match;
   let key = 0;
 
-  while ((match = re.exec(text)) !== null) {
+  while ((match = re.exec(bodyText)) !== null) {
     if (match.index > last) {
-      nodes.push(text.slice(last, match.index));
+      nodes.push(bodyText.slice(last, match.index));
     }
     if (match[2] !== undefined) {
       nodes.push(
@@ -41,21 +53,37 @@ function renderThinkingText(text: string): ReactNode[] {
     last = match.index + match[0].length;
   }
 
-  if (last < text.length) {
-    nodes.push(text.slice(last));
+  if (last < bodyText.length) {
+    nodes.push(bodyText.slice(last));
   }
 
-  return nodes;
+  return { header, bodyNodes: nodes };
 }
 
-// ── Bullet + color helpers ───────────────────────────────────────────
+// ── Category color helpers ───────────────────────────────────────────
+
+function categoryBulletColor(toolName: string, isComplete: boolean): string {
+  const cat = TOOL_CATEGORY[toolName];
+  if (cat === 'thinking') return isComplete ? 'bg-emerald-600/80' : 'bg-emerald-600/50 animate-pulse';
+  if (cat === 'tools') return isComplete ? 'bg-amber-500' : 'bg-amber-400 animate-pulse';
+  if (cat === 'outputs') return isComplete ? 'bg-emerald-600/80' : 'bg-emerald-600/50 animate-pulse';
+  return isComplete ? 'bg-accent-success' : 'bg-muted-foreground animate-pulse';
+}
+
+function categoryTextColor(toolName: string, isComplete: boolean): string {
+  const cat = TOOL_CATEGORY[toolName];
+  if (cat === 'thinking') return isComplete ? 'text-emerald-600/80' : 'text-emerald-600/60';
+  if (cat === 'tools') return isComplete ? 'text-amber-500' : 'text-amber-400';
+  if (cat === 'outputs') return isComplete ? 'text-emerald-600/80' : 'text-emerald-600/60';
+  return isComplete ? 'text-accent-success' : 'text-muted-foreground';
+}
 
 function bulletColor(entry: ActivityEntry): string {
   switch (entry.kind) {
     case 'tool_start':
-      return 'bg-muted-foreground animate-pulse';
+      return categoryBulletColor(entry.toolName, false);
     case 'tool_complete':
-      return 'bg-accent-success';
+      return categoryBulletColor(entry.toolName, true);
     case 'tool_error':
       return 'bg-destructive';
     case 'tool_blocked':
@@ -72,15 +100,15 @@ function bulletColor(entry: ActivityEntry): string {
 function textColor(entry: ActivityEntry): string {
   switch (entry.kind) {
     case 'tool_start':
-      return 'text-muted-foreground';
+      return categoryTextColor(entry.toolName, false);
     case 'tool_complete':
-      return 'text-accent-success';
+      return categoryTextColor(entry.toolName, true);
     case 'tool_error':
       return 'text-destructive';
     case 'tool_blocked':
       return 'text-amber-500';
     case 'thinking':
-      return 'text-foreground/90';
+      return 'text-foreground/55';
     case 'todo_change':
       if (entry.toStatus === 'completed') return 'text-accent-success';
       if (entry.toStatus === 'in_progress') return 'text-accent-vibrant';
@@ -90,30 +118,46 @@ function textColor(entry: ActivityEntry): string {
 
 // ── Entry renderer ───────────────────────────────────────────────────
 
+function ToolDescription({ text }: { text: string }) {
+  return (
+    <div className="text-[11px] text-muted-foreground/60 leading-relaxed pl-3 line-clamp-2 font-normal">
+      {text}
+    </div>
+  );
+}
+
 function renderEntry(entry: ActivityEntry): ReactNode {
   switch (entry.kind) {
     case 'tool_start':
       return (
-        <span>
-          {entry.text}
-          <span className="ml-0.5">...</span>
-        </span>
+        <div className="flex flex-col">
+          <span>
+            <span className="font-semibold">{entry.text}</span>
+            <span className="ml-0.5 font-normal">...</span>
+          </span>
+          {entry.description && <ToolDescription text={entry.description} />}
+        </div>
       );
     case 'tool_complete':
       return (
-        <span>
-          {entry.text}
-          <span className="ml-1.5 text-[11px] text-muted-foreground">
-            {formatDuration(entry.durationMs)}
+        <div className="flex flex-col">
+          <span>
+            <span className="font-semibold">{entry.text}</span>
+            <span className="ml-1.5 text-[11px] text-muted-foreground font-normal">
+              {formatDuration(entry.durationMs)}
+            </span>
           </span>
-        </span>
+          {entry.description && <ToolDescription text={entry.description} />}
+        </div>
       );
     case 'tool_error':
       return (
-        <span>
-          {entry.text}
-          <span className="ml-1.5 text-[11px]"> — {entry.error}</span>
-        </span>
+        <div className="flex flex-col">
+          <span>
+            <span className="font-semibold">{entry.text}</span>
+            <span className="ml-1.5 text-[11px] font-normal"> — {entry.error}</span>
+          </span>
+        </div>
       );
     case 'tool_blocked':
       return (
@@ -121,8 +165,19 @@ function renderEntry(entry: ActivityEntry): ReactNode {
           {entry.text} — blocked
         </span>
       );
-    case 'thinking':
-      return <span>{renderThinkingText(entry.text)}</span>;
+    case 'thinking': {
+      const { header, bodyNodes } = parseThinkingText(entry.text);
+      return (
+        <div className="flex flex-col">
+          {header && <span className="font-semibold">{header}</span>}
+          {bodyNodes.length > 0 && (
+            <div className="text-[11px] text-muted-foreground/60 leading-relaxed pl-3">
+              {bodyNodes}
+            </div>
+          )}
+        </div>
+      );
+    }
     case 'todo_change': {
       const label =
         entry.fromStatus === null
@@ -225,15 +280,15 @@ function ActivityTimeline({
         onClick={() => setExpanded(!expanded)}
       >
         <div className="relative ml-2 pl-5">
-          <div className="absolute left-[6.5px] top-0 bottom-0 w-px bg-border" />
+          <div className="absolute left-[6.3px] top-0 bottom-0 w-px bg-border" />
           {entries.map((entry, i) => {
             const isThinking = entry.kind === 'thinking';
             return (
-              <div key={i} className={`relative flex items-start gap-2.5 py-[3px] ${isThinking ? 'ml-1' : ''}`}>
+              <div key={i} className="relative flex items-start gap-2.5 py-[3px]">
                 <div
-                  className={`absolute ${isThinking ? 'left-[-18px]' : 'left-[-17px]'} top-[9px] ${isThinking ? 'h-1.5 w-1.5' : 'h-2 w-2'} rounded-full ${bulletColor(entry)}`}
+                  className={`absolute left-[-17px] top-[9px] ${isThinking ? 'h-1.5 w-1.5 ml-[0.5px]' : 'h-2 w-2'} rounded-full ${bulletColor(entry)}`}
                 />
-                <div className={`${isThinking ? 'text-[11px] leading-relaxed pl-0.5 opacity-70' : 'text-xs leading-relaxed'} ${textColor(entry)} ${isThinking && !expanded ? 'line-clamp-2' : ''}`}>
+                <div className={`text-xs leading-relaxed ${textColor(entry)}`}>
                   {renderEntry(entry)}
                 </div>
               </div>

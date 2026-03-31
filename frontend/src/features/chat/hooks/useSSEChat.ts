@@ -11,18 +11,40 @@ import { useAuth } from '../../../auth/useAuth.ts';
 import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
-// Auto-generated thinking entries from backend _build_thinking_content() — system noise, not agent reasoning
-const AUTO_THINKING_NOISE = new Set([
-  'Query completed', 'Search results received', 'Research design complete',
-  'Collection started', 'Progress retrieved', 'Enrichment complete',
-  'Collection details loaded', 'Chart created', 'Report generated',
-  'Dashboard built', 'Data exported', 'Task started', 'Task status retrieved',
-  'Task context loaded', 'Engagements refreshed', 'Collection cancelled',
-  'Email composed', 'Email sent',
-]);
-
 // Tools that are internal plumbing — skip from activity log
 const INTERNAL_TOOLS = new Set(['update_todos', 'set_working_collections']);
+
+/** Extract a short description from tool_call args for display below the header. */
+function getToolDescription(toolName: string, args: Record<string, unknown>): string | undefined {
+  switch (toolName) {
+    case 'execute_sql': {
+      const q = (args.query ?? args.sql ?? '') as string;
+      return q ? (q.length > 120 ? q.slice(0, 120) + '...' : q) : undefined;
+    }
+    case 'google_search':
+    case 'google_search_agent':
+      return (args.query as string) || undefined;
+    case 'design_research':
+      return (args.question as string) || (args.research_question as string) || undefined;
+    case 'get_progress':
+    case 'enrich_collection':
+    case 'cancel_collection':
+    case 'get_collection_details':
+    case 'refresh_engagements':
+      return (args.collection_id as string) || undefined;
+    case 'get_task_status':
+    case 'set_active_task':
+      return (args.task_id as string) || undefined;
+    case 'create_chart':
+    case 'generate_report':
+    case 'generate_dashboard':
+      return (args.title as string) || undefined;
+    case 'export_data':
+      return (args.format as string) || undefined;
+    default:
+      return undefined;
+  }
+}
 
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
@@ -102,12 +124,9 @@ export function useSSEChat() {
             }
 
             case 'thinking': {
-              // Skip auto-generated system noise — only log real agent reasoning
-              if (!AUTO_THINKING_NOISE.has(event.content) && !event.content.startsWith('Running SQL query')) {
-                const entry = { kind: 'thinking' as const, text: event.content, ts: Date.now() };
-                chatState.appendActivityEntry(messageId, entry);
-                chatState.appendActivityBlock(messageId, entry);
-              }
+              const entry = { kind: 'thinking' as const, text: event.content, ts: Date.now() };
+              chatState.appendActivityEntry(messageId, entry);
+              chatState.appendActivityBlock(messageId, entry);
               break;
             }
 
@@ -136,7 +155,9 @@ export function useSSEChat() {
             case 'tool_call': {
               const toolName = event.metadata.name;
               if (!INTERNAL_TOOLS.has(toolName)) {
-                const entry = { kind: 'tool_start' as const, text: getToolDisplayText(toolName), toolName, ts: Date.now() };
+                const args = (event.metadata.args ?? {}) as Record<string, unknown>;
+                const description = getToolDescription(toolName, args);
+                const entry = { kind: 'tool_start' as const, text: getToolDisplayText(toolName), toolName, description, ts: Date.now() };
                 chatState.appendActivityEntry(messageId, entry);
                 chatState.appendActivityBlock(messageId, entry);
               }
@@ -147,40 +168,40 @@ export function useSSEChat() {
               const toolName = event.metadata.name;
               const result = event.metadata.result;
 
-              // Compute duration from matching tool_start entry
-              const log = useChatStore.getState().messages.find(m => m.id === messageId)?.activityLog ?? [];
-              const startEntry = [...log].reverse().find(
-                e => e.kind === 'tool_start' && e.toolName === toolName
-              );
-              const durationMs = startEntry ? Date.now() - startEntry.ts : 0;
+              // Internal tools skip activity entries but still process special results below
+              if (!INTERNAL_TOOLS.has(toolName)) {
+                // Compute duration and carry description from matching tool_start entry
+                const log = useChatStore.getState().messages.find(m => m.id === messageId)?.activityLog ?? [];
+                const startEntry = [...log].reverse().find(
+                  e => e.kind === 'tool_start' && e.toolName === toolName
+                );
+                const durationMs = startEntry ? Date.now() - startEntry.ts : 0;
+                const description = startEntry?.kind === 'tool_start' ? startEntry.description : undefined;
 
-              // Blocked tool calls (e.g. gate rejected)
-              if (result?.status === 'blocked') {
-                const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
-                chatState.appendActivityEntry(messageId, entry);
-                chatState.appendActivityBlock(messageId, entry);
-                break;
-              }
+                // Blocked tool calls (e.g. gate rejected) — replace start entry
+                if (result?.status === 'blocked') {
+                  const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
+                  chatState.replaceToolEntry(messageId, toolName, entry);
+                  break;
+                }
 
-              // Anonymous user tried to start a collection — open sign-up prompt
-              if (result?.status === 'auth_required') {
-                const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
-                chatState.appendActivityEntry(messageId, entry);
-                chatState.appendActivityBlock(messageId, entry);
-                useUIStore.getState().openSignUpPrompt();
-                break;
-              }
+                // Anonymous user tried to start a collection — replace start entry + open sign-up
+                if (result?.status === 'auth_required') {
+                  const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
+                  chatState.replaceToolEntry(messageId, toolName, entry);
+                  useUIStore.getState().openSignUpPrompt();
+                  break;
+                }
 
-              // Append completion or error entry
-              const errorMsg = result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined;
-              if (errorMsg) {
-                const entry = { kind: 'tool_error' as const, toolName, text: getToolDisplayText(toolName), error: errorMsg, durationMs, ts: Date.now() };
-                chatState.appendActivityEntry(messageId, entry);
-                chatState.appendActivityBlock(messageId, entry);
-              } else {
-                const entry = { kind: 'tool_complete' as const, toolName, text: getToolDisplayText(toolName), durationMs, ts: Date.now() };
-                chatState.appendActivityEntry(messageId, entry);
-                chatState.appendActivityBlock(messageId, entry);
+                // Replace tool_start with completion or error entry
+                const errorMsg = result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined;
+                if (errorMsg) {
+                  const entry = { kind: 'tool_error' as const, toolName, text: getToolDisplayText(toolName), error: errorMsg, durationMs, ts: Date.now() };
+                  chatState.replaceToolEntry(messageId, toolName, entry);
+                } else {
+                  const entry = { kind: 'tool_complete' as const, toolName, text: getToolDisplayText(toolName), durationMs, description, ts: Date.now() };
+                  chatState.replaceToolEntry(messageId, toolName, entry);
+                }
               }
 
               // Handle special tool results

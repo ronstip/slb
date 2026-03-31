@@ -1,3 +1,31 @@
+export type ToolCategory = 'thinking' | 'tools' | 'outputs';
+
+export const TOOL_CATEGORY: Record<string, ToolCategory> = {
+  // Thinking — research, lookup, status
+  google_search: 'thinking',
+  google_search_agent: 'thinking',
+  design_research: 'thinking',
+  get_collection_details: 'thinking',
+  get_table_info: 'thinking',
+  list_table_ids: 'thinking',
+  get_progress: 'thinking',
+  get_task_status: 'thinking',
+  set_active_task: 'thinking',
+  ask_user: 'thinking',
+  // Tools — execution, processing
+  execute_sql: 'tools',
+  enrich_collection: 'tools',
+  refresh_engagements: 'tools',
+  cancel_collection: 'tools',
+  start_task: 'tools',
+  // Outputs — deliverables
+  create_chart: 'outputs',
+  generate_report: 'outputs',
+  generate_dashboard: 'outputs',
+  export_data: 'outputs',
+  compose_email: 'outputs',
+};
+
 export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   google_search: 'Searching the web',
   google_search_agent: 'Searching the web',
