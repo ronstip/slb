@@ -419,13 +419,14 @@ export interface StructuredPromptOption {
 
 export interface StructuredPrompt {
   id: string;
-  type: 'icon_grid' | 'pill_row' | 'tag_input' | 'card_select' | 'toggle_row';
+  type: 'icon_grid' | 'pill_row' | 'tag_input' | 'card_select' | 'toggle_row' | 'approval';
   question: string;
   options?: StructuredPromptOption[];
   multi_select?: boolean;
   preselected?: string[];
   placeholder?: string;
   default_value?: boolean | string;
+  allow_other?: boolean;
 }
 
 export interface StructuredPromptResult {

@@ -64,6 +64,7 @@ PROMPT_TEMPLATES: dict[str, dict] = {
         "type": "toggle_row",
         "question": "Include comment threads?",
         "default_value": True,
+        "allow_other": False,
     },
     "posts_per_keyword": {
         "id": "posts_per_keyword",
@@ -78,12 +79,13 @@ PROMPT_TEMPLATES: dict[str, dict] = {
     },
     "approve_plan": {
         "id": "approve_plan",
-        "type": "pill_row",
+        "type": "approval",
         "question": "Ready to proceed?",
         "options": [
             {"value": "approve", "label": "Approve & Run", "recommended": True},
             {"value": "adjust", "label": "Adjust"},
         ],
+        "allow_other": False,
     },
 }
 

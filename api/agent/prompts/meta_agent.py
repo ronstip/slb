@@ -168,6 +168,7 @@ Only for things the user must decide that you can't figure out. Before calling, 
 - After calling, STOP. Wait for response.
 - For task approval, always use `prompt_ids="approve_plan"` as a separate call — never combine with information-gathering prompts.
 - After user approves, go straight to `start_task` — don't restate the strategy. Use EXACTLY the values the user confirmed.
+- If user selects "Adjust", the structured response includes `approve_plan_feedback` with their explanation. Read it, modify your plan accordingly, then re-present with another `ask_user` approval call.
 
 ### Search Strategy Notes
 
