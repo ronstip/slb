@@ -11,6 +11,8 @@ from config.settings import get_settings
 from workers.collection.adapters.brightdata import BrightDataAdapter
 from workers.collection.adapters.brightdata_client import BrightDataClient
 from workers.collection.adapters.brightdata_parsers import (
+    parse_brightdata_facebook_group_channel,
+    parse_brightdata_facebook_group_post,
     parse_brightdata_reddit_channel,
     parse_brightdata_reddit_post,
     parse_brightdata_tiktok_channel,
@@ -39,6 +41,7 @@ _PLATFORM_PARSERS = {
     "tiktok": (parse_brightdata_tiktok_post, parse_brightdata_tiktok_channel),
     "youtube": (parse_brightdata_youtube_post, parse_brightdata_youtube_channel),
     "reddit": (parse_brightdata_reddit_post, parse_brightdata_reddit_channel),
+    "facebook": (parse_brightdata_facebook_group_post, parse_brightdata_facebook_group_channel),
 }
 
 

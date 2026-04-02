@@ -452,7 +452,7 @@ function PromptIconGrid({
       <div className="grid grid-cols-3 gap-2">
         {prompt.options?.map((opt) => {
           const active = selected.includes(opt.value);
-          const isPlatform = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'].includes(opt.icon ?? '');
+          const isPlatform = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube', 'facebook'].includes(opt.icon ?? '');
           return (
             <button
               key={opt.value}

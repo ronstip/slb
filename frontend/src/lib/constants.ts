@@ -58,6 +58,7 @@ export const PLATFORM_COLORS: Record<string, string> = {
   twitter: '#1DA1F2',
   reddit: '#E05A00',
   youtube: '#E03030',
+  facebook: '#1877F2',
 };
 
 export const PLATFORM_LABELS: Record<string, string> = {
@@ -66,6 +67,7 @@ export const PLATFORM_LABELS: Record<string, string> = {
   twitter: 'Twitter/X',
   reddit: 'Reddit',
   youtube: 'YouTube',
+  facebook: 'Facebook',
 };
 
 export const SENTIMENT_COLORS: Record<string, string> = {

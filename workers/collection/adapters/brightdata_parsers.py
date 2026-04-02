@@ -265,3 +265,171 @@ def parse_brightdata_reddit_channel(item: dict) -> Channel:
         created_date=None,
         channel_metadata={},
     )
+
+
+# ---------------------------------------------------------------------------
+# Facebook Groups
+# ---------------------------------------------------------------------------
+
+def parse_brightdata_facebook_group_post(item: dict) -> Post:
+    """Parse a Facebook group post from Bright Data's dataset response.
+
+    Real BD fields: url, post_id, user_url, user_username_raw, date_posted,
+    num_comments, num_shares, group_name, group_id, group_url, group_intro,
+    group_category, original_post, attachments, post_type, price, location,
+    profile_id, num_reaction_type, is_sponsored, post_external_image, etc.
+    """
+    media_urls: list[str] = []
+
+    # Extract content and media from original_post (dict with content, attachments)
+    original = item.get("original_post")
+    content = None
+    if isinstance(original, dict):
+        content = original.get("content") or original.get("text") or original.get("message")
+        # Media from original_post.attachments
+        orig_attachments = original.get("attachments") or []
+        if isinstance(orig_attachments, list):
+            for att in orig_attachments:
+                if isinstance(att, dict) and att.get("url"):
+                    media_urls.append(att["url"])
+
+    # Fallback media from top-level fields
+    ext_img = item.get("post_external_image")
+    if ext_img and ext_img != "None" and ext_img not in media_urls:
+        media_urls.append(ext_img)
+    # Top-level attachments
+    top_attachments = item.get("attachments") or []
+    if isinstance(top_attachments, list):
+        for att in top_attachments:
+            if isinstance(att, dict) and att.get("url") and att["url"] not in media_urls:
+                media_urls.append(att["url"])
+
+    post_type_raw = item.get("post_type", "Post")
+    post_type = post_type_raw.lower() if post_type_raw else "text"
+
+    username = item.get("user_username_raw", "")
+
+    return Post(
+        post_id=str(item.get("post_id", "")),
+        platform="facebook",
+        channel_handle=username,
+        channel_id=str(item.get("group_id", "")),
+        title=None,
+        content=content,
+        post_url=item.get("url", ""),
+        posted_at=_parse_iso_timestamp(item.get("date_posted")),
+        post_type=post_type,
+        parent_post_id=None,
+        media_urls=media_urls,
+        media_refs=[],
+        likes=_safe_int(item.get("num_likes")),
+        shares=_safe_int(item.get("num_shares")),
+        comments_count=_safe_int(item.get("num_comments")),
+        views=None,
+        saves=None,
+        comments=[],
+        platform_metadata={
+            "platform": "facebook",
+            "source_type": "group",
+            "group_name": item.get("group_name"),
+            "group_url": item.get("group_url"),
+            "group_category": item.get("group_category"),
+            "group_members": _safe_int(item.get("group_members")),
+            "author": username,
+            "user_url": item.get("user_url"),
+            "profile_id": item.get("profile_id"),
+            "is_sponsored": item.get("is_sponsored"),
+            "price": item.get("price"),
+            "location": item.get("location"),
+        },
+        crawl_provider="brightdata",
+        search_keyword=_extract_search_keyword(item),
+    )
+
+
+def parse_brightdata_facebook_group_channel(item: dict) -> Channel:
+    """Parse a Facebook group as a channel from Bright Data's post response."""
+    group_id = str(item.get("group_id") or item.get("group_url", ""))
+    group_name = item.get("group_name", "")
+    return Channel(
+        channel_id=group_id,
+        platform="facebook",
+        channel_handle=group_name,
+        subscribers=_safe_int(item.get("group_members")),
+        total_posts=None,
+        channel_url=item.get("group_url", ""),
+        description=item.get("group_intro") if item.get("group_intro") != "None" else None,
+        created_date=_parse_iso_timestamp(item.get("group_created_at")) if item.get("group_created_at") else None,
+        channel_metadata={
+            "channel_type": "group",
+            "group_category": item.get("group_category"),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Facebook Marketplace
+# ---------------------------------------------------------------------------
+
+def parse_brightdata_facebook_marketplace_post(item: dict) -> Post:
+    """Parse a Facebook Marketplace listing from Bright Data's dataset response."""
+    images = item.get("images") or []
+    videos = item.get("videos") or []
+    media_urls = images + videos
+
+    title = item.get("title", "")
+    description = item.get("description", "")
+    content = f"{title}\n{description}".strip() if description else title
+
+    return Post(
+        post_id=str(item.get("product_id", "")),
+        platform="facebook",
+        channel_handle=item.get("profile_id", ""),
+        channel_id=item.get("profile_id", ""),
+        title=title,
+        content=content,
+        post_url=item.get("url", ""),
+        posted_at=_parse_iso_timestamp(item.get("listing_date")),
+        post_type="marketplace_listing",
+        parent_post_id=None,
+        media_urls=media_urls,
+        media_refs=[],
+        likes=None,
+        shares=None,
+        comments_count=None,
+        views=None,
+        saves=None,
+        comments=[],
+        platform_metadata={
+            "platform": "facebook",
+            "source_type": "marketplace",
+            "initial_price": item.get("initial_price"),
+            "final_price": item.get("final_price"),
+            "currency": item.get("currency"),
+            "condition": item.get("condition"),
+            "location": item.get("location"),
+            "country_code": item.get("country_code"),
+            "category": item.get("root_category"),
+            "brand": item.get("brand"),
+            "color": item.get("color"),
+            "seller_description": item.get("seller_description"),
+        },
+        crawl_provider="brightdata",
+        search_keyword=_extract_search_keyword(item),
+    )
+
+
+def parse_brightdata_facebook_marketplace_channel(item: dict) -> Channel:
+    """Stub channel parser for marketplace listings (sellers are minimal)."""
+    profile_id = item.get("profile_id", "")
+    return Channel(
+        channel_id=str(profile_id),
+        platform="facebook",
+        channel_handle=str(profile_id),
+        subscribers=None,
+        total_posts=None,
+        channel_url="",
+        description=item.get("seller_description"),
+        created_date=None,
+        channel_metadata={"channel_type": "marketplace_seller"},
+    )
