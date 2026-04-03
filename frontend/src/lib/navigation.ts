@@ -1,7 +1,4 @@
-import { useSessionStore } from '../stores/session-store.ts';
-
-/** Returns the app path for the current session, or `/` if none active. */
+/** Returns the app home path. Always navigates to the home page. */
 export function getAppPath(): string {
-  const id = useSessionStore.getState().activeSessionId;
-  return id ? `/session/${id}` : '/';
+  return '/';
 }

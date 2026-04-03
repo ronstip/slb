@@ -1,5 +1,6 @@
 import {
   Building2,
+  Circle,
   ClipboardList,
   Database,
   Layers,
@@ -14,14 +15,16 @@ import {
   ShieldCheck,
   Sun,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../auth/useAuth.ts';
 import { useTheme } from '../../components/theme-provider.tsx';
 import { Logo } from '../../components/Logo.tsx';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
+import { useTaskStore } from '../../stores/task-store.ts';
 import { getAppPath } from '../../lib/navigation.ts';
+import { STATUS_CONFIG } from '../tasks/TaskDetailDrawer.tsx';
 import { SessionCard } from '../sources/SessionCard.tsx';
 import { SessionSearchModal } from './SessionSearchModal.tsx';
 import { Button } from '../../components/ui/button.tsx';
@@ -45,13 +48,20 @@ import {
 export function SessionsPanel() {
   const collapsed = useUIStore((s) => s.sourcesPanelCollapsed);
   const toggle = useUIStore((s) => s.toggleSourcesPanel);
+  const appMode = useUIStore((s) => s.appMode);
   const openSearch = useUIStore((s) => s.openSessionSearch);
   const openArtifactLibrary = useUIStore((s) => s.openArtifactLibrary);
   const navigateToCollections = () => navigate('/collections');
   const openSignUpPrompt = useUIStore((s) => s.openSignUpPrompt);
   const sessions = useSessionStore((s) => s.sessions);
   const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
+  const tasks = useTaskStore((s) => s.tasks);
+  const fetchTasks = useTaskStore((s) => s.fetchTasks);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (appMode === 'tasks' && tasks.length === 0) fetchTasks();
+  }, [appMode, tasks.length, fetchTasks]);
 
   const handleNewSession = () => {
     useSessionStore.getState().startNewSession();
@@ -343,6 +353,40 @@ export function SessionsPanel() {
 
       {/* Divider — under menu items */}
       <div className="mx-3 my-2 border-t border-border" />
+
+      {/* Recent Tasks (shown in task-centered mode) */}
+      {appMode === 'tasks' && tasks.length > 0 && (
+        <div className="px-3 pb-2">
+          <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+            Recent Tasks
+          </p>
+          <div className="flex flex-col gap-0.5">
+            {[...tasks]
+              .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+              .slice(0, 5)
+              .map((task) => {
+                const cfg = STATUS_CONFIG[task.status];
+                return (
+                  <button
+                    key={task.task_id}
+                    onClick={() => {
+                      const sid = task.primary_session_id || task.session_id;
+                      if (sid) navigate(`/session/${sid}`);
+                      else navigate('/tasks');
+                    }}
+                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent"
+                  >
+                    <Circle
+                      className={`h-2 w-2 shrink-0 fill-current ${cfg?.color || 'text-muted-foreground'}`}
+                    />
+                    <span className="truncate text-xs text-foreground/80">{task.title}</span>
+                  </button>
+                );
+              })}
+          </div>
+          <div className="mx-2.5 mt-2 border-t border-border" />
+        </div>
+      )}
 
       {/* Session list */}
       <div className="flex flex-1 flex-col overflow-hidden">

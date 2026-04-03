@@ -105,7 +105,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   }, []);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-border bg-card/50 px-4 py-1.5">
         {!standalone && (

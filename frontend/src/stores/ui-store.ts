@@ -13,8 +13,10 @@ export interface PollData {
 }
 
 export type LayoutMode = 'balanced' | 'studio-focus';
+export type AppMode = 'tasks' | 'sessions';
 
 interface UIStore {
+  appMode: AppMode;
   sourcesPanelCollapsed: boolean;
   studioPanelCollapsed: boolean;
   layoutMode: LayoutMode;
@@ -26,6 +28,7 @@ interface UIStore {
   sessionSearchOpen: boolean;
   signUpPromptOpen: boolean;
 
+  setAppMode: (mode: AppMode) => void;
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
   expandStudioPanel: () => void;
@@ -52,7 +55,16 @@ const loadCollapsed = (key: string): boolean => {
   }
 };
 
+const loadAppMode = (): AppMode => {
+  try {
+    const stored = localStorage.getItem('veille-app-mode');
+    if (stored === 'sessions' || stored === 'tasks') return stored;
+  } catch { /* ignore */ }
+  return 'tasks';
+};
+
 export const useUIStore = create<UIStore>((set) => ({
+  appMode: loadAppMode(),
   sourcesPanelCollapsed: loadCollapsed('sources-collapsed'),
   studioPanelCollapsed: loadCollapsed('studio-collapsed'),
   layoutMode: 'balanced' as LayoutMode,
@@ -63,6 +75,11 @@ export const useUIStore = create<UIStore>((set) => ({
   activePoll: null,
   sessionSearchOpen: false,
   signUpPromptOpen: false,
+
+  setAppMode: (mode) => {
+    localStorage.setItem('veille-app-mode', mode);
+    set({ appMode: mode });
+  },
 
   toggleSourcesPanel: () =>
     set((s) => {

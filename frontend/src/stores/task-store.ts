@@ -32,7 +32,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   error: null,
 
   fetchTasks: async () => {
-    set({ isLoading: true, error: null });
+    const { tasks: prev, isLoading: alreadyLoading } = get();
+    // Only show loading spinner on first load, not on refreshes
+    if (prev.length === 0 && !alreadyLoading) {
+      set({ isLoading: true, error: null });
+    }
     try {
       const tasks = await listTasks();
       const { activeTaskId } = get();

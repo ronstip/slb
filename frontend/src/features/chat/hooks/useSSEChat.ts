@@ -88,6 +88,8 @@ export function useSSEChat() {
         .filter((s) => s.active)
         .map((s) => s.collectionId);
 
+      let createdTaskId: string | undefined;
+
       try {
         const resolvedTheme = theme === 'system'
           ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
@@ -323,6 +325,9 @@ export function useSSEChat() {
                     }
                   }
                 }
+                if (taskId) {
+                  createdTaskId = taskId;
+                }
                 // Refresh task list, then set newly created task as active context
                 import('../../../stores/task-store.ts').then(async ({ useTaskStore }) => {
                   await useTaskStore.getState().fetchTasks();
@@ -381,7 +386,13 @@ export function useSSEChat() {
               if (isNew) {
                 // New session created — fetch list and update URL
                 sessionStore.fetchSessions();
-                navigate(`/session/${event.session_id}`, { replace: true });
+                if (createdTaskId) {
+                  navigate(`/tasks/${createdTaskId}?tab=chat`, { replace: true });
+                } else {
+                  navigate(`/session/${event.session_id}`, { replace: true });
+                }
+              } else if (createdTaskId) {
+                navigate(`/tasks/${createdTaskId}?tab=chat`);
               }
               break;
             }

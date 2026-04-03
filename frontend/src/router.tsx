@@ -8,8 +8,11 @@ import { InviteHandler } from './features/settings/InviteHandler.tsx';
 import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
 import { StandaloneArtifactPage } from './features/artifacts/StandaloneArtifactPage.tsx';
 import { TasksPage } from './features/tasks/TasksPage.tsx';
+import { TaskHome } from './features/tasks/TaskHome.tsx';
+import { TaskDetailPage } from './features/tasks/detail/TaskDetailPage.tsx';
 import { CollectionsPage } from './features/collections/CollectionsPage.tsx';
 import { useAuth } from './auth/useAuth.ts';
+import { useUIStore } from './stores/ui-store.ts';
 
 // Wrapper for invite handler to extract code from params
 function InviteRoute() {
@@ -18,9 +21,10 @@ function InviteRoute() {
 }
 
 // Smart home route: shows LandingPage for anonymous/unauthenticated users,
-// AppShell for signed-in users. Auth state changes trigger automatic re-render.
+// TaskHome or AppShell depending on appMode for signed-in users.
 function HomeRoute() {
   const { loading, isAnonymous, devMode } = useAuth();
+  const appMode = useUIStore((s) => s.appMode);
 
   if (loading) {
     return (
@@ -30,8 +34,9 @@ function HomeRoute() {
     );
   }
 
-  // In dev mode (no Firebase configured), go straight to app
-  return (isAnonymous && !devMode) ? <LandingPage /> : <AppShell />;
+  if (isAnonymous && !devMode) return <LandingPage />;
+
+  return appMode === 'tasks' ? <TaskHome /> : <AppShell />;
 }
 
 // Static router — never recreated. Auth is handled by the AuthGate layout route.
@@ -77,6 +82,10 @@ export const router = createBrowserRouter([
       {
         path: '/tasks',
         element: <TasksPage />,
+      },
+      {
+        path: '/tasks/:taskId',
+        element: <TaskDetailPage />,
       },
       {
         path: '/collections',

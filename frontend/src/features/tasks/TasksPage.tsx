@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
-  ArrowLeft,
-  ClipboardList,
   Compass,
   FileText,
   Filter,
+  LayoutGrid,
+  List,
   MessageSquare,
   MoreHorizontal,
   Play,
@@ -39,6 +39,20 @@ import {
   TooltipTrigger,
 } from '../../components/ui/tooltip.tsx';
 import { formatSchedule } from '../../lib/constants.ts';
+import { TaskCardGrid } from './TaskCardGrid.tsx';
+import { Logo } from '../../components/Logo.tsx';
+import { UserMenu } from '../../components/UserMenu.tsx';
+import { cn } from '../../lib/utils.ts';
+
+type ViewMode = 'table' | 'grid';
+
+const loadViewMode = (): ViewMode => {
+  try {
+    const stored = localStorage.getItem('veille-tasks-view');
+    if (stored === 'grid' || stored === 'table') return stored;
+  } catch { /* ignore */ }
+  return 'table';
+};
 
 const ALL_STATUSES: TaskStatus[] = [
   'executing', 'monitoring', 'approved',
@@ -71,18 +85,24 @@ export function TasksPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [openScheduleOnDrawer, setOpenScheduleOnDrawer] = useState(false);
   const [explorerTask, setExplorerTask] = useState<Task | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem('veille-tasks-view', mode);
+  };
 
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
 
-  // Auto-refresh while any task is executing
+  // Auto-refresh while any task is executing (use stable boolean selector to avoid infinite loop)
+  const hasExecuting = useTaskStore((s) => s.tasks.some((t) => t.status === 'executing'));
   useEffect(() => {
-    const hasExecuting = tasks.some((t) => t.status === 'executing');
     if (!hasExecuting) return;
     const interval = setInterval(() => fetchTasks(), 15_000);
     return () => clearInterval(interval);
-  }, [tasks, fetchTasks]);
+  }, [hasExecuting, fetchTasks]);
 
   const filteredTasks = tasks
     .filter((t) => {
@@ -118,6 +138,10 @@ export function TasksPage() {
   };
 
   const handleRowClick = (task: Task) => {
+    navigate(`/tasks/${task.task_id}`);
+  };
+
+  const handleDrawerPeek = (task: Task) => {
     setSelectedTask(task);
     setOpenScheduleOnDrawer(false);
     setDrawerOpen(true);
@@ -149,22 +173,14 @@ export function TasksPage() {
 
   return (
     <div className="flex h-screen w-full flex-col overflow-x-hidden bg-background">
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b px-6 py-4">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('/')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <ClipboardList className="h-5 w-5 text-primary" />
-        <h1 className="text-lg font-semibold">Tasks</h1>
-        <div className="flex-1" />
-        <Button size="sm" onClick={() => { toast('Start a conversation to set up recurring monitoring or scheduled automation.'); navigate('/'); }}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          New Task
-        </Button>
-      </div>
+      {/* Header with integrated filters */}
+      <header className="flex h-12 shrink-0 items-center gap-4 border-b px-5">
+        <button onClick={() => navigate('/')} className="shrink-0 focus:outline-none">
+          <Logo size="sm" />
+        </button>
+        <span className="text-sm font-medium text-muted-foreground">Tasks</span>
 
-      {/* Filters */}
-      <div className="flex items-center gap-2 px-6 py-3 border-b">
+        <div className="flex flex-1 items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -210,7 +226,34 @@ export function TasksPage() {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <div className="ml-auto flex items-center gap-1">
+          <div className="flex items-center rounded-md border">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn('h-7 w-7 rounded-r-none', viewMode === 'table' && 'bg-accent')}
+              onClick={() => handleViewModeChange('table')}
+            >
+              <List className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn('h-7 w-7 rounded-l-none', viewMode === 'grid' && 'bg-accent')}
+              onClick={() => handleViewModeChange('grid')}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <Button size="sm" className="h-7 text-xs ml-2" onClick={() => navigate('/')}>
+            <Plus className="mr-1 h-3 w-3" />
+            New Task
+          </Button>
+          <UserMenu />
+        </div>
       </div>
+      </header>
 
       {/* Error state */}
       {error && (
@@ -232,7 +275,7 @@ export function TasksPage() {
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <ClipboardList className="h-10 w-10 opacity-30 mb-3" />
+            <Search className="h-10 w-10 opacity-30 mb-3" />
             <p className="text-sm font-medium">
               {search || statusFilter.size > 0 ? 'No tasks match your filters' : 'No tasks yet'}
             </p>
@@ -241,6 +284,13 @@ export function TasksPage() {
                 ? 'Try adjusting your search or filters'
                 : 'Ask the AI to set up recurring monitoring or automate a scheduled report to create a task'}
             </p>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="p-6">
+            <TaskCardGrid
+              tasks={filteredTasks}
+              onTaskClick={handleRowClick}
+            />
           </div>
         ) : (
           <table className="w-full">
