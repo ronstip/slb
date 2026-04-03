@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table2, BarChart3, FileText, LayoutDashboard, MoreHorizontal } from 'lucide-react';
+import { Table2, BarChart3, FileText, LayoutDashboard, MoreHorizontal, Presentation, Download } from 'lucide-react';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { shortDate } from '../../lib/format.ts';
 import { DataExportView } from './DataExportView.tsx';
@@ -9,6 +9,7 @@ import { DashboardView } from './dashboard/DashboardView.tsx';
 import { UnderlyingDataDialog } from './UnderlyingDataDialog.tsx';
 import { cn } from '../../lib/utils.ts';
 import { Button } from '../../components/ui/button.tsx';
+import { apiGetBlob } from '../../api/client.ts';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,7 @@ const ARTIFACT_STYLES: Record<string, { icon: typeof Table2; color: string; bg: 
   insight_report: { icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10' },
   chart: { icon: BarChart3, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
   dashboard: { icon: LayoutDashboard, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+  presentation: { icon: Presentation, color: 'text-orange-500', bg: 'bg-orange-500/10' },
 };
 
 function getArtifactCollectionIds(artifact: Artifact): string[] {
@@ -28,7 +30,22 @@ function getArtifactCollectionIds(artifact: Artifact): string[] {
   if (artifact.type === 'insight_report') return artifact.collectionIds ?? [];
   if (artifact.type === 'dashboard') return artifact.collectionIds;
   if (artifact.type === 'chart') return artifact.collectionIds ?? [];
+  if (artifact.type === 'presentation') return artifact.collectionIds;
   return [];
+}
+
+async function downloadPresentation(id: string, title: string) {
+  try {
+    const blob = await apiGetBlob(`/presentations/${id}`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title.replace(/\s+/g, '_').slice(0, 60)}.pptx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Failed to download presentation:', err);
+  }
 }
 
 export function ArtifactsTab() {
@@ -78,11 +95,23 @@ export function ArtifactsTab() {
           const Icon = style.icon;
           const collectionIds = getArtifactCollectionIds(artifact);
 
+          const isPresentation = artifact.type === 'presentation';
+
+          const subtitleText = artifact.type === 'data_export'
+            ? `${artifact.rowCount} posts`
+            : artifact.type === 'insight_report'
+              ? `${artifact.cards.length} cards`
+              : artifact.type === 'dashboard'
+                ? `${artifact.collectionIds.length} collection${artifact.collectionIds.length !== 1 ? 's' : ''}`
+                : artifact.type === 'presentation'
+                  ? `${artifact.slideCount} slide${artifact.slideCount !== 1 ? 's' : ''}`
+                  : artifact.chartType.replace(/_/g, ' ');
+
           return (
             <div
               key={artifact.id}
               className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-sm transition-all hover:border-primary/20 hover:shadow-md"
-              onClick={() => expandReport(artifact.id)}
+              onClick={() => isPresentation ? downloadPresentation(artifact.id, artifact.title) : expandReport(artifact.id)}
             >
               <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', style.bg)}>
                 <Icon className={cn('h-4 w-4', style.color)} />
@@ -92,16 +121,20 @@ export function ArtifactsTab() {
                   {artifact.title}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {shortDate(artifact.createdAt)} · {artifact.type === 'data_export'
-                    ? `${artifact.rowCount} posts`
-                    : artifact.type === 'insight_report'
-                      ? `${artifact.cards.length} cards`
-                      : artifact.type === 'dashboard'
-                        ? `${artifact.collectionIds.length} collection${artifact.collectionIds.length !== 1 ? 's' : ''}`
-                        : artifact.chartType.replace(/_/g, ' ')}
+                  {shortDate(artifact.createdAt)} · {subtitleText}
                 </p>
               </div>
-              {collectionIds.length > 0 && (
+              {isPresentation ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground"
+                  onClick={(e) => { e.stopPropagation(); downloadPresentation(artifact.id, artifact.title); }}
+                  title="Download presentation"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              ) : collectionIds.length > 0 ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -120,7 +153,7 @@ export function ArtifactsTab() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              )}
+              ) : null}
             </div>
           );
         })}

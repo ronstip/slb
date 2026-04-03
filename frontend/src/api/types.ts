@@ -10,6 +10,8 @@ export interface ChatRequest {
   session_id?: string;
   selected_sources?: string[];
   is_system?: boolean;
+  accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
+  theme?: 'light' | 'dark';  // resolved theme (never "system")
 }
 
 export interface UserPreferences {

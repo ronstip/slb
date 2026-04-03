@@ -23,6 +23,7 @@ import {
   isStructuredPromptResult,
   isMetricsResult,
   isTopicsResult,
+  isPresentationResult,
 } from './event-parser.ts';
 
 export interface ReconstructedSession {
@@ -208,6 +209,15 @@ export function reconstructSession(
           msg.cards.push({ type: 'metrics_section', data: result });
         } else if (isTopicsResult(toolName, result)) {
           msg.cards.push({ type: 'topics_section', data: result });
+        } else if (isPresentationResult(toolName, result)) {
+          artifacts.push({
+            id: (result._artifact_id as string) || (result.presentation_id as string) || `ppt-restored-${artifacts.length}`,
+            type: 'presentation',
+            title: result.title as string,
+            collectionIds: (result.collection_ids as string[]) || [],
+            slideCount: (result.slide_count as number) || 0,
+            createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
+          });
         }
         continue;
       }

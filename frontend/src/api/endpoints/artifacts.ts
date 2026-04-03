@@ -2,7 +2,7 @@ import { apiGet, apiPost, apiPatch, apiDelete } from '../client.ts';
 
 export interface ArtifactListItem {
   artifact_id: string;
-  type: 'insight_report' | 'chart' | 'data_export' | 'dashboard';
+  type: 'insight_report' | 'chart' | 'data_export' | 'dashboard' | 'presentation';
   title: string;
   user_id: string;
   org_id: string | null;

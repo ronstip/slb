@@ -64,6 +64,27 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export async function apiUploadFile<T>(path: string, file: File): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (tokenGetter) {
+    const token = await tokenGetter();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await res.text());
+  }
+  return res.json();
+}
+
 export async function apiDelete<T = void>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'DELETE',

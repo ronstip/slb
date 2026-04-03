@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
-import { Plus, Send, Square, X } from 'lucide-react';
+import { Plus, Send, Square, X, Paperclip } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { PLATFORM_LABELS } from '../../lib/constants.ts';
 import { CollectionPicker } from '../sources/CollectionPicker.tsx';
-import { Button } from '../../components/ui/button.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { cn } from '../../lib/utils.ts';
+import { apiUploadFile } from '../../api/client.ts';
 
 interface MessageInputProps {
   onSend: (text: string) => void;
@@ -26,6 +26,9 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
   const [text, setText] = useState('');
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [attachedTemplate, setAttachedTemplate] = useState<{ filename: string } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
 
@@ -63,6 +66,22 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
     }
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so same file can be reselected
+    e.target.value = '';
+    setIsUploading(true);
+    try {
+      await apiUploadFile<{ gcs_path: string; filename: string }>('/upload/ppt-template', file);
+      setAttachedTemplate({ filename: file.name });
+    } catch (err) {
+      console.error('Template upload failed:', err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const statusDotColor = (status: string) => {
     if (status === 'collecting' || status === 'enriching' || status === 'pending') return 'bg-amber-500 animate-pulse';
     if (status === 'monitoring') return 'bg-emerald-500 animate-pulse';
@@ -73,6 +92,14 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
 
   return (
     <div className={cn(centered ? 'w-full max-w-2xl px-4' : 'mx-auto w-full max-w-2xl px-6 pb-5 pt-2')}>
+      {/* Hidden file input for .pptx template uploads */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pptx"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
       {/* Context bar — active source pills above the input */}
       <div className={cn(
         'flex min-h-[24px] flex-wrap items-center justify-center gap-1.5',
@@ -130,10 +157,27 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
         )}
       </div>
 
+      {/* Template pill — shown when a .pptx has been uploaded */}
+      {attachedTemplate && (
+        <div className="mb-2 flex items-center gap-1 px-1">
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-500">
+            <Paperclip className="h-2.5 w-2.5" />
+            <span className="max-w-[160px] truncate">{attachedTemplate.filename}</span>
+            <button
+              onClick={() => setAttachedTemplate(null)}
+              className="ml-0.5 rounded-full p-0.5 hover:bg-orange-500/20"
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </span>
+          <span className="text-[10px] text-muted-foreground/60">Saved as template</span>
+        </div>
+      )}
+
       {/* Input area */}
       <div className={cn(
-        'flex items-end gap-2 rounded-2xl border border-border bg-card shadow-md transition-shadow focus-within:border-foreground/20 focus-within:shadow-lg',
-        centered ? 'px-5 py-4' : 'px-4 py-2.5',
+        'flex items-end gap-3 rounded-2xl border border-border bg-card shadow-sm transition-all focus-within:border-primary/50 focus-within:shadow-md',
+        centered ? 'px-5 py-4' : 'px-4 py-3',
       )}>
         <textarea
           data-testid="chat-input"
@@ -149,26 +193,30 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
             centered ? 'max-h-48 text-base' : 'max-h-36 text-sm',
           )}
         />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isAgentResponding || isUploading}
+          title="Upload PowerPoint template"
+          className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted flex items-center justify-center transition-colors disabled:opacity-30 disabled:pointer-events-none"
+        >
+          <Paperclip className={cn('h-3.5 w-3.5', isUploading && 'animate-pulse')} />
+        </button>
         {isAgentResponding ? (
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={onCancel}
-            className="h-8 w-8 shrink-0 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
             title="Stop response"
+            className="h-8 w-8 shrink-0 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center transition-colors"
           >
             <Square className="h-3.5 w-3.5 fill-current" />
-          </Button>
+          </button>
         ) : (
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={handleSend}
             disabled={!text.trim()}
-            className="h-8 w-8 shrink-0 rounded-xl text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-30"
+            className="h-8 w-8 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 disabled:opacity-30 disabled:pointer-events-none transition-colors"
           >
-            <Send className="h-4 w-4" />
-          </Button>
+            <Send className="h-3.5 w-3.5" />
+          </button>
         )}
       </div>
     </div>

@@ -7,6 +7,8 @@ class ChatRequest(BaseModel):
     selected_sources: list[str] | None = None
     model: str | None = None  # "flash" (default) or "pro"
     is_system: bool = False  # True for system-generated messages (e.g., collection continuation)
+    accent_color: str | None = None  # User's selected accent hex, e.g. "#4A7C8F"
+    theme: str | None = None  # Resolved theme: "light" or "dark"
 
 
 class VendorConfig(BaseModel):

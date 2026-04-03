@@ -22,7 +22,7 @@ init_firebase()
 import requests as http_requests
 
 from pydantic import BaseModel
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -265,6 +265,15 @@ def _maybe_persist_artifact(
             "collection_ids": collection_ids,
             "collection_names": result.get("collection_names", {}),
         }
+    elif tool_name == "generate_presentation" and result.get("presentation_id"):
+        artifact_type = "presentation"
+        artifact_id = result.get("presentation_id")
+        title = result.get("title", "Presentation")
+        collection_ids = result.get("collection_ids") or []
+        payload = {
+            "slide_count": result.get("slide_count", 0),
+            "gcs_path": result.get("gcs_path", ""),
+        }
     else:
         return None
 
@@ -303,13 +312,20 @@ def _maybe_persist_artifact(
 
 def _build_user_context(user_id: str, org_id: str) -> dict:
     """Build user context for agent personalization at session start."""
-    context: dict = {"display_name": "", "preferences": {}, "collections_index": [], "tasks_index": []}
+    context: dict = {"display_name": "", "preferences": {}, "collections_index": [], "tasks_index": [], "ppt_template": None}
     try:
         fs = get_fs()
         user_doc = fs.get_user(user_id)
         if user_doc:
             context["display_name"] = user_doc.get("display_name", "")
             context["preferences"] = user_doc.get("preferences") or {}
+            if user_doc.get("ppt_template"):
+                tmpl = user_doc["ppt_template"]
+                context["ppt_template"] = {
+                    "filename": tmpl.get("filename", "template.pptx"),
+                    "gcs_path": tmpl.get("gcs_path", ""),
+                    "uploaded_at": tmpl.get("uploaded_at", ""),
+                }
 
         # Build lightweight tasks index
         tasks = fs.list_user_tasks(user_id, org_id or None)
@@ -489,12 +505,19 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "message_count": 0,
                 "first_message": None,
+                "accent_color": chat_request.accent_color or "",
+                "theme": chat_request.theme or "light",
             },
         )
     else:
         # Update selected_sources in session state
         if chat_request.selected_sources is not None:
             session.state["selected_sources"] = chat_request.selected_sources
+        # Always update theme preferences so they stay current
+        if chat_request.accent_color:
+            session.state["accent_color"] = chat_request.accent_color
+        if chat_request.theme:
+            session.state["theme"] = chat_request.theme
 
         # Detect whether this message is a response to an ask_user prompt or
         # a system continuation (collection complete). Both preserve task state.
@@ -571,6 +594,21 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             session.state["posts_embedded"] = _live.get("posts_embedded", 0)
             if _live.get("status") in ("completed", "completed_with_errors", "failed", "cancelled"):
                 session.state["collection_running"] = False
+
+    # Refresh ppt_template in session state from user profile (once per turn,
+    # non-blocking — template may have been uploaded since session started).
+    try:
+        _user_doc = get_fs().get_user(user_id)
+        if _user_doc and _user_doc.get("ppt_template"):
+            _tmpl = _user_doc["ppt_template"]
+            session.state["ppt_template"] = {
+                "filename": _tmpl.get("filename", "template.pptx"),
+                "gcs_path": _tmpl.get("gcs_path", ""),
+            }
+        else:
+            session.state.pop("ppt_template", None)
+    except Exception:
+        pass  # Non-critical — agent works fine without it
 
     logger.info("PERF session_init=%.3fs events=%d", _time.perf_counter() - t0, len(session.events))
 
@@ -1874,6 +1912,112 @@ async def proxy_media(url: str = Query(...)):
         raise HTTPException(status_code=502, detail="Failed to fetch media")
     except Exception as e:
         logger.exception("Media proxy error: %.80s...", url)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload/ppt-template")
+async def upload_ppt_template(
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Upload a .pptx file to use as a persistent presentation template.
+
+    The template is stored in GCS under the user's namespace and saved to
+    the user profile in Firestore so the agent can reference it in future
+    sessions. Max file size: 20MB.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
+        raise HTTPException(status_code=400, detail="Only .pptx files are accepted")
+
+    contents = await file.read()
+    if len(contents) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large — maximum 20MB")
+
+    settings = get_settings()
+    template_id = uuid4().hex[:12]
+    blob_name = f"ppt-templates/{user.uid}/{template_id}.pptx"
+    bucket_name = settings.gcs_presentations_bucket
+
+    try:
+        client = get_gcs()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_string(
+            contents,
+            content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+    except Exception as e:
+        logger.error("PPT template upload failed for user %s: %s", user.uid, e)
+        raise HTTPException(status_code=500, detail="Failed to store template")
+
+    # Persist template reference to user profile
+    safe_filename = (file.filename or "template.pptx")[:120]
+    template_ref = {
+        "gcs_path": blob_name,
+        "filename": safe_filename,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        fs = get_fs()
+        fs.update_user(user.uid, ppt_template=template_ref)
+    except Exception as e:
+        logger.warning("Failed to persist ppt_template to user profile: %s", e)
+
+    return {"gcs_path": blob_name, "filename": safe_filename}
+
+
+@app.get("/presentations/{presentation_id}")
+async def download_presentation(
+    presentation_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Download a generated PowerPoint presentation from GCS.
+
+    Ownership is verified via the artifact record in Firestore.
+    The file is streamed directly from GCS with appropriate headers.
+    """
+    fs = get_fs()
+    artifact = fs.get_artifact(presentation_id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Presentation not found")
+    if artifact.get("user_id") != user.uid:
+        # Allow org members to download shared presentations
+        if not (user.org_id and artifact.get("org_id") == user.org_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+    if artifact.get("type") != "presentation":
+        raise HTTPException(status_code=404, detail="Not a presentation artifact")
+
+    gcs_path = artifact.get("payload", {}).get("gcs_path", "")
+    if not gcs_path:
+        raise HTTPException(status_code=404, detail="Presentation file not found")
+
+    settings = get_settings()
+    bucket_name = settings.gcs_presentations_bucket
+
+    try:
+        client = get_gcs()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(gcs_path)
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail="Presentation file not found in storage")
+
+        safe_title = artifact.get("title", "presentation").replace(" ", "_")[:60]
+        filename = f"{safe_title}.pptx"
+
+        def stream():
+            with blob.open("rb") as f:
+                while chunk := f.read(256 * 1024):
+                    yield chunk
+
+        return StreamingResponse(
+            stream(),
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error downloading presentation %s", presentation_id)
         raise HTTPException(status_code=500, detail=str(e))
 
 

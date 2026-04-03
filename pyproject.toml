@@ -25,6 +25,7 @@ dependencies = [
     "scipy>=1.12",
     "sendgrid>=6.11.0",
     "markdown>=3.6",
+    "python-pptx>=1.0.0",
 ]
 
 [project.scripts]

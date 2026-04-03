@@ -33,7 +33,7 @@ CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
 RESEARCH_DESIGN_TOOLS: set[str] = set()  # design_research removed (internal only)
 COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
-OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
+OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard", "generate_presentation"}
 
 # ─── Hard gate: tools blocked while a collection pipeline is running ──
 # cancel_collection is intentionally excluded — user can always cancel.
@@ -53,7 +53,7 @@ TOOLS_WITH_COLLECTION_ID = {
 }
 TOOLS_WITH_COLLECTION_IDS = {
     "get_collection_stats", "generate_report", "generate_dashboard",
-    "set_working_collections", "export_data",
+    "set_working_collections", "export_data", "generate_presentation",
 }
 
 
@@ -426,6 +426,18 @@ def _build_context_block(state: dict) -> Optional[str]:
             "Think critically about the data — consider alternative explanations "
             "and potential biases before drawing conclusions. "
             "Deliver what fits the original question."
+        )
+
+    # ── PPT Template ───────────────────────────────────────────────
+    ppt_template = state.get("ppt_template")
+    if ppt_template and ppt_template.get("gcs_path"):
+        blocks.append(
+            f"## User PPT Template\n"
+            f"The user has a saved PowerPoint template: **{ppt_template['filename']}** "
+            f"(gcs_path: `{ppt_template['gcs_path']}`). "
+            f"Before using it for a presentation, always confirm: "
+            f"\"I see you have a saved template ({ppt_template['filename']}) — should I use it for this deck?\" "
+            f"Only pass the gcs_path to generate_presentation if the user confirms."
         )
 
     # ── User context ──────────────────────────────────────────────

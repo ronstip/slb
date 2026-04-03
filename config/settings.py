@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     bq_dataset: str = "social_listening"
     gcs_media_bucket: str = ""
     gcs_exports_bucket: str = ""
+    gcs_presentations_bucket: str = ""
     cloud_tasks_queue: str = "worker-queue"
     cloud_tasks_service_account: str = ""  # SA email for OIDC auth on Cloud Tasks → Cloud Run
     gemini_model: str = "gemini-3-flash-preview"
@@ -96,6 +97,8 @@ class Settings(BaseSettings):
             self.gcs_media_bucket = f"{self.gcp_project_id}-media"
         if not self.gcs_exports_bucket:
             self.gcs_exports_bucket = f"{self.gcp_project_id}-exports"
+        if not self.gcs_presentations_bucket:
+            self.gcs_presentations_bucket = f"{self.gcp_project_id}-exports"
 
     @property
     def is_dev(self) -> bool:

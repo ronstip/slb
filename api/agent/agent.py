@@ -28,6 +28,7 @@ from api.agent.tools.start_task import start_task
 from api.agent.tools.enrich_collection import enrich_collection
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
+from api.agent.tools.generate_presentation import generate_presentation
 from api.agent.tools.generate_report import generate_report
 from api.agent.tools.get_collection_stats import get_collection_stats
 from api.agent.tools.get_past_collections import get_collection_details
@@ -87,6 +88,7 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
         get_collection_stats,
         generate_report,
         generate_dashboard,
+        generate_presentation,
         # Display widgets
         show_metrics,
         show_topics,

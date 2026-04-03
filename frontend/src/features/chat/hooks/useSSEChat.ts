@@ -8,7 +8,8 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult } from '../../../lib/event-parser.ts';
+import { useTheme } from '../../../components/theme-provider.tsx';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 // Tools that are internal plumbing — skip from activity log
@@ -38,6 +39,7 @@ function getToolDescription(toolName: string, args: Record<string, unknown>): st
     case 'create_chart':
     case 'generate_report':
     case 'generate_dashboard':
+    case 'generate_presentation':
       return (args.title as string) || undefined;
     case 'export_data':
       return (args.format as string) || undefined;
@@ -50,6 +52,7 @@ export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
+  const { theme, accentColor } = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -86,12 +89,18 @@ export function useSSEChat() {
         .map((s) => s.collectionId);
 
       try {
+        const resolvedTheme = theme === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : theme;
+
         const stream = streamChat(
           {
             message: text,
             session_id: cs.sessionId ?? undefined,
             selected_sources: selectedSources,
             is_system: opts?.isSystem,
+            accent_color: accentColor,
+            theme: resolvedTheme,
           },
           getToken,
           abortController.signal,
@@ -335,6 +344,18 @@ export function useSSEChat() {
                   type: 'topics_section',
                   data: result,
                 });
+              } else if (isPresentationResult(toolName, result)) {
+                const presentationId = (result._artifact_id as string) || (result.presentation_id as string);
+                useStudioStore.getState().addArtifact({
+                  id: presentationId,
+                  type: 'presentation',
+                  title: (result.title as string) || 'Presentation',
+                  collectionIds: (result.collection_ids as string[]) || [],
+                  slideCount: (result.slide_count as number) || 0,
+                  createdAt: new Date(),
+                });
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
               } else if (isStructuredPromptResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'structured_prompt',

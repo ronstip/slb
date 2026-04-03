@@ -67,7 +67,7 @@ export function StudioPanel() {
                   <Mail className="mr-2 h-3.5 w-3.5" />
                   Send Email
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled>
+                <DropdownMenuItem onClick={() => sendMessage('Create a presentation deck for the selected sources. Gather the key data first, then design the slides based on what the data actually shows. If I have a saved template, ask me whether to use it.')}>
                   <Presentation className="mr-2 h-3.5 w-3.5" />
                   Deck Slides
                 </DropdownMenuItem>
