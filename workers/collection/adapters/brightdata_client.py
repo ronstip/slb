@@ -110,22 +110,35 @@ class BrightDataClient:
         discover_by: str = "keyword",
         include_errors: bool = True,
         limit_per_input: int | None = None,
+        scrape_type: str = "discover_new",
     ) -> str | list[dict]:
-        """POST /datasets/v3/scrape. Returns snapshot_id (async) or data list (sync)."""
-        params = {
-            "dataset_id": dataset_id,
-            "type": "discover_new",
-            "discover_by": discover_by,
-            "notify": "false",
-            "include_errors": str(include_errors).lower(),
-        }
-        if limit_per_input is not None:
-            params["limit_per_input"] = str(limit_per_input)
-        logger.info("BD scrape: discover_by=%s, inputs=%d, limit=%s", discover_by, len(inputs), limit_per_input)
+        """POST /datasets/v3/scrape (or /trigger for bare requests). Returns snapshot_id or data list."""
+        if scrape_type == "bare":
+            # Some datasets (e.g. Facebook Groups) don't support discovery params.
+            # Use the /trigger endpoint with just dataset_id.
+            params = {
+                "dataset_id": dataset_id,
+                "include_errors": str(include_errors).lower(),
+            }
+            endpoint = f"{_BASE_URL}/trigger"
+            logger.info("BD trigger (bare): dataset=%s, inputs=%d", dataset_id, len(inputs))
+        else:
+            params = {
+                "dataset_id": dataset_id,
+                "type": scrape_type,
+                "notify": "false",
+                "include_errors": str(include_errors).lower(),
+            }
+            if scrape_type == "discover_new":
+                params["discover_by"] = discover_by
+            if limit_per_input is not None:
+                params["limit_per_input"] = str(limit_per_input)
+            endpoint = f"{_BASE_URL}/scrape"
+            logger.info("BD scrape: type=%s, discover_by=%s, inputs=%d, limit=%s", scrape_type, discover_by, len(inputs), limit_per_input)
         resp = self._session.post(
-            f"{_BASE_URL}/scrape",
+            endpoint,
             params=params,
-            json={"input": inputs},
+            json=inputs if scrape_type == "bare" else {"input": inputs},
             timeout=_TRIGGER_TIMEOUT,
         )
         if resp.status_code >= 400:
@@ -239,10 +252,11 @@ class BrightDataClient:
         include_errors: bool = True,
         limit_per_input: int | None = None,
         snapshot_callback: "callable | None" = None,
+        scrape_type: str = "discover_new",
     ) -> list[dict]:
         """High-level: trigger + poll with exponential backoff + download."""
         t_trigger = time.monotonic()
-        result = self.trigger_scrape(dataset_id, inputs, discover_by, include_errors, limit_per_input)
+        result = self.trigger_scrape(dataset_id, inputs, discover_by, include_errors, limit_per_input, scrape_type=scrape_type)
         trigger_elapsed = time.monotonic() - t_trigger
         logger.info("BD trigger completed in %.1fs", trigger_elapsed)
 

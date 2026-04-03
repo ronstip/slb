@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, Play, ImageOff, ThumbsUp, MessageCircle, Eye, Share2 } from 'lucide-react';
+import { ExternalLink, Play, ImageOff, ThumbsUp, MessageCircle, Eye, Share2, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FeedPost, MediaRef } from '../../api/types.ts';
 import { mediaUrl } from '../../api/client.ts';
 import { PLATFORM_COLORS, SENTIMENT_COLORS } from '../../lib/constants.ts';
@@ -159,6 +159,12 @@ function PlatformIcon({ platform, className }: { platform: string; className?: s
           <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
         </svg>
       );
+    case 'facebook':
+      return (
+        <svg viewBox="0 0 24 24" fill={color} className={className}>
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+        </svg>
+      );
     default:
       return (
         <div
@@ -202,38 +208,52 @@ export function PostMedia({ media, postUrl, autoPlay = false }: { media: MediaRe
     return <MediaImage media={images[0]} className="w-full aspect-[4/3]" />;
   }
 
-  if (images.length === 2) {
-    return (
-      <div className="grid grid-cols-2 gap-0.5">
-        {images.map((img, i) => (
-          <MediaImage key={i} media={img} className="h-36 w-full object-cover" />
-        ))}
-      </div>
-    );
-  }
-
-  if (images.length >= 3) {
-    return (
-      <div className="grid grid-cols-3 gap-0.5">
-        <MediaImage media={images[0]} className="col-span-2 row-span-2 h-48 w-full object-cover" />
-        {images.slice(1, 3).map((img, i) => (
-          <MediaImage key={i} media={img} className="h-[calc(96px-1px)] w-full object-cover" />
-        ))}
-        {images.length > 3 && (
-          <div className="relative h-[calc(96px-1px)] w-full">
-            <MediaImage media={images[3]} className="h-full w-full object-cover" />
-            {images.length > 4 && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm font-medium text-white">
-                +{images.length - 3}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
+  if (images.length >= 2) {
+    return <ImageCarousel images={images} />;
   }
 
   return null;
+}
+
+function ImageCarousel({ images }: { images: MediaRef[] }) {
+  const [idx, setIdx] = useState(0);
+  const prev = () => setIdx((i) => (i === 0 ? images.length - 1 : i - 1));
+  const next = () => setIdx((i) => (i === images.length - 1 ? 0 : i + 1));
+
+  return (
+    <div className="relative w-full aspect-[4/3] group">
+      <MediaImage media={images[idx]} className="w-full h-full" />
+      {/* Counter badge */}
+      <div className="absolute top-2 right-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">
+        {idx + 1}/{images.length}
+      </div>
+      {/* Prev/Next arrows */}
+      <button
+        onClick={prev}
+        className="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/60"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <button
+        onClick={next}
+        className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/60"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+      {/* Dot indicators */}
+      {images.length <= 8 && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+          {images.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              className={`h-1.5 w-1.5 rounded-full transition-colors ${i === idx ? 'bg-white' : 'bg-white/40'}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function MediaImage({ media, className }: { media: MediaRef; className?: string }) {

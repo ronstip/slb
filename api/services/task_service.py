@@ -119,14 +119,15 @@ def dispatch_task_run(task_id: str, task: dict) -> list[str]:
     for search_def in searches:
         platforms = search_def.get("platforms", [])
         keywords = search_def.get("keywords", [])
-        if not platforms or not keywords:
+        channels = search_def.get("channels")
+        if not platforms or (not keywords and not channels):
             continue
 
         req = CreateCollectionRequest(
             description=title if task_type == "one_shot" else f"{title} (scheduled run)",
             platforms=platforms,
             keywords=keywords,
-            channel_urls=search_def.get("channels"),
+            channel_urls=channels,
             time_range_days=search_def.get("time_range_days", 90),
             geo_scope=search_def.get("geo_scope", "global"),
             n_posts=search_def.get("n_posts", 0),
@@ -140,6 +141,10 @@ def dispatch_task_run(task_id: str, task: dict) -> list[str]:
         enrichment_context = data_scope.get("enrichment_context")
         if enrichment_context:
             extra_config["enrichment_context"] = enrichment_context
+        # Pass through city for Facebook Marketplace
+        city = search_def.get("city")
+        if city:
+            extra_config["city"] = city
 
         result = create_collection_from_request(
             request=req,

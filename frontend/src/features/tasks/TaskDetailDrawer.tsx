@@ -702,7 +702,7 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
                 {displayTask.context_summary
                   || displayTask.title
                   + (displayTask.data_scope?.searches?.length
-                    ? ` — ${displayTask.data_scope.searches.map((s) => s.keywords.join(', ')).join('; ')}`
+                    ? ` — ${displayTask.data_scope.searches.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`
                     : '')}
               </div>
             </div>

@@ -294,13 +294,12 @@ def _notify_task_completion(task_id: str, task: dict, user_id: str) -> None:
 
         title = task.get("title", "Untitled Task")
 
-        # Use existing email infrastructure if available
-        from api.agent.tools.compose_email import _send_email
-        _send_email(
-            to=email,
+        from workers.notifications.service import send_composed_email
+        send_composed_email(
+            recipient_email=email,
             subject=f"Task Complete: {title}",
-            body=(
-                f"Your task \"{title}\" has completed.\n\n"
+            body_markdown=(
+                f"Your task **\"{title}\"** has completed.\n\n"
                 "Log in to view the results and deliverables."
             ),
         )

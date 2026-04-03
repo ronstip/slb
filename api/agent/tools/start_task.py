@@ -68,16 +68,16 @@ def start_task(
     if not searches_list or not isinstance(searches_list, list):
         return {"status": "error", "message": "searches must be a non-empty JSON array"}
 
-    # Validate at least one search has platforms + keywords
+    # Validate at least one search has platforms + (keywords or channels)
     valid = any(
-        s.get("platforms") and s.get("keywords")
+        s.get("platforms") and (s.get("keywords") or s.get("channels"))
         for s in searches_list
         if isinstance(s, dict)
     )
     if not valid:
         return {
             "status": "error",
-            "message": "Each search must have at least platforms and keywords",
+            "message": "Each search must have at least platforms and keywords (or channels for URL-based platforms like Facebook Groups)",
         }
 
     # Parse schedule

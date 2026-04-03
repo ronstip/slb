@@ -26,6 +26,7 @@ PROMPT_TEMPLATES: dict[str, dict] = {
             {"value": "twitter", "label": "X (Twitter)", "icon": "twitter"},
             {"value": "reddit", "label": "Reddit", "icon": "reddit"},
             {"value": "youtube", "label": "YouTube", "icon": "youtube"},
+            {"value": "facebook", "label": "Facebook", "icon": "facebook"},
         ],
         "multi_select": True,
     },
