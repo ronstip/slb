@@ -11,7 +11,7 @@ import {
   Shield,
   Zap,
   TrendingUp,
-  Eye,
+  Bot,
 } from 'lucide-react';
 
 // ── Scroll-animation primitives ───────────────────────────────────────────────
@@ -44,8 +44,6 @@ function useInView(threshold = 0.15): { ref: React.RefObject<HTMLDivElement | nu
 
 /**
  * Wraps children in a div that slides/fades in when it enters the viewport.
- * direction: 'left' | 'right' | 'up' | 'scale' | 'fade'
- * delay: ms offset (for stagger)
  */
 function AnimateIn({
   children,
@@ -177,14 +175,14 @@ function AppMockup() {
             <Logo size="sm" showText />
           </div>
           <div className="px-2.5 py-1.5 rounded-md text-[11px] text-muted-foreground hover:bg-accent flex items-center gap-2">
-            <span className="h-3.5 w-3.5 opacity-60">＋</span> New Session
+            <span className="h-3.5 w-3.5 opacity-60">＋</span> New Agent
           </div>
           <div className="mt-2 mb-1 px-2 text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide">Recent</div>
           {[
-            { label: 'Nike Brand Tracking', active: true },
-            { label: 'Adidas vs Competitors', active: false },
-            { label: 'Campaign Analysis', active: false },
-            { label: 'Sentiment Report', active: false },
+            { label: 'Nike Brand Agent', active: true },
+            { label: 'Adidas Tracker', active: false },
+            { label: 'Campaign Analyst', active: false },
+            { label: 'Sentiment Monitor', active: false },
           ].map(({ label, active }) => (
             <div
               key={label}
@@ -207,7 +205,7 @@ function AppMockup() {
         {/* Chat panel */}
         <div className="flex-1 flex flex-col p-3 gap-2.5 overflow-hidden bg-background/50">
           <div className="text-[10px] font-medium text-muted-foreground/60 pb-1 border-b border-border/30">
-            Nike Brand Tracking
+            Nike Brand Agent
           </div>
           <div className="self-end max-w-[75%] bg-primary text-primary-foreground rounded-xl rounded-tr-sm px-3 py-2 text-[11px]">
             Track Nike brand mentions on Instagram and Reddit this week
@@ -295,45 +293,45 @@ const FEATURES: {
   dir: AnimDir;
 }[] = [
   {
-    icon: <Eye className="h-5 w-5 text-accent-vibrant" />,
+    icon: <Bot className="h-5 w-5 text-accent-vibrant" />,
     iconBg: 'bg-accent-vibrant/10',
-    title: 'Monitor in Real Time',
-    desc: "Track brand mentions, hashtags, and keywords the moment they're posted across every major social platform. Never miss a conversation.",
+    title: 'Always-On Agents',
+    desc: 'Deploy AI agents that monitor brand mentions, hashtags, and keywords around the clock across every major social platform.',
     dir: 'left',
   },
   {
     icon: <Zap className="h-5 w-5 text-accent-amber" />,
     iconBg: 'bg-accent-amber/10',
-    title: 'AI Does the Heavy Lifting',
-    desc: 'Just ask in plain English. AI automatically configures data collection, runs sentiment analysis, and builds reports — zero setup required.',
+    title: 'Zero Configuration',
+    desc: 'Just describe what you want in plain English. Your agent automatically configures data collection, runs analysis, and builds reports.',
     dir: 'up',
   },
   {
     icon: <BarChart3 className="h-5 w-5 text-accent-blue" />,
     iconBg: 'bg-accent-blue/10',
     title: 'Instant Dashboards & Reports',
-    desc: 'Charts, summaries, and presentations are generated automatically. Share polished findings with your team in one click.',
+    desc: 'Agents generate charts, summaries, and presentations automatically. Share polished findings with your team in one click.',
     dir: 'right',
   },
   {
     icon: <Bell className="h-5 w-5 text-accent-pink" />,
     iconBg: 'bg-accent-pink/10',
     title: 'Crisis Detection',
-    desc: 'Get alerted the moment a negative trend starts to emerge. Respond to issues before they become brand-damaging crises.',
+    desc: 'Your agents alert you the moment a negative trend emerges. Respond to issues before they become brand-damaging crises.',
     dir: 'left',
   },
   {
     icon: <TrendingUp className="h-5 w-5 text-accent-success" />,
     iconBg: 'bg-accent-success/10',
     title: 'Competitor Intelligence',
-    desc: "See exactly how you stack up against competitors. Understand who's winning the conversation and discover gaps to exploit.",
+    desc: "Agents track how you stack up against competitors. Understand who's winning the conversation and discover gaps to exploit.",
     dir: 'up',
   },
   {
     icon: <Shield className="h-5 w-5 text-chart-5" />,
     iconBg: 'bg-chart-5/10',
     title: 'Research → Monitoring',
-    desc: 'Every one-time analysis becomes automated monitoring with one click. Turn any question into a recurring weekly insight.',
+    desc: 'Every one-time analysis becomes automated monitoring with one click. Turn any question into a recurring agent.',
     dir: 'right',
   },
 ];
@@ -396,62 +394,61 @@ export function LandingPage() {
               onClick={() => handleSignIn('google')}
               disabled={loadingProvider !== null}
             >
-              Get started free
+              Get started
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
       </header>
 
-      {/* ── HERO ── */}
-      <section className="relative pt-20 pb-12 px-6 text-center">
-        <div className="max-w-4xl mx-auto">
-          <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium mb-8 bg-accent-vibrant/10 text-accent-vibrant border border-accent-vibrant/20 ${heroFade(0)}`}>
-            <Sparkles className="h-3.5 w-3.5" />
-            AI-powered social brand intelligence
+      {/* ── HERO (side-by-side) ── */}
+      <section className="relative pt-20 pb-16 px-6">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* Left column — text */}
+          <div>
+            <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium mb-8 bg-accent-vibrant/10 text-accent-vibrant border border-accent-vibrant/20 ${heroFade(0)}`}>
+              <Sparkles className="h-3.5 w-3.5" />
+              AI agents for social brand intelligence
+            </div>
+            <h1 className={`text-5xl sm:text-6xl font-bold tracking-tight leading-[1.06] mb-6 ${heroFade(80)}`}>
+              Your brand is being
+              <br />talked about.
+              <br />
+              <span className="bg-gradient-to-r from-accent-vibrant to-accent-blue bg-clip-text text-transparent">
+                Are you listening?
+              </span>
+            </h1>
+            <p className={`text-lg text-muted-foreground max-w-xl leading-relaxed mb-10 ${heroFade(160)}`}>
+              Deploy AI agents that monitor your brand across Instagram, TikTok, Reddit, X, and YouTube in real time.
+              Just describe your goal — your agents collect, analyze sentiment, and surface what matters.
+            </p>
+            <div className={`flex flex-col sm:flex-row items-start gap-3 mb-3 ${heroFade(240)}`}>
+              <Button
+                size="lg"
+                className="h-12 px-8 gap-2.5 text-base w-full sm:w-auto shadow-lg shadow-accent-vibrant/25"
+                onClick={() => handleSignIn('google')}
+                disabled={loadingProvider !== null}
+              >
+                <GoogleIcon className="h-5 w-5" />
+                {loadingProvider === 'google' ? 'Signing in…' : 'Continue with Google'}
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-12 px-8 gap-2.5 text-base w-full sm:w-auto"
+                onClick={() => handleSignIn('microsoft')}
+                disabled={loadingProvider !== null}
+              >
+                <MicrosoftIcon className="h-5 w-5" />
+                {loadingProvider === 'microsoft' ? 'Signing in…' : 'Continue with Microsoft'}
+              </Button>
+            </div>
           </div>
-          <h1 className={`text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight leading-[1.06] mb-6 ${heroFade(80)}`}>
-            Your brand is being
-            <br />talked about.
-            <br />
-            <span className="bg-gradient-to-r from-accent-vibrant to-accent-blue bg-clip-text text-transparent">
-              Are you listening?
-            </span>
-          </h1>
-          <p className={`text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed mb-10 ${heroFade(160)}`}>
-            Veille tracks your brand across Instagram, TikTok, Reddit, X, and YouTube in real time.
-            Just ask in plain English — AI collects, analyzes sentiment, and surfaces what matters.
-          </p>
-          <div className={`flex flex-col sm:flex-row items-center justify-center gap-3 mb-3 ${heroFade(240)}`}>
-            <Button
-              size="lg"
-              className="h-12 px-8 gap-2.5 text-base w-full sm:w-auto shadow-lg shadow-accent-vibrant/25"
-              onClick={() => handleSignIn('google')}
-              disabled={loadingProvider !== null}
-            >
-              <GoogleIcon className="h-5 w-5" />
-              {loadingProvider === 'google' ? 'Signing in…' : 'Continue with Google'}
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="h-12 px-8 gap-2.5 text-base w-full sm:w-auto"
-              onClick={() => handleSignIn('microsoft')}
-              disabled={loadingProvider !== null}
-            >
-              <MicrosoftIcon className="h-5 w-5" />
-              {loadingProvider === 'microsoft' ? 'Signing in…' : 'Continue with Microsoft'}
-            </Button>
-          </div>
-          <p className={`text-sm text-muted-foreground ${heroFade(280)}`}>
-            No credit card required · Free to start
-          </p>
-        </div>
 
-        {/* App mockup — slides up from below on mount */}
-        <div className={`max-w-5xl mx-auto mt-16 ${heroFade(340)}`}>
-          <AppMockup />
-          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+          {/* Right column — app mockup */}
+          <div className={heroFade(340)}>
+            <AppMockup />
+          </div>
         </div>
       </section>
 
@@ -460,7 +457,7 @@ export function LandingPage() {
         <div className="max-w-4xl mx-auto px-6">
           <AnimateIn direction="fade" className="text-center mb-8">
             <p className="text-xs text-muted-foreground/70 uppercase tracking-widest font-medium">
-              Monitor across every major platform
+              Your agents monitor every major platform
             </p>
           </AnimateIn>
           <div className="flex items-center justify-center gap-8 md:gap-14 flex-wrap">
@@ -487,10 +484,10 @@ export function LandingPage() {
         <div className="max-w-6xl mx-auto">
           <AnimateIn direction="up" className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Everything you need to understand your brand
+              Your AI-powered social media analysts
             </h2>
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              Built for marketers and brand managers who care about what people are really saying.
+              Deploy agents that work around the clock to track, analyze, and report on what people are saying about your brand.
             </p>
           </AnimateIn>
 
@@ -509,7 +506,7 @@ export function LandingPage() {
         <div className="max-w-4xl mx-auto">
           <AnimateIn direction="up" className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">How it works</h2>
-            <p className="text-muted-foreground text-lg">From question to insight in under a minute.</p>
+            <p className="text-muted-foreground text-lg">From idea to insight in under a minute.</p>
           </AnimateIn>
 
           <div className="grid md:grid-cols-3 gap-10 relative">
@@ -520,15 +517,15 @@ export function LandingPage() {
               <StepCard
                 number="01"
                 title="Describe your goal"
-                desc="Tell Veille what you want to track — a brand, campaign, competitor, or keyword. No forms or dashboards to configure."
+                desc="Tell Veille what you want to track — a brand, campaign, competitor, or keyword. Your agent handles the rest."
               />
             </AnimateIn>
 
             <AnimateIn direction="scale" delay={150}>
               <StepCard
                 number="02"
-                title="AI collects and analyzes"
-                desc="Our AI gathers relevant posts from across social platforms and runs deep sentiment and trend analysis automatically."
+                title="Agent collects and analyzes"
+                desc="Your agent gathers relevant posts from across social platforms and runs deep sentiment and trend analysis automatically."
               />
             </AnimateIn>
 
@@ -536,7 +533,7 @@ export function LandingPage() {
               <StepCard
                 number="03"
                 title="Get insights instantly"
-                desc="Receive interactive charts, written summaries, and shareable reports in seconds. Set up ongoing alerts with one click."
+                desc="Receive interactive charts, written summaries, and shareable reports in seconds. Set up ongoing monitoring with one click."
               />
             </AnimateIn>
           </div>
@@ -563,16 +560,16 @@ export function LandingPage() {
         <AnimateIn direction="scale" threshold={0.2} className="max-w-2xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium mb-8 bg-accent-vibrant/10 text-accent-vibrant border border-accent-vibrant/20">
             <Sparkles className="h-3.5 w-3.5" />
-            Start for free today
+            Get started today
           </div>
           <h2 className="text-3xl md:text-5xl font-bold leading-tight mb-6">
             Your audience is talking.
             <br />
-            <span className="text-muted-foreground">Start listening.</span>
+            <span className="text-muted-foreground">Deploy your agents.</span>
           </h2>
           <p className="text-lg text-muted-foreground mb-10 leading-relaxed">
             Join brands using Veille to understand their social presence, track competitors,
-            and stay ahead of trends — all powered by AI.
+            and stay ahead of trends — all powered by AI agents.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Button
@@ -595,7 +592,6 @@ export function LandingPage() {
               {loadingProvider === 'microsoft' ? 'Signing in…' : 'Continue with Microsoft'}
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground mt-4">No credit card required</p>
         </AnimateIn>
       </section>
 
@@ -604,7 +600,7 @@ export function LandingPage() {
         <AnimateIn direction="fade">
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
             <Logo size="sm" />
-            <p>© 2026 Veille. All rights reserved.</p>
+            <p>&copy; 2026 Veille. All rights reserved.</p>
             <div className="flex gap-6">
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>

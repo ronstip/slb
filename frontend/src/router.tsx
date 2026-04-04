@@ -7,9 +7,9 @@ import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
 import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
 import { StandaloneArtifactPage } from './features/artifacts/StandaloneArtifactPage.tsx';
-import { TasksPage } from './features/tasks/TasksPage.tsx';
-import { TaskHome } from './features/tasks/TaskHome.tsx';
-import { TaskDetailPage } from './features/tasks/detail/TaskDetailPage.tsx';
+import { AgentsPage } from './features/agents/AgentsPage.tsx';
+import { AgentHome } from './features/agents/AgentHome.tsx';
+import { AgentDetailPage } from './features/agents/detail/AgentDetailPage.tsx';
 import { CollectionsPage } from './features/collections/CollectionsPage.tsx';
 import { useAuth } from './auth/useAuth.ts';
 import { useUIStore } from './stores/ui-store.ts';
@@ -21,7 +21,7 @@ function InviteRoute() {
 }
 
 // Smart home route: shows LandingPage for anonymous/unauthenticated users,
-// TaskHome or AppShell depending on appMode for signed-in users.
+// AgentHome or AppShell depending on appMode for signed-in users.
 function HomeRoute() {
   const { loading, isAnonymous, devMode } = useAuth();
   const appMode = useUIStore((s) => s.appMode);
@@ -36,7 +36,13 @@ function HomeRoute() {
 
   if (isAnonymous && !devMode) return <LandingPage />;
 
-  return appMode === 'tasks' ? <TaskHome /> : <AppShell />;
+  return appMode === 'agents' ? <AgentHome /> : <AppShell />;
+}
+
+// Backward-compat redirect from old /tasks/:taskId to /agents/:taskId
+function LegacyTaskRedirect() {
+  const { taskId } = useParams<{ taskId: string }>();
+  return <Navigate to={`/agents/${taskId}`} replace />;
 }
 
 // Static router — never recreated. Auth is handled by the AuthGate layout route.
@@ -80,12 +86,21 @@ export const router = createBrowserRouter([
         element: <StandaloneArtifactPage />,
       },
       {
+        path: '/agents',
+        element: <AgentsPage />,
+      },
+      {
+        path: '/agents/:taskId',
+        element: <AgentDetailPage />,
+      },
+      // Backward-compat redirects for old /tasks URLs
+      {
         path: '/tasks',
-        element: <TasksPage />,
+        element: <Navigate to="/agents" replace />,
       },
       {
         path: '/tasks/:taskId',
-        element: <TaskDetailPage />,
+        element: <LegacyTaskRedirect />,
       },
       {
         path: '/collections',

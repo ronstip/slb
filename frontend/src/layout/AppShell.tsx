@@ -165,7 +165,7 @@ export function AppShell() {
     <div data-testid="app-shell" className="flex h-screen overflow-hidden bg-background">
       {/* Sessions Panel (sidebar) */}
       <aside
-        className={`shrink-0 overflow-hidden bg-card ${sourcesPanelCollapsed ? 'border-r border-border' : ''}`}
+        className={`shrink-0 overflow-hidden bg-card/50 ${sourcesPanelCollapsed ? 'border-r border-border/60' : ''}`}
         style={{
           width: sourcesPanelCollapsed ? COLLAPSED_W : sourcesW,
           ...transitionStyle,
@@ -199,7 +199,7 @@ export function AppShell() {
 
       {/* Studio Panel */}
       <aside
-        className="shrink-0 overflow-hidden bg-card"
+        className="shrink-0 overflow-hidden bg-card/50"
         style={{
           width: studioPanelCollapsed ? COLLAPSED_W : studioW,
           ...transitionStyle,

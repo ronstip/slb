@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
-import { useTaskStore } from '../../stores/task-store.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useSSEChat } from './hooks/useSSEChat.ts';
 import { MessageList } from './MessageList.tsx';
@@ -48,7 +48,7 @@ export function ChatPanel() {
 
     // Check sources for tasks where all collections are complete
     const sources = useSourcesStore.getState().sources;
-    const tasks = useTaskStore.getState().tasks;
+    const tasks = useAgentStore.getState().agents;
     const TERMINAL = new Set(['completed', 'completed_with_errors', 'failed', 'monitoring']);
 
     for (const task of tasks) {

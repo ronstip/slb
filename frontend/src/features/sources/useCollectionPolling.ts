@@ -4,7 +4,7 @@ import { getCollectionStatus } from '../../api/endpoints/collections.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { useStudioStore } from '../../stores/studio-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
-import { useTaskStore } from '../../stores/task-store.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 
 /**
  * Polls collection status for all active (non-terminal) sources.
@@ -112,7 +112,7 @@ export function useCollectionPolling() {
     for (const [taskId, group] of taskGroups) {
       if (group.total > 0 && group.total === group.terminal && !taskContinuationFiredRef.current.has(taskId)) {
         taskContinuationFiredRef.current.add(taskId);
-        useTaskStore.getState().fetchTasks();
+        useAgentStore.getState().fetchAgents();
         window.dispatchEvent(new CustomEvent('collection-complete', {
           detail: {
             taskId,

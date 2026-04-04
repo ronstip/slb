@@ -45,9 +45,9 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   generate_dashboard: 'Creating interactive dashboard',
   generate_presentation: 'Building presentation deck',
   ask_user: 'Preparing questions',
-  start_task: 'Starting task',
-  get_task_status: 'Checking task status',
-  set_active_task: 'Loading task context',
+  start_task: 'Starting agent',
+  get_task_status: 'Checking agent status',
+  set_active_task: 'Loading agent context',
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {

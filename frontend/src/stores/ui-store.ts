@@ -13,7 +13,7 @@ export interface PollData {
 }
 
 export type LayoutMode = 'balanced' | 'studio-focus';
-export type AppMode = 'tasks' | 'sessions';
+export type AppMode = 'agents' | 'sessions';
 
 interface UIStore {
   appMode: AppMode;
@@ -58,9 +58,10 @@ const loadCollapsed = (key: string): boolean => {
 const loadAppMode = (): AppMode => {
   try {
     const stored = localStorage.getItem('veille-app-mode');
-    if (stored === 'sessions' || stored === 'tasks') return stored;
+    if (stored === 'sessions') return stored;
+    if (stored === 'agents' || stored === 'tasks') return 'agents';
   } catch { /* ignore */ }
-  return 'tasks';
+  return 'agents';
 };
 
 export const useUIStore = create<UIStore>((set) => ({

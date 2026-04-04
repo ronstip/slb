@@ -329,10 +329,10 @@ export function useSSEChat() {
                   createdTaskId = taskId;
                 }
                 // Refresh task list, then set newly created task as active context
-                import('../../../stores/task-store.ts').then(async ({ useTaskStore }) => {
-                  await useTaskStore.getState().fetchTasks();
+                import('../../../stores/agent-store.ts').then(async ({ useAgentStore }) => {
+                  await useAgentStore.getState().fetchAgents();
                   if (taskId) {
-                    useTaskStore.getState().setActiveTask(taskId);
+                    useAgentStore.getState().setActiveAgent(taskId);
                   }
                 });
               } else if (isTodoResult(toolName, result)) {

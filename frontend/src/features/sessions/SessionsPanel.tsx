@@ -22,9 +22,9 @@ import { useTheme } from '../../components/theme-provider.tsx';
 import { Logo } from '../../components/Logo.tsx';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
-import { useTaskStore } from '../../stores/task-store.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import { getAppPath } from '../../lib/navigation.ts';
-import { STATUS_CONFIG } from '../tasks/TaskDetailDrawer.tsx';
+import { STATUS_CONFIG } from '../agents/AgentDetailDrawer.tsx';
 import { SessionCard } from '../sources/SessionCard.tsx';
 import { SessionSearchModal } from './SessionSearchModal.tsx';
 import { Button } from '../../components/ui/button.tsx';
@@ -55,12 +55,12 @@ export function SessionsPanel() {
   const openSignUpPrompt = useUIStore((s) => s.openSignUpPrompt);
   const sessions = useSessionStore((s) => s.sessions);
   const isLoadingSessions = useSessionStore((s) => s.isLoadingSessions);
-  const tasks = useTaskStore((s) => s.tasks);
-  const fetchTasks = useTaskStore((s) => s.fetchTasks);
+  const tasks = useAgentStore((s) => s.agents);
+  const fetchTasks = useAgentStore((s) => s.fetchAgents);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (appMode === 'tasks' && tasks.length === 0) fetchTasks();
+    if (appMode === 'agents' && tasks.length === 0) fetchTasks();
   }, [appMode, tasks.length, fetchTasks]);
 
   const handleNewSession = () => {
@@ -235,7 +235,7 @@ export function SessionsPanel() {
         {/* Tasks */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={() => navigate('/tasks')}>
+            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={() => navigate('/agents')}>
               <ClipboardList className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -336,7 +336,7 @@ export function SessionsPanel() {
           Collections
         </button>
         <button
-          onClick={() => navigate('/tasks')}
+          onClick={() => navigate('/agents')}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <ClipboardList className="h-4 w-4 shrink-0" />
@@ -354,8 +354,8 @@ export function SessionsPanel() {
       {/* Divider — under menu items */}
       <div className="mx-3 my-2 border-t border-border" />
 
-      {/* Recent Tasks (shown in task-centered mode) */}
-      {appMode === 'tasks' && tasks.length > 0 && (
+      {/* Recent Agents (shown in agent-centered mode) */}
+      {appMode === 'agents' && tasks.length > 0 && (
         <div className="px-3 pb-2">
           <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
             Recent Tasks
@@ -372,7 +372,7 @@ export function SessionsPanel() {
                     onClick={() => {
                       const sid = task.primary_session_id || task.session_id;
                       if (sid) navigate(`/session/${sid}`);
-                      else navigate('/tasks');
+                      else navigate('/agents');
                     }}
                     className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent"
                   >
