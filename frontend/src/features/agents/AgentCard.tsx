@@ -243,28 +243,27 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             <StatusBadge status={task.status} />
           </div>
 
-          {/* Meta info */}
-          <div className={cn(
-            'flex flex-wrap items-center gap-2 text-muted-foreground',
-            compact ? 'text-[10px] gap-1.5' : 'text-[11px] gap-3',
-          )}>
-            <span className="flex items-center gap-1">
-              <Database className="h-3 w-3" />
-              {task.collection_ids.length}
-            </span>
-            {hasArtifacts && (
+          {/* Meta info — hidden in compact mode */}
+          {!compact && (
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
-                <FileText className="h-3 w-3" />
-                {task.artifact_ids.length}
+                <Database className="h-3 w-3" />
+                {task.collection_ids.length}
               </span>
-            )}
-            {task.schedule && (
-              <span className="flex items-center gap-1">
-                <CalendarClock className="h-3 w-3" />
-                {formatSchedule(task.schedule.frequency)}
-              </span>
-            )}
-          </div>
+              {hasArtifacts && (
+                <span className="flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  {task.artifact_ids.length}
+                </span>
+              )}
+              {task.schedule && (
+                <span className="flex items-center gap-1">
+                  <CalendarClock className="h-3 w-3" />
+                  {formatSchedule(task.schedule.frequency)}
+                </span>
+              )}
+            </div>
+          )}
 
           {!compact && (
             <div className="text-[11px] text-muted-foreground/60 mt-1">

@@ -81,7 +81,7 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
               {task.context_summary
                 || task.title
                 + (task.data_scope?.searches?.length
-                  ? ` \u2014 ${task.data_scope.searches.map((s) => s.keywords.join(', ')).join('; ')}`
+                  ? ` \u2014 ${task.data_scope.searches.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`
                   : '')}
             </div>
           </div>

@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Compass,
   FileText,
   Filter,
@@ -39,11 +42,15 @@ import {
 } from '../../components/ui/tooltip.tsx';
 import { formatSchedule } from '../../lib/constants.ts';
 import { AgentCardGrid } from './AgentCardGrid.tsx';
+import { AgentCard } from './AgentCard.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
 import { useUIStore } from '../../stores/ui-store.ts';
+import { ScrollArea, ScrollBar } from '../../components/ui/scroll-area.tsx';
 import { cn } from '../../lib/utils.ts';
 
 type ViewMode = 'table' | 'grid';
+type SortField = 'last_run' | 'title' | 'status' | 'created_at' | 'next_run';
+type SortDir = 'asc' | 'desc';
 
 const loadViewMode = (): ViewMode => {
   try {
@@ -86,6 +93,8 @@ export function AgentsPage() {
   const [openScheduleOnDrawer, setOpenScheduleOnDrawer] = useState(false);
   const [explorerAgent, setExplorerAgent] = useState<Agent | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode);
+  const [sortField, setSortField] = useState<SortField>('last_run');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
@@ -104,29 +113,62 @@ export function AgentsPage() {
     return () => clearInterval(interval);
   }, [hasExecuting, fetchAgents]);
 
-  const filteredAgents = tasks
-    .filter((t) => {
+  const getLastRunTime = (agent: Agent): number => {
+    const h = agent.run_history;
+    if (!h?.length) return 0;
+    return new Date(h[h.length - 1].run_at).getTime();
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir(field === 'title' ? 'asc' : 'desc');
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ArrowUp className="h-3 w-3" />
+      : <ArrowDown className="h-3 w-3" />;
+  };
+
+  const filteredAgents = useMemo(() => {
+    const filtered = tasks.filter((t) => {
       if (statusFilter.size > 0 && !statusFilter.has(t.status)) return false;
       if (search) {
         const q = search.toLowerCase();
         return t.title.toLowerCase().includes(q);
       }
       return true;
-    })
-    .sort((a, b) => {
-      // Monitoring tasks first
-      const aMonitoring = a.status === 'monitoring' ? 0 : 1;
-      const bMonitoring = b.status === 'monitoring' ? 0 : 1;
-      if (aMonitoring !== bMonitoring) return aMonitoring - bMonitoring;
-      // Then by next_run_at ascending (nulls last)
-      if (a.next_run_at && b.next_run_at) {
-        const diff = new Date(a.next_run_at).getTime() - new Date(b.next_run_at).getTime();
-        if (diff !== 0) return diff;
-      } else if (a.next_run_at) return -1;
-      else if (b.next_run_at) return 1;
-      // Then by created_at descending
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
+
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return filtered.sort((a, b) => {
+      switch (sortField) {
+        case 'title':
+          return dir * a.title.localeCompare(b.title);
+        case 'status':
+          return dir * a.status.localeCompare(b.status);
+        case 'created_at':
+          return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        case 'next_run':
+          return dir * ((a.next_run_at ? new Date(a.next_run_at).getTime() : 0) - (b.next_run_at ? new Date(b.next_run_at).getTime() : 0));
+        case 'last_run':
+        default:
+          return dir * (getLastRunTime(a) - getLastRunTime(b));
+      }
+    });
+  }, [tasks, statusFilter, search, sortField, sortDir]);
+
+  const recentAgents = useMemo(() =>
+    [...tasks]
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 4),
+    [tasks],
+  );
 
   const toggleStatus = (status: AgentStatus) => {
     setStatusFilter((prev) => {
@@ -244,9 +286,9 @@ export function AgentsPage() {
               <LayoutGrid className="h-3.5 w-3.5" />
             </Button>
           </div>
-          <Button size="sm" className="h-8 gap-1.5" onClick={() => navigate('/?create=1')}>
+          <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/?create=1')}>
             <Plus className="h-3.5 w-3.5" />
-            New Agent
+            New
           </Button>
         </div>
       </div>
@@ -261,8 +303,46 @@ export function AgentsPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto">
+        {/* Recent Agents carousel */}
+        {!search && statusFilter.size === 0 && tasks.length > 0 && (
+          <div className="px-6 pt-4 pb-2">
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+              Recent Agents
+            </h2>
+            <ScrollArea className="w-full">
+              <div className="flex gap-3 pb-3">
+                {recentAgents.map((agent) => (
+                  <div key={agent.task_id} className="w-[300px] shrink-0">
+                    <AgentCard task={agent} compact onClick={() => handleRowClick(agent)} />
+                  </div>
+                ))}
+                {/* New Agent card */}
+                <div
+                  className="w-[300px] shrink-0 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border hover:border-primary/40 hover:bg-accent/30 cursor-pointer transition-all min-h-[160px]"
+                  onClick={() => navigate('/?create=1')}
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 mb-2">
+                    <Plus className="h-5 w-5 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">New Agent</span>
+                </div>
+              </div>
+              <ScrollBar orientation="horizontal" />
+            </ScrollArea>
+          </div>
+        )}
+
+        {/* All Agents header */}
+        {!isLoading && filteredAgents.length > 0 && (
+          <div className="px-6 pt-3 pb-2">
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              All Agents ({filteredAgents.length})
+            </h2>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="px-6 py-4 space-y-2">
             {[...Array(5)].map((_, i) => (
@@ -292,14 +372,22 @@ export function AgentsPage() {
           <table className="w-full">
             <thead className="sticky top-0 bg-background border-b">
               <tr className="text-[11px] text-muted-foreground font-medium">
-                <th className="text-left px-6 py-2.5">Title</th>
+                <th className="text-left px-6 py-2.5 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('title')}>
+                  <span className="flex items-center gap-1">Title <SortIcon field="title" /></span>
+                </th>
                 <th className="text-center px-3 py-2.5 w-36">Actions</th>
-                <th className="text-left px-3 py-2.5 w-28">Status</th>
+                <th className="text-left px-3 py-2.5 w-28 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('status')}>
+                  <span className="flex items-center gap-1">Status <SortIcon field="status" /></span>
+                </th>
                 <th className="text-left px-3 py-2.5 w-28">
                   <span className="flex items-center gap-1"><Timer className="h-3 w-3" />Schedule</span>
                 </th>
-                <th className="text-left px-3 py-2.5 w-24">Next Run</th>
-                <th className="text-left px-3 py-2.5 w-24">Last Run</th>
+                <th className="text-left px-3 py-2.5 w-24 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('next_run')}>
+                  <span className="flex items-center gap-1">Next Run <SortIcon field="next_run" /></span>
+                </th>
+                <th className="text-left px-3 py-2.5 w-24 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('last_run')}>
+                  <span className="flex items-center gap-1">Last Run <SortIcon field="last_run" /></span>
+                </th>
                 <th className="text-left px-3 py-2.5 w-24">Collections</th>
                 <th className="text-left px-3 py-2.5 w-24">Artifacts</th>
               </tr>
