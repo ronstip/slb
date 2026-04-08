@@ -61,6 +61,8 @@ interface DashboardFilterBarProps {
   onFilterBarChange?: (filters: FilterBarFilterId[]) => void;
   /** All posts (unfiltered) — used to compute per-option counts */
   allPosts?: DashboardPost[];
+  /** When true, suppresses the bottom border */
+  noBorder?: boolean;
 }
 
 type OptionCounts = Record<string, Record<string, number>>;
@@ -274,6 +276,7 @@ export function DashboardFilterBar({
   filterBarFilters,
   onFilterBarChange,
   allPosts,
+  noBorder,
 }: DashboardFilterBarProps) {
   const optionCounts = useMemo(() => allPosts ? computeOptionCounts(allPosts) : undefined, [allPosts]);
   // Active filter pill IDs (ordered)
@@ -439,7 +442,7 @@ export function DashboardFilterBar({
   const showArrows = canScrollLeft || canScrollRight;
 
   return (
-    <div className="flex items-center gap-1 border-b border-border px-4 py-1.5 min-w-0">
+    <div className={`flex items-center gap-1 py-1.5 min-w-0${noBorder ? ' px-6' : ' px-4 border-b border-border'}`}>
       <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0 hidden sm:block mr-1" />
 
       {/* Left arrow */}

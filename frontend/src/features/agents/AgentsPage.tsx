@@ -41,7 +41,6 @@ import { formatSchedule } from '../../lib/constants.ts';
 import { AgentCardGrid } from './AgentCardGrid.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
 import { useUIStore } from '../../stores/ui-store.ts';
-import { UserMenu } from '../../components/UserMenu.tsx';
 import { cn } from '../../lib/utils.ts';
 
 type ViewMode = 'table' | 'grid';
@@ -175,11 +174,10 @@ export function AgentsPage() {
         <AppSidebar />
       </aside>
       <div className="flex flex-1 flex-col overflow-x-hidden">
-      {/* Header with integrated filters */}
-      <header className="flex h-12 shrink-0 items-center gap-4 border-b px-5">
-        <span className="text-sm font-medium text-muted-foreground">Agents</span>
+      {/* Toolbar */}
+      <div className="flex shrink-0 items-center gap-3 px-6 pt-5 pb-3">
+        <h1 className="text-base font-semibold text-foreground">Agents</h1>
 
-        <div className="flex flex-1 items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -189,6 +187,7 @@ export function AgentsPage() {
             className="h-8 pl-9 text-sm"
           />
         </div>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 gap-1.5">
@@ -226,7 +225,7 @@ export function AgentsPage() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-2">
           <div className="flex items-center rounded-md border">
             <Button
               variant="ghost"
@@ -245,14 +244,12 @@ export function AgentsPage() {
               <LayoutGrid className="h-3.5 w-3.5" />
             </Button>
           </div>
-          <Button size="sm" className="h-7 text-xs ml-2" onClick={() => navigate('/')}>
-            <Plus className="mr-1 h-3 w-3" />
+          <Button size="sm" className="h-8 gap-1.5" onClick={() => navigate('/?create=1')}>
+            <Plus className="h-3.5 w-3.5" />
             New Agent
           </Button>
-          <UserMenu />
         </div>
       </div>
-      </header>
 
       {/* Error state */}
       {error && (
@@ -333,13 +330,12 @@ export function AgentsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
-                                disabled={!(task.session_id || task.primary_session_id)}
-                                onClick={() => navigate(`/session/${task.session_id || task.primary_session_id}`)}
+                                onClick={() => navigate(`/agents/${task.task_id}?tab=chat`)}
                               >
                                 <MessageSquare className="h-3.5 w-3.5" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Open Session</TooltipContent>
+                            <TooltipContent>Chat</TooltipContent>
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -376,12 +372,12 @@ export function AgentsPage() {
                                 size="icon"
                                 className="h-7 w-7"
                                 disabled={(task.artifact_ids?.length ?? 0) === 0}
-                                onClick={() => handleRowClick(task)}
+                                onClick={() => navigate(`/agents/${task.task_id}?tab=artifacts`)}
                               >
                                 <FileText className="h-3.5 w-3.5" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>View Artifacts</TooltipContent>
+                            <TooltipContent>Artifacts</TooltipContent>
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -390,12 +386,12 @@ export function AgentsPage() {
                                 size="icon"
                                 className="h-7 w-7"
                                 disabled={(task.collection_ids?.length ?? 0) === 0}
-                                onClick={() => setExplorerAgent(task)}
+                                onClick={() => navigate(`/agents/${task.task_id}?tab=explorer`)}
                               >
                                 <Compass className="h-3.5 w-3.5" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Explore Data</TooltipContent>
+                            <TooltipContent>Explorer</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                         <DropdownMenu>
@@ -405,13 +401,23 @@ export function AgentsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="start">
-                            <DropdownMenuItem onClick={() => handleRowClick(task)}>
-                              View Details
+                            <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}`)}>
+                              Overview
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=chat`)}>
+                              <MessageSquare className="mr-2 h-3.5 w-3.5" />
+                              Chat
+                            </DropdownMenuItem>
+                            {(task.artifact_ids?.length ?? 0) > 0 && (
+                              <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=artifacts`)}>
+                                <FileText className="mr-2 h-3.5 w-3.5" />
+                                Artifacts
+                              </DropdownMenuItem>
+                            )}
                             {(task.collection_ids?.length ?? 0) > 0 && (
-                              <DropdownMenuItem onClick={() => setExplorerAgent(task)}>
+                              <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=explorer`)}>
                                 <Compass className="mr-2 h-3.5 w-3.5" />
-                                Explore Data
+                                Explorer
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />

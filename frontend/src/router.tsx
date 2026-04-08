@@ -1,5 +1,4 @@
 import { createBrowserRouter, Navigate, useParams } from 'react-router';
-import { AppShell } from './layout/AppShell.tsx';
 import { LandingPage } from './auth/LandingPage.tsx';
 import { AuthGate } from './auth/AuthGate.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
@@ -12,7 +11,6 @@ import { AgentHome } from './features/agents/AgentHome.tsx';
 import { AgentDetailPage } from './features/agents/detail/AgentDetailPage.tsx';
 import { CollectionsPage } from './features/collections/CollectionsPage.tsx';
 import { useAuth } from './auth/useAuth.ts';
-import { useUIStore } from './stores/ui-store.ts';
 
 // Wrapper for invite handler to extract code from params
 function InviteRoute() {
@@ -21,10 +19,9 @@ function InviteRoute() {
 }
 
 // Smart home route: shows LandingPage for anonymous/unauthenticated users,
-// AgentHome or AppShell depending on appMode for signed-in users.
+// AgentHome for signed-in users.
 function HomeRoute() {
   const { loading, isAnonymous, devMode } = useAuth();
-  const appMode = useUIStore((s) => s.appMode);
 
   if (loading) {
     return (
@@ -36,7 +33,7 @@ function HomeRoute() {
 
   if (isAnonymous && !devMode) return <LandingPage />;
 
-  return appMode === 'agents' ? <AgentHome /> : <AppShell />;
+  return <AgentHome />;
 }
 
 // Backward-compat redirect from old /tasks/:taskId to /agents/:taskId
@@ -105,10 +102,6 @@ export const router = createBrowserRouter([
       {
         path: '/collections',
         element: <CollectionsPage />,
-      },
-      {
-        path: '/session/:sessionId',
-        element: <AppShell />,
       },
     ],
   },

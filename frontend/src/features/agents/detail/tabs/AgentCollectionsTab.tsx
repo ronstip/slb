@@ -1,46 +1,39 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Database, Download, Filter, Search, X } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 import type { Agent } from '../../../../api/endpoints/agents.ts';
-import { listCollections, downloadCollection, deleteCollection } from '../../../../api/endpoints/collections.ts';
+import { listCollections, downloadCollection } from '../../../../api/endpoints/collections.ts';
 import { mapCollectionToSource } from '../../../collections/utils.ts';
-import { CollectionsSidebar } from '../../../collections/CollectionsSidebar.tsx';
 import { PostsDataPanel } from '../../../collections/PostsDataPanel.tsx';
-import { EditCollectionDialog } from '../../../collections/EditCollectionDialog.tsx';
-import { StatsModal } from '../../../sources/StatsModal.tsx';
+import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { Button } from '../../../../components/ui/button.tsx';
-import { useAuth } from '../../../../auth/useAuth.ts';
 import type { Source } from '../../../../stores/sources-store.ts';
+import { StatusBadge } from '../agent-status-utils.tsx';
+import { cn } from '../../../../lib/utils.ts';
+import { formatNumber } from '../../../../lib/format.ts';
 
-type StatusFilter = 'all' | 'active' | 'monitoring' | 'completed' | 'failed';
+const STATUS_DOTS: Record<string, string> = {
+  collecting: 'bg-amber-500 animate-pulse',
+  enriching: 'bg-amber-500 animate-pulse',
+  pending: 'bg-amber-500 animate-pulse',
+  monitoring: 'bg-blue-500',
+  completed: 'bg-green-500',
+  completed_with_errors: 'bg-yellow-500',
+  failed: 'bg-red-500',
+  cancelled: 'bg-gray-400',
+};
 
 interface TaskCollectionsTabProps {
   task: Agent;
 }
 
 export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
-  const queryClient = useQueryClient();
-  const { profile } = useAuth();
-
-  // Sidebar state
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // Global search for posts data panel
   const [globalSearch, setGlobalSearch] = useState('');
-
-  // Dialog state
-  const [editSource, setEditSource] = useState<Source | null>(null);
-  const [statsSource, setStatsSource] = useState<Source | null>(null);
-
-  // Active column filters state
   const [hasActiveColumnFilters, setHasActiveColumnFilters] = useState(false);
   const clearFiltersRef = useRef<(() => void) | null>(null);
 
-  // Fetch all collections, then filter to only those in this agent
   const taskCollectionIds = useMemo(
     () => new Set(task.collection_ids ?? []),
     [task.collection_ids],
@@ -52,7 +45,6 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
     staleTime: 30_000,
   });
 
-  // Map → Source objects, filtered to only this agent's collections
   const collections: Source[] = useMemo(
     () =>
       rawCollections
@@ -61,7 +53,6 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
     [rawCollections, taskCollectionIds],
   );
 
-  // Auto-select all task collections on initial load
   const didAutoSelect = useRef(false);
   useEffect(() => {
     if (!didAutoSelect.current && collections.length > 0) {
@@ -70,7 +61,6 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
     }
   }, [collections]);
 
-  // Build collection name map for the data panel
   const collectionNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of collections) map.set(c.collectionId, c.title);
@@ -78,69 +68,64 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
   }, [collections]);
 
   const selectedCollectionIds = useMemo(() => [...selectedIds], [selectedIds]);
+  const allSelected = collections.length > 0 && selectedIds.size === collections.length;
 
-  const handleDownload = useCallback((source: Source) => {
-    downloadCollection(source.collectionId, source.title);
-  }, []);
+  const toggleAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(collections.map((c) => c.collectionId)));
+  };
 
-  const handleDelete = useCallback(
-    async (source: Source) => {
-      try {
-        await deleteCollection(source.collectionId);
-        queryClient.invalidateQueries({ queryKey: ['collections'] });
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(source.collectionId);
-          return next;
-        });
-        toast.success('Collection deleted');
-      } catch {
-        toast.error('Failed to delete collection');
-      }
-    },
-    [queryClient],
-  );
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
-  // Empty state
+
   if (taskCollectionIds.size === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
-        <Database className="h-10 w-10 opacity-20" />
-        <p className="text-sm font-medium">No collections yet</p>
-        <p className="text-xs">Collections will appear here once the agent runs.</p>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex h-11 shrink-0 items-center gap-3 px-6">
+          <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
+          <StatusBadge status={task.status} />
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
+          <Database className="h-10 w-10 opacity-20" />
+          <p className="text-sm font-medium">No collections yet</p>
+          <p className="text-xs">Collections will appear here once the agent runs.</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-border/40 bg-card px-4 py-2 shrink-0">
-        {/* Global post search */}
-        <div className="relative w-56">
+      {/* Single header row: title + status + search + actions */}
+      <div className="flex h-11 shrink-0 items-center gap-3 px-6">
+        <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
+        <StatusBadge status={task.status} />
+        <div className="flex-1" />
+        <div className="relative w-48">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
             placeholder="Search posts..."
-            className="h-8 pl-8 text-xs bg-background/60 border-border/40"
+            className="h-7 pl-8 text-xs"
           />
           {globalSearch && (
-            <button
-              onClick={() => setGlobalSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
+            <button onClick={() => setGlobalSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
               <X className="h-3 w-3" />
             </button>
           )}
         </div>
-
-        {/* Clear column filters */}
         {hasActiveColumnFilters && (
           <Button
             variant="outline"
             size="sm"
-            className="h-8 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/5"
+            className="h-7 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/5"
             onClick={() => clearFiltersRef.current?.()}
           >
             <Filter className="h-3 w-3" />
@@ -148,14 +133,10 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
             <X className="h-3 w-3" />
           </Button>
         )}
-
-        <div className="flex-1" />
-
-        {/* Export selected */}
         <Button
           variant="outline"
           size="sm"
-          className="h-8 gap-1.5 text-xs"
+          className="h-7 gap-1.5 text-xs"
           disabled={selectedCollectionIds.length === 0}
           onClick={() => {
             for (const id of selectedCollectionIds) {
@@ -168,47 +149,75 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
         </Button>
       </div>
 
-      {/* Main: sidebar + data panel */}
-      <div className="flex flex-1 min-h-0">
-        <CollectionsSidebar
-          collections={collections}
-          selectedIds={selectedIds}
-          onSelectionChange={setSelectedIds}
-          search={search}
-          onSearchChange={setSearch}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          onEdit={setEditSource}
-          onViewStats={setStatsSource}
-          onDownload={handleDownload}
-          onDelete={handleDelete}
-        />
+      {/* Horizontal collections bar — acts as the horizontal sidebar */}
+      <div className="flex shrink-0 items-center gap-2 px-6 pb-2 overflow-x-auto">
+        {/* "All" toggle */}
+        {collections.length > 1 && (
+          <button
+            onClick={toggleAll}
+            className={cn(
+              'flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all',
+              allSelected
+                ? 'border-primary/25 bg-primary/8 text-foreground'
+                : 'border-border bg-muted/30 text-muted-foreground hover:border-border hover:bg-muted/60',
+            )}
+          >
+            <span>All</span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+              {collections.reduce((s, c) => s + c.postsCollected, 0) > 0
+                ? formatNumber(collections.reduce((s, c) => s + c.postsCollected, 0))
+                : collections.length}
+            </span>
+          </button>
+        )}
 
-        <PostsDataPanel
-          selectedCollectionIds={selectedCollectionIds}
-          collectionNames={collectionNames}
-          globalSearch={globalSearch}
-          onActiveFiltersChange={setHasActiveColumnFilters}
-          onClearFiltersCallbackChange={(cb) => { clearFiltersRef.current = cb; }}
-        />
+        {collections.map((c) => {
+          const isSelected = selectedIds.has(c.collectionId);
+          const statusDot = STATUS_DOTS[c.status] || 'bg-muted-foreground/40';
+          // Extract first platform from config if available
+          const platform = c.config?.platforms?.[0] as string | undefined;
+
+          return (
+            <button
+              key={c.collectionId}
+              onClick={() => toggleOne(c.collectionId)}
+              className={cn(
+                'flex shrink-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-all',
+                isSelected
+                  ? 'border-primary/25 bg-primary/8 text-foreground shadow-sm'
+                  : 'border-border bg-muted/30 text-muted-foreground hover:border-border hover:bg-muted/60',
+              )}
+            >
+              {/* Status dot */}
+              <div className={cn('h-1.5 w-1.5 shrink-0 rounded-full', statusDot)} />
+              {/* Platform icon if available */}
+              {platform && (
+                <PlatformIcon platform={platform} className="h-3.5 w-3.5 shrink-0" />
+              )}
+              {/* Collection name */}
+              <span className={cn('max-w-[160px] truncate font-medium', isSelected ? 'text-foreground' : 'text-muted-foreground')}>
+                {c.title}
+              </span>
+              {/* Post count */}
+              {c.postsCollected > 0 && (
+                <span className={cn('shrink-0 tabular-nums text-[10px]', isSelected ? 'text-muted-foreground' : 'text-muted-foreground/60')}>
+                  {formatNumber(c.postsCollected)}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Edit Dialog */}
-      <EditCollectionDialog
-        source={editSource}
-        open={!!editSource}
-        onClose={() => setEditSource(null)}
-        hasOrg={!!profile?.org_id}
+      {/* Full-width data panel */}
+      <PostsDataPanel
+        selectedCollectionIds={selectedCollectionIds}
+        collectionNames={collectionNames}
+        globalSearch={globalSearch}
+        onActiveFiltersChange={setHasActiveColumnFilters}
+        onClearFiltersCallbackChange={(cb) => { clearFiltersRef.current = cb; }}
       />
 
-      {/* Stats Modal */}
-      {statsSource && (
-        <StatsModal
-          source={statsSource}
-          open={!!statsSource}
-          onClose={() => setStatsSource(null)}
-        />
-      )}
     </div>
   );
 }

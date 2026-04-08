@@ -13,7 +13,7 @@ import { CollectionSelector } from './CollectionSelector.tsx';
 import { StructuredPromptPanel } from './StructuredPromptPanel.tsx';
 import { TaskProgressPill } from './TaskProgressPill.tsx';
 
-export function ChatPanel() {
+export function ChatPanel({ hideHeader }: { hideHeader?: boolean } = {}) {
   const messages = useChatStore((s) => s.messages);
   const activePromptData = useChatStore((s) => s.activePromptData);
   const isRestoring = useSessionStore((s) => s.isRestoring);
@@ -77,12 +77,14 @@ export function ChatPanel() {
   }, []);
 
   return (
-    <main data-testid="chat-panel" className="flex min-w-[480px] flex-1 flex-col bg-background">
+    <main data-testid="chat-panel" className="flex min-w-[480px] flex-1 flex-col overflow-hidden bg-background">
       {/* Top bar — collection + task selectors */}
-      <div className="flex shrink-0 items-center gap-2 px-4 py-2">
-        <CollectionSelector />
-        <TaskSelector />
-      </div>
+      {!hideHeader && (
+        <div className="flex shrink-0 items-center gap-2 px-4 py-2">
+          <CollectionSelector />
+          <TaskSelector />
+        </div>
+      )}
 
       {isRestoring ? (
         <div className="flex flex-1 items-center justify-center">

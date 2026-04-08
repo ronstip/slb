@@ -176,7 +176,7 @@ export function AppSidebar({
       >
         <Tooltip>
           <TooltipTrigger asChild>
-            <button onClick={() => navigate('/')} className="mb-1 focus:outline-none">
+            <button onClick={() => navigate('/')} className="mb-1 cursor-pointer focus:outline-none transition-opacity hover:opacity-75">
               <Logo size="sm" showText={false} />
             </button>
           </TooltipTrigger>
@@ -194,7 +194,7 @@ export function AppSidebar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={() => navigate('/')}>
+            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={() => navigate('/?create=1')}>
               <Plus className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -239,7 +239,7 @@ export function AppSidebar({
     <div className="flex h-full flex-col bg-white dark:bg-[var(--background)]">
       {/* Top: Logo + collapse button */}
       <div className="flex items-center justify-between px-3 py-3">
-        <button onClick={() => navigate('/')} className="focus:outline-none">
+        <button onClick={() => navigate('/')} className="cursor-pointer focus:outline-none transition-opacity hover:opacity-75">
           <Logo size="sm" />
         </button>
         <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={toggle}>
@@ -250,7 +250,7 @@ export function AppSidebar({
       {/* New Agent */}
       <div className="px-3 mb-2">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/?create=1')}
           className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <Plus className="h-4 w-4 shrink-0" />
@@ -290,7 +290,7 @@ export function AppSidebar({
       {isDetailPage && onTabChange && (
         <>
           <div className="mx-3 my-2 border-t border-border" />
-          <div className="px-3">
+          <div className="px-3 pb-1">
             <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
               Agent
             </p>

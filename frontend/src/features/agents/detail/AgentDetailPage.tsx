@@ -2,14 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
-  ArrowLeft,
-  CalendarClock,
-  Pause,
-  Play,
-  Repeat,
-  StopCircle,
-} from 'lucide-react';
 import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { runAgent, updateAgent as patchAgent } from '../../../api/endpoints/agents.ts';
@@ -22,8 +14,7 @@ import { AgentChatTab } from './tabs/AgentChatTab.tsx';
 import { AgentCollectionsTab } from './tabs/AgentCollectionsTab.tsx';
 import { AgentArtifactsTab } from './tabs/AgentArtifactsTab.tsx';
 import { AgentExplorerTab } from './tabs/AgentExplorerTab.tsx';
-import { StatusBadge, RUNNABLE_STATUSES } from './agent-status-utils.tsx';
-import { Button } from '../../../components/ui/button.tsx';
+import { RUNNABLE_STATUSES } from './agent-status-utils.tsx';
 
 const VALID_TABS: DetailTab[] = ['overview', 'chat', 'collections', 'artifacts', 'explorer'];
 
@@ -138,52 +129,6 @@ export function AgentDetailPage() {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top header */}
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/50 px-4">
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-
-          <div className="h-5 w-px bg-border/60" />
-
-          <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
-            <StatusBadge status={task.status} />
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {task.status === 'executing' && (
-              <Button size="sm" variant="destructive" className="h-8 text-xs" onClick={handleStop}>
-                <StopCircle className="mr-1.5 h-3.5 w-3.5" /> Stop
-              </Button>
-            )}
-            {canRun && (
-              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleRun}>
-                {task.task_type === 'recurring' ? (
-                  <><Play className="mr-1.5 h-3.5 w-3.5" />Run Now</>
-                ) : (
-                  <><Repeat className="mr-1.5 h-3.5 w-3.5" />Re-run</>
-                )}
-              </Button>
-            )}
-            {task.task_type === 'recurring' && (task.status === 'monitoring' || task.status === 'paused') && (
-              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handlePauseResume}>
-                {task.status === 'monitoring' ? (
-                  <><Pause className="mr-1.5 h-3.5 w-3.5" />Pause</>
-                ) : (
-                  <><Play className="mr-1.5 h-3.5 w-3.5" />Resume</>
-                )}
-              </Button>
-            )}
-            {task.task_type !== 'recurring' && ['completed', 'approved'].includes(task.status) && (
-              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setScheduleOpen(true)}>
-                <CalendarClock className="mr-1.5 h-3.5 w-3.5" /> Schedule
-              </Button>
-            )}
-          </div>
-        </header>
-
         {/* Tab content */}
         <main className="flex flex-1 flex-col overflow-hidden">
           {activeTab === 'overview' && (
@@ -193,6 +138,9 @@ export function AgentDetailPage() {
               logs={logs}
               onTabChange={setActiveTab}
               onOpenSchedule={() => setScheduleOpen(true)}
+              onRun={handleRun}
+              onStop={handleStop}
+              canRun={canRun}
             />
           )}
           {activeTab === 'chat' && <AgentChatTab task={task} />}

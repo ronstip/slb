@@ -25,9 +25,11 @@ interface DashboardViewProps {
   standalone?: boolean;
   defaultLayout?: import('./types-social-dashboard.ts').SocialDashboardWidget[];
   onClose?: () => void;
+  titleAdornment?: React.ReactNode;
+  noBorder?: boolean;
 }
 
-export function DashboardView({ artifact, standalone = false, defaultLayout, onClose }: DashboardViewProps) {
+export function DashboardView({ artifact, standalone = false, defaultLayout, onClose, titleAdornment, noBorder }: DashboardViewProps) {
   const collapseReport = useStudioStore((s) => s.collapseReport);
   const updateArtifactTitle = useStudioStore((s) => s.updateArtifactTitle);
   const gridRef = useRef<HTMLElement | null>(null);
@@ -107,7 +109,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-border bg-card/50 px-4 py-1.5">
+      <div className={`flex items-center gap-2 bg-card/50${noBorder ? ' h-11 px-6' : ' py-1.5 px-4 border-b border-border'}`}>
         {!standalone && (
           <>
             <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={collapseReport}>
@@ -128,7 +130,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
           />
         ) : (
           <h2
-            className={`flex-1 min-w-0 text-sm font-semibold text-foreground truncate ${isEditMode ? 'cursor-text hover:bg-muted/50 rounded px-1.5 py-0.5 -mx-1.5' : ''}`}
+            className={`min-w-0 shrink text-sm font-semibold text-foreground truncate ${isEditMode ? 'cursor-text hover:bg-muted/50 rounded px-1.5 py-0.5 -mx-1.5' : ''}`}
             onClick={() => { if (isEditMode) { setTitleDraft(displayTitle); setEditingTitle(true); } }}
           >
             {displayTitle}
@@ -136,6 +138,9 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
           </h2>
         )}
 
+        {titleAdornment}
+        {/* Spacer pushes buttons to the right */}
+        <div className="flex-1" />
         {/* Right-side controls */}
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Edit controls */}
@@ -226,11 +231,12 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
           filterBarFilters={filterBarFilters}
           onFilterBarChange={(f) => setFilterBarFilters(f as FilterBarFilterId[])}
           allPosts={allPosts}
+          noBorder={noBorder}
         />
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className={`flex-1 overflow-y-auto${noBorder ? ' px-6' : ''}`}>
         {isLoading && (
           <div className="space-y-4 p-6">
             <Skeleton className="h-10 rounded-lg" />

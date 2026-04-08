@@ -1335,6 +1335,12 @@ async def get_multi_collection_feed(
         where_clauses.append("ep.sentiment = @sentiment")
         params["sentiment"] = request.sentiment
 
+    if request.has_media:
+        # Only posts where at least one media_ref has a GCS URI (permanent copy, not expired CDN URL)
+        where_clauses.append(
+            "TO_JSON_STRING(p.media_refs) LIKE '%\"gs://%'"
+        )
+
     # Topic cluster filter
     topic_join_sql = ""
     if request.topic_cluster_id:
@@ -1907,6 +1913,12 @@ async def proxy_media(url: str = Query(...)):
             media_type=resp.headers.get("content-type", "application/octet-stream"),
             headers={"Cache-Control": "public, max-age=86400"},
         )
+    except http_requests.HTTPError as e:
+        status = e.response.status_code if e.response is not None else 502
+        if status in (401, 403, 404):
+            raise HTTPException(status_code=404, detail="Media not available")
+        logger.warning("Media proxy failed for %.80s...: %s", url, e)
+        raise HTTPException(status_code=502, detail="Failed to fetch media")
     except http_requests.RequestException as e:
         logger.warning("Media proxy failed for %.80s...: %s", url, e)
         raise HTTPException(status_code=502, detail="Failed to fetch media")

@@ -327,6 +327,9 @@ export function useSSEChat() {
                 }
                 if (taskId) {
                   createdTaskId = taskId;
+                  // Navigate immediately to the agent's chat tab so users don't stay
+                  // stuck on AgentHome waiting for the stream to complete.
+                  navigate(`/agents/${taskId}?tab=chat`, { replace: true });
                 }
                 // Refresh task list, then set newly created task as active context
                 import('../../../stores/agent-store.ts').then(async ({ useAgentStore }) => {
@@ -387,12 +390,12 @@ export function useSSEChat() {
                 // New session created — fetch list and update URL
                 sessionStore.fetchSessions();
                 if (createdTaskId) {
-                  navigate(`/tasks/${createdTaskId}?tab=chat`, { replace: true });
-                } else {
-                  navigate(`/session/${event.session_id}`, { replace: true });
+                  navigate(`/agents/${createdTaskId}?tab=chat`, { replace: true });
                 }
+                // If no task yet (e.g. ask_user approval still pending), stay on
+                // the current page — AgentHome will show a ChatPanel for interaction.
               } else if (createdTaskId) {
-                navigate(`/tasks/${createdTaskId}?tab=chat`);
+                navigate(`/agents/${createdTaskId}?tab=chat`);
               }
               break;
             }

@@ -64,6 +64,7 @@ class MultiFeedRequest(BaseModel):
     limit: int = 12
     offset: int = 0
     topic_cluster_id: str | None = None
+    has_media: bool = False
 
 
 class DashboardDataRequest(BaseModel):

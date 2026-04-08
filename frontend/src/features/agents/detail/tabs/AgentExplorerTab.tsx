@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
+import { Compass } from 'lucide-react';
 import type { Agent } from '../../../../api/endpoints/agents.ts';
 import { DashboardView } from '../../../studio/dashboard/DashboardView.tsx';
 import { getExplorerDefaultLayout } from '../../../studio/dashboard/defaults-social-dashboard.ts';
+import { StatusBadge } from '../agent-status-utils.tsx';
 
 interface TaskExplorerTabProps {
   task: Agent;
@@ -19,15 +21,30 @@ export function AgentExplorerTab({ task }: TaskExplorerTabProps) {
 
   if (!task.collection_ids?.length) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        No collections to explore
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex h-11 shrink-0 items-center gap-3 px-6">
+          <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
+          <StatusBadge status={task.status} />
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
+          <Compass className="h-10 w-10 opacity-20" />
+          <p className="text-sm font-medium">No collections to explore</p>
+          <p className="text-xs">Collections will appear here once the agent runs.</p>
+        </div>
       </div>
     );
   }
 
+  // DashboardView's toolbar IS the header — inject status badge as adornment, suppress borders
   return (
-    <div className="flex flex-1 flex-col w-full h-full overflow-hidden bg-background">
-      <DashboardView artifact={artifact} standalone defaultLayout={getExplorerDefaultLayout()} />
+    <div className="flex flex-1 flex-col w-full overflow-hidden bg-background">
+      <DashboardView
+        artifact={artifact}
+        standalone
+        defaultLayout={getExplorerDefaultLayout()}
+        titleAdornment={<StatusBadge status={task.status} />}
+        noBorder
+      />
     </div>
   );
 }

@@ -249,6 +249,7 @@ export interface MultiFeedParams {
   limit?: number;
   offset?: number;
   topic_cluster_id?: string;
+  has_media?: boolean;
 }
 
 export interface BreakdownItem {
