@@ -27,6 +27,15 @@ export function AgentHome() {
   useCollectionsSync();
 
   useEffect(() => {
+    // Clear any leftover chat state from a previous creation flow so returning
+    // to AgentHome (via logo or "+ New Agent") always shows the wizard, not
+    // a stale chat. Skip if a stream is actively running mid-creation.
+    if (!useChatStore.getState().isAgentResponding) {
+      useChatStore.getState().clearMessages();
+    }
+  }, []);
+
+  useEffect(() => {
     fetchAgents();
   }, [fetchAgents]);
 
@@ -44,57 +53,62 @@ export function AgentHome() {
         <AppSidebar />
       </aside>
 
-      {/* When the wizard has started a session, show the chat so users can
-          respond to agent prompts (e.g. ask_user approval) and monitor progress. */}
-      {hasChatActivity ? (
+      {/* Wizard — always keep mounted so AgentCreationWizard's useSSEChat stream is
+          not aborted when we switch to the chat view. Just hide it visually. */}
+      <main
+        className={`${hasChatActivity ? 'hidden' : 'flex'} flex-1 flex-col items-center overflow-y-auto px-6 py-8`}
+      >
+        {/* Loading state */}
+        {isLoading && agents.length === 0 && (
+          <div className="flex flex-1 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
+          </div>
+        )}
+
+        {/* Content */}
+        {(!isLoading || agents.length > 0) && (
+          <div className="w-full max-w-[1200px]">
+            {!hasAgents && !createMode && (
+              <div className="mb-8 flex flex-col items-center text-center">
+                <Logo size="lg" showText={false} />
+                <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground">
+                  Welcome to Veille
+                </h2>
+                <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Sparkles className="h-4 w-4 text-primary/60" />
+                  Set up your first monitoring agent in three simple steps
+                </p>
+              </div>
+            )}
+
+            {hasAgents && !createMode && (
+              <div className="mb-6">
+                <LatestAgentsRow tasks={agents} />
+              </div>
+            )}
+
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold text-foreground">Create a New Agent</h2>
+              <p className="text-xs text-muted-foreground">
+                Define what to monitor, configure collection settings, and set the schedule
+              </p>
+            </div>
+
+            <AgentCreationWizard />
+          </div>
+        )}
+      </main>
+
+      {/* Chat panel — shown once the wizard submits and the stream is live.
+          The wizard above stays mounted (hidden) to keep its useSSEChat stream alive.
+          ChatPanel handles user follow-up messages (e.g. approving the ask_user prompt). */}
+      {hasChatActivity && (
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex h-11 shrink-0 items-center border-b border-border px-6">
             <span className="text-sm font-semibold text-foreground">Creating Agent…</span>
           </div>
           <ChatPanel hideHeader />
         </div>
-      ) : (
-        <main className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-8">
-          {/* Loading state */}
-          {isLoading && agents.length === 0 && (
-            <div className="flex flex-1 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
-            </div>
-          )}
-
-          {/* Content */}
-          {(!isLoading || agents.length > 0) && (
-            <div className="w-full max-w-[1200px]">
-              {!hasAgents && !createMode && (
-                <div className="mb-8 flex flex-col items-center text-center">
-                  <Logo size="lg" showText={false} />
-                  <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground">
-                    Welcome to Veille
-                  </h2>
-                  <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                    <Sparkles className="h-4 w-4 text-primary/60" />
-                    Set up your first monitoring agent in three simple steps
-                  </p>
-                </div>
-              )}
-
-              {hasAgents && !createMode && (
-                <div className="mb-6">
-                  <LatestAgentsRow tasks={agents} />
-                </div>
-              )}
-
-              <div className="mb-4">
-                <h2 className="text-sm font-semibold text-foreground">Create a New Agent</h2>
-                <p className="text-xs text-muted-foreground">
-                  Define what to monitor, configure collection settings, and set the schedule
-                </p>
-              </div>
-
-              <AgentCreationWizard />
-            </div>
-          )}
-        </main>
       )}
     </div>
   );
