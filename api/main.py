@@ -1547,6 +1547,15 @@ async def update_task_endpoint(
             now = datetime.now(timezone.utc)
             safe_updates["next_run_at"] = compute_next_run_at(new_schedule["frequency"], now)
 
+    # When archiving, cancel any active collections first
+    if safe_updates.get("status") == "archived" and task.get("status") != "archived":
+        fs = get_fs()
+        active_statuses = {"collecting", "enriching", "processing"}
+        for cid in task.get("collection_ids", []):
+            col_status = fs.get_collection_status(cid)
+            if col_status and col_status.get("status") in active_statuses:
+                fs.update_collection_status(cid, status="cancelled")
+
     if safe_updates:
         update_task(task_id, **safe_updates)
     return {"ok": True}
@@ -1604,19 +1613,6 @@ async def approve_task_protocol(
         "status": "executing" if collection_ids else "approved",
     }
 
-
-@app.delete("/tasks/{task_id}")
-async def delete_task_endpoint(task_id: str, user: CurrentUser = Depends(get_current_user)):
-    """Delete a task."""
-    from api.services.task_service import get_task, delete_task
-
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Only the task owner can delete")
-    delete_task(task_id)
-    return {"ok": True}
 
 
 @app.post("/tasks/{task_id}/run")

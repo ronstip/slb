@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
+  Archive,
+  ArchiveRestore,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -11,20 +13,37 @@ import {
   List,
   MessageSquare,
   MoreHorizontal,
+  Pencil,
   Play,
   Plus,
   Search,
   Timer,
-  Trash2,
   X,
 } from 'lucide-react';
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { AgentDataExplorer } from './AgentDataExplorer.tsx';
 import { AgentDetailDrawer, StatusBadge, RUNNABLE_STATUSES, STATUS_CONFIG, formatLastRun } from './AgentDetailDrawer.tsx';
 import type { Agent, AgentStatus } from '../../api/endpoints/agents.ts';
-import { deleteAgent, runAgent } from '../../api/endpoints/agents.ts';
+import { runAgent, updateAgent as patchAgent } from '../../api/endpoints/agents.ts';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../components/ui/alert-dialog.tsx';
 import { Badge } from '../../components/ui/badge.tsx';
 import { Button } from '../../components/ui/button.tsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog.tsx';
 import { Input } from '../../components/ui/input.tsx';
 import {
   DropdownMenu,
@@ -147,6 +166,8 @@ export function AgentsPage() {
 
   const filteredAgents = useMemo(() => {
     const filtered = tasks.filter((t) => {
+      // Hide archived by default unless explicitly filtered
+      if (statusFilter.size === 0 && t.status === 'archived') return false;
       if (statusFilter.size > 0 && !statusFilter.has(t.status)) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -199,12 +220,49 @@ export function AgentsPage() {
     setDrawerOpen(true);
   };
 
-  const handleDelete = async (agent: Agent) => {
+  const [archiveTarget, setArchiveTarget] = useState<Agent | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Agent | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const handleArchive = async (agent: Agent) => {
     try {
-      await deleteAgent(agent.task_id);
+      await patchAgent(agent.task_id, { status: 'archived' });
       fetchAgents();
     } catch {
       // silent
+    } finally {
+      setArchiveTarget(null);
+    }
+  };
+
+  const handleRestore = async (agent: Agent) => {
+    try {
+      await patchAgent(agent.task_id, { status: 'completed' });
+      fetchAgents();
+    } catch {
+      // silent
+    }
+  };
+
+  const handleRenameOpen = (agent: Agent) => {
+    setRenameValue(agent.title);
+    setRenameTarget(agent);
+  };
+
+  const handleRenameSave = async () => {
+    if (!renameTarget) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === renameTarget.title) {
+      setRenameTarget(null);
+      return;
+    }
+    try {
+      await patchAgent(renameTarget.task_id, { title: trimmed });
+      fetchAgents();
+    } catch {
+      // silent
+    } finally {
+      setRenameTarget(null);
     }
   };
 
@@ -517,9 +575,19 @@ export function AgentsPage() {
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(task)}>
-                          <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
+                        <DropdownMenuItem onClick={() => handleRenameOpen(task)}>
+                          <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {task.status === 'archived' ? (
+                          <DropdownMenuItem onClick={() => handleRestore(task)}>
+                            <ArchiveRestore className="mr-2 h-3.5 w-3.5" /> Restore
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => setArchiveTarget(task)}>
+                            <Archive className="mr-2 h-3.5 w-3.5" /> Archive
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -579,6 +647,41 @@ export function AgentsPage() {
         open={!!explorerAgent}
         onClose={() => setExplorerAgent(null)}
       />
+
+      {/* Archive confirmation dialog */}
+      <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive this agent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Any active data collection and scheduled runs will be stopped. You can restore the agent later from the archived filter.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => archiveTarget && handleArchive(archiveTarget)}>Archive</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Agent</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSave(); }}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setRenameTarget(null)}>Cancel</Button>
+            <Button size="sm" onClick={handleRenameSave}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
     </div>
   );

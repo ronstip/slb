@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   Archive,
+  ArchiveRestore,
   CalendarClock,
   Compass,
   Database,
@@ -14,11 +15,10 @@ import {
   Play,
   StopCircle,
   Timer,
-  Trash2,
 } from 'lucide-react';
 import { ScheduleDialog } from './detail/ScheduleDialog.tsx';
 import type { Agent } from '../../api/endpoints/agents.ts';
-import { runAgent, deleteAgent, updateAgent as patchAgent } from '../../api/endpoints/agents.ts';
+import { runAgent, updateAgent as patchAgent } from '../../api/endpoints/agents.ts';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { mediaUrl } from '../../api/client.ts';
 import { StatusBadge, RUNNABLE_STATUSES, formatLastRun } from './AgentDetailDrawer.tsx';
@@ -27,6 +27,16 @@ import { useAgentStore } from '../../stores/agent-store.ts';
 import { Logo } from '../../components/Logo.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Input } from '../../components/ui/input.tsx';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../components/ui/alert-dialog.tsx';
 import {
   Dialog,
   DialogContent,
@@ -177,16 +187,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await deleteAgent(task.task_id);
-      fetchAgents();
-      toast.success('Agent deleted');
-    } catch {
-      toast.error('Failed to delete agent');
-    }
-  };
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
 
   const handleArchive = async () => {
     try {
@@ -195,6 +196,18 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
       toast.success('Agent archived');
     } catch {
       toast.error('Failed to archive agent');
+    } finally {
+      setArchiveConfirmOpen(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    try {
+      await patchAgent(task.task_id, { status: 'completed' });
+      fetchAgents();
+      toast.success('Agent restored');
+    } catch {
+      toast.error('Failed to restore agent');
     }
   };
 
@@ -382,22 +395,39 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
                   <Pencil className="mr-2 h-3.5 w-3.5" />
                   Rename
                 </DropdownMenuItem>
-                {task.status !== 'archived' && (
-                  <DropdownMenuItem onClick={handleArchive}>
+                <DropdownMenuSeparator />
+                {task.status === 'archived' ? (
+                  <DropdownMenuItem onClick={handleRestore}>
+                    <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                    Restore
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => setArchiveConfirmOpen(true)}>
                     <Archive className="mr-2 h-3.5 w-3.5" />
                     Archive
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive" onClick={(e) => handleDelete(e as unknown as React.MouseEvent)}>
-                  <Trash2 className="mr-2 h-3.5 w-3.5" />
-                  Delete
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
       </div>
+
+      {/* Archive confirmation dialog */}
+      <AlertDialog open={archiveConfirmOpen} onOpenChange={setArchiveConfirmOpen}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive this agent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Any active data collection and scheduled runs will be stopped. You can restore the agent later from the archived filter.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleArchive}>Archive</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Schedule dialog */}
       <ScheduleDialog task={task} open={scheduleOpen} onOpenChange={setScheduleOpen} />

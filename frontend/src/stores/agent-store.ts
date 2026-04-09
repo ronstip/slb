@@ -4,7 +4,6 @@ import {
   listAgents,
   getAgent as fetchAgent,
   updateAgent as patchAgent,
-  deleteAgent as removeAgent,
 } from '../api/endpoints/agents.ts';
 import { useSourcesStore } from './sources-store.ts';
 
@@ -20,7 +19,6 @@ interface AgentStore {
   loadAgent: (id: string) => Promise<Agent | null>;
   updateAgent: (id: string, updates: Partial<Agent>) => void;
   updateAgentStatus: (id: string, status: AgentStatus) => void;
-  removeAgent: (id: string) => Promise<void>;
   reset: () => void;
 }
 
@@ -89,19 +87,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   updateAgentStatus: (id: string, status: AgentStatus) => {
     get().updateAgent(id, { status });
     patchAgent(id, { status }).catch(() => {});
-  },
-
-  removeAgent: async (id: string) => {
-    try {
-      await removeAgent(id);
-      set((s) => ({
-        agents: s.agents.filter((t) => t.task_id !== id),
-        activeAgentId: s.activeAgentId === id ? null : s.activeAgentId,
-        activeAgent: s.activeAgentId === id ? null : s.activeAgent,
-      }));
-    } catch {
-      // Deletion failed — leave list unchanged
-    }
   },
 
   reset: () => {

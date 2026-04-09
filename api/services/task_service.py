@@ -82,10 +82,6 @@ def update_task(task_id: str, **fields) -> None:
     get_fs().update_task(task_id, **fields)
 
 
-def delete_task(task_id: str) -> None:
-    """Delete a task from Firestore."""
-    get_fs().delete_task(task_id)
-
 
 def dispatch_task_run(task_id: str, task: dict) -> list[str]:
     """Create collections from a task's data_scope and dispatch pipelines.

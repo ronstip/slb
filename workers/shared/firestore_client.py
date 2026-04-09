@@ -275,9 +275,6 @@ class FirestoreClient:
         results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return results
 
-    def delete_task(self, task_id: str) -> None:
-        self._db.collection("tasks").document(task_id).delete()
-        logger.info("Deleted task %s", task_id)
 
     def add_task_collection(self, task_id: str, collection_id: str) -> None:
         """Append a collection_id to the task's collection_ids array."""

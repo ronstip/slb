@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from '../client.ts';
+import { apiGet, apiPost, apiPatch } from '../client.ts';
 import type { ArtifactListItem } from './artifacts.ts';
 
 // --- Types ---
@@ -97,9 +97,6 @@ export function updateAgent(
   return apiPatch<{ ok: boolean }>(`/tasks/${agentId}`, updates);
 }
 
-export function deleteAgent(agentId: string): Promise<{ ok: boolean }> {
-  return apiDelete<{ ok: boolean }>(`/tasks/${agentId}`);
-}
 
 export function runAgent(agentId: string): Promise<{ task_id: string; collection_ids: string[]; status: string }> {
   return apiPost<{ task_id: string; collection_ids: string[]; status: string }>(`/tasks/${agentId}/run`, {});
