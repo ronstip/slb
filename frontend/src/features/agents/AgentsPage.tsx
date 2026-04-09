@@ -43,6 +43,7 @@ import {
 import { formatSchedule } from '../../lib/constants.ts';
 import { AgentCardGrid } from './AgentCardGrid.tsx';
 import { AgentCard } from './AgentCard.tsx';
+import { AgentCrest } from './AgentCrest.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { ScrollArea, ScrollBar } from '../../components/ui/scroll-area.tsx';
@@ -64,6 +65,15 @@ const ALL_STATUSES: AgentStatus[] = [
   'executing', 'monitoring', 'approved',
   'completed', 'paused', 'archived',
 ];
+
+const STATUS_ROW_BORDER: Record<string, string> = {
+  executing: 'border-l-amber-500',
+  monitoring: 'border-l-violet-500',
+  completed: 'border-l-green-500',
+  approved: 'border-l-blue-500',
+  paused: 'border-l-muted-foreground/40',
+  archived: 'border-l-muted-foreground/30',
+};
 
 /** Relative time for future dates (e.g. "in 6h", "Tomorrow") */
 function formatRelativeTime(iso: string): string {
@@ -369,191 +379,189 @@ export function AgentsPage() {
             />
           </div>
         ) : (
-          <table className="w-full">
-            <thead className="sticky top-0 bg-background border-b">
-              <tr className="text-[11px] text-muted-foreground font-medium">
-                <th className="text-left px-6 py-2.5 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('title')}>
-                  <span className="flex items-center gap-1">Title <SortIcon field="title" /></span>
-                </th>
-                <th className="text-center px-3 py-2.5 w-36">Actions</th>
-                <th className="text-left px-3 py-2.5 w-28 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('status')}>
-                  <span className="flex items-center gap-1">Status <SortIcon field="status" /></span>
-                </th>
-                <th className="text-left px-3 py-2.5 w-28">
-                  <span className="flex items-center gap-1"><Timer className="h-3 w-3" />Schedule</span>
-                </th>
-                <th className="text-left px-3 py-2.5 w-24 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('next_run')}>
-                  <span className="flex items-center gap-1">Next Run <SortIcon field="next_run" /></span>
-                </th>
-                <th className="text-left px-3 py-2.5 w-24 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('last_run')}>
-                  <span className="flex items-center gap-1">Last Run <SortIcon field="last_run" /></span>
-                </th>
-                <th className="text-left px-3 py-2.5 w-24">Collections</th>
-                <th className="text-left px-3 py-2.5 w-24">Artifacts</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAgents.map((task) => {
-                const lastRun = task.run_history?.length
-                  ? task.run_history[task.run_history.length - 1]
-                  : null;
+          <div className="px-4 pb-4 space-y-1.5">
+            {/* Sort bar */}
+            <div
+              className="grid items-center gap-2 px-5 py-1.5 text-[11px] text-muted-foreground font-medium select-none"
+              style={{ gridTemplateColumns: '1fr auto 6rem 6rem 6rem 6rem 5rem 5rem' }}
+            >
+              <span className="flex items-center gap-1 cursor-pointer hover:text-foreground" onClick={() => handleSort('title')}>
+                Title <SortIcon field="title" />
+              </span>
+              <span className="w-36 text-center mr-11">Actions</span>
+              <span className="flex items-center justify-center gap-1 cursor-pointer hover:text-foreground" onClick={() => handleSort('status')}>
+                Status <SortIcon field="status" />
+              </span>
+              <span className="flex items-center gap-1">
+                <Timer className="h-3 w-3" />Schedule
+              </span>
+              <span className="flex items-center gap-1 cursor-pointer hover:text-foreground" onClick={() => handleSort('next_run')}>
+                Next Run <SortIcon field="next_run" />
+              </span>
+              <span className="flex items-center gap-1 cursor-pointer hover:text-foreground" onClick={() => handleSort('last_run')}>
+                Last Run <SortIcon field="last_run" />
+              </span>
+              <span>Collections</span>
+              <span>Artifacts</span>
+            </div>
 
-                return (
-                  <tr
-                    key={task.task_id}
-                    onClick={() => handleRowClick(task)}
-                    className="border-b border-border/40 cursor-pointer hover:bg-accent/50 transition-colors"
-                  >
-                    <td className="px-6 py-3">
-                      <div className="text-sm font-medium text-foreground truncate max-w-md">
+            {/* Agent rows — each in its own container */}
+            {filteredAgents.map((task) => {
+              const lastRun = task.run_history?.length
+                ? task.run_history[task.run_history.length - 1]
+                : null;
+              const isExecuting = task.status === 'executing';
+              const borderColor = STATUS_ROW_BORDER[task.status] ?? 'border-l-transparent';
+
+              return (
+                <div
+                  key={task.task_id}
+                  onClick={() => handleRowClick(task)}
+                  className={cn(
+                    'group relative grid items-center gap-2 rounded-lg border border-l-4 bg-card px-4 py-3 cursor-pointer transition-all overflow-hidden',
+                    'hover:shadow-sm hover:border-primary/20',
+                    borderColor,
+                  )}
+                  style={{ gridTemplateColumns: '1fr auto 6rem 6rem 6rem 6rem 5rem 5rem' }}
+                >
+                  {/* Shimmer overlay for executing */}
+                  {isExecuting && (
+                    <div className="absolute inset-0 pointer-events-none -translate-x-full animate-[shimmer_2.5s_infinite] bg-gradient-to-r from-transparent via-amber-500/[0.04] to-transparent" aria-hidden />
+                  )}
+
+                  {/* Title + subtitle */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <AgentCrest id={task.task_id} />
+                    {isExecuting && (
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-50" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                      </span>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">
                         {task.title}
                       </div>
-                    </td>
-                    <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-0.5">
-                        <TooltipProvider delayDuration={300}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => navigate(`/agents/${task.task_id}?tab=chat`)}
-                              >
-                                <MessageSquare className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Chat</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                disabled={!RUNNABLE_STATUSES.includes(task.status)}
-                                onClick={() => handleRun(task)}
-                              >
-                                <Play className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{task.task_type === 'recurring' ? 'Run Now' : 'Re-run'}</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                disabled={task.task_type === 'recurring' || !['completed', 'approved'].includes(task.status)}
-                                onClick={() => handleScheduleFromTable(task)}
-                              >
-                                <Timer className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Enable Schedule</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                disabled={(task.artifact_ids?.length ?? 0) === 0}
-                                onClick={() => navigate(`/agents/${task.task_id}?tab=artifacts`)}
-                              >
-                                <FileText className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Artifacts</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                disabled={(task.collection_ids?.length ?? 0) === 0}
-                                onClick={() => navigate(`/agents/${task.task_id}?tab=explorer`)}
-                              >
-                                <Compass className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Explorer</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}`)}>
-                              Overview
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=chat`)}>
-                              <MessageSquare className="mr-2 h-3.5 w-3.5" />
-                              Chat
-                            </DropdownMenuItem>
-                            {(task.artifact_ids?.length ?? 0) > 0 && (
-                              <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=artifacts`)}>
-                                <FileText className="mr-2 h-3.5 w-3.5" />
-                                Artifacts
-                              </DropdownMenuItem>
-                            )}
-                            {(task.collection_ids?.length ?? 0) > 0 && (
-                              <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=explorer`)}>
-                                <Compass className="mr-2 h-3.5 w-3.5" />
-                                Explorer
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => handleDelete(task)}
-                            >
-                              <Trash2 className="mr-2 h-3.5 w-3.5" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                      <div className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
+                        {isExecuting
+                          ? 'Running...'
+                          : `Ran ${formatLastRun(task.run_history)}`}
+                        {task.schedule && ` · ${formatSchedule(task.schedule.frequency)}`}
                       </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <StatusBadge status={task.status} />
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {task.task_type === 'recurring' && task.schedule
-                        ? formatSchedule(task.schedule.frequency)
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-center gap-0.5 w-36 mr-11" onClick={(e) => e.stopPropagation()}>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate(`/agents/${task.task_id}?tab=chat`)}>
+                            <MessageSquare className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Chat</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!RUNNABLE_STATUSES.includes(task.status)} onClick={() => handleRun(task)}>
+                            <Play className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{task.task_type === 'recurring' ? 'Run Now' : 'Re-run'}</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={task.task_type === 'recurring' || !['completed', 'approved'].includes(task.status)} onClick={() => handleScheduleFromTable(task)}>
+                            <Timer className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Enable Schedule</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={(task.artifact_ids?.length ?? 0) === 0} onClick={() => navigate(`/agents/${task.task_id}?tab=artifacts`)}>
+                            <FileText className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Artifacts</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={(task.collection_ids?.length ?? 0) === 0} onClick={() => navigate(`/agents/${task.task_id}?tab=explorer`)}>
+                            <Compass className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Explorer</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}`)}>Overview</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=chat`)}>
+                          <MessageSquare className="mr-2 h-3.5 w-3.5" /> Chat
+                        </DropdownMenuItem>
+                        {(task.artifact_ids?.length ?? 0) > 0 && (
+                          <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=artifacts`)}>
+                            <FileText className="mr-2 h-3.5 w-3.5" /> Artifacts
+                          </DropdownMenuItem>
+                        )}
+                        {(task.collection_ids?.length ?? 0) > 0 && (
+                          <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=explorer`)}>
+                            <Compass className="mr-2 h-3.5 w-3.5" /> Explorer
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(task)}>
+                          <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  {/* Status */}
+                  <div className="flex justify-center"><StatusBadge status={task.status} /></div>
+
+                  {/* Schedule */}
+                  <div className="text-xs text-muted-foreground">
+                    {task.task_type === 'recurring' && task.schedule
+                      ? formatSchedule(task.schedule.frequency)
+                      : '\u2014'}
+                  </div>
+
+                  {/* Next Run */}
+                  <div className="text-xs text-muted-foreground">
+                    {task.status === 'paused'
+                      ? 'Paused'
+                      : task.status === 'monitoring' && task.next_run_at
+                        ? formatRelativeTime(task.next_run_at)
                         : '\u2014'}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {task.status === 'paused'
-                        ? 'Paused'
-                        : task.status === 'monitoring' && task.next_run_at
-                          ? formatRelativeTime(task.next_run_at)
-                          : '\u2014'}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {lastRun ? (
-                        <span className="flex items-center gap-1.5">
-                          <span className={`inline-block h-1.5 w-1.5 rounded-full ${lastRun.status === 'started' || lastRun.status === 'completed' ? 'bg-green-500' : 'bg-amber-500'}`} />
-                          {formatLastRun(task.run_history)}
-                        </span>
-                      ) : '\u2014'}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {task.collection_ids?.length || 0}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {task.artifact_ids?.length || 0}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  </div>
+
+                  {/* Last Run */}
+                  <div className="text-xs text-muted-foreground">
+                    {lastRun ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${lastRun.status === 'started' || lastRun.status === 'completed' ? 'bg-green-500' : 'bg-amber-500'}`} />
+                        {formatLastRun(task.run_history)}
+                      </span>
+                    ) : '\u2014'}
+                  </div>
+
+                  {/* Collections */}
+                  <div className="text-xs text-muted-foreground">{task.collection_ids?.length || 0}</div>
+
+                  {/* Artifacts */}
+                  <div className="text-xs text-muted-foreground">{task.artifact_ids?.length || 0}</div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
