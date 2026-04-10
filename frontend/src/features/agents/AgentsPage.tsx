@@ -196,6 +196,7 @@ export function AgentsPage() {
 
   const recentAgents = useMemo(() =>
     [...tasks]
+      .filter((t) => t.status !== 'archived')
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 4),
     [tasks],
