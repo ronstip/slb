@@ -2,15 +2,15 @@ import { useMemo } from 'react';
 import { Dialog, DialogContent } from '../../components/ui/dialog.tsx';
 import { DashboardView } from '../studio/dashboard/DashboardView.tsx';
 import { getExplorerDefaultLayout } from '../studio/dashboard/defaults-social-dashboard.ts';
-import type { Task } from '../../api/endpoints/tasks.ts';
+import type { Agent } from '../../api/endpoints/agents.ts';
 
 interface TaskDataExplorerProps {
-  task: Task | null;
+  task: Agent | null;
   open: boolean;
   onClose: () => void;
 }
 
-export function TaskDataExplorer({ task, open, onClose }: TaskDataExplorerProps) {
+export function AgentDataExplorer({ task, open, onClose }: TaskDataExplorerProps) {
   const artifact = useMemo(() => {
     if (!task) return null;
     return {

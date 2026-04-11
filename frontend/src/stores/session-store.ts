@@ -9,7 +9,7 @@ import { reconstructSession } from '../lib/session-reconstructor.ts';
 import { useChatStore } from './chat-store.ts';
 import { useStudioStore } from './studio-store.ts';
 import { useSourcesStore } from './sources-store.ts';
-import { useTaskStore } from './task-store.ts';
+import { useAgentStore } from './agent-store.ts';
 
 interface SessionStore {
   sessions: SessionListItem[];
@@ -69,18 +69,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       useSourcesStore.getState().selectByIds(selectedSourceIds);
 
       // Restore task context from session state (or clear if none).
-      // Must fetch tasks first so setActiveTask can find the task in the list.
+      // Must fetch tasks first so setActiveAgent can find the task in the list.
       const sessionTaskId = (detail.state?.active_task_id as string) || null;
       if (sessionTaskId) {
-        await useTaskStore.getState().fetchTasks();
-        useTaskStore.getState().setActiveTask(sessionTaskId);
+        await useAgentStore.getState().fetchAgents();
+        useAgentStore.getState().setActiveAgent(sessionTaskId);
         // If task wasn't in the list (e.g. cross-org), load it directly
-        if (!useTaskStore.getState().activeTask) {
-          await useTaskStore.getState().loadTask(sessionTaskId);
-          useTaskStore.getState().setActiveTask(sessionTaskId);
+        if (!useAgentStore.getState().activeAgent) {
+          await useAgentStore.getState().loadAgent(sessionTaskId);
+          useAgentStore.getState().setActiveAgent(sessionTaskId);
         }
       } else {
-        useTaskStore.getState().setActiveTask(null);
+        useAgentStore.getState().setActiveAgent(null);
       }
 
       set({
@@ -99,7 +99,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
     useSourcesStore.getState().setAgentSelectedSources([]);
-    useTaskStore.getState().setActiveTask(null);
+    useAgentStore.getState().setActiveAgent(null);
 
     set({
       activeSessionId: null,

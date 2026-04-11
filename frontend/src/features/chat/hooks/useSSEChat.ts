@@ -8,26 +8,51 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult } from '../../../lib/event-parser.ts';
+import { useTheme } from '../../../components/theme-provider.tsx';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
-
-// Auto-generated thinking entries from backend _build_thinking_content() — system noise, not agent reasoning
-const AUTO_THINKING_NOISE = new Set([
-  'Query completed', 'Search results received', 'Research design complete',
-  'Collection started', 'Progress retrieved', 'Enrichment complete',
-  'Collection details loaded', 'Chart created', 'Report generated',
-  'Dashboard built', 'Data exported', 'Task started', 'Task status retrieved',
-  'Task context loaded', 'Engagements refreshed', 'Collection cancelled',
-  'Email composed', 'Email sent',
-]);
 
 // Tools that are internal plumbing — skip from activity log
 const INTERNAL_TOOLS = new Set(['update_todos', 'set_working_collections']);
+
+/** Extract a short description from tool_call args for display below the header. */
+function getToolDescription(toolName: string, args: Record<string, unknown>): string | undefined {
+  switch (toolName) {
+    case 'execute_sql': {
+      const q = (args.query ?? args.sql ?? '') as string;
+      return q ? (q.length > 120 ? q.slice(0, 120) + '...' : q) : undefined;
+    }
+    case 'google_search':
+    case 'google_search_agent':
+      return (args.query as string) || undefined;
+    case 'design_research':
+      return (args.question as string) || (args.research_question as string) || undefined;
+    case 'get_progress':
+    case 'enrich_collection':
+    case 'cancel_collection':
+    case 'get_collection_details':
+    case 'refresh_engagements':
+      return (args.collection_id as string) || undefined;
+    case 'get_task_status':
+    case 'set_active_task':
+      return (args.task_id as string) || undefined;
+    case 'create_chart':
+    case 'generate_report':
+    case 'generate_dashboard':
+    case 'generate_presentation':
+      return (args.title as string) || undefined;
+    case 'export_data':
+      return (args.format as string) || undefined;
+    default:
+      return undefined;
+  }
+}
 
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
   const activeMessageRef = useRef<string | null>(null);
   const { getToken } = useAuth();
+  const { theme, accentColor } = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -63,13 +88,21 @@ export function useSSEChat() {
         .filter((s) => s.active)
         .map((s) => s.collectionId);
 
+      let createdTaskId: string | undefined;
+
       try {
+        const resolvedTheme = theme === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : theme;
+
         const stream = streamChat(
           {
             message: text,
             session_id: cs.sessionId ?? undefined,
             selected_sources: selectedSources,
             is_system: opts?.isSystem,
+            accent_color: accentColor,
+            theme: resolvedTheme,
           },
           getToken,
           abortController.signal,
@@ -88,25 +121,23 @@ export function useSSEChat() {
 
           switch (event.event_type) {
             case 'partial_text': {
-              chatState.appendText(messageId, event.content);
+              chatState.appendTextBlock(messageId, event.content);
               break;
             }
 
             case 'text': {
               // Final aggregated text — strip markers, append clean text only.
-              // Thinking markers are handled via dedicated SSE thinking events.
               const cleanText = event.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd();
               if (cleanText) {
-                chatState.appendText(messageId, cleanText);
+                chatState.appendTextBlock(messageId, cleanText);
               }
               break;
             }
 
             case 'thinking': {
-              // Skip auto-generated system noise — only log real agent reasoning
-              if (!AUTO_THINKING_NOISE.has(event.content) && !event.content.startsWith('Running SQL query')) {
-                chatState.appendActivityEntry(messageId, { kind: 'thinking', text: event.content, ts: Date.now() });
-              }
+              const entry = { kind: 'thinking' as const, text: event.content, ts: Date.now() };
+              chatState.appendActivityEntry(messageId, entry);
+              chatState.appendActivityBlock(messageId, entry);
               break;
             }
 
@@ -135,7 +166,11 @@ export function useSSEChat() {
             case 'tool_call': {
               const toolName = event.metadata.name;
               if (!INTERNAL_TOOLS.has(toolName)) {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_start', text: getToolDisplayText(toolName), toolName, ts: Date.now() });
+                const args = (event.metadata.args ?? {}) as Record<string, unknown>;
+                const description = getToolDescription(toolName, args);
+                const entry = { kind: 'tool_start' as const, text: getToolDisplayText(toolName), toolName, description, ts: Date.now() };
+                chatState.appendActivityEntry(messageId, entry);
+                chatState.appendActivityBlock(messageId, entry);
               }
               break;
             }
@@ -144,32 +179,40 @@ export function useSSEChat() {
               const toolName = event.metadata.name;
               const result = event.metadata.result;
 
-              // Compute duration from matching tool_start entry
-              const log = useChatStore.getState().messages.find(m => m.id === messageId)?.activityLog ?? [];
-              const startEntry = [...log].reverse().find(
-                e => e.kind === 'tool_start' && e.toolName === toolName
-              );
-              const durationMs = startEntry ? Date.now() - startEntry.ts : 0;
+              // Internal tools skip activity entries but still process special results below
+              if (!INTERNAL_TOOLS.has(toolName)) {
+                // Compute duration and carry description from matching tool_start entry
+                const log = useChatStore.getState().messages.find(m => m.id === messageId)?.activityLog ?? [];
+                const startEntry = [...log].reverse().find(
+                  e => e.kind === 'tool_start' && e.toolName === toolName
+                );
+                const durationMs = startEntry ? Date.now() - startEntry.ts : 0;
+                const description = startEntry?.kind === 'tool_start' ? startEntry.description : undefined;
 
-              // Blocked tool calls (e.g. gate rejected)
-              if (result?.status === 'blocked') {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_blocked', toolName, text: getToolDisplayText(toolName), ts: Date.now() });
-                break;
-              }
+                // Blocked tool calls (e.g. gate rejected) — replace start entry
+                if (result?.status === 'blocked') {
+                  const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
+                  chatState.replaceToolEntry(messageId, toolName, entry);
+                  break;
+                }
 
-              // Anonymous user tried to start a collection — open sign-up prompt
-              if (result?.status === 'auth_required') {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_blocked', toolName, text: getToolDisplayText(toolName), ts: Date.now() });
-                useUIStore.getState().openSignUpPrompt();
-                break;
-              }
+                // Anonymous user tried to start a collection — replace start entry + open sign-up
+                if (result?.status === 'auth_required') {
+                  const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
+                  chatState.replaceToolEntry(messageId, toolName, entry);
+                  useUIStore.getState().openSignUpPrompt();
+                  break;
+                }
 
-              // Append completion or error entry
-              const errorMsg = result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined;
-              if (errorMsg) {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_error', toolName, text: getToolDisplayText(toolName), error: errorMsg, durationMs, ts: Date.now() });
-              } else {
-                chatState.appendActivityEntry(messageId, { kind: 'tool_complete', toolName, text: getToolDisplayText(toolName), durationMs, ts: Date.now() });
+                // Replace tool_start with completion or error entry
+                const errorMsg = result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined;
+                if (errorMsg) {
+                  const entry = { kind: 'tool_error' as const, toolName, text: getToolDisplayText(toolName), error: errorMsg, durationMs, ts: Date.now() };
+                  chatState.replaceToolEntry(messageId, toolName, entry);
+                } else {
+                  const entry = { kind: 'tool_complete' as const, toolName, text: getToolDisplayText(toolName), durationMs, description, ts: Date.now() };
+                  chatState.replaceToolEntry(messageId, toolName, entry);
+                }
               }
 
               // Handle special tool results
@@ -282,11 +325,17 @@ export function useSSEChat() {
                     }
                   }
                 }
+                if (taskId) {
+                  createdTaskId = taskId;
+                  // Navigate immediately to the agent's chat tab so users don't stay
+                  // stuck on AgentHome waiting for the stream to complete.
+                  navigate(`/agents/${taskId}?tab=chat`, { replace: true });
+                }
                 // Refresh task list, then set newly created task as active context
-                import('../../../stores/task-store.ts').then(async ({ useTaskStore }) => {
-                  await useTaskStore.getState().fetchTasks();
+                import('../../../stores/agent-store.ts').then(async ({ useAgentStore }) => {
+                  await useAgentStore.getState().fetchAgents();
                   if (taskId) {
-                    useTaskStore.getState().setActiveTask(taskId);
+                    useAgentStore.getState().setActiveAgent(taskId);
                   }
                 });
               } else if (isTodoResult(toolName, result)) {
@@ -303,6 +352,18 @@ export function useSSEChat() {
                   type: 'topics_section',
                   data: result,
                 });
+              } else if (isPresentationResult(toolName, result)) {
+                const presentationId = (result._artifact_id as string) || (result.presentation_id as string);
+                useStudioStore.getState().addArtifact({
+                  id: presentationId,
+                  type: 'presentation',
+                  title: (result.title as string) || 'Presentation',
+                  collectionIds: (result.collection_ids as string[]) || [],
+                  slideCount: (result.slide_count as number) || 0,
+                  createdAt: new Date(),
+                });
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
               } else if (isStructuredPromptResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'structured_prompt',
@@ -328,7 +389,13 @@ export function useSSEChat() {
               if (isNew) {
                 // New session created — fetch list and update URL
                 sessionStore.fetchSessions();
-                navigate(`/session/${event.session_id}`, { replace: true });
+                if (createdTaskId) {
+                  navigate(`/agents/${createdTaskId}?tab=chat`, { replace: true });
+                }
+                // If no task yet (e.g. ask_user approval still pending), stay on
+                // the current page — AgentHome will show a ChatPanel for interaction.
+              } else if (createdTaskId) {
+                navigate(`/agents/${createdTaskId}?tab=chat`);
               }
               break;
             }

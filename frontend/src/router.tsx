@@ -1,5 +1,4 @@
 import { createBrowserRouter, Navigate, useParams } from 'react-router';
-import { AppShell } from './layout/AppShell.tsx';
 import { LandingPage } from './auth/LandingPage.tsx';
 import { AuthGate } from './auth/AuthGate.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
@@ -7,7 +6,10 @@ import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
 import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
 import { StandaloneArtifactPage } from './features/artifacts/StandaloneArtifactPage.tsx';
-import { TasksPage } from './features/tasks/TasksPage.tsx';
+import { AgentsPage } from './features/agents/AgentsPage.tsx';
+import { AgentHome } from './features/agents/AgentHome.tsx';
+import { AgentDetailPage } from './features/agents/detail/AgentDetailPage.tsx';
+import { CollectionsPage } from './features/collections/CollectionsPage.tsx';
 import { useAuth } from './auth/useAuth.ts';
 
 // Wrapper for invite handler to extract code from params
@@ -17,7 +19,7 @@ function InviteRoute() {
 }
 
 // Smart home route: shows LandingPage for anonymous/unauthenticated users,
-// AppShell for signed-in users. Auth state changes trigger automatic re-render.
+// AgentHome for signed-in users.
 function HomeRoute() {
   const { loading, isAnonymous, devMode } = useAuth();
 
@@ -29,8 +31,15 @@ function HomeRoute() {
     );
   }
 
-  // In dev mode (no Firebase configured), go straight to app
-  return (isAnonymous && !devMode) ? <LandingPage /> : <AppShell />;
+  if (isAnonymous && !devMode) return <LandingPage />;
+
+  return <AgentHome />;
+}
+
+// Backward-compat redirect from old /tasks/:taskId to /agents/:taskId
+function LegacyTaskRedirect() {
+  const { taskId } = useParams<{ taskId: string }>();
+  return <Navigate to={`/agents/${taskId}`} replace />;
 }
 
 // Static router — never recreated. Auth is handled by the AuthGate layout route.
@@ -74,12 +83,25 @@ export const router = createBrowserRouter([
         element: <StandaloneArtifactPage />,
       },
       {
-        path: '/tasks',
-        element: <TasksPage />,
+        path: '/agents',
+        element: <AgentsPage />,
       },
       {
-        path: '/session/:sessionId',
-        element: <AppShell />,
+        path: '/agents/:taskId',
+        element: <AgentDetailPage />,
+      },
+      // Backward-compat redirects for old /tasks URLs
+      {
+        path: '/tasks',
+        element: <Navigate to="/agents" replace />,
+      },
+      {
+        path: '/tasks/:taskId',
+        element: <LegacyTaskRedirect />,
+      },
+      {
+        path: '/collections',
+        element: <CollectionsPage />,
       },
     ],
   },

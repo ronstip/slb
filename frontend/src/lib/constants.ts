@@ -1,3 +1,32 @@
+export type ToolCategory = 'thinking' | 'tools' | 'outputs';
+
+export const TOOL_CATEGORY: Record<string, ToolCategory> = {
+  // Thinking — research, lookup, status
+  google_search: 'thinking',
+  google_search_agent: 'thinking',
+  design_research: 'thinking',
+  get_collection_details: 'thinking',
+  get_table_info: 'thinking',
+  list_table_ids: 'thinking',
+  get_progress: 'thinking',
+  get_task_status: 'thinking',
+  set_active_task: 'thinking',
+  ask_user: 'thinking',
+  // Tools — execution, processing
+  execute_sql: 'tools',
+  enrich_collection: 'tools',
+  refresh_engagements: 'tools',
+  cancel_collection: 'tools',
+  start_task: 'tools',
+  // Outputs — deliverables
+  create_chart: 'outputs',
+  generate_report: 'outputs',
+  generate_dashboard: 'outputs',
+  generate_presentation: 'outputs',
+  export_data: 'outputs',
+  compose_email: 'outputs',
+};
+
 export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   google_search: 'Searching the web',
   google_search_agent: 'Searching the web',
@@ -14,10 +43,11 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   list_table_ids: 'Discovering tables',
   generate_report: 'Generating insight report',
   generate_dashboard: 'Creating interactive dashboard',
+  generate_presentation: 'Building presentation deck',
   ask_user: 'Preparing questions',
-  start_task: 'Starting task',
-  get_task_status: 'Checking task status',
-  set_active_task: 'Loading task context',
+  start_task: 'Starting agent',
+  get_task_status: 'Checking agent status',
+  set_active_task: 'Loading agent context',
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {
@@ -30,6 +60,7 @@ export const PLATFORM_COLORS: Record<string, string> = {
   twitter: '#1DA1F2',
   reddit: '#E05A00',
   youtube: '#E03030',
+  facebook: '#1877F2',
 };
 
 export const PLATFORM_LABELS: Record<string, string> = {
@@ -38,6 +69,7 @@ export const PLATFORM_LABELS: Record<string, string> = {
   twitter: 'Twitter/X',
   reddit: 'Reddit',
   youtube: 'YouTube',
+  facebook: 'Facebook',
 };
 
 export const SENTIMENT_COLORS: Record<string, string> = {

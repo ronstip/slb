@@ -10,6 +10,8 @@ export interface ChatRequest {
   session_id?: string;
   selected_sources?: string[];
   is_system?: boolean;
+  accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
+  theme?: 'light' | 'dark';  // resolved theme (never "system")
 }
 
 export interface UserPreferences {
@@ -225,6 +227,10 @@ export interface FeedPost {
   ai_summary?: string;
   content_type?: string;
   custom_fields?: Record<string, unknown> | null;
+  context?: string;
+  is_related_to_task?: boolean;
+  detected_brands?: string[];
+  channel_type?: string;
   collection_id?: string;
 }
 
@@ -243,6 +249,7 @@ export interface MultiFeedParams {
   limit?: number;
   offset?: number;
   topic_cluster_id?: string;
+  has_media?: boolean;
 }
 
 export interface BreakdownItem {
@@ -280,6 +287,19 @@ export interface CollectionStats {
     median_likes: number;
     median_views: number;
   };
+}
+
+// --- Feed Links ---
+
+export interface FeedLinkInfo {
+  token: string;
+  title: string;
+  collection_ids: string[];
+  filters: Record<string, string>;
+  created_at: string;
+  share_url: string;
+  active: boolean;
+  access_count: number;
 }
 
 // --- SSE Events ---
@@ -402,13 +422,14 @@ export interface StructuredPromptOption {
 
 export interface StructuredPrompt {
   id: string;
-  type: 'icon_grid' | 'pill_row' | 'tag_input' | 'card_select' | 'toggle_row';
+  type: 'icon_grid' | 'pill_row' | 'tag_input' | 'card_select' | 'toggle_row' | 'approval';
   question: string;
   options?: StructuredPromptOption[];
   multi_select?: boolean;
   preselected?: string[];
   placeholder?: string;
   default_value?: boolean | string;
+  allow_other?: boolean;
 }
 
 export interface StructuredPromptResult {

@@ -23,7 +23,6 @@ interface UIStore {
   collectionsLibraryOpen: boolean;
   artifactLibraryOpen: boolean;
   activePoll: PollData | null;
-  sessionSearchOpen: boolean;
   signUpPromptOpen: boolean;
 
   toggleSourcesPanel: () => void;
@@ -38,8 +37,6 @@ interface UIStore {
   closeArtifactLibrary: () => void;
   showPoll: (poll: PollData) => void;
   dismissPoll: () => void;
-  openSessionSearch: () => void;
-  closeSessionSearch: () => void;
   openSignUpPrompt: () => void;
   closeSignUpPrompt: () => void;
 }
@@ -61,7 +58,6 @@ export const useUIStore = create<UIStore>((set) => ({
   collectionsLibraryOpen: false,
   artifactLibraryOpen: false,
   activePoll: null,
-  sessionSearchOpen: false,
   signUpPromptOpen: false,
 
   toggleSourcesPanel: () =>
@@ -113,8 +109,6 @@ export const useUIStore = create<UIStore>((set) => ({
 
   showPoll: (poll) => set({ activePoll: poll }),
   dismissPoll: () => set({ activePoll: null }),
-  openSessionSearch: () => set({ sessionSearchOpen: true }),
-  closeSessionSearch: () => set({ sessionSearchOpen: false }),
   openSignUpPrompt: () => set({ signUpPromptOpen: true }),
   closeSignUpPrompt: () => set({ signUpPromptOpen: false }),
 }));

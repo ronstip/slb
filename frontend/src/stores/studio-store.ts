@@ -47,8 +47,17 @@ interface DashboardArtifact {
   createdAt: Date;
 }
 
+interface PresentationArtifact {
+  id: string;
+  type: 'presentation';
+  title: string;
+  collectionIds: string[];
+  slideCount: number;
+  createdAt: Date;
+}
+
 export type StudioTab = 'feed' | 'artifacts' | 'stats' | 'protocol';
-export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact | DashboardArtifact;
+export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact | DashboardArtifact | PresentationArtifact;
 
 export interface PendingTopicFilter {
   themes: string[];

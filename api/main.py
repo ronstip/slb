@@ -22,7 +22,7 @@ init_firebase()
 import requests as http_requests
 
 from pydantic import BaseModel
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -48,8 +48,9 @@ import io
 
 from api.routers import sessions as sessions_router
 from api.routers import artifacts as artifacts_router
+from api.routers import feed_links as feed_links_router
 from api.routers import topics as topics_router
-from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest
+from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionRequest
 from api.schemas.responses import (
     BreakdownItem,
     CollectionStatsResponse,
@@ -145,6 +146,7 @@ app.include_router(dashboard_shares_router.router)
 app.include_router(dashboard_layouts_router.router)
 app.include_router(artifacts_router.router)
 app.include_router(topics_router.router)
+app.include_router(feed_links_router.router)
 
 # CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
 _settings = get_settings()
@@ -176,17 +178,6 @@ MODEL_ALIASES: dict[str, str] = {
     "pro": "gemini-3-pro-preview",
 }
 
-# Tools whose invocations are surfaced in the "thinking" panel
-THINKING_TOOLS = {
-    "execute_sql", "get_table_info", "list_table_ids",
-    "google_search", "design_research", "start_collection",
-    "get_progress", "enrich_collection", "get_collection_details",
-    "create_chart", "generate_report", "generate_dashboard",
-    "export_data", "create_task_protocol", "get_task_status",
-    "set_active_task", "refresh_engagements", "cancel_collection",
-    "compose_email", "send_email",
-    "get_collection_details", "generate_report", "generate_dashboard", "get_sql_reference",
-}
 
 
 def get_runner(model: str | None = None) -> Runner:
@@ -274,6 +265,15 @@ def _maybe_persist_artifact(
             "collection_ids": collection_ids,
             "collection_names": result.get("collection_names", {}),
         }
+    elif tool_name == "generate_presentation" and result.get("presentation_id"):
+        artifact_type = "presentation"
+        artifact_id = result.get("presentation_id")
+        title = result.get("title", "Presentation")
+        collection_ids = result.get("collection_ids") or []
+        payload = {
+            "slide_count": result.get("slide_count", 0),
+            "gcs_path": result.get("gcs_path", ""),
+        }
     else:
         return None
 
@@ -312,13 +312,20 @@ def _maybe_persist_artifact(
 
 def _build_user_context(user_id: str, org_id: str) -> dict:
     """Build user context for agent personalization at session start."""
-    context: dict = {"display_name": "", "preferences": {}, "collections_index": [], "tasks_index": []}
+    context: dict = {"display_name": "", "preferences": {}, "collections_index": [], "tasks_index": [], "ppt_template": None}
     try:
         fs = get_fs()
         user_doc = fs.get_user(user_id)
         if user_doc:
             context["display_name"] = user_doc.get("display_name", "")
             context["preferences"] = user_doc.get("preferences") or {}
+            if user_doc.get("ppt_template"):
+                tmpl = user_doc["ppt_template"]
+                context["ppt_template"] = {
+                    "filename": tmpl.get("filename", "template.pptx"),
+                    "gcs_path": tmpl.get("gcs_path", ""),
+                    "uploaded_at": tmpl.get("uploaded_at", ""),
+                }
 
         # Build lightweight tasks index
         tasks = fs.list_user_tasks(user_id, org_id or None)
@@ -484,9 +491,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     is_ask_user_response = False  # Set in existing-session branch; used below for windowing
 
     if session is None:
-        # Load user context for agent personalization
-        user_context = _build_user_context(user_id, user.org_id)
-
         session = await runner.session_service.create_session(
             app_name=APP_NAME,
             user_id=user_id,
@@ -501,16 +505,19 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "message_count": 0,
                 "first_message": None,
-                "user_display_name": user_context.get("display_name", ""),
-                "user_collections_index": user_context.get("collections_index", []),
-                "user_tasks_index": user_context.get("tasks_index", []),
-                "user_preferences": user_context.get("preferences", {}),
+                "accent_color": chat_request.accent_color or "",
+                "theme": chat_request.theme or "light",
             },
         )
     else:
         # Update selected_sources in session state
         if chat_request.selected_sources is not None:
             session.state["selected_sources"] = chat_request.selected_sources
+        # Always update theme preferences so they stay current
+        if chat_request.accent_color:
+            session.state["accent_color"] = chat_request.accent_color
+        if chat_request.theme:
+            session.state["theme"] = chat_request.theme
 
         # Detect whether this message is a response to an ask_user prompt or
         # a system continuation (collection complete). Both preserve task state.
@@ -588,6 +595,21 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             if _live.get("status") in ("completed", "completed_with_errors", "failed", "cancelled"):
                 session.state["collection_running"] = False
 
+    # Refresh ppt_template in session state from user profile (once per turn,
+    # non-blocking — template may have been uploaded since session started).
+    try:
+        _user_doc = get_fs().get_user(user_id)
+        if _user_doc and _user_doc.get("ppt_template"):
+            _tmpl = _user_doc["ppt_template"]
+            session.state["ppt_template"] = {
+                "filename": _tmpl.get("filename", "template.pptx"),
+                "gcs_path": _tmpl.get("gcs_path", ""),
+            }
+        else:
+            session.state.pop("ppt_template", None)
+    except Exception:
+        pass  # Non-critical — agent works fine without it
+
     logger.info("PERF session_init=%.3fs events=%d", _time.perf_counter() - t0, len(session.events))
 
     content = types.Content(
@@ -617,9 +639,11 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     logger.info("PERF pre_runner=%.3fs", _time.perf_counter() - t_start)
 
     async def event_stream():
+        _flushed = False
         try:
             run_config = RunConfig(streaming_mode=StreamingMode.SSE)
             streamed_text = False  # Track if text was streamed via partial events
+            streamed_thinking = False  # Track if thinking was streamed via partial events
             t_runner_start = _time.perf_counter()
             t_first_token = None
 
@@ -640,6 +664,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                                 # Native Gemini thought tokens → thinking panel
                                 thought_text = part.text.strip()
                                 if thought_text:
+                                    streamed_thinking = True
                                     yield {
                                         "event": "thinking",
                                         "data": json.dumps({
@@ -665,7 +690,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 # final aggregated text with full marker extraction).
                 # If text was already streamed, suppress the text event from
                 # the aggregated final to avoid duplication.
-                for event_data in _extract_event_data(event, suppress_text=streamed_text):
+                for event_data in _extract_event_data(event, suppress_text=streamed_text, suppress_thinking=streamed_thinking):
                     et = event_data["event_type"]
 
                     # Persist artifacts BEFORE yielding so the Firestore
@@ -681,27 +706,17 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                             )
                             if aid:
                                 tr_result["_artifact_id"] = aid
+                                # Write back to ADK event so it persists in _write_session()
+                                _write_artifact_id_to_event(event, tr_name, aid)
 
                     yield {
                         "event": et,
                         "data": json.dumps(event_data),
                     }
 
-                    # Emit a thinking event for analytical tools
+                    # Emit context_update when agent changes its working set
                     if et in ("tool_call", "tool_result"):
                         tool_name = event_data.get("metadata", {}).get("name", "")
-                        thinking = _build_thinking_content(et, tool_name, event_data)
-                        if thinking:
-                            yield {
-                                "event": "thinking",
-                                "data": json.dumps({
-                                    "event_type": "thinking",
-                                    "content": thinking,
-                                    "author": event_data.get("author", ""),
-                                }),
-                            }
-
-                        # Emit context_update when agent changes its working set
                         if (
                             et == "tool_result"
                             and tool_name == "set_working_collections"
@@ -717,10 +732,11 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                                     }),
                                 }
 
-                    # Reset streaming flag after tool results so the next
-                    # text segment (post-tool) streams fresh
+                    # Reset streaming flags after tool results so the next
+                    # text/thinking segment (post-tool) streams fresh
                     if et == "tool_result":
                         streamed_text = False
+                        streamed_thinking = False
 
                 if event.is_final_response():
                     text = _extract_text(event)
@@ -750,6 +766,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     if _trimmed_prefix:
                         session.events = _trimmed_prefix + session.events
                     runner.session_service.flush(session)
+                    _flushed = True
 
                     # Fire-and-forget: name the session in background
                     asyncio.create_task(
@@ -759,19 +776,27 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             # the before_model_callback stops the ReAct loop after ask_user),
             # we still need to flush the session so state persists for the
             # next turn.
-            if _trimmed_prefix:
-                session.events = _trimmed_prefix + session.events
-            runner.session_service.flush(session)
+            if not _flushed:
+                if _trimmed_prefix:
+                    session.events = _trimmed_prefix + session.events
+                runner.session_service.flush(session)
+                _flushed = True
 
         except Exception as e:
             logger.exception("Error in event stream")
-            if _trimmed_prefix:
-                session.events = _trimmed_prefix + session.events
-            runner.session_service.flush(session)
             yield {
                 "event": "error",
                 "data": json.dumps({"event_type": "error", "content": str(e)}),
             }
+        finally:
+            if not _flushed:
+                logger.warning("event_stream finalizer: flushing session %s (stream interrupted)", session_id)
+                if _trimmed_prefix:
+                    session.events = _trimmed_prefix + session.events
+                try:
+                    runner.session_service.flush(session)
+                except Exception:
+                    logger.exception("Failed to flush session %s in finally block", session_id)
 
     return EventSourceResponse(event_stream())
 
@@ -810,6 +835,39 @@ async def set_collection_visibility(
 
     fs.update_collection_status(collection_id, visibility=visibility, org_id=user.org_id)
     return {"status": "updated", "visibility": visibility}
+
+
+@app.patch("/collection/{collection_id}")
+async def update_collection(
+    collection_id: str,
+    request: UpdateCollectionRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Update collection metadata (title, visibility). Only the owner can update."""
+    fs = get_fs()
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if status.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the collection owner can update")
+
+    updates = {}
+    if request.title is not None:
+        updates["title"] = request.title
+    if request.visibility is not None:
+        if request.visibility not in ("private", "org"):
+            raise HTTPException(status_code=400, detail="Visibility must be 'private' or 'org'")
+        if request.visibility == "org" and not user.org_id:
+            raise HTTPException(status_code=400, detail="You must be in an organization to share collections")
+        updates["visibility"] = request.visibility
+        if request.visibility == "org":
+            updates["org_id"] = user.org_id
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    fs.update_collection_status(collection_id, **updates)
+    return {"status": "updated"}
 
 
 @app.delete("/collection/{collection_id}")
@@ -975,6 +1033,10 @@ async def get_collection_posts(
         ep.ai_summary,
         ep.content_type,
         ep.custom_fields,
+        ep.context,
+        ep.is_related_to_task,
+        ep.detected_brands,
+        ep.channel_type,
         COUNT(*) OVER() as _total
     FROM (
         SELECT *,
@@ -1044,10 +1106,16 @@ async def get_collection_posts(
                 saves=row.get("saves", 0),
                 total_engagement=row.get("total_engagement", 0),
                 sentiment=row.get("sentiment"),
+                emotion=row.get("emotion"),
                 themes=themes if isinstance(themes, list) else [],
                 entities=entities if isinstance(entities, list) else [],
                 ai_summary=row.get("ai_summary"),
                 content_type=row.get("content_type"),
+                custom_fields=row.get("custom_fields") if isinstance(row.get("custom_fields"), dict) else None,
+                context=row.get("context"),
+                is_related_to_task=row.get("is_related_to_task"),
+                detected_brands=row.get("detected_brands") if isinstance(row.get("detected_brands"), list) else [],
+                channel_type=row.get("channel_type"),
             )
         )
 
@@ -1267,6 +1335,12 @@ async def get_multi_collection_feed(
         where_clauses.append("ep.sentiment = @sentiment")
         params["sentiment"] = request.sentiment
 
+    if request.has_media:
+        # Only posts where at least one media_ref has a GCS URI (permanent copy, not expired CDN URL)
+        where_clauses.append(
+            "TO_JSON_STRING(p.media_refs) LIKE '%\"gs://%'"
+        )
+
     # Topic cluster filter
     topic_join_sql = ""
     if request.topic_cluster_id:
@@ -1308,6 +1382,7 @@ async def get_multi_collection_feed(
         COALESCE(pe.saves, 0) as saves,
         COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
         ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields,
+        ep.context, ep.is_related_to_task, ep.detected_brands, ep.channel_type,
         COUNT(*) OVER() as _total
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
@@ -1374,10 +1449,16 @@ async def get_multi_collection_feed(
                 saves=row.get("saves", 0),
                 total_engagement=row.get("total_engagement", 0),
                 sentiment=row.get("sentiment"),
+                emotion=row.get("emotion"),
                 themes=themes if isinstance(themes, list) else [],
                 entities=entities if isinstance(entities, list) else [],
                 ai_summary=row.get("ai_summary"),
                 content_type=row.get("content_type"),
+                custom_fields=row.get("custom_fields") if isinstance(row.get("custom_fields"), dict) else None,
+                context=row.get("context"),
+                is_related_to_task=row.get("is_related_to_task"),
+                detected_brands=row.get("detected_brands") if isinstance(row.get("detected_brands"), list) else [],
+                channel_type=row.get("channel_type"),
                 collection_id=row.get("collection_id"),
             )
         )
@@ -1466,6 +1547,15 @@ async def update_task_endpoint(
             now = datetime.now(timezone.utc)
             safe_updates["next_run_at"] = compute_next_run_at(new_schedule["frequency"], now)
 
+    # When archiving, cancel any active collections first
+    if safe_updates.get("status") == "archived" and task.get("status") != "archived":
+        fs = get_fs()
+        active_statuses = {"collecting", "enriching", "processing"}
+        for cid in task.get("collection_ids", []):
+            col_status = fs.get_collection_status(cid)
+            if col_status and col_status.get("status") in active_statuses:
+                fs.update_collection_status(cid, status="cancelled")
+
     if safe_updates:
         update_task(task_id, **safe_updates)
     return {"ok": True}
@@ -1523,19 +1613,6 @@ async def approve_task_protocol(
         "status": "executing" if collection_ids else "approved",
     }
 
-
-@app.delete("/tasks/{task_id}")
-async def delete_task_endpoint(task_id: str, user: CurrentUser = Depends(get_current_user)):
-    """Delete a task."""
-    from api.services.task_service import get_task, delete_task
-
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Only the task owner can delete")
-    delete_task(task_id)
-    return {"ok": True}
 
 
 @app.post("/tasks/{task_id}/run")
@@ -1832,11 +1909,123 @@ async def proxy_media(url: str = Query(...)):
             media_type=resp.headers.get("content-type", "application/octet-stream"),
             headers={"Cache-Control": "public, max-age=86400"},
         )
+    except http_requests.HTTPError as e:
+        status = e.response.status_code if e.response is not None else 502
+        if status in (401, 403, 404):
+            raise HTTPException(status_code=404, detail="Media not available")
+        logger.warning("Media proxy failed for %.80s...: %s", url, e)
+        raise HTTPException(status_code=502, detail="Failed to fetch media")
     except http_requests.RequestException as e:
         logger.warning("Media proxy failed for %.80s...: %s", url, e)
         raise HTTPException(status_code=502, detail="Failed to fetch media")
     except Exception as e:
         logger.exception("Media proxy error: %.80s...", url)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload/ppt-template")
+async def upload_ppt_template(
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Upload a .pptx file to use as a persistent presentation template.
+
+    The template is stored in GCS under the user's namespace and saved to
+    the user profile in Firestore so the agent can reference it in future
+    sessions. Max file size: 20MB.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
+        raise HTTPException(status_code=400, detail="Only .pptx files are accepted")
+
+    contents = await file.read()
+    if len(contents) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large — maximum 20MB")
+
+    settings = get_settings()
+    template_id = uuid4().hex[:12]
+    blob_name = f"ppt-templates/{user.uid}/{template_id}.pptx"
+    bucket_name = settings.gcs_presentations_bucket
+
+    try:
+        client = get_gcs()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_string(
+            contents,
+            content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+    except Exception as e:
+        logger.error("PPT template upload failed for user %s: %s", user.uid, e)
+        raise HTTPException(status_code=500, detail="Failed to store template")
+
+    # Persist template reference to user profile
+    safe_filename = (file.filename or "template.pptx")[:120]
+    template_ref = {
+        "gcs_path": blob_name,
+        "filename": safe_filename,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        fs = get_fs()
+        fs.update_user(user.uid, ppt_template=template_ref)
+    except Exception as e:
+        logger.warning("Failed to persist ppt_template to user profile: %s", e)
+
+    return {"gcs_path": blob_name, "filename": safe_filename}
+
+
+@app.get("/presentations/{presentation_id}")
+async def download_presentation(
+    presentation_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Download a generated PowerPoint presentation from GCS.
+
+    Ownership is verified via the artifact record in Firestore.
+    The file is streamed directly from GCS with appropriate headers.
+    """
+    fs = get_fs()
+    artifact = fs.get_artifact(presentation_id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Presentation not found")
+    if artifact.get("user_id") != user.uid:
+        # Allow org members to download shared presentations
+        if not (user.org_id and artifact.get("org_id") == user.org_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+    if artifact.get("type") != "presentation":
+        raise HTTPException(status_code=404, detail="Not a presentation artifact")
+
+    gcs_path = artifact.get("payload", {}).get("gcs_path", "")
+    if not gcs_path:
+        raise HTTPException(status_code=404, detail="Presentation file not found")
+
+    settings = get_settings()
+    bucket_name = settings.gcs_presentations_bucket
+
+    try:
+        client = get_gcs()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(gcs_path)
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail="Presentation file not found in storage")
+
+        safe_title = artifact.get("title", "presentation").replace(" ", "_")[:60]
+        filename = f"{safe_title}.pptx"
+
+        def stream():
+            with blob.open("rb") as f:
+                while chunk := f.read(256 * 1024):
+                    yield chunk
+
+        return StreamingResponse(
+            stream(),
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error downloading presentation %s", presentation_id)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1911,117 +2100,19 @@ async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> 
 
 
 
-def _build_thinking_content(event_type: str, tool_name: str, event_data: dict) -> str | None:
-    """Format a thinking entry for analytical tools."""
-    if tool_name not in THINKING_TOOLS:
-        return None
-
-    if event_type == "tool_call":
-        args = event_data.get("metadata", {}).get("args", {})
-        if tool_name == "execute_sql":
-            query = args.get("query", args.get("sql", ""))
-            if query:
-                return f"Running SQL query:\n```sql\n{query}\n```"
-            return "Running SQL query..."
-        if tool_name == "get_table_info":
-            table = args.get("table_id", args.get("table_name", ""))
-            return f"Inspecting schema for `{table}`"
-        if tool_name == "list_table_ids":
-            dataset = args.get("dataset_id", "social_listening")
-            return f"Listing tables in `{dataset}`"
-        if tool_name == "google_search":
-            query = args.get("query", "")
-            return f"Searching: *{query}*" if query else "Searching the web..."
-        if tool_name == "design_research":
-            q = args.get("question", args.get("research_question", ""))
-            return f"Designing research: *{q[:80]}*" if q else "Designing research plan..."
-        if tool_name == "start_collection":
-            return "Starting data collection..."
-        if tool_name == "get_progress":
-            cid = args.get("collection_id", "")
-            return f"Checking progress for `{cid}`" if cid else "Checking collection progress..."
-        if tool_name == "enrich_collection":
-            cid = args.get("collection_id", "")
-            return f"Running AI enrichment on `{cid}`" if cid else "Running AI enrichment..."
-        if tool_name == "get_collection_details":
-            cid = args.get("collection_id", "")
-            return f"Loading details for `{cid}`" if cid else "Loading collection details..."
-        if tool_name == "create_chart":
-            ct = args.get("chart_type", "chart")
-            title = args.get("title", "")
-            return f"Creating {ct}: *{title[:60]}*" if title else f"Creating {ct}..."
-        if tool_name == "generate_report":
-            title = args.get("title", "")
-            return f"Generating report: *{title[:60]}*" if title else "Generating insight report..."
-        if tool_name == "generate_dashboard":
-            title = args.get("title", "")
-            return f"Building dashboard: *{title[:60]}*" if title else "Building interactive dashboard..."
-        if tool_name == "export_data":
-            return "Preparing data export..."
-        if tool_name == "create_task_protocol":
-            title = args.get("title", "")
-            return f"Writing task protocol: *{title[:60]}*" if title else "Writing task protocol..."
-        if tool_name == "get_task_status":
-            tid = args.get("task_id", "")
-            return f"Checking task `{tid}`" if tid else "Checking task status..."
-        if tool_name == "set_active_task":
-            tid = args.get("task_id", "")
-            return f"Loading task `{tid}`" if tid else "Loading task context..."
-        if tool_name == "refresh_engagements":
-            return "Refreshing engagement metrics..."
-        if tool_name == "cancel_collection":
-            cid = args.get("collection_id", "")
-            return f"Cancelling collection `{cid}`" if cid else "Cancelling collection..."
-        if tool_name == "compose_email":
-            return "Composing email..."
-        if tool_name == "send_email":
-            return "Sending email..."
-    elif event_type == "tool_result":
-        result = event_data.get("metadata", {}).get("result", {})
-        # Blocked tool calls are silently removed by the frontend — don't emit
-        # a thinking entry that would linger after the tool entry is removed.
-        if isinstance(result, dict) and result.get("status") in ("blocked", "auth_required"):
-            return None
-        if tool_name == "execute_sql":
-            return "Query completed"
-        if tool_name == "google_search":
-            return "Search results received"
-        if tool_name == "design_research":
-            return "Research design complete"
-        if tool_name == "start_collection":
-            return "Collection started"
-        if tool_name == "get_progress":
-            return "Progress retrieved"
-        if tool_name == "enrich_collection":
-            return "Enrichment complete"
-        if tool_name == "get_collection_details":
-            return "Collection details loaded"
-        if tool_name == "create_chart":
-            return "Chart created"
-        if tool_name == "generate_report":
-            return "Report generated"
-        if tool_name == "generate_dashboard":
-            return "Dashboard built"
-        if tool_name == "export_data":
-            return "Data exported"
-        if tool_name == "create_task_protocol":
-            return "Task protocol ready"
-        if tool_name == "get_task_status":
-            return "Task status retrieved"
-        if tool_name == "set_active_task":
-            return "Task context loaded"
-        if tool_name == "refresh_engagements":
-            return "Engagements refreshed"
-        if tool_name == "cancel_collection":
-            return "Collection cancelled"
-        if tool_name == "compose_email":
-            return "Email composed"
-        if tool_name == "send_email":
-            return "Email sent"
-    return None
+def _write_artifact_id_to_event(event, tool_name: str, artifact_id: str) -> None:
+    """Write _artifact_id back to the ADK event's function_response so it survives session persistence."""
+    if not event.content or not event.content.parts:
+        return
+    for part in event.content.parts:
+        if (part.function_response
+                and part.function_response.name == tool_name
+                and part.function_response.response is not None):
+            part.function_response.response["_artifact_id"] = artifact_id
+            break
 
 
-def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
+def _extract_event_data(event, suppress_text: bool = False, suppress_thinking: bool = False) -> list[dict]:
     """Extract structured data from all parts of an ADK event.
 
     An event may contain multiple parts (e.g. a text/thinking part followed by
@@ -2034,8 +2125,8 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
         event: The ADK event to process.
         suppress_text: If True, skip emitting 'text' events (used when text
             was already streamed via partial events to avoid duplication).
-            Structured events (status, thinking, finding, etc.) are still
-            extracted and emitted.
+        suppress_thinking: If True, skip emitting 'thinking' events (used when
+            thinking was already streamed via partial events to avoid duplication).
     """
     if not event.content or not event.content.parts:
         return []
@@ -2045,13 +2136,14 @@ def _extract_event_data(event, suppress_text: bool = False) -> list[dict]:
         if part.text:
             # Native Gemini thought tokens → thinking panel, not chat body.
             if getattr(part, "thought", False):
-                thought_text = part.text.strip()
-                if thought_text:
-                    results.append({
-                        "event_type": "thinking",
-                        "content": thought_text,
-                        "author": event.author,
-                    })
+                if not suppress_thinking:
+                    thought_text = part.text.strip()
+                    if thought_text:
+                        results.append({
+                            "event_type": "thinking",
+                            "content": thought_text,
+                            "author": event.author,
+                        })
             else:
                 # Strip any stray HTML comments from the visible text
                 clean = re.sub(r"<!--[\s\S]*?-->", "", part.text).strip()

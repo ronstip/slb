@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     bq_dataset: str = "social_listening"
     gcs_media_bucket: str = ""
     gcs_exports_bucket: str = ""
+    gcs_presentations_bucket: str = ""
     cloud_tasks_queue: str = "worker-queue"
     cloud_tasks_service_account: str = ""  # SA email for OIDC auth on Cloud Tasks → Cloud Run
     gemini_model: str = "gemini-3-flash-preview"
@@ -25,6 +26,9 @@ class Settings(BaseSettings):
     enrichment_max_output_tokens: int = 4096
     enrichment_media_resolution: str = "medium"  # low, medium, high
     enrichment_thinking_level: str = "medium"  # minimal, low, medium, high (empty = disabled)
+
+    # Meta-agent thinking
+    agent_thinking_level: str = "medium"  # minimal, low, medium, high (empty = disabled)
     enrichment_max_media_per_post: int = 5
     enrichment_video_start_offset: str = "0s"
     enrichment_video_end_offset: str = "180s"
@@ -93,6 +97,8 @@ class Settings(BaseSettings):
             self.gcs_media_bucket = f"{self.gcp_project_id}-media"
         if not self.gcs_exports_bucket:
             self.gcs_exports_bucket = f"{self.gcp_project_id}-exports"
+        if not self.gcs_presentations_bucket:
+            self.gcs_presentations_bucket = f"{self.gcp_project_id}-exports"
 
     @property
     def is_dev(self) -> bool:

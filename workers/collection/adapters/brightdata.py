@@ -1,6 +1,6 @@
 """Bright Data dataset scraping API adapter.
 
-Supports: TikTok, YouTube, Reddit.
+Supports: TikTok, YouTube, Reddit, Facebook (Groups + Marketplace).
 
 Uses Bright Data's async trigger → poll → download lifecycle.
 Each keyword gets a separate API call (parallelized) to ensure per-keyword result quotas.
@@ -18,6 +18,10 @@ from config.settings import get_settings
 from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.brightdata_client import BrightDataAPIError, BrightDataClient
 from workers.collection.adapters.brightdata_parsers import (
+    parse_brightdata_facebook_group_channel,
+    parse_brightdata_facebook_group_post,
+    parse_brightdata_facebook_marketplace_channel,
+    parse_brightdata_facebook_marketplace_post,
     parse_brightdata_reddit_channel,
     parse_brightdata_reddit_post,
     parse_brightdata_tiktok_channel,
@@ -34,18 +38,20 @@ _MAX_WORKERS_KEYWORDS = 10
 
 
 class BrightDataAdapter(DataProviderAdapter):
-    """Bright Data dataset scraping API adapter for TikTok, YouTube, Reddit."""
+    """Bright Data dataset scraping API adapter for TikTok, YouTube, Reddit, Facebook."""
 
     _DATASET_IDS = {
         "tiktok": {"posts": "gd_lu702nij2f790tmv9h", "profiles": "gd_l1villgoiiidt09ci", "comments": "gd_lkf2st302ap89utw5k"},
         "youtube": {"posts": "gd_lk56epmy2i5g7lzu0k", "profiles": "gd_lk538t2k2p1k3oos71"},
         "reddit": {"posts": "gd_lvz8ah06191smkebj4", "comments": "gd_lvzdpsdlw09j6t702"},
+        "facebook": {"groups": "gd_lz11l67o2cb3r0lkj3", "marketplace": "gd_lvt9iwuh6fbcwmx1a"},
     }
 
     _PLATFORM_PARSERS = {
         "tiktok": (parse_brightdata_tiktok_post, parse_brightdata_tiktok_channel),
         "youtube": (parse_brightdata_youtube_post, parse_brightdata_youtube_channel),
         "reddit": (parse_brightdata_reddit_post, parse_brightdata_reddit_channel),
+        "facebook": (parse_brightdata_facebook_group_post, parse_brightdata_facebook_group_channel),
     }
 
     def __init__(self, snapshot_tracker: "callable | None" = None, max_snapshots: int = 0):
@@ -80,7 +86,7 @@ class BrightDataAdapter(DataProviderAdapter):
             return True
 
     def supported_platforms(self) -> list[str]:
-        return ["tiktok", "youtube", "reddit"]
+        return ["tiktok", "youtube", "reddit", "facebook"]
 
     @property
     def platform_stats(self) -> dict[str, dict]:
@@ -103,6 +109,7 @@ class BrightDataAdapter(DataProviderAdapter):
             "tiktok": self._collect_tiktok,
             "youtube": self._collect_youtube,
             "reddit": self._collect_reddit,
+            "facebook": self._collect_facebook,
         }
 
         batch_queue: queue.Queue = queue.Queue()
@@ -344,6 +351,107 @@ class BrightDataAdapter(DataProviderAdapter):
         yield from self._parse_results("reddit", valid)
 
     # ------------------------------------------------------------------
+    # Facebook (Groups + Marketplace)
+    # ------------------------------------------------------------------
+
+    def _collect_facebook(self, config: dict) -> Iterator[Batch]:
+        channel_urls = config.get("channel_urls", [])
+        keywords = config.get("keywords", [])
+        if not channel_urls and not keywords:
+            return
+
+        num_per_kw = config.get("max_posts_per_keyword") or 0
+        city = config.get("city", "")
+        logger.info(
+            "[facebook] group_urls=%s, keywords=%s, num_per_kw=%s, city=%s",
+            channel_urls, keywords, num_per_kw or "unlimited", city or "(none)",
+        )
+
+        all_group_results: list[dict] = []
+        all_marketplace_results: list[dict] = []
+
+        # Strategy 1: Group URL collection (recency-first — num_of_posts, no date filter)
+        if channel_urls and self._check_snapshot_budget():
+            inputs = []
+            for url in channel_urls:
+                inp: dict = {"url": url}
+                if num_per_kw > 0:
+                    inp["num_of_posts"] = num_per_kw
+                inputs.append(inp)
+            try:
+                results = self._client.scrape_and_wait(
+                    dataset_id=self._DATASET_IDS["facebook"]["groups"],
+                    inputs=inputs,
+                    scrape_type="bare",
+                    snapshot_callback=self._snapshot_tracker,
+                )
+                valid = [r for r in results if not _is_error_item(r)]
+                logger.info("[facebook] groups (%d URLs) → %d/%d posts", len(channel_urls), len(valid), len(results))
+                all_group_results.extend(valid)
+            except BrightDataAPIError as e:
+                logger.error("BrightData Facebook groups failed: %s", e)
+            except Exception:
+                logger.exception("Unexpected error fetching Facebook groups")
+
+        # Strategy 2: Marketplace keyword discovery (recency-first)
+        if keywords and self._check_snapshot_budget():
+            inputs = []
+            for kw in keywords:
+                inp: dict = {"keyword": kw, "city": city, "date_listed": ""}
+                inputs.append(inp)
+            try:
+                results = self._client.scrape_and_wait(
+                    dataset_id=self._DATASET_IDS["facebook"]["marketplace"],
+                    inputs=inputs,
+                    discover_by="keyword",
+                    limit_per_input=num_per_kw if num_per_kw > 0 else None,
+                    snapshot_callback=self._snapshot_tracker,
+                )
+                valid = [r for r in results if not _is_error_item(r)]
+                logger.info("[facebook] marketplace (%d keywords) → %d/%d listings", len(keywords), len(valid), len(results))
+                all_marketplace_results.extend(valid)
+            except BrightDataAPIError as e:
+                logger.error("BrightData Facebook marketplace failed: %s", e)
+            except Exception:
+                logger.exception("Unexpected error fetching Facebook marketplace")
+
+        # Parse group results using default facebook parsers
+        if all_group_results:
+            # Dedup by post_id
+            seen_ids: set[str] = set()
+            deduped: list[dict] = []
+            for item in all_group_results:
+                pid = str(item.get("post_id", ""))
+                if pid and pid in seen_ids:
+                    continue
+                if pid:
+                    seen_ids.add(pid)
+                deduped.append(item)
+            yield from self._parse_results("facebook", deduped)
+
+        # Parse marketplace results using marketplace-specific parsers
+        if all_marketplace_results:
+            seen_ids_mp: set[str] = set()
+            deduped_mp: list[dict] = []
+            for item in all_marketplace_results:
+                pid = str(item.get("product_id", ""))
+                if pid and pid in seen_ids_mp:
+                    continue
+                if pid:
+                    seen_ids_mp.add(pid)
+                deduped_mp.append(item)
+            # Temporarily swap parsers for marketplace
+            orig_parsers = self._PLATFORM_PARSERS["facebook"]
+            self._PLATFORM_PARSERS["facebook"] = (
+                parse_brightdata_facebook_marketplace_post,
+                parse_brightdata_facebook_marketplace_channel,
+            )
+            try:
+                yield from self._parse_results("facebook", deduped_mp)
+            finally:
+                self._PLATFORM_PARSERS["facebook"] = orig_parsers
+
+    # ------------------------------------------------------------------
     # Shared parsing
     # ------------------------------------------------------------------
 
@@ -439,8 +547,13 @@ class BrightDataAdapter(DataProviderAdapter):
         for platform, urls in platform_urls.items():
             try:
                 inputs = [{"URL": url} for url in urls]
+                # Facebook uses "groups" key instead of "posts"
+                ds_ids = self._DATASET_IDS[platform]
+                dataset_id = ds_ids.get("posts") or ds_ids.get("groups")
+                if not dataset_id:
+                    continue
                 data = self._client.scrape_and_wait(
-                    dataset_id=self._DATASET_IDS[platform]["posts"],
+                    dataset_id=dataset_id,
                     inputs=inputs,
                     discover_by="url",
                 )
@@ -482,6 +595,16 @@ class BrightDataAdapter(DataProviderAdapter):
                 "post_url": item.get("url", ""),
                 "likes": _safe_int(item.get("num_upvotes")),
                 "shares": None,
+                "comments_count": _safe_int(item.get("num_comments")),
+                "views": None,
+                "saves": None,
+                "comments": [],
+            }
+        elif platform == "facebook":
+            return {
+                "post_url": item.get("url", ""),
+                "likes": _safe_int(item.get("num_likes")),
+                "shares": _safe_int(item.get("num_shares")),
                 "comments_count": _safe_int(item.get("num_comments")),
                 "views": None,
                 "saves": None,
@@ -552,6 +675,8 @@ def _detect_platform_from_url(url: str) -> str | None:
         "youtube.com": "youtube",
         "youtu.be": "youtube",
         "reddit.com": "reddit",
+        "facebook.com": "facebook",
+        "fb.com": "facebook",
     }
     for domain, platform in domain_map.items():
         if domain in url:

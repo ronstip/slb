@@ -7,6 +7,8 @@ class ChatRequest(BaseModel):
     selected_sources: list[str] | None = None
     model: str | None = None  # "flash" (default) or "pro"
     is_system: bool = False  # True for system-generated messages (e.g., collection continuation)
+    accent_color: str | None = None  # User's selected accent hex, e.g. "#4A7C8F"
+    theme: str | None = None  # Resolved theme: "light" or "dark"
 
 
 class VendorConfig(BaseModel):
@@ -62,6 +64,7 @@ class MultiFeedRequest(BaseModel):
     limit: int = 12
     offset: int = 0
     topic_cluster_id: str | None = None
+    has_media: bool = False
 
 
 class DashboardDataRequest(BaseModel):
@@ -72,3 +75,14 @@ class CreateDashboardShareRequest(BaseModel):
     dashboard_id: str
     collection_ids: list[str]
     title: str
+
+
+class CreateFeedLinkRequest(BaseModel):
+    collection_ids: list[str]
+    filters: dict = {}
+    title: str
+
+
+class UpdateCollectionRequest(BaseModel):
+    title: str | None = None
+    visibility: str | None = None

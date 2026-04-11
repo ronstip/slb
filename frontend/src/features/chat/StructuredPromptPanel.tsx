@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
-import { X, Check } from 'lucide-react';
+import { X, Check, Send } from 'lucide-react';
 import { Badge } from '../../components/ui/badge.tsx';
 import { Switch } from '../../components/ui/switch.tsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs.tsx';
@@ -15,15 +15,6 @@ type TagMap = Record<string, string[]>;
 type OtherTextMap = Record<string, string>;
 
 const OTHER_VALUE = '__other__';
-
-/** Prompts that need an explicit "Done" tap before the panel can close */
-function needsExplicitSubmit(p: StructuredPrompt): boolean {
-  if (p.type === 'tag_input') return true;
-  if (p.type === 'toggle_row') return true;
-  if (p.multi_select) return true;
-  if (p.preselected && p.preselected.length > 0) return true;
-  return false;
-}
 
 interface StructuredPromptPanelProps {
   onSubmit: (text: string) => void;
@@ -43,7 +34,7 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
   const [selections, setSelections] = useState<SelectionMap>(() => {
     const init: SelectionMap = {};
     for (const p of prompts) {
-      if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
+      if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select' || p.type === 'approval') {
         init[p.id] = p.preselected ?? [];
       }
     }
@@ -72,9 +63,6 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
 
   const [otherText, setOtherText] = useState<OtherTextMap>({});
 
-  // Track which multiselect/preset prompts the user has explicitly confirmed
-  const [submitted, setSubmitted] = useState<Set<string>>(() => new Set());
-
   // Escape to cancel
   useEffect(() => {
     const handleEsc = (e: globalThis.KeyboardEvent) => {
@@ -86,20 +74,29 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
 
   // ── Helpers ──────────────────────────────────────────────────────
 
-  const canSubmit = useCallback(() => {
-    for (const p of prompts) {
-      if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
-        const sel = selections[p.id] ?? [];
-        if (sel.length === 0) return false;
-        if (sel.includes(OTHER_VALUE) && !(otherText[p.id] ?? '').trim()) return false;
-        // Multiselect / preset fields must be explicitly submitted
-        if (needsExplicitSubmit(p) && !submitted.has(p.id)) return false;
-      }
-      if (p.type === 'tag_input' && !submitted.has(p.id)) return false;
-      if (p.type === 'toggle_row' && !submitted.has(p.id)) return false;
+  const isPromptFilled = useCallback((p: StructuredPrompt): boolean => {
+    if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
+      const sel = selections[p.id] ?? [];
+      if (sel.length === 0) return false;
+      if (sel.includes(OTHER_VALUE) && !(otherText[p.id] ?? '').trim()) return false;
+      return true;
     }
+    if (p.type === 'approval') {
+      const sel = selections[p.id] ?? [];
+      if (sel.length === 0) return false;
+      if (sel.includes('adjust') && !(otherText[p.id] ?? '').trim()) return false;
+      return true;
+    }
+    if (p.type === 'tag_input') {
+      return (tags[p.id] ?? []).length > 0;
+    }
+    // toggle_row is always filled (has default)
     return true;
-  }, [prompts, selections, otherText, submitted]);
+  }, [selections, otherText, tags]);
+
+  const canSubmit = useCallback(() => {
+    return prompts.every((p) => isPromptFilled(p));
+  }, [prompts, isPromptFilled]);
 
   const formatAnswer = useCallback((): string => {
     const parts: string[] = [];
@@ -108,7 +105,6 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
     for (const p of prompts) {
       if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
         const selected = selections[p.id] ?? [];
-        // Replace __other__ with the actual typed text
         const resolved = selected.map((v) =>
           v === OTHER_VALUE ? (otherText[p.id] ?? '').trim() : v,
         ).filter(Boolean);
@@ -120,6 +116,20 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
         if (labels.length > 0) {
           parts.push(`${promptLabel(p)}: ${labels.join(', ')}`);
         }
+        // Include "other" annotation text for prompts with non-OTHER other text
+        if (otherText[p.id]?.trim() && !selected.includes(OTHER_VALUE)) {
+          structured[`${p.id}_note`] = otherText[p.id].trim();
+        }
+      } else if (p.type === 'approval') {
+        const selected = selections[p.id] ?? [];
+        structured[p.id] = selected;
+        const label = selected[0] === 'approve' ? 'Approve & Run' : 'Adjust';
+        if (selected[0] === 'adjust' && otherText[p.id]?.trim()) {
+          structured[`${p.id}_feedback`] = otherText[p.id].trim();
+          parts.push(`Plan: ${label} — ${otherText[p.id].trim()}`);
+        } else {
+          parts.push(`Plan: ${label}`);
+        }
       } else if (p.type === 'tag_input') {
         const values = tags[p.id] ?? [];
         structured[p.id] = values;
@@ -130,6 +140,9 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
         const value = toggles[p.id] ?? false;
         structured[p.id] = value;
         parts.push(`${promptLabel(p)}: ${value ? 'Yes' : 'No'}`);
+        if (otherText[p.id]?.trim()) {
+          structured[`${p.id}_note`] = otherText[p.id].trim();
+        }
       }
     }
 
@@ -138,62 +151,20 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
     return `${readable}\n<!-- structured_response: ${json} -->`;
   }, [prompts, selections, tags, toggles, otherText]);
 
-  /** Close the panel: submit if all fields are filled, otherwise cancel. */
-  const handleClose = useCallback(() => {
-    if (canSubmit()) {
-      const text = formatAnswer();
-      useChatStore.getState().setActivePrompt(null);
-      useChatStore.getState().setActivePromptData(null);
-      onSubmit(text);
-    } else {
-      onCancel();
-    }
-  }, [canSubmit, formatAnswer, onSubmit, onCancel]);
+  const handleSubmit = useCallback(() => {
+    if (!canSubmit()) return;
+    const text = formatAnswer();
+    useChatStore.getState().setActivePrompt(null);
+    useChatStore.getState().setActivePromptData(null);
+    onSubmit(text);
+  }, [canSubmit, formatAnswer, onSubmit]);
 
-  const markSubmitted = useCallback((promptId: string) => {
-    setSubmitted((prev) => new Set(prev).add(promptId));
-
-    // Advance to next tab if there is one — the useEffect auto-submit
-    // handles final submission after React processes state updates.
-    const idx = prompts.findIndex((p) => p.id === promptId);
+  const advanceTab = useCallback((fromPromptId: string) => {
+    const idx = prompts.findIndex((p) => p.id === fromPromptId);
     if (idx < prompts.length - 1) {
       setTimeout(() => setActiveTab(prompts[idx + 1].id), 200);
     }
   }, [prompts]);
-
-  // Block auto-submit whenever any prompt has "Other" selected — the user is
-  // composing free text and should never be interrupted by auto-submit.
-  const hasActiveOther = Object.values(selections).some(
-    (sel) => sel.includes(OTHER_VALUE),
-  );
-
-  // Auto-submit when all fields are complete:
-  // - single-select (no presets) have a value
-  // - multiselect / preset / tag_input have been explicitly submitted
-  const autoSubmitRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
-    clearTimeout(autoSubmitRef.current);
-    if (!canSubmit() || hasActiveOther) return;
-
-    autoSubmitRef.current = setTimeout(() => {
-      const text = formatAnswer();
-      useChatStore.getState().setActivePrompt(null);
-      useChatStore.getState().setActivePromptData(null);
-      onSubmit(text);
-    }, 500);
-
-    return () => clearTimeout(autoSubmitRef.current);
-  }, [canSubmit, hasActiveOther, formatAnswer, onSubmit]);
-
-  const isPromptFilled = (p: StructuredPrompt): boolean => {
-    if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
-      return (selections[p.id] ?? []).length > 0;
-    }
-    if (p.type === 'tag_input') {
-      return (tags[p.id] ?? []).length > 0;
-    }
-    return true;
-  };
 
   const toggleSelection = (promptId: string, value: string, multiSelect?: boolean) => {
     setSelections((prev) => {
@@ -207,14 +178,26 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
       return { ...prev, [promptId]: [value] };
     });
 
-    // Auto-advance on single-select (pill_row, card_select).
-    // Also mark as submitted so preselected prompts don't block the Done button.
+    // Auto-advance on single-select
     if (!multiSelect) {
-      markSubmitted(promptId);
+      advanceTab(promptId);
     }
   };
 
+  // ── Submit button label ─────────────────────────────────────────
+  const getSubmitLabel = (): string => {
+    const approvalPrompt = prompts.find((p) => p.type === 'approval');
+    if (approvalPrompt) {
+      const sel = selections[approvalPrompt.id] ?? [];
+      if (sel.includes('approve')) return 'Approve & Run';
+      if (sel.includes('adjust')) return 'Submit Adjustments';
+    }
+    return 'Submit';
+  };
+
   if (!activePromptData || prompts.length === 0) return null;
+
+  const singlePrompt = prompts.length === 1;
 
   // ── Render ─────────────────────────────────────────────────────
 
@@ -222,91 +205,148 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
     <div className="flex justify-center px-6 pb-5 pt-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
       <div className="w-full max-w-2xl rounded-2xl border border-border bg-card shadow-md overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          {/* Tab bar + close */}
-          <div className="flex items-center gap-2 px-4 pt-1">
-            <TabsList variant="line" className="h-9 flex-1 justify-start gap-0">
-              {prompts.map((p) => {
-                const filled = isPromptFilled(p);
-                const confirmed = submitted.has(p.id);
-                return (
-                  <TabsTrigger key={p.id} value={p.id} className="gap-1.5 px-3 text-[11px] font-normal">
-                    {promptLabel(p)}
-                    {(filled || confirmed) && (
-                      <span className={`h-1.5 w-1.5 rounded-full ${confirmed ? 'bg-accent-vibrant' : 'bg-muted-foreground/30'}`} />
-                    )}
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-            <button
-              onClick={handleClose}
-              className="shrink-0 rounded-md p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          {/* Tab bar + close (hidden for single-prompt panels) */}
+          {!singlePrompt && (
+            <div className="flex items-center gap-2 px-4 pt-1">
+              <TabsList variant="line" className="h-9 flex-1 justify-start gap-0">
+                {prompts.map((p) => {
+                  const filled = isPromptFilled(p);
+                  return (
+                    <TabsTrigger key={p.id} value={p.id} className="gap-1.5 px-3 text-[11px] font-normal">
+                      {promptLabel(p)}
+                      {filled && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent-vibrant" />
+                      )}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+              <button
+                onClick={onCancel}
+                className="shrink-0 rounded-md p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Content */}
-          <div className="px-4 pt-3">
-            {prompts.map((prompt) => {
-              const explicit = needsExplicitSubmit(prompt);
-              const hasOtherSelected = (selections[prompt.id] ?? []).includes(OTHER_VALUE);
-              const showConfirm = explicit || hasOtherSelected;
-              const isConfirmed = submitted.has(prompt.id);
-              const hasSel = isPromptFilled(prompt);
-              return (
-                <TabsContent key={prompt.id} value={prompt.id} className="mt-0">
-                  <p className="mb-3 text-sm font-medium text-foreground">
-                    {prompt.question}
-                  </p>
-                  <PromptRenderer
-                    prompt={prompt}
-                    selections={selections}
-                    tags={tags}
-                    toggles={toggles}
-                    otherText={otherText}
-                    onToggleSelection={toggleSelection}
-                    onSetTags={(id, v) => setTags((prev) => ({ ...prev, [id]: v }))}
-                    onSetToggle={(id, v) => setToggles((prev) => ({ ...prev, [id]: v }))}
-                    onSetOtherText={(id, v) => setOtherText((prev) => ({ ...prev, [id]: v }))}
-                  />
-                  {showConfirm && (
-                    <div className="mt-3 flex justify-end">
-                      <button
-                        type="button"
-                        disabled={!hasSel}
-                        onClick={() => markSubmitted(prompt.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
-                          isConfirmed
-                            ? 'bg-accent-vibrant/10 text-accent-vibrant cursor-default'
-                            : hasSel
-                              ? 'bg-accent-vibrant text-white hover:bg-accent-vibrant/90'
-                              : 'bg-muted text-muted-foreground cursor-not-allowed'
-                        }`}
-                      >
-                        {isConfirmed ? (
-                          <>
-                            <Check className="h-3 w-3" />
-                            Done
-                          </>
-                        ) : (
-                          'Confirm'
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </TabsContent>
-              );
-            })}
+          <div className={`px-4 ${singlePrompt ? 'pt-4' : 'pt-3'}`}>
+            {prompts.map((prompt) => (
+              <TabsContent key={prompt.id} value={prompt.id} className="mt-0">
+                <p className="mb-3 text-sm font-medium text-foreground">
+                  {prompt.question}
+                </p>
+                <PromptRenderer
+                  prompt={prompt}
+                  selections={selections}
+                  tags={tags}
+                  toggles={toggles}
+                  otherText={otherText}
+                  onToggleSelection={toggleSelection}
+                  onSetTags={(id, v) => setTags((prev) => ({ ...prev, [id]: v }))}
+                  onSetToggle={(id, v) => {
+                    setToggles((prev) => ({ ...prev, [id]: v }));
+                    advanceTab(id);
+                  }}
+                  onSetOtherText={(id, v) => setOtherText((prev) => ({ ...prev, [id]: v }))}
+                />
+              </TabsContent>
+            ))}
           </div>
 
           {/* Footer */}
-          <div className="px-4 pb-3 pt-2">
+          <div className="flex items-center justify-between px-4 pb-3 pt-2">
             <span className="text-[11px] text-muted-foreground/40">Esc to dismiss</span>
+            <button
+              type="button"
+              disabled={!canSubmit()}
+              onClick={handleSubmit}
+              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
+                canSubmit()
+                  ? 'bg-accent-vibrant text-white hover:bg-accent-vibrant/90'
+                  : 'bg-muted text-muted-foreground cursor-not-allowed'
+              }`}
+            >
+              <Send className="h-3 w-3" />
+              {getSubmitLabel()}
+            </button>
           </div>
         </Tabs>
       </div>
     </div>
+  );
+}
+
+// ─── Shared Other Input ─────────────────────────────────────────────
+
+function OtherInput({
+  active,
+  value,
+  onChange,
+  onActivate,
+  variant = 'pill',
+}: {
+  active: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  onActivate: () => void;
+  variant?: 'pill' | 'block';
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (active) inputRef.current?.focus();
+  }, [active]);
+
+  if (variant === 'block') {
+    return (
+      <div className={`mt-2 flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all ${
+        active
+          ? 'border-accent-vibrant bg-accent-vibrant/5'
+          : 'border-dashed border-border/60 hover:border-foreground/20'
+      }`}>
+        {active ? (
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === 'Escape') e.stopPropagation(); }}
+            placeholder="Type your answer..."
+            className="flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/50"
+          />
+        ) : (
+          <button type="button" onClick={onActivate} className="flex-1 text-left text-xs text-muted-foreground">
+            Other
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // pill variant (inline in flex-wrap rows)
+  if (active) {
+    return (
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') e.stopPropagation(); }}
+        placeholder="Type here..."
+        className="rounded-full border border-accent-vibrant bg-accent-vibrant/5 px-3 py-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 w-32"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onActivate}
+      className="rounded-full border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-foreground/20 hover:text-foreground"
+    >
+      Other
+    </button>
   );
 }
 
@@ -331,7 +371,9 @@ function PromptRenderer({ prompt, selections, tags, toggles, otherText, onToggle
         <PromptIconGrid
           prompt={prompt}
           selected={selections[prompt.id] ?? []}
+          otherValue={otherText[prompt.id] ?? ''}
           onToggle={(v) => onToggleSelection(prompt.id, v, prompt.multi_select ?? true)}
+          onOtherChange={(v) => onSetOtherText(prompt.id, v)}
         />
       );
     case 'pill_row':
@@ -367,7 +409,19 @@ function PromptRenderer({ prompt, selections, tags, toggles, otherText, onToggle
         <PromptToggleRow
           prompt={prompt}
           checked={toggles[prompt.id] ?? false}
+          otherValue={otherText[prompt.id] ?? ''}
           onChange={(v) => onSetToggle(prompt.id, v)}
+          onOtherChange={(v) => onSetOtherText(prompt.id, v)}
+        />
+      );
+    case 'approval':
+      return (
+        <PromptApproval
+          prompt={prompt}
+          selected={selections[prompt.id] ?? []}
+          adjustText={otherText[prompt.id] ?? ''}
+          onSelect={(v) => onToggleSelection(prompt.id, v, false)}
+          onAdjustTextChange={(v) => onSetOtherText(prompt.id, v)}
         />
       );
     default:
@@ -380,37 +434,55 @@ function PromptRenderer({ prompt, selections, tags, toggles, otherText, onToggle
 function PromptIconGrid({
   prompt,
   selected,
+  otherValue,
   onToggle,
+  onOtherChange,
 }: {
   prompt: StructuredPrompt;
   selected: string[];
+  otherValue: string;
   onToggle: (value: string) => void;
+  onOtherChange: (value: string) => void;
 }) {
+  const otherActive = selected.includes(OTHER_VALUE);
+  const showOther = prompt.allow_other !== false;
+
   return (
-    <div className="grid grid-cols-3 gap-2">
-      {prompt.options?.map((opt) => {
-        const active = selected.includes(opt.value);
-        const isPlatform = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'].includes(opt.icon ?? '');
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onToggle(opt.value)}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
-              active
-                ? 'border-accent-vibrant bg-accent-vibrant/5 text-foreground'
-                : 'border-border/60 text-muted-foreground hover:border-foreground/20 hover:text-foreground'
-            }`}
-          >
-            {isPlatform ? (
-              <PlatformIcon platform={opt.icon!} className="h-4 w-4" />
-            ) : opt.icon ? (
-              <span className="text-sm">{opt.icon}</span>
-            ) : null}
-            {opt.label}
-          </button>
-        );
-      })}
+    <div>
+      <div className="grid grid-cols-3 gap-2">
+        {prompt.options?.map((opt) => {
+          const active = selected.includes(opt.value);
+          const isPlatform = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube', 'facebook'].includes(opt.icon ?? '');
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onToggle(opt.value)}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
+                active
+                  ? 'border-accent-vibrant bg-accent-vibrant/5 text-foreground'
+                  : 'border-border/60 text-muted-foreground hover:border-foreground/20 hover:text-foreground'
+              }`}
+            >
+              {isPlatform ? (
+                <PlatformIcon platform={opt.icon!} className="h-4 w-4" />
+              ) : opt.icon ? (
+                <span className="text-sm">{opt.icon}</span>
+              ) : null}
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      {showOther && (
+        <OtherInput
+          active={otherActive}
+          value={otherValue}
+          onChange={onOtherChange}
+          onActivate={() => onToggle(OTHER_VALUE)}
+          variant="block"
+        />
+      )}
     </div>
   );
 }
@@ -431,11 +503,7 @@ function PromptPillRow({
   onOtherChange: (value: string) => void;
 }) {
   const otherActive = selected.includes(OTHER_VALUE);
-  const otherRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (otherActive) otherRef.current?.focus();
-  }, [otherActive]);
+  const showOther = prompt.allow_other !== false;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -456,24 +524,14 @@ function PromptPillRow({
           </button>
         );
       })}
-      {/* Other option */}
-      {otherActive ? (
-        <input
-          ref={otherRef}
+      {showOther && (
+        <OtherInput
+          active={otherActive}
           value={otherValue}
-          onChange={(e) => onOtherChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Escape') e.stopPropagation(); }}
-          placeholder="Type here..."
-          className="rounded-full border border-accent-vibrant bg-accent-vibrant/5 px-3 py-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 w-32"
+          onChange={onOtherChange}
+          onActivate={() => onSelect(OTHER_VALUE)}
+          variant="pill"
         />
-      ) : (
-        <button
-          type="button"
-          onClick={() => onSelect(OTHER_VALUE)}
-          className="rounded-full border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-foreground/20 hover:text-foreground"
-        >
-          Other
-        </button>
       )}
     </div>
   );
@@ -557,6 +615,7 @@ function PromptCardSelect({
   const options = prompt.options ?? [];
   const gridCols = options.length >= 4 ? 'grid-cols-2' : 'grid-cols-1';
   const otherActive = selected.includes(OTHER_VALUE);
+  const showOther = prompt.allow_other !== false;
   const otherRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -589,30 +648,32 @@ function PromptCardSelect({
         );
       })}
       {/* Other option */}
-      <button
-        type="button"
-        onClick={() => onSelect(OTHER_VALUE)}
-        className={`col-span-full flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all ${
-          otherActive
-            ? 'border-accent-vibrant bg-accent-vibrant/5'
-            : 'border-dashed border-border/60 hover:border-foreground/20'
-        }`}
-      >
-        <RadioDot active={otherActive} />
-        {otherActive ? (
-          <input
-            ref={otherRef}
-            value={otherValue}
-            onChange={(e) => onOtherChange(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => { if (e.key === 'Escape') e.stopPropagation(); }}
-            placeholder="Type your answer..."
-            className="flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/50"
-          />
-        ) : (
-          <span className="text-xs text-muted-foreground">Other</span>
-        )}
-      </button>
+      {showOther && (
+        <button
+          type="button"
+          onClick={() => onSelect(OTHER_VALUE)}
+          className={`col-span-full flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all ${
+            otherActive
+              ? 'border-accent-vibrant bg-accent-vibrant/5'
+              : 'border-dashed border-border/60 hover:border-foreground/20'
+          }`}
+        >
+          <RadioDot active={otherActive} />
+          {otherActive ? (
+            <input
+              ref={otherRef}
+              value={otherValue}
+              onChange={(e) => onOtherChange(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => { if (e.key === 'Escape') e.stopPropagation(); }}
+              placeholder="Type your answer..."
+              className="flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/50"
+            />
+          ) : (
+            <span className="text-xs text-muted-foreground">Other</span>
+          )}
+        </button>
+      )}
     </div>
   );
 }
@@ -632,18 +693,103 @@ function RadioDot({ active }: { active: boolean }) {
 function PromptToggleRow({
   prompt,
   checked,
+  otherValue,
   onChange,
+  onOtherChange,
 }: {
   prompt: StructuredPrompt;
   checked: boolean;
+  otherValue: string;
   onChange: (value: boolean) => void;
+  onOtherChange: (value: string) => void;
 }) {
+  const showOther = prompt.allow_other !== false;
+  const [otherActive, setOtherActive] = useState(false);
+
   return (
-    <div className={`flex items-center justify-between rounded-lg border px-3 py-2 transition-colors ${
-      checked ? 'border-accent-vibrant/20 bg-accent-vibrant/5' : 'border-border/50'
-    }`}>
-      <span className="text-xs text-foreground">{prompt.question}</span>
-      <Switch checked={checked} onCheckedChange={onChange} />
+    <div>
+      <div className={`flex items-center justify-between rounded-lg border px-3 py-2 transition-colors ${
+        checked ? 'border-accent-vibrant/20 bg-accent-vibrant/5' : 'border-border/50'
+      }`}>
+        <span className="text-xs text-foreground">{prompt.question}</span>
+        <Switch checked={checked} onCheckedChange={onChange} />
+      </div>
+      {showOther && (
+        <OtherInput
+          active={otherActive}
+          value={otherValue}
+          onChange={onOtherChange}
+          onActivate={() => setOtherActive(true)}
+          variant="block"
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Approval (approve/adjust with feedback textarea) ────────────────
+
+function PromptApproval({
+  prompt,
+  selected,
+  adjustText,
+  onSelect,
+  onAdjustTextChange,
+}: {
+  prompt: StructuredPrompt;
+  selected: string[];
+  adjustText: string;
+  onSelect: (value: string) => void;
+  onAdjustTextChange: (value: string) => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isApprove = selected.includes('approve');
+  const isAdjust = selected.includes('adjust');
+
+  useEffect(() => {
+    if (isAdjust) {
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
+  }, [isAdjust]);
+
+  return (
+    <div>
+      <div className="flex gap-2">
+        {prompt.options?.map((opt) => {
+          const active = selected.includes(opt.value);
+          const isPrimary = opt.value === 'approve';
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onSelect(opt.value)}
+              className={`flex-1 rounded-lg border px-4 py-2.5 text-xs font-medium transition-all ${
+                active
+                  ? isPrimary
+                    ? 'border-accent-vibrant bg-accent-vibrant text-white'
+                    : 'border-accent-vibrant bg-accent-vibrant/5 text-foreground'
+                  : 'border-border/60 text-muted-foreground hover:border-foreground/20 hover:text-foreground'
+              }`}
+            >
+              {active && isPrimary && <Check className="mr-1.5 inline h-3 w-3" />}
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      {isAdjust && (
+        <textarea
+          ref={textareaRef}
+          value={adjustText}
+          onChange={(e) => onAdjustTextChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') e.stopPropagation();
+          }}
+          placeholder="What would you like to change?"
+          rows={3}
+          className="mt-2 w-full rounded-lg border border-accent-vibrant/30 bg-accent-vibrant/5 px-3 py-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-accent-vibrant/60 resize-none"
+        />
+      )}
     </div>
   );
 }
@@ -674,6 +820,7 @@ function promptLabel(p: StructuredPrompt): string {
     geo_scope: 'Geo',
     include_comments: 'Comments',
     posts_per_keyword: 'Posts/keyword',
+    approve_plan: 'Approval',
   };
   return labels[p.id] ?? p.id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

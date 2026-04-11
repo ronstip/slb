@@ -26,6 +26,7 @@ PROMPT_TEMPLATES: dict[str, dict] = {
             {"value": "twitter", "label": "X (Twitter)", "icon": "twitter"},
             {"value": "reddit", "label": "Reddit", "icon": "reddit"},
             {"value": "youtube", "label": "YouTube", "icon": "youtube"},
+            {"value": "facebook", "label": "Facebook", "icon": "facebook"},
         ],
         "multi_select": True,
     },
@@ -64,6 +65,7 @@ PROMPT_TEMPLATES: dict[str, dict] = {
         "type": "toggle_row",
         "question": "Include comment threads?",
         "default_value": True,
+        "allow_other": False,
     },
     "posts_per_keyword": {
         "id": "posts_per_keyword",
@@ -75,6 +77,16 @@ PROMPT_TEMPLATES: dict[str, dict] = {
             {"value": "50", "label": "50"},
             {"value": "100", "label": "100"},
         ],
+    },
+    "approve_plan": {
+        "id": "approve_plan",
+        "type": "approval",
+        "question": "Ready to proceed?",
+        "options": [
+            {"value": "approve", "label": "Approve & Run", "recommended": True},
+            {"value": "adjust", "label": "Adjust"},
+        ],
+        "allow_other": False,
     },
 }
 

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { ClipboardList, ChevronDown, ExternalLink } from 'lucide-react';
-import { useTaskStore } from '../../stores/task-store.ts';
-import type { Task } from '../../api/endpoints/tasks.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
+import type { Agent } from '../../api/endpoints/agents.ts';
 import { Badge } from '../../components/ui/badge.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import {
@@ -19,8 +19,8 @@ const STATUS_LABELS: Record<string, string> = {
   paused: 'Paused',
 };
 
-function TaskItem({ task, isActive, onClick }: {
-  task: Task;
+function AgentItem({ agent, isActive, onClick }: {
+  agent: Agent;
   isActive: boolean;
   onClick: () => void;
 }) {
@@ -31,9 +31,9 @@ function TaskItem({ task, isActive, onClick }: {
         isActive ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
       }`}
     >
-      <span className="flex-1 truncate text-xs">{task.title}</span>
+      <span className="flex-1 truncate text-xs">{agent.title}</span>
       <Badge variant="outline" className="text-[9px] h-4 shrink-0">
-        {STATUS_LABELS[task.status] || task.status}
+        {STATUS_LABELS[agent.status] || agent.status}
       </Badge>
     </button>
   );
@@ -41,62 +41,61 @@ function TaskItem({ task, isActive, onClick }: {
 
 export function TaskSelector() {
   const navigate = useNavigate();
-  const tasks = useTaskStore((s) => s.tasks);
-  const activeTask = useTaskStore((s) => s.activeTask);
-  const activeTaskId = useTaskStore((s) => s.activeTaskId);
-  const setActiveTask = useTaskStore((s) => s.setActiveTask);
-  const fetchTasks = useTaskStore((s) => s.fetchTasks);
+  const agents = useAgentStore((s) => s.agents);
+  const activeAgent = useAgentStore((s) => s.activeAgent);
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
+  const fetchAgents = useAgentStore((s) => s.fetchAgents);
 
   useEffect(() => {
-    if (tasks.length === 0) fetchTasks();
-  }, [tasks.length, fetchTasks]);
+    if (agents.length === 0) fetchAgents();
+  }, [agents.length, fetchAgents]);
 
-  // Only show tasks that have been approved or beyond
-  const visibleTasks = tasks.filter((t) =>
+  const visibleAgents = agents.filter((t) =>
     ['approved', 'executing', 'completed', 'monitoring', 'paused'].includes(t.status),
   );
 
-  if (visibleTasks.length === 0 && !activeTask) return null;
+  if (visibleAgents.length === 0 && !activeAgent) return null;
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground">
           <ClipboardList className="h-3 w-3" />
-          {activeTask ? (
-            <span className="max-w-[160px] truncate">{activeTask.title}</span>
+          {activeAgent ? (
+            <span className="max-w-[160px] truncate">{activeAgent.title}</span>
           ) : (
-            <span>Tasks</span>
+            <span>Agents</span>
           )}
           <ChevronDown className="h-3 w-3" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-2">
         <div className="space-y-0.5 max-h-48 overflow-y-auto">
-          {activeTaskId && (
+          {activeAgentId && (
             <button
-              onClick={() => setActiveTask(null)}
+              onClick={() => setActiveAgent(null)}
               className="flex items-center gap-2 w-full rounded-md px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent/50"
             >
-              Clear task context
+              Clear agent context
             </button>
           )}
-          {visibleTasks.map((task) => (
-            <TaskItem
-              key={task.task_id}
-              task={task}
-              isActive={task.task_id === activeTaskId}
-              onClick={() => setActiveTask(task.task_id)}
+          {visibleAgents.map((agent) => (
+            <AgentItem
+              key={agent.task_id}
+              agent={agent}
+              isActive={agent.task_id === activeAgentId}
+              onClick={() => setActiveAgent(agent.task_id)}
             />
           ))}
         </div>
         <div className="border-t mt-2 pt-2">
           <button
-            onClick={() => navigate('/tasks')}
+            onClick={() => navigate('/agents')}
             className="flex items-center gap-2 w-full rounded-md px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent/50"
           >
             <ExternalLink className="h-3 w-3" />
-            View all tasks
+            View all agents
           </button>
         </div>
       </PopoverContent>

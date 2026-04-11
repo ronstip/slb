@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { useTaskStore } from '../../stores/task-store.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { getCollectionStatus } from '../../api/endpoints/collections.ts';
 import { formatNumber } from '../../lib/format.ts';
-import { TaskDetailDrawer } from '../tasks/TaskDetailDrawer.tsx';
+import { AgentDetailDrawer } from '../agents/AgentDetailDrawer.tsx';
 import type { CollectionStatusResponse } from '../../api/types.ts';
 
 const PHASE_PCT: Record<string, number> = {
@@ -46,8 +46,8 @@ function avgProgress(collections: CollectionStatusResponse[]): number {
 }
 
 export function TaskProgressPill() {
-  const tasks = useTaskStore((s) => s.tasks);
-  const fetchTasks = useTaskStore((s) => s.fetchTasks);
+  const tasks = useAgentStore((s) => s.agents);
+  const fetchAgents = useAgentStore((s) => s.fetchAgents);
   const currentSessionId = useChatStore((s) => s.sessionId);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [elapsed, setElapsed] = useState('');
@@ -55,7 +55,7 @@ export function TaskProgressPill() {
   const toastFiredRef = useRef<Set<string>>(new Set());
 
   // Only show executing tasks that belong to the current session
-  const executingTasks = useMemo(
+  const executingAgents = useMemo(
     () => {
       if (!currentSessionId) return [];
       return tasks
@@ -67,24 +67,24 @@ export function TaskProgressPill() {
     [tasks, currentSessionId],
   );
 
-  const activeTask = executingTasks[0] ?? null;
-  const othersCount = executingTasks.length - 1;
+  const activeAgent = executingAgents[0] ?? null;
+  const othersCount = executingAgents.length - 1;
 
   // Poll task list to stay fresh
   useEffect(() => {
-    fetchTasks();
-    if (executingTasks.length === 0) return;
-    const interval = setInterval(() => fetchTasks(), 15_000);
+    fetchAgents();
+    if (executingAgents.length === 0) return;
+    const interval = setInterval(() => fetchAgents(), 15_000);
     return () => clearInterval(interval);
-  }, [fetchTasks, executingTasks.length]);
+  }, [fetchAgents, executingAgents.length]);
 
   // Poll collection statuses for active task (shares TanStack Query cache)
-  const collectionIds = activeTask?.collection_ids ?? [];
+  const collectionIds = activeAgent?.collection_ids ?? [];
   const collectionQueries = useQueries({
     queries: collectionIds.map((id) => ({
       queryKey: ['collection-status', id],
       queryFn: () => getCollectionStatus(id),
-      enabled: !!activeTask,
+      enabled: !!activeAgent,
       refetchInterval: (query: { state: { data?: CollectionStatusResponse } }) => {
         const s = query.state.data?.status;
         if (s && TERMINAL.has(s)) return false;
@@ -146,16 +146,16 @@ export function TaskProgressPill() {
 
   // Elapsed time ticker
   useEffect(() => {
-    if (!activeTask) { setElapsed(''); return; }
-    const startIso = activeTask.updated_at || activeTask.created_at;
+    if (!activeAgent) { setElapsed(''); return; }
+    const startIso = activeAgent.updated_at || activeAgent.created_at;
     const tick = () => setElapsed(formatElapsed(startIso));
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [activeTask]);
+  }, [activeAgent]);
 
   // Nothing to show — hide when no active task, no collections, still loading, or done
-  if (!activeTask || noCollections || collectionsLoading || dismissed) return null;
+  if (!activeAgent || noCollections || collectionsLoading || dismissed) return null;
 
   const isFailed = phase === 'Failed';
 
@@ -194,7 +194,7 @@ export function TaskProgressPill() {
 
           {/* Title */}
           <span className="flex-1 truncate text-[13px] font-medium text-foreground">
-            {activeTask.title}
+            {activeAgent.title}
           </span>
 
           {/* Stats */}
@@ -234,8 +234,8 @@ export function TaskProgressPill() {
       </div>
 
       {/* Task detail drawer */}
-      <TaskDetailDrawer
-        task={activeTask}
+      <AgentDetailDrawer
+        task={activeAgent}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
       />

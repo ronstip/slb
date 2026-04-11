@@ -46,6 +46,13 @@ export async function refreshCollectionStats(
   return apiPost(`/collection/${collectionId}/stats/refresh`, {});
 }
 
+export async function updateCollection(
+  collectionId: string,
+  updates: { title?: string; visibility?: string },
+): Promise<{ status: string }> {
+  return apiPatch(`/collection/${collectionId}`, updates);
+}
+
 export async function downloadCollection(
   collectionId: string,
   titleHint: string,

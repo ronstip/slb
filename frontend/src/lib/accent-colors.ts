@@ -5,11 +5,12 @@ export interface AccentPreset {
   hex: string;
 }
 
-export const DEFAULT_ACCENT = '#4A7C8F'; // Steel Teal
+export const DEFAULT_ACCENT = '#7f22fe'; // Violet
 
 export const ACCENT_PRESETS: AccentPreset[] = [
-  { name: 'Steel Teal', hex: '#4A7C8F' },
-  { name: 'Navy', hex: '#2B5066' },
+  { name: 'Violet', hex: '#7f22fe' },
+  { name: 'Purple', hex: '#A855F7' },
+  { name: 'Navy', hex: '#3B5998' },
   { name: 'Slate Blue', hex: '#5A7FA0' },
   { name: 'Burgundy', hex: '#6B3040' },
   { name: 'Rose', hex: '#9E4A5A' },
@@ -18,7 +19,6 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   { name: 'Charcoal', hex: '#4A5568' },
   { name: 'Copper', hex: '#8B6040' },
   { name: 'Plum', hex: '#6B4A6E' },
-  { name: 'Olive', hex: '#5C6B3A' },
   { name: 'Storm', hex: '#4A6072' },
 ];
 

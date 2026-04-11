@@ -21,9 +21,9 @@ import {
   StopCircle,
   Table2,
 } from 'lucide-react';
-import type { Task, TaskStatus, TaskLogEntry } from '../../api/endpoints/tasks.ts';
-import { getTask, runTask, updateTask as patchTask, getTaskArtifacts, getTaskLogs } from '../../api/endpoints/tasks.ts';
-import { useTaskStore } from '../../stores/task-store.ts';
+import type { Agent, AgentStatus, AgentLogEntry } from '../../api/endpoints/agents.ts';
+import { getAgent, runAgent, updateAgent as patchAgent, getAgentArtifacts, getAgentLogs } from '../../api/endpoints/agents.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import type { Source } from '../../stores/sources-store.ts';
 import type { CollectionConfig } from '../../api/types.ts';
@@ -75,7 +75,7 @@ import {
 } from '../../lib/constants.ts';
 import type { SchedulePreset } from '../../lib/constants.ts';
 
-// --- Shared exports (used by TasksPage table too) ---
+// --- Shared exports (used by AgentsPage table too) ---
 
 export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
   approved: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Approved', color: 'text-blue-500' },
@@ -86,7 +86,7 @@ export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: strin
   archived: { icon: <Archive className="h-3 w-3" />, label: 'Archived', color: 'text-muted-foreground' },
 };
 
-export function StatusBadge({ status }: { status: TaskStatus }) {
+export function StatusBadge({ status }: { status: AgentStatus }) {
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.approved;
   return (
     <Badge variant="outline" className={`gap-1 text-[10px] ${config.color}`}>
@@ -96,9 +96,9 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
   );
 }
 
-export const RUNNABLE_STATUSES: TaskStatus[] = ['completed', 'monitoring', 'paused', 'approved', 'executing'];
+export const RUNNABLE_STATUSES: AgentStatus[] = ['completed', 'monitoring', 'paused', 'approved', 'executing'];
 
-export function formatLastRun(runHistory: Task['run_history']): string {
+export function formatLastRun(runHistory: Agent['run_history']): string {
   if (!runHistory?.length) return '—';
   const lastRunAt = runHistory[runHistory.length - 1]?.run_at;
   if (!lastRunAt) return '—';
@@ -155,16 +155,16 @@ function buildSourceForCollection(collectionId: string): Source {
 
 // --- Main component ---
 
-export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, onExploreData }: {
-  task: Task | null;
+export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, onExploreData }: {
+  task: Agent | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   autoOpenSchedule?: boolean;
-  onExploreData?: (task: Task) => void;
+  onExploreData?: (task: Agent) => void;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const fetchTasks = useTaskStore((s) => s.fetchTasks);
+  const fetchAgents = useAgentStore((s) => s.fetchAgents);
   const [showAllCollections, setShowAllCollections] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
@@ -201,8 +201,8 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
 
   // Live refresh while task is executing
   const { data: freshTask } = useQuery({
-    queryKey: ['task-detail', task?.task_id],
-    queryFn: () => getTask(task!.task_id),
+    queryKey: ['agent-detail', task?.task_id],
+    queryFn: () => getAgent(task!.task_id),
     enabled: open && !!task?.task_id,
     refetchInterval: (query) => {
       const s = query.state.data?.status ?? task?.status;
@@ -211,17 +211,17 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
   });
   const displayTask = freshTask ?? task;
 
-  // Artifacts for this task
+  // Artifacts for this agent
   const { data: artifacts } = useQuery({
-    queryKey: ['task-artifacts', task?.task_id],
-    queryFn: () => getTaskArtifacts(task!.task_id),
+    queryKey: ['agent-artifacts', task?.task_id],
+    queryFn: () => getAgentArtifacts(task!.task_id),
     enabled: open && !!task?.task_id && (task?.artifact_ids?.length ?? 0) > 0,
   });
 
   // Activity logs
   const { data: logs } = useQuery({
-    queryKey: ['task-logs', task?.task_id],
-    queryFn: () => getTaskLogs(task!.task_id),
+    queryKey: ['agent-logs', task?.task_id],
+    queryFn: () => getAgentLogs(task!.task_id),
     enabled: open && !!task?.task_id,
     refetchInterval: () => {
       const s = displayTask?.status;
@@ -250,9 +250,9 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
   const handleRunDrawer = async () => {
     setIsRunning(true);
     try {
-      await runTask(displayTask.task_id);
-      queryClient.invalidateQueries({ queryKey: ['task-detail', displayTask.task_id] });
-      fetchTasks();
+      await runAgent(displayTask.task_id);
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.task_id] });
+      fetchAgents();
     } catch {
       // 409 or other error — task may already be running
     } finally {
@@ -263,9 +263,9 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
   const handleStop = async () => {
     setIsStopping(true);
     try {
-      await patchTask(displayTask.task_id, { status: 'completed' });
-      queryClient.invalidateQueries({ queryKey: ['task-detail', displayTask.task_id] });
-      fetchTasks();
+      await patchAgent(displayTask.task_id, { status: 'completed' });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.task_id] });
+      fetchAgents();
     } catch {
       // ignore
     } finally {
@@ -287,12 +287,12 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
         updates.task_type = 'recurring';
         updates.status = 'monitoring';
       }
-      await patchTask(displayTask.task_id, updates as Parameters<typeof patchTask>[1]);
+      await patchAgent(displayTask.task_id, updates as Parameters<typeof patchAgent>[1]);
       if (editRunNow) {
-        try { await runTask(displayTask.task_id); } catch { /* 409 = already running */ }
+        try { await runAgent(displayTask.task_id); } catch { /* 409 = already running */ }
       }
-      queryClient.invalidateQueries({ queryKey: ['task-detail', displayTask.task_id] });
-      fetchTasks();
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.task_id] });
+      fetchAgents();
       setScheduleDialogOpen(false);
     } catch {
       // ignore
@@ -303,9 +303,9 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
     setIsPauseToggling(true);
     const newStatus = displayTask.status === 'monitoring' ? 'paused' : 'monitoring';
     try {
-      await patchTask(displayTask.task_id, { status: newStatus });
-      queryClient.invalidateQueries({ queryKey: ['task-detail', displayTask.task_id] });
-      fetchTasks();
+      await patchAgent(displayTask.task_id, { status: newStatus });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.task_id] });
+      fetchAgents();
     } catch {
       // ignore
     } finally {
@@ -606,7 +606,7 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
             ) : (
               <>
                 <div className="space-y-0.5">
-                  {logsToShow.map((log: TaskLogEntry, i: number) => {
+                  {logsToShow.map((log: AgentLogEntry, i: number) => {
                     const isLatest = i === 0 && displayTask.status === 'executing';
                     return (
                       <div key={log.id} className="flex items-start gap-2 py-1">
@@ -692,7 +692,7 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
           <DialogHeader>
             <DialogTitle>Set Schedule</DialogTitle>
             <DialogDescription>
-              Set how often this task runs automatically
+              Set how often this agent runs automatically
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -702,7 +702,7 @@ export function TaskDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, o
                 {displayTask.context_summary
                   || displayTask.title
                   + (displayTask.data_scope?.searches?.length
-                    ? ` — ${displayTask.data_scope.searches.map((s) => s.keywords.join(', ')).join('; ')}`
+                    ? ` — ${displayTask.data_scope.searches.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`
                     : '')}
               </div>
             </div>

@@ -1,4 +1,4 @@
-import { Table2, BarChart3, FileText, LayoutDashboard } from 'lucide-react';
+import { Table2, BarChart3, FileText, LayoutDashboard, Presentation } from 'lucide-react';
 import type { ArtifactDetail } from '../../api/endpoints/artifacts.ts';
 import type { Artifact } from '../../stores/studio-store.ts';
 
@@ -14,6 +14,7 @@ export const ARTIFACT_STYLES: Record<string, {
   insight_report: { icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10', fill: 'fill-violet-500', gradientFrom: 'from-violet-500/12', label: 'Report' },
   chart: { icon: BarChart3, color: 'text-emerald-500', bg: 'bg-emerald-500/10', fill: 'fill-emerald-500', gradientFrom: 'from-emerald-500/12', label: 'Chart' },
   dashboard: { icon: LayoutDashboard, color: 'text-amber-500', bg: 'bg-amber-500/10', fill: 'fill-amber-500', gradientFrom: 'from-amber-500/12', label: 'Dashboard' },
+  presentation: { icon: Presentation, color: 'text-orange-500', bg: 'bg-orange-500/10', fill: 'fill-orange-500', gradientFrom: 'from-orange-500/12', label: 'Presentation' },
 };
 
 export function convertToStudioArtifact(detail: ArtifactDetail): Artifact {
@@ -59,5 +60,12 @@ export function convertToStudioArtifact(detail: ArtifactDetail): Artifact {
         collectionIds: detail.collection_ids,
         collectionNames: (p.collection_names ?? {}) as Record<string, string>,
       } as Extract<Artifact, { type: 'dashboard' }>;
+    case 'presentation':
+      return {
+        ...base,
+        type: 'presentation',
+        collectionIds: detail.collection_ids,
+        slideCount: (p.slide_count ?? 0) as number,
+      } as Extract<Artifact, { type: 'presentation' }>;
   }
 }

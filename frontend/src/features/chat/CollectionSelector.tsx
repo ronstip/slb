@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart2,
@@ -190,7 +191,7 @@ export function CollectionSelector() {
   const removeFromSession = useSourcesStore((s) => s.removeFromSession);
   const updateSource = useSourcesStore((s) => s.updateSource);
   const removeSource = useSourcesStore((s) => s.removeSource);
-  const openCollectionsLibrary = useUIStore((s) => s.openCollectionsLibrary);
+  const navigate = useNavigate();
   const openCollectionModal = useUIStore((s) => s.openCollectionModal);
   const queryClient = useQueryClient();
 
@@ -449,7 +450,7 @@ export function CollectionSelector() {
               variant="ghost"
               size="sm"
               className="h-7 flex-1 justify-start gap-1.5 text-xs text-muted-foreground"
-              onClick={() => { openCollectionsLibrary(); setOpen(false); }}
+              onClick={() => { navigate('/collections'); setOpen(false); }}
             >
               <Library className="h-3.5 w-3.5" />
               Manage all

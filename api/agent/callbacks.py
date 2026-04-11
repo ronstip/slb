@@ -33,7 +33,7 @@ CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
 RESEARCH_DESIGN_TOOLS: set[str] = set()  # design_research removed (internal only)
 COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
-OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard"}
+OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard", "generate_presentation"}
 
 # ─── Hard gate: tools blocked while a collection pipeline is running ──
 # cancel_collection is intentionally excluded — user can always cancel.
@@ -53,7 +53,7 @@ TOOLS_WITH_COLLECTION_ID = {
 }
 TOOLS_WITH_COLLECTION_IDS = {
     "get_collection_stats", "generate_report", "generate_dashboard",
-    "set_working_collections", "export_data",
+    "set_working_collections", "export_data", "generate_presentation",
 }
 
 
@@ -115,12 +115,17 @@ def collection_state_tracker(
 
     elif tool_name == "start_task":
         if isinstance(tool_response, dict) and tool_response.get("status") == "success":
-            tool_context.state["active_task_id"] = tool_response.get("task_id")
+            task_id = tool_response.get("task_id")
+            tool_context.state["active_task_id"] = task_id
             tool_context.state["collection_running"] = True
             cids = tool_response.get("collection_ids", [])
             if cids:
                 tool_context.state["active_collection_id"] = cids[0]
                 tool_context.state["agent_selected_sources"] = cids
+            logger.info(
+                "start_task succeeded: task=%s collections=%s — collection_running=True, turn will end",
+                task_id, cids,
+            )
 
     elif tool_name == "set_active_task":
         if isinstance(tool_response, dict) and tool_response.get("status") == "success":
@@ -152,14 +157,20 @@ def gate_expensive_tools(
 
     Returns a dict (tool response override) to block, or None to allow.
     """
-    if tool.name in COLLECTION_RUNNING_BLOCKED and tool_context.state.get("collection_running"):
-        return {
-            "status": "blocked",
-            "message": (
-                "A collection is currently running. The UI shows live progress. "
-                "Do NOT call collection tools — confirm to the user and move on."
-            ),
-        }
+    if tool_context.state.get("collection_running"):
+        if tool.name in COLLECTION_RUNNING_BLOCKED:
+            return {
+                "status": "blocked",
+                "message": (
+                    "A collection is currently running. The UI shows live progress. "
+                    "Do NOT call collection tools — confirm to the user and move on."
+                ),
+            }
+        if tool.name == "ask_user":
+            return {
+                "status": "blocked",
+                "message": "Collection is running. Do not ask questions — confirm briefly and wait.",
+            }
 
     # Block ask_user in autonomous mode (server-side agent invocation)
     if tool.name == "ask_user" and tool_context.state.get("autonomous_mode"):
@@ -417,16 +428,23 @@ def _build_context_block(state: dict) -> Optional[str]:
             "Deliver what fits the original question."
         )
 
-    # ── User context ──────────────────────────────────────────────
-    display_name = state.get("user_display_name", "")
-    preferences = state.get("user_preferences", {})
+    # ── PPT Template ───────────────────────────────────────────────
+    ppt_template = state.get("ppt_template")
+    if ppt_template and ppt_template.get("gcs_path"):
+        blocks.append(
+            f"## User PPT Template\n"
+            f"The user has a saved PowerPoint template: **{ppt_template['filename']}** "
+            f"(gcs_path: `{ppt_template['gcs_path']}`). "
+            f"Before using it for a presentation, always confirm: "
+            f"\"I see you have a saved template ({ppt_template['filename']}) — should I use it for this deck?\" "
+            f"Only pass the gcs_path to generate_presentation if the user confirms."
+        )
 
-    if display_name:
-        lines = ["## User Context"]
-        lines.append(f"- Name: **{display_name}**")
-        if preferences:
-            lines.append(f"- Preferences: {preferences}")
-        blocks.append("\n".join(lines))
+    # ── User context ──────────────────────────────────────────────
+    # Removed: display_name and preferences injection.
+    # Injecting user history/preferences caused the agent to project
+    # past research interests onto unrelated tasks (context leakage).
+    # The agent discovers past work on-demand via tools instead.
 
     return "\n\n".join(blocks) if blocks else None
 
@@ -491,9 +509,9 @@ def _is_react_continuation(llm_request: LlmRequest) -> bool:
 _ANTI_REPEAT_INSTRUCTION = (
     "\n\n## Continuation Reminder\n"
     "You have already generated text visible to the user earlier in this turn. "
-    "That text is still displayed — it accumulates, not replaces. "
-    "Do NOT restate your earlier analysis. Either proceed directly to your "
-    "next tool call, or add only genuinely new insights from the latest results."
+    "Do NOT repeat findings or restate analysis. "
+    "DO share brief new observations from the latest results, "
+    "or proceed directly to your next action."
 )
 
 

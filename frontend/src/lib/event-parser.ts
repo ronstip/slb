@@ -74,3 +74,10 @@ export function isTopicsResult(
 ): boolean {
   return toolName === 'show_topics' && result?.status === 'success' && result?.display === 'topics';
 }
+
+export function isPresentationResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'generate_presentation' && result?.status === 'success' && !!result?.presentation_id;
+}

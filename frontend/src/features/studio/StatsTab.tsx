@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3 } from 'lucide-react';
-import { useTaskStore } from '../../stores/task-store.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import { getDashboardData } from '../../api/endpoints/dashboard.ts';
 import { formatNumber } from '../../lib/format.ts';
@@ -59,7 +59,7 @@ function filterLast7Days(volume: ReturnType<typeof aggregateVolume>) {
 }
 
 export function StatsTab() {
-  const activeTask = useTaskStore((s) => s.activeTask);
+  const activeTask = useAgentStore((s) => s.activeAgent);
   const sources = useSourcesStore((s) => s.sources);
   const taskCollectionIds = activeTask?.collection_ids ?? [];
 
