@@ -118,6 +118,10 @@ class PipelineRunner:
         if current_status in ACTIVE_STATUSES:
             updated_at = status_doc.get("updated_at")
             if updated_at:
+                if isinstance(updated_at, str):
+                    updated_at = datetime.fromisoformat(updated_at)
+                if updated_at.tzinfo is None:
+                    updated_at = updated_at.replace(tzinfo=timezone.utc)
                 age_sec = (datetime.now(timezone.utc) - updated_at).total_seconds()
                 if age_sec < STALE_THRESHOLD_SEC:
                     logger.info(

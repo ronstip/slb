@@ -195,8 +195,8 @@ export function AgentCreationWizard() {
       await useAgentStore.getState().fetchAgents();
       useAgentStore.getState().setActiveAgent(result.agent_id);
 
-      // Navigate to the new agent's chat tab
-      navigate(`/agents/${result.agent_id}?tab=chat`, { replace: true });
+      // Navigate to the agents list page
+      navigate('/agents', { replace: true });
     } catch (err) {
       toast.error('Failed to create agent. Please try again.');
       setIsSubmitting(false);
