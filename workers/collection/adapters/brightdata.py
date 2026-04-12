@@ -67,11 +67,27 @@ class BrightDataAdapter(DataProviderAdapter):
         self._platform_stats: dict[str, dict] = {}
         self._collection_errors: list[dict] = []
         self._stats_lock = threading.Lock()
+        # Post funnel tracking — records how many records are lost at each stage
+        self._funnel: dict = {
+            "bd_raw_records": 0,
+            "bd_error_items_filtered": 0,
+            "bd_cross_keyword_dedup": 0,
+            "bd_parse_failures": 0,
+            "bd_empty_post_id": 0,
+            "bd_valid_posts": 0,
+            "per_platform": {},
+        }
         # Snapshot budget enforcement
         self._max_snapshots = max_snapshots or settings.brightdata_max_snapshots_per_collection
         self._snapshot_count = 0
         self._snapshot_count_lock = threading.Lock()
         logger.info("BrightDataAdapter initialized (max_snapshots=%d)", self._max_snapshots)
+
+    def _track_funnel_raw(self, raw_count: int, error_count: int) -> None:
+        """Thread-safe accumulation of raw record and error counts."""
+        with self._stats_lock:
+            self._funnel["bd_raw_records"] += raw_count
+            self._funnel["bd_error_items_filtered"] += error_count
 
     def _check_snapshot_budget(self) -> bool:
         """Return True if we can trigger another snapshot, False if budget exhausted."""
@@ -95,6 +111,11 @@ class BrightDataAdapter(DataProviderAdapter):
     @property
     def collection_errors(self) -> list[dict]:
         return list(self._collection_errors)
+
+    @property
+    def funnel_stats(self) -> dict:
+        with self._stats_lock:
+            return dict(self._funnel)
 
     def collect(self, config: dict) -> Iterator[Batch]:
         """Collect from all assigned platforms in parallel, yielding batches as they arrive."""
@@ -198,6 +219,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 snapshot_callback=self._snapshot_tracker,
             )
             valid = [r for r in results if not _is_error_item(r)]
+            self._track_funnel_raw(len(results), len(results) - len(valid))
             logger.info("[tiktok] keyword %r → %d/%d posts", kw, len(valid), len(results))
             return valid
 
@@ -262,6 +284,7 @@ class BrightDataAdapter(DataProviderAdapter):
                 snapshot_callback=self._snapshot_tracker,
             )
             valid = [r for r in results if not _is_error_item(r)]
+            self._track_funnel_raw(len(results), len(results) - len(valid))
             logger.info("[youtube] keyword batch → %d/%d posts", len(valid), len(results))
             all_results.extend(valid)
         except BrightDataAPIError as e:
@@ -338,15 +361,23 @@ class BrightDataAdapter(DataProviderAdapter):
         # Filter out error objects and deduplicate by post_id
         seen_ids: set[str] = set()
         valid: list[dict] = []
+        error_count = 0
+        pre_parse_dedup = 0
         for item in all_results:
             if _is_error_item(item):
+                error_count += 1
                 continue
             pid = str(item.get("post_id", ""))
             if pid and pid in seen_ids:
+                pre_parse_dedup += 1
                 continue
             if pid:
                 seen_ids.add(pid)
             valid.append(item)
+
+        self._track_funnel_raw(len(all_results), error_count)
+        with self._stats_lock:
+            self._funnel["bd_cross_keyword_dedup"] += pre_parse_dedup
 
         yield from self._parse_results("reddit", valid)
 
@@ -386,6 +417,7 @@ class BrightDataAdapter(DataProviderAdapter):
                     snapshot_callback=self._snapshot_tracker,
                 )
                 valid = [r for r in results if not _is_error_item(r)]
+                self._track_funnel_raw(len(results), len(results) - len(valid))
                 logger.info("[facebook] groups (%d URLs) → %d/%d posts", len(channel_urls), len(valid), len(results))
                 all_group_results.extend(valid)
             except BrightDataAPIError as e:
@@ -408,6 +440,7 @@ class BrightDataAdapter(DataProviderAdapter):
                     snapshot_callback=self._snapshot_tracker,
                 )
                 valid = [r for r in results if not _is_error_item(r)]
+                self._track_funnel_raw(len(results), len(results) - len(valid))
                 logger.info("[facebook] marketplace (%d keywords) → %d/%d listings", len(keywords), len(valid), len(results))
                 all_marketplace_results.extend(valid)
             except BrightDataAPIError as e:
@@ -420,26 +453,34 @@ class BrightDataAdapter(DataProviderAdapter):
             # Dedup by post_id
             seen_ids: set[str] = set()
             deduped: list[dict] = []
+            fb_group_dedup = 0
             for item in all_group_results:
                 pid = str(item.get("post_id", ""))
                 if pid and pid in seen_ids:
+                    fb_group_dedup += 1
                     continue
                 if pid:
                     seen_ids.add(pid)
                 deduped.append(item)
+            with self._stats_lock:
+                self._funnel["bd_cross_keyword_dedup"] += fb_group_dedup
             yield from self._parse_results("facebook", deduped)
 
         # Parse marketplace results using marketplace-specific parsers
         if all_marketplace_results:
             seen_ids_mp: set[str] = set()
             deduped_mp: list[dict] = []
+            fb_mp_dedup = 0
             for item in all_marketplace_results:
                 pid = str(item.get("product_id", ""))
                 if pid and pid in seen_ids_mp:
+                    fb_mp_dedup += 1
                     continue
                 if pid:
                     seen_ids_mp.add(pid)
                 deduped_mp.append(item)
+            with self._stats_lock:
+                self._funnel["bd_cross_keyword_dedup"] += fb_mp_dedup
             # Temporarily swap parsers for marketplace
             orig_parsers = self._PLATFORM_PARSERS["facebook"]
             self._PLATFORM_PARSERS["facebook"] = (
@@ -470,12 +511,15 @@ class BrightDataAdapter(DataProviderAdapter):
         posts: list[Post] = []
         channels_seen: dict[str, Channel] = {}
         seen_post_ids: set[str] = set()
+        parse_fail_count = 0
+        dedup_in_parse = 0
 
         for item in results:
             try:
                 post = parse_post(item)
                 # Dedup across keywords/hashtags
                 if post.post_id and post.post_id in seen_post_ids:
+                    dedup_in_parse += 1
                     continue
                 if post.post_id:
                     seen_post_ids.add(post.post_id)
@@ -484,16 +528,33 @@ class BrightDataAdapter(DataProviderAdapter):
                 if channel.channel_id and channel.channel_id not in channels_seen:
                     channels_seen[channel.channel_id] = channel
             except Exception:
+                parse_fail_count += 1
                 logger.warning("Failed to parse BrightData %s item, skipping", platform, exc_info=True)
 
         # Safety net: drop posts with empty post_id (malformed BD items)
         before_count = len(posts)
         posts = [p for p in posts if p.post_id]
-        if len(posts) < before_count:
+        empty_id_count = before_count - len(posts)
+        if empty_id_count > 0:
             logger.warning(
                 "BrightData %s: dropped %d posts with empty post_id",
-                platform, before_count - len(posts),
+                platform, empty_id_count,
             )
+
+        # Track funnel metrics for this parse pass
+        with self._stats_lock:
+            self._funnel["bd_cross_keyword_dedup"] += dedup_in_parse
+            self._funnel["bd_parse_failures"] += parse_fail_count
+            self._funnel["bd_empty_post_id"] += empty_id_count
+            self._funnel["bd_valid_posts"] += len(posts)
+            self._funnel["per_platform"][platform] = {
+                "raw_into_parse": len(results),
+                "deduped": dedup_in_parse,
+                "parse_failures": parse_fail_count,
+                "empty_post_id": empty_id_count,
+                "valid_posts": len(posts),
+            }
+
         deduped_count = len(results) - len(posts)
         if deduped_count > 0:
             logger.info(

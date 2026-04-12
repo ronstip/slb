@@ -348,6 +348,8 @@ class PipelineRunner:
         seen_post_ids: set[str] = set()
         seen_channel_ids: set[str] = set()
         total_posts = 0
+        funnel_worker_dedup = 0
+        funnel_bq_insert_failures = 0
         collection_started_at = datetime.now(timezone.utc).isoformat()
         collection_start = _time.monotonic()
 
@@ -363,6 +365,7 @@ class PipelineRunner:
 
             # In-memory dedup within this run
             new_posts = [p for p in batch.posts if p.post_id not in seen_post_ids]
+            funnel_worker_dedup += len(batch.posts) - len(new_posts)
             seen_post_ids.update(p.post_id for p in new_posts)
             new_channels = [c for c in batch.channels if c.channel_id not in seen_channel_ids]
             seen_channel_ids.update(c.channel_id for c in new_channels)
@@ -393,6 +396,7 @@ class PipelineRunner:
             # Write posts to BQ (always — no dedup, timestamps differentiate)
             post_rows = [post_to_bq_row(p, self.collection_id) for p in new_posts]
             failed_posts = self.bq.insert_rows("posts", post_rows)
+            funnel_bq_insert_failures += failed_posts
 
             # Engagements + channels
             engagement_rows = [post_to_engagement_row(p) for p in new_posts]
@@ -416,9 +420,10 @@ class PipelineRunner:
             self.state_manager.mark_collected(new_posts)
 
             # Usage tracking (fire-and-forget)
-            if owner_user_id and new_posts:
-                self.fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", len(new_posts))
-                def _log_event(uid=owner_user_id, oid=owner_org_id, cid=self.collection_id, cnt=len(new_posts)):
+            actual_stored = len(new_posts) - failed_posts
+            if owner_user_id and actual_stored > 0:
+                self.fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", actual_stored)
+                def _log_event(uid=owner_user_id, oid=owner_org_id, cid=self.collection_id, cnt=actual_stored):
                     try:
                         self.bq.insert_rows("usage_events", [{
                             "event_id": str(uuid4()),
@@ -470,6 +475,13 @@ class PipelineRunner:
                 "completed_at": datetime.now(timezone.utc).isoformat(),
                 "duration_sec": duration,
                 "platforms": stats,
+            },
+            "funnel": {
+                **wrapper.get_funnel_stats(),
+                "worker_in_memory_dedup": funnel_worker_dedup,
+                "worker_bq_dedup": 0,  # v2 skips BQ dedup by design
+                "worker_bq_insert_failures": funnel_bq_insert_failures,
+                "worker_posts_stored": total_posts,
             },
         }
         if errors:
