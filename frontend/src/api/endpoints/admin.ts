@@ -6,6 +6,7 @@ import type {
   AdminActivity,
   AdminCollectionList,
   AdminRevenue,
+  CollectionAudit,
 } from '../types.ts';
 
 export function checkAdminAccess(): Promise<{ is_admin: boolean }> {
@@ -30,6 +31,10 @@ export function getAdminActivity(days: number = 30): Promise<AdminActivity> {
 
 export function getAdminCollections(params?: Record<string, string>): Promise<AdminCollectionList> {
   return apiGet<AdminCollectionList>('/admin/collections', params);
+}
+
+export function getCollectionAudit(collectionId: string): Promise<CollectionAudit> {
+  return apiGet<CollectionAudit>(`/admin/collections/${collectionId}/audit`);
 }
 
 export function getAdminRevenue(days: number = 90): Promise<AdminRevenue> {

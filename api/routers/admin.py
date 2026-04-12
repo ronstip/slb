@@ -381,6 +381,10 @@ async def admin_collections(
         config = c.get("config") or {}
         platforms = config.get("platforms", [])
 
+        run_log = c.get("run_log") or {}
+        funnel = run_log.get("funnel") or {}
+        posts_stored = funnel.get("worker_posts_stored")  # None if no funnel data yet
+
         collections.append({
             "collection_id": c.get("collection_id", ""),
             "user_id": uid,
@@ -390,6 +394,7 @@ async def admin_collections(
             "status": c.get("status", "unknown"),
             "posts_collected": c.get("posts_collected", 0),
             "posts_enriched": c.get("posts_enriched", 0),
+            "posts_stored": posts_stored,
             "platforms": platforms if isinstance(platforms, list) else [],
             "created_at": c.get("created_at", ""),
             "error_message": c.get("error_message"),
@@ -402,7 +407,81 @@ async def admin_collections(
     total = len(collections)
     collections = collections[offset : offset + limit]
 
-    return {"collections": collections, "total": total}
+    # Compute aggregate funnel stats across all collections
+    funnel_summary = {
+        "total_bd_raw_records": 0,
+        "total_bd_error_items": 0,
+        "total_bd_dedup": 0,
+        "total_bd_parse_failures": 0,
+        "total_posts_stored": 0,
+        "total_posts_collected_fs": 0,
+    }
+    for c in all_collections:
+        run_log = c.get("run_log") or {}
+        funnel = run_log.get("funnel") or {}
+        funnel_summary["total_bd_raw_records"] += funnel.get("bd_raw_records", 0)
+        funnel_summary["total_bd_error_items"] += funnel.get("bd_error_items_filtered", 0)
+        funnel_summary["total_bd_dedup"] += (
+            funnel.get("bd_cross_keyword_dedup", 0)
+            + funnel.get("worker_in_memory_dedup", 0)
+            + funnel.get("worker_bq_dedup", 0)
+        )
+        funnel_summary["total_bd_parse_failures"] += funnel.get("bd_parse_failures", 0)
+        funnel_summary["total_posts_stored"] += funnel.get("worker_posts_stored", 0)
+        funnel_summary["total_posts_collected_fs"] += c.get("posts_collected", 0)
+
+    return {"collections": collections, "total": total, "funnel_summary": funnel_summary}
+
+
+@router.get("/collections/{collection_id}/audit")
+async def admin_collection_audit(
+    collection_id: str,
+    user: CurrentUser = Depends(_admin_user),
+):
+    """Audit data for a single collection: funnel breakdown, snapshots, BQ vs Firestore counts."""
+    fs = get_fs()
+    bq = get_bq()
+
+    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    run_log = status.get("run_log") or {}
+    funnel = run_log.get("funnel") or {}
+
+    # Get all snapshots for this collection
+    snapshots = await asyncio.to_thread(fs.get_collection_snapshots, collection_id)
+
+    # Count actual distinct posts in BQ
+    stored_posts_bq = None
+    try:
+        rows = await asyncio.to_thread(
+            bq.query,
+            "SELECT COUNT(DISTINCT post_id) as stored_posts "
+            "FROM social_listening.posts WHERE collection_id = @collection_id",
+            {"collection_id": collection_id},
+        )
+        stored_posts_bq = rows[0]["stored_posts"] if rows else 0
+    except Exception as e:
+        logger.warning("BQ post count query failed for %s: %s", collection_id, e)
+
+    # Compute discrepancy indicators
+    bd_raw = funnel.get("bd_raw_records", 0)
+    posts_stored = funnel.get("worker_posts_stored", 0)
+    discrepancy_pct = round((1 - posts_stored / bd_raw) * 100, 1) if bd_raw > 0 else 0
+
+    return {
+        "collection_id": collection_id,
+        "status": status.get("status"),
+        "error_message": status.get("error_message"),
+        "posts_collected_firestore": status.get("posts_collected", 0),
+        "posts_enriched": status.get("posts_enriched", 0),
+        "posts_stored_bq": stored_posts_bq,
+        "discrepancy_pct": discrepancy_pct,
+        "funnel": funnel,
+        "snapshots": snapshots,
+        "run_log": run_log,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -766,14 +766,77 @@ export interface AdminCollection {
   status: string;
   posts_collected: number;
   posts_enriched: number;
+  posts_stored: number | null;
   platforms: string[];
   created_at: string;
   error_message: string | null;
 }
 
+export interface AdminFunnelSummary {
+  total_bd_raw_records: number;
+  total_bd_error_items: number;
+  total_bd_dedup: number;
+  total_bd_parse_failures: number;
+  total_posts_stored: number;
+  total_posts_collected_fs: number;
+}
+
 export interface AdminCollectionList {
   collections: AdminCollection[];
   total: number;
+  funnel_summary: AdminFunnelSummary;
+}
+
+export interface CollectionFunnel {
+  bd_raw_records: number;
+  bd_error_items_filtered: number;
+  bd_cross_keyword_dedup: number;
+  bd_parse_failures: number;
+  bd_empty_post_id: number;
+  bd_valid_posts: number;
+  worker_in_memory_dedup: number;
+  worker_bq_dedup: number;
+  worker_bq_insert_failures: number;
+  worker_posts_stored: number;
+  per_platform: Record<string, {
+    raw_into_parse: number;
+    deduped: number;
+    parse_failures: number;
+    empty_post_id: number;
+    valid_posts: number;
+  }>;
+}
+
+export interface CollectionAudit {
+  collection_id: string;
+  status: string;
+  error_message: string | null;
+  posts_collected_firestore: number;
+  posts_enriched: number;
+  posts_stored_bq: number | null;
+  discrepancy_pct: number;
+  funnel: CollectionFunnel;
+  snapshots: Array<{
+    snapshot_id: string;
+    collection_id: string;
+    dataset_id: string;
+    discover_by: string;
+    status: string;
+    created_at: string;
+    downloaded_at?: string;
+  }>;
+  run_log: {
+    collection?: {
+      started_at?: string;
+      completed_at?: string;
+      duration_sec?: number;
+      total_dupes_skipped?: number;
+      platforms?: Record<string, { posts: number; batches: number; errors: number }>;
+      errors?: Array<{ platform: string; error_type: string; message: string }>;
+    };
+    funnel?: CollectionFunnel;
+    recovery?: unknown[];
+  };
 }
 
 export interface AdminRevenue {

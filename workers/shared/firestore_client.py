@@ -197,6 +197,27 @@ class FirestoreClient:
         except Exception:
             logger.warning("Failed to mark snapshot %s as downloaded", snapshot_id, exc_info=True)
 
+    def get_collection_snapshots(self, collection_id: str) -> list[dict]:
+        """Get all snapshots (pending + downloaded) for a collection."""
+        try:
+            docs = (
+                self._db.collection("bd_snapshots")
+                .where("collection_id", "==", collection_id)
+                .stream()
+            )
+            results = []
+            for doc in docs:
+                data = doc.to_dict()
+                data["snapshot_id"] = doc.id
+                for key in ("created_at", "downloaded_at"):
+                    if key in data and hasattr(data[key], "isoformat"):
+                        data[key] = data[key].isoformat()
+                results.append(data)
+            return results
+        except Exception:
+            logger.warning("Failed to query snapshots for collection %s", collection_id, exc_info=True)
+            return []
+
     def get_task_snapshot_count(self, task_id: str) -> int:
         """Sum snapshot_count across all collections linked to a task."""
         task_doc = self._db.collection("tasks").document(task_id).get()
