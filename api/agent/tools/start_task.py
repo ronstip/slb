@@ -22,6 +22,7 @@ def start_task(
     schedule: str = "",
     custom_fields: str = "",
     enrichment_context: str = "",
+    existing_collection_ids: str = "",
     tool_context: ToolContext = None,
 ) -> dict:
     """Start a new task — create it and dispatch data collection.
@@ -33,10 +34,11 @@ def start_task(
     Args:
         title: A concise title for the task (e.g., "NBA TikTok Exposure").
         searches: JSON array of search definitions. Each search becomes a
-            data collection. Format:
+            NEW data collection. Format:
             [{"platforms": ["tiktok"], "keywords": ["NBA highlights"],
               "time_range_days": 1, "n_posts": 500, "geo_scope": "global"}]
             Optional fields per search: channels, start_date, end_date.
+            May be an empty array ("[]") if existing_collection_ids is set.
         task_type: "one_shot" (default) or "recurring".
         schedule: JSON object for recurring tasks. Format:
             {"frequency": "7d@09:00", "frequency_label": "Weekly at 9 AM UTC",
@@ -55,30 +57,59 @@ def start_task(
             market. Relevant: product reviews, athlete endorsements.
             Irrelevant: general sports news, unrelated apparel."
             Leave empty if not needed — falls back to search keyword.
+        existing_collection_ids: JSON array of collection IDs to attach to the
+            new task without re-collecting. Use this when the user wants to
+            reuse one or more already-created collections as sources for the
+            new agent. May be combined with `searches` (in that case both
+            the existing collections AND the freshly dispatched ones become
+            linked to the task). Example: '["col_abc", "col_xyz"]'.
+            Leave empty if no existing collections should be attached.
 
     Returns:
-        A dict with task_id, collection_ids, and status.
+        A dict with task_id, collection_ids (union of newly dispatched +
+        existing attached), and status.
     """
     # Parse searches
     try:
-        searches_list = json.loads(searches) if isinstance(searches, str) else searches
+        searches_list = json.loads(searches) if searches else []
     except (json.JSONDecodeError, TypeError):
         return {"status": "error", "message": "Invalid JSON in searches parameter"}
 
-    if not searches_list or not isinstance(searches_list, list):
-        return {"status": "error", "message": "searches must be a non-empty JSON array"}
+    if not isinstance(searches_list, list):
+        return {"status": "error", "message": "searches must be a JSON array"}
 
-    # Validate at least one search has platforms + (keywords or channels)
-    valid = any(
-        s.get("platforms") and (s.get("keywords") or s.get("channels"))
-        for s in searches_list
-        if isinstance(s, dict)
-    )
-    if not valid:
+    # Parse existing_collection_ids
+    try:
+        existing_ids: list[str] = (
+            json.loads(existing_collection_ids) if existing_collection_ids else []
+        )
+    except (json.JSONDecodeError, TypeError):
+        return {"status": "error", "message": "Invalid JSON in existing_collection_ids parameter"}
+
+    if not isinstance(existing_ids, list) or not all(isinstance(c, str) for c in existing_ids):
         return {
             "status": "error",
-            "message": "Each search must have at least platforms and keywords (or channels for URL-based platforms like Facebook Groups)",
+            "message": "existing_collection_ids must be a JSON array of strings",
         }
+
+    if not searches_list and not existing_ids:
+        return {
+            "status": "error",
+            "message": "Provide at least one new search or at least one existing_collection_ids entry",
+        }
+
+    # Validate at least one search has platforms + (keywords or channels)
+    if searches_list:
+        valid = any(
+            s.get("platforms") and (s.get("keywords") or s.get("channels"))
+            for s in searches_list
+            if isinstance(s, dict)
+        )
+        if not valid:
+            return {
+                "status": "error",
+                "message": "Each search must have at least platforms and keywords (or channels for URL-based platforms like Facebook Groups)",
+            }
 
     # Parse schedule
     try:
@@ -116,6 +147,7 @@ def start_task(
     todos_snapshot = state.get("todos", [])
 
     # Create task
+    from api.deps import get_fs
     from api.services.task_service import create_task, dispatch_task_run
 
     task = create_task(
@@ -130,22 +162,59 @@ def start_task(
         status="approved",
     )
     task_id = task["task_id"]
+    fs = get_fs()
 
     # Link session to task
     if session_id:
-        from api.deps import get_fs
-        get_fs().save_session(session_id, {"task_id": task_id})
+        fs.save_session(session_id, {"task_id": task_id})
 
-    # Dispatch collections
-    collection_ids = dispatch_task_run(task_id, task)
+    # Attach existing collections (ownership-checked)
+    attached_existing: list[str] = []
+    for cid in existing_ids:
+        status_doc = fs.get_collection_status(cid)
+        if not status_doc:
+            logger.warning("start_task: existing collection %s not found — skipping", cid)
+            continue
+        owner_id = status_doc.get("user_id")
+        owner_org = status_doc.get("org_id")
+        if owner_id != user_id and not (org_id and owner_org == org_id):
+            logger.warning(
+                "start_task: user %s not permitted to attach collection %s", user_id, cid
+            )
+            continue
+        fs.add_task_collection(task_id, cid)
+        fs.update_collection_status(cid, task_id=task_id)
+        attached_existing.append(cid)
 
-    n = len(collection_ids)
+    # Dispatch new collections from searches (if any)
+    dispatched_ids: list[str] = []
+    if searches_list:
+        # Re-fetch task so dispatch sees the linked existing collections too
+        fresh_task = fs.get_task(task_id) or task
+        dispatched_ids = dispatch_task_run(task_id, fresh_task)
+    elif attached_existing:
+        # No new collections to dispatch — mark task appropriately
+        if task_type == "one_shot":
+            fs.update_task(task_id, status="completed")
+        # recurring tasks stay "approved" so scheduler picks them up
+
+    all_ids = list(dict.fromkeys(attached_existing + dispatched_ids))
+    n_new = len(dispatched_ids)
+    n_existing = len(attached_existing)
+
+    parts = []
+    if n_new:
+        parts.append(f"{n_new} new collection(s) dispatched")
+    if n_existing:
+        parts.append(f"{n_existing} existing collection(s) attached")
+    summary = ", ".join(parts) or "no collections"
+
     return {
         "status": "success",
         "task_id": task_id,
-        "collection_ids": collection_ids,
+        "collection_ids": all_ids,
         "message": (
-            f"Task **{title}** started — {n} collection(s) dispatched. "
+            f"Task **{title}** started — {summary}. "
             "The UI shows live progress. Continue with your next steps when data is ready."
         ),
     }

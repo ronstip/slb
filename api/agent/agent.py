@@ -20,26 +20,7 @@ from api.agent.prompts.meta_agent import (
     META_AGENT_DYNAMIC_PROMPT,
     META_AGENT_STATIC_PROMPT,
 )
-from api.agent.tools.ask_user import ask_user
-from api.agent.tools.cancel_collection import cancel_collection
-from api.agent.tools.compose_email import compose_email
-from api.agent.tools.create_chart import create_chart
-from api.agent.tools.start_task import start_task
-from api.agent.tools.enrich_collection import enrich_collection
-from api.agent.tools.export_data import export_data
-from api.agent.tools.generate_dashboard import generate_dashboard
-from api.agent.tools.generate_presentation import generate_presentation
-from api.agent.tools.generate_report import generate_report
-from api.agent.tools.get_collection_stats import get_collection_stats
-from api.agent.tools.get_past_collections import get_collection_details
-from api.agent.tools.get_progress import get_progress
-from api.agent.tools.get_task_status import get_task_status
-from api.agent.tools.refresh_engagements import refresh_engagements
-from api.agent.tools.set_active_task import set_active_task
-from api.agent.tools.set_working_collections import set_working_collections
-from api.agent.tools.show_metrics import show_metrics
-from api.agent.tools.show_topics import show_topics
-from api.agent.tools.update_todos import update_todos
+from api.agent.tools.registry import compose_tools
 from api.auth.session_service import FirestoreSessionService
 from config.settings import get_settings
 
@@ -64,37 +45,9 @@ def create_agent(model_override: str | None = None) -> LlmAgent:
     )
 
     # ─── Tool list ───────────────────────────────────────────────────
-    tools = [
-        # Planning
-        update_todos,
-        # Task management
-        start_task,
-        get_task_status,
-        set_active_task,
-        # Research & context
-        get_collection_details,
-        ask_user,
-        # Data & analysis
-        bq_toolset,
-        # Collection lifecycle
-        get_progress,
-        cancel_collection,
-        enrich_collection,
-        refresh_engagements,
-        # Output & visualization
-        create_chart,
-        export_data,
-        compose_email,
-        get_collection_stats,
-        generate_report,
-        generate_dashboard,
-        generate_presentation,
-        # Display widgets
-        show_metrics,
-        show_topics,
-        # Context management
-        set_working_collections,
-    ]
+    # All registered agent tools + pre-built toolsets (BigQuery, Search).
+    tools: list = compose_tools()
+    tools.append(bq_toolset)
 
     # Google Search — direct on the meta-agent for full context awareness
     if settings.enable_search_grounding:

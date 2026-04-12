@@ -21,7 +21,7 @@ init_firebase()
 
 import requests as http_requests
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -1499,6 +1499,88 @@ async def create_task_endpoint(
         status=request.get("status", "approved"),
     )
     return task
+
+
+class WizardPlanRequest(BaseModel):
+    description: str
+    prior_answers: dict[str, list[str]] | None = None
+
+
+@app.post("/wizard/plan")
+async def wizard_plan_endpoint(
+    request: WizardPlanRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Interpret a user's agent description into a structured WizardPlan.
+
+    Preloads the user's recent collections server-side, passes them to the
+    planner as a shortlist, and returns a validated plan the frontend can
+    drop into steps 2 and 3 of the create-agent wizard.
+    """
+    description = (request.description or "").strip()
+    if len(description) < 10:
+        raise HTTPException(status_code=400, detail="Description too short (min 10 chars)")
+
+    fs = get_fs()
+    db = fs._db
+
+    # Collect user's own + org-visible collections (max ~20 most recent, ready).
+    docs_iter = db.collection("collection_status").where("user_id", "==", user.uid).stream()
+    docs = list(docs_iter)
+    if user.org_id:
+        try:
+            org_docs = db.collection("collection_status").where("org_id", "==", user.org_id).stream()
+            for d in org_docs:
+                data = d.to_dict()
+                if data.get("visibility") == "org":
+                    docs.append(d)
+        except Exception as e:
+            logger.warning("wizard_plan: org query failed: %s", e)
+
+    shortlist: list[dict] = []
+    seen: set[str] = set()
+    for doc in docs:
+        if doc.id in seen:
+            continue
+        seen.add(doc.id)
+        data = doc.to_dict() or {}
+        if data.get("status") not in ("ready", "completed") and (data.get("posts_collected") or 0) <= 0:
+            continue
+        cfg = data.get("config") or {}
+        created_at = data.get("created_at")
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
+        kws = cfg.get("keywords") or []
+        title = (kws[0] if kws else cfg.get("platforms", ["collection"])[0]) if cfg else doc.id[:8]
+        shortlist.append({
+            "collection_id": doc.id,
+            "title": str(title),
+            "platforms": cfg.get("platforms") or [],
+            "keywords": kws,
+            "posts_collected": data.get("posts_collected", 0),
+            "created_at": created_at or "",
+        })
+
+    shortlist.sort(key=lambda c: c["created_at"], reverse=True)
+    shortlist = shortlist[:20]
+
+    from api.agent.interpreters.wizard_planner import plan_wizard
+
+    user_context = {
+        "collections": shortlist,
+        "now": datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        result = plan_wizard(description, user_context, prior_answers=request.prior_answers)
+    except ValidationError as e:
+        logger.warning("wizard_plan: schema validation failed: %s", e)
+        raise HTTPException(status_code=502, detail={"error": "planner_schema_error", "detail": str(e)})
+    except Exception as e:
+        logger.exception("wizard_plan: planner call failed")
+        raise HTTPException(status_code=502, detail={"error": "planner_failed", "detail": str(e)})
+
+    return result.model_dump()
 
 
 @app.get("/tasks/{task_id}")

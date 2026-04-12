@@ -1,5 +1,5 @@
-import { useState, type KeyboardEvent } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
+import { Minus, Plus, X } from 'lucide-react';
 import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 import { PLATFORMS, PLATFORM_LABELS } from '../../../lib/constants.ts';
 import { Input } from '../../../components/ui/input.tsx';
@@ -12,12 +12,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../../components/ui/select.tsx';
+import { MultiSelect, type MultiSelectOption } from '../../../components/ui/multi-select.tsx';
+import { Skeleton } from '../../../components/ui/skeleton.tsx';
+import { listCollections } from '../../../api/endpoints/collections.ts';
+import type { CollectionStatusResponse } from '../../../api/types.ts';
 import { cn } from '../../../lib/utils.ts';
-import type { WizardCollectionSettings } from './AgentCreationWizard.tsx';
+import type { PlanStatus, WizardCollectionSettings } from './AgentCreationWizard.tsx';
+import { AIThinkingCard } from './AIThinkingCard.tsx';
+import { EnrichmentEditor } from './EnrichmentEditor.tsx';
 
 interface CollectionSettingsPanelProps {
   settings: WizardCollectionSettings;
   onChange: (settings: WizardCollectionSettings) => void;
+  planStatus: PlanStatus;
 }
 
 const TIME_RANGES = [
@@ -28,12 +35,47 @@ const TIME_RANGES = [
   { label: '1 year', value: 365 },
 ];
 
-export function CollectionSettingsPanel({ settings, onChange }: CollectionSettingsPanelProps) {
+function collectionLabel(c: CollectionStatusResponse): string {
+  const kw = c.config?.keywords?.[0];
+  const plats = c.config?.platforms?.slice(0, 2).join('/');
+  if (kw && plats) return `${kw} — ${plats}`;
+  if (kw) return kw;
+  if (plats) return plats;
+  return c.collection_id.slice(0, 8);
+}
+
+export function CollectionSettingsPanel({ settings, onChange, planStatus }: CollectionSettingsPanelProps) {
   const [keywordInput, setKeywordInput] = useState('');
+  const [availableCollections, setAvailableCollections] = useState<CollectionStatusResponse[]>([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    listCollections()
+      .then((list) => {
+        if (cancelled) return;
+        const ready = list.filter((c) => c.status === 'ready' || c.posts_collected > 0);
+        setAvailableCollections(ready);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableCollections([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCollectionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const update = (partial: Partial<WizardCollectionSettings>) => {
     onChange({ ...settings, ...partial });
   };
+
+  const collectionOptions: MultiSelectOption[] = availableCollections.map((c) => ({
+    value: c.collection_id,
+    label: collectionLabel(c),
+  }));
 
   const togglePlatform = (p: string) => {
     const next = settings.platforms.includes(p)
@@ -71,8 +113,88 @@ export function CollectionSettingsPanel({ settings, onChange }: CollectionSettin
           Collection Settings
         </h3>
       </div>
+      <p className="text-xs text-muted-foreground mb-4 -mt-2">
+        Attach existing collections, configure a new one, or both.
+      </p>
 
+      {(planStatus === 'idle' || planStatus === 'clarifying') && (
+        <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border/50 p-8 text-center">
+          <p className="text-xs text-muted-foreground">
+            Describe your agent in step 1,
+            <br />
+            then click <span className="font-medium text-primary">Continue</span>.
+          </p>
+        </div>
+      )}
+
+      {planStatus === 'planning' && (
+        <div className="space-y-4 flex-1 pointer-events-none animate-pulse">
+          <AIThinkingCard label="Planning collection" />
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-24" />
+            <div className="flex gap-2 flex-wrap">
+              <Skeleton className="h-7 w-20 rounded-full" />
+              <Skeleton className="h-7 w-20 rounded-full" />
+              <Skeleton className="h-7 w-20 rounded-full" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <div className="flex gap-1.5">
+              <Skeleton className="h-7 w-16 rounded-full" />
+              <Skeleton className="h-7 w-16 rounded-full" />
+              <Skeleton className="h-7 w-16 rounded-full" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Skeleton className="h-8" />
+            <Skeleton className="h-8" />
+          </div>
+        </div>
+      )}
+
+      {(planStatus === 'ready' || planStatus === 'error') && (
       <div className="space-y-4 flex-1">
+        {/* Existing collections picker */}
+        {(collectionsLoading || availableCollections.length > 0) && (
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground mb-2 block">
+              Use existing collections <span className="text-muted-foreground/50">(optional)</span>
+            </Label>
+            <MultiSelect
+              value={settings.existingCollectionIds}
+              options={collectionOptions}
+              onChange={(ids) => update({ existingCollectionIds: ids })}
+              placeholder={collectionsLoading ? 'Loading…' : 'Select collections to attach'}
+            />
+          </div>
+        )}
+
+        {/* Toggle for new collection block */}
+        <button
+          type="button"
+          onClick={() => update({ newCollectionEnabled: !settings.newCollectionEnabled })}
+          className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+        >
+          {settings.newCollectionEnabled ? (
+            <>
+              <Minus className="h-3.5 w-3.5" />
+              Remove new collection
+            </>
+          ) : (
+            <>
+              <Plus className="h-3.5 w-3.5" />
+              Configure a new collection
+            </>
+          )}
+        </button>
+
+        {settings.newCollectionEnabled && (
+          <>
         {/* Platforms */}
         <div>
           <Label className="text-xs font-medium text-muted-foreground mb-2 block">Platforms</Label>
@@ -177,7 +299,22 @@ export function CollectionSettingsPanel({ settings, onChange }: CollectionSettin
             />
           </div>
         </div>
+          </>
+        )}
+
+        <EnrichmentEditor
+          context={settings.enrichmentContext}
+          onContextChange={(v) =>
+            update({ enrichmentContext: v, enrichmentFromAI: false })
+          }
+          customFields={settings.customFields}
+          onCustomFieldsChange={(fields) =>
+            update({ customFields: fields, enrichmentFromAI: false })
+          }
+          generatedByAI={settings.enrichmentFromAI}
+        />
       </div>
+      )}
     </div>
   );
 }

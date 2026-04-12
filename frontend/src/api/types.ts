@@ -773,3 +773,59 @@ export interface AdminRevenue {
   daily_revenue: { date: string; revenue_cents: number; purchases: number }[];
   recent_purchases: CreditPurchaseHistoryItem[];
 }
+
+// --- Wizard planner ---
+
+export type CustomFieldType = 'str' | 'bool' | 'int' | 'float' | 'list[str]' | 'literal';
+
+export interface CustomFieldDef {
+  name: string;
+  description: string;
+  type: CustomFieldType;
+  options?: string[] | null;
+}
+
+export interface NewCollectionPlan {
+  platforms: string[];
+  keywords: string[];
+  channel_urls: string[];
+  time_range_days: number;
+  geo_scope: 'global' | 'US' | 'UK' | 'EU' | 'APAC';
+  n_posts: number;
+}
+
+export interface SchedulePlan {
+  frequency: 'hourly' | 'daily' | 'weekly' | 'monthly';
+  time: string; // "HH:MM" UTC
+}
+
+export interface WizardPlan {
+  title: string;
+  summary: string;
+  reasoning: string;
+  existing_collection_ids: string[];
+  new_collection: NewCollectionPlan | null;
+  task_type: 'one_shot' | 'recurring';
+  schedule: SchedulePlan | null;
+  auto_report: boolean;
+  auto_email: boolean;
+  auto_slides: boolean;
+  auto_dashboard: boolean;
+  custom_fields: CustomFieldDef[];
+  enrichment_context: string;
+}
+
+export interface WizardClarification {
+  id: string;
+  type: 'pill_row' | 'card_select' | 'tag_input';
+  question: string;
+  options?: { value: string; label: string; description?: string }[];
+  multi_select?: boolean;
+  placeholder?: string;
+}
+
+export interface WizardPlannerResponse {
+  status: 'plan' | 'clarification';
+  plan: WizardPlan | null;
+  clarifications: WizardClarification[] | null;
+}
