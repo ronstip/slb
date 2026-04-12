@@ -5,7 +5,7 @@ import {
   Play,
   Radio,
 } from 'lucide-react';
-import type { Agent, AgentStatus } from '../../../api/endpoints/agents.ts';
+import type { AgentStatus } from '../../../api/endpoints/agents.ts';
 import { Badge } from '../../../components/ui/badge.tsx';
 
 export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {

@@ -139,7 +139,7 @@ function buildSourceForCollection(collectionId: string): Source {
   if (stored) return stored;
   return {
     collectionId,
-    status: 'completed',
+    status: 'success',
     config: { platforms: [], keywords: [], channel_urls: [], time_range: { start: '', end: '' }, include_comments: false, geo_scope: 'global' } as CollectionConfig,
     title: collectionId.slice(0, 8),
     postsCollected: 0,

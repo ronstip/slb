@@ -728,7 +728,6 @@ function PromptApproval({
   onAdjustTextChange: (value: string) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isApprove = selected.includes('approve');
   const isAdjust = selected.includes('adjust');
 
   useEffect(() => {

@@ -54,7 +54,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
     listCollections()
       .then((list) => {
         if (cancelled) return;
-        const ready = list.filter((c) => c.status === 'ready' || c.posts_collected > 0);
+        const ready = list.filter((c) => c.status === 'success' || c.posts_collected > 0);
         setAvailableCollections(ready);
       })
       .catch(() => {

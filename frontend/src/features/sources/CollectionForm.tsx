@@ -145,7 +145,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
 
       addSource({
         collectionId: result.collection_id,
-        status: 'pending',
+        status: 'running',
         config: {
           platforms,
           keywords,

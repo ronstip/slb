@@ -79,6 +79,7 @@ export function reconstructSession(
         cards: [],
         todos: [],
         activityLog: [],
+        blocks: [],
       };
     }
     return currentAgentMsg!;
@@ -86,7 +87,7 @@ export function reconstructSession(
 
   for (const event of events) {
     if (!event.content?.parts) {
-      console.debug('[reconstruct] skipping event without content.parts:', event.author, event.id);
+      console.debug('[reconstruct] skipping event without content.parts:', event.author);
       continue;
     }
 
@@ -103,6 +104,7 @@ export function reconstructSession(
           cards: [],
           todos: [],
           activityLog: [],
+          blocks: [],
         });
         continue;
       }
