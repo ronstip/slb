@@ -109,9 +109,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setUser(u);
-      setLoading(false);
       authReadyRef.current!.resolve();
-      await fetchProfile();
+
+      // Check if a "View as User" impersonation session is active
+      // (persisted in sessionStorage across page refreshes).
+      // When it is, we MUST await fetchProfile before setting loading=false.
+      // Otherwise child components mount and fire data-fetching effects
+      // (e.g. fetchAgents) that race with fetchProfile — the early requests
+      // may resolve first and populate stores with the admin's own data,
+      // which then stays visible even though the profile shows the target user.
+      let isImpersonating = false;
+      try {
+        const raw = sessionStorage.getItem('slb-impersonation');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          isImpersonating = !!parsed?.state?.targetUid;
+        }
+      } catch { /* ignore */ }
+
+      if (isImpersonating) {
+        await fetchProfile();
+        setLoading(false);
+      } else {
+        setLoading(false);
+        await fetchProfile();
+      }
     });
     return unsub;
   }, []);

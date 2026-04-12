@@ -23,6 +23,9 @@ _USER_CACHE_TTL = 300  # 5 minutes
 _last_login_written: dict[str, float] = {}
 _LAST_LOGIN_INTERVAL = 3600  # Only update last_login_at once per hour
 
+# Header used by super admins to view the app as another user.
+IMPERSONATE_HEADER = "X-Impersonate-User-Id"
+
 
 @dataclass
 class CurrentUser:
@@ -32,13 +35,19 @@ class CurrentUser:
     org_id: str | None
     org_role: str | None
     is_anonymous: bool = False
+    # Set only when a super admin is viewing the app as another user.
+    # `uid`/`email` above refer to the TARGET user; these fields preserve
+    # the real caller's identity for audit logging and permission gates.
+    impersonated_by: str | None = None
+    real_email: str | None = None
 
 
-async def get_current_user(request: Request) -> CurrentUser:
-    """FastAPI dependency that extracts and verifies user identity.
+async def _resolve_real_user(request: Request) -> CurrentUser:
+    """Verify the Firebase token and return the real caller.
 
-    - Dev mode (no Authorization header): returns a default dev user.
-    - Prod: verifies Firebase ID token and provisions user if needed.
+    Does NOT apply impersonation — used by `get_current_user` internally
+    and by endpoints that must always resolve against the true caller
+    (e.g. start/stop impersonation).
     """
     settings = get_settings()
 
@@ -101,6 +110,73 @@ async def get_current_user(request: Request) -> CurrentUser:
     _user_cache[uid] = (current_user, now + _USER_CACHE_TTL)
 
     return current_user
+
+
+async def get_real_user(request: Request) -> CurrentUser:
+    """FastAPI dependency: resolves the real Firebase-authenticated caller.
+
+    Unlike `get_current_user`, this NEVER honors the impersonation header.
+    Use for endpoints that must always identify the true caller, such as
+    `/admin/impersonate/start` and `/admin/impersonate/stop`.
+    """
+    return await _resolve_real_user(request)
+
+
+async def get_current_user(request: Request) -> CurrentUser:
+    """FastAPI dependency that extracts and verifies user identity.
+
+    - Dev mode (no Authorization header): returns a default dev user.
+    - Prod: verifies Firebase ID token and provisions user if needed.
+    - If the caller is a super admin AND the `X-Impersonate-User-Id` header
+      is present, returns a `CurrentUser` representing the target user with
+      `impersonated_by` set. The header is ignored for non-super-admins.
+    """
+    real_user = await _resolve_real_user(request)
+
+    target_uid = request.headers.get(IMPERSONATE_HEADER, "").strip()
+    if not target_uid:
+        return real_user
+
+    # Impersonation requested — gate behind super admin check.
+    # Import locally to avoid a circular import (admin.py imports CurrentUser).
+    from api.auth.admin import is_super_admin_email
+
+    settings = get_settings()
+    if not is_super_admin_email(real_user.email):
+        logger.warning(
+            "Non-admin %s attempted to impersonate %s — ignoring header",
+            real_user.email, target_uid,
+        )
+        raise HTTPException(status_code=403, detail="Impersonation requires super admin")
+
+    if target_uid == real_user.uid:
+        return real_user
+
+    fs = get_fs()
+    target_doc = await asyncio.to_thread(fs.get_user, target_uid)
+    if not target_doc:
+        raise HTTPException(status_code=404, detail="Impersonation target not found")
+
+    target_email = target_doc.get("email", "") or ""
+
+    # Block admin-on-admin impersonation.
+    if is_super_admin_email(target_email):
+        raise HTTPException(status_code=403, detail="Cannot impersonate another super admin")
+
+    # Build a CurrentUser for the target. CRUCIAL: do NOT write to
+    # `_user_cache` or `_last_login_written` for the target uid — normal
+    # requests from the target would then incorrectly see `impersonated_by`
+    # set (cache poisoning).
+    return CurrentUser(
+        uid=target_uid,
+        email=target_email,
+        display_name=target_doc.get("display_name"),
+        org_id=target_doc.get("org_id"),
+        org_role=target_doc.get("org_role"),
+        is_anonymous=bool(target_doc.get("is_anonymous", False)),
+        impersonated_by=real_user.uid,
+        real_email=real_user.email,
+    )
 
 
 def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = False) -> dict:

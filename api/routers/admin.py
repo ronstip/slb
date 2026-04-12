@@ -4,10 +4,11 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 
-from api.auth.admin import require_super_admin
-from api.auth.dependencies import CurrentUser, get_current_user
+from api.auth.admin import is_super_admin_email, require_super_admin
+from api.auth.dependencies import CurrentUser, get_current_user, get_real_user
 from api.deps import get_bq, get_fs
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,17 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 def _admin_user(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     """Dependency that enforces super admin access."""
+    require_super_admin(user)
+    return user
+
+
+def _real_admin_user(user: CurrentUser = Depends(get_real_user)) -> CurrentUser:
+    """Enforces super admin status on the REAL caller, ignoring impersonation.
+
+    Used by impersonation endpoints so they always resolve against the true
+    Firebase-authenticated super admin, even if an impersonation header is
+    set (e.g. stop-impersonation while a session is active).
+    """
     require_super_admin(user)
     return user
 
@@ -124,6 +136,7 @@ async def admin_users(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     search: str = Query("", description="Search by email or display name"),
+    exclude_super_admins: bool = Query(False, description="Hide super admins from results"),
     user: CurrentUser = Depends(_admin_user),
 ):
     """List all platform users with their usage counters."""
@@ -133,6 +146,9 @@ async def admin_users(
         asyncio.to_thread(fs.list_all_users),
         asyncio.to_thread(fs.list_all_collection_statuses, 1000),
     )
+
+    if exclude_super_admins:
+        all_users = [u for u in all_users if not is_super_admin_email(u.get("email"))]
 
     # Build per-user posts/collections counts from collection_status (source of truth)
     user_posts_map: dict[str, int] = {}
@@ -450,3 +466,100 @@ async def admin_revenue(
         "daily_revenue": daily_revenue,
         "recent_purchases": recent_purchases,
     }
+
+
+# ---------------------------------------------------------------------------
+# Impersonation — "View as User" for super admins
+# ---------------------------------------------------------------------------
+
+
+class ImpersonateStartRequest(BaseModel):
+    target_uid: str
+
+
+def _write_audit_entry(
+    event: str,
+    real_user: CurrentUser,
+    target_uid: str | None,
+    target_email: str | None,
+    request: Request,
+) -> None:
+    """Append an entry to the impersonation_audit Firestore collection.
+
+    Best-effort — failures are logged but do not block the request.
+    """
+    try:
+        fs = get_fs()
+        client_host = request.client.host if request.client else None
+        entry = {
+            "event": event,
+            "real_uid": real_user.uid,
+            "real_email": real_user.email,
+            "target_uid": target_uid,
+            "target_email": target_email,
+            "occurred_at": datetime.now(timezone.utc),
+            "ip": client_host,
+            "user_agent": request.headers.get("user-agent", ""),
+        }
+        fs._db.collection("impersonation_audit").add(entry)
+    except Exception:
+        logger.exception("Failed to write impersonation audit entry")
+
+
+@router.post("/impersonate/start", status_code=204)
+async def impersonate_start(
+    body: ImpersonateStartRequest,
+    request: Request,
+    real_user: CurrentUser = Depends(_real_admin_user),
+):
+    """Begin an impersonation session. Writes an audit log entry.
+
+    This endpoint does NOT mutate server state — the actual impersonation
+    is performed per-request via the `X-Impersonate-User-Id` header. This
+    call exists to validate the target and record the start event.
+    """
+    target_uid = (body.target_uid or "").strip()
+    if not target_uid:
+        raise HTTPException(status_code=400, detail="target_uid is required")
+    if target_uid == real_user.uid:
+        raise HTTPException(status_code=400, detail="Cannot impersonate yourself")
+
+    fs = get_fs()
+    target_doc = await asyncio.to_thread(fs.get_user, target_uid)
+    if not target_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_email = target_doc.get("email", "") or ""
+    if is_super_admin_email(target_email):
+        raise HTTPException(status_code=403, detail="Cannot impersonate another super admin")
+
+    _write_audit_entry("start", real_user, target_uid, target_email, request)
+    logger.info(
+        "Impersonation START: %s -> %s (%s)",
+        real_user.email, target_email, target_uid,
+    )
+
+
+@router.post("/impersonate/stop", status_code=204)
+async def impersonate_stop(
+    request: Request,
+    real_user: CurrentUser = Depends(_real_admin_user),
+):
+    """End an impersonation session. Writes an audit log entry.
+
+    Accepts requests regardless of whether an impersonation header is
+    currently set — the frontend fires this during teardown.
+    """
+    target_uid = request.headers.get("X-Impersonate-User-Id", "").strip() or None
+    target_email: str | None = None
+    if target_uid:
+        try:
+            fs = get_fs()
+            target_doc = await asyncio.to_thread(fs.get_user, target_uid)
+            if target_doc:
+                target_email = target_doc.get("email") or None
+        except Exception:
+            pass
+
+    _write_audit_entry("stop", real_user, target_uid, target_email, request)
+    logger.info("Impersonation STOP: %s", real_user.email)

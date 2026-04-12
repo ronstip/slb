@@ -204,9 +204,25 @@ export function AgentsPage() {
 
   const toggleStatus = (status: AgentStatus) => {
     setStatusFilter((prev) => {
+      // When no explicit filter is set, all non-archived statuses are implicitly active.
+      // Toggling from this state should behave as if all non-archived were checked.
+      if (prev.size === 0) {
+        if (status === 'archived') {
+          // Turning on archived → show everything
+          return new Set(ALL_STATUSES);
+        }
+        // Turning off a non-archived status → explicit filter with everything except that one and archived
+        const next = new Set(ALL_STATUSES.filter((s) => s !== 'archived' && s !== status));
+        return next;
+      }
       const next = new Set(prev);
       if (next.has(status)) next.delete(status);
       else next.add(status);
+      // If the resulting set matches "all non-archived", collapse back to empty (default)
+      const allNonArchived = ALL_STATUSES.filter((s) => s !== 'archived');
+      if (allNonArchived.every((s) => next.has(s)) && !next.has('archived')) {
+        return new Set();
+      }
       return next;
     });
   };
@@ -315,7 +331,7 @@ export function AgentsPage() {
             {ALL_STATUSES.map((s) => (
               <DropdownMenuCheckboxItem
                 key={s}
-                checked={statusFilter.has(s)}
+                checked={statusFilter.size === 0 ? s !== 'archived' : statusFilter.has(s)}
                 onCheckedChange={() => toggleStatus(s)}
               >
                 <span className="flex items-center gap-2">

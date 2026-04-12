@@ -392,9 +392,13 @@ def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
 
 @app.get("/me")
 async def get_me(user: CurrentUser = Depends(get_current_user)):
-    """Return the current user's profile."""
+    """Return the current user's profile.
+
+    During impersonation this returns the TARGET user's profile so all
+    frontend permission gates flip. The real caller's identity is surfaced
+    in the optional `impersonation` block for the banner UI.
+    """
     fs = get_fs()
-    settings = get_settings()
 
     org_name = None
     if user.org_id:
@@ -404,11 +408,13 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
 
     user_doc = fs.get_user(user.uid)
 
-    # Check super admin status
-    admin_emails = [e.strip().lower() for e in settings.super_admin_emails.split(",") if e.strip()]
-    is_super_admin = user.email.lower() in admin_emails if admin_emails else False
+    # is_super_admin reflects the TARGET user's privileges — during
+    # impersonation this is always false because admin-on-admin is blocked.
+    # The real caller's super admin status is not leaked through this field.
+    from api.auth.admin import is_super_admin_email
+    is_super_admin = is_super_admin_email(user.email)
 
-    return {
+    response = {
         "uid": user.uid,
         "email": user.email,
         "display_name": user_doc.get("display_name") if user_doc else user.display_name,
@@ -423,14 +429,35 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
         "is_super_admin": is_super_admin,
     }
 
+    if user.impersonated_by is not None:
+        response["impersonation"] = {
+            "real_uid": user.impersonated_by,
+            "real_email": user.real_email,
+            "target_uid": user.uid,
+            "target_email": user.email,
+            "target_display_name": response["display_name"],
+        }
+
+    return response
+
 
 class LinkAccountRequest(BaseModel):
     old_uid: str
 
 
 @app.post("/auth/link-account")
-async def link_account(body: LinkAccountRequest, user: CurrentUser = Depends(get_current_user)):
+async def link_account(
+    body: LinkAccountRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
     """Migrate anonymous user data to linked account after UID change."""
+    # Block while impersonating — mutates user docs and would corrupt the
+    # target user's data if triggered as another user.
+    if user.impersonated_by is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="This action is disabled while viewing as another user",
+        )
     from api.auth.dependencies import _user_cache
 
     old_uid = body.old_uid
@@ -630,11 +657,13 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     # and overwrite the flush's correct state (including awaiting_user_input).
     # Session is persisted once at end-of-turn via runner.session_service.flush().
 
-    # Track usage in background (3 Firestore writes)
-    from api.services.usage_service import track_query
-    threading.Thread(
-        target=track_query, args=(user_id, user.org_id, session_id), daemon=True
-    ).start()
+    # Track usage in background (3 Firestore writes).
+    # Skip while impersonating so we don't pollute the target user's metrics.
+    if user.impersonated_by is None:
+        from api.services.usage_service import track_query
+        threading.Thread(
+            target=track_query, args=(user_id, user.org_id, session_id), daemon=True
+        ).start()
 
     logger.info("PERF pre_runner=%.3fs", _time.perf_counter() - t_start)
 

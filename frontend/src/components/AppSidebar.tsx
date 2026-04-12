@@ -24,12 +24,14 @@ import {
   ShieldCheck,
   StopCircle,
   Sun,
+  UserCog,
 } from 'lucide-react';
 import type { Agent } from '../api/endpoints/agents.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from './theme-provider.tsx';
 import { useAgentStore } from '../stores/agent-store.ts';
 import { useUIStore } from '../stores/ui-store.ts';
+import { ImpersonateUserModal } from '../features/admin/ImpersonateUserModal.tsx';
 import { RUNNABLE_STATUSES, STATUS_CONFIG } from '../features/agents/detail/agent-status-utils.tsx';
 import { Logo } from './Logo.tsx';
 import { Button } from './ui/button.tsx';
@@ -93,6 +95,8 @@ export function AppSidebar({
   const isDetailPage = !!activeAgent;
   // Default: expanded on non-detail pages, collapsed on detail pages
   const [recentAgentsOpen, setRecentAgentsOpen] = useState(!isDetailPage);
+  const [impersonateOpen, setImpersonateOpen] = useState(false);
+  const isImpersonating = !!profile?.impersonation;
 
   const isDark =
     theme === 'dark' ||
@@ -101,8 +105,15 @@ export function AppSidebar({
   const isAgentsPage = location.pathname === '/agents';
   const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'executing';
 
-  const displayName = isAnonymous ? 'Guest' : (user?.displayName || profile?.display_name || 'Guest');
-  const displayEmail = isAnonymous ? '' : (user?.email || profile?.email || '');
+  // During impersonation, profile contains the target user's data from /me,
+  // while user is still the real admin's Firebase auth object — prefer profile.
+  const displayName = isAnonymous ? 'Guest' : (isImpersonating
+    ? (profile?.display_name || profile?.email || 'User')
+    : (user?.displayName || profile?.display_name || 'Guest'));
+  const displayEmail = isAnonymous ? '' : (isImpersonating
+    ? (profile?.email || '')
+    : (user?.email || profile?.email || ''));
+  const displayPhoto = isImpersonating ? (profile?.photo_url || undefined) : (user?.photoURL || undefined);
   const displayInitial = isAnonymous ? 'G' : (displayName[0] || '?');
 
   // ── User dropdown menu content (shared between expanded and collapsed) ──
@@ -153,6 +164,12 @@ export function AppSidebar({
           Admin Dashboard
         </DropdownMenuItem>
       )}
+      {!isAnonymous && profile?.is_super_admin && !isImpersonating && (
+        <DropdownMenuItem onClick={() => setImpersonateOpen(true)}>
+          <UserCog className="mr-2 h-3.5 w-3.5" />
+          View as User
+        </DropdownMenuItem>
+      )}
       {!isAnonymous && (
         <>
           <DropdownMenuSeparator />
@@ -168,6 +185,8 @@ export function AppSidebar({
   // ── Collapsed sidebar (48px) ──
   if (collapsed) {
     return (
+      <>
+      <ImpersonateUserModal open={impersonateOpen} onOpenChange={setImpersonateOpen} />
       <div
         className="flex h-full cursor-pointer flex-col items-center bg-white py-3 dark:bg-[var(--background)]"
         onClick={(e) => {
@@ -218,7 +237,7 @@ export function AppSidebar({
               <DropdownMenuTrigger asChild>
                 <button className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Avatar className="h-7 w-7">
-                    <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
+                    <AvatarImage src={displayPhoto} referrerPolicy="no-referrer" />
                     <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
                       {displayInitial}
                     </AvatarFallback>
@@ -231,11 +250,14 @@ export function AppSidebar({
           {userDropdownContent('right')}
         </DropdownMenu>
       </div>
+      </>
     );
   }
 
   // ── Expanded sidebar ──
   return (
+    <>
+    <ImpersonateUserModal open={impersonateOpen} onOpenChange={setImpersonateOpen} />
     <div className="flex h-full flex-col bg-white dark:bg-[var(--background)]">
       {/* Top: Logo + collapse button */}
       <div className="flex items-center justify-between px-3 py-3">
@@ -401,6 +423,7 @@ export function AppSidebar({
           {recentAgentsOpen && (
             <div className="flex flex-col gap-0.5 pb-2">
               {[...agents]
+                .filter((a) => a.status !== 'archived')
                 .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
                 .slice(0, 8)
                 .map((agent) => {
@@ -438,7 +461,7 @@ export function AppSidebar({
           <DropdownMenuTrigger asChild>
             <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Avatar className="h-7 w-7 shrink-0">
-                <AvatarImage src={user?.photoURL || undefined} referrerPolicy="no-referrer" />
+                <AvatarImage src={displayPhoto} referrerPolicy="no-referrer" />
                 <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
                   {displayInitial}
                 </AvatarFallback>
@@ -455,5 +478,6 @@ export function AppSidebar({
         </DropdownMenu>
       </div>
     </div>
+    </>
   );
 }
