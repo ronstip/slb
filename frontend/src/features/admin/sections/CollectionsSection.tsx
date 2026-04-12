@@ -413,7 +413,7 @@ export function CollectionsSection() {
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">User</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Status</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Platforms</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Collected</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Charged</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Stored</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Enriched</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Created</th>
@@ -422,7 +422,8 @@ export function CollectionsSection() {
             </thead>
             <tbody>
               {(data?.collections ?? []).map((c) => {
-                const storedDiff = c.posts_stored != null ? c.posts_collected - c.posts_stored : null;
+                const charged = c.bd_raw_records ?? c.posts_collected;
+                const storedDiff = c.posts_stored != null ? charged - c.posts_stored : null;
                 const hasLoss = storedDiff != null && storedDiff > 0;
                 return (
                   <tr key={c.collection_id} className="border-b border-border last:border-0 hover:bg-muted/30">
@@ -447,7 +448,7 @@ export function CollectionsSection() {
                         ))}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">{c.posts_collected.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">{charged.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       {c.posts_stored != null ? (
                         <span className="flex items-center justify-end gap-1.5">

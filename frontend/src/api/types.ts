@@ -767,6 +767,7 @@ export interface AdminCollection {
   posts_collected: number;
   posts_enriched: number;
   posts_stored: number | null;
+  bd_raw_records: number | null;
   platforms: string[];
   created_at: string;
   error_message: string | null;

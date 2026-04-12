@@ -384,6 +384,7 @@ async def admin_collections(
         run_log = c.get("run_log") or {}
         funnel = run_log.get("funnel") or {}
         posts_stored = funnel.get("worker_posts_stored")  # None if no funnel data yet
+        bd_raw_records = funnel.get("bd_raw_records")  # None if no funnel data yet
 
         collections.append({
             "collection_id": c.get("collection_id", ""),
@@ -395,6 +396,7 @@ async def admin_collections(
             "posts_collected": c.get("posts_collected", 0),
             "posts_enriched": c.get("posts_enriched", 0),
             "posts_stored": posts_stored,
+            "bd_raw_records": bd_raw_records,
             "platforms": platforms if isinstance(platforms, list) else [],
             "created_at": c.get("created_at", ""),
             "error_message": c.get("error_message"),
