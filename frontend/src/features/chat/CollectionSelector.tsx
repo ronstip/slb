@@ -70,8 +70,8 @@ function CollectionRow({
   isOwner: boolean;
   isInOrg: boolean;
 }) {
-  const isProcessing = source.status === 'collecting' || source.status === 'enriching' || source.status === 'pending';
-  const isReady = source.status === 'completed';
+  const isProcessing = source.status === 'running';
+  const isReady = source.status === 'success';
   const isFailed = source.status === 'failed';
   const isShared = source.visibility === 'org';
 

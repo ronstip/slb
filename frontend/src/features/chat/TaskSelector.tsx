@@ -82,10 +82,10 @@ export function TaskSelector() {
           )}
           {visibleAgents.map((agent) => (
             <AgentItem
-              key={agent.task_id}
+              key={agent.agent_id}
               agent={agent}
-              isActive={agent.task_id === activeAgentId}
-              onClick={() => setActiveAgent(agent.task_id)}
+              isActive={agent.agent_id === activeAgentId}
+              onClick={() => setActiveAgent(agent.agent_id)}
             />
           ))}
         </div>

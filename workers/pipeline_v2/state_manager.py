@@ -243,7 +243,7 @@ class StateManager:
         if not crawlers:
             return True
         return all(
-            c.get("status") in ("completed", "failed")
+            c.get("status") in ("success", "failed")
             for c in crawlers.values()
         )
 

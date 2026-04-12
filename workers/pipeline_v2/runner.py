@@ -74,20 +74,20 @@ class PipelineRunner:
             )
             self._set_crashed_status(str(e))
 
-    def _get_task_id(self) -> str | None:
-        """Return the task_id linked to this collection, if any."""
+    def _get_agent_id(self) -> str | None:
+        """Return the agent_id linked to this collection, if any."""
         status = self.fs.get_collection_status(self.collection_id)
-        return (status or {}).get("task_id")
+        return (status or {}).get("agent_id")
 
     def _log_task(self, message: str, level: str = "info", metadata: dict | None = None) -> None:
-        """Write to the parent task's activity log (no-op if no task_id)."""
-        task_id = self._get_task_id()
-        if not task_id:
+        """Write to the parent agent's activity log (no-op if no agent_id)."""
+        agent_id = self._get_agent_id()
+        if not agent_id:
             return
         try:
-            self.fs.add_task_log(task_id, message, source="pipeline", level=level, metadata=metadata)
+            self.fs.add_agent_log(agent_id, message, source="pipeline", level=level, metadata=metadata)
         except Exception:
-            logger.debug("Failed to write task log for collection %s", self.collection_id, exc_info=True)
+            logger.debug("Failed to write agent log for collection %s", self.collection_id, exc_info=True)
 
     def _acquire_pipeline_lock(self) -> bool:
         """Check if this pipeline should run, preventing duplicate executions.
@@ -95,8 +95,8 @@ class PipelineRunner:
         Returns True if this instance should proceed, False if it should abort.
         Prevents the Cloud Tasks retry loop that caused 17x duplicate runs in production.
         """
-        TERMINAL_STATUSES = {"completed", "completed_with_errors", "failed", "cancelled"}
-        ACTIVE_STATUSES = {"collecting", "processing", "enriching"}
+        TERMINAL_STATUSES = {"success", "failed"}
+        ACTIVE_STATUSES = {"running"}
         STALE_THRESHOLD_SEC = 300  # 5 minutes
 
         status_doc = self.fs.get_collection_status(self.collection_id)
@@ -162,7 +162,7 @@ class PipelineRunner:
         # Initialize counts on the Firestore doc
         self.fs.update_collection_status(
             self.collection_id,
-            status="collecting",
+            status="running",
             counts={},
             total_posts_in_dag=0,
             crawlers={},
@@ -195,7 +195,7 @@ class PipelineRunner:
 
         # Check if cancelled or failed
         status = self.fs.get_collection_status(self.collection_id)
-        if (status or {}).get("status") == "cancelled":
+        if (status or {}).get("status") == "failed":
             logger.info("Pipeline %s cancelled", self.collection_id)
             return
 
@@ -220,8 +220,8 @@ class PipelineRunner:
 
         # Check if this collection is part of a task — trigger continuation if all done
         try:
-            from workers.task_continuation import check_task_completion
-            check_task_completion(self.collection_id)
+            from workers.agent_continuation import check_agent_completion
+            check_agent_completion(self.collection_id)
         except Exception:
             logger.exception("Task continuation check failed for %s", self.collection_id)
 
@@ -325,20 +325,20 @@ class PipelineRunner:
         def _track_snapshot(snapshot_id, dataset_id, discover_by):
             self.fs.save_snapshot(self.collection_id, snapshot_id, dataset_id, discover_by)
 
-        # Compute remaining snapshot budget (per-task aggregate)
+        # Compute remaining snapshot budget (per-agent aggregate)
         max_snapshots = self.settings.brightdata_max_snapshots_per_collection
-        task_id = self._status_doc.get("task_id")
-        if task_id:
+        agent_id = self._status_doc.get("agent_id")
+        if agent_id:
             try:
-                task_total = self.fs.get_task_snapshot_count(task_id)
-                task_remaining = max(0, self.settings.brightdata_max_snapshots_per_task - task_total)
-                max_snapshots = min(max_snapshots, task_remaining)
+                agent_total = self.fs.get_agent_snapshot_count(agent_id)
+                agent_remaining = max(0, self.settings.brightdata_max_snapshots_per_task - agent_total)
+                max_snapshots = min(max_snapshots, agent_remaining)
                 logger.info(
-                    "Snapshot budget: task %s used %d/%d, this collection gets %d",
-                    task_id[:8], task_total, self.settings.brightdata_max_snapshots_per_task, max_snapshots,
+                    "Snapshot budget: agent %s used %d/%d, this collection gets %d",
+                    agent_id[:8], agent_total, self.settings.brightdata_max_snapshots_per_task, max_snapshots,
                 )
             except Exception:
-                logger.warning("Failed to compute task snapshot budget, using per-collection default", exc_info=True)
+                logger.warning("Failed to compute agent snapshot budget, using per-collection default", exc_info=True)
 
         wrapper = DataProviderWrapper(config=self._config, snapshot_tracker=_track_snapshot, max_snapshots=max_snapshots)
 
@@ -357,7 +357,7 @@ class PipelineRunner:
 
             # Check for cancellation
             status = self.fs.get_collection_status(self.collection_id)
-            if status and status.get("status") == "cancelled":
+            if status and status.get("status") == "failed":
                 logger.info("Collection %s cancelled during crawl", self.collection_id)
                 return
 
@@ -455,13 +455,13 @@ class PipelineRunner:
             has_error = pstats.get("errors", 0) > 0
             self.state_manager.set_crawler_status(
                 platform,
-                "completed" if not has_error else "completed_with_errors",
+                "success" if not has_error else "success",
                 posts=pstats.get("posts", 0),
                 error=str(errors) if has_error else "",
             )
 
         if not stats:
-            self.state_manager.set_crawler_status("all", "completed", posts=total_posts)
+            self.state_manager.set_crawler_status("all", "success", posts=total_posts)
 
         # Store run_log
         run_log = {
@@ -477,7 +477,6 @@ class PipelineRunner:
 
         self.fs.update_collection_status(
             self.collection_id,
-            status="processing",
             run_log=run_log,
         )
 
@@ -535,7 +534,7 @@ class PipelineRunner:
                 logger.warning("Transient error reading status for %s, continuing", self.collection_id, exc_info=True)
                 status = None
 
-            if status and status.get("status") == "cancelled":
+            if status and status.get("status") == "failed":
                 logger.info("Pipeline %s cancelled during processing", self.collection_id)
                 return
 
@@ -697,10 +696,10 @@ class PipelineRunner:
 
         friendly = self._friendly_error(error)
 
-        # If we have partial data, mark as completed_with_errors instead of failed
+        # If we have partial data, still mark as success (partial data is usable)
         final_status = "failed"
         if self._total_posts_collected > 0:
-            final_status = "completed_with_errors"
+            final_status = "success"
             friendly = f"{friendly} ({self._total_posts_collected} posts collected before the error.)"
 
         try:
@@ -792,15 +791,7 @@ class PipelineRunner:
         current_status = (status or {}).get("status")
         config = (status or {}).get("config") or {}
 
-        if current_status in ("cancelled", "failed"):
+        if current_status == "failed":
             return
 
-        # Check for actual pipeline processing failures (not input stumps like MISSING_MEDIA)
-        counts = self.state_manager.get_counts()
-        has_failures = any(
-            counts.get(s.value, 0) > 0
-            for s in FAILURE_STATES
-        )
-
-        final = "completed_with_errors" if has_failures else "completed"
-        self.fs.update_collection_status(self.collection_id, status=final)
+        self.fs.update_collection_status(self.collection_id, status="success")

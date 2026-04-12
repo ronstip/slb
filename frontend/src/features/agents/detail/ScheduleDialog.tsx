@@ -51,15 +51,15 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
           auto_report: false,
         },
       };
-      if (task.task_type !== 'recurring') {
-        updates.task_type = 'recurring';
+      if (task.agent_type !== 'recurring') {
+        updates.agent_type = 'recurring';
         updates.status = 'monitoring';
       }
-      await patchAgent(task.task_id, updates as Parameters<typeof patchAgent>[1]);
+      await patchAgent(task.agent_id, updates as Parameters<typeof patchAgent>[1]);
       if (editRunNow) {
-        try { await runAgent(task.task_id); } catch { /* 409 = already running */ }
+        try { await runAgent(task.agent_id); } catch { /* 409 = already running */ }
       }
-      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.task_id] });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       fetchAgents();
       onOpenChange(false);
     } catch {

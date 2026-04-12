@@ -5,16 +5,12 @@ import { Button } from '../../../components/ui/button.tsx';
 import { cn } from '../../../lib/utils.ts';
 import { getAdminCollections } from '../../../api/endpoints/admin.ts';
 
-const STATUS_FILTERS = ['', 'pending', 'collecting', 'enriching', 'completed', 'monitoring', 'failed', 'cancelled'];
+const STATUS_FILTERS = ['', 'running', 'success', 'failed'];
 
 const STATUS_COLORS: Record<string, string> = {
-  completed: 'bg-green-500/10 text-green-700 dark:text-green-400',
-  monitoring: 'bg-blue-500/10 text-blue-700 dark:text-blue-400',
-  collecting: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
-  enriching: 'bg-purple-500/10 text-purple-700 dark:text-purple-400',
-  pending: 'bg-gray-500/10 text-gray-700 dark:text-gray-400',
+  running: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
+  success: 'bg-green-500/10 text-green-700 dark:text-green-400',
   failed: 'bg-red-500/10 text-red-700 dark:text-red-400',
-  cancelled: 'bg-gray-500/10 text-gray-500',
 };
 
 export function CollectionsSection() {

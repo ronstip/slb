@@ -8,7 +8,7 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartAgentResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 // Tools that are internal plumbing — skip from activity log
@@ -32,9 +32,9 @@ function getToolDescription(toolName: string, args: Record<string, unknown>): st
     case 'get_collection_details':
     case 'refresh_engagements':
       return (args.collection_id as string) || undefined;
-    case 'get_task_status':
-    case 'set_active_task':
-      return (args.task_id as string) || undefined;
+    case 'get_agent_status':
+    case 'set_active_agent':
+      return (args.agent_id as string) || (args.task_id as string) || undefined;
     case 'create_chart':
     case 'generate_report':
     case 'generate_dashboard':
@@ -298,10 +298,10 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
-              } else if (isStartTaskResult(toolName, result)) {
+              } else if (isStartAgentResult(toolName, result)) {
                 // Task started — add collections to sources and link taskId + sessionId
                 const cids = result.collection_ids as string[] | undefined;
-                const taskId = result.task_id as string | undefined;
+                const taskId = (result.agent_id as string) || (result.task_id as string) || undefined;
                 const currentSessionId = useChatStore.getState().sessionId ?? undefined;
                 if (cids?.length) {
                   for (const cid of cids) {

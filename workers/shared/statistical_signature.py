@@ -291,10 +291,8 @@ def compute_statistical_signature(collection_ids: list[str], bq, fs) -> dict:
 def refresh_statistical_signature(collection_id: str, bq, fs) -> dict:
     """Compute, persist, and return a new statistical signature."""
     collection_status = fs.get_collection_status(collection_id)
-    fs_status = (collection_status or {}).get("status", "collecting")
-    status_at_compute = (
-        "completed" if fs_status in ("completed", "monitoring") else "collecting"
-    )
+    fs_status = (collection_status or {}).get("status", "running")
+    status_at_compute = "success" if fs_status == "success" else "running"
 
     data = compute_statistical_signature([collection_id], bq, fs)
     data["collection_status_at_compute"] = status_at_compute

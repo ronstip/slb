@@ -45,9 +45,9 @@ export function AgentDetailPage() {
   const handleRun = async () => {
     if (!task) return;
     try {
-      await runAgent(task.task_id);
+      await runAgent(task.agent_id);
       toast.success('Agent run started');
-      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.task_id] });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       fetchAgents();
     } catch {
       toast.error('Failed to start agent');
@@ -57,9 +57,9 @@ export function AgentDetailPage() {
   const handleStop = async () => {
     if (!task) return;
     try {
-      await patchAgent(task.task_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'completed' });
       toast.success('Agent stopped');
-      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.task_id] });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       fetchAgents();
     } catch {
       toast.error('Failed to stop agent');
@@ -70,8 +70,8 @@ export function AgentDetailPage() {
     if (!task) return;
     const newStatus = task.status === 'monitoring' ? 'paused' : 'monitoring';
     try {
-      await patchAgent(task.task_id, { status: newStatus });
-      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.task_id] });
+      await patchAgent(task.agent_id, { status: newStatus });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       fetchAgents();
     } catch {
       toast.error('Failed to update agent');

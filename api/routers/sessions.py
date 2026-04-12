@@ -166,13 +166,13 @@ async def get_session(session_id: str, user: CurrentUser = Depends(get_current_u
 
     state = session.state or {}
 
-    # ADK state may have had active_task_id cleared (context-leakage prevention).
-    # Restore the permanent session→task link from Firestore so the frontend
-    # can re-select the task in the dropdown when restoring this session.
-    if not state.get("active_task_id"):
+    # ADK state may have had active_agent_id cleared (context-leakage prevention).
+    # Restore the permanent session→agent link from Firestore so the frontend
+    # can re-select the agent in the dropdown when restoring this session.
+    if not state.get("active_agent_id"):
         fs_session = get_fs().get_session(session_id)
-        if fs_session and fs_session.get("task_id"):
-            state["active_task_id"] = fs_session["task_id"]
+        if fs_session and fs_session.get("agent_id"):
+            state["active_agent_id"] = fs_session["agent_id"]
 
     return SessionDetailResponse(
         session_id=session.id,

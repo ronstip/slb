@@ -146,18 +146,18 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
       onClick();
       return;
     }
-    navigate(`/agents/${task.task_id}`);
+    navigate(`/agents/${task.agent_id}`);
   };
 
   const handleOpenChat = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigate(`/agents/${task.task_id}?tab=chat`);
+    navigate(`/agents/${task.agent_id}?tab=chat`);
   };
 
   const handleRun = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await runAgent(task.task_id);
+      await runAgent(task.agent_id);
       toast.success('Agent run started');
       fetchAgents();
     } catch {
@@ -168,7 +168,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
   const handleStop = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await patchAgent(task.task_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'completed' });
       toast.success('Agent stopped');
       fetchAgents();
     } catch {
@@ -180,7 +180,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
     e.stopPropagation();
     const newStatus = task.status === 'monitoring' ? 'paused' : 'monitoring';
     try {
-      await patchAgent(task.task_id, { status: newStatus });
+      await patchAgent(task.agent_id, { status: newStatus });
       fetchAgents();
     } catch {
       toast.error('Failed to update agent');
@@ -191,7 +191,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
 
   const handleArchive = async () => {
     try {
-      await patchAgent(task.task_id, { status: 'archived' });
+      await patchAgent(task.agent_id, { status: 'archived' });
       fetchAgents();
       toast.success('Agent archived');
     } catch {
@@ -203,7 +203,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
 
   const handleRestore = async () => {
     try {
-      await patchAgent(task.task_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'completed' });
       fetchAgents();
       toast.success('Agent restored');
     } catch {
@@ -223,7 +223,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
       return;
     }
     try {
-      await patchAgent(task.task_id, { title: trimmed });
+      await patchAgent(task.agent_id, { title: trimmed });
       fetchAgents();
       toast.success('Agent renamed');
     } catch {
@@ -280,7 +280,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
 
           {!compact && (
             <div className="text-[11px] text-muted-foreground/60 mt-1">
-              Last run: {formatLastRun(task.run_history)}
+              Last run: {formatLastRun(task.updated_at)}
             </div>
           )}
 
@@ -308,7 +308,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
                     <Play className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{task.task_type === 'recurring' ? 'Run now' : 'Re-run'}</TooltipContent>
+                <TooltipContent>{task.agent_type === 'recurring' ? 'Run now' : 'Re-run'}</TooltipContent>
               </Tooltip>
             )}
 
@@ -325,7 +325,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}
 
             {/* Pause / Resume */}
-            {task.task_type === 'recurring' && (task.status === 'monitoring' || task.status === 'paused') && (
+            {task.agent_type === 'recurring' && (task.status === 'monitoring' || task.status === 'paused') && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePauseResume}>
@@ -342,7 +342,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/agents/${task.task_id}?tab=artifacts`);
+                    navigate(`/agents/${task.agent_id}?tab=artifacts`);
                   }}>
                     <FileText className="h-3.5 w-3.5" />
                   </Button>
@@ -352,7 +352,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}
 
             {/* Schedule (one-time tasks that completed/approved) */}
-            {task.task_type !== 'recurring' && ['completed', 'approved'].includes(task.status) && (
+            {task.agent_type !== 'recurring' && ['completed', 'approved'].includes(task.status) && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {
@@ -372,7 +372,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/agents/${task.task_id}?tab=explorer`);
+                    navigate(`/agents/${task.agent_id}?tab=explorer`);
                   }}>
                     <Compass className="h-3.5 w-3.5" />
                   </Button>

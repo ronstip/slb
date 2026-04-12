@@ -38,7 +38,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       const agents = await listAgents();
       const { activeAgentId } = get();
       const activeAgent = activeAgentId
-        ? agents.find((t) => t.task_id === activeAgentId) ?? null
+        ? agents.find((t) => t.agent_id === activeAgentId) ?? null
         : null;
       set({ agents, activeAgent, isLoading: false, error: null });
     } catch {
@@ -47,7 +47,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   setActiveAgent: (id: string | null) => {
-    const agent = id ? get().agents.find((t) => t.task_id === id) ?? null : null;
+    const agent = id ? get().agents.find((t) => t.agent_id === id) ?? null : null;
     set({ activeAgentId: id, activeAgent: agent });
     const collectionIds = agent?.collection_ids ?? [];
     useSourcesStore.getState().selectByIds(collectionIds);
@@ -57,9 +57,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       const agent = await fetchAgent(id);
       set((s) => {
-        const exists = s.agents.some((t) => t.task_id === id);
+        const exists = s.agents.some((t) => t.agent_id === id);
         const agents = exists
-          ? s.agents.map((t) => (t.task_id === id ? agent : t))
+          ? s.agents.map((t) => (t.agent_id === id ? agent : t))
           : [...s.agents, agent];
         return {
           agents,
@@ -75,7 +75,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   updateAgent: (id: string, updates: Partial<Agent>) => {
     set((s) => ({
       agents: s.agents.map((t) =>
-        t.task_id === id ? { ...t, ...updates } : t,
+        t.agent_id === id ? { ...t, ...updates } : t,
       ),
       activeAgent:
         s.activeAgentId === id && s.activeAgent

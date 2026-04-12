@@ -83,6 +83,21 @@ class CreateFeedLinkRequest(BaseModel):
     title: str
 
 
+class CreateFromWizardRequest(BaseModel):
+    title: str
+    description: str = ""
+    agent_type: str = "one_shot"
+    searches: list[dict] = []
+    schedule: dict | None = None
+    custom_fields: list[dict] | None = None
+    enrichment_context: str = ""
+    existing_collection_ids: list[str] = []
+    auto_report: bool = True
+    auto_email: bool = False
+    auto_slides: bool = False
+    auto_dashboard: bool = False
+
+
 class UpdateCollectionRequest(BaseModel):
     title: str | None = None
     visibility: str | None = None

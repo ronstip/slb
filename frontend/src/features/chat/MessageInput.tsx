@@ -83,9 +83,8 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
   };
 
   const statusDotColor = (status: string) => {
-    if (status === 'collecting' || status === 'enriching' || status === 'pending') return 'bg-amber-500 animate-pulse';
-    if (status === 'monitoring') return 'bg-emerald-500 animate-pulse';
-    if (status === 'completed') return 'bg-emerald-500';
+    if (status === 'running') return 'bg-amber-500 animate-pulse';
+    if (status === 'success') return 'bg-emerald-500';
     if (status === 'failed') return 'bg-red-500';
     return 'bg-muted-foreground';
   };

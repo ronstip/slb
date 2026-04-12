@@ -1,5 +1,6 @@
 import { PLATFORM_LABELS, buildScheduleFromPreset, formatSchedule } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
+import type { CreateFromWizardPayload } from '../../../api/endpoints/agents.ts';
 
 interface FormatOptions {
   title?: string;
@@ -24,7 +25,7 @@ export function formatWizardAsPrompt(
     const ids = JSON.stringify(collection.existingCollectionIds);
     lines.push(`Attach existing collections: ${ids}`);
     lines.push(
-      `When calling start_task, pass existing_collection_ids=${ids} so these collections are linked to the new task without re-collecting.`,
+      `When calling start_agent, pass existing_collection_ids=${ids} so these collections are linked to the new agent without re-collecting.`,
     );
   }
 
@@ -58,7 +59,7 @@ export function formatWizardAsPrompt(
     }
   } else {
     lines.push(
-      `No new collection to create — use only the existing collections listed above. Pass searches=[] to start_task.`,
+      `No new collection to create — use only the existing collections listed above. Pass searches=[] to start_agent.`,
     );
   }
 
@@ -85,7 +86,7 @@ export function formatWizardAsPrompt(
     lines.push(`Enrichment context: ${collection.enrichmentContext.trim()}`);
   }
 
-  // Custom enrichment fields — pass as JSON so the agent can forward to start_task
+  // Custom enrichment fields — pass as JSON so the agent can forward to start_agent
   if (collection.customFields.length > 0) {
     const compact = collection.customFields.map((f) => ({
       name: f.name,
@@ -96,9 +97,66 @@ export function formatWizardAsPrompt(
     const json = JSON.stringify(compact);
     lines.push(`Custom enrichment fields: ${json}`);
     lines.push(
-      `When calling start_task, pass custom_fields=${json} and enrichment_context from above.`,
+      `When calling start_agent, pass custom_fields=${json} and enrichment_context from above.`,
     );
   }
 
   return lines.join('\n');
+}
+
+export function buildWizardRequestBody(
+  description: string,
+  collection: WizardCollectionSettings,
+  task: WizardAgentSettings,
+  title: string,
+): CreateFromWizardPayload {
+  // Build searches array (one search per wizard config)
+  const searches: CreateFromWizardPayload['searches'] = [];
+  if (collection.newCollectionEnabled && collection.platforms.length > 0) {
+    searches.push({
+      platforms: collection.platforms,
+      keywords: collection.keywords,
+      ...(collection.channelUrls.length > 0 ? { channels: collection.channelUrls } : {}),
+      time_range_days: collection.timeRangeDays,
+      geo_scope: collection.geoScope,
+      n_posts: collection.nPosts,
+    });
+  }
+
+  // Build schedule for recurring tasks
+  let schedule: CreateFromWizardPayload['schedule'] = null;
+  if (task.taskType === 'recurring') {
+    const frequency = buildScheduleFromPreset(task.schedulePreset, task.scheduleTime);
+    schedule = {
+      frequency,
+      frequency_label: formatSchedule(frequency),
+    };
+  }
+
+  // Build custom fields
+  const customFields = collection.customFields.length > 0
+    ? collection.customFields.map((f) => ({
+        name: f.name,
+        type: f.type,
+        description: f.description,
+        ...(f.options && f.options.length > 0 ? { options: f.options } : {}),
+      }))
+    : undefined;
+
+  return {
+    title: title.trim() || 'New agent',
+    description: description.trim(),
+    agent_type: task.taskType === 'recurring' ? 'recurring' : 'one_shot',
+    searches,
+    schedule,
+    custom_fields: customFields,
+    enrichment_context: collection.enrichmentContext.trim() || undefined,
+    existing_collection_ids: collection.existingCollectionIds.length > 0
+      ? collection.existingCollectionIds
+      : undefined,
+    auto_report: task.autoReport,
+    auto_email: task.autoEmail,
+    auto_slides: task.autoSlides,
+    auto_dashboard: task.autoDashboard,
+  };
 }

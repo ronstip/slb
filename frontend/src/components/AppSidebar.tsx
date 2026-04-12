@@ -348,8 +348,8 @@ export function AppSidebar({
 
           {/* Actions */}
           {(activeAgent.status === 'executing' || canRun ||
-            (activeAgent.task_type === 'recurring' && (activeAgent.status === 'monitoring' || activeAgent.status === 'paused')) ||
-            (activeAgent.task_type !== 'recurring' && ['completed', 'approved'].includes(activeAgent.status))) && (
+            (activeAgent.agent_type === 'recurring' && (activeAgent.status === 'monitoring' || activeAgent.status === 'paused')) ||
+            (activeAgent.agent_type !== 'recurring' && ['completed', 'approved'].includes(activeAgent.status))) && (
             <>
               <div className="mx-3 border-t border-border my-1" />
               <div className="flex flex-col gap-0.5 px-3 pb-2">
@@ -370,14 +370,14 @@ export function AppSidebar({
                     onClick={onRun}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
-                    {activeAgent.task_type === 'recurring' ? (
+                    {activeAgent.agent_type === 'recurring' ? (
                       <><Play className="h-4 w-4 shrink-0" />Run Now</>
                     ) : (
                       <><Repeat className="h-4 w-4 shrink-0" />Re-run</>
                     )}
                   </button>
                 )}
-                {activeAgent.task_type === 'recurring' && (activeAgent.status === 'monitoring' || activeAgent.status === 'paused') && onPauseResume && (
+                {activeAgent.agent_type === 'recurring' && (activeAgent.status === 'monitoring' || activeAgent.status === 'paused') && onPauseResume && (
                   <button
                     onClick={onPauseResume}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -389,7 +389,7 @@ export function AppSidebar({
                     )}
                   </button>
                 )}
-                {activeAgent.task_type !== 'recurring' && ['completed', 'approved'].includes(activeAgent.status) && onOpenSchedule && (
+                {activeAgent.agent_type !== 'recurring' && ['completed', 'approved'].includes(activeAgent.status) && onOpenSchedule && (
                   <button
                     onClick={onOpenSchedule}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -427,12 +427,12 @@ export function AppSidebar({
                 .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
                 .slice(0, 8)
                 .map((agent) => {
-                  const isActive = activeAgent?.task_id === agent.task_id;
+                  const isActive = activeAgent?.agent_id === agent.agent_id;
                   const cfg = STATUS_CONFIG[agent.status];
                   return (
                     <button
-                      key={agent.task_id}
-                      onClick={() => navigate(`/agents/${agent.task_id}`)}
+                      key={agent.agent_id}
+                      onClick={() => navigate(`/agents/${agent.agent_id}`)}
                       className={cn(
                         'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
                         isActive

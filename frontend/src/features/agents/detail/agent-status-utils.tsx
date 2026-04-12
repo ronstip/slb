@@ -38,11 +38,9 @@ export function StatusBadge({ status }: { status: AgentStatus }) {
 
 export const RUNNABLE_STATUSES: AgentStatus[] = ['completed', 'monitoring', 'paused', 'approved', 'executing'];
 
-export function formatLastRun(runHistory: Agent['run_history']): string {
-  if (!runHistory?.length) return '\u2014';
-  const lastRunAt = runHistory[runHistory.length - 1]?.run_at;
-  if (!lastRunAt) return '\u2014';
-  const d = new Date(lastRunAt);
+export function formatLastRun(updatedAt: string | null | undefined): string {
+  if (!updatedAt) return '\u2014';
+  const d = new Date(updatedAt);
   const diffMs = Date.now() - d.getTime();
   const diffH = Math.floor(diffMs / 3_600_000);
   if (diffH < 1) return 'Just now';

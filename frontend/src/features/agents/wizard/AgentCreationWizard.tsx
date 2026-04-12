@@ -1,15 +1,17 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { Info, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
-import { useChatStore } from '../../../stores/chat-store.ts';
-import { useSessionStore } from '../../../stores/session-store.ts';
-import { useSSEChat } from '../../chat/hooks/useSSEChat.ts';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSourcesStore } from '../../../stores/sources-store.ts';
+import { useAgentStore } from '../../../stores/agent-store.ts';
 import { planWizard } from '../../../api/endpoints/wizard.ts';
+import { createAgentFromWizard } from '../../../api/endpoints/agents.ts';
 import type { CustomFieldDef, WizardClarification, WizardPlan } from '../../../api/types.ts';
 import { DescribePanel } from './DescribePanel.tsx';
 import { CollectionSettingsPanel } from './CollectionSettingsPanel.tsx';
 import { AgentSettingsPanel } from './AgentSettingsPanel.tsx';
-import { formatWizardAsPrompt } from './wizard-utils.ts';
+import { buildWizardRequestBody } from './wizard-utils.ts';
 import { Input } from '../../../components/ui/input.tsx';
 import {
   Tooltip,
@@ -75,7 +77,8 @@ function mapFrequencyToPreset(freq: 'hourly' | 'daily' | 'weekly' | 'monthly'): 
 }
 
 export function AgentCreationWizard() {
-  const { sendMessage } = useSSEChat();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [description, setDescription] = useState('');
@@ -125,7 +128,7 @@ export function AgentCreationWizard() {
     });
 
     setTaskSettings({
-      taskType: plan.task_type,
+      taskType: plan.agent_type,
       schedulePreset: plan.schedule ? mapFrequencyToPreset(plan.schedule.frequency) : 'daily',
       scheduleTime: plan.schedule?.time ?? '09:00',
       autoReport: plan.auto_report,
@@ -172,12 +175,28 @@ export function AgentCreationWizard() {
 
     setIsSubmitting(true);
     try {
-      const message = formatWizardAsPrompt(description, collectionSettings, taskSettings, {
-        title: agentTitle,
-      });
-      useSessionStore.getState().startNewSession();
-      useChatStore.getState().clearMessages();
-      sendMessage(message);
+      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle);
+      const result = await createAgentFromWizard(body);
+
+      // Add new collection IDs to sources store
+      const sourcesState = useSourcesStore.getState();
+      for (const cid of result.collection_ids) {
+        const alreadyInStore = sourcesState.sources.some((s) => s.collectionId === cid);
+        if (alreadyInStore) {
+          sourcesState.addToSession(cid);
+          sourcesState.updateSource(cid, { taskId: result.agent_id });
+        } else {
+          sourcesState.setPendingLink(cid, result.agent_id);
+          queryClient.invalidateQueries({ queryKey: ['collections'] });
+        }
+      }
+
+      // Refresh agents list and set the new agent as active
+      await useAgentStore.getState().fetchAgents();
+      useAgentStore.getState().setActiveAgent(result.agent_id);
+
+      // Navigate to the new agent's chat tab
+      navigate(`/agents/${result.agent_id}?tab=chat`, { replace: true });
     } catch (err) {
       toast.error('Failed to create agent. Please try again.');
       setIsSubmitting(false);

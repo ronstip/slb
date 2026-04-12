@@ -11,13 +11,13 @@ interface TaskExplorerTabProps {
 
 export function AgentExplorerTab({ task }: TaskExplorerTabProps) {
   const artifact = useMemo(() => ({
-    id: task.task_id,
+    id: task.agent_id,
     type: 'dashboard' as const,
     title: task.title,
     collectionIds: task.collection_ids ?? [],
     collectionNames: {} as Record<string, string>,
     createdAt: new Date(task.created_at),
-  }), [task.task_id, task.title, task.collection_ids, task.created_at]);
+  }), [task.agent_id, task.title, task.collection_ids, task.created_at]);
 
   if (!task.collection_ids?.length) {
     return (

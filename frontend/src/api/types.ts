@@ -159,15 +159,9 @@ export interface FeedParams {
 // --- Responses ---
 
 export type CollectionStatus =
-  | 'pending'
-  | 'collecting'
-  | 'enriching'
-  | 'completed'
-  | 'completed_with_errors'
-  | 'failed'
-  | 'cancelled'
-  | 'monitoring'
-  | 'paused';
+  | 'running'
+  | 'success'
+  | 'failed';
 
 export interface CollectionConfig {
   platforms: string[];
@@ -202,7 +196,6 @@ export interface CollectionStatusResponse {
   last_run_at?: string;
   next_run_at?: string;
   total_runs?: number;
-  run_history?: Array<{ run_at: string; summary: string; status: string }>;
 }
 
 export interface MediaRef {
@@ -271,7 +264,7 @@ export interface BreakdownItem {
 
 export interface CollectionStats {
   computed_at: string | null;
-  collection_status_at_compute: 'collecting' | 'completed' | null;
+  collection_status_at_compute: 'running' | 'success' | null;
   total_posts: number;
   total_unique_channels: number;
   date_range: { earliest: string | null; latest: string | null };
@@ -815,7 +808,7 @@ export interface WizardPlan {
   reasoning: string;
   existing_collection_ids: string[];
   new_collection: NewCollectionPlan | null;
-  task_type: 'one_shot' | 'recurring';
+  agent_type: 'one_shot' | 'recurring';
   schedule: SchedulePlan | null;
   auto_report: boolean;
   auto_email: boolean;

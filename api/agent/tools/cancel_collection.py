@@ -28,13 +28,13 @@ def cancel_collection(collection_id: str) -> dict:
         }
 
     current_status = status.get("status")
-    if current_status in ("completed", "failed", "cancelled"):
+    if current_status in ("success", "failed"):
         return {
             "status": "error",
             "message": f"Collection {collection_id} is already {current_status}. Cannot cancel.",
         }
 
-    fs.update_collection_status(collection_id, status="cancelled")
+    fs.update_collection_status(collection_id, status="failed")
     posts_so_far = status.get("posts_collected", 0)
 
     return {

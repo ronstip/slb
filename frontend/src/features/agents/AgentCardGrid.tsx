@@ -19,7 +19,7 @@ export function AgentCardGrid({ tasks, onAgentClick }: AgentCardGridProps) {
     <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {tasks.map((task) => (
         <AgentCard
-          key={task.task_id}
+          key={task.agent_id}
           task={task}
           onClick={onAgentClick ? () => onAgentClick(task) : undefined}
         />

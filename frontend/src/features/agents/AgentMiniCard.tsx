@@ -67,7 +67,7 @@ export function AgentMiniCard({ task }: TaskMiniCardProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate(`/agents/${task.task_id}`);
+    navigate(`/agents/${task.agent_id}`);
   };
 
   return (

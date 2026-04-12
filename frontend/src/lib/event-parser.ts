@@ -47,11 +47,11 @@ export function isStructuredPromptResult(
   return toolName === 'ask_user' && result?.status === 'needs_input' && Array.isArray(result?.prompts);
 }
 
-export function isStartTaskResult(
+export function isStartAgentResult(
   toolName: string,
   result?: Record<string, unknown>,
 ): boolean {
-  return toolName === 'start_task' && result?.status === 'success' && !!result?.task_id;
+  return (toolName === 'start_agent' || toolName === 'start_task') && result?.status === 'success' && !!(result?.agent_id || result?.task_id);
 }
 
 export function isTodoResult(

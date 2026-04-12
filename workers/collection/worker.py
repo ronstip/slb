@@ -71,7 +71,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
     owner_user_id = status_doc.get("user_id") if status_doc else None
     owner_org_id = status_doc.get("org_id") if status_doc else None
 
-    fs.update_collection_status(collection_id, status="collecting")
+    fs.update_collection_status(collection_id, status="running")
     logger.info("Starting collection %s", collection_id)
 
     def _track_snapshot(snapshot_id, dataset_id, discover_by):

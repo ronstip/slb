@@ -16,16 +16,16 @@ from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
 from api.agent.tools.generate_presentation import generate_presentation
 from api.agent.tools.generate_report import generate_report
+from api.agent.tools.get_agent_status import get_agent_status
 from api.agent.tools.get_collection_stats import get_collection_stats
 from api.agent.tools.get_past_collections import get_collection_details
 from api.agent.tools.get_progress import get_progress
-from api.agent.tools.get_task_status import get_task_status
 from api.agent.tools.refresh_engagements import refresh_engagements
-from api.agent.tools.set_active_task import set_active_task
+from api.agent.tools.set_active_agent import set_active_agent
 from api.agent.tools.set_working_collections import set_working_collections
 from api.agent.tools.show_metrics import show_metrics
 from api.agent.tools.show_topics import show_topics
-from api.agent.tools.start_task import start_task
+from api.agent.tools.start_agent import start_agent
 from api.agent.tools.update_todos import update_todos
 
 
@@ -43,10 +43,10 @@ REGISTRY: dict[str, ToolSpec] = {
     for spec in (
         # Planning
         ToolSpec("update_todos", update_todos, "planning", True, "Update session todo list"),
-        # Task management
-        ToolSpec("start_task", start_task, "task", True, "Create and dispatch a new task"),
-        ToolSpec("get_task_status", get_task_status, "task", False, "Read the status of a task"),
-        ToolSpec("set_active_task", set_active_task, "task", True, "Set the active task for the session"),
+        # Agent management
+        ToolSpec("start_agent", start_agent, "agent", True, "Create and dispatch a new agent"),
+        ToolSpec("get_agent_status", get_agent_status, "agent", False, "Read the status of an agent"),
+        ToolSpec("set_active_agent", set_active_agent, "agent", True, "Set the active agent for the session"),
         # Research & context
         ToolSpec("get_collection_details", get_collection_details, "collection", False, "Fetch full details for a collection"),
         ToolSpec("ask_user", ask_user, "user", True, "Prompt the user for structured input"),

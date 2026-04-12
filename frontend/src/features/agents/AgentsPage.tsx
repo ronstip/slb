@@ -143,9 +143,7 @@ export function AgentsPage() {
   }, [hasExecuting, fetchAgents]);
 
   const getLastRunTime = (agent: Agent): number => {
-    const h = agent.run_history;
-    if (!h?.length) return 0;
-    return new Date(h[h.length - 1].run_at).getTime();
+    return new Date(agent.updated_at).getTime();
   };
 
   const handleSort = (field: SortField) => {
@@ -228,7 +226,7 @@ export function AgentsPage() {
   };
 
   const handleRowClick = (agent: Agent) => {
-    navigate(`/agents/${agent.task_id}`);
+    navigate(`/agents/${agent.agent_id}`);
   };
 
   const handleScheduleFromTable = (agent: Agent) => {
@@ -243,7 +241,7 @@ export function AgentsPage() {
 
   const handleArchive = async (agent: Agent) => {
     try {
-      await patchAgent(agent.task_id, { status: 'archived' });
+      await patchAgent(agent.agent_id, { status: 'archived' });
       fetchAgents();
     } catch {
       // silent
@@ -254,7 +252,7 @@ export function AgentsPage() {
 
   const handleRestore = async (agent: Agent) => {
     try {
-      await patchAgent(agent.task_id, { status: 'completed' });
+      await patchAgent(agent.agent_id, { status: 'completed' });
       fetchAgents();
     } catch {
       // silent
@@ -274,7 +272,7 @@ export function AgentsPage() {
       return;
     }
     try {
-      await patchAgent(renameTarget.task_id, { title: trimmed });
+      await patchAgent(renameTarget.agent_id, { title: trimmed });
       fetchAgents();
     } catch {
       // silent
@@ -285,7 +283,7 @@ export function AgentsPage() {
 
   const handleRun = async (agent: Agent) => {
     try {
-      await runAgent(agent.task_id);
+      await runAgent(agent.agent_id);
       fetchAgents();
     } catch {
       // 409 or other error
@@ -399,7 +397,7 @@ export function AgentsPage() {
             <ScrollArea className="w-full">
               <div className="flex gap-3 pb-3">
                 {recentAgents.map((agent) => (
-                  <div key={agent.task_id} className="w-[300px] shrink-0">
+                  <div key={agent.agent_id} className="w-[300px] shrink-0">
                     <AgentCard task={agent} compact onClick={() => handleRowClick(agent)} />
                   </div>
                 ))}
@@ -482,15 +480,13 @@ export function AgentsPage() {
 
             {/* Agent rows — each in its own container */}
             {filteredAgents.map((task) => {
-              const lastRun = task.run_history?.length
-                ? task.run_history[task.run_history.length - 1]
-                : null;
+              const lastRun = task.updated_at ? { run_at: task.updated_at, status: task.status } : null;
               const isExecuting = task.status === 'executing';
               const borderColor = STATUS_ROW_BORDER[task.status] ?? 'border-l-transparent';
 
               return (
                 <div
-                  key={task.task_id}
+                  key={task.agent_id}
                   onClick={() => handleRowClick(task)}
                   className={cn(
                     'group relative grid items-center gap-2 rounded-lg border border-l-4 bg-card px-4 py-3 cursor-pointer transition-all overflow-hidden',
@@ -506,7 +502,7 @@ export function AgentsPage() {
 
                   {/* Title + subtitle */}
                   <div className="flex items-center gap-3 min-w-0">
-                    <AgentCrest id={task.task_id} />
+                    <AgentCrest id={task.agent_id} />
                     {isExecuting && (
                       <span className="relative flex h-2 w-2 shrink-0">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-50" />
@@ -520,7 +516,7 @@ export function AgentsPage() {
                       <div className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
                         {isExecuting
                           ? 'Running...'
-                          : `Ran ${formatLastRun(task.run_history)}`}
+                          : `Ran ${formatLastRun(task.updated_at)}`}
                         {task.schedule && ` · ${formatSchedule(task.schedule.frequency)}`}
                       </div>
                     </div>
@@ -531,7 +527,7 @@ export function AgentsPage() {
                     <TooltipProvider delayDuration={300}>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate(`/agents/${task.task_id}?tab=chat`)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate(`/agents/${task.agent_id}?tab=chat`)}>
                             <MessageSquare className="h-3.5 w-3.5" />
                           </Button>
                         </TooltipTrigger>
@@ -543,11 +539,11 @@ export function AgentsPage() {
                             <Play className="h-3.5 w-3.5" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>{task.task_type === 'recurring' ? 'Run Now' : 'Re-run'}</TooltipContent>
+                        <TooltipContent>{task.agent_type === 'recurring' ? 'Run Now' : 'Re-run'}</TooltipContent>
                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={task.task_type === 'recurring' || !['completed', 'approved'].includes(task.status)} onClick={() => handleScheduleFromTable(task)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={task.agent_type === 'recurring' || !['completed', 'approved'].includes(task.status)} onClick={() => handleScheduleFromTable(task)}>
                             <Timer className="h-3.5 w-3.5" />
                           </Button>
                         </TooltipTrigger>
@@ -555,7 +551,7 @@ export function AgentsPage() {
                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={(task.artifact_ids?.length ?? 0) === 0} onClick={() => navigate(`/agents/${task.task_id}?tab=artifacts`)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={(task.artifact_ids?.length ?? 0) === 0} onClick={() => navigate(`/agents/${task.agent_id}?tab=artifacts`)}>
                             <FileText className="h-3.5 w-3.5" />
                           </Button>
                         </TooltipTrigger>
@@ -563,7 +559,7 @@ export function AgentsPage() {
                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={(task.collection_ids?.length ?? 0) === 0} onClick={() => navigate(`/agents/${task.task_id}?tab=explorer`)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={(task.collection_ids?.length ?? 0) === 0} onClick={() => navigate(`/agents/${task.agent_id}?tab=explorer`)}>
                             <Compass className="h-3.5 w-3.5" />
                           </Button>
                         </TooltipTrigger>
@@ -577,17 +573,17 @@ export function AgentsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start">
-                        <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}`)}>Overview</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=chat`)}>
+                        <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}`)}>Overview</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}?tab=chat`)}>
                           <MessageSquare className="mr-2 h-3.5 w-3.5" /> Chat
                         </DropdownMenuItem>
                         {(task.artifact_ids?.length ?? 0) > 0 && (
-                          <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=artifacts`)}>
+                          <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}?tab=artifacts`)}>
                             <FileText className="mr-2 h-3.5 w-3.5" /> Artifacts
                           </DropdownMenuItem>
                         )}
                         {(task.collection_ids?.length ?? 0) > 0 && (
-                          <DropdownMenuItem onClick={() => navigate(`/agents/${task.task_id}?tab=explorer`)}>
+                          <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}?tab=explorer`)}>
                             <Compass className="mr-2 h-3.5 w-3.5" /> Explorer
                           </DropdownMenuItem>
                         )}
@@ -614,7 +610,7 @@ export function AgentsPage() {
 
                   {/* Schedule */}
                   <div className="text-xs text-muted-foreground">
-                    {task.task_type === 'recurring' && task.schedule
+                    {task.agent_type === 'recurring' && task.schedule
                       ? formatSchedule(task.schedule.frequency)
                       : '\u2014'}
                   </div>
@@ -632,8 +628,8 @@ export function AgentsPage() {
                   <div className="text-xs text-muted-foreground">
                     {lastRun ? (
                       <span className="flex items-center gap-1.5">
-                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${lastRun.status === 'started' || lastRun.status === 'completed' ? 'bg-green-500' : 'bg-amber-500'}`} />
-                        {formatLastRun(task.run_history)}
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${lastRun.status === 'completed' || lastRun.status === 'monitoring' ? 'bg-green-500' : 'bg-amber-500'}`} />
+                        {formatLastRun(task.updated_at)}
                       </span>
                     ) : '\u2014'}
                   </div>

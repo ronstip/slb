@@ -27,6 +27,5 @@ export function mapCollectionToSource(c: CollectionStatusResponse): Source {
     lastRunAt: c.last_run_at,
     nextRunAt: c.next_run_at,
     totalRuns: c.total_runs,
-    runHistory: c.run_history,
   };
 }

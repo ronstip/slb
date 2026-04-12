@@ -19,8 +19,8 @@ interface CollectionPickerProps {
 }
 
 function PickerRow({ source, onSelect }: { source: Source; onSelect: () => void }) {
-  const isProcessing = source.status === 'collecting' || source.status === 'enriching' || source.status === 'pending';
-  const isReady = source.status === 'completed';
+  const isProcessing = source.status === 'running';
+  const isReady = source.status === 'success';
   const isFailed = source.status === 'failed';
 
   const statusDot = isProcessing
