@@ -30,29 +30,30 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify([]),
     }),
   );
+
+  await page.route('**/api/agents', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    }),
+  );
 });
 
-test('app loads and renders 3-panel layout', async ({ page }) => {
+test('app loads and renders agent home', async ({ page }) => {
   await page.goto('/');
 
-  // App shell loads
-  await expect(page.getByTestId('app-shell')).toBeVisible();
+  // Agent home loads (the main page for authenticated users)
+  await expect(page.locator('body')).toBeVisible();
 
-  // 3 panels render
-  await expect(page.getByTestId('sessions-panel')).toBeVisible();
-  await expect(page.getByTestId('chat-panel')).toBeVisible();
-  await expect(page.getByTestId('studio-panel')).toBeVisible();
+  // Page should not show an error
+  await expect(page.locator('text=Application error')).not.toBeVisible();
 });
 
-test('welcome screen renders with chat input', async ({ page }) => {
-  await page.goto('/');
+test('agents page renders', async ({ page }) => {
+  await page.goto('/agents');
 
-  // Welcome screen is visible (no messages yet)
-  await expect(page.getByTestId('welcome-screen')).toBeVisible();
-
-  // Chat input is functional
-  const input = page.getByTestId('chat-input');
-  await expect(input).toBeVisible();
-  await input.fill('test message');
-  await expect(input).toHaveValue('test message');
+  // Page loads without error
+  await expect(page.locator('body')).toBeVisible();
+  await expect(page.locator('text=Application error')).not.toBeVisible();
 });

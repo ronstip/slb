@@ -147,10 +147,10 @@ echo ""
 echo "==> [4/9] Building API Docker image (this takes 2-3 minutes)..."
 cd "$ROOT_DIR"
 
-gcloud builds submit \
+gcloud builds submit . \
     --tag "gcr.io/$PROJECT_ID/sl-api:latest" \
     --timeout 600 \
-    -f api/Dockerfile . \
+    --dockerfile api/Dockerfile \
     --quiet
 
 echo "  API image built."
@@ -182,10 +182,10 @@ echo ""
 # STEP 5: Build & deploy Worker to Cloud Run
 # ══════════════════════════════════════════════════
 echo "==> [6/9] Building Worker Docker image..."
-gcloud builds submit \
+gcloud builds submit . \
     --tag "gcr.io/$PROJECT_ID/sl-worker:latest" \
     --timeout 600 \
-    -f workers/Dockerfile . \
+    --dockerfile workers/Dockerfile \
     --quiet
 
 echo "  Worker image built."
