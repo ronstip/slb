@@ -7,7 +7,6 @@ import { useSessionStore } from '../../../stores/session-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
-import { useAuth } from '../../../auth/useAuth.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
@@ -51,7 +50,6 @@ function getToolDescription(toolName: string, args: Record<string, unknown>): st
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
   const activeMessageRef = useRef<string | null>(null);
-  const { getToken } = useAuth();
   const { theme, accentColor } = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -104,7 +102,6 @@ export function useSSEChat() {
             accent_color: accentColor,
             theme: resolvedTheme,
           },
-          getToken,
           abortController.signal,
         );
 
@@ -419,7 +416,7 @@ export function useSSEChat() {
         useChatStore.getState().finalizeMessage(messageId);
       }
     },
-    [getToken, navigate],
+    [navigate],
   );
 
   /** Send a system-generated message (no user bubble, full event processing). */

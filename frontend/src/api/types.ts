@@ -20,6 +20,14 @@ export interface UserPreferences {
   allow_model_training: boolean;
 }
 
+export interface ImpersonationInfo {
+  real_uid: string;
+  real_email: string;
+  target_uid: string;
+  target_email: string;
+  target_display_name: string | null;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -33,6 +41,8 @@ export interface UserProfile {
   subscription_plan: string | null;
   subscription_status: string | null;
   is_super_admin?: boolean;
+  /** Present only when a super admin is viewing the app as another user. */
+  impersonation?: ImpersonationInfo;
 }
 
 export interface OrgMember {

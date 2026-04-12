@@ -1,5 +1,5 @@
 import { Navigate, useNavigate, useParams } from 'react-router';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Eye } from 'lucide-react';
 import { useAuth } from '../../auth/useAuth.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Logo } from '../../components/Logo.tsx';
@@ -22,7 +22,7 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
 };
 
 export function SettingsPage() {
-  const { isAnonymous } = useAuth();
+  const { isAnonymous, profile } = useAuth();
   const navigate = useNavigate();
   const params = useParams<{ section?: string }>();
 
@@ -68,6 +68,14 @@ export function SettingsPage() {
           <h1 className="mb-6 text-xl font-semibold text-foreground">
             {SECTION_TITLES[activeSection]}
           </h1>
+          {profile?.impersonation && (
+            <div className="mb-6 flex items-center gap-2 rounded-md border border-amber-600/30 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200 dark:border-amber-500/30">
+              <Eye className="h-4 w-4 shrink-0" />
+              <span>
+                Viewing settings for <strong>{profile.display_name || profile.email}</strong>
+              </span>
+            </div>
+          )}
           {activeSection === 'account' && <AccountSection />}
           {activeSection === 'organization' && <OrganizationSection />}
           {activeSection === 'appearance' && <AppearanceSection />}

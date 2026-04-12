@@ -1,22 +1,63 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+/** Key used by the impersonation Zustand store in sessionStorage. */
+const IMPERSONATION_STORAGE_KEY = 'slb-impersonation';
+
 let tokenGetter: (() => Promise<string | null>) | null = null;
 
 export function setTokenGetter(getter: () => Promise<string | null>) {
   tokenGetter = getter;
 }
 
-async function getHeaders(): Promise<HeadersInit> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+/**
+ * Read the impersonation target UID directly from sessionStorage.
+ *
+ * Zustand's `persist` middleware hydrates asynchronously (microtask),
+ * so on page refresh the store may still hold the default `null` when
+ * the first API requests fire.  Reading raw sessionStorage is always
+ * synchronous and avoids that race.
+ */
+function getImpersonationUid(): string | null {
+  try {
+    const raw = sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return parsed?.state?.targetUid ?? null;
+    }
+  } catch {
+    // Corrupted or missing — treat as no impersonation.
+  }
+  return null;
+}
+
+/**
+ * Build the full set of auth-related headers for an API request.
+ * Adds `Authorization: Bearer <token>` and, when a super admin has
+ * started a "View as User" session, `X-Impersonate-User-Id` so the
+ * backend swaps the current user for the target.
+ *
+ * Exported so the SSE client (and any other transport) can share a
+ * single source of truth for auth headers.
+ */
+export async function buildAuthHeaders(
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...extra };
   if (tokenGetter) {
     const token = await tokenGetter();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
   }
+  const targetUid = getImpersonationUid();
+  if (targetUid) {
+    headers['X-Impersonate-User-Id'] = targetUid;
+  }
   return headers;
+}
+
+async function getHeaders(): Promise<HeadersInit> {
+  return buildAuthHeaders({ 'Content-Type': 'application/json' });
 }
 
 export async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
@@ -40,6 +81,8 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   if (!res.ok) {
     throw new ApiError(res.status, await res.text());
   }
+  // 204 No Content — no body to parse
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -65,13 +108,8 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiUploadFile<T>(path: string, file: File): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (tokenGetter) {
-    const token = await tokenGetter();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  }
+  // multipart/form-data — browser sets Content-Type with boundary, so omit it.
+  const headers = await buildAuthHeaders();
   const formData = new FormData();
   formData.append('file', file);
   const res = await fetch(`${API_BASE}${path}`, {
