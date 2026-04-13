@@ -1365,9 +1365,11 @@ async def get_multi_collection_feed(
         params["sentiment"] = request.sentiment
 
     if request.has_media:
-        # Only posts where at least one media_ref has a GCS URI (permanent copy, not expired CDN URL)
+        # Posts where at least one media_ref has a usable URL (GCS URI or valid original URL)
         where_clauses.append(
-            "TO_JSON_STRING(p.media_refs) LIKE '%\"gs://%'"
+            "EXISTS (SELECT 1 FROM UNNEST(JSON_QUERY_ARRAY(p.media_refs)) ref "
+            "WHERE JSON_VALUE(ref, '$.gcs_uri') LIKE 'gs://%' "
+            "OR JSON_VALUE(ref, '$.original_url') LIKE 'http%')"
         )
 
     # Topic cluster filter

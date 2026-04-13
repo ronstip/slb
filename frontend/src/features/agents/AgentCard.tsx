@@ -87,14 +87,19 @@ function ThumbnailGrid({ collectionIds, compact }: { collectionIds: string[]; co
   });
 
   const posts = data?.posts ?? [];
-  // Only use refs with a gcs_uri — original CDN URLs (especially TikTok) expire quickly
+  // Prefer refs with gcs_uri (permanent), fall back to original_url (may expire but better than nothing)
   const candidates = posts
     .flatMap((p) => {
       const refs = p.media_refs ?? [];
       const imageRef =
-        refs.find((r) => r.media_type === 'image' && r.gcs_uri) ?? refs.find((r) => r.gcs_uri);
-      if (!imageRef?.gcs_uri) return [];
-      return [mediaUrl(imageRef.gcs_uri, imageRef.original_url)];
+        refs.find((r) => r.media_type === 'image' && r.gcs_uri) ??
+        refs.find((r) => r.gcs_uri) ??
+        refs.find((r) => r.media_type === 'image' && r.original_url) ??
+        refs.find((r) => r.original_url);
+      if (!imageRef) return [];
+      const url = mediaUrl(imageRef.gcs_uri, imageRef.original_url);
+      if (!url) return [];
+      return [url];
     })
     .slice(0, maxImages);
 

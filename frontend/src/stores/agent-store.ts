@@ -15,7 +15,7 @@ interface AgentStore {
   error: string | null;
 
   fetchAgents: () => Promise<void>;
-  setActiveAgent: (id: string | null) => void;
+  setActiveAgent: (id: string | null, collectionIds?: string[]) => void;
   loadAgent: (id: string) => Promise<Agent | null>;
   updateAgent: (id: string, updates: Partial<Agent>) => void;
   updateAgentStatus: (id: string, status: AgentStatus) => void;
@@ -46,11 +46,11 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
-  setActiveAgent: (id: string | null) => {
+  setActiveAgent: (id: string | null, collectionIds?: string[]) => {
     const agent = id ? get().agents.find((t) => t.agent_id === id) ?? null : null;
     set({ activeAgentId: id, activeAgent: agent });
-    const collectionIds = agent?.collection_ids ?? [];
-    useSourcesStore.getState().selectByIds(collectionIds);
+    const ids = collectionIds ?? agent?.collection_ids ?? [];
+    useSourcesStore.getState().selectByIds(ids);
   },
 
   loadAgent: async (id: string) => {

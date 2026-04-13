@@ -377,7 +377,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                 {displayTask.schedule?.auto_report && (
                   <div className="text-[10px] text-muted-foreground">Auto-report enabled</div>
                 )}
-                {displayTask.next_run_at && displayTask.status === 'monitoring' && (
+                {displayTask.next_run_at && (
                   <div className="text-xs text-muted-foreground">
                     Next run: {new Date(displayTask.next_run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {new Date(displayTask.next_run_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
                   </div>

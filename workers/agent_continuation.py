@@ -1,8 +1,9 @@
 """Agent continuation — triggers agent analysis when all agent collections complete.
 
-Called from the pipeline runner's _set_final_status when a collection finishes.
-Checks if the collection belongs to an agent, and if all agent collections are done,
-invokes the agent server-side to continue execution (analyze, report, etc.).
+Called from the pipeline runner when a collection reaches a terminal state
+(success, failed, or crash). Checks if the collection belongs to an agent,
+and if all agent collections are done, invokes the agent server-side to
+continue execution (analyze, report, etc.).
 """
 
 import logging
@@ -50,14 +51,18 @@ def check_agent_completion(collection_id: str) -> None:
         return
 
     all_complete = True
+    any_failed = False
     for cid in all_collection_ids:
         cs = fs.get_collection_status(cid)
         if not cs:
             all_complete = False
             break
-        if cs.get("status") not in ("success", "failed"):
+        coll_status = cs.get("status")
+        if coll_status not in ("success", "failed"):
             all_complete = False
             break
+        if coll_status == "failed":
+            any_failed = True
 
     if not all_complete:
         logger.info(
@@ -71,8 +76,9 @@ def check_agent_completion(collection_id: str) -> None:
 
     # Update the active run status
     active_run_id = agent.get("active_run_id")
+    run_status = "failed" if any_failed else "success"
     if active_run_id:
-        fs.update_run(agent_id, active_run_id, status="success", completed_at=datetime.now(timezone.utc))
+        fs.update_run(agent_id, active_run_id, status=run_status, completed_at=datetime.now(timezone.utc))
 
     # Signal continuation readiness via Firestore.
     fs.update_agent(

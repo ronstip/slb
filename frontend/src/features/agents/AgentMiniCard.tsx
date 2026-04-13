@@ -39,9 +39,14 @@ function MiniThumbnail({ collectionIds }: { collectionIds: string[] }) {
     .flatMap((p) => {
       const refs = p.media_refs ?? [];
       const imageRef =
-        refs.find((r) => r.media_type === 'image' && r.gcs_uri) ?? refs.find((r) => r.gcs_uri);
-      if (!imageRef?.gcs_uri) return [];
-      return [mediaUrl(imageRef.gcs_uri, imageRef.original_url)];
+        refs.find((r) => r.media_type === 'image' && r.gcs_uri) ??
+        refs.find((r) => r.gcs_uri) ??
+        refs.find((r) => r.media_type === 'image' && r.original_url) ??
+        refs.find((r) => r.original_url);
+      if (!imageRef) return [];
+      const u = mediaUrl(imageRef.gcs_uri, imageRef.original_url);
+      if (!u) return [];
+      return [u];
     })
 [0];
 

@@ -30,13 +30,20 @@ export function AgentChatTab({ task }: TaskChatTabProps) {
     if (!sessionId) return;
 
     const currentSessionId = useSessionStore.getState().activeSessionId;
-    if (currentSessionId === sessionId) return;
+    if (currentSessionId === sessionId) {
+      // Session already active — just ensure agent collections are selected
+      useAgentStore.getState().setActiveAgent(task.agent_id, task.collection_ids);
+      return;
+    }
     if (restoredRef.current === sessionId) return;
 
     restoredRef.current = sessionId;
-    useSessionStore.getState().restoreSession(sessionId);
-    useAgentStore.getState().setActiveAgent(task.agent_id);
-  }, [task.agent_id, task.session_ids]);
+    // Await restoreSession before setting agent — avoids race where
+    // restoreSession's deselectAll() wipes out collections we just selected
+    useSessionStore.getState().restoreSession(sessionId).then(() => {
+      useAgentStore.getState().setActiveAgent(task.agent_id, task.collection_ids);
+    });
+  }, [task.agent_id, task.session_ids, task.collection_ids]);
 
   const sessionId = task.session_ids?.[0];
   if (!sessionId) {

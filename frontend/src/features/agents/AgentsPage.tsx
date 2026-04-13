@@ -619,7 +619,7 @@ export function AgentsPage() {
                   <div className="text-xs text-muted-foreground">
                     {task.status === 'paused'
                       ? 'Paused'
-                      : task.status === 'monitoring' && task.next_run_at
+                      : task.next_run_at
                         ? formatRelativeTime(task.next_run_at)
                         : '\u2014'}
                   </div>

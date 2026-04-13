@@ -313,8 +313,8 @@ export function AppSidebar({
         <>
           <div className="mx-3 my-2 border-t border-border" />
           <div className="px-3 pb-1">
-            <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-              Agent
+            <p className="mb-1 truncate px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50" title={activeAgent?.title}>
+              {activeAgent?.title || 'Agent'}
             </p>
           </div>
           <div className="flex flex-col gap-0.5 px-3 py-1">

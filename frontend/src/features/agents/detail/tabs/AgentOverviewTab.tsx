@@ -173,7 +173,7 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
                     <Pencil className="h-3 w-3 mr-1" /> Edit
                   </Button>
                 </div>
-                {task.next_run_at && task.status === 'monitoring' && (
+                {task.next_run_at && (
                   <p className="text-xs text-muted-foreground border-t border-border pt-2">
                     Next run:{' '}
                     <span className="font-medium text-foreground">

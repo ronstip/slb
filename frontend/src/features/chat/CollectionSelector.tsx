@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { useSourcesStore, type Source } from '../../stores/sources-store.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useAuth } from '../../auth/useAuth.ts';
 import {
@@ -224,18 +225,24 @@ export function CollectionSelector() {
 
   const activeCount = sources.filter((s) => s.selected).length;
 
-  const { myCollections, sharedCollections } = useMemo(() => {
+  const activeAgentCollectionIds = useAgentStore((s) => s.activeAgent?.collection_ids);
+
+  const { agentCollections, myCollections, sharedCollections } = useMemo(() => {
+    const agentIdSet = new Set(activeAgentCollectionIds ?? []);
+    const agent: Source[] = [];
     const mine: Source[] = [];
     const shared: Source[] = [];
     for (const s of sources) {
-      if (!s.userId || s.userId === profile?.uid) {
+      if (agentIdSet.has(s.collectionId)) {
+        agent.push(s);
+      } else if (!s.userId || s.userId === profile?.uid) {
         mine.push(s);
       } else {
         shared.push(s);
       }
     }
-    return { myCollections: mine, sharedCollections: shared };
-  }, [sources, profile?.uid]);
+    return { agentCollections: agent, myCollections: mine, sharedCollections: shared };
+  }, [sources, profile?.uid, activeAgentCollectionIds]);
 
   const filterSources = (list: Source[]) => {
     if (!search.trim()) return list;
@@ -248,9 +255,10 @@ export function CollectionSelector() {
     );
   };
 
+  const filteredAgent = filterSources(agentCollections);
   const filteredMine = filterSources(myCollections);
   const filteredShared = filterSources(sharedCollections);
-  const hasResults = filteredMine.length > 0 || filteredShared.length > 0;
+  const hasResults = filteredAgent.length > 0 || filteredMine.length > 0 || filteredShared.length > 0;
 
   const handleToggle = (source: Source) => {
     if (source.selected) {
@@ -388,10 +396,31 @@ export function CollectionSelector() {
               </p>
             )}
 
+            {/* Agent Collections */}
+            {filteredAgent.length > 0 && (
+              <div>
+                <div className="mb-0.5 px-2.5 pt-1">
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Agent Collections
+                  </span>
+                </div>
+                {filteredAgent.map((source) => (
+                  <CollectionRow
+                    key={source.collectionId}
+                    source={source}
+                    onToggle={() => handleToggle(source)}
+                    onAction={(action) => handleRowAction(source, action)}
+                    isOwner={!source.userId || source.userId === profile?.uid}
+                    isInOrg={isInOrg}
+                  />
+                ))}
+              </div>
+            )}
+
             {/* My Collections */}
             {filteredMine.length > 0 && (
-              <div>
-                {filteredShared.length > 0 && (
+              <div className={filteredAgent.length > 0 ? 'mt-1.5' : ''}>
+                {(filteredAgent.length > 0 || filteredShared.length > 0) && (
                   <div className="mb-0.5 px-2.5 pt-1">
                     <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
                       My Collections
@@ -413,7 +442,7 @@ export function CollectionSelector() {
 
             {/* Shared */}
             {filteredShared.length > 0 && (
-              <div className={filteredMine.length > 0 ? 'mt-1.5' : ''}>
+              <div className={(filteredAgent.length > 0 || filteredMine.length > 0) ? 'mt-1.5' : ''}>
                 <div className="mb-0.5 px-2.5 pt-1">
                   <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Shared with me

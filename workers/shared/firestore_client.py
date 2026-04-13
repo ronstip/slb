@@ -25,7 +25,7 @@ class FirestoreClient:
             {
                 "user_id": user_id,
                 "org_id": org_id,
-                "status": "running",
+                "status": "pending",
                 "error_message": None,
                 "posts_collected": 0,
                 "posts_enriched": 0,
