@@ -14,9 +14,10 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react';
-import type { Agent, AgentLogEntry } from '../../../../api/endpoints/agents.ts';
+import type { Agent, AgentLogEntry, SearchDef } from '../../../../api/endpoints/agents.ts';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
 import { STATUS_ACCENT, StatusBadge, formatDate, formatLogTime } from '../agent-status-utils.tsx';
+import { Globe, Hash, Tag } from 'lucide-react';
 import { formatSchedule } from '../../../../lib/constants.ts';
 import { Button } from '../../../../components/ui/button.tsx';
 import { cn } from '../../../../lib/utils.ts';
@@ -45,16 +46,16 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
   const accentClass = STATUS_ACCENT[task.status] || 'bg-muted';
 
   const showScheduleBtn =
-    task.agent_type !== 'recurring' && ['completed', 'approved'].includes(task.status);
+    task.agent_type !== 'recurring' && task.status === 'success';
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Single unified header — no border, embedded in content */}
       <div className="flex h-11 shrink-0 items-center gap-3 px-6">
         <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
-        <StatusBadge status={task.status} />
+        <StatusBadge status={task.status} paused={task.paused} />
         <div className="flex-1" />
-        {task.status === 'executing' && onStop && (
+        {task.status === 'running' && onStop && (
           <Button
             variant="outline"
             size="sm"
@@ -93,13 +94,10 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
                 <Clock className="h-3 w-3 shrink-0" />
                 {startDate}
                 {endDate && <> → {endDate}</>}
-                {!endDate && task.status === 'executing' && (
+                {!endDate && task.status === 'running' && (
                   <span className="flex items-center gap-1 text-amber-500 font-medium">
                     <Zap className="h-3 w-3" /> Running
                   </span>
-                )}
-                {!endDate && task.status === 'monitoring' && (
-                  <span className="text-violet-500 font-medium">· Monitoring</span>
                 )}
                 {task.agent_type === 'recurring' && (
                   <span className="flex items-center gap-1 text-muted-foreground">
@@ -129,6 +127,49 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
               )}
             </div>
           </div>
+
+          {/* ── Context document ── */}
+          {(task.data_scope?.enrichment_context || (task.data_scope?.searches?.length ?? 0) > 0 || (task.data_scope?.custom_fields?.length ?? 0) > 0) && (
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
+              <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                {task.data_scope.enrichment_context && (
+                  <p className="text-sm text-muted-foreground">{task.data_scope.enrichment_context}</p>
+                )}
+                {task.data_scope.searches?.length > 0 && (
+                  <div className="space-y-2">
+                    {task.data_scope.searches.map((search: SearchDef, i: number) => (
+                      <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <Globe className="h-3 w-3" />
+                          {search.platforms?.join(', ')}
+                        </span>
+                        {search.keywords?.length > 0 && (
+                          <span className="flex items-center gap-1 text-muted-foreground">
+                            <Hash className="h-3 w-3" />
+                            {search.keywords.join(', ')}
+                          </span>
+                        )}
+                        <span className="text-muted-foreground/50">
+                          {search.n_posts} posts · {search.time_range_days}d · {search.geo_scope}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(task.data_scope.custom_fields?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {task.data_scope.custom_fields!.map((f) => (
+                      <span key={f.name} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                        <Tag className="h-2.5 w-2.5" />
+                        {f.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── Stats row ── */}
           <div className="grid grid-cols-3 gap-3">
@@ -219,7 +260,7 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
               <div className="rounded-xl border border-border bg-card divide-y divide-border/40">
                 {logs.slice(0, 6).map((log, i) => {
-                  const isLatest = i === 0 && task.status === 'executing';
+                  const isLatest = i === 0 && task.status === 'running';
                   return (
                     <div key={log.id} className="flex items-start gap-3 px-4 py-3">
                       <div className="mt-0.5 shrink-0">

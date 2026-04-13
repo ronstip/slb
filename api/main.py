@@ -537,6 +537,12 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             },
         )
     else:
+        # Always refresh identity from the current auth context so that
+        # access checks use the correct user even after account linking
+        # or session migration.
+        session.state["user_id"] = user_id
+        session.state["org_id"] = user.org_id
+        session.state["is_anonymous"] = user.is_anonymous
         # Update selected_sources in session state
         if chat_request.selected_sources is not None:
             session.state["selected_sources"] = chat_request.selected_sources
@@ -1367,9 +1373,8 @@ async def get_multi_collection_feed(
     if request.has_media:
         # Posts where at least one media_ref has a usable URL (GCS URI or valid original URL)
         where_clauses.append(
-            "EXISTS (SELECT 1 FROM UNNEST(JSON_QUERY_ARRAY(p.media_refs)) ref "
-            "WHERE JSON_VALUE(ref, '$.gcs_uri') LIKE 'gs://%' "
-            "OR JSON_VALUE(ref, '$.original_url') LIKE 'http%')"
+            "(TO_JSON_STRING(p.media_refs) LIKE '%\"gs://%' "
+            "OR TO_JSON_STRING(p.media_refs) LIKE '%\"original_url\":\"http%')"
         )
 
     # Topic cluster filter
@@ -1527,7 +1532,7 @@ async def create_agent_endpoint(
         schedule=request.get("schedule"),
         org_id=user.org_id,
         session_id=request.get("session_id"),
-        status=request.get("status", "approved"),
+        status=request.get("status", "running"),
     )
     return agent
 
@@ -1546,6 +1551,7 @@ async def create_from_wizard_endpoint(
     dispatches new collections from searches.
     """
     from api.services.agent_service import create_agent, dispatch_agent_run
+    from api.agent.workflow_template import build_workflow_template
 
     fs = get_fs()
 
@@ -1567,6 +1573,9 @@ async def create_from_wizard_endpoint(
             "auto_dashboard": body.auto_dashboard,
         }
 
+    # Generate workflow template from data_scope
+    todos = build_workflow_template(data_scope, body.agent_type)
+
     agent = create_agent(
         user_id=user.uid,
         title=body.title,
@@ -1574,7 +1583,8 @@ async def create_from_wizard_endpoint(
         data_scope=data_scope,
         schedule=schedule,
         org_id=user.org_id,
-        status="approved",
+        todos=todos,
+        status="running",
     )
     agent_id = agent["agent_id"]
 
@@ -1599,7 +1609,7 @@ async def create_from_wizard_endpoint(
         fresh_agent = fs.get_agent(agent_id) or agent
         run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent)
     elif attached_existing and body.agent_type == "one_shot":
-        fs.update_agent(agent_id, status="completed")
+        fs.update_agent(agent_id, status="success")
 
     all_ids = list(dict.fromkeys(attached_existing + dispatched_ids))
 
@@ -1607,7 +1617,7 @@ async def create_from_wizard_endpoint(
         "agent_id": agent_id,
         "run_id": run_id,
         "collection_ids": all_ids,
-        "status": "executing" if dispatched_ids else ("completed" if attached_existing else "approved"),
+        "status": "running" if dispatched_ids else ("success" if attached_existing else "running"),
     }
 
 
@@ -1725,7 +1735,7 @@ async def update_agent_endpoint(
     # Only allow safe fields to be updated
     allowed = {
         "title", "status", "protocol", "data_scope", "schedule",
-        "agent_type", "context_summary",
+        "agent_type", "context_summary", "paused",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
 
@@ -1781,7 +1791,7 @@ async def approve_agent_protocol(
         schedule=schedule,
         org_id=user.org_id,
         session_id=session_id,
-        status="approved",
+        status="running",
     )
     agent_id = agent["agent_id"]
 
@@ -1798,13 +1808,13 @@ async def approve_agent_protocol(
     elif not run_now and schedule and agent_type == "recurring":
         now = datetime.now(timezone.utc)
         next_run = compute_next_run_at(schedule.get("frequency"), now)
-        update_agent(agent_id, status="monitoring", next_run_at=next_run)
+        update_agent(agent_id, status="success", next_run_at=next_run)
 
     return {
         "agent_id": agent_id,
         "run_id": run_id,
         "collection_ids": collection_ids,
-        "status": "executing" if collection_ids else "approved",
+        "status": "running" if collection_ids else "running",
     }
 
 
@@ -1829,10 +1839,10 @@ async def run_agent_endpoint(
     if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # If agent says 'executing', check if it's actually stuck
-    if agent.get("status") == "executing":
+    # If agent says 'running', check if it's actually stuck
+    if agent.get("status") == "running":
         fs = get_fs()
-        terminal = {"success", "failed", "monitoring"}
+        terminal = {"success", "failed"}
         all_done = all(
             (fs.get_collection_status(cid) or {}).get("status") in terminal
             for cid in (agent.get("collection_ids") or [])
@@ -1841,7 +1851,7 @@ async def run_agent_endpoint(
             raise HTTPException(status_code=409, detail="Agent is already running")
 
     run_id, collection_ids = dispatch_agent_run(agent_id, agent)
-    return {"agent_id": agent_id, "run_id": run_id, "collection_ids": collection_ids, "status": "executing"}
+    return {"agent_id": agent_id, "run_id": run_id, "collection_ids": collection_ids, "status": "running"}
 
 
 @app.get("/agents/{agent_id}/artifacts")
@@ -2071,7 +2081,7 @@ async def agent_continue(request: dict):
 
     # Check if the frontend already picked up the continuation
     agent = get_fs().get_agent(agent_id)
-    if agent and agent.get("status") not in ("awaiting_analysis",):
+    if agent and not (agent.get("status") == "running" and agent.get("continuation_ready")):
         logger.info("Agent %s: skipping continuation — status is %s (frontend likely handled it)", agent_id, agent.get("status"))
         return {"ok": True, "agent_id": agent_id, "skipped": True}
 

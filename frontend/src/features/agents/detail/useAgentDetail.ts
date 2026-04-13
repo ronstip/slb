@@ -8,7 +8,7 @@ export function useAgentDetail(taskId: string | undefined) {
     enabled: !!taskId,
     refetchInterval: (query) => {
       const s = query.state.data?.status;
-      return s === 'executing' ? 10_000 : false;
+      return s === 'running' ? 10_000 : false;
     },
   });
 
@@ -24,7 +24,7 @@ export function useAgentDetail(taskId: string | undefined) {
     enabled: !!taskId,
     refetchInterval: () => {
       const s = taskQuery.data?.status;
-      return s === 'executing' ? 5_000 : false;
+      return s === 'running' ? 5_000 : false;
     },
   });
 

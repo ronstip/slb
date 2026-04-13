@@ -20,7 +20,7 @@ def create_agent(
     schedule: dict | None = None,
     org_id: str | None = None,
     todos: list | None = None,
-    status: str = "approved",
+    status: str = "running",
 ) -> dict:
     """Create a new agent in Firestore and BigQuery. Returns the agent dict."""
     fs = get_fs()
@@ -92,6 +92,7 @@ def dispatch_agent_run(
     from api.schemas.requests import CreateCollectionRequest
     from api.services.collection_service import create_collection_from_request
     from workers.pipeline_v2.schedule_utils import compute_next_run_at
+    from api.agent.workflow_template import build_workflow_template, progress_automated_steps
 
     fs = get_fs()
 
@@ -111,7 +112,7 @@ def dispatch_agent_run(
     run_id = fs.create_run(agent_id, trigger=trigger)
 
     # Update agent status to executing
-    fs.update_agent(agent_id, status="executing", active_run_id=run_id)
+    fs.update_agent(agent_id, status="running", active_run_id=run_id)
 
     collection_ids = []
     for search_def in searches:
@@ -156,6 +157,13 @@ def dispatch_agent_run(
         fs.add_agent_collection(agent_id, cid)
         fs.add_run_collection(agent_id, run_id, cid)
         fs.update_collection_status(cid, agent_id=agent_id)
+
+    # Build workflow template and mark collect step as in_progress
+    todos = agent.get("todos") or []
+    if not todos:
+        todos = build_workflow_template(data_scope, agent_type)
+    todos = progress_automated_steps(todos, "collect_started", "in_progress")
+    fs.update_agent(agent_id, todos=todos)
 
     # Update agent-level denormalized collection_ids + next_run_at for recurring
     now = datetime.now(timezone.utc)

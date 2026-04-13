@@ -53,7 +53,7 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
       };
       if (task.agent_type !== 'recurring') {
         updates.agent_type = 'recurring';
-        updates.status = 'monitoring';
+        // Status stays as-is; recurring agents show success between runs
       }
       await patchAgent(task.agent_id, updates as Parameters<typeof patchAgent>[1]);
       if (editRunNow) {

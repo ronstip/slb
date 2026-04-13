@@ -4,13 +4,9 @@ import type { ArtifactListItem } from './artifacts.ts';
 // --- Types ---
 
 export type AgentStatus =
-  | 'approved'
-  | 'executing'
-  | 'awaiting_analysis'
-  | 'analyzing'
-  | 'completed'
-  | 'monitoring'
-  | 'paused'
+  | 'running'
+  | 'success'
+  | 'failed'
   | 'archived';
 
 export type AgentType = 'one_shot' | 'recurring';
@@ -36,6 +32,8 @@ export interface TodoItem {
   id: string;
   content: string;
   status: 'pending' | 'in_progress' | 'completed';
+  phase?: string;
+  automated?: boolean;
 }
 
 export interface Agent {
@@ -48,7 +46,9 @@ export interface Agent {
   data_scope: {
     searches: SearchDef[];
     custom_fields?: Array<{ name: string; type: string; description: string }> | null;
+    enrichment_context?: string;
   };
+  paused?: boolean;
   schedule: AgentSchedule | null;
   todos: TodoItem[];
   collection_ids: string[];
@@ -96,7 +96,7 @@ export function createAgent(data: {
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type'>>,
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused'>>,
 ): Promise<{ ok: boolean }> {
   return apiPatch<{ ok: boolean }>(`/agents/${agentId}`, updates);
 }

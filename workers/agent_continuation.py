@@ -41,8 +41,8 @@ def check_agent_completion(collection_id: str) -> None:
         logger.warning("Agent %s not found for collection %s", agent_id, collection_id)
         return
 
-    # Only continue if agent is in executing state
-    if agent.get("status") not in ("executing", "monitoring"):
+    # Only continue if agent is in running state
+    if agent.get("status") != "running":
         return
 
     # Check if ALL agent collections are complete
@@ -80,10 +80,17 @@ def check_agent_completion(collection_id: str) -> None:
     if active_run_id:
         fs.update_run(agent_id, active_run_id, status=run_status, completed_at=datetime.now(timezone.utc))
 
+    # Progress automated workflow steps (collect + enrich → completed, analyze → in_progress)
+    from api.agent.workflow_template import progress_automated_steps
+    todos = agent.get("todos") or []
+    if todos:
+        updated_todos = progress_automated_steps(todos, "collection_complete", "completed")
+        fs.update_agent(agent_id, todos=updated_todos)
+
     # Signal continuation readiness via Firestore.
+    # Status stays "running" — the agent is still working (analysis phase).
     fs.update_agent(
         agent_id,
-        status="awaiting_analysis",
         continuation_ready=True,
         continuation_ready_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -111,7 +118,7 @@ def _delayed_fallback(agent_id: str, delay_seconds: int = 60) -> None:
     agent = fs.get_agent(agent_id)
     if not agent:
         return
-    if agent.get("status") == "awaiting_analysis":
+    if agent.get("status") == "running" and agent.get("continuation_ready"):
         logger.info("Agent %s: offline fallback — running agent server-side", agent_id)
         _run_agent_continuation(agent_id)
     else:
@@ -128,7 +135,7 @@ def _run_agent_continuation(agent_id: str) -> None:
         logger.exception("Agent continuation failed for agent %s", agent_id)
         from workers.shared.firestore_client import FirestoreClient
         fs = FirestoreClient(get_settings())
-        fs.update_agent(agent_id, status="completed_with_errors",
+        fs.update_agent(agent_id, status="failed",
                        context_summary="Agent continuation failed after collection completion.")
 
 
@@ -209,7 +216,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
     # Inject agent context into session state
     session.state["active_agent_id"] = agent_id
     session.state["active_agent_title"] = title
-    session.state["active_agent_status"] = "executing"
+    session.state["active_agent_status"] = "running"
     session.state["active_agent_type"] = agent.get("agent_type", "one_shot")
     session.state["continuation_mode"] = True
 
@@ -244,16 +251,14 @@ async def _async_agent_continuation(agent_id: str) -> None:
 
     # Update agent status
     agent_type = agent.get("agent_type", "one_shot")
+    fs.update_agent(
+        agent_id,
+        status="success",
+        completed_at=datetime.now(timezone.utc),
+    )
     if agent_type == "one_shot":
-        fs.update_agent(
-            agent_id,
-            status="completed",
-            completed_at=datetime.now(timezone.utc),
-        )
         fs.add_agent_log(agent_id, "Agent completed", source="continuation")
     else:
-        # Recurring — keep monitoring
-        fs.update_agent(agent_id, status="monitoring")
         fs.add_agent_log(agent_id, "Recurring run completed", source="continuation")
 
     # Send notification email

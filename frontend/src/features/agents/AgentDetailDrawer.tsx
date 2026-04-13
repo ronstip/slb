@@ -16,7 +16,6 @@ import {
   Pause,
   Pencil,
   Play,
-  Radio,
   Repeat,
   StopCircle,
   Table2,
@@ -75,49 +74,14 @@ import {
 } from '../../lib/constants.ts';
 import type { SchedulePreset } from '../../lib/constants.ts';
 
-// --- Shared exports (used by AgentsPage table too) ---
-
-export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-  approved: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Approved', color: 'text-blue-500' },
-  executing: { icon: <Play className="h-3 w-3" />, label: 'Running', color: 'text-amber-500' },
-  completed: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Completed', color: 'text-green-500' },
-  monitoring: { icon: <Radio className="h-3 w-3" />, label: 'Monitoring', color: 'text-violet-500' },
-  paused: { icon: <Pause className="h-3 w-3" />, label: 'Paused', color: 'text-muted-foreground' },
-  archived: { icon: <Archive className="h-3 w-3" />, label: 'Archived', color: 'text-muted-foreground' },
-};
-
-export function StatusBadge({ status }: { status: AgentStatus }) {
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.approved;
-  return (
-    <Badge variant="outline" className={`gap-1 text-[10px] ${config.color}`}>
-      {config.icon}
-      {config.label}
-    </Badge>
-  );
-}
-
-export const RUNNABLE_STATUSES: AgentStatus[] = ['completed', 'monitoring', 'paused', 'approved', 'executing'];
-
-export function formatLastRun(updatedAt: string | null | undefined): string {
-  if (!updatedAt) return '\u2014';
-  const d = new Date(updatedAt);
-  const diffMs = Date.now() - d.getTime();
-  const diffH = Math.floor(diffMs / 3_600_000);
-  if (diffH < 1) return 'Just now';
-  if (diffH < 24) return `${diffH}h ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-// --- Internal helpers ---
-
-const STATUS_ACCENT: Record<string, string> = {
-  approved: 'bg-blue-500',
-  executing: 'bg-amber-500',
-  completed: 'bg-green-500',
-  monitoring: 'bg-violet-500',
-  paused: 'bg-muted-foreground/50',
-  archived: 'bg-muted-foreground/30',
-};
+// --- Re-export shared status utils (canonical source) ---
+export {
+  STATUS_CONFIG,
+  StatusBadge,
+  RUNNABLE_STATUSES,
+  STATUS_ACCENT,
+  formatLastRun,
+} from './detail/agent-status-utils.tsx';
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return null;
@@ -204,7 +168,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
     enabled: open && !!task?.agent_id,
     refetchInterval: (query) => {
       const s = query.state.data?.status ?? task?.status;
-      return s === 'executing' ? 10_000 : false;
+      return s === 'running' ? 10_000 : false;
     },
   });
   const displayTask = freshTask ?? task;
@@ -223,7 +187,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
     enabled: open && !!task?.agent_id,
     refetchInterval: () => {
       const s = displayTask?.status;
-      return s === 'executing' ? 5_000 : false;
+      return s === 'running' ? 5_000 : false;
     },
   });
 
@@ -257,7 +221,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const handleStop = async () => {
     setIsStopping(true);
     try {
-      await patchAgent(displayTask.agent_id, { status: 'completed' });
+      await patchAgent(displayTask.agent_id, { status: 'success' });
       queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
     } catch {
@@ -279,7 +243,6 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
       };
       if (displayTask.agent_type !== 'recurring') {
         updates.agent_type = 'recurring';
-        updates.status = 'monitoring';
       }
       await patchAgent(displayTask.agent_id, updates as Parameters<typeof patchAgent>[1]);
       if (editRunNow) {
@@ -295,9 +258,9 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
 
   const handlePauseResume = async () => {
     setIsPauseToggling(true);
-    const newStatus = displayTask.status === 'monitoring' ? 'paused' : 'monitoring';
+    const newPaused = !displayTask.paused;
     try {
-      await patchAgent(displayTask.agent_id, { status: newStatus });
+      await patchAgent(displayTask.agent_id, { paused: newPaused } as Parameters<typeof patchAgent>[1]);
       queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
     } catch {
@@ -312,11 +275,9 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const endDate = displayTask.completed_at ? formatDate(displayTask.completed_at) : null;
   const timelineText = endDate
     ? `${startDate} \u2192 ${endDate}`
-    : displayTask.status === 'executing'
+    : displayTask.status === 'running'
       ? `${startDate} \u2014 Running`
-      : displayTask.status === 'monitoring'
-        ? `${startDate} \u2014 Monitoring`
-        : startDate;
+      : startDate;
 
   // Logs display
   const allLogs = logs ?? [];
@@ -331,7 +292,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
         <div className="px-6 pt-5 pb-6">
           <SheetHeader className="space-y-1">
             <div className="flex items-center gap-2">
-              <StatusBadge status={displayTask.status} />
+              <StatusBadge status={displayTask.status} paused={displayTask.paused} />
               {displayTask.agent_type === 'recurring' && (
                 <Badge variant="outline" className="gap-1 text-[10px]">
                   <Repeat className="h-2.5 w-2.5" />recurring
@@ -425,7 +386,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </DropdownMenu>
             ) : null}
 
-            {displayTask.status === 'executing' && (
+            {displayTask.status === 'running' && (
               <Button
                 size="sm"
                 variant="destructive"
@@ -437,7 +398,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </Button>
             )}
 
-            {canRun && displayTask.status !== 'executing' && (
+            {canRun && displayTask.status !== 'running' && (
               <Button
                 size="sm"
                 variant="outline"
@@ -452,14 +413,14 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </Button>
             )}
 
-            {displayTask.agent_type === 'recurring' && (displayTask.status === 'monitoring' || displayTask.status === 'paused') && (
+            {displayTask.agent_type === 'recurring' && displayTask.status !== 'running' && (
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handlePauseResume}
                 disabled={isPauseToggling}
               >
-                {displayTask.status === 'monitoring' ? (
+                {!displayTask.paused ? (
                   <><Pause className="mr-1.5 h-3 w-3" />Pause</>
                 ) : (
                   <><Play className="mr-1.5 h-3 w-3" />Resume</>
@@ -467,7 +428,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </Button>
             )}
 
-            {displayTask.agent_type !== 'recurring' && ['completed', 'approved'].includes(displayTask.status) && (
+            {displayTask.agent_type !== 'recurring' && displayTask.status === 'success' && (
               <Button
                 size="sm"
                 variant="outline"
@@ -586,7 +547,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               <>
                 <div className="space-y-0.5">
                   {logsToShow.map((log: AgentLogEntry, i: number) => {
-                    const isLatest = i === 0 && displayTask.status === 'executing';
+                    const isLatest = i === 0 && displayTask.status === 'running';
                     return (
                       <div key={log.id} className="flex items-start gap-2 py-1">
                         {isLatest ? (

@@ -53,7 +53,7 @@ export function TaskProgressPill() {
     () => {
       if (!currentSessionId) return [];
       return tasks
-        .filter((t) => t.status === 'executing' && t.session_ids?.includes(currentSessionId))
+        .filter((t) => t.status === 'running' && t.session_ids?.includes(currentSessionId))
         .sort(
           (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
         );

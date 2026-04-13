@@ -811,7 +811,7 @@ class PipelineRunner:
         # Log to task activity
         self._log_task(friendly, level="error")
 
-        # Trigger agent continuation so the agent doesn't stay stuck in "executing"
+        # Trigger agent continuation so the agent doesn't stay stuck in "running"
         self._check_agent_completion()
 
     # ------------------------------------------------------------------

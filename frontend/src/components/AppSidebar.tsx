@@ -103,7 +103,7 @@ export function AppSidebar({
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const isAgentsPage = location.pathname === '/agents';
-  const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'executing';
+  const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'running';
 
   // During impersonation, profile contains the target user's data from /me,
   // while user is still the real admin's Firebase auth object — prefer profile.
@@ -347,16 +347,16 @@ export function AppSidebar({
           </div>
 
           {/* Actions */}
-          {(activeAgent.status === 'executing' || canRun ||
-            (activeAgent.agent_type === 'recurring' && (activeAgent.status === 'monitoring' || activeAgent.status === 'paused')) ||
-            (activeAgent.agent_type !== 'recurring' && ['completed', 'approved'].includes(activeAgent.status))) && (
+          {(activeAgent.status === 'running' || canRun ||
+            (activeAgent.agent_type === 'recurring' && activeAgent.status !== 'running') ||
+            (activeAgent.agent_type !== 'recurring' && activeAgent.status === 'success')) && (
             <>
               <div className="mx-3 border-t border-border my-1" />
               <div className="flex flex-col gap-0.5 px-3 pb-2">
                 <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
                   Actions
                 </p>
-                {activeAgent.status === 'executing' && onStop && (
+                {activeAgent.status === 'running' && onStop && (
                   <button
                     onClick={onStop}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
@@ -377,19 +377,19 @@ export function AppSidebar({
                     )}
                   </button>
                 )}
-                {activeAgent.agent_type === 'recurring' && (activeAgent.status === 'monitoring' || activeAgent.status === 'paused') && onPauseResume && (
+                {activeAgent.agent_type === 'recurring' && activeAgent.status !== 'running' && onPauseResume && (
                   <button
                     onClick={onPauseResume}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
-                    {activeAgent.status === 'monitoring' ? (
+                    {!activeAgent.paused ? (
                       <><Pause className="h-4 w-4 shrink-0" />Pause</>
                     ) : (
                       <><Play className="h-4 w-4 shrink-0" />Resume</>
                     )}
                   </button>
                 )}
-                {activeAgent.agent_type !== 'recurring' && ['completed', 'approved'].includes(activeAgent.status) && onOpenSchedule && (
+                {activeAgent.agent_type !== 'recurring' && activeAgent.status === 'success' && onOpenSchedule && (
                   <button
                     onClick={onOpenSchedule}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

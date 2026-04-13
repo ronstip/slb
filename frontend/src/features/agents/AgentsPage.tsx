@@ -81,16 +81,13 @@ const loadViewMode = (): ViewMode => {
 };
 
 const ALL_STATUSES: AgentStatus[] = [
-  'executing', 'monitoring', 'approved',
-  'completed', 'paused', 'archived',
+  'running', 'success', 'failed', 'archived',
 ];
 
 const STATUS_ROW_BORDER: Record<string, string> = {
-  executing: 'border-l-amber-500',
-  monitoring: 'border-l-violet-500',
-  completed: 'border-l-green-500',
-  approved: 'border-l-blue-500',
-  paused: 'border-l-muted-foreground/40',
+  running: 'border-l-amber-500',
+  success: 'border-l-green-500',
+  failed: 'border-l-destructive',
   archived: 'border-l-muted-foreground/30',
 };
 
@@ -135,7 +132,7 @@ export function AgentsPage() {
   }, [fetchAgents]);
 
   // Auto-refresh while any task is executing (use stable boolean selector to avoid infinite loop)
-  const hasExecuting = useAgentStore((s) => s.agents.some((t) => t.status === 'executing'));
+  const hasExecuting = useAgentStore((s) => s.agents.some((t) => t.status === 'running'));
   useEffect(() => {
     if (!hasExecuting) return;
     const interval = setInterval(() => fetchAgents(), 15_000);
@@ -252,7 +249,7 @@ export function AgentsPage() {
 
   const handleRestore = async (agent: Agent) => {
     try {
-      await patchAgent(agent.agent_id, { status: 'completed' });
+      await patchAgent(agent.agent_id, { status: 'success' });
       fetchAgents();
     } catch {
       // silent
@@ -481,7 +478,7 @@ export function AgentsPage() {
             {/* Agent rows — each in its own container */}
             {filteredAgents.map((task) => {
               const lastRun = task.updated_at ? { run_at: task.updated_at, status: task.status } : null;
-              const isExecuting = task.status === 'executing';
+              const isExecuting = task.status === 'running';
               const borderColor = STATUS_ROW_BORDER[task.status] ?? 'border-l-transparent';
 
               return (
@@ -543,7 +540,7 @@ export function AgentsPage() {
                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={task.agent_type === 'recurring' || !['completed', 'approved'].includes(task.status)} onClick={() => handleScheduleFromTable(task)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={task.agent_type === 'recurring' || task.status !== 'success'} onClick={() => handleScheduleFromTable(task)}>
                             <Timer className="h-3.5 w-3.5" />
                           </Button>
                         </TooltipTrigger>
@@ -606,7 +603,7 @@ export function AgentsPage() {
                   </div>
 
                   {/* Status */}
-                  <div className="flex justify-center"><StatusBadge status={task.status} /></div>
+                  <div className="flex justify-center"><StatusBadge status={task.status} paused={task.paused} /></div>
 
                   {/* Schedule */}
                   <div className="text-xs text-muted-foreground">
@@ -628,7 +625,7 @@ export function AgentsPage() {
                   <div className="text-xs text-muted-foreground">
                     {lastRun ? (
                       <span className="flex items-center gap-1.5">
-                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${lastRun.status === 'completed' || lastRun.status === 'monitoring' ? 'bg-green-500' : 'bg-amber-500'}`} />
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${lastRun.status === 'success' ? 'bg-green-500' : lastRun.status === 'failed' ? 'bg-destructive' : 'bg-amber-500'}`} />
                         {formatLastRun(task.updated_at)}
                       </span>
                     ) : '\u2014'}

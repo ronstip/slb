@@ -57,7 +57,7 @@ export function AgentDetailPage() {
   const handleStop = async () => {
     if (!task) return;
     try {
-      await patchAgent(task.agent_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'success' });
       toast.success('Agent stopped');
       queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       fetchAgents();
@@ -68,9 +68,9 @@ export function AgentDetailPage() {
 
   const handlePauseResume = async () => {
     if (!task) return;
-    const newStatus = task.status === 'monitoring' ? 'paused' : 'monitoring';
+    const newPaused = !task.paused;
     try {
-      await patchAgent(task.agent_id, { status: newStatus });
+      await patchAgent(task.agent_id, { paused: newPaused } as Parameters<typeof patchAgent>[1]);
       queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       fetchAgents();
     } catch {
@@ -105,7 +105,7 @@ export function AgentDetailPage() {
     );
   }
 
-  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'executing';
+  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
 
   return (
     <div className="flex h-screen bg-background">

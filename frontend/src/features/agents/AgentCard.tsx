@@ -173,7 +173,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
   const handleStop = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await patchAgent(task.agent_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'success' });
       toast.success('Agent stopped');
       fetchAgents();
     } catch {
@@ -183,9 +183,9 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
 
   const handlePauseResume = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const newStatus = task.status === 'monitoring' ? 'paused' : 'monitoring';
+    const newPaused = !task.paused;
     try {
-      await patchAgent(task.agent_id, { status: newStatus });
+      await patchAgent(task.agent_id, { paused: newPaused } as Parameters<typeof patchAgent>[1]);
       fetchAgents();
     } catch {
       toast.error('Failed to update agent');
@@ -208,7 +208,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
 
   const handleRestore = async () => {
     try {
-      await patchAgent(task.agent_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'success' });
       fetchAgents();
       toast.success('Agent restored');
     } catch {
@@ -238,7 +238,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
     }
   };
 
-  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'executing';
+  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
   const hasArtifacts = (task.artifact_ids?.length ?? 0) > 0;
   const hasCollections = (task.collection_ids?.length ?? 0) > 0;
 
@@ -258,7 +258,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}>
               {task.title}
             </h3>
-            <StatusBadge status={task.status} />
+            <StatusBadge status={task.status} paused={task.paused} />
           </div>
 
           {/* Meta info — hidden in compact mode */}
@@ -318,7 +318,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}
 
             {/* Stop */}
-            {task.status === 'executing' && (
+            {task.status === 'running' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleStop}>
@@ -330,14 +330,14 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}
 
             {/* Pause / Resume */}
-            {task.agent_type === 'recurring' && (task.status === 'monitoring' || task.status === 'paused') && (
+            {task.agent_type === 'recurring' && task.status !== 'running' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePauseResume}>
-                    {task.status === 'monitoring' ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                    {!task.paused ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{task.status === 'monitoring' ? 'Pause' : 'Resume'}</TooltipContent>
+                <TooltipContent>{!task.paused ? 'Pause' : 'Resume'}</TooltipContent>
               </Tooltip>
             )}
 
@@ -357,7 +357,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}
 
             {/* Schedule (one-time tasks that completed/approved) */}
-            {task.agent_type !== 'recurring' && ['completed', 'approved'].includes(task.status) && (
+            {task.agent_type !== 'recurring' && task.status === 'success' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {

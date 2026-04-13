@@ -251,7 +251,7 @@ class FirestoreClient:
         now = datetime.now(timezone.utc)
         data.setdefault("created_at", now)
         data.setdefault("updated_at", now)
-        data.setdefault("status", "approved")
+        data.setdefault("status", "running")
         data.setdefault("collection_ids", [])
         data.setdefault("artifact_ids", [])
         data.setdefault("todos", [])
@@ -376,13 +376,13 @@ class FirestoreClient:
         return results
 
     def get_due_recurring_agents(self) -> list[dict]:
-        """Return recurring agents whose next_run_at is in the past and status is 'monitoring'."""
+        """Return recurring agents whose next_run_at is in the past and status is 'success' (not paused)."""
         now = datetime.now(timezone.utc)
         try:
             docs = (
                 self._db.collection("agents")
                 .where("agent_type", "==", "recurring")
-                .where("status", "==", "monitoring")
+                .where("status", "==", "success")
                 .stream()
             )
             due = []
@@ -390,6 +390,9 @@ class FirestoreClient:
                 data = doc.to_dict()
                 next_run_at = data.get("next_run_at")
                 if next_run_at is None:
+                    continue
+                # Skip paused agents
+                if data.get("paused"):
                     continue
                 if hasattr(next_run_at, "isoformat"):
                     if getattr(next_run_at, "tzinfo", None) is None:

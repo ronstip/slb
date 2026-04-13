@@ -52,7 +52,7 @@ export function ChatPanel({ hideHeader }: { hideHeader?: boolean } = {}) {
     const TERMINAL = new Set(['success', 'failed']);
 
     for (const task of tasks) {
-      if (task.status !== 'awaiting_analysis') continue;
+      if (task.status !== 'running') continue;
       if (!task.session_ids?.includes(sessionId)) continue;
 
       // Verify all collections are terminal
