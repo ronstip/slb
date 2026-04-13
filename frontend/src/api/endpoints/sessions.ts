@@ -36,8 +36,9 @@ export interface SessionDetail {
 
 // --- API Functions ---
 
-export function listSessions(): Promise<SessionListItem[]> {
-  return apiGet<SessionListItem[]>('/sessions');
+export function listSessions(agentId?: string): Promise<SessionListItem[]> {
+  const params = agentId ? `?agent_id=${agentId}` : '';
+  return apiGet<SessionListItem[]>(`/sessions${params}`);
 }
 
 export function getSession(sessionId: string): Promise<SessionDetail> {

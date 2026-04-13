@@ -27,6 +27,8 @@ import {
   UserCog,
 } from 'lucide-react';
 import type { Agent } from '../api/endpoints/agents.ts';
+import type { SessionListItem } from '../api/endpoints/sessions.ts';
+import { SessionCard } from './SessionCard.tsx';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from './theme-provider.tsx';
 import { useAgentStore } from '../stores/agent-store.ts';
@@ -71,6 +73,10 @@ interface AppSidebarProps {
   onStop?: () => void;
   onPauseResume?: () => void;
   onOpenSchedule?: () => void;
+  agentSessions?: SessionListItem[];
+  activeSessionId?: string | null;
+  onSessionSelect?: (sessionId: string) => void;
+  onNewChat?: () => void;
 }
 
 export function AppSidebar({
@@ -83,6 +89,10 @@ export function AppSidebar({
   onStop,
   onPauseResume,
   onOpenSchedule,
+  agentSessions,
+  activeSessionId,
+  onSessionSelect,
+  onNewChat,
 }: AppSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,6 +105,7 @@ export function AppSidebar({
   const isDetailPage = !!activeAgent;
   // Default: expanded on non-detail pages, collapsed on detail pages
   const [recentAgentsOpen, setRecentAgentsOpen] = useState(!isDetailPage);
+  const [chatHistoryOpen, setChatHistoryOpen] = useState(true);
   const [impersonateOpen, setImpersonateOpen] = useState(false);
   const isImpersonating = !!profile?.impersonation;
 
@@ -323,25 +334,66 @@ export function AppSidebar({
               const disabled =
                 (id === 'explorer' && !hasCollections) ||
                 (id === 'artifacts' && !hasArtifacts);
+              const isChatTab = id === 'chat';
+              const hasSessions = isChatTab && agentSessions && agentSessions.length > 0;
+              const showExpander = isChatTab && isTabActive && hasSessions;
 
               return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onTabChange(id)}
-                  className={cn(
-                    'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                    isTabActive
-                      ? 'bg-accent text-foreground font-medium'
-                      : disabled
-                        ? 'text-muted-foreground/30 cursor-not-allowed'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                <div key={id}>
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => {
+                        onTabChange(id);
+                        // When clicking chat tab while already on it, toggle expander
+                        if (isChatTab && isTabActive) {
+                          setChatHistoryOpen((v) => !v);
+                        }
+                      }}
+                      className={cn(
+                        'flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                        isTabActive
+                          ? 'bg-accent text-foreground font-medium'
+                          : disabled
+                            ? 'text-muted-foreground/30 cursor-not-allowed'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {label}
+                      {showExpander && (
+                        <span className="ml-auto flex items-center">
+                          {chatHistoryOpen
+                            ? <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
+                            : <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                          }
+                        </span>
+                      )}
+                    </button>
+                    {showExpander && onNewChat && (
+                      <button
+                        onClick={onNewChat}
+                        className="mr-1 rounded-md p-1 text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent transition-colors"
+                        title="New Chat"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {showExpander && chatHistoryOpen && onSessionSelect && (
+                    <div className="ml-5 flex flex-col gap-0.5 overflow-y-auto py-1">
+                      {agentSessions.map((session) => (
+                        <SessionCard
+                          key={session.session_id}
+                          session={session}
+                          onSelect={onSessionSelect}
+                          onDeleted={onNewChat}
+                        />
+                      ))}
+                    </div>
                   )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {label}
-                </button>
+                </div>
               );
             })}
           </div>

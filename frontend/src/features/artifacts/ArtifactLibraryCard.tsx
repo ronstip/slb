@@ -125,7 +125,8 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
 
   const handleOpenSession = () => {
     useUIStore.getState().closeArtifactLibrary();
-    navigate(`/session/${artifact.session_id}`);
+    // Navigate to the standalone artifact page (session route doesn't exist)
+    navigate(`/artifact/${artifact.artifact_id}`);
   };
 
   const handleOpenNewTab = (e: React.MouseEvent) => {

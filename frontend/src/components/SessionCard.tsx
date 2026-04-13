@@ -1,28 +1,28 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
-import { useSessionStore } from '../../stores/session-store.ts';
-import { timeAgo, shortDate } from '../../lib/format.ts';
+import { useSessionStore } from '../stores/session-store.ts';
+import { timeAgo, shortDate } from '../lib/format.ts';
 import { MessageSquare, Trash2 } from 'lucide-react';
-import { Button } from '../../components/ui/button.tsx';
+import { Button } from './ui/button.tsx';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '../../components/ui/dialog.tsx';
-import { cn } from '../../lib/utils.ts';
-import type { SessionListItem } from '../../api/endpoints/sessions.ts';
+} from './ui/dialog.tsx';
+import { cn } from '../lib/utils.ts';
+import type { SessionListItem } from '../api/endpoints/sessions.ts';
 
 interface SessionCardProps {
   session: SessionListItem;
+  onSelect: (sessionId: string) => void;
+  onDeleted?: () => void;
 }
 
-export function SessionCard({ session }: SessionCardProps) {
+export function SessionCard({ session, onSelect, onDeleted }: SessionCardProps) {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const removeSession = useSessionStore((s) => s.removeSession);
   const isRestoring = useSessionStore((s) => s.isRestoring);
-  const navigate = useNavigate();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -31,7 +31,7 @@ export function SessionCard({ session }: SessionCardProps) {
 
   const handleClick = () => {
     if (isActive || isRestoring) return;
-    navigate(`/session/${session.session_id}`);
+    onSelect(session.session_id);
   };
 
   const handleDelete = async () => {
@@ -40,9 +40,8 @@ export function SessionCard({ session }: SessionCardProps) {
       const wasActive = session.session_id === activeSessionId;
       await removeSession(session.session_id);
       setDeleteDialogOpen(false);
-      if (wasActive) {
-        useSessionStore.getState().startNewSession();
-        navigate('/');
+      if (wasActive && onDeleted) {
+        onDeleted();
       }
     } catch {
       // deletion failed

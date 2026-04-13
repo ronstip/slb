@@ -255,6 +255,7 @@ class FirestoreClient:
         data.setdefault("collection_ids", [])
         data.setdefault("artifact_ids", [])
         data.setdefault("todos", [])
+        data.setdefault("version", 1)
         doc_ref.set(data)
         logger.info("Created agent %s", agent_id)
 
@@ -264,6 +265,7 @@ class FirestoreClient:
             return None
         data = doc.to_dict()
         data["agent_id"] = doc.id
+        data.setdefault("version", 1)
         for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
             if key in data and hasattr(data[key], "isoformat"):
                 data[key] = data[key].isoformat()
@@ -407,7 +409,29 @@ class FirestoreClient:
 
     # --- Run methods (subcollection: agents/{agent_id}/runs/{run_id}) ---
 
-    def create_run(self, agent_id: str, trigger: str = "manual") -> str:
+    def create_agent_version(
+        self,
+        agent_id: str,
+        version: int,
+        snapshot: dict,
+        edited_by: str,
+    ) -> None:
+        """Write a version snapshot to agents/{agent_id}/versions/{version}."""
+        doc_ref = (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("versions")
+            .document(str(version))
+        )
+        doc_ref.set({
+            "version": version,
+            **snapshot,
+            "edited_by": edited_by,
+            "edited_at": datetime.now(timezone.utc),
+        })
+        logger.info("Created version %d for agent %s", version, agent_id)
+
+    def create_run(self, agent_id: str, trigger: str = "manual", agent_version: int = 1) -> str:
         """Create a new run document under the agent. Returns the run_id."""
         doc_ref = (
             self._db.collection("agents")
@@ -420,12 +444,13 @@ class FirestoreClient:
             "run_id": doc_ref.id,
             "status": "running",
             "trigger": trigger,
+            "agent_version": agent_version,
             "started_at": now,
             "completed_at": None,
             "collection_ids": [],
             "artifact_ids": [],
         })
-        logger.info("Created run %s for agent %s (trigger=%s)", doc_ref.id, agent_id, trigger)
+        logger.info("Created run %s for agent %s (trigger=%s, v%d)", doc_ref.id, agent_id, trigger, agent_version)
         return doc_ref.id
 
     def get_run(self, agent_id: str, run_id: str) -> dict | None:

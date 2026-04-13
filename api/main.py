@@ -1724,7 +1724,7 @@ async def update_agent_endpoint(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Update an agent's fields."""
-    from api.services.agent_service import get_agent, update_agent
+    from api.services.agent_service import get_agent, update_agent, update_agent_with_version, VERSIONED_FIELDS
 
     agent = get_agent(agent_id)
     if not agent:
@@ -1735,7 +1735,7 @@ async def update_agent_endpoint(
     # Only allow safe fields to be updated
     allowed = {
         "title", "status", "protocol", "data_scope", "schedule",
-        "agent_type", "context_summary", "paused",
+        "agent_type", "context_summary", "paused", "todos",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
 
@@ -1759,7 +1759,12 @@ async def update_agent_endpoint(
                 fs.update_collection_status(cid, status="cancelled")
 
     if safe_updates:
-        update_agent(agent_id, **safe_updates)
+        # Use versioned update if any config fields changed
+        if VERSIONED_FIELDS & set(safe_updates.keys()):
+            new_version = update_agent_with_version(agent_id, user.uid, safe_updates)
+            return {"ok": True, "version": new_version}
+        else:
+            update_agent(agent_id, **safe_updates)
     return {"ok": True}
 
 

@@ -34,6 +34,7 @@ export interface TodoItem {
   status: 'pending' | 'in_progress' | 'completed';
   phase?: string;
   automated?: boolean;
+  custom?: boolean;
 }
 
 export interface Agent {
@@ -57,6 +58,7 @@ export interface Agent {
   updated_at: string;
   completed_at: string | null;
   next_run_at: string | null;
+  version?: number;
   session_ids?: string[];
   active_run_id?: string | null;
   context_summary?: string;
@@ -68,6 +70,7 @@ export interface AgentRun {
   run_id: string;
   status: 'running' | 'success' | 'failed';
   trigger: 'wizard' | 'manual' | 'scheduled';
+  agent_version?: number;
   started_at: string;
   completed_at: string | null;
   collection_ids: string[];
@@ -96,9 +99,9 @@ export function createAgent(data: {
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused'>>,
-): Promise<{ ok: boolean }> {
-  return apiPatch<{ ok: boolean }>(`/agents/${agentId}`, updates);
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused' | 'todos'>>,
+): Promise<{ ok: boolean; version?: number }> {
+  return apiPatch<{ ok: boolean; version?: number }>(`/agents/${agentId}`, updates);
 }
 
 export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }> {

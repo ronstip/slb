@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
+import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
@@ -393,6 +394,11 @@ export function useSSEChat() {
                 // the current page — AgentHome will show a ChatPanel for interaction.
               } else if (createdTaskId) {
                 navigate(`/agents/${createdTaskId}?tab=chat`);
+              }
+              // Refresh agent session list so the new/updated session appears in sidebar
+              const agentId = useAgentStore.getState().activeAgentId;
+              if (agentId) {
+                sessionStore.fetchAgentSessions(agentId);
               }
               break;
             }

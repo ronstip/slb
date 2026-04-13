@@ -38,6 +38,7 @@ def create_agent(
         "data_scope": data_scope or {},
         "schedule": schedule,
         "todos": todos or [],
+        "version": 1,
         "collection_ids": [],
         "artifact_ids": [],
     }
@@ -80,6 +81,39 @@ def update_agent(agent_id: str, **fields) -> None:
     get_fs().update_agent(agent_id, **fields)
 
 
+VERSIONED_FIELDS = {"title", "data_scope", "todos"}
+
+
+def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int:
+    """Update agent and create a version snapshot if config fields changed.
+
+    Returns the new version number.
+    """
+    fs = get_fs()
+    agent = fs.get_agent(agent_id)
+    if not agent:
+        raise ValueError(f"Agent {agent_id} not found")
+
+    needs_version = bool(VERSIONED_FIELDS & set(updates.keys()))
+    current_version = agent.get("version") or 1
+    new_version = current_version
+
+    if needs_version:
+        new_version = current_version + 1
+        updates["version"] = new_version
+
+        snapshot = {
+            "title": updates.get("title", agent.get("title")),
+            "data_scope": updates.get("data_scope", agent.get("data_scope")),
+            "todos": updates.get("todos", agent.get("todos")),
+        }
+        fs.create_agent_version(agent_id, new_version, snapshot, edited_by=user_id)
+
+    fs.update_agent(agent_id, **updates)
+    logger.info("Updated agent %s (version %d → %d)", agent_id, current_version, new_version)
+    return new_version
+
+
 def dispatch_agent_run(
     agent_id: str,
     agent: dict,
@@ -108,8 +142,9 @@ def dispatch_agent_run(
         logger.warning("Agent %s has no searches defined", agent_id)
         return "", []
 
-    # Create a run record
-    run_id = fs.create_run(agent_id, trigger=trigger)
+    # Create a run record (stamped with current agent version)
+    agent_version = agent.get("version", 1)
+    run_id = fs.create_run(agent_id, trigger=trigger, agent_version=agent_version)
 
     # Update agent status to executing
     fs.update_agent(agent_id, status="running", active_run_id=run_id)

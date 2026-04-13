@@ -355,7 +355,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                 size="sm"
                 onClick={() => {
                   onOpenChange(false);
-                  navigate(`/session/${sessionIds[0]}`);
+                  navigate(`/agents/${displayTask.agent_id}?tab=chat&session=${sessionIds[0]}`);
                 }}
               >
                 <MessageSquare className="mr-1.5 h-3 w-3" />
@@ -376,7 +376,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                       key={sid}
                       onClick={() => {
                         onOpenChange(false);
-                        navigate(`/session/${sid}`);
+                        navigate(`/agents/${displayTask.agent_id}?tab=chat&session=${sid}`);
                       }}
                     >
                       {i === 0 ? 'Conversation' : `Conversation ${i + 1}`}
@@ -519,7 +519,10 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                       className="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
                       onClick={() => {
                         onOpenChange(false);
-                        navigate(`/session/${artifact.session_id}`);
+                        navigate(artifact.session_id
+                          ? `/agents/${displayTask.agent_id}?tab=chat&session=${artifact.session_id}`
+                          : `/agents/${displayTask.agent_id}?tab=artifacts`
+                        );
                       }}
                     >
                       <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${style?.bg ?? 'bg-muted'}`}>

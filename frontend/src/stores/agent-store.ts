@@ -1,9 +1,8 @@
 import { create } from 'zustand';
-import type { Agent, AgentStatus } from '../api/endpoints/agents.ts';
+import type { Agent } from '../api/endpoints/agents.ts';
 import {
   listAgents,
   getAgent as fetchAgent,
-  updateAgent as patchAgent,
 } from '../api/endpoints/agents.ts';
 import { useSourcesStore } from './sources-store.ts';
 
@@ -18,7 +17,6 @@ interface AgentStore {
   setActiveAgent: (id: string | null, collectionIds?: string[]) => void;
   loadAgent: (id: string) => Promise<Agent | null>;
   updateAgent: (id: string, updates: Partial<Agent>) => void;
-  updateAgentStatus: (id: string, status: AgentStatus) => void;
   reset: () => void;
 }
 
@@ -82,11 +80,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
           ? { ...s.activeAgent, ...updates }
           : s.activeAgent,
     }));
-  },
-
-  updateAgentStatus: (id: string, status: AgentStatus) => {
-    get().updateAgent(id, { status });
-    patchAgent(id, { status }).catch(() => {});
   },
 
   reset: () => {

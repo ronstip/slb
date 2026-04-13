@@ -261,6 +261,7 @@ class SessionListItem(BaseModel):
     updated_at: str | None = None
     message_count: int = 0
     preview: str | None = None
+    task_id: str | None = None
 
 
 class SessionDetailResponse(BaseModel):
