@@ -39,11 +39,11 @@ export interface TodoItem {
 }
 
 export interface Agent {
-  task_id: string;
+  agent_id: string;
   user_id: string;
   org_id: string | null;
   title: string;
-  task_type: AgentType;
+  agent_type: AgentType;
   status: AgentStatus;
   data_scope: {
     searches: SearchDef[];
@@ -53,59 +53,100 @@ export interface Agent {
   todos: TodoItem[];
   collection_ids: string[];
   artifact_ids: string[];
-  session_id: string;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
   next_run_at: string | null;
-  // Legacy fields (may exist on old records)
-  seed?: string;
-  protocol?: string;
   session_ids?: string[];
-  primary_session_id?: string;
-  run_count?: number;
-  run_history?: Array<{ run_at: string; summary: string; status: string }>;
+  active_run_id?: string | null;
   context_summary?: string;
 }
 
+// --- Run Types ---
+
+export interface AgentRun {
+  run_id: string;
+  status: 'running' | 'success' | 'failed';
+  trigger: 'wizard' | 'manual' | 'scheduled';
+  started_at: string;
+  completed_at: string | null;
+  collection_ids: string[];
+  artifact_ids: string[];
+}
+
 // --- API Functions ---
-// Note: API URLs remain /tasks/* to match the backend wire format.
 
 export function listAgents(): Promise<Agent[]> {
-  return apiGet<Agent[]>('/tasks');
+  return apiGet<Agent[]>('/agents');
 }
 
 export function getAgent(agentId: string): Promise<Agent> {
-  return apiGet<Agent>(`/tasks/${agentId}`);
+  return apiGet<Agent>(`/agents/${agentId}`);
 }
 
 export function createAgent(data: {
   title: string;
-  task_type?: AgentType;
+  agent_type?: AgentType;
   data_scope?: Record<string, unknown>;
   schedule?: AgentSchedule;
-  session_id?: string;
   status?: AgentStatus;
 }): Promise<Agent> {
-  return apiPost<Agent>('/tasks', data);
+  return apiPost<Agent>('/agents', data);
 }
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'task_type'>>,
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type'>>,
 ): Promise<{ ok: boolean }> {
-  return apiPatch<{ ok: boolean }>(`/tasks/${agentId}`, updates);
+  return apiPatch<{ ok: boolean }>(`/agents/${agentId}`, updates);
 }
 
+export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }> {
+  return apiPost<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }>(`/agents/${agentId}/run`, {});
+}
 
-export function runAgent(agentId: string): Promise<{ task_id: string; collection_ids: string[]; status: string }> {
-  return apiPost<{ task_id: string; collection_ids: string[]; status: string }>(`/tasks/${agentId}/run`, {});
+export interface CreateFromWizardPayload {
+  title: string;
+  description?: string;
+  agent_type: 'one_shot' | 'recurring';
+  searches: Array<{
+    platforms: string[];
+    keywords: string[];
+    channels?: string[];
+    time_range_days: number;
+    geo_scope: string;
+    n_posts: number;
+  }>;
+  schedule?: { frequency: string; frequency_label: string } | null;
+  custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
+  enrichment_context?: string;
+  existing_collection_ids?: string[];
+  auto_report?: boolean;
+  auto_email?: boolean;
+  auto_slides?: boolean;
+  auto_dashboard?: boolean;
+}
+
+export function createAgentFromWizard(
+  data: CreateFromWizardPayload,
+): Promise<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string }> {
+  return apiPost<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string }>('/agents/create-from-wizard', data);
+}
+
+// --- Agent Runs ---
+
+export function listAgentRuns(agentId: string, limit = 20): Promise<AgentRun[]> {
+  return apiGet<AgentRun[]>(`/agents/${agentId}/runs`, { limit: String(limit) });
+}
+
+export function getAgentRun(agentId: string, runId: string): Promise<AgentRun> {
+  return apiGet<AgentRun>(`/agents/${agentId}/runs/${runId}`);
 }
 
 // --- Agent Artifacts ---
 
 export function getAgentArtifacts(agentId: string): Promise<ArtifactListItem[]> {
-  return apiGet<ArtifactListItem[]>(`/tasks/${agentId}/artifacts`);
+  return apiGet<ArtifactListItem[]>(`/agents/${agentId}/artifacts`);
 }
 
 // --- Agent Activity Logs ---
@@ -120,5 +161,5 @@ export interface AgentLogEntry {
 }
 
 export function getAgentLogs(agentId: string, limit = 50): Promise<AgentLogEntry[]> {
-  return apiGet<AgentLogEntry[]>(`/tasks/${agentId}/logs`, { limit: String(limit) });
+  return apiGet<AgentLogEntry[]>(`/agents/${agentId}/logs`, { limit: String(limit) });
 }

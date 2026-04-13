@@ -244,7 +244,7 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
     bq = BQClient(settings)
     fs = FirestoreClient(settings)
 
-    fs.update_collection_status(collection_id, status="enriching")
+    # Status stays "running" — no granular enriching status anymore
     custom_fields = _load_custom_fields(fs, collection_id)
     enrichment_context = _load_enrichment_context(fs, collection_id)
 
@@ -293,7 +293,7 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
         fs.update_collection_status(
             collection_id,
             posts_enriched=enriched_count,
-            status="completed",
+            status="success",
             run_log=run_log,
         )
         logger.info("Standalone enrichment done: %d posts in %.1fs", len(results), duration)

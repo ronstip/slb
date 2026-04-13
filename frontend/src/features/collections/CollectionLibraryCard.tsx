@@ -58,8 +58,8 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
   const [deleting, setDeleting] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const isProcessing = source.status === 'collecting' || source.status === 'enriching' || source.status === 'pending';
-  const isReady = source.status === 'completed';
+  const isProcessing = source.status === 'running';
+  const isReady = source.status === 'success';
   const isFailed = source.status === 'failed';
   const isOwner = !source.userId || source.userId === profile?.uid;
   const isInOrg = !!profile?.org_id;

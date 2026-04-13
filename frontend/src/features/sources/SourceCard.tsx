@@ -67,9 +67,9 @@ export function SourceCard({ source }: SourceCardProps) {
   const [tableOpen, setTableOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const isProcessing = source.status === 'collecting' || source.status === 'enriching' || source.status === 'pending';
-  const isPaused = source.status === 'paused';
-  const isReady = source.status === 'completed';
+  const isProcessing = source.status === 'running';
+  const isPaused = false; // paused status removed
+  const isReady = source.status === 'success';
   const isFailed = source.status === 'failed';
   const isOwner = !source.userId || source.userId === profile?.uid;
   const isInOrg = !!profile?.org_id;

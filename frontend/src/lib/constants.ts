@@ -9,15 +9,15 @@ export const TOOL_CATEGORY: Record<string, ToolCategory> = {
   get_table_info: 'thinking',
   list_table_ids: 'thinking',
   get_progress: 'thinking',
-  get_task_status: 'thinking',
-  set_active_task: 'thinking',
+  get_agent_status: 'thinking',
+  set_active_agent: 'thinking',
   ask_user: 'thinking',
   // Tools — execution, processing
   execute_sql: 'tools',
   enrich_collection: 'tools',
   refresh_engagements: 'tools',
   cancel_collection: 'tools',
-  start_task: 'tools',
+  start_agent: 'tools',
   // Outputs — deliverables
   create_chart: 'outputs',
   generate_report: 'outputs',
@@ -45,9 +45,9 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   generate_dashboard: 'Creating interactive dashboard',
   generate_presentation: 'Building presentation deck',
   ask_user: 'Preparing questions',
-  start_task: 'Starting agent',
-  get_task_status: 'Checking agent status',
-  set_active_task: 'Loading agent context',
+  start_agent: 'Starting agent',
+  get_agent_status: 'Checking agent status',
+  set_active_agent: 'Loading agent context',
 };
 
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {

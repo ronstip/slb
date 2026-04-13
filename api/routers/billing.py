@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth.dependencies import CurrentUser, get_current_user
+from api.auth.impersonation import block_during_impersonation
 from api.auth.permissions import require_org_role
 from api.schemas.responses import (
     CreditBalanceResponse,
@@ -109,7 +110,7 @@ async def get_credit_packs(user: CurrentUser = Depends(get_current_user)):
 async def purchase_credits(
     request: Request,
     body: dict,
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(block_during_impersonation),
 ):
     """Create a Lemon Squeezy checkout for a credit pack purchase."""
     if user.org_id:

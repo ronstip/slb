@@ -9,17 +9,12 @@ import { AgentDetailDrawer } from '../agents/AgentDetailDrawer.tsx';
 import type { CollectionStatusResponse } from '../../api/types.ts';
 
 const PHASE_PCT: Record<string, number> = {
-  pending: 10,
-  collecting: 40,
-  enriching: 75,
-  completed: 100,
-  completed_with_errors: 100,
-  monitoring: 100,
+  running: 50,
+  success: 100,
   failed: 100,
-  cancelled: 100,
 };
 
-const TERMINAL = new Set(['completed', 'completed_with_errors', 'failed', 'monitoring', 'cancelled']);
+const TERMINAL = new Set(['success', 'failed']);
 
 function formatElapsed(startIso: string): string {
   const seconds = Math.floor((Date.now() - new Date(startIso).getTime()) / 1000);
@@ -34,8 +29,7 @@ function phaseLabel(collections: CollectionStatusResponse[]): string {
   if (collections.length === 0) return 'Starting\u2026';
   const statuses = collections.map((c) => c.status);
   if (statuses.some((s) => s === 'failed')) return 'Failed';
-  if (statuses.some((s) => s === 'collecting' || s === 'pending')) return 'Collecting';
-  if (statuses.some((s) => s === 'enriching')) return 'Enriching';
+  if (statuses.some((s) => s === 'running')) return 'Running';
   return 'Complete';
 }
 
@@ -59,7 +53,7 @@ export function TaskProgressPill() {
     () => {
       if (!currentSessionId) return [];
       return tasks
-        .filter((t) => t.status === 'executing' && t.session_id === currentSessionId)
+        .filter((t) => t.status === 'executing' && t.session_ids?.includes(currentSessionId))
         .sort(
           (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
         );

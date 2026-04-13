@@ -26,7 +26,7 @@ export function AgentChatTab({ task }: TaskChatTabProps) {
   useCollectionPolling();
 
   useEffect(() => {
-    const sessionId = task.primary_session_id || task.session_id;
+    const sessionId = task.session_ids?.[0];
     if (!sessionId) return;
 
     const currentSessionId = useSessionStore.getState().activeSessionId;
@@ -35,10 +35,10 @@ export function AgentChatTab({ task }: TaskChatTabProps) {
 
     restoredRef.current = sessionId;
     useSessionStore.getState().restoreSession(sessionId);
-    useAgentStore.getState().setActiveAgent(task.task_id);
-  }, [task.task_id, task.session_id, task.primary_session_id]);
+    useAgentStore.getState().setActiveAgent(task.agent_id);
+  }, [task.agent_id, task.session_ids]);
 
-  const sessionId = task.primary_session_id || task.session_id;
+  const sessionId = task.session_ids?.[0];
   if (!sessionId) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">

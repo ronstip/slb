@@ -7,9 +7,8 @@ import { useSessionStore } from '../../../stores/session-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
-import { useAuth } from '../../../auth/useAuth.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartTaskResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartAgentResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 // Tools that are internal plumbing — skip from activity log
@@ -33,9 +32,9 @@ function getToolDescription(toolName: string, args: Record<string, unknown>): st
     case 'get_collection_details':
     case 'refresh_engagements':
       return (args.collection_id as string) || undefined;
-    case 'get_task_status':
-    case 'set_active_task':
-      return (args.task_id as string) || undefined;
+    case 'get_agent_status':
+    case 'set_active_agent':
+      return (args.agent_id as string) || (args.task_id as string) || undefined;
     case 'create_chart':
     case 'generate_report':
     case 'generate_dashboard':
@@ -51,7 +50,6 @@ function getToolDescription(toolName: string, args: Record<string, unknown>): st
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
   const activeMessageRef = useRef<string | null>(null);
-  const { getToken } = useAuth();
   const { theme, accentColor } = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -104,7 +102,6 @@ export function useSSEChat() {
             accent_color: accentColor,
             theme: resolvedTheme,
           },
-          getToken,
           abortController.signal,
         );
 
@@ -301,10 +298,10 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
-              } else if (isStartTaskResult(toolName, result)) {
+              } else if (isStartAgentResult(toolName, result)) {
                 // Task started — add collections to sources and link taskId + sessionId
                 const cids = result.collection_ids as string[] | undefined;
-                const taskId = result.task_id as string | undefined;
+                const taskId = (result.agent_id as string) || (result.task_id as string) || undefined;
                 const currentSessionId = useChatStore.getState().sessionId ?? undefined;
                 if (cids?.length) {
                   for (const cid of cids) {
@@ -419,7 +416,7 @@ export function useSSEChat() {
         useChatStore.getState().finalizeMessage(messageId);
       }
     },
-    [getToken, navigate],
+    [navigate],
   );
 
   /** Send a system-generated message (no user bubble, full event processing). */

@@ -98,11 +98,9 @@ export function StatusBadge({ status }: { status: AgentStatus }) {
 
 export const RUNNABLE_STATUSES: AgentStatus[] = ['completed', 'monitoring', 'paused', 'approved', 'executing'];
 
-export function formatLastRun(runHistory: Agent['run_history']): string {
-  if (!runHistory?.length) return '—';
-  const lastRunAt = runHistory[runHistory.length - 1]?.run_at;
-  if (!lastRunAt) return '—';
-  const d = new Date(lastRunAt);
+export function formatLastRun(updatedAt: string | null | undefined): string {
+  if (!updatedAt) return '\u2014';
+  const d = new Date(updatedAt);
   const diffMs = Date.now() - d.getTime();
   const diffH = Math.floor(diffMs / 3_600_000);
   if (diffH < 1) return 'Just now';
@@ -141,7 +139,7 @@ function buildSourceForCollection(collectionId: string): Source {
   if (stored) return stored;
   return {
     collectionId,
-    status: 'completed',
+    status: 'success',
     config: { platforms: [], keywords: [], channel_urls: [], time_range: { start: '', end: '' }, include_comments: false, geo_scope: 'global' } as CollectionConfig,
     title: collectionId.slice(0, 8),
     postsCollected: 0,
@@ -197,13 +195,13 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
       handleOpenScheduleDialog();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoOpenSchedule, open, task?.task_id]);
+  }, [autoOpenSchedule, open, task?.agent_id]);
 
   // Live refresh while task is executing
   const { data: freshTask } = useQuery({
-    queryKey: ['agent-detail', task?.task_id],
-    queryFn: () => getAgent(task!.task_id),
-    enabled: open && !!task?.task_id,
+    queryKey: ['agent-detail', task?.agent_id],
+    queryFn: () => getAgent(task!.agent_id),
+    enabled: open && !!task?.agent_id,
     refetchInterval: (query) => {
       const s = query.state.data?.status ?? task?.status;
       return s === 'executing' ? 10_000 : false;
@@ -213,16 +211,16 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
 
   // Artifacts for this agent
   const { data: artifacts } = useQuery({
-    queryKey: ['agent-artifacts', task?.task_id],
-    queryFn: () => getAgentArtifacts(task!.task_id),
-    enabled: open && !!task?.task_id && (task?.artifact_ids?.length ?? 0) > 0,
+    queryKey: ['agent-artifacts', task?.agent_id],
+    queryFn: () => getAgentArtifacts(task!.agent_id),
+    enabled: open && !!task?.agent_id && (task?.artifact_ids?.length ?? 0) > 0,
   });
 
   // Activity logs
   const { data: logs } = useQuery({
-    queryKey: ['agent-logs', task?.task_id],
-    queryFn: () => getAgentLogs(task!.task_id),
-    enabled: open && !!task?.task_id,
+    queryKey: ['agent-logs', task?.agent_id],
+    queryFn: () => getAgentLogs(task!.agent_id),
+    enabled: open && !!task?.agent_id,
     refetchInterval: () => {
       const s = displayTask?.status;
       return s === 'executing' ? 5_000 : false;
@@ -237,21 +235,17 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const allCollectionIds = [...(displayTask.collection_ids || [])].reverse();
   const collectionsToShow = showAllCollections ? allCollectionIds : allCollectionIds.slice(0, 6);
 
-  const sessionIds = displayTask.session_id
-    ? [displayTask.session_id]
-    : displayTask.session_ids?.length
-      ? displayTask.session_ids
-      : displayTask.primary_session_id
-        ? [displayTask.primary_session_id]
-        : [];
+  const sessionIds = displayTask.session_ids?.length
+    ? displayTask.session_ids
+    : [];
 
   const canRun = RUNNABLE_STATUSES.includes(displayTask.status);
 
   const handleRunDrawer = async () => {
     setIsRunning(true);
     try {
-      await runAgent(displayTask.task_id);
-      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.task_id] });
+      await runAgent(displayTask.agent_id);
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
     } catch {
       // 409 or other error — task may already be running
@@ -263,8 +257,8 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const handleStop = async () => {
     setIsStopping(true);
     try {
-      await patchAgent(displayTask.task_id, { status: 'completed' });
-      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.task_id] });
+      await patchAgent(displayTask.agent_id, { status: 'completed' });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
     } catch {
       // ignore
@@ -283,15 +277,15 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
           auto_report: false,
         },
       };
-      if (displayTask.task_type !== 'recurring') {
-        updates.task_type = 'recurring';
+      if (displayTask.agent_type !== 'recurring') {
+        updates.agent_type = 'recurring';
         updates.status = 'monitoring';
       }
-      await patchAgent(displayTask.task_id, updates as Parameters<typeof patchAgent>[1]);
+      await patchAgent(displayTask.agent_id, updates as Parameters<typeof patchAgent>[1]);
       if (editRunNow) {
-        try { await runAgent(displayTask.task_id); } catch { /* 409 = already running */ }
+        try { await runAgent(displayTask.agent_id); } catch { /* 409 = already running */ }
       }
-      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.task_id] });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
       setScheduleDialogOpen(false);
     } catch {
@@ -303,8 +297,8 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
     setIsPauseToggling(true);
     const newStatus = displayTask.status === 'monitoring' ? 'paused' : 'monitoring';
     try {
-      await patchAgent(displayTask.task_id, { status: newStatus });
-      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.task_id] });
+      await patchAgent(displayTask.agent_id, { status: newStatus });
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
     } catch {
       // ignore
@@ -338,7 +332,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
           <SheetHeader className="space-y-1">
             <div className="flex items-center gap-2">
               <StatusBadge status={displayTask.status} />
-              {displayTask.task_type === 'recurring' && (
+              {displayTask.agent_type === 'recurring' && (
                 <Badge variant="outline" className="gap-1 text-[10px]">
                   <Repeat className="h-2.5 w-2.5" />recurring
                 </Badge>
@@ -368,7 +362,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
           </div>
 
           {/* Schedule */}
-          {displayTask.task_type === 'recurring' && (
+          {displayTask.agent_type === 'recurring' && (
             <div className="mt-6">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Schedule</h3>
               <div className="rounded-lg border p-3 space-y-2">
@@ -388,22 +382,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                     Next run: {new Date(displayTask.next_run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {new Date(displayTask.next_run_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
                   </div>
                 )}
-                {/* Run History */}
-                {displayTask.run_history && displayTask.run_history.length > 0 && (
-                  <>
-                    <div className="border-t pt-2 mt-2">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Run History</div>
-                      <div className="space-y-1">
-                        {displayTask.run_history.slice(-5).reverse().map((run, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <div className={`h-1.5 w-1.5 rounded-full ${run.status === 'started' || run.status === 'completed' ? 'bg-green-500' : 'bg-amber-500'}`} />
-                            <span>{formatDate(run.run_at)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
+                {/* Run history now available via listAgentRuns() API */}
               </div>
             </div>
           )}
@@ -465,7 +444,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                 onClick={handleRunDrawer}
                 disabled={isRunning}
               >
-                {displayTask.task_type === 'recurring' ? (
+                {displayTask.agent_type === 'recurring' ? (
                   <><Play className="mr-1.5 h-3 w-3" />Run Now</>
                 ) : (
                   <><Repeat className="mr-1.5 h-3 w-3" />Re-run</>
@@ -473,7 +452,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </Button>
             )}
 
-            {displayTask.task_type === 'recurring' && (displayTask.status === 'monitoring' || displayTask.status === 'paused') && (
+            {displayTask.agent_type === 'recurring' && (displayTask.status === 'monitoring' || displayTask.status === 'paused') && (
               <Button
                 size="sm"
                 variant="outline"
@@ -488,7 +467,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </Button>
             )}
 
-            {displayTask.task_type !== 'recurring' && ['completed', 'approved'].includes(displayTask.status) && (
+            {displayTask.agent_type !== 'recurring' && ['completed', 'approved'].includes(displayTask.status) && (
               <Button
                 size="sm"
                 variant="outline"

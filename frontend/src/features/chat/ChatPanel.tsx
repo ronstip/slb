@@ -49,14 +49,14 @@ export function ChatPanel({ hideHeader }: { hideHeader?: boolean } = {}) {
     // Check sources for tasks where all collections are complete
     const sources = useSourcesStore.getState().sources;
     const tasks = useAgentStore.getState().agents;
-    const TERMINAL = new Set(['completed', 'completed_with_errors', 'failed', 'monitoring']);
+    const TERMINAL = new Set(['success', 'failed']);
 
     for (const task of tasks) {
       if (task.status !== 'awaiting_analysis') continue;
-      if (task.session_id !== sessionId) continue;
+      if (!task.session_ids?.includes(sessionId)) continue;
 
       // Verify all collections are terminal
-      const taskCollections = sources.filter((s) => s.taskId === task.task_id);
+      const taskCollections = sources.filter((s) => s.taskId === task.agent_id);
       if (taskCollections.length === 0) continue;
       const allTerminal = taskCollections.every((s) => TERMINAL.has(s.status ?? ''));
       if (!allTerminal) continue;

@@ -30,25 +30,19 @@ import { cn } from '../../lib/utils.ts';
 import { formatNumber, shortDate } from '../../lib/format.ts';
 import type { Source } from '../../stores/sources-store.ts';
 
-type StatusFilter = 'all' | 'active' | 'monitoring' | 'completed' | 'failed';
+type StatusFilter = 'all' | 'active' | 'completed' | 'failed';
 
 const STATUS_FILTERS: { label: string; value: StatusFilter; color?: string }[] = [
   { label: 'All', value: 'all' },
   { label: 'Active', value: 'active', color: '#f59e0b' },
-  { label: 'Monitoring', value: 'monitoring', color: '#3b82f6' },
   { label: 'Completed', value: 'completed', color: '#22c55e' },
   { label: 'Failed', value: 'failed', color: '#ef4444' },
 ];
 
 const STATUS_DOTS: Record<string, string> = {
-  collecting: 'bg-amber-500 animate-pulse',
-  enriching: 'bg-amber-500 animate-pulse',
-  pending: 'bg-amber-500 animate-pulse',
-  monitoring: 'bg-blue-500',
-  completed: 'bg-green-500',
-  completed_with_errors: 'bg-yellow-500',
+  running: 'bg-amber-500 animate-pulse',
+  success: 'bg-green-500',
   failed: 'bg-red-500',
-  cancelled: 'bg-gray-400',
 };
 
 interface CollectionsSidebarProps {
@@ -82,11 +76,9 @@ export function CollectionsSidebar({
     let list = collections;
 
     if (statusFilter === 'active') {
-      list = list.filter((s) => ['collecting', 'enriching', 'pending'].includes(s.status));
-    } else if (statusFilter === 'monitoring') {
-      list = list.filter((s) => s.status === 'monitoring');
+      list = list.filter((s) => s.status === 'running');
     } else if (statusFilter === 'completed') {
-      list = list.filter((s) => s.status === 'completed');
+      list = list.filter((s) => s.status === 'success');
     } else if (statusFilter === 'failed') {
       list = list.filter((s) => s.status === 'failed');
     }

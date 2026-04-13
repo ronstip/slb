@@ -21,7 +21,7 @@ init_firebase()
 
 import requests as http_requests
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -50,7 +50,7 @@ from api.routers import sessions as sessions_router
 from api.routers import artifacts as artifacts_router
 from api.routers import feed_links as feed_links_router
 from api.routers import topics as topics_router
-from api.schemas.requests import ChatRequest, CreateCollectionRequest, MultiFeedRequest, UpdateCollectionRequest
+from api.schemas.requests import ChatRequest, CreateCollectionRequest, CreateFromWizardRequest, MultiFeedRequest, UpdateCollectionRequest
 from api.schemas.responses import (
     BreakdownItem,
     CollectionStatsResponse,
@@ -209,7 +209,7 @@ def _maybe_persist_artifact(
     user_id: str,
     org_id: str | None,
     session_id: str,
-    task_id: str | None = None,
+    agent_id: str | None = None,
 ) -> str | None:
     """If the tool result is an artifact, persist to Firestore. Returns artifact_id or None."""
     if result.get("status") != "success":
@@ -295,9 +295,9 @@ def _maybe_persist_artifact(
     try:
         fs = get_fs()
         fs.create_artifact(artifact_id, doc)
-        # Link artifact to active task if one exists
-        if task_id:
-            fs.add_task_artifact(task_id, artifact_id)
+        # Link artifact to active agent if one exists
+        if agent_id:
+            fs.add_agent_artifact(agent_id, artifact_id)
     except Exception as e:
         logger.warning("Failed to persist artifact %s: %s", artifact_id, e)
         return None
@@ -312,7 +312,7 @@ def _maybe_persist_artifact(
 
 def _build_user_context(user_id: str, org_id: str) -> dict:
     """Build user context for agent personalization at session start."""
-    context: dict = {"display_name": "", "preferences": {}, "collections_index": [], "tasks_index": [], "ppt_template": None}
+    context: dict = {"display_name": "", "preferences": {}, "collections_index": [], "agents_index": [], "ppt_template": None}
     try:
         fs = get_fs()
         user_doc = fs.get_user(user_id)
@@ -327,18 +327,18 @@ def _build_user_context(user_id: str, org_id: str) -> dict:
                     "uploaded_at": tmpl.get("uploaded_at", ""),
                 }
 
-        # Build lightweight tasks index
-        tasks = fs.list_user_tasks(user_id, org_id or None)
-        tasks_index = []
-        for t in tasks[:10]:
-            tasks_index.append({
-                "task_id": t.get("task_id"),
+        # Build lightweight agents index
+        agents = fs.list_user_agents(user_id, org_id or None)
+        agents_index = []
+        for t in agents[:10]:
+            agents_index.append({
+                "agent_id": t.get("agent_id"),
                 "title": t.get("title", "untitled"),
                 "status": t.get("status", "unknown"),
-                "task_type": t.get("task_type", "one_shot"),
+                "agent_type": t.get("agent_type", "one_shot"),
                 "created_at": t.get("created_at", ""),
             })
-        context["tasks_index"] = tasks_index
+        context["agents_index"] = agents_index
 
         # Build lightweight collections index from last 10 collections
         from api.agent.tools.get_past_collections import fetch_user_collections
@@ -392,9 +392,13 @@ def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
 
 @app.get("/me")
 async def get_me(user: CurrentUser = Depends(get_current_user)):
-    """Return the current user's profile."""
+    """Return the current user's profile.
+
+    During impersonation this returns the TARGET user's profile so all
+    frontend permission gates flip. The real caller's identity is surfaced
+    in the optional `impersonation` block for the banner UI.
+    """
     fs = get_fs()
-    settings = get_settings()
 
     org_name = None
     if user.org_id:
@@ -404,11 +408,13 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
 
     user_doc = fs.get_user(user.uid)
 
-    # Check super admin status
-    admin_emails = [e.strip().lower() for e in settings.super_admin_emails.split(",") if e.strip()]
-    is_super_admin = user.email.lower() in admin_emails if admin_emails else False
+    # is_super_admin reflects the TARGET user's privileges — during
+    # impersonation this is always false because admin-on-admin is blocked.
+    # The real caller's super admin status is not leaked through this field.
+    from api.auth.admin import is_super_admin_email
+    is_super_admin = is_super_admin_email(user.email)
 
-    return {
+    response = {
         "uid": user.uid,
         "email": user.email,
         "display_name": user_doc.get("display_name") if user_doc else user.display_name,
@@ -423,14 +429,35 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
         "is_super_admin": is_super_admin,
     }
 
+    if user.impersonated_by is not None:
+        response["impersonation"] = {
+            "real_uid": user.impersonated_by,
+            "real_email": user.real_email,
+            "target_uid": user.uid,
+            "target_email": user.email,
+            "target_display_name": response["display_name"],
+        }
+
+    return response
+
 
 class LinkAccountRequest(BaseModel):
     old_uid: str
 
 
 @app.post("/auth/link-account")
-async def link_account(body: LinkAccountRequest, user: CurrentUser = Depends(get_current_user)):
+async def link_account(
+    body: LinkAccountRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
     """Migrate anonymous user data to linked account after UID change."""
+    # Block while impersonating — mutates user docs and would corrupt the
+    # target user's data if triggered as another user.
+    if user.impersonated_by is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="This action is disabled while viewing as another user",
+        )
     from api.auth.dependencies import _user_cache
 
     old_uid = body.old_uid
@@ -520,7 +547,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             session.state["theme"] = chat_request.theme
 
         # Detect whether this message is a response to an ask_user prompt or
-        # a system continuation (collection complete). Both preserve task state.
+        # a system continuation (collection complete). Both preserve agent state.
         is_ask_user_response = session.state.get("awaiting_user_input", False)
         is_continuation = chat_request.is_system and "[CONTINUE]" in chat_request.message
 
@@ -532,22 +559,22 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             chat_request.message = chat_request.message.replace("[CONTINUE]", "").strip()
             session.state["continuation_mode"] = True
             session.state["collection_running"] = False
-            # Restore todos from task document if cleared from session
-            task_id = session.state.get("active_task_id")
-            if task_id and not session.state.get("todos"):
-                _task = get_fs().get_task(task_id)
-                if _task and _task.get("todos"):
-                    session.state["todos"] = _task["todos"]
-            # Mark the task as picked up so the offline fallback doesn't fire
-            if task_id:
-                get_fs().update_task(task_id, status="analyzing")
+            # Restore todos from agent document if cleared from session
+            agent_id = session.state.get("active_agent_id")
+            if agent_id and not session.state.get("todos"):
+                _agent = get_fs().get_agent(agent_id)
+                if _agent and _agent.get("todos"):
+                    session.state["todos"] = _agent["todos"]
+            # Mark the agent as picked up so the offline fallback doesn't fire
+            if agent_id:
+                get_fs().update_agent(agent_id, status="analyzing")
 
         if not is_ask_user_response and not is_continuation:
-            # Clear prior-task state to prevent context leakage between tasks.
+            # Clear prior-agent state to prevent context leakage between agents.
             # The agent re-establishes context from the user's current message.
             for key in (
-                "active_task_id", "active_task_title", "active_task_status",
-                "active_task_protocol", "active_task_type", "active_task_context_summary",
+                "active_agent_id", "active_agent_title", "active_agent_status",
+                "active_agent_protocol", "active_agent_type", "active_agent_context_summary",
                 "todos", "tool_result_history",
                 "active_collection_id", "agent_selected_sources",
                 "collection_status", "collection_running",
@@ -557,12 +584,12 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 session.state.pop(key, None)
 
     # Window conversation history by user-message boundaries to prevent
-    # prior task context from contaminating new requests.  Keep events from
+    # prior agent context from contaminating new requests.  Keep events from
     # the last N user messages (each user message spawns ~5-10 tool/model
-    # events).  This isolates task flows far better than a raw event count.
+    # events).  This isolates agent flows far better than a raw event count.
     # Use a wider window when the agent is mid-flow (ask_user round-trips
     # can span 3-4 user turns: original request, ask_user response(s), approval).
-    is_mid_flow = is_ask_user_response or session.state.get("active_task_id") or is_continuation
+    is_mid_flow = is_ask_user_response or session.state.get("active_agent_id") or is_continuation
     MAX_USER_TURNS = 6 if is_mid_flow else 2
     _trimmed_prefix = []  # Events trimmed for LLM context window — restored before persistence
     if session.events:
@@ -592,7 +619,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             session.state["posts_collected"] = _live.get("posts_collected", 0)
             session.state["posts_enriched"] = _live.get("posts_enriched", 0)
             session.state["posts_embedded"] = _live.get("posts_embedded", 0)
-            if _live.get("status") in ("completed", "completed_with_errors", "failed", "cancelled"):
+            if _live.get("status") in ("success", "failed"):
                 session.state["collection_running"] = False
 
     # Refresh ppt_template in session state from user profile (once per turn,
@@ -630,11 +657,13 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     # and overwrite the flush's correct state (including awaiting_user_input).
     # Session is persisted once at end-of-turn via runner.session_service.flush().
 
-    # Track usage in background (3 Firestore writes)
-    from api.services.usage_service import track_query
-    threading.Thread(
-        target=track_query, args=(user_id, user.org_id, session_id), daemon=True
-    ).start()
+    # Track usage in background (3 Firestore writes).
+    # Skip while impersonating so we don't pollute the target user's metrics.
+    if user.impersonated_by is None:
+        from api.services.usage_service import track_query
+        threading.Thread(
+            target=track_query, args=(user_id, user.org_id, session_id), daemon=True
+        ).start()
 
     logger.info("PERF pre_runner=%.3fs", _time.perf_counter() - t_start)
 
@@ -699,10 +728,10 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         tr_name = event_data.get("metadata", {}).get("name", "")
                         tr_result = event_data.get("metadata", {}).get("result", {})
                         if isinstance(tr_result, dict):
-                            active_task_id = session.state.get("active_task_id") if session else None
+                            active_agent_id = session.state.get("active_agent_id") if session else None
                             aid = _maybe_persist_artifact(
                                 tr_name, tr_result, user_id, user.org_id, session_id,
-                                task_id=active_task_id,
+                                agent_id=active_agent_id,
                             )
                             if aid:
                                 tr_result["_artifact_id"] = aid
@@ -1467,80 +1496,241 @@ async def get_multi_collection_feed(
 
 
 # ---------------------------------------------------------------------------
-# Task endpoints
+# Agent endpoints
 # ---------------------------------------------------------------------------
 
 
-@app.get("/tasks")
-async def list_tasks(user: CurrentUser = Depends(get_current_user)):
-    """List all tasks visible to the user."""
-    from api.services.task_service import list_tasks as _list_tasks
+@app.get("/agents")
+async def list_agents(user: CurrentUser = Depends(get_current_user)):
+    """List all agents visible to the user."""
+    from api.services.agent_service import list_agents as _list_agents
 
-    tasks = _list_tasks(user.uid, user.org_id)
-    return tasks
+    agents = _list_agents(user.uid, user.org_id)
+    return agents
 
 
-@app.post("/tasks")
-async def create_task_endpoint(
+@app.post("/agents")
+async def create_agent_endpoint(
     request: dict,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Create a new task."""
-    from api.services.task_service import create_task
+    """Create a new agent."""
+    from api.services.agent_service import create_agent
 
-    task = create_task(
+    agent = create_agent(
         user_id=user.uid,
-        title=request.get("title", "Untitled Task"),
-        task_type=request.get("task_type", "one_shot"),
+        title=request.get("title", "Untitled Agent"),
+        agent_type=request.get("agent_type", "one_shot"),
         data_scope=request.get("data_scope"),
         schedule=request.get("schedule"),
         org_id=user.org_id,
         session_id=request.get("session_id"),
         status=request.get("status", "approved"),
     )
-    return task
+    return agent
 
 
-@app.get("/tasks/{task_id}")
-async def get_task_endpoint(task_id: str, user: CurrentUser = Depends(get_current_user)):
-    """Get a task by ID."""
-    from api.services.task_service import get_task
+@app.post("/agents/create-from-wizard")
+@limiter.limit("5/minute")
+async def create_from_wizard_endpoint(
+    request: Request,
+    body: CreateFromWizardRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Create an agent directly from the wizard UI — no LLM round-trip.
 
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    Replicates what the start_agent agent tool does but as a deterministic
+    REST call: creates the agent, attaches existing collections, and
+    dispatches new collections from searches.
+    """
+    from api.services.agent_service import create_agent, dispatch_agent_run
+
+    fs = get_fs()
+
+    # Build data_scope
+    data_scope: dict = {"searches": body.searches}
+    if body.custom_fields:
+        data_scope["custom_fields"] = body.custom_fields
+    if body.enrichment_context:
+        data_scope["enrichment_context"] = body.enrichment_context
+
+    # Build schedule object for recurring agents
+    schedule = None
+    if body.agent_type == "recurring" and body.schedule:
+        schedule = {
+            **body.schedule,
+            "auto_report": body.auto_report,
+            "auto_email": body.auto_email,
+            "auto_slides": body.auto_slides,
+            "auto_dashboard": body.auto_dashboard,
+        }
+
+    agent = create_agent(
+        user_id=user.uid,
+        title=body.title,
+        agent_type=body.agent_type,
+        data_scope=data_scope,
+        schedule=schedule,
+        org_id=user.org_id,
+        status="approved",
+    )
+    agent_id = agent["agent_id"]
+
+    # Attach existing collections (with ownership check)
+    attached_existing: list[str] = []
+    for cid in body.existing_collection_ids:
+        status_doc = fs.get_collection_status(cid)
+        if not status_doc:
+            continue
+        owner_id = status_doc.get("user_id")
+        owner_org = status_doc.get("org_id")
+        if owner_id != user.uid and not (user.org_id and owner_org == user.org_id):
+            continue
+        fs.add_agent_collection(agent_id, cid)
+        fs.update_collection_status(cid, agent_id=agent_id)
+        attached_existing.append(cid)
+
+    # Dispatch new collections from searches
+    run_id: str | None = None
+    dispatched_ids: list[str] = []
+    if body.searches:
+        fresh_agent = fs.get_agent(agent_id) or agent
+        run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent)
+    elif attached_existing and body.agent_type == "one_shot":
+        fs.update_agent(agent_id, status="completed")
+
+    all_ids = list(dict.fromkeys(attached_existing + dispatched_ids))
+
+    return {
+        "agent_id": agent_id,
+        "run_id": run_id,
+        "collection_ids": all_ids,
+        "status": "executing" if dispatched_ids else ("completed" if attached_existing else "approved"),
+    }
+
+
+class WizardPlanRequest(BaseModel):
+    description: str
+    prior_answers: dict[str, list[str]] | None = None
+
+
+@app.post("/wizard/plan")
+async def wizard_plan_endpoint(
+    request: WizardPlanRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Interpret a user's agent description into a structured WizardPlan.
+
+    Preloads the user's recent collections server-side, passes them to the
+    planner as a shortlist, and returns a validated plan the frontend can
+    drop into steps 2 and 3 of the create-agent wizard.
+    """
+    description = (request.description or "").strip()
+    if len(description) < 10:
+        raise HTTPException(status_code=400, detail="Description too short (min 10 chars)")
+
+    fs = get_fs()
+    db = fs._db
+
+    # Collect user's own + org-visible collections (max ~20 most recent, ready).
+    docs_iter = db.collection("collection_status").where("user_id", "==", user.uid).stream()
+    docs = list(docs_iter)
+    if user.org_id:
+        try:
+            org_docs = db.collection("collection_status").where("org_id", "==", user.org_id).stream()
+            for d in org_docs:
+                data = d.to_dict()
+                if data.get("visibility") == "org":
+                    docs.append(d)
+        except Exception as e:
+            logger.warning("wizard_plan: org query failed: %s", e)
+
+    shortlist: list[dict] = []
+    seen: set[str] = set()
+    for doc in docs:
+        if doc.id in seen:
+            continue
+        seen.add(doc.id)
+        data = doc.to_dict() or {}
+        if data.get("status") not in ("ready", "completed") and (data.get("posts_collected") or 0) <= 0:
+            continue
+        cfg = data.get("config") or {}
+        created_at = data.get("created_at")
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
+        kws = cfg.get("keywords") or []
+        title = (kws[0] if kws else cfg.get("platforms", ["collection"])[0]) if cfg else doc.id[:8]
+        shortlist.append({
+            "collection_id": doc.id,
+            "title": str(title),
+            "platforms": cfg.get("platforms") or [],
+            "keywords": kws,
+            "posts_collected": data.get("posts_collected", 0),
+            "created_at": created_at or "",
+        })
+
+    shortlist.sort(key=lambda c: c["created_at"], reverse=True)
+    shortlist = shortlist[:20]
+
+    from api.agent.interpreters.wizard_planner import plan_wizard
+
+    user_context = {
+        "collections": shortlist,
+        "now": datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        result = plan_wizard(description, user_context, prior_answers=request.prior_answers)
+    except ValidationError as e:
+        logger.warning("wizard_plan: schema validation failed: %s", e)
+        raise HTTPException(status_code=502, detail={"error": "planner_schema_error", "detail": str(e)})
+    except Exception as e:
+        logger.exception("wizard_plan: planner call failed")
+        raise HTTPException(status_code=502, detail={"error": "planner_failed", "detail": str(e)})
+
+    return result.model_dump()
+
+
+@app.get("/agents/{agent_id}")
+async def get_agent_endpoint(agent_id: str, user: CurrentUser = Depends(get_current_user)):
+    """Get an agent by ID."""
+    from api.services.agent_service import get_agent
+
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
     # Access check: owner or org member
-    if task.get("user_id") != user.uid and task.get("org_id") != user.org_id:
+    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return task
+    return agent
 
 
-@app.patch("/tasks/{task_id}")
-async def update_task_endpoint(
-    task_id: str,
+@app.patch("/agents/{agent_id}")
+async def update_agent_endpoint(
+    agent_id: str,
     updates: dict,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Update a task's fields."""
-    from api.services.task_service import get_task, update_task
+    """Update an agent's fields."""
+    from api.services.agent_service import get_agent, update_agent
 
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Only the task owner can update")
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the agent owner can update")
 
     # Only allow safe fields to be updated
     allowed = {
         "title", "status", "protocol", "data_scope", "schedule",
-        "task_type", "context_summary",
+        "agent_type", "context_summary",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
 
-    # Recompute next_run_at when schedule changes on a recurring task
-    # (also handles one-shot → recurring conversion where task_type is being set in the same update)
-    effective_task_type = safe_updates.get("task_type", task.get("task_type"))
-    if "schedule" in safe_updates and effective_task_type == "recurring":
+    # Recompute next_run_at when schedule changes on a recurring agent
+    # (also handles one-shot → recurring conversion where agent_type is being set in the same update)
+    effective_agent_type = safe_updates.get("agent_type", agent.get("agent_type"))
+    if "schedule" in safe_updates and effective_agent_type == "recurring":
         new_schedule = safe_updates["schedule"]
         if new_schedule and isinstance(new_schedule, dict) and new_schedule.get("frequency"):
             from workers.pipeline_v2.schedule_utils import compute_next_run_at
@@ -1548,123 +1738,125 @@ async def update_task_endpoint(
             safe_updates["next_run_at"] = compute_next_run_at(new_schedule["frequency"], now)
 
     # When archiving, cancel any active collections first
-    if safe_updates.get("status") == "archived" and task.get("status") != "archived":
+    if safe_updates.get("status") == "archived" and agent.get("status") != "archived":
         fs = get_fs()
-        active_statuses = {"collecting", "enriching", "processing"}
-        for cid in task.get("collection_ids", []):
+        active_statuses = {"running"}
+        for cid in agent.get("collection_ids", []):
             col_status = fs.get_collection_status(cid)
             if col_status and col_status.get("status") in active_statuses:
                 fs.update_collection_status(cid, status="cancelled")
 
     if safe_updates:
-        update_task(task_id, **safe_updates)
+        update_agent(agent_id, **safe_updates)
     return {"ok": True}
 
 
-@app.post("/tasks/approve-protocol")
-async def approve_task_protocol(
+@app.post("/agents/approve-protocol")
+async def approve_agent_protocol(
     request: dict,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Approve a task — creates the task and optionally starts collections.
+    """Approve an agent — creates the agent and optionally starts collections.
 
-    Legacy endpoint kept for backwards compat. New flow uses start_task tool directly.
+    Legacy endpoint kept for backwards compat. New flow uses start_agent tool directly.
     """
-    from api.services.task_service import create_task, dispatch_task_run, update_task
+    from api.services.agent_service import create_agent, dispatch_agent_run, update_agent
     from workers.pipeline_v2.schedule_utils import compute_next_run_at
 
-    title = request.get("title", "Untitled Task")
-    task_type = request.get("task_type", "one_shot")
+    title = request.get("title", "Untitled Agent")
+    agent_type = request.get("agent_type", "one_shot")
     data_scope = request.get("data_scope", {})
     schedule = request.get("schedule")
     session_id = request.get("session_id")
     run_now = request.get("run_now", True)
 
-    # Create the task
-    task = create_task(
+    # Create the agent
+    agent = create_agent(
         user_id=user.uid,
         title=title,
-        task_type=task_type,
+        agent_type=agent_type,
         data_scope=data_scope,
         schedule=schedule,
         org_id=user.org_id,
         session_id=session_id,
         status="approved",
     )
-    task_id = task["task_id"]
+    agent_id = agent["agent_id"]
 
-    # Link session to task
+    # Link session to agent
     if session_id:
         fs = get_fs()
-        fs.save_session(session_id, {"task_id": task_id})
+        fs.save_session(session_id, {"agent_id": agent_id})
 
     # Dispatch collections
+    run_id: str | None = None
     collection_ids = []
     if run_now and data_scope.get("searches"):
-        collection_ids = dispatch_task_run(task_id, task)
-    elif not run_now and schedule and task_type == "recurring":
+        run_id, collection_ids = dispatch_agent_run(agent_id, agent)
+    elif not run_now and schedule and agent_type == "recurring":
         now = datetime.now(timezone.utc)
         next_run = compute_next_run_at(schedule.get("frequency"), now)
-        update_task(task_id, status="monitoring", next_run_at=next_run)
+        update_agent(agent_id, status="monitoring", next_run_at=next_run)
 
     return {
-        "task_id": task_id,
+        "agent_id": agent_id,
+        "run_id": run_id,
         "collection_ids": collection_ids,
         "status": "executing" if collection_ids else "approved",
     }
 
 
 
-@app.post("/tasks/{task_id}/run")
+@app.post("/agents/{agent_id}/run")
 @limiter.limit("3/minute")
-async def run_task_endpoint(
+async def run_agent_endpoint(
     request: Request,
-    task_id: str,
+    agent_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Manually trigger a new run for a task (re-run one-shot or run-now recurring).
+    """Manually trigger a new run for an agent (re-run one-shot or run-now recurring).
 
-    If the task is stuck in 'executing' but all its collections are done,
+    If the agent is stuck in 'executing' but all its collections are done,
     the re-run is allowed (handles server-restart edge cases).
     """
-    from api.services.task_service import get_task, dispatch_task_run
+    from api.services.agent_service import get_agent, dispatch_agent_run
 
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.get("user_id") != user.uid and task.get("org_id") != user.org_id:
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # If task says 'executing', check if it's actually stuck
-    if task.get("status") == "executing":
+    # If agent says 'executing', check if it's actually stuck
+    if agent.get("status") == "executing":
         fs = get_fs()
-        terminal = {"completed", "completed_with_errors", "failed", "monitoring"}
+        terminal = {"success", "failed", "monitoring"}
         all_done = all(
             (fs.get_collection_status(cid) or {}).get("status") in terminal
-            for cid in (task.get("collection_ids") or [])
+            for cid in (agent.get("collection_ids") or [])
         )
         if not all_done:
-            raise HTTPException(status_code=409, detail="Task is already running")
+            raise HTTPException(status_code=409, detail="Agent is already running")
 
-    collection_ids = dispatch_task_run(task_id, task)
-    return {"task_id": task_id, "collection_ids": collection_ids, "status": "executing"}
+    run_id, collection_ids = dispatch_agent_run(agent_id, agent)
+    return {"agent_id": agent_id, "run_id": run_id, "collection_ids": collection_ids, "status": "executing"}
 
 
-@app.get("/tasks/{task_id}/artifacts")
-async def get_task_artifacts(
-    task_id: str,
+@app.get("/agents/{agent_id}/artifacts")
+async def get_agent_artifacts(
+    agent_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Return the artifacts belonging to a task."""
-    from api.services.task_service import get_task
+    """Return the artifacts belonging to an agent."""
+    from api.services.agent_service import get_agent
 
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.get("user_id") != user.uid and task.get("org_id") != user.org_id:
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    artifact_ids = task.get("artifact_ids") or []
+    artifact_ids = agent.get("artifact_ids") or []
     if not artifact_ids:
         return []
 
@@ -1683,23 +1875,63 @@ async def get_task_artifacts(
     return artifacts
 
 
-@app.get("/tasks/{task_id}/logs")
-async def get_task_logs(
-    task_id: str,
+@app.get("/agents/{agent_id}/logs")
+async def get_agent_logs(
+    agent_id: str,
     limit: int = 50,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Return activity log entries for a task, newest first."""
-    from api.services.task_service import get_task
+    """Return activity log entries for an agent, newest first."""
+    from api.services.agent_service import get_agent
 
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.get("user_id") != user.uid and task.get("org_id") != user.org_id:
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     fs = get_fs()
-    return fs.get_task_logs(task_id, limit=min(limit, 200))
+    return fs.get_agent_logs(agent_id, limit=min(limit, 200))
+
+
+@app.get("/agents/{agent_id}/runs")
+async def list_agent_runs(
+    agent_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """List all runs for an agent."""
+    from api.services.agent_service import get_agent
+
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    fs = get_fs()
+    return fs.list_runs(agent_id)
+
+
+@app.get("/agents/{agent_id}/runs/{run_id}")
+async def get_agent_run(
+    agent_id: str,
+    run_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Get a specific run for an agent."""
+    from api.services.agent_service import get_agent
+
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    fs = get_fs()
+    run = fs.get_run(agent_id, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
 
 
 # ---------------------------------------------------------------------------
@@ -1809,7 +2041,7 @@ async def health():
 
 @app.post("/internal/scheduler/tick")
 async def scheduler_tick():
-    """Check for due recurring tasks and dispatch them.
+    """Check for due recurring agents and dispatch them.
 
     Called by Cloud Scheduler in production (every 5 minutes).
     """
@@ -1820,37 +2052,37 @@ async def scheduler_tick():
     try:
         _check_due_tasks(fs, settings)
     except Exception:
-        logger.exception("Scheduler tick: recurring task check failed")
+        logger.exception("Scheduler tick: recurring agent check failed")
 
     return {"status": "ok"}
 
 
-@app.post("/internal/task/continue")
-async def task_continue(request: dict):
-    """Continue a task after all collections complete.
+@app.post("/internal/agent/continue")
+async def agent_continue(request: dict):
+    """Continue an agent after all collections complete.
 
     Called by Cloud Tasks in production, or directly in dev mode.
     """
-    task_id = request.get("task_id")
-    if not task_id:
-        raise HTTPException(status_code=400, detail="task_id required")
+    agent_id = request.get("agent_id")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agent_id required")
 
     # Check if the frontend already picked up the continuation
-    task = get_fs().get_task(task_id)
-    if task and task.get("status") not in ("awaiting_analysis",):
-        logger.info("Task %s: skipping continuation — status is %s (frontend likely handled it)", task_id, task.get("status"))
-        return {"ok": True, "task_id": task_id, "skipped": True}
+    agent = get_fs().get_agent(agent_id)
+    if agent and agent.get("status") not in ("awaiting_analysis",):
+        logger.info("Agent %s: skipping continuation — status is %s (frontend likely handled it)", agent_id, agent.get("status"))
+        return {"ok": True, "agent_id": agent_id, "skipped": True}
 
     import threading
-    from workers.task_continuation import _run_agent_continuation
+    from workers.agent_continuation import _run_agent_continuation
     thread = threading.Thread(
         target=_run_agent_continuation,
-        args=(task_id,),
+        args=(agent_id,),
         daemon=True,
-        name=f"task-continue-{task_id[:8]}",
+        name=f"agent-continue-{agent_id[:8]}",
     )
     thread.start()
-    return {"ok": True, "task_id": task_id}
+    return {"ok": True, "agent_id": agent_id}
 
 
 @app.get("/media/{path:path}")

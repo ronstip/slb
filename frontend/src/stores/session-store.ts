@@ -70,7 +70,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
       // Restore task context from session state (or clear if none).
       // Must fetch tasks first so setActiveAgent can find the task in the list.
-      const sessionTaskId = (detail.state?.active_task_id as string) || null;
+      const sessionTaskId = (detail.state?.active_agent_id as string) || null;
       if (sessionTaskId) {
         await useAgentStore.getState().fetchAgents();
         useAgentStore.getState().setActiveAgent(sessionTaskId);

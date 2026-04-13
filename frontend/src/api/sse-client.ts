@@ -1,81 +1,114 @@
 import type { ChatRequest, SSEEvent } from './types.ts';
+import { buildAuthHeaders } from './client.ts';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 /**
+ * Global AbortController registry for in-flight chat SSE streams.
+ * Lets impersonation start/stop (and sign-out) cancel every active stream
+ * so they don't keep running with stale auth headers.
+ */
+const activeStreamControllers = new Set<AbortController>();
+
+export function abortAllChatStreams(): void {
+  for (const ctrl of activeStreamControllers) {
+    try {
+      ctrl.abort();
+    } catch {
+      // ignore
+    }
+  }
+  activeStreamControllers.clear();
+}
+
+/**
  * POST-based SSE client using fetch + ReadableStream.
  * Native EventSource doesn't support POST or custom headers.
+ *
+ * Auth headers (including the `X-Impersonate-User-Id` header for "View as
+ * User" sessions) come from the shared `buildAuthHeaders()` helper — do
+ * NOT hand-roll them here, or SSE will bypass impersonation.
  */
 export async function* streamChat(
   body: ChatRequest,
-  getToken: () => Promise<string | null>,
-  signal: AbortSignal,
+  externalSignal: AbortSignal,
 ): AsyncGenerator<SSEEvent> {
-  const token = await getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'text/event-stream',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  // Wrap the caller's signal so we can also be aborted globally
+  // (e.g. when impersonation toggles).
+  const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal.aborted) {
+    controller.abort();
+  } else {
+    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
   }
-
-  const response = await fetch(`${API_BASE}/chat`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(`Chat request failed: ${response.status}`);
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  let pendingData = '';
+  activeStreamControllers.add(controller);
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    const headers = await buildAuthHeaders({
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    });
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    const response = await fetch(`${API_BASE}/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
 
-      for (const line of lines) {
-        const trimmed = line.replace(/\r$/, '');
-        if (trimmed.startsWith('event:')) {
-          // Event type is embedded in the data JSON, skip
-        } else if (trimmed.startsWith('data:')) {
-          pendingData = trimmed.slice(5).trim();
-        } else if (trimmed === '' && pendingData) {
-          try {
-            const parsed = JSON.parse(pendingData) as SSEEvent;
-            yield parsed;
-          } catch {
-            console.warn('Failed to parse SSE data:', pendingData);
+    if (!response.ok) {
+      throw new Error(`Chat request failed: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let pendingData = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.replace(/\r$/, '');
+          if (trimmed.startsWith('event:')) {
+            // Event type is embedded in the data JSON, skip
+          } else if (trimmed.startsWith('data:')) {
+            pendingData = trimmed.slice(5).trim();
+          } else if (trimmed === '' && pendingData) {
+            try {
+              const parsed = JSON.parse(pendingData) as SSEEvent;
+              yield parsed;
+            } catch {
+              console.warn('Failed to parse SSE data:', pendingData);
+            }
+            pendingData = '';
           }
-          pendingData = '';
         }
       }
-    }
 
-    // Flush any remaining data when stream ends
-    if (pendingData) {
-      try {
-        const parsed = JSON.parse(pendingData) as SSEEvent;
-        yield parsed;
-      } catch {
-        console.warn('Failed to parse final SSE data:', pendingData);
+      // Flush any remaining data when stream ends
+      if (pendingData) {
+        try {
+          const parsed = JSON.parse(pendingData) as SSEEvent;
+          yield parsed;
+        } catch {
+          console.warn('Failed to parse final SSE data:', pendingData);
+        }
       }
+    } finally {
+      reader.releaseLock();
     }
   } finally {
-    reader.releaseLock();
+    activeStreamControllers.delete(controller);
+    externalSignal.removeEventListener('abort', onExternalAbort);
   }
 }

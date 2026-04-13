@@ -1,4 +1,4 @@
-import { apiGet } from '../client.ts';
+import { apiGet, apiPost } from '../client.ts';
 import type {
   AdminOverview,
   AdminUserList,
@@ -6,6 +6,7 @@ import type {
   AdminActivity,
   AdminCollectionList,
   AdminRevenue,
+  CollectionAudit,
 } from '../types.ts';
 
 export function checkAdminAccess(): Promise<{ is_admin: boolean }> {
@@ -32,6 +33,18 @@ export function getAdminCollections(params?: Record<string, string>): Promise<Ad
   return apiGet<AdminCollectionList>('/admin/collections', params);
 }
 
+export function getCollectionAudit(collectionId: string): Promise<CollectionAudit> {
+  return apiGet<CollectionAudit>(`/admin/collections/${collectionId}/audit`);
+}
+
 export function getAdminRevenue(days: number = 90): Promise<AdminRevenue> {
   return apiGet<AdminRevenue>('/admin/revenue', { days: String(days) });
+}
+
+export function startImpersonation(targetUid: string): Promise<void> {
+  return apiPost<void>('/admin/impersonate/start', { target_uid: targetUid });
+}
+
+export function stopImpersonation(): Promise<void> {
+  return apiPost<void>('/admin/impersonate/stop', {});
 }

@@ -11,8 +11,10 @@ import {
 } from '../../../components/ui/select.tsx';
 import { SCHEDULE_UTC_TIMES } from '../../../lib/constants.ts';
 import type { SchedulePreset } from '../../../lib/constants.ts';
+import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { cn } from '../../../lib/utils.ts';
-import type { WizardAgentSettings } from './AgentCreationWizard.tsx';
+import type { PlanStatus, WizardAgentSettings } from './AgentCreationWizard.tsx';
+import { AIThinkingCard } from './AIThinkingCard.tsx';
 
 interface AgentSettingsPanelProps {
   settings: WizardAgentSettings;
@@ -20,6 +22,7 @@ interface AgentSettingsPanelProps {
   onSubmit?: () => void;
   canSubmit?: boolean;
   isSubmitting?: boolean;
+  planStatus: PlanStatus;
 }
 
 const SCHEDULE_PRESETS: { value: SchedulePreset; label: string; description: string }[] = [
@@ -28,10 +31,63 @@ const SCHEDULE_PRESETS: { value: SchedulePreset; label: string; description: str
   { value: 'weekly', label: 'Weekly', description: 'Once a week' },
 ];
 
-export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, isSubmitting }: AgentSettingsPanelProps) {
+export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, isSubmitting, planStatus }: AgentSettingsPanelProps) {
   const update = (partial: Partial<WizardAgentSettings>) => {
     onChange({ ...settings, ...partial });
   };
+
+  if (planStatus === 'idle' || planStatus === 'clarifying') {
+    return (
+      <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+        <div className="flex items-center gap-2.5 mb-4">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+            3
+          </span>
+          <h3 className="text-lg font-semibold text-foreground tracking-tight">Agent Settings</h3>
+        </div>
+        <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border/50 p-8 text-center">
+          <p className="text-xs text-muted-foreground">
+            Agent schedule &amp; behaviour will appear here
+            <br />
+            after <span className="font-medium text-primary">Continue</span>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (planStatus === 'planning') {
+    return (
+      <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+        <div className="flex items-center gap-2.5 mb-4">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+            3
+          </span>
+          <h3 className="text-lg font-semibold text-foreground tracking-tight">Agent Settings</h3>
+        </div>
+        <div className="space-y-4 flex-1 pointer-events-none animate-pulse">
+          <AIThinkingCard label="Planning schedule" />
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <div className="grid grid-cols-2 gap-2">
+              <Skeleton className="h-20 rounded-xl" />
+              <Skeleton className="h-20 rounded-xl" />
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-2 w-40" />
+            </div>
+            <Skeleton className="h-5 w-9 rounded-full" />
+          </div>
+        </div>
+        <div className="mt-6 pt-4 border-t border-border/50">
+          <Skeleton className="h-9 w-full" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
@@ -146,18 +202,53 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
           </div>
         )}
 
-        {/* Auto Report */}
-        <div className="flex items-center justify-between">
-          <div>
-            <Label className="text-sm font-medium">Auto-generate report</Label>
-            <p className="text-[11px] text-muted-foreground">
-              Automatically create an insight report after each run
-            </p>
+        {/* Outputs */}
+        <div className="space-y-3">
+          <Label className="text-xs font-medium text-muted-foreground block">Outputs</Label>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm font-medium">Report</Label>
+              <p className="text-[11px] text-muted-foreground">Generate an insight report</p>
+            </div>
+            <Switch
+              checked={settings.autoReport}
+              onCheckedChange={(checked) => update({ autoReport: checked })}
+            />
           </div>
-          <Switch
-            checked={settings.autoReport}
-            onCheckedChange={(checked) => update({ autoReport: checked })}
-          />
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm font-medium">Email</Label>
+              <p className="text-[11px] text-muted-foreground">Send findings via email</p>
+            </div>
+            <Switch
+              checked={settings.autoEmail}
+              onCheckedChange={(checked) => update({ autoEmail: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm font-medium">Slides</Label>
+              <p className="text-[11px] text-muted-foreground">Create a presentation deck</p>
+            </div>
+            <Switch
+              checked={settings.autoSlides}
+              onCheckedChange={(checked) => update({ autoSlides: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm font-medium">Dashboard</Label>
+              <p className="text-[11px] text-muted-foreground">Generate a visual dashboard</p>
+            </div>
+            <Switch
+              checked={settings.autoDashboard}
+              onCheckedChange={(checked) => update({ autoDashboard: checked })}
+            />
+          </div>
         </div>
       </div>
 

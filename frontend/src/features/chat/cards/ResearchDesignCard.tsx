@@ -68,7 +68,7 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
       setCollectionId(result.collection_id);
       addSource({
         collectionId: result.collection_id,
-        status: 'pending',
+        status: 'running',
         config: cfg,
         title: cfg.keywords.join(', ') || 'New Collection',
         postsCollected: 0,

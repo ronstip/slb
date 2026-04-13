@@ -8,7 +8,7 @@ interface CollectionProgressCardProps {
   collectionId: string;
   /** 'inline' = used inside ResearchDesignCard (border-t only), 'standalone' = own card wrapper */
   variant?: 'inline' | 'standalone';
-  /** Called when the collection transitions to completed/monitoring */
+  /** Called when the collection transitions to success */
   onCompleted?: (message: string) => void;
 }
 
@@ -22,13 +22,13 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
     enabled: !!collectionId,
     refetchInterval: (query) => {
       const s = query.state.data?.status;
-      if (s === 'completed' || s === 'failed' || s === 'monitoring' || s === 'completed_with_errors') return false;
+      if (s === 'success' || s === 'failed') return false;
       return 5000;
     },
   });
 
-  const isActive = !statusData || !['completed', 'failed', 'monitoring', 'completed_with_errors'].includes(statusData.status);
-  const isDone = statusData && ['completed', 'monitoring', 'completed_with_errors'].includes(statusData.status);
+  const isActive = !statusData || statusData.status === 'running';
+  const isDone = statusData && statusData.status === 'success';
 
   // Fire completion message once when status transitions to done
   useEffect(() => {
@@ -45,21 +45,13 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
 
   const statusLabel = !statusData
     ? 'Starting…'
-    : statusData.status === 'collecting'
-      ? 'Collecting posts'
-      : statusData.status === 'enriching'
-        ? 'Enriching data'
-        : statusData.status === 'completed'
-          ? 'Complete'
-          : statusData.status === 'monitoring'
-            ? 'Monitoring'
-            : statusData.status === 'completed_with_errors'
-              ? 'Complete (partial)'
-              : statusData.status === 'failed'
-                ? 'Failed'
-                : statusData.status === 'pending'
-                  ? 'Queued'
-                  : statusData.status;
+    : statusData.status === 'running'
+      ? 'Running'
+      : statusData.status === 'success'
+        ? 'Complete'
+        : statusData.status === 'failed'
+          ? 'Failed'
+          : statusData.status;
 
   const inner = (
     <div className={variant === 'inline' ? 'border-t border-border/30' : ''}>
@@ -130,11 +122,9 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
               <div
                 className="h-full rounded-full bg-accent-vibrant transition-all duration-700 ease-out"
                 style={{
-                  width: statusData?.status === 'enriching'
-                    ? '80%'
-                    : (statusData?.posts_collected ?? 0) > 0
-                      ? '50%'
-                      : '15%',
+                  width: (statusData?.posts_collected ?? 0) > 0
+                    ? '60%'
+                    : '15%',
                 }}
               />
               <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />

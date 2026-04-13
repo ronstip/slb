@@ -43,7 +43,7 @@ function MiniThumbnail({ collectionIds }: { collectionIds: string[] }) {
       if (!imageRef?.gcs_uri) return [];
       return [mediaUrl(imageRef.gcs_uri, imageRef.original_url)];
     })
-    .at(0);
+[0];
 
   return (
     <div className="flex h-16 items-center justify-center bg-muted/20 overflow-hidden relative">
@@ -67,7 +67,7 @@ export function AgentMiniCard({ task }: TaskMiniCardProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate(`/agents/${task.task_id}`);
+    navigate(`/agents/${task.agent_id}`);
   };
 
   return (

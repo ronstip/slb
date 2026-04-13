@@ -126,6 +126,29 @@ class DataProviderWrapper:
                 stats.update(provider.platform_stats)
         return stats
 
+    def get_funnel_stats(self) -> dict:
+        """Return aggregated post funnel stats from all providers."""
+        combined: dict = {
+            "bd_raw_records": 0,
+            "bd_error_items_filtered": 0,
+            "bd_cross_keyword_dedup": 0,
+            "bd_parse_failures": 0,
+            "bd_empty_post_id": 0,
+            "bd_valid_posts": 0,
+            "per_platform": {},
+        }
+        for provider in self._providers:
+            if not hasattr(provider, "funnel_stats"):
+                continue
+            pf = provider.funnel_stats
+            for key in ("bd_raw_records", "bd_error_items_filtered",
+                        "bd_cross_keyword_dedup", "bd_parse_failures",
+                        "bd_empty_post_id", "bd_valid_posts"):
+                combined[key] = combined.get(key, 0) + pf.get(key, 0)
+            for platform, pstats in pf.get("per_platform", {}).items():
+                combined["per_platform"][platform] = pstats
+        return combined
+
     def fetch_engagements(self, platform: str, post_urls: list[str]) -> list[dict]:
         adapter = self._get_adapter(platform)
         return adapter.fetch_engagements(post_urls)

@@ -11,17 +11,27 @@ import { updateProfile } from '../../../api/endpoints/settings.ts';
 
 export function AccountSection() {
   const { user, profile, refreshProfile } = useAuth();
+  const isImpersonating = !!profile?.impersonation;
 
   const [displayName, setDisplayName] = useState(
-    user?.displayName || profile?.display_name || ''
+    isImpersonating
+      ? (profile?.display_name || profile?.email || '')
+      : (user?.displayName || profile?.display_name || '')
   );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const photoURL = user?.photoURL || profile?.photo_url || undefined;
-  const email = user?.email || profile?.email || '';
+  const photoURL = isImpersonating
+    ? (profile?.photo_url || undefined)
+    : (user?.photoURL || profile?.photo_url || undefined);
+  const email = isImpersonating
+    ? (profile?.email || '')
+    : (user?.email || profile?.email || '');
   const initial = displayName?.[0] || email?.[0] || '?';
-  const hasChanges = displayName !== (user?.displayName || profile?.display_name || '');
+  const originalName = isImpersonating
+    ? (profile?.display_name || profile?.email || '')
+    : (user?.displayName || profile?.display_name || '');
+  const hasChanges = displayName !== originalName;
 
   const handleSave = async () => {
     if (!hasChanges) return;

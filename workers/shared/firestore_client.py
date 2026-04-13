@@ -25,7 +25,7 @@ class FirestoreClient:
             {
                 "user_id": user_id,
                 "org_id": org_id,
-                "status": "pending",
+                "status": "running",
                 "error_message": None,
                 "posts_collected": 0,
                 "posts_enriched": 0,
@@ -44,12 +44,23 @@ class FirestoreClient:
         doc_ref.update(fields)
         logger.debug("Updated collection_status %s: %s", collection_id, list(fields.keys()))
 
+    # Map legacy collection statuses to the simplified 3-state model.
+    _COLLECTION_STATUS_MAP = {
+        "pending": "running", "collecting": "running", "processing": "running",
+        "enriching": "running", "completed": "success", "completed_with_errors": "success",
+        "failed": "failed", "cancelled": "failed", "monitoring": "running",
+    }
+
     def get_collection_status(self, collection_id: str) -> dict | None:
         doc_ref = self._db.collection("collection_status").document(collection_id)
         doc = doc_ref.get()
         if not doc.exists:
             return None
         data = doc.to_dict()
+        # Normalize legacy status values
+        raw = data.get("status")
+        if raw in self._COLLECTION_STATUS_MAP:
+            data["status"] = self._COLLECTION_STATUS_MAP[raw]
         # Convert Firestore timestamps to ISO strings
         for key in ("created_at", "updated_at"):
             if key in data and hasattr(data[key], "isoformat"):
@@ -94,7 +105,7 @@ class FirestoreClient:
         return None
 
     def get_stale_pipelines(self, max_age_minutes: int = 60) -> list[dict]:
-        """Find collections stuck in 'collecting' or 'processing' past max_age_minutes.
+        """Find collections stuck in 'running' past max_age_minutes.
 
         These are likely orphaned by a process crash. Returns list of dicts
         with collection_id and current status.
@@ -103,7 +114,7 @@ class FirestoreClient:
 
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
         stale = []
-        for status_val in ("collecting", "processing"):
+        for status_val in ("running",):
             try:
                 docs = (
                     self._db.collection("collection_status")
@@ -197,12 +208,33 @@ class FirestoreClient:
         except Exception:
             logger.warning("Failed to mark snapshot %s as downloaded", snapshot_id, exc_info=True)
 
-    def get_task_snapshot_count(self, task_id: str) -> int:
-        """Sum snapshot_count across all collections linked to a task."""
-        task_doc = self._db.collection("tasks").document(task_id).get()
-        if not task_doc.exists:
+    def get_collection_snapshots(self, collection_id: str) -> list[dict]:
+        """Get all snapshots (pending + downloaded) for a collection."""
+        try:
+            docs = (
+                self._db.collection("bd_snapshots")
+                .where("collection_id", "==", collection_id)
+                .stream()
+            )
+            results = []
+            for doc in docs:
+                data = doc.to_dict()
+                data["snapshot_id"] = doc.id
+                for key in ("created_at", "downloaded_at"):
+                    if key in data and hasattr(data[key], "isoformat"):
+                        data[key] = data[key].isoformat()
+                results.append(data)
+            return results
+        except Exception:
+            logger.warning("Failed to query snapshots for collection %s", collection_id, exc_info=True)
+            return []
+
+    def get_agent_snapshot_count(self, agent_id: str) -> int:
+        """Sum snapshot_count across all collections linked to an agent."""
+        agent_doc = self._db.collection("agents").document(agent_id).get()
+        if not agent_doc.exists:
             return 0
-        collection_ids = (task_doc.to_dict() or {}).get("collection_ids", [])
+        collection_ids = (agent_doc.to_dict() or {}).get("collection_ids", [])
         if not collection_ids:
             return 0
         total = 0
@@ -212,10 +244,10 @@ class FirestoreClient:
                 total += (doc.to_dict() or {}).get("snapshot_count", 0)
         return total
 
-    # --- Task methods ---
+    # --- Agent methods ---
 
-    def create_task(self, task_id: str, data: dict) -> None:
-        doc_ref = self._db.collection("tasks").document(task_id)
+    def create_agent(self, agent_id: str, data: dict) -> None:
+        doc_ref = self._db.collection("agents").document(agent_id)
         now = datetime.now(timezone.utc)
         data.setdefault("created_at", now)
         data.setdefault("updated_at", now)
@@ -224,33 +256,33 @@ class FirestoreClient:
         data.setdefault("artifact_ids", [])
         data.setdefault("todos", [])
         doc_ref.set(data)
-        logger.info("Created task %s", task_id)
+        logger.info("Created agent %s", agent_id)
 
-    def get_task(self, task_id: str) -> dict | None:
-        doc = self._db.collection("tasks").document(task_id).get()
+    def get_agent(self, agent_id: str) -> dict | None:
+        doc = self._db.collection("agents").document(agent_id).get()
         if not doc.exists:
             return None
         data = doc.to_dict()
-        data["task_id"] = doc.id
+        data["agent_id"] = doc.id
         for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
             if key in data and hasattr(data[key], "isoformat"):
                 data[key] = data[key].isoformat()
         return data
 
-    def update_task(self, task_id: str, **fields) -> None:
-        doc_ref = self._db.collection("tasks").document(task_id)
+    def update_agent(self, agent_id: str, **fields) -> None:
+        doc_ref = self._db.collection("agents").document(agent_id)
         fields["updated_at"] = datetime.now(timezone.utc)
         doc_ref.update(fields)
-        logger.debug("Updated task %s: %s", task_id, list(fields.keys()))
+        logger.debug("Updated agent %s: %s", agent_id, list(fields.keys()))
 
-    def list_user_tasks(self, user_id: str, org_id: str | None = None) -> list[dict]:
-        """List tasks visible to the user: own + org-shared."""
+    def list_user_agents(self, user_id: str, org_id: str | None = None) -> list[dict]:
+        """List agents visible to the user: own + org-shared."""
         seen: set[str] = set()
         results: list[dict] = []
 
-        for doc in self._db.collection("tasks").where("user_id", "==", user_id).stream():
+        for doc in self._db.collection("agents").where("user_id", "==", user_id).stream():
             data = doc.to_dict()
-            data["task_id"] = doc.id
+            data["agent_id"] = doc.id
             for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
                 if key in data and hasattr(data[key], "isoformat"):
                     data[key] = data[key].isoformat()
@@ -259,14 +291,14 @@ class FirestoreClient:
 
         if org_id:
             for doc in (
-                self._db.collection("tasks")
+                self._db.collection("agents")
                 .where("org_id", "==", org_id)
                 .stream()
             ):
                 if doc.id in seen:
                     continue
                 data = doc.to_dict()
-                data["task_id"] = doc.id
+                data["agent_id"] = doc.id
                 for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
                     if key in data and hasattr(data[key], "isoformat"):
                         data[key] = data[key].isoformat()
@@ -275,43 +307,42 @@ class FirestoreClient:
         results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return results
 
-
-    def add_task_collection(self, task_id: str, collection_id: str) -> None:
-        """Append a collection_id to the task's collection_ids array."""
+    def add_agent_collection(self, agent_id: str, collection_id: str) -> None:
+        """Append a collection_id to the agent's collection_ids array."""
         from google.cloud.firestore_v1 import transforms
-        self._db.collection("tasks").document(task_id).update({
+        self._db.collection("agents").document(agent_id).update({
             "collection_ids": transforms.ArrayUnion([collection_id]),
             "updated_at": datetime.now(timezone.utc),
         })
 
-    def add_task_artifact(self, task_id: str, artifact_id: str) -> None:
-        """Append an artifact_id to the task's artifact_ids array."""
+    def add_agent_artifact(self, agent_id: str, artifact_id: str) -> None:
+        """Append an artifact_id to the agent's artifact_ids array."""
         from google.cloud.firestore_v1 import transforms
-        self._db.collection("tasks").document(task_id).update({
+        self._db.collection("agents").document(agent_id).update({
             "artifact_ids": transforms.ArrayUnion([artifact_id]),
             "updated_at": datetime.now(timezone.utc),
         })
 
-    def add_task_session(self, task_id: str, session_id: str) -> None:
-        """Append a session_id to the task's session_ids array."""
+    def add_agent_session(self, agent_id: str, session_id: str) -> None:
+        """Append a session_id to the agent's session_ids array."""
         from google.cloud.firestore_v1 import transforms
-        self._db.collection("tasks").document(task_id).update({
+        self._db.collection("agents").document(agent_id).update({
             "session_ids": transforms.ArrayUnion([session_id]),
             "updated_at": datetime.now(timezone.utc),
         })
 
-    def add_task_log(
+    def add_agent_log(
         self,
-        task_id: str,
+        agent_id: str,
         message: str,
         source: str = "system",
         level: str = "info",
         metadata: dict | None = None,
     ) -> str:
-        """Append a log entry to the tasks/{task_id}/logs subcollection."""
+        """Append a log entry to the agents/{agent_id}/logs subcollection."""
         doc_ref = (
-            self._db.collection("tasks")
-            .document(task_id)
+            self._db.collection("agents")
+            .document(agent_id)
             .collection("logs")
             .document()
         )
@@ -324,11 +355,11 @@ class FirestoreClient:
         })
         return doc_ref.id
 
-    def get_task_logs(self, task_id: str, limit: int = 50) -> list[dict]:
-        """Read log entries for a task, newest first."""
+    def get_agent_logs(self, agent_id: str, limit: int = 50) -> list[dict]:
+        """Read log entries for an agent, newest first."""
         docs = (
-            self._db.collection("tasks")
-            .document(task_id)
+            self._db.collection("agents")
+            .document(agent_id)
             .collection("logs")
             .order_by("timestamp", direction=firestore.Query.DESCENDING)
             .limit(limit)
@@ -338,20 +369,19 @@ class FirestoreClient:
         for doc in docs:
             entry = doc.to_dict()
             entry["id"] = doc.id
-            # Convert Firestore timestamp to ISO string
             ts = entry.get("timestamp")
             if hasattr(ts, "isoformat"):
                 entry["timestamp"] = ts.isoformat()
             results.append(entry)
         return results
 
-    def get_due_recurring_tasks(self) -> list[dict]:
-        """Return recurring tasks whose next_run_at is in the past and status is 'monitoring'."""
+    def get_due_recurring_agents(self) -> list[dict]:
+        """Return recurring agents whose next_run_at is in the past and status is 'monitoring'."""
         now = datetime.now(timezone.utc)
         try:
             docs = (
-                self._db.collection("tasks")
-                .where("task_type", "==", "recurring")
+                self._db.collection("agents")
+                .where("agent_type", "==", "recurring")
                 .where("status", "==", "monitoring")
                 .stream()
             )
@@ -365,12 +395,109 @@ class FirestoreClient:
                     if getattr(next_run_at, "tzinfo", None) is None:
                         next_run_at = next_run_at.replace(tzinfo=timezone.utc)
                     if next_run_at <= now:
-                        data["task_id"] = doc.id
+                        data["agent_id"] = doc.id
                         due.append(data)
             return due
         except Exception as e:
-            logger.warning("Failed to query due recurring tasks: %s", e)
+            logger.warning("Failed to query due recurring agents: %s", e)
             return []
+
+    # --- Run methods (subcollection: agents/{agent_id}/runs/{run_id}) ---
+
+    def create_run(self, agent_id: str, trigger: str = "manual") -> str:
+        """Create a new run document under the agent. Returns the run_id."""
+        doc_ref = (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("runs")
+            .document()
+        )
+        now = datetime.now(timezone.utc)
+        doc_ref.set({
+            "run_id": doc_ref.id,
+            "status": "running",
+            "trigger": trigger,
+            "started_at": now,
+            "completed_at": None,
+            "collection_ids": [],
+            "artifact_ids": [],
+        })
+        logger.info("Created run %s for agent %s (trigger=%s)", doc_ref.id, agent_id, trigger)
+        return doc_ref.id
+
+    def get_run(self, agent_id: str, run_id: str) -> dict | None:
+        doc = (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("runs")
+            .document(run_id)
+            .get()
+        )
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["run_id"] = doc.id
+        for key in ("started_at", "completed_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def update_run(self, agent_id: str, run_id: str, **fields) -> None:
+        doc_ref = (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("runs")
+            .document(run_id)
+        )
+        doc_ref.update(fields)
+        logger.debug("Updated run %s for agent %s: %s", run_id, agent_id, list(fields.keys()))
+
+    def list_runs(self, agent_id: str, limit: int = 20) -> list[dict]:
+        """List runs for an agent, most recent first."""
+        docs = (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("runs")
+            .order_by("started_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+            .stream()
+        )
+        results = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["run_id"] = doc.id
+            for key in ("started_at", "completed_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            results.append(data)
+        return results
+
+    def get_latest_run(self, agent_id: str) -> dict | None:
+        """Return the most recent run for an agent, or None."""
+        runs = self.list_runs(agent_id, limit=1)
+        return runs[0] if runs else None
+
+    def add_run_collection(self, agent_id: str, run_id: str, collection_id: str) -> None:
+        """Append a collection_id to a run's collection_ids array."""
+        from google.cloud.firestore_v1 import transforms
+        (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("runs")
+            .document(run_id)
+            .update({"collection_ids": transforms.ArrayUnion([collection_id])})
+        )
+
+    def add_run_artifact(self, agent_id: str, run_id: str, artifact_id: str) -> None:
+        """Append an artifact_id to a run's artifact_ids array."""
+        from google.cloud.firestore_v1 import transforms
+        (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("runs")
+            .document(run_id)
+            .update({"artifact_ids": transforms.ArrayUnion([artifact_id])})
+        )
 
     def get_session(self, session_id: str) -> dict | None:
         doc_ref = self._db.collection("sessions").document(session_id)

@@ -14,7 +14,7 @@ export function AgentDataExplorer({ task, open, onClose }: TaskDataExplorerProps
   const artifact = useMemo(() => {
     if (!task) return null;
     return {
-      id: task.task_id,
+      id: task.agent_id,
       type: 'dashboard' as const,
       title: task.title,
       collectionIds: task.collection_ids ?? [],

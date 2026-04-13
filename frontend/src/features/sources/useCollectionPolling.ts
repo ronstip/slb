@@ -26,10 +26,7 @@ export function useCollectionPolling() {
       sources
         .filter(
           (s) =>
-            s.status === 'pending' ||
-            s.status === 'collecting' ||
-            s.status === 'enriching' ||
-            s.status === 'monitoring',
+            s.status === 'running',
         )
         .map((s) => s.collectionId),
     [sources],
@@ -74,12 +71,11 @@ export function useCollectionPolling() {
         lastRunAt: data.last_run_at,
         nextRunAt: data.next_run_at,
         totalRuns: data.total_runs,
-        runHistory: data.run_history,
       });
 
       // Auto-open Studio Feed when first posts arrive (not waiting for completion)
-      const isNewlyCollecting = prevStatus && ['pending', 'collecting'].includes(prevStatus) && data.posts_collected > 0 && prevPostCount === 0;
-      const isNewlyComplete = prevStatus && !['completed', 'monitoring'].includes(prevStatus) && ['completed', 'monitoring'].includes(data.status);
+      const isNewlyCollecting = prevStatus && prevStatus === 'running' && data.posts_collected > 0 && prevPostCount === 0;
+      const isNewlyComplete = prevStatus && prevStatus !== 'success' && data.status === 'success';
 
       if (isNewlyCollecting || isNewlyComplete) {
         setFeedSource(collectionId);
@@ -92,7 +88,7 @@ export function useCollectionPolling() {
     }
 
     // Trigger agent continuation once when ALL collections in a task are terminal
-    const TERMINAL_STATUSES = new Set(['completed', 'completed_with_errors', 'failed', 'monitoring']);
+    const TERMINAL_STATUSES = new Set(['success', 'failed']);
     const allSources = useSourcesStore.getState().sources;
     const taskGroups = new Map<string, { total: number; terminal: number; totalPosts: number; title: string; sessionId?: string }>();
 

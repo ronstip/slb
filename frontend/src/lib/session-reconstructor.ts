@@ -18,7 +18,7 @@ import {
   isChartResult,
   isReportResult,
   isDashboardResult,
-  isStartTaskResult,
+  isStartAgentResult,
   isTodoResult,
   isStructuredPromptResult,
   isMetricsResult,
@@ -79,6 +79,7 @@ export function reconstructSession(
         cards: [],
         todos: [],
         activityLog: [],
+        blocks: [],
       };
     }
     return currentAgentMsg!;
@@ -86,7 +87,7 @@ export function reconstructSession(
 
   for (const event of events) {
     if (!event.content?.parts) {
-      console.debug('[reconstruct] skipping event without content.parts:', event.author, event.id);
+      console.debug('[reconstruct] skipping event without content.parts:', event.author);
       continue;
     }
 
@@ -103,6 +104,7 @@ export function reconstructSession(
           cards: [],
           todos: [],
           activityLog: [],
+          blocks: [],
         });
         continue;
       }
@@ -193,8 +195,8 @@ export function reconstructSession(
             collectionNames: result.collection_names as Record<string, string>,
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
-        } else if (isStartTaskResult(toolName, result)) {
-          // start_task doesn't produce a card — it's an action, not a UI element.
+        } else if (isStartAgentResult(toolName, result)) {
+          // start_agent doesn't produce a card — it's an action, not a UI element.
           // Collections were already added to sources during the live session.
         } else if (isStructuredPromptResult(toolName, result)) {
           // Show the answered structured prompt card (read-only — already submitted)

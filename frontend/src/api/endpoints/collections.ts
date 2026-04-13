@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiDelete, apiGetBlob } from '../client.ts';
+import { apiGet, apiPost, apiPatch, apiDelete, apiGetBlob } from '../client.ts';
 import type {
   CollectionStats,
   CollectionStatusResponse,

@@ -71,7 +71,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
     owner_user_id = status_doc.get("user_id") if status_doc else None
     owner_org_id = status_doc.get("org_id") if status_doc else None
 
-    fs.update_collection_status(collection_id, status="collecting")
+    fs.update_collection_status(collection_id, status="running")
     logger.info("Starting collection %s", collection_id)
 
     def _track_snapshot(snapshot_id, dataset_id, discover_by):
@@ -82,6 +82,9 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
     total_dupes = 0
     seen_post_ids: set[str] = set()
     seen_channel_ids: set[str] = set()
+    funnel_worker_dedup = 0
+    funnel_bq_dedup = 0
+    funnel_bq_insert_failures = 0
     collection_start = time.monotonic()
     collection_started_at = datetime.now(timezone.utc).isoformat()
 
@@ -99,6 +102,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
 
             # Deduplicate posts and channels within this collection run
             new_posts = [p for p in batch.posts if p.post_id not in seen_post_ids]
+            funnel_worker_dedup += len(batch.posts) - len(new_posts)
             seen_post_ids.update(p.post_id for p in new_posts)
 
             new_channels = [c for c in batch.channels if c.channel_id not in seen_channel_ids]
@@ -137,6 +141,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                     len(new_posts) - len(existing_ids),
                 )
                 total_dupes += len(existing_ids)
+                funnel_bq_dedup += len(existing_ids)
                 new_posts = [p for p in new_posts if p.post_id not in existing_ids]
 
             if not new_posts:
@@ -151,6 +156,7 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
             t_bq_insert = time.monotonic()
             if post_rows:
                 failed_posts = bq.insert_rows("posts", post_rows)
+                funnel_bq_insert_failures += failed_posts
 
             # Insert initial engagements
             engagement_rows = [post_to_engagement_row(p) for p in new_posts]
@@ -171,9 +177,10 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
             )
 
             # Track usage for billing + analytics (fire-and-forget)
-            if owner_user_id and len(new_posts) > 0:
-                fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", len(new_posts))
-                def _log_posts_event(uid=owner_user_id, oid=owner_org_id, cid=collection_id, cnt=len(new_posts)):
+            actual_stored = len(new_posts) - failed_posts
+            if owner_user_id and actual_stored > 0:
+                fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", actual_stored)
+                def _log_posts_event(uid=owner_user_id, oid=owner_org_id, cid=collection_id, cnt=actual_stored):
                     try:
                         bq.insert_rows("usage_events", [{
                             "event_id": str(uuid4()),
@@ -300,6 +307,13 @@ def run_collection(collection_id: str, on_batch_complete=None) -> None:
                 "duration_sec": duration_sec,
                 "total_dupes_skipped": total_dupes,
                 "platforms": wrapper.get_platform_stats(),
+            },
+            "funnel": {
+                **wrapper.get_funnel_stats(),
+                "worker_in_memory_dedup": funnel_worker_dedup,
+                "worker_bq_dedup": funnel_bq_dedup,
+                "worker_bq_insert_failures": funnel_bq_insert_failures,
+                "worker_posts_stored": total_posts,
             },
         }
         if collection_errors:

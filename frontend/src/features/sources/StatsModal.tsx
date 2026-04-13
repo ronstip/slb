@@ -296,13 +296,13 @@ export function StatsModal({ source, open, onClose }: StatsModalProps) {
                 {stats.collection_status_at_compute && (
                   <Badge
                     variant={
-                      stats.collection_status_at_compute === 'completed' ? 'secondary' : 'outline'
+                      stats.collection_status_at_compute === 'success' ? 'secondary' : 'outline'
                     }
                     className="text-[10px]"
                   >
-                    {stats.collection_status_at_compute === 'completed'
+                    {stats.collection_status_at_compute === 'success'
                       ? 'complete snapshot'
-                      : 'partial — still collecting'}
+                      : 'partial — still running'}
                   </Badge>
                 )}
               </div>

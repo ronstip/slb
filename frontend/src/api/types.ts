@@ -20,6 +20,14 @@ export interface UserPreferences {
   allow_model_training: boolean;
 }
 
+export interface ImpersonationInfo {
+  real_uid: string;
+  real_email: string;
+  target_uid: string;
+  target_email: string;
+  target_display_name: string | null;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -33,6 +41,8 @@ export interface UserProfile {
   subscription_plan: string | null;
   subscription_status: string | null;
   is_super_admin?: boolean;
+  /** Present only when a super admin is viewing the app as another user. */
+  impersonation?: ImpersonationInfo;
 }
 
 export interface OrgMember {
@@ -149,15 +159,9 @@ export interface FeedParams {
 // --- Responses ---
 
 export type CollectionStatus =
-  | 'pending'
-  | 'collecting'
-  | 'enriching'
-  | 'completed'
-  | 'completed_with_errors'
-  | 'failed'
-  | 'cancelled'
-  | 'monitoring'
-  | 'paused';
+  | 'running'
+  | 'success'
+  | 'failed';
 
 export interface CollectionConfig {
   platforms: string[];
@@ -192,7 +196,6 @@ export interface CollectionStatusResponse {
   last_run_at?: string;
   next_run_at?: string;
   total_runs?: number;
-  run_history?: Array<{ run_at: string; summary: string; status: string }>;
 }
 
 export interface MediaRef {
@@ -261,7 +264,7 @@ export interface BreakdownItem {
 
 export interface CollectionStats {
   computed_at: string | null;
-  collection_status_at_compute: 'collecting' | 'completed' | null;
+  collection_status_at_compute: 'running' | 'success' | null;
   total_posts: number;
   total_unique_channels: number;
   date_range: { earliest: string | null; latest: string | null };
@@ -756,14 +759,78 @@ export interface AdminCollection {
   status: string;
   posts_collected: number;
   posts_enriched: number;
+  posts_stored: number | null;
+  bd_raw_records: number | null;
   platforms: string[];
   created_at: string;
   error_message: string | null;
 }
 
+export interface AdminFunnelSummary {
+  total_bd_raw_records: number;
+  total_bd_error_items: number;
+  total_bd_dedup: number;
+  total_bd_parse_failures: number;
+  total_posts_stored: number;
+  total_posts_collected_fs: number;
+}
+
 export interface AdminCollectionList {
   collections: AdminCollection[];
   total: number;
+  funnel_summary: AdminFunnelSummary;
+}
+
+export interface CollectionFunnel {
+  bd_raw_records: number;
+  bd_error_items_filtered: number;
+  bd_cross_keyword_dedup: number;
+  bd_parse_failures: number;
+  bd_empty_post_id: number;
+  bd_valid_posts: number;
+  worker_in_memory_dedup: number;
+  worker_bq_dedup: number;
+  worker_bq_insert_failures: number;
+  worker_posts_stored: number;
+  per_platform: Record<string, {
+    raw_into_parse: number;
+    deduped: number;
+    parse_failures: number;
+    empty_post_id: number;
+    valid_posts: number;
+  }>;
+}
+
+export interface CollectionAudit {
+  collection_id: string;
+  status: string;
+  error_message: string | null;
+  posts_collected_firestore: number;
+  posts_enriched: number;
+  posts_stored_bq: number | null;
+  discrepancy_pct: number;
+  funnel: CollectionFunnel;
+  snapshots: Array<{
+    snapshot_id: string;
+    collection_id: string;
+    dataset_id: string;
+    discover_by: string;
+    status: string;
+    created_at: string;
+    downloaded_at?: string;
+  }>;
+  run_log: {
+    collection?: {
+      started_at?: string;
+      completed_at?: string;
+      duration_sec?: number;
+      total_dupes_skipped?: number;
+      platforms?: Record<string, { posts: number; batches: number; errors: number }>;
+      errors?: Array<{ platform: string; error_type: string; message: string }>;
+    };
+    funnel?: CollectionFunnel;
+    recovery?: unknown[];
+  };
 }
 
 export interface AdminRevenue {
@@ -772,4 +839,60 @@ export interface AdminRevenue {
   avg_purchase_cents: number;
   daily_revenue: { date: string; revenue_cents: number; purchases: number }[];
   recent_purchases: CreditPurchaseHistoryItem[];
+}
+
+// --- Wizard planner ---
+
+export type CustomFieldType = 'str' | 'bool' | 'int' | 'float' | 'list[str]' | 'literal';
+
+export interface CustomFieldDef {
+  name: string;
+  description: string;
+  type: CustomFieldType;
+  options?: string[] | null;
+}
+
+export interface NewCollectionPlan {
+  platforms: string[];
+  keywords: string[];
+  channel_urls: string[];
+  time_range_days: number;
+  geo_scope: 'global' | 'US' | 'UK' | 'EU' | 'APAC';
+  n_posts: number;
+}
+
+export interface SchedulePlan {
+  frequency: 'hourly' | 'daily' | 'weekly' | 'monthly';
+  time: string; // "HH:MM" UTC
+}
+
+export interface WizardPlan {
+  title: string;
+  summary: string;
+  reasoning: string;
+  existing_collection_ids: string[];
+  new_collection: NewCollectionPlan | null;
+  agent_type: 'one_shot' | 'recurring';
+  schedule: SchedulePlan | null;
+  auto_report: boolean;
+  auto_email: boolean;
+  auto_slides: boolean;
+  auto_dashboard: boolean;
+  custom_fields: CustomFieldDef[];
+  enrichment_context: string;
+}
+
+export interface WizardClarification {
+  id: string;
+  type: 'pill_row' | 'card_select' | 'tag_input';
+  question: string;
+  options?: { value: string; label: string; description?: string }[];
+  multi_select?: boolean;
+  placeholder?: string;
+}
+
+export interface WizardPlannerResponse {
+  status: 'plan' | 'clarification';
+  plan: WizardPlan | null;
+  clarifications: WizardClarification[] | null;
 }

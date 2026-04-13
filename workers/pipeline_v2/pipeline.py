@@ -42,7 +42,7 @@ def recover_stale_pipelines(max_age_minutes: int = 60) -> int:
             posts_collected = entry.get("posts_collected", 0) or 0
 
             if posts_collected > 0:
-                status = "completed_with_errors"
+                status = "success"
                 error_message = (
                     f"Pipeline was interrupted after collecting {posts_collected} posts. "
                     f"Partial data is available."

@@ -100,7 +100,6 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
 
   const formatAnswer = useCallback((): string => {
     const parts: string[] = [];
-    const structured: Record<string, unknown> = {};
 
     for (const p of prompts) {
       if (p.type === 'icon_grid' || p.type === 'pill_row' || p.type === 'card_select') {
@@ -108,7 +107,6 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
         const resolved = selected.map((v) =>
           v === OTHER_VALUE ? (otherText[p.id] ?? '').trim() : v,
         ).filter(Boolean);
-        structured[p.id] = resolved;
         const labels = resolved.map((v) => {
           const opt = p.options?.find((o) => o.value === v);
           return opt?.label ?? v;
@@ -116,39 +114,26 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
         if (labels.length > 0) {
           parts.push(`${promptLabel(p)}: ${labels.join(', ')}`);
         }
-        // Include "other" annotation text for prompts with non-OTHER other text
-        if (otherText[p.id]?.trim() && !selected.includes(OTHER_VALUE)) {
-          structured[`${p.id}_note`] = otherText[p.id].trim();
-        }
       } else if (p.type === 'approval') {
         const selected = selections[p.id] ?? [];
-        structured[p.id] = selected;
         const label = selected[0] === 'approve' ? 'Approve & Run' : 'Adjust';
         if (selected[0] === 'adjust' && otherText[p.id]?.trim()) {
-          structured[`${p.id}_feedback`] = otherText[p.id].trim();
           parts.push(`Plan: ${label} — ${otherText[p.id].trim()}`);
         } else {
           parts.push(`Plan: ${label}`);
         }
       } else if (p.type === 'tag_input') {
         const values = tags[p.id] ?? [];
-        structured[p.id] = values;
         if (values.length > 0) {
           parts.push(`${promptLabel(p)}: ${values.join(', ')}`);
         }
       } else if (p.type === 'toggle_row') {
         const value = toggles[p.id] ?? false;
-        structured[p.id] = value;
         parts.push(`${promptLabel(p)}: ${value ? 'Yes' : 'No'}`);
-        if (otherText[p.id]?.trim()) {
-          structured[`${p.id}_note`] = otherText[p.id].trim();
-        }
       }
     }
 
-    const readable = parts.join(' · ');
-    const json = JSON.stringify(structured);
-    return `${readable}\n<!-- structured_response: ${json} -->`;
+    return parts.join(' · ');
   }, [prompts, selections, tags, toggles, otherText]);
 
   const handleSubmit = useCallback(() => {
@@ -743,7 +728,6 @@ function PromptApproval({
   onAdjustTextChange: (value: string) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isApprove = selected.includes('approve');
   const isAdjust = selected.includes('adjust');
 
   useEffect(() => {

@@ -74,20 +74,20 @@ class PipelineRunner:
             )
             self._set_crashed_status(str(e))
 
-    def _get_task_id(self) -> str | None:
-        """Return the task_id linked to this collection, if any."""
+    def _get_agent_id(self) -> str | None:
+        """Return the agent_id linked to this collection, if any."""
         status = self.fs.get_collection_status(self.collection_id)
-        return (status or {}).get("task_id")
+        return (status or {}).get("agent_id")
 
     def _log_task(self, message: str, level: str = "info", metadata: dict | None = None) -> None:
-        """Write to the parent task's activity log (no-op if no task_id)."""
-        task_id = self._get_task_id()
-        if not task_id:
+        """Write to the parent agent's activity log (no-op if no agent_id)."""
+        agent_id = self._get_agent_id()
+        if not agent_id:
             return
         try:
-            self.fs.add_task_log(task_id, message, source="pipeline", level=level, metadata=metadata)
+            self.fs.add_agent_log(agent_id, message, source="pipeline", level=level, metadata=metadata)
         except Exception:
-            logger.debug("Failed to write task log for collection %s", self.collection_id, exc_info=True)
+            logger.debug("Failed to write agent log for collection %s", self.collection_id, exc_info=True)
 
     def _acquire_pipeline_lock(self) -> bool:
         """Check if this pipeline should run, preventing duplicate executions.
@@ -95,8 +95,8 @@ class PipelineRunner:
         Returns True if this instance should proceed, False if it should abort.
         Prevents the Cloud Tasks retry loop that caused 17x duplicate runs in production.
         """
-        TERMINAL_STATUSES = {"completed", "completed_with_errors", "failed", "cancelled"}
-        ACTIVE_STATUSES = {"collecting", "processing", "enriching"}
+        TERMINAL_STATUSES = {"success", "failed"}
+        ACTIVE_STATUSES = {"running"}
         STALE_THRESHOLD_SEC = 300  # 5 minutes
 
         status_doc = self.fs.get_collection_status(self.collection_id)
@@ -118,6 +118,10 @@ class PipelineRunner:
         if current_status in ACTIVE_STATUSES:
             updated_at = status_doc.get("updated_at")
             if updated_at:
+                if isinstance(updated_at, str):
+                    updated_at = datetime.fromisoformat(updated_at)
+                if updated_at.tzinfo is None:
+                    updated_at = updated_at.replace(tzinfo=timezone.utc)
                 age_sec = (datetime.now(timezone.utc) - updated_at).total_seconds()
                 if age_sec < STALE_THRESHOLD_SEC:
                     logger.info(
@@ -162,7 +166,7 @@ class PipelineRunner:
         # Initialize counts on the Firestore doc
         self.fs.update_collection_status(
             self.collection_id,
-            status="collecting",
+            status="running",
             counts={},
             total_posts_in_dag=0,
             crawlers={},
@@ -195,7 +199,7 @@ class PipelineRunner:
 
         # Check if cancelled or failed
         status = self.fs.get_collection_status(self.collection_id)
-        if (status or {}).get("status") == "cancelled":
+        if (status or {}).get("status") == "failed":
             logger.info("Pipeline %s cancelled", self.collection_id)
             return
 
@@ -220,8 +224,8 @@ class PipelineRunner:
 
         # Check if this collection is part of a task — trigger continuation if all done
         try:
-            from workers.task_continuation import check_task_completion
-            check_task_completion(self.collection_id)
+            from workers.agent_continuation import check_agent_completion
+            check_agent_completion(self.collection_id)
         except Exception:
             logger.exception("Task continuation check failed for %s", self.collection_id)
 
@@ -325,20 +329,20 @@ class PipelineRunner:
         def _track_snapshot(snapshot_id, dataset_id, discover_by):
             self.fs.save_snapshot(self.collection_id, snapshot_id, dataset_id, discover_by)
 
-        # Compute remaining snapshot budget (per-task aggregate)
+        # Compute remaining snapshot budget (per-agent aggregate)
         max_snapshots = self.settings.brightdata_max_snapshots_per_collection
-        task_id = self._status_doc.get("task_id")
-        if task_id:
+        agent_id = self._status_doc.get("agent_id")
+        if agent_id:
             try:
-                task_total = self.fs.get_task_snapshot_count(task_id)
-                task_remaining = max(0, self.settings.brightdata_max_snapshots_per_task - task_total)
-                max_snapshots = min(max_snapshots, task_remaining)
+                agent_total = self.fs.get_agent_snapshot_count(agent_id)
+                agent_remaining = max(0, self.settings.brightdata_max_snapshots_per_task - agent_total)
+                max_snapshots = min(max_snapshots, agent_remaining)
                 logger.info(
-                    "Snapshot budget: task %s used %d/%d, this collection gets %d",
-                    task_id[:8], task_total, self.settings.brightdata_max_snapshots_per_task, max_snapshots,
+                    "Snapshot budget: agent %s used %d/%d, this collection gets %d",
+                    agent_id[:8], agent_total, self.settings.brightdata_max_snapshots_per_task, max_snapshots,
                 )
             except Exception:
-                logger.warning("Failed to compute task snapshot budget, using per-collection default", exc_info=True)
+                logger.warning("Failed to compute agent snapshot budget, using per-collection default", exc_info=True)
 
         wrapper = DataProviderWrapper(config=self._config, snapshot_tracker=_track_snapshot, max_snapshots=max_snapshots)
 
@@ -348,6 +352,8 @@ class PipelineRunner:
         seen_post_ids: set[str] = set()
         seen_channel_ids: set[str] = set()
         total_posts = 0
+        funnel_worker_dedup = 0
+        funnel_bq_insert_failures = 0
         collection_started_at = datetime.now(timezone.utc).isoformat()
         collection_start = _time.monotonic()
 
@@ -357,12 +363,13 @@ class PipelineRunner:
 
             # Check for cancellation
             status = self.fs.get_collection_status(self.collection_id)
-            if status and status.get("status") == "cancelled":
+            if status and status.get("status") == "failed":
                 logger.info("Collection %s cancelled during crawl", self.collection_id)
                 return
 
             # In-memory dedup within this run
             new_posts = [p for p in batch.posts if p.post_id not in seen_post_ids]
+            funnel_worker_dedup += len(batch.posts) - len(new_posts)
             seen_post_ids.update(p.post_id for p in new_posts)
             new_channels = [c for c in batch.channels if c.channel_id not in seen_channel_ids]
             seen_channel_ids.update(c.channel_id for c in new_channels)
@@ -393,6 +400,7 @@ class PipelineRunner:
             # Write posts to BQ (always — no dedup, timestamps differentiate)
             post_rows = [post_to_bq_row(p, self.collection_id) for p in new_posts]
             failed_posts = self.bq.insert_rows("posts", post_rows)
+            funnel_bq_insert_failures += failed_posts
 
             # Engagements + channels
             engagement_rows = [post_to_engagement_row(p) for p in new_posts]
@@ -416,9 +424,10 @@ class PipelineRunner:
             self.state_manager.mark_collected(new_posts)
 
             # Usage tracking (fire-and-forget)
-            if owner_user_id and new_posts:
-                self.fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", len(new_posts))
-                def _log_event(uid=owner_user_id, oid=owner_org_id, cid=self.collection_id, cnt=len(new_posts)):
+            actual_stored = len(new_posts) - failed_posts
+            if owner_user_id and actual_stored > 0:
+                self.fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", actual_stored)
+                def _log_event(uid=owner_user_id, oid=owner_org_id, cid=self.collection_id, cnt=actual_stored):
                     try:
                         self.bq.insert_rows("usage_events", [{
                             "event_id": str(uuid4()),
@@ -455,13 +464,13 @@ class PipelineRunner:
             has_error = pstats.get("errors", 0) > 0
             self.state_manager.set_crawler_status(
                 platform,
-                "completed" if not has_error else "completed_with_errors",
+                "success" if not has_error else "success",
                 posts=pstats.get("posts", 0),
                 error=str(errors) if has_error else "",
             )
 
         if not stats:
-            self.state_manager.set_crawler_status("all", "completed", posts=total_posts)
+            self.state_manager.set_crawler_status("all", "success", posts=total_posts)
 
         # Store run_log
         run_log = {
@@ -471,13 +480,19 @@ class PipelineRunner:
                 "duration_sec": duration,
                 "platforms": stats,
             },
+            "funnel": {
+                **wrapper.get_funnel_stats(),
+                "worker_in_memory_dedup": funnel_worker_dedup,
+                "worker_bq_dedup": 0,  # v2 skips BQ dedup by design
+                "worker_bq_insert_failures": funnel_bq_insert_failures,
+                "worker_posts_stored": total_posts,
+            },
         }
         if errors:
             run_log["collection"]["errors"] = errors
 
         self.fs.update_collection_status(
             self.collection_id,
-            status="processing",
             run_log=run_log,
         )
 
@@ -535,7 +550,7 @@ class PipelineRunner:
                 logger.warning("Transient error reading status for %s, continuing", self.collection_id, exc_info=True)
                 status = None
 
-            if status and status.get("status") == "cancelled":
+            if status and status.get("status") == "failed":
                 logger.info("Pipeline %s cancelled during processing", self.collection_id)
                 return
 
@@ -697,10 +712,10 @@ class PipelineRunner:
 
         friendly = self._friendly_error(error)
 
-        # If we have partial data, mark as completed_with_errors instead of failed
+        # If we have partial data, still mark as success (partial data is usable)
         final_status = "failed"
         if self._total_posts_collected > 0:
-            final_status = "completed_with_errors"
+            final_status = "success"
             friendly = f"{friendly} ({self._total_posts_collected} posts collected before the error.)"
 
         try:
@@ -792,15 +807,7 @@ class PipelineRunner:
         current_status = (status or {}).get("status")
         config = (status or {}).get("config") or {}
 
-        if current_status in ("cancelled", "failed"):
+        if current_status == "failed":
             return
 
-        # Check for actual pipeline processing failures (not input stumps like MISSING_MEDIA)
-        counts = self.state_manager.get_counts()
-        has_failures = any(
-            counts.get(s.value, 0) > 0
-            for s in FAILURE_STATES
-        )
-
-        final = "completed_with_errors" if has_failures else "completed"
-        self.fs.update_collection_status(self.collection_id, status=final)
+        self.fs.update_collection_status(self.collection_id, status="success")

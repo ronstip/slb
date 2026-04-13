@@ -21,7 +21,7 @@ export function FeedTab() {
   // All active (checkbox-checked) collections in session
   const activeSources = sources.filter((s) => s.active && s.selected);
   // Auto-refetch while any active collection is still collecting/enriching
-  const isAnyCollecting = activeSources.some((s) => s.status === 'pending' || s.status === 'collecting' || s.status === 'enriching');
+  const isAnyCollecting = activeSources.some((s) => s.status === 'running');
   const activeIds = activeSources.map((s) => s.collectionId);
 
   // Grace period: keep the "Collecting posts…" spinner briefly after collection
@@ -191,11 +191,9 @@ export function FeedTab() {
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>
         {/* Collection progress banner — shown above posts while collecting */}
         {showCollectingSpinner && allPosts.length > 0 && (() => {
-          const phase = activeSources.some((s) => s.status === 'enriching')
-            ? 'Enriching'
-            : activeSources.some((s) => s.status === 'collecting')
-              ? 'Collecting'
-              : 'Starting';
+          const phase = activeSources.some((s) => s.status === 'running')
+            ? 'Running'
+            : 'Starting';
           return (
             <div className="mt-3 flex items-center gap-3 rounded-lg border border-accent-vibrant/20 bg-accent-vibrant/5 px-3 py-2">
               <span className="relative flex h-2 w-2 shrink-0">
@@ -228,11 +226,9 @@ export function FeedTab() {
             <p className="text-sm font-medium text-foreground/80">Collecting posts…</p>
             {(() => {
               const collectingCount = activeSources.reduce((sum, s) => sum + (s.postsCollected ?? 0), 0);
-              const statusLabel = activeSources.some((s) => s.status === 'enriching')
-                ? 'Enriching'
-                : activeSources.some((s) => s.status === 'collecting')
-                  ? 'Collecting'
-                  : 'Starting';
+              const statusLabel = activeSources.some((s) => s.status === 'running')
+                ? 'Running'
+                : 'Starting';
               return (
                 <div className="flex flex-col items-center gap-1.5">
                   {collectingCount > 0 && (

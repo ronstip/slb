@@ -46,7 +46,6 @@ export function useCollectionsSync() {
         lastRunAt: fresh.last_run_at,
         nextRunAt: fresh.next_run_at,
         totalRuns: fresh.total_runs,
-        runHistory: fresh.run_history,
         visibility: (fresh.visibility as 'private' | 'org') ?? src.visibility,
         userId: fresh.user_id ?? src.userId,
       };

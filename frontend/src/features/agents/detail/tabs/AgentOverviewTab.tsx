@@ -45,7 +45,7 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
   const accentClass = STATUS_ACCENT[task.status] || 'bg-muted';
 
   const showScheduleBtn =
-    task.task_type !== 'recurring' && ['completed', 'approved'].includes(task.status);
+    task.agent_type !== 'recurring' && ['completed', 'approved'].includes(task.status);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -67,7 +67,7 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
         )}
         {canRun && onRun && (
           <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={onRun}>
-            {task.task_type === 'recurring' ? (
+            {task.agent_type === 'recurring' ? (
               <><Play className="h-3 w-3" />Run Now</>
             ) : (
               <><Repeat className="h-3 w-3" />Re-run</>
@@ -101,7 +101,7 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
                 {!endDate && task.status === 'monitoring' && (
                   <span className="text-violet-500 font-medium">· Monitoring</span>
                 )}
-                {task.task_type === 'recurring' && (
+                {task.agent_type === 'recurring' && (
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Repeat className="h-3 w-3" /> Recurring
                   </span>
@@ -158,7 +158,7 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
           </div>
 
           {/* ── Schedule ── */}
-          {task.task_type === 'recurring' && (
+          {task.agent_type === 'recurring' && (
             <div>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Schedule</h3>
               <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -182,19 +182,7 @@ export function AgentOverviewTab({ task, logs, onTabChange, onOpenSchedule, onRu
                     </span>
                   </p>
                 )}
-                {task.run_history && task.run_history.length > 0 && (
-                  <div className="border-t border-border pt-3">
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Run History</p>
-                    <div className="space-y-1.5">
-                      {task.run_history.slice(-5).reverse().map((run, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <div className={cn('h-1.5 w-1.5 rounded-full', run.status === 'started' || run.status === 'completed' ? 'bg-green-500' : 'bg-amber-500')} />
-                          <span>{formatDate(run.run_at)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* Run history now available via listAgentRuns() API */}
               </div>
             </div>
           )}

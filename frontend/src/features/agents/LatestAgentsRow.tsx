@@ -34,7 +34,7 @@ export function LatestAgentsRow({ tasks }: LatestTasksRowProps) {
 
       <div className="flex gap-3">
         {sorted.map((task) => (
-          <div key={task.task_id} className="flex-1 min-w-[160px] max-w-[280px]">
+          <div key={task.agent_id} className="flex-1 min-w-[160px] max-w-[280px]">
             <AgentCard task={task} compact />
           </div>
         ))}

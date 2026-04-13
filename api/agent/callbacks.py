@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Tools listed first in the schema are naturally favoured by the model.
 
 PLANNING_TOOLS = {"update_todos"}
-TASK_TOOLS = {"start_task", "get_task_status", "set_active_task"}
+AGENT_TOOLS = {"start_agent", "get_agent_status", "set_active_agent"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
 RESEARCH_DESIGN_TOOLS: set[str] = set()  # design_research removed (internal only)
@@ -38,7 +38,7 @@ OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard", "generat
 # ─── Hard gate: tools blocked while a collection pipeline is running ──
 # cancel_collection is intentionally excluded — user can always cancel.
 COLLECTION_RUNNING_BLOCKED = {
-    "get_progress", "get_task_status", "get_collection_stats",
+    "get_progress", "get_agent_status", "get_collection_stats",
     "enrich_collection", "refresh_engagements",
 }
 
@@ -113,23 +113,23 @@ def collection_state_tracker(
     elif tool_name == "update_todos":
         pass  # State updated inside the tool
 
-    elif tool_name == "start_task":
+    elif tool_name == "start_agent":
         if isinstance(tool_response, dict) and tool_response.get("status") == "success":
-            task_id = tool_response.get("task_id")
-            tool_context.state["active_task_id"] = task_id
+            agent_id = tool_response.get("agent_id")
+            tool_context.state["active_agent_id"] = agent_id
             tool_context.state["collection_running"] = True
             cids = tool_response.get("collection_ids", [])
             if cids:
                 tool_context.state["active_collection_id"] = cids[0]
                 tool_context.state["agent_selected_sources"] = cids
             logger.info(
-                "start_task succeeded: task=%s collections=%s — collection_running=True, turn will end",
-                task_id, cids,
+                "start_agent succeeded: agent=%s collections=%s — collection_running=True, turn will end",
+                agent_id, cids,
             )
 
-    elif tool_name == "set_active_task":
+    elif tool_name == "set_active_agent":
         if isinstance(tool_response, dict) and tool_response.get("status") == "success":
-            tool_context.state["active_task_id"] = tool_response.get("task_id")
+            tool_context.state["active_agent_id"] = tool_response.get("agent_id")
 
     elif tool_name == "ask_user":
         # Signal the before_model_callback to stop the ReAct loop.
@@ -314,8 +314,8 @@ def _build_context_block(state: dict) -> Optional[str]:
     # NOTE: Removed from automatic injection. Showing old tasks and
     # collections on every ReAct step caused the model to jump tracks
     # and work on unrelated past tasks. The agent can still discover
-    # past work via get_task_status, get_collection_details, and
-    # set_active_task tools when the user explicitly asks.
+    # past work via get_agent_status, get_collection_details, and
+    # set_active_agent tools when the user explicitly asks.
 
     # ── Collection context ──────────────────────────────────────────
     collection_id = state.get("active_collection_id")
@@ -373,7 +373,7 @@ def _build_context_block(state: dict) -> Optional[str]:
         blocks.append("\n".join(lines))
 
     # ── Task data scope ──────────────────────────────────────────
-    data_scope = state.get("active_task_data_scope")
+    data_scope = state.get("active_agent_data_scope")
     if data_scope:
         lines = ["## Task Context"]
         enrichment_ctx = data_scope.get("enrichment_context", "")
@@ -383,7 +383,7 @@ def _build_context_block(state: dict) -> Optional[str]:
         # Date window from searches
         searches = data_scope.get("searches", [])
         if searches:
-            task_created = state.get("active_task_created_at", "")
+            task_created = state.get("active_agent_created_at", "")
             for i, s in enumerate(searches):
                 platforms = ", ".join(s.get("platforms", []))
                 keywords = ", ".join(s.get("keywords", []))
@@ -460,14 +460,14 @@ def _get_phase_priority(state: dict) -> list[set[str]]:
 
     if not has_collection:
         # Research/task phase — task tools and context first
-        return [PLANNING_TOOLS, TASK_TOOLS, RESEARCH_SUPPORT_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS]
+        return [PLANNING_TOOLS, AGENT_TOOLS, RESEARCH_SUPPORT_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS]
     elif collection_status in ("collecting", "enriching"):
         # Collection in progress — push collection tools LAST so the agent
         # doesn't loop on get_progress. The UI handles progress display.
-        return [PLANNING_TOOLS, TASK_TOOLS, CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS, COLLECTION_TOOLS]
+        return [PLANNING_TOOLS, AGENT_TOOLS, CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS, COLLECTION_TOOLS]
     else:
         # Collection complete (or unknown) — analysis + output first
-        return [PLANNING_TOOLS, TASK_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_SUPPORT_TOOLS, RESEARCH_DESIGN_TOOLS]
+        return [PLANNING_TOOLS, AGENT_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_SUPPORT_TOOLS, RESEARCH_DESIGN_TOOLS]
 
 
 def _tool_sort_key(tool_obj, priority_order: list[set[str]]) -> int:
@@ -542,9 +542,9 @@ def inject_collection_context(
         )
 
     # ── Hard stop while collection is running ────────────────────
-    # After start_task succeeds, data collection runs asynchronously
+    # After start_agent succeeds, data collection runs asynchronously
     # in a background worker.  The LLM must not re-enter the ReAct
-    # loop to poll get_task_status / get_progress — that causes dozens
+    # loop to poll get_agent_status / get_progress — that causes dozens
     # of blocked tool calls.  End the turn immediately; main.py will
     # resume the agent once the collection completes.
     if state.get("collection_running") and _is_react_continuation(llm_request):

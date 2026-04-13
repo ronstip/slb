@@ -18,7 +18,7 @@ import { StatsModal } from '../sources/StatsModal.tsx';
 import { useAuth } from '../../auth/useAuth.ts';
 import type { Source } from '../../stores/sources-store.ts';
 
-type StatusFilter = 'all' | 'active' | 'monitoring' | 'completed' | 'failed';
+type StatusFilter = 'all' | 'active' | 'completed' | 'failed';
 
 export function CollectionsPage() {
   const navigate = useNavigate();
@@ -60,7 +60,7 @@ export function CollectionsPage() {
   // Auto-select first completed collection if nothing is selected
   useEffect(() => {
     if (selectedIds.size === 0 && collections.length > 0) {
-      const completed = collections.find((c) => c.status === 'completed' && c.postsCollected > 0);
+      const completed = collections.find((c) => c.status === 'success' && c.postsCollected > 0);
       if (completed) {
         setSelectedIds(new Set([completed.collectionId]));
       }
