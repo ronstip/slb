@@ -45,8 +45,14 @@ def check_agent_completion(collection_id: str) -> None:
     if agent.get("status") != "running":
         return
 
-    # Check if ALL agent collections are complete
-    all_collection_ids = agent.get("collection_ids", [])
+    # Check only the ACTIVE RUN's collections, not all agent collections.
+    # Old runs may have stuck collections that would block continuation.
+    active_run_id = agent.get("active_run_id")
+    if active_run_id:
+        run = fs.get_run(agent_id, active_run_id)
+        all_collection_ids = (run or {}).get("collection_ids", [])
+    else:
+        all_collection_ids = agent.get("collection_ids", [])
     if not all_collection_ids:
         return
 
@@ -176,7 +182,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
         fs.add_agent_session(agent_id, session_id)
         logger.info("Agent %s: created ephemeral session %s for continuation", agent_id, session_id)
 
-    # Build the continuation message
+    # Build the continuation message with full plan context
     collection_summaries = []
     for cid in agent.get("collection_ids", []):
         cs = fs.get_collection_status(cid)
@@ -185,14 +191,45 @@ async def _async_agent_continuation(agent_id: str) -> None:
             enriched = cs.get("posts_enriched", 0)
             collection_summaries.append(f"- Collection `{cid}`: {posts} posts collected, {enriched} enriched")
 
-    continuation_message = (
-        f"All data collection for agent \"{title}\" is complete.\n\n"
-        + "\n".join(collection_summaries) + "\n\n"
-        "Continue with the remaining todos for this agent. "
-        "Analyze the data, validate findings, and deliver based on the original question."
-    )
+    # Include the actual plan/todos so the agent knows exactly what to do
+    todos = agent.get("todos") or []
+    remaining_steps = []
+    for t in todos:
+        if t.get("status") != "completed":
+            remaining_steps.append(f"- {t['content']}")
 
-    logger.info("Agent %s: invoking agent with continuation message", agent_id)
+    # Include data scope context
+    data_scope = agent.get("data_scope") or {}
+    enrichment_context = data_scope.get("enrichment_context", "")
+
+    message_parts = [
+        f'All data collection for agent "{title}" is complete.',
+        "",
+        "## Collection Results",
+        *collection_summaries,
+    ]
+
+    if enrichment_context:
+        message_parts += ["", "## Context", enrichment_context]
+
+    if remaining_steps:
+        message_parts += [
+            "",
+            "## Remaining Steps (execute ALL of these in order)",
+            *remaining_steps,
+            "",
+            "Complete each step above. Use `update_todos` to mark each step done as you go.",
+            "Do NOT skip steps. Every step must be executed, including custom ones like sending emails or creating specific charts.",
+        ]
+    else:
+        message_parts += [
+            "",
+            "Analyze the data, validate findings, and deliver based on the original question.",
+        ]
+
+    continuation_message = "\n".join(message_parts)
+
+    logger.info("Agent %s: invoking agent with continuation message (%d remaining steps)", agent_id, len(remaining_steps))
 
     # Create runner
     app = create_app()
@@ -213,12 +250,18 @@ async def _async_agent_continuation(agent_id: str) -> None:
         logger.error("Session %s not found for agent %s", session_id, agent_id)
         return
 
-    # Inject agent context into session state
+    # Inject full agent context into session state so callbacks can use it
     session.state["active_agent_id"] = agent_id
     session.state["active_agent_title"] = title
     session.state["active_agent_status"] = "running"
     session.state["active_agent_type"] = agent.get("agent_type", "one_shot")
+    session.state["active_agent_data_scope"] = data_scope
+    session.state["active_agent_created_at"] = agent.get("created_at", "")
     session.state["continuation_mode"] = True
+    session.state["autonomous_mode"] = True
+    session.state["todos"] = todos
+    session.state["user_id"] = user_id
+    session.state["org_id"] = org_id
 
     # Set working collections
     collection_ids = agent.get("collection_ids", [])
@@ -249,8 +292,17 @@ async def _async_agent_continuation(agent_id: str) -> None:
     # Persist artifacts from agent output
     _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_id)
 
+    # Mark all remaining todos as completed
+    agent = fs.get_agent(agent_id)  # re-read in case agent updated during run
+    todos = agent.get("todos") or [] if agent else []
+    if todos:
+        for t in todos:
+            if t.get("status") != "completed":
+                t["status"] = "completed"
+        fs.update_agent(agent_id, todos=todos)
+
     # Update agent status
-    agent_type = agent.get("agent_type", "one_shot")
+    agent_type = (agent or {}).get("agent_type", "one_shot")
     fs.update_agent(
         agent_id,
         status="success",

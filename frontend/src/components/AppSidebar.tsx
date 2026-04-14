@@ -28,7 +28,9 @@ import {
 } from 'lucide-react';
 import type { Agent } from '../api/endpoints/agents.ts';
 import type { SessionListItem } from '../api/endpoints/sessions.ts';
+import type { ExplorerLayoutListItem } from '../api/endpoints/explorer-layouts.ts';
 import { SessionCard } from './SessionCard.tsx';
+import { LayoutCard } from './LayoutCard.tsx';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from './theme-provider.tsx';
 import { useAgentStore } from '../stores/agent-store.ts';
@@ -56,7 +58,7 @@ import { cn } from '../lib/utils.ts';
 export type DetailTab = 'overview' | 'chat' | 'collections' | 'artifacts' | 'explorer';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'overview', label: 'Agent Profile', icon: LayoutDashboard },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
   { id: 'artifacts', label: 'Artifacts', icon: FileText },
@@ -77,6 +79,10 @@ interface AppSidebarProps {
   activeSessionId?: string | null;
   onSessionSelect?: (sessionId: string) => void;
   onNewChat?: () => void;
+  agentLayouts?: ExplorerLayoutListItem[];
+  activeLayoutId?: string | null;
+  onLayoutSelect?: (layoutId: string | null) => void;
+  onNewLayout?: () => void;
 }
 
 export function AppSidebar({
@@ -93,6 +99,10 @@ export function AppSidebar({
   activeSessionId,
   onSessionSelect,
   onNewChat,
+  agentLayouts,
+  activeLayoutId,
+  onLayoutSelect,
+  onNewLayout,
 }: AppSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -106,6 +116,7 @@ export function AppSidebar({
   // Default: expanded on non-detail pages, collapsed on detail pages
   const [recentAgentsOpen, setRecentAgentsOpen] = useState(!isDetailPage);
   const [chatHistoryOpen, setChatHistoryOpen] = useState(true);
+  const [explorerHistoryOpen, setExplorerHistoryOpen] = useState(true);
   const [impersonateOpen, setImpersonateOpen] = useState(false);
   const isImpersonating = !!profile?.impersonation;
 
@@ -335,8 +346,10 @@ export function AppSidebar({
                 (id === 'explorer' && !hasCollections) ||
                 (id === 'artifacts' && !hasArtifacts);
               const isChatTab = id === 'chat';
+              const isExplorerTab = id === 'explorer';
               const hasSessions = isChatTab && agentSessions && agentSessions.length > 0;
-              const showExpander = isChatTab && isTabActive && hasSessions;
+              const showChatExpander = isChatTab && isTabActive && hasSessions;
+              const showExplorerExpander = isExplorerTab && isTabActive && hasCollections;
 
               return (
                 <div key={id}>
@@ -346,9 +359,11 @@ export function AppSidebar({
                       disabled={disabled}
                       onClick={() => {
                         onTabChange(id);
-                        // When clicking chat tab while already on it, toggle expander
                         if (isChatTab && isTabActive) {
                           setChatHistoryOpen((v) => !v);
+                        }
+                        if (isExplorerTab && isTabActive) {
+                          setExplorerHistoryOpen((v) => !v);
                         }
                       }}
                       className={cn(
@@ -362,7 +377,7 @@ export function AppSidebar({
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       {label}
-                      {showExpander && (
+                      {showChatExpander && (
                         <span className="ml-auto flex items-center">
                           {chatHistoryOpen
                             ? <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
@@ -370,8 +385,16 @@ export function AppSidebar({
                           }
                         </span>
                       )}
+                      {showExplorerExpander && (
+                        <span className="ml-auto flex items-center">
+                          {explorerHistoryOpen
+                            ? <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
+                            : <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                          }
+                        </span>
+                      )}
                     </button>
-                    {showExpander && onNewChat && (
+                    {showChatExpander && onNewChat && (
                       <button
                         onClick={onNewChat}
                         className="mr-1 rounded-md p-1 text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent transition-colors"
@@ -380,8 +403,17 @@ export function AppSidebar({
                         <Plus className="h-3.5 w-3.5" />
                       </button>
                     )}
+                    {showExplorerExpander && onNewLayout && (
+                      <button
+                        onClick={onNewLayout}
+                        className="mr-1 rounded-md p-1 text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent transition-colors"
+                        title="New Layout"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
-                  {showExpander && chatHistoryOpen && onSessionSelect && (
+                  {showChatExpander && chatHistoryOpen && onSessionSelect && (
                     <div className="ml-5 flex flex-col gap-0.5 overflow-y-auto py-1">
                       {agentSessions.map((session) => (
                         <SessionCard
@@ -391,6 +423,46 @@ export function AppSidebar({
                           onDeleted={onNewChat}
                         />
                       ))}
+                    </div>
+                  )}
+                  {showExplorerExpander && explorerHistoryOpen && onLayoutSelect && (
+                    <div className="ml-5 flex flex-col gap-0.5 overflow-y-auto py-1">
+                      <div
+                        className={cn(
+                          'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
+                          activeLayoutId === null
+                            ? 'bg-accent/80 text-accent-foreground'
+                            : 'hover:bg-muted/60',
+                        )}
+                        onClick={() => onLayoutSelect(null)}
+                      >
+                        {activeLayoutId === null && (
+                          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent-vibrant" />
+                        )}
+                        <span className={cn(
+                          'block truncate text-[13px] leading-tight pl-1',
+                          activeLayoutId === null ? 'font-semibold' : 'font-medium text-foreground',
+                        )}>
+                          Overview Dashboard
+                        </span>
+                      </div>
+                      {agentLayouts?.map((layout) => (
+                        <LayoutCard
+                          key={layout.layout_id}
+                          layout={layout}
+                          isActive={activeLayoutId === layout.layout_id}
+                          onSelect={onLayoutSelect}
+                        />
+                      ))}
+                      {(!agentLayouts || agentLayouts.length === 0) && onNewLayout && (
+                        <div
+                          onClick={onNewLayout}
+                          className="mt-1 flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary/5 px-2 py-2 opacity-60 transition-all hover:opacity-100 hover:bg-primary/10"
+                        >
+                          <Plus className="h-3 w-3 text-primary" />
+                          <span className="text-[12px] font-medium text-primary">New Layout</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

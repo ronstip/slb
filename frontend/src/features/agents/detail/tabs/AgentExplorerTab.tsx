@@ -1,23 +1,48 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { Compass } from 'lucide-react';
 import type { Agent } from '../../../../api/endpoints/agents.ts';
 import { DashboardView } from '../../../studio/dashboard/DashboardView.tsx';
-import { getExplorerDefaultLayout } from '../../../studio/dashboard/defaults-social-dashboard.ts';
+import { getExplorerDefaultLayout, getNewLayoutStarterWidgets } from '../../../studio/dashboard/defaults-social-dashboard.ts';
+import { useSocialDashboardStore } from '../../../studio/dashboard/social-dashboard-store.ts';
+import { useExplorerLayoutStore } from '../../../../stores/explorer-layout-store.ts';
 import { StatusBadge } from '../agent-status-utils.tsx';
 
 interface TaskExplorerTabProps {
   task: Agent;
+  activeLayoutId?: string | null;
+  startInEditMode?: boolean;
 }
 
-export function AgentExplorerTab({ task }: TaskExplorerTabProps) {
+export function AgentExplorerTab({ task, activeLayoutId = null, startInEditMode = false }: TaskExplorerTabProps) {
+  const clearStartInEditMode = useExplorerLayoutStore((s) => s.clearStartInEditMode);
+  const editModeTriggered = useRef(false);
+
+  // Auto-enter edit mode for newly created layouts
+  useEffect(() => {
+    if (startInEditMode && !editModeTriggered.current) {
+      editModeTriggered.current = true;
+      // Small delay to ensure DashboardView has mounted and toolbar handlers are ready
+      const timer = setTimeout(() => {
+        useSocialDashboardStore.getState().setEditMode(true);
+        clearStartInEditMode();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+    if (!startInEditMode) {
+      editModeTriggered.current = false;
+    }
+  }, [startInEditMode, clearStartInEditMode]);
+
+  const artifactId = activeLayoutId ?? task.agent_id;
+
   const artifact = useMemo(() => ({
-    id: task.agent_id,
+    id: artifactId,
     type: 'dashboard' as const,
     title: task.title,
     collectionIds: task.collection_ids ?? [],
     collectionNames: {} as Record<string, string>,
     createdAt: new Date(task.created_at),
-  }), [task.agent_id, task.title, task.collection_ids, task.created_at]);
+  }), [artifactId, task.title, task.collection_ids, task.created_at]);
 
   if (!task.collection_ids?.length) {
     return (
@@ -39,9 +64,10 @@ export function AgentExplorerTab({ task }: TaskExplorerTabProps) {
   return (
     <div className="flex flex-1 flex-col w-full overflow-hidden bg-background">
       <DashboardView
+        key={artifactId}
         artifact={artifact}
         standalone
-        defaultLayout={getExplorerDefaultLayout()}
+        defaultLayout={activeLayoutId ? getNewLayoutStarterWidgets() : getExplorerDefaultLayout()}
         titleAdornment={<StatusBadge status={task.status} />}
         noBorder
       />

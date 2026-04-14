@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
+import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { runAgent, updateAgent as patchAgent } from '../../../api/endpoints/agents.ts';
 import { useAgentDetail } from './useAgentDetail.ts';
@@ -40,6 +41,9 @@ export function AgentDetailPage() {
   const sidebarCollapsed = useUIStore((s) => s.sourcesPanelCollapsed);
   const agentSessions = useSessionStore((s) => s.agentSessions);
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
+  const agentLayouts = useExplorerLayoutStore((s) => s.agentLayouts);
+  const activeLayoutId = useExplorerLayoutStore((s) => s.activeLayoutId);
+  const startInEditMode = useExplorerLayoutStore((s) => s.startInEditMode);
 
   const tabParam = searchParams.get('tab') as DetailTab | null;
   const activeTab: DetailTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'overview';
@@ -59,10 +63,26 @@ export function AgentDetailPage() {
     }
   };
 
+  const handleLayoutSelect = (layoutId: string | null) => {
+    useExplorerLayoutStore.getState().selectLayout(layoutId);
+    setSearchParams({ tab: 'explorer' }, { replace: true });
+  };
+
+  const handleNewLayout = async () => {
+    if (!taskId) return;
+    try {
+      await useExplorerLayoutStore.getState().createLayout(taskId, 'Untitled Layout');
+      setSearchParams({ tab: 'explorer' }, { replace: true });
+    } catch {
+      toast.error('Failed to create layout');
+    }
+  };
+
   useEffect(() => {
     if (taskId) {
       useAgentStore.getState().loadAgent(taskId);
       useSessionStore.getState().fetchAgentSessions(taskId);
+      useExplorerLayoutStore.getState().fetchAgentLayouts(taskId);
     }
   }, [taskId]);
 
@@ -168,6 +188,10 @@ export function AgentDetailPage() {
           activeSessionId={activeSessionId}
           onSessionSelect={handleSessionSelect}
           onNewChat={handleNewChat}
+          agentLayouts={agentLayouts}
+          activeLayoutId={activeLayoutId}
+          onLayoutSelect={handleLayoutSelect}
+          onNewLayout={handleNewLayout}
         />
       </aside>
 
@@ -198,7 +222,13 @@ export function AgentDetailPage() {
           {activeTab === 'chat' && <AgentChatTab task={task} />}
           {activeTab === 'collections' && <AgentCollectionsTab task={task} />}
           {activeTab === 'artifacts' && <AgentArtifactsTab task={task} artifacts={artifacts} />}
-          {activeTab === 'explorer' && <AgentExplorerTab task={task} />}
+          {activeTab === 'explorer' && (
+            <AgentExplorerTab
+              task={task}
+              activeLayoutId={activeLayoutId}
+              startInEditMode={startInEditMode}
+            />
+          )}
         </main>
       </div>
 

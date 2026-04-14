@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '../../../../components/ui/select.tsx';
 import { cn } from '../../../../lib/utils.ts';
+import { AgentCrest } from '../../AgentCrest.tsx';
 import type { DetailTab } from '../../../../components/AppSidebar.tsx';
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { EnrichmentEditor } from '../../wizard/EnrichmentEditor.tsx';
@@ -105,252 +106,252 @@ export function AgentOverviewTab({
   const canEdit = task.status !== 'running';
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Single unified header */}
-      <div className="flex h-11 shrink-0 items-center gap-3 px-6">
-        {isEditing && draft ? (
-          <Input
-            value={draft.title}
-            onChange={(e) => onUpdateDraft({ title: e.target.value })}
-            className="h-7 text-sm font-semibold max-w-xs"
-            autoFocus
-          />
-        ) : (
-          <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
-        )}
-        <StatusBadge status={task.status} paused={task.paused} />
-        <div className="flex-1" />
-
-        {/* Edit mode controls */}
-        {isEditing ? (
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1.5 text-xs text-muted-foreground"
-              onClick={onCancelEdit}
-              disabled={isSaving}
-            >
-              <X className="h-3 w-3" />
-              Cancel
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              className="h-7 gap-1.5 text-xs"
-              onClick={onSave}
-              disabled={!isDirty || isSaving}
-            >
-              <Check className="h-3 w-3" />
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          </>
-        ) : (
-          <>
-            {task.status === 'running' && onStop && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/5"
-                onClick={onStop}
-              >
-                <Square className="h-3 w-3 fill-current" />
-                Stop
-              </Button>
-            )}
-            {canRun && onRun && (
-              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={onRun}>
-                {task.agent_type === 'recurring' ? (
-                  <><Play className="h-3 w-3" />Run Now</>
-                ) : (
-                  <><Repeat className="h-3 w-3" />Re-run</>
-                )}
-              </Button>
-            )}
-            {showScheduleBtn && (
-              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={onOpenSchedule}>
-                <CalendarClock className="h-3 w-3" />
-                Schedule
-              </Button>
-            )}
-            {canEdit && (
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onEnterEdit}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-6 pb-8 space-y-5">
-
-          {/* ── Hero card ── */}
-          <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            <div className={cn('h-1 w-full', accentClass)} />
-            <div className="px-5 py-4">
-              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3 shrink-0" />
-                {startDate}
-                {endDate && <> → {endDate}</>}
-                {!endDate && task.status === 'running' && (
-                  <span className="flex items-center gap-1 text-amber-500 font-medium">
-                    <Zap className="h-3 w-3" /> Running
-                  </span>
-                )}
-                {task.agent_type === 'recurring' && (
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <Repeat className="h-3 w-3" /> Recurring
-                  </span>
-                )}
-              </p>
-              {task.context_summary && (
-                <p className="mt-2 text-sm text-muted-foreground">{task.context_summary}</p>
-              )}
-              {progressPct !== null && (
-                <div className="mt-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] text-muted-foreground">Progress</span>
-                    <span className="text-[11px] font-medium tabular-nums">{progressPct}%</span>
-                  </div>
-                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={cn('h-full rounded-full transition-all', accentClass)}
-                      style={{ width: `${progressPct}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {completedSteps} of {stepsCount} steps complete
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Context section ── */}
+    <div className="flex flex-1 flex-col overflow-hidden min-w-0">
+      {/* Header */}
+      <div className="shrink-0 px-6 py-2.5 border-b border-border/40">
+        <div className="flex items-center gap-3">
           {isEditing && draft ? (
-            <EditableContextSection
-              draft={draft}
-              onUpdateDraft={onUpdateDraft}
+            <Input
+              value={draft.title}
+              onChange={(e) => onUpdateDraft({ title: e.target.value })}
+              className="h-7 text-sm font-semibold max-w-xs"
+              autoFocus
             />
           ) : (
-            <ReadOnlyContextSection task={task} />
+            <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
           )}
+          <StatusBadge status={task.status} paused={task.paused} />
+          <div className="flex-1" />
 
-          {/* ── Stats row ── */}
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { value: collectionsCount, label: 'Collections', icon: Database, color: 'text-blue-500', bg: 'bg-blue-500/10', onClick: () => onTabChange('collections') },
-              { value: artifactsCount, label: 'Artifacts', icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10', onClick: () => artifactsCount > 0 && onTabChange('artifacts') },
-              { value: stepsCount, label: 'Steps', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', onClick: undefined },
-            ].map(({ value, label, icon: Icon, color, bg, onClick }) => (
-              <button
-                key={label}
-                onClick={onClick}
-                disabled={!onClick}
-                className={cn(
-                  'group flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all',
-                  onClick ? 'hover:border-primary/30 hover:shadow-sm cursor-pointer' : 'cursor-default',
-                )}
+          {/* Edit mode controls */}
+          {isEditing ? (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={onCancelEdit}
+                disabled={isSaving}
               >
-                <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', bg)}>
-                  <Icon className={cn('h-4.5 w-4.5', color)} />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold leading-none">{value}</div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">{label}</div>
-                </div>
-              </button>
-            ))}
+                <X className="h-3 w-3" />
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={onSave}
+                disabled={!isDirty || isSaving}
+              >
+                <Check className="h-3 w-3" />
+                {isSaving ? 'Saving...' : 'Save'}
+              </Button>
+            </>
+          ) : (
+            <>
+              {task.status === 'running' && onStop && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/5"
+                  onClick={onStop}
+                >
+                  <Square className="h-3 w-3 fill-current" />
+                  Stop
+                </Button>
+              )}
+              {canRun && onRun && (
+                <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={onRun}>
+                  {task.agent_type === 'recurring' ? (
+                    <><Play className="h-3 w-3" />Run Now</>
+                  ) : (
+                    <><Repeat className="h-3 w-3" />Re-run</>
+                  )}
+                </Button>
+              )}
+              {showScheduleBtn && (
+                <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={onOpenSchedule}>
+                  <CalendarClock className="h-3 w-3" />
+                  Schedule
+                </Button>
+              )}
+              {canEdit && (
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onEnterEdit}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto min-w-0">
+        <div className="w-full px-6 pb-6 space-y-5">
+
+          {/* ── Layer 1: Crest | Context ── */}
+          <div className="flex gap-5 items-start">
+            <div className="shrink-0">
+              <AgentCrest id={task.agent_id} size={140} />
+            </div>
+            <div className="flex-1 min-w-0">
+              {isEditing && draft ? (
+                <EditableContextSection
+                  draft={draft}
+                  onUpdateDraft={onUpdateDraft}
+                />
+              ) : (
+                <ReadOnlyContextSection task={task} />
+              )}
+            </div>
           </div>
 
-          {/* ── Schedule ── */}
-          {task.agent_type === 'recurring' && (
+          {/* ── Layer 2: Plan (50%) | Status + Activity (50%) ── */}
+          <div className="grid grid-cols-2 gap-5">
+            {/* Plan */}
             <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Schedule</h3>
-              <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CalendarClock className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">
-                      {task.schedule ? formatSchedule(task.schedule.frequency) : 'No schedule set'}
-                    </span>
-                  </div>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onOpenSchedule}>
-                    <Pencil className="h-3 w-3 mr-1" /> Edit
-                  </Button>
+              {isEditing && draft ? (
+                <EditablePlanSection draft={draft} onUpdateDraft={onUpdateDraft} />
+              ) : (
+                <div className="rounded-lg border border-border bg-card h-full flex flex-col">
+                  <h3 className="px-3 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</h3>
+                  {task.todos && task.todos.length > 0 ? (
+                    <div className="divide-y divide-border/40">
+                      {task.todos.map((todo, i) => {
+                        const isAgentDone = task.status === 'success';
+                        return (
+                          <div key={todo.id} className={cn('flex items-center gap-2.5 px-3 py-2.5', todo.status === 'completed' && !isAgentDone && 'opacity-60')}>
+                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
+                              {i + 1}
+                            </span>
+                            {todo.status === 'completed' ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                            ) : todo.status === 'in_progress' ? (
+                              <Play className="h-3.5 w-3.5 shrink-0 text-amber-500 animate-pulse" />
+                            ) : (
+                              <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/30" />
+                            )}
+                            <span className={cn('text-sm flex-1 font-normal', todo.status === 'completed' && !isAgentDone ? 'line-through text-muted-foreground' : 'text-foreground')}>
+                              {todo.content}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="px-3 py-4 text-sm text-muted-foreground">No steps defined</p>
+                  )}
                 </div>
-                {task.next_run_at && (
-                  <p className="text-xs text-muted-foreground border-t border-border pt-2">
-                    Next run:{' '}
-                    <span className="font-medium text-foreground">
-                      {new Date(task.next_run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
-                      {new Date(task.next_run_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
-                    </span>
+              )}
+            </div>
+
+            {/* Status + Activity */}
+            <div className="space-y-4">
+              {/* Status card */}
+              <div className="rounded-lg border border-border bg-card shadow-sm">
+                <div className="px-3 py-3 space-y-2.5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</h3>
+                  {/* Date + running state */}
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                    <Clock className="h-3 w-3 shrink-0" />
+                    {startDate}
+                    {endDate && <> → {endDate}</>}
+                    {task.status === 'running' && (
+                      <span className="flex items-center gap-1 text-amber-500 font-medium">
+                        <Zap className="h-3 w-3" /> Running
+                      </span>
+                    )}
                   </p>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* ── Plan / Todos ── */}
-          {isEditing && draft ? (
-            <EditablePlanSection draft={draft} onUpdateDraft={onUpdateDraft} />
-          ) : (
-            task.todos && task.todos.length > 0 && (
-              <div>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</h3>
-                <div className="rounded-xl border border-border bg-card divide-y divide-border/40">
-                  {task.todos.map((todo, i) => (
-                    <div key={todo.id} className={cn('flex items-center gap-3 px-4 py-3', todo.status === 'completed' && 'opacity-60')}>
-                      <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
-                        {i + 1}
-                      </span>
-                      {todo.status === 'completed' ? (
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
-                      ) : todo.status === 'in_progress' ? (
-                        <Play className="h-4 w-4 shrink-0 text-amber-500 animate-pulse" />
-                      ) : (
-                        <Circle className="h-4 w-4 shrink-0 text-muted-foreground/30" />
-                      )}
-                      <span className={cn('text-sm flex-1', todo.status === 'completed' ? 'line-through text-muted-foreground' : 'text-foreground')}>
-                        {todo.content}
-                      </span>
+                  {/* Progress bar */}
+                  {progressPct !== null && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] text-muted-foreground">Progress</span>
+                        <span className="text-[11px] font-medium tabular-nums">{progressPct}%</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn('h-full rounded-full transition-all', accentClass)}
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {completedSteps} of {stepsCount} steps complete
+                      </p>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Stats row */}
+                  <div className="grid grid-cols-3 gap-2 pt-1.5 border-t border-border/40">
+                    {[
+                      { value: collectionsCount, label: 'Collections', icon: Database, color: 'text-blue-500', bg: 'bg-blue-500/10', onClick: () => onTabChange('collections') },
+                      { value: artifactsCount, label: 'Artifacts', icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10', onClick: () => artifactsCount > 0 && onTabChange('artifacts') },
+                      { value: stepsCount, label: 'Steps', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', onClick: undefined },
+                    ].map(({ value, label, icon: Icon, color, bg, onClick }) => (
+                      <button
+                        key={label}
+                        onClick={onClick}
+                        disabled={!onClick}
+                        className={cn(
+                          'flex flex-col items-center gap-1 rounded-lg py-2 text-center transition-all',
+                          onClick ? 'hover:bg-muted/50 cursor-pointer' : 'cursor-default',
+                        )}
+                      >
+                        <div className={cn('flex h-7 w-7 items-center justify-center rounded-md', bg)}>
+                          <Icon className={cn('h-3.5 w-3.5', color)} />
+                        </div>
+                        <div className="text-lg font-bold leading-none tabular-nums">{value}</div>
+                        <div className="text-[10px] text-muted-foreground">{label}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Schedule (for recurring) */}
+                  {task.agent_type === 'recurring' && (
+                    <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <CalendarClock className="h-3 w-3" />
+                        {task.schedule ? formatSchedule(task.schedule.frequency) : 'No schedule'}
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2" onClick={onOpenSchedule}>
+                        <Pencil className="h-3 w-3 mr-1" /> Edit
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
-            )
-          )}
 
-          {/* ── Recent Activity ── */}
-          {logs.length > 0 && (
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
-              <div className="rounded-xl border border-border bg-card divide-y divide-border/40">
-                {logs.slice(0, 6).map((log, i) => {
-                  const isLatest = i === 0 && task.status === 'running';
-                  return (
-                    <div key={log.id} className="flex items-start gap-3 px-4 py-3">
-                      <div className="mt-0.5 shrink-0">
-                        {isLatest ? (
-                          <CircleDot className="h-3.5 w-3.5 animate-pulse text-primary" />
-                        ) : (
-                          <Check className="h-3.5 w-3.5 text-muted-foreground/30" strokeWidth={2.5} />
-                        )}
-                      </div>
-                      <span className={cn('flex-1 text-xs leading-relaxed', isLatest ? 'text-foreground font-medium' : 'text-muted-foreground')}>
-                        {log.message}
-                      </span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground/40 tabular-nums">
-                        {formatLogTime(log.timestamp)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              {/* Recent Activity */}
+              {logs.length > 0 && (
+                <div className="rounded-lg border border-border bg-card">
+                  <h3 className="px-3 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
+                  <div className="divide-y divide-border/40">
+                    {logs.slice(0, 4).map((log, i) => {
+                      const isLatest = i === 0 && task.status === 'running';
+                      return (
+                        <div key={log.id} className="flex items-start gap-2 px-3 py-2">
+                          <div className="mt-0.5 shrink-0">
+                            {isLatest ? (
+                              <CircleDot className="h-3 w-3 animate-pulse text-primary" />
+                            ) : (
+                              <Check className="h-3 w-3 text-muted-foreground/30" strokeWidth={2.5} />
+                            )}
+                          </div>
+                          <span className={cn('flex-1 text-[11px] leading-snug', isLatest ? 'text-foreground font-medium' : 'text-muted-foreground')}>
+                            {log.message}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-muted-foreground/40 tabular-nums">
+                            {formatLogTime(log.timestamp)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
         </div>
       </div>
     </div>
@@ -369,12 +370,11 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
   }
 
   return (
-    <div>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
-      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-        {task.data_scope.enrichment_context && (
-          <p className="text-sm text-muted-foreground">{task.data_scope.enrichment_context}</p>
-        )}
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
+      {task.data_scope.enrichment_context && (
+        <p className="text-sm text-muted-foreground">{task.data_scope.enrichment_context}</p>
+      )}
         {task.data_scope.searches?.length > 0 && (
           <div className="space-y-2">
             {task.data_scope.searches.map((search: SearchDef, i: number) => (
@@ -406,7 +406,6 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
             ))}
           </div>
         )}
-      </div>
     </div>
   );
 }
@@ -421,10 +420,9 @@ function EditableContextSection({
   onUpdateDraft: (patch: Partial<AgentEditDraft>) => void;
 }) {
   return (
-    <div>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
-      <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-        {/* Searches */}
+    <div className="rounded-lg border border-border bg-card p-4 space-y-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
+      {/* Searches */}
         <div className="space-y-3">
           <Label className="text-xs font-medium text-muted-foreground">Sources</Label>
           {draft.searches.map((search, idx) => (
@@ -468,7 +466,6 @@ function EditableContextSection({
           onCustomFieldsChange={(fields) => onUpdateDraft({ custom_fields: fields })}
           generatedByAI={false}
         />
-      </div>
     </div>
   );
 }
@@ -657,9 +654,8 @@ function EditablePlanSection({
   };
 
   return (
-    <div>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</h3>
-      <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-lg border border-border bg-card">
+      <h3 className="px-3 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</h3>
         {draft.todos.map((todo, i) => (
           <div key={todo.id}>
             {/* The step row */}
@@ -730,7 +726,6 @@ function EditablePlanSection({
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 }
