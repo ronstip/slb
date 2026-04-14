@@ -2,7 +2,7 @@ import { useMemo, useEffect, useRef } from 'react';
 import { Compass } from 'lucide-react';
 import type { Agent } from '../../../../api/endpoints/agents.ts';
 import { DashboardView } from '../../../studio/dashboard/DashboardView.tsx';
-import { getExplorerDefaultLayout, getNewLayoutStarterWidgets } from '../../../studio/dashboard/defaults-social-dashboard.ts';
+import { getExplorerDefaultLayout, getDefaultLayout, getNewLayoutStarterWidgets, DASHBOARD_DEFAULT_ID } from '../../../studio/dashboard/defaults-social-dashboard.ts';
 import { useSocialDashboardStore } from '../../../studio/dashboard/social-dashboard-store.ts';
 import { useExplorerLayoutStore } from '../../../../stores/explorer-layout-store.ts';
 import { StatusBadge } from '../agent-status-utils.tsx';
@@ -33,7 +33,10 @@ export function AgentExplorerTab({ task, activeLayoutId = null, startInEditMode 
     }
   }, [startInEditMode, clearStartInEditMode]);
 
-  const artifactId = activeLayoutId ?? task.agent_id;
+  const isBuiltIn = activeLayoutId === null || activeLayoutId === DASHBOARD_DEFAULT_ID;
+  const artifactId = isBuiltIn
+    ? (activeLayoutId === DASHBOARD_DEFAULT_ID ? `${task.agent_id}__dashboard_default` : task.agent_id)
+    : activeLayoutId;
 
   const artifact = useMemo(() => ({
     id: artifactId,
@@ -67,7 +70,13 @@ export function AgentExplorerTab({ task, activeLayoutId = null, startInEditMode 
         key={artifactId}
         artifact={artifact}
         standalone
-        defaultLayout={activeLayoutId ? getNewLayoutStarterWidgets() : getExplorerDefaultLayout()}
+        defaultLayout={
+          activeLayoutId === null
+            ? getExplorerDefaultLayout()
+            : activeLayoutId === DASHBOARD_DEFAULT_ID
+              ? getDefaultLayout()
+              : getNewLayoutStarterWidgets()
+        }
         titleAdornment={<StatusBadge status={task.status} />}
         noBorder
       />

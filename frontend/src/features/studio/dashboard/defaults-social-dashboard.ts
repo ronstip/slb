@@ -1,5 +1,8 @@
 import type { SocialDashboardWidget } from './types-social-dashboard.ts';
 
+/** Sentinel ID used for the full "Dashboard Default" built-in layout */
+export const DASHBOARD_DEFAULT_ID = '__dashboard_default__';
+
 let _idCounter = 0;
 function uid(): string {
   return `w${++_idCounter}`;

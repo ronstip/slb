@@ -29,6 +29,7 @@ import {
 import type { Agent } from '../api/endpoints/agents.ts';
 import type { SessionListItem } from '../api/endpoints/sessions.ts';
 import type { ExplorerLayoutListItem } from '../api/endpoints/explorer-layouts.ts';
+import { DASHBOARD_DEFAULT_ID } from '../features/studio/dashboard/defaults-social-dashboard.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { LayoutCard } from './LayoutCard.tsx';
 import { useAuth } from '../auth/useAuth.ts';
@@ -444,6 +445,25 @@ export function AppSidebar({
                           activeLayoutId === null ? 'font-semibold' : 'font-medium text-foreground',
                         )}>
                           Overview Dashboard
+                        </span>
+                      </div>
+                      <div
+                        className={cn(
+                          'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
+                          activeLayoutId === DASHBOARD_DEFAULT_ID
+                            ? 'bg-accent/80 text-accent-foreground'
+                            : 'hover:bg-muted/60',
+                        )}
+                        onClick={() => onLayoutSelect(DASHBOARD_DEFAULT_ID)}
+                      >
+                        {activeLayoutId === DASHBOARD_DEFAULT_ID && (
+                          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent-vibrant" />
+                        )}
+                        <span className={cn(
+                          'block truncate text-[13px] leading-tight pl-1',
+                          activeLayoutId === DASHBOARD_DEFAULT_ID ? 'font-semibold' : 'font-medium text-foreground',
+                        )}>
+                          Dashboard Default
                         </span>
                       </div>
                       {agentLayouts?.map((layout) => (

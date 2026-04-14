@@ -232,7 +232,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
     logger.info("Agent %s: invoking agent with continuation message (%d remaining steps)", agent_id, len(remaining_steps))
 
     # Create runner
-    app = create_app()
+    app = create_app(mode="autonomous")
     runner = Runner(
         app=app,
         session_service=session_service,
@@ -257,6 +257,10 @@ async def _async_agent_continuation(agent_id: str) -> None:
     session.state["active_agent_type"] = agent.get("agent_type", "one_shot")
     session.state["active_agent_data_scope"] = data_scope
     session.state["active_agent_created_at"] = agent.get("created_at", "")
+    # Note: continuation_mode and autonomous_mode flags are no longer needed —
+    # the agent is created with mode="autonomous" which selects the executor
+    # persona, tools, and context injection. Kept for backwards compatibility
+    # with any code that reads these flags.
     session.state["continuation_mode"] = True
     session.state["autonomous_mode"] = True
     session.state["todos"] = todos

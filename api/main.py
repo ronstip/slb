@@ -192,6 +192,7 @@ def get_runner(model: str | None = None) -> Runner:
         if _session_service is None:
             _session_service = FirestoreSessionService()
         _runners[model_key] = create_runner(
+            mode="chat",
             model_override=model if model != "default" else None,
             session_service=_session_service,
         )
