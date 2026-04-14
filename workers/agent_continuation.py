@@ -114,7 +114,7 @@ def check_agent_completion(collection_id: str) -> None:
         _dispatch_continuation_task(settings, agent_id, delay_seconds=300)
 
 
-def _delayed_fallback(agent_id: str, delay_seconds: int = 60) -> None:
+def _delayed_fallback(agent_id: str, delay_seconds: int = 10) -> None:
     """Wait, then run agent continuation if the frontend hasn't picked it up."""
     import time
     time.sleep(delay_seconds)
@@ -182,9 +182,17 @@ async def _async_agent_continuation(agent_id: str) -> None:
         fs.add_agent_session(agent_id, session_id)
         logger.info("Agent %s: created ephemeral session %s for continuation", agent_id, session_id)
 
+    # Scope to the active run's collections (not all agent collections across runs)
+    active_run_id = agent.get("active_run_id")
+    if active_run_id:
+        run = fs.get_run(agent_id, active_run_id)
+        run_collection_ids = (run or {}).get("collection_ids", [])
+    else:
+        run_collection_ids = agent.get("collection_ids", [])
+
     # Build the continuation message with full plan context
     collection_summaries = []
-    for cid in agent.get("collection_ids", []):
+    for cid in run_collection_ids:
         cs = fs.get_collection_status(cid)
         if cs:
             posts = cs.get("posts_collected", 0)
@@ -267,11 +275,10 @@ async def _async_agent_continuation(agent_id: str) -> None:
     session.state["user_id"] = user_id
     session.state["org_id"] = org_id
 
-    # Set working collections
-    collection_ids = agent.get("collection_ids", [])
-    session.state["agent_selected_sources"] = collection_ids
-    if collection_ids:
-        session.state["active_collection_id"] = collection_ids[0]
+    # Set working collections — scoped to this run, not all agent collections
+    session.state["agent_selected_sources"] = run_collection_ids
+    if run_collection_ids:
+        session.state["active_collection_id"] = run_collection_ids[0]
 
     # Send the continuation message
     content = types.Content(
@@ -279,8 +286,9 @@ async def _async_agent_continuation(agent_id: str) -> None:
         parts=[types.Part.from_text(text=continuation_message)],
     )
 
-    # Run agent (non-streaming, collect all events)
+    # Run agent — emit structured activity logs in real-time
     from google.adk.runners import RunConfig
+    tool_start_times: dict[str, float] = {}
     events = []
     async for event in runner.run_async(
         user_id=user_id,
@@ -289,6 +297,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
         run_config=RunConfig(),
     ):
         events.append(event)
+        _emit_activity(fs, agent_id, event, tool_start_times)
 
     logger.info("Agent %s: continuation completed with %d events", agent_id, len(events))
     fs.add_agent_log(agent_id, "Analysis agent completed", source="continuation")
@@ -319,6 +328,146 @@ async def _async_agent_continuation(agent_id: str) -> None:
 
     # Send notification email
     _notify_agent_completion(agent_id, agent, user_id)
+
+
+# ── Tool display names (mirrors frontend TOOL_DISPLAY_NAMES) ──────────
+
+_TOOL_DISPLAY_NAMES: dict[str, str] = {
+    "execute_sql": "Querying data",
+    "create_chart": "Creating chart",
+    "generate_report": "Generating insight report",
+    "generate_dashboard": "Creating interactive dashboard",
+    "generate_presentation": "Building presentation deck",
+    "export_data": "Preparing data export",
+    "get_collection_stats": "Loading collection stats",
+    "get_collection_details": "Loading collection details",
+    "set_working_collections": "Setting working collections",
+    "compose_email": "Composing email",
+    "update_todos": "Updating plan",
+    "google_search": "Searching the web",
+}
+
+# Tools that are internal plumbing — skip from activity log
+_INTERNAL_TOOLS = {"set_working_collections"}
+
+
+def _get_tool_description(tool_name: str, args: dict) -> str | None:
+    """Extract a short description from tool args for display."""
+    if tool_name == "execute_sql":
+        q = args.get("query") or args.get("sql") or ""
+        return (q[:120] + "...") if len(q) > 120 else q or None
+    if tool_name in ("create_chart", "generate_report", "generate_dashboard", "generate_presentation"):
+        return args.get("title")
+    if tool_name == "compose_email":
+        return args.get("subject")
+    return None
+
+
+def _emit_activity(fs, agent_id: str, event, tool_start_times: dict[str, float]) -> None:
+    """Write structured activity log entries during autonomous execution.
+
+    Mirrors the activity data the chat SSE stream provides (tool_start,
+    tool_complete, thinking, todo_change) so the frontend can render the
+    same rich timeline in the agent detail drawer.
+    """
+    import time
+
+    if not hasattr(event, "content") or not event.content:
+        return
+    if not hasattr(event.content, "parts") or not event.content.parts:
+        return
+
+    for part in event.content.parts:
+        # ── Thinking tokens ──
+        if hasattr(part, "text") and part.text and getattr(part, "thought", False):
+            thought = part.text.strip()
+            if thought:
+                fs.add_agent_log(
+                    agent_id,
+                    thought[:200],
+                    source="agent",
+                    metadata={"entry_type": "thinking", "full_text": thought},
+                )
+
+        # ── Agent text output ──
+        elif hasattr(part, "text") and part.text and not getattr(part, "thought", False):
+            import re
+            clean = re.sub(r"<!--[\s\S]*?-->", "", part.text).strip()
+            if clean:
+                fs.add_agent_log(
+                    agent_id,
+                    clean[:200],
+                    source="agent",
+                    metadata={"entry_type": "text", "full_text": clean},
+                )
+
+        # ── Tool call ──
+        elif hasattr(part, "function_call") and part.function_call:
+            tool_name = part.function_call.name
+            if tool_name == "transfer_to_agent" or tool_name in _INTERNAL_TOOLS:
+                continue
+            args = dict(part.function_call.args) if part.function_call.args else {}
+            display = _TOOL_DISPLAY_NAMES.get(tool_name, tool_name.replace("_", " "))
+            description = _get_tool_description(tool_name, args)
+            tool_start_times[tool_name] = time.monotonic()
+
+            fs.add_agent_log(
+                agent_id,
+                display,
+                source="agent",
+                metadata={
+                    "entry_type": "tool_start",
+                    "tool_name": tool_name,
+                    "description": description,
+                },
+            )
+
+        # ── Tool result ──
+        elif hasattr(part, "function_response") and part.function_response:
+            tool_name = part.function_response.name
+            if tool_name == "transfer_to_agent" or tool_name in _INTERNAL_TOOLS:
+                continue
+            response = {}
+            if part.function_response.response:
+                try:
+                    response = dict(part.function_response.response)
+                except (TypeError, ValueError):
+                    response = {}
+
+            display = _TOOL_DISPLAY_NAMES.get(tool_name, tool_name.replace("_", " "))
+            start = tool_start_times.pop(tool_name, None)
+            duration_ms = int((time.monotonic() - start) * 1000) if start else 0
+            status = response.get("status", "success")
+            error_msg = response.get("message", "") if status == "error" else ""
+
+            entry_type = "tool_error" if status == "error" else "tool_complete"
+            metadata: dict = {
+                "entry_type": entry_type,
+                "tool_name": tool_name,
+                "duration_ms": duration_ms,
+            }
+            if error_msg:
+                metadata["error"] = str(error_msg)[:200]
+
+            # For todo updates, emit the updated list AND persist to Firestore
+            # so the frontend's polling of getAgent() reflects step-by-step progress.
+            if tool_name == "update_todos" and status != "error":
+                todos = response.get("todos", [])
+                if todos:
+                    metadata["entry_type"] = "todo_update"
+                    metadata["todos"] = todos
+                    try:
+                        fs.update_agent(agent_id, todos=todos)
+                    except Exception:
+                        logger.debug("Failed to persist todo update for agent %s", agent_id)
+
+            fs.add_agent_log(
+                agent_id,
+                display + (f" — {error_msg[:80]}" if error_msg else ""),
+                source="agent",
+                level="error" if status == "error" else "info",
+                metadata=metadata,
+            )
 
 
 def _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_id):

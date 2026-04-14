@@ -154,13 +154,31 @@ export function getAgentArtifacts(agentId: string): Promise<ArtifactListItem[]> 
 
 // --- Agent Activity Logs ---
 
+/** Structured entry_type values emitted by autonomous agent execution. */
+export type AgentLogEntryType =
+  | 'tool_start'
+  | 'tool_complete'
+  | 'tool_error'
+  | 'thinking'
+  | 'text'
+  | 'todo_update';
+
 export interface AgentLogEntry {
   id: string;
   message: string;
   level: 'info' | 'warning' | 'error';
   source: string;
   timestamp: string;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    entry_type?: AgentLogEntryType;
+    tool_name?: string;
+    description?: string;
+    duration_ms?: number;
+    error?: string;
+    full_text?: string;
+    todos?: Array<{ id: string; content: string; status: string }>;
+    [key: string]: unknown;
+  };
 }
 
 export function getAgentLogs(agentId: string, limit = 50): Promise<AgentLogEntry[]> {

@@ -82,31 +82,17 @@ export function PostsDataPanel({
     onClearFiltersCallbackChange(clearFilters);
   }, [clearFilters, onClearFiltersCallbackChange]);
 
-  // Compute engagement maximums for bar sizing
-  const { maxViews, maxLikes, maxComments } = useMemo(() => {
-    let mv = 0, ml = 0, mc = 0;
-    for (const p of filteredPosts) {
-      if ((p.views ?? 0) > mv) mv = p.views ?? 0;
-      if ((p.likes ?? 0) > ml) ml = p.likes ?? 0;
-      if ((p.comments_count ?? 0) > mc) mc = p.comments_count ?? 0;
-    }
-    return { maxViews: mv, maxLikes: ml, maxComments: mc };
-  }, [filteredPosts]);
-
   // Build columns with filter headers
   const columns = useMemo(
     () =>
       collectionsPostColumns({
         collectionNames,
         showCollectionColumn: selectedCollectionIds.length > 1,
-        maxViews,
-        maxLikes,
-        maxComments,
         filters: columnFilters,
         onFiltersChange: setColumnFilters,
         filterOptions,
       }),
-    [collectionNames, selectedCollectionIds.length, maxViews, maxLikes, maxComments, columnFilters, filterOptions],
+    [collectionNames, selectedCollectionIds.length, columnFilters, filterOptions],
   );
 
   // Analytics stats for the strip

@@ -4,10 +4,11 @@ import {
   Check,
   CheckCircle2,
   Circle,
-  CircleDot,
   Clock,
   Database,
+  Expand,
   FileText,
+  Loader2,
   Pencil,
   Play,
   Plus,
@@ -17,16 +18,27 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import type { Agent, AgentLogEntry, SearchDef, TodoItem } from '../../../../api/endpoints/agents.ts';
+import { useQuery } from '@tanstack/react-query';
+import type { Agent, SearchDef, TodoItem } from '../../../../api/endpoints/agents.ts';
+import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
+import { AgentActivityLogCompact, AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
 import type { CustomFieldDef } from '../../../../api/types.ts';
-import { STATUS_ACCENT, StatusBadge, formatDate, formatLogTime } from '../agent-status-utils.tsx';
+import { getCollectionStatus } from '../../../../api/endpoints/collections.ts';
+import { STATUS_ACCENT, StatusBadge, formatDate } from '../agent-status-utils.tsx';
 import { Globe, Hash, Tag } from 'lucide-react';
 import { formatSchedule, PLATFORMS, PLATFORM_LABELS } from '../../../../lib/constants.ts';
+import { formatNumber } from '../../../../lib/format.ts';
 import { Button } from '../../../../components/ui/button.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { Badge } from '../../../../components/ui/badge.tsx';
 import { Label } from '../../../../components/ui/label.tsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../../../../components/ui/dialog.tsx';
 import {
   Select,
   SelectContent,
@@ -90,11 +102,23 @@ export function AgentOverviewTab({
   onCancelEdit,
   onUpdateDraft,
 }: TaskOverviewTabProps) {
+  const [activityDialogOpen, setActivityDialogOpen] = useState(false);
+
   const collectionsCount = task.collection_ids?.length || 0;
   const artifactsCount = task.artifact_ids?.length || 0;
   const stepsCount = task.todos?.length || 0;
   const completedSteps = task.todos?.filter((t) => t.status === 'completed').length || 0;
-  const progressPct = stepsCount > 0 ? Math.round((completedSteps / stepsCount) * 100) : null;
+  const currentStep = task.todos?.find((t) => t.status === 'in_progress');
+  // When running, derive progress from the current step's position rather than
+  // completed count — avoids stale data from previous runs inflating the bar.
+  const currentStepIdx = currentStep && task.todos
+    ? task.todos.findIndex((t) => t.id === currentStep.id)
+    : -1;
+  const progressPct = stepsCount > 0
+    ? (task.status === 'running' && currentStepIdx >= 0
+        ? Math.round((currentStepIdx / stepsCount) * 100)
+        : Math.round((completedSteps / stepsCount) * 100))
+    : null;
 
   const startDate = formatDate(task.created_at);
   const endDate = task.completed_at ? formatDate(task.completed_at) : null;
@@ -276,7 +300,9 @@ export function AgentOverviewTab({
                         />
                       </div>
                       <p className="mt-1 text-[10px] text-muted-foreground">
-                        {completedSteps} of {stepsCount} steps complete
+                        {task.status === 'running' && currentStep
+                          ? `Step ${currentStepIdx + 1}/${stepsCount}: ${currentStep.content.length > 50 ? currentStep.content.slice(0, 50) + '…' : currentStep.content}`
+                          : `${completedSteps} of ${stepsCount} steps complete`}
                       </p>
                     </div>
                   )}
@@ -321,38 +347,125 @@ export function AgentOverviewTab({
                 </div>
               </div>
 
+              {/* Live Collection Progress — visible while agent is running and has collections */}
+              {task.status === 'running' && task.collection_ids?.length > 0 && (
+                <LiveCollectionProgress collectionIds={task.collection_ids} />
+              )}
+
               {/* Recent Activity */}
               {logs.length > 0 && (
                 <div className="rounded-lg border border-border bg-card">
-                  <h3 className="px-3 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
-                  <div className="divide-y divide-border/40">
-                    {logs.slice(0, 4).map((log, i) => {
-                      const isLatest = i === 0 && task.status === 'running';
-                      return (
-                        <div key={log.id} className="flex items-start gap-2 px-3 py-2">
-                          <div className="mt-0.5 shrink-0">
-                            {isLatest ? (
-                              <CircleDot className="h-3 w-3 animate-pulse text-primary" />
-                            ) : (
-                              <Check className="h-3 w-3 text-muted-foreground/30" strokeWidth={2.5} />
-                            )}
-                          </div>
-                          <span className={cn('flex-1 text-[11px] leading-snug', isLatest ? 'text-foreground font-medium' : 'text-muted-foreground')}>
-                            {log.message}
-                          </span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground/40 tabular-nums">
-                            {formatLogTime(log.timestamp)}
-                          </span>
-                        </div>
-                      );
-                    })}
+                  <div className="flex items-center justify-between px-3 pt-3 pb-1.5">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground"
+                      onClick={() => setActivityDialogOpen(true)}
+                    >
+                      <Expand className="h-2.5 w-2.5" />
+                      Expand
+                    </Button>
                   </div>
+                  <AgentActivityLogCompact logs={logs} isRunning={task.status === 'running'} />
                 </div>
               )}
             </div>
           </div>
 
         </div>
+      </div>
+
+      {/* Full Activity Log Dialog */}
+      <Dialog open={activityDialogOpen} onOpenChange={setActivityDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Activity Log</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto -mx-6 px-6">
+            <AgentActivityLog logs={logs} isRunning={task.status === 'running'} initialLimit={200} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Live Collection Progress ───────────────────────────────────────────────
+
+function LiveCollectionProgress({ collectionIds }: { collectionIds: string[] }) {
+  // Poll the most recent collection (last in array = current run's collection)
+  const latestId = collectionIds[collectionIds.length - 1];
+  const { data: status } = useQuery({
+    queryKey: ['collection-status', latestId],
+    queryFn: () => getCollectionStatus(latestId),
+    enabled: !!latestId,
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === 'success' || s === 'failed' ? false : 5_000;
+    },
+  });
+
+  if (!status) return null;
+
+  const isCollecting = status.status === 'running';
+  const isDone = status.status === 'success';
+  const posts = status.posts_collected ?? 0;
+  const enriched = status.posts_enriched ?? 0;
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-card">
+      <div className="px-3 py-2.5 space-y-2">
+        <div className="flex items-center gap-2">
+          {isCollecting ? (
+            <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+          ) : isDone ? (
+            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+          ) : (
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+          )}
+          <span className="text-xs font-medium">
+            {isCollecting ? 'Collecting data…' : isDone ? 'Data ready' : status.status}
+          </span>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
+            <p className="text-sm font-bold tabular-nums">{formatNumber(posts)}</p>
+            <p className="text-[9px] text-muted-foreground">Collected</p>
+          </div>
+          <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
+            <p className="text-sm font-bold tabular-nums">{formatNumber(enriched)}</p>
+            <p className="text-[9px] text-muted-foreground">Enriched</p>
+          </div>
+          <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
+            <p className="text-sm font-bold tabular-nums">
+              {posts > 0 ? `${Math.round((enriched / posts) * 100)}%` : '—'}
+            </p>
+            <p className="text-[9px] text-muted-foreground">Progress</p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        {isCollecting && (
+          <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
+          </div>
+        )}
+        {isDone && posts > 0 && enriched < posts && (
+          <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all duration-700"
+              style={{ width: `${Math.round((enriched / posts) * 100)}%` }}
+            />
+          </div>
+        )}
+        {isDone && enriched >= posts && posts > 0 && (
+          <div className="h-1 w-full rounded-full bg-emerald-500/20">
+            <div className="h-full w-full rounded-full bg-emerald-500" />
+          </div>
+        )}
       </div>
     </div>
   );

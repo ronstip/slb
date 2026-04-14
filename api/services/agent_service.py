@@ -193,11 +193,23 @@ def dispatch_agent_run(
         fs.add_run_collection(agent_id, run_id, cid)
         fs.update_collection_status(cid, agent_id=agent_id)
 
-    # Build workflow template and mark collect step as in_progress
-    todos = agent.get("todos") or []
-    if not todos:
-        todos = build_workflow_template(data_scope, agent_type)
-    todos = progress_automated_steps(todos, "collect_started", "in_progress")
+    # Build fresh workflow template for each run.
+    # Preserve custom steps from previous runs (user-added) but reset all statuses.
+    fresh_todos = build_workflow_template(data_scope, agent_type)
+    old_todos = agent.get("todos") or []
+    custom_steps = [
+        {**t, "status": "pending"}
+        for t in old_todos
+        if t.get("custom")
+    ]
+    if custom_steps:
+        # Insert custom steps before the deliver phase (last standard step)
+        deliver_idx = next(
+            (i for i, t in enumerate(fresh_todos) if t.get("phase") == "deliver"),
+            len(fresh_todos),
+        )
+        fresh_todos = fresh_todos[:deliver_idx] + custom_steps + fresh_todos[deliver_idx:]
+    todos = progress_automated_steps(fresh_todos, "collect_started", "in_progress")
     fs.update_agent(agent_id, todos=todos)
 
     # Update agent-level denormalized collection_ids + next_run_at for recurring

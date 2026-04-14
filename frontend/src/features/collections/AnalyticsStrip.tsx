@@ -26,6 +26,7 @@ export interface AnalyticsStats {
   platforms: { name: string; count: number; color: string }[];
   sentiments: { name: string; count: number; color: string }[];
   topThemes: { name: string; count: number }[];
+  topEntities: { name: string; count: number }[];
 }
 
 export function computeAnalyticsStats(posts: FeedPost[]): AnalyticsStats | null {
@@ -34,6 +35,7 @@ export function computeAnalyticsStats(posts: FeedPost[]): AnalyticsStats | null 
   const platforms = new Map<string, number>();
   const sentiments = new Map<string, number>();
   const themes = new Map<string, number>();
+  const entities = new Map<string, number>();
   const handles = new Set<string>();
 
   let totalViews = 0;
@@ -46,6 +48,11 @@ export function computeAnalyticsStats(posts: FeedPost[]): AnalyticsStats | null 
     if (p.themes) {
       for (const t of p.themes) {
         themes.set(t, (themes.get(t) ?? 0) + 1);
+      }
+    }
+    if (p.entities) {
+      for (const e of p.entities) {
+        entities.set(e, (entities.get(e) ?? 0) + 1);
       }
     }
     handles.add(p.channel_handle);
@@ -75,6 +82,10 @@ export function computeAnalyticsStats(posts: FeedPost[]): AnalyticsStats | null 
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
       .map(([name, count]) => ({ name, count })),
+    topEntities: [...entities.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, count]) => ({ name, count })),
   };
 }
 
@@ -89,96 +100,53 @@ interface AnalyticsStripProps {
 export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
   if (!stats) return null;
 
+  /* Shared section header style */
+  const sectionLabel = "text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-none";
+
   return (
-    <div className="flex items-stretch border-b border-border/40 bg-gradient-to-r from-card via-card to-primary/[0.02] shrink-0">
-      {/* KPI Cards */}
-      <div className="flex items-center divide-x divide-border/30">
-        <KpiCard
-          icon={<BarChart3 className="h-4 w-4 text-blue-500" />}
-          label="Total Posts"
-          value={formatNumber(stats.totalPosts)}
-          iconBg="bg-blue-500/10"
-        />
-        <KpiCard
-          icon={<Eye className="h-4 w-4 text-emerald-500" />}
-          label="Avg Views"
-          value={formatNumber(stats.avgViews)}
-          sub={`${formatNumber(stats.totalViews)} total`}
-          iconBg="bg-emerald-500/10"
-        />
-        <KpiCard
-          icon={<Heart className="h-4 w-4 text-rose-500" />}
-          label="Avg Likes"
-          value={formatNumber(stats.avgLikes)}
-          sub={`${formatNumber(stats.totalLikes)} total`}
-          iconBg="bg-rose-500/10"
-        />
-        <KpiCard
-          icon={<MessageCircle className="h-4 w-4 text-amber-500" />}
-          label="Comments"
-          value={formatNumber(stats.totalComments)}
-          sub={`${formatNumber(stats.avgComments)} avg`}
-          iconBg="bg-amber-500/10"
-        />
-        <KpiCard
-          icon={<Users className="h-4 w-4 text-violet-500" />}
-          label="Creators"
-          value={stats.uniqueHandles.toLocaleString()}
-          iconBg="bg-violet-500/10"
-        />
+    <div className="flex items-stretch border-b border-border/40 bg-gradient-to-r from-card via-card to-primary/[0.02] shrink-0 overflow-hidden">
+      {/* KPI grid — 2 rows × 3 columns */}
+      <div className="shrink-0 grid grid-cols-[repeat(3,minmax(160px,auto))] grid-rows-2 divide-x divide-border/30">
+        <KpiCard icon={<BarChart3 className="h-4 w-4 text-blue-500" />} label="Posts" value={formatNumber(stats.totalPosts)} iconBg="bg-blue-500/10" />
+        <KpiCard icon={<Eye className="h-4 w-4 text-cyan-500" />} label="Views" value={formatNumber(stats.totalViews)} iconBg="bg-cyan-500/10" />
+        <KpiCard icon={<Eye className="h-4 w-4 text-emerald-500" />} label="Avg Views" value={formatNumber(stats.avgViews)} iconBg="bg-emerald-500/10" />
+        <KpiCard icon={<MessageCircle className="h-4 w-4 text-amber-500" />} label="Comments" value={formatNumber(stats.totalComments)} sub={`${formatNumber(stats.avgComments)} avg`} iconBg="bg-amber-500/10" />
+        <KpiCard icon={<Heart className="h-4 w-4 text-rose-500" />} label="Avg Likes" value={formatNumber(stats.avgLikes)} sub={`${formatNumber(stats.totalLikes)} total`} iconBg="bg-rose-500/10" />
+        <KpiCard icon={<Users className="h-4 w-4 text-violet-500" />} label="Creators" value={stats.uniqueHandles.toLocaleString()} iconBg="bg-violet-500/10" />
       </div>
 
-      {/* Vertical divider */}
-      <div className="w-px bg-border/30 my-2.5" />
+      <div className="w-px bg-border/30 my-2 shrink-0" />
 
-      {/* Platform distribution */}
-      <div className="flex items-center gap-2.5 px-5 py-3">
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Platforms</span>
-          <div className="flex items-center gap-1.5">
-            {stats.platforms.map((p) => {
-              const pct = stats.totalPosts > 0 ? Math.round((p.count / stats.totalPosts) * 100) : 0;
-              return (
-                <div
-                  key={p.name}
-                  className="flex items-center gap-1 rounded-full px-2.5 py-1"
-                  style={{ backgroundColor: `${p.color}12` }}
-                  title={`${p.name}: ${p.count} posts (${pct}%)`}
-                >
-                  <PlatformIcon platform={p.name} className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-bold tabular-nums" style={{ color: p.color }}>
-                    {p.count}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+      {/* Platforms */}
+      <Section label="Platforms" className="shrink-0">
+        <div className="flex flex-col gap-1">
+          {stats.platforms.map((p) => {
+            const pct = stats.totalPosts > 0 ? Math.round((p.count / stats.totalPosts) * 100) : 0;
+            return (
+              <div key={p.name} className="flex items-center gap-1.5 rounded-full px-2 py-0.5" style={{ backgroundColor: `${p.color}12` }} title={`${p.name}: ${p.count} posts (${pct}%)`}>
+                <PlatformIcon platform={p.name} className="h-3.5 w-3.5" />
+                <span className="text-[11px] font-bold tabular-nums" style={{ color: p.color }}>{p.count}</span>
+                <span className="text-[10px] text-muted-foreground">{pct}%</span>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      </Section>
 
-      {/* Vertical divider */}
-      <div className="w-px bg-border/30 my-2.5" />
+      <div className="w-px bg-border/30 my-2 shrink-0" />
 
-      {/* Sentiment — horizontal stacked bar */}
-      <div className="flex items-center px-5 py-3">
+      {/* Sentiment */}
+      <Section label="Sentiment" className="shrink-0">
         <div className="flex flex-col gap-1.5 min-w-[160px]">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sentiment</span>
-          {/* Stacked bar */}
           <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/40">
             {stats.sentiments.map((s) => {
               const pct = stats.totalPosts > 0 ? (s.count / stats.totalPosts) * 100 : 0;
               if (pct === 0) return null;
               return (
-                <div
-                  key={s.name}
-                  className="h-full transition-all first:rounded-l-full last:rounded-r-full"
-                  style={{ width: `${pct}%`, backgroundColor: s.color }}
-                  title={`${s.name}: ${s.count} (${Math.round(pct)}%)`}
-                />
+                <div key={s.name} className="h-full transition-all first:rounded-l-full last:rounded-r-full" style={{ width: `${pct}%`, backgroundColor: s.color }} title={`${s.name}: ${s.count} (${Math.round(pct)}%)`} />
               );
             })}
           </div>
-          {/* Legend */}
           <div className="flex items-center gap-2.5">
             {stats.sentiments.map((s) => {
               const pct = stats.totalPosts > 0 ? Math.round((s.count / stats.totalPosts) * 100) : 0;
@@ -192,31 +160,52 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
             })}
           </div>
         </div>
-      </div>
+      </Section>
 
-      {/* Vertical divider */}
-      <div className="w-px bg-border/30 my-2.5" />
+      <div className="w-px bg-border/30 my-2 shrink-0" />
 
-      {/* Top themes */}
-      {stats.topThemes.length > 0 && (
-        <div className="flex items-center px-5 py-3 min-w-0 overflow-hidden">
-          <div className="flex flex-col gap-1.5 min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Top Themes</span>
-            <div className="flex flex-wrap gap-1">
+      {/* Themes + Entities — takes remaining space, clips overflow */}
+      <div className="flex flex-col px-4 py-2.5 flex-1 min-w-0 overflow-hidden gap-1.5">
+        {stats.topThemes.length > 0 && (
+          <>
+            <span className={sectionLabel}>Top Themes</span>
+            <div className="flex flex-wrap gap-1 overflow-hidden max-h-5">
               {stats.topThemes.slice(0, 5).map((t) => (
-                <span
-                  key={t.name}
-                  className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary/80 truncate max-w-[120px]"
-                  title={`${t.name}: ${t.count} posts`}
-                >
+                <span key={t.name} className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary/80 whitespace-nowrap" title={`${t.name}: ${t.count} posts`}>
                   {t.name}
                   <span className="text-primary/40 font-bold">{t.count}</span>
                 </span>
               ))}
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+        {stats.topEntities.length > 0 && (
+          <>
+            <span className={sectionLabel}>Top Entities</span>
+            <div className="flex flex-wrap gap-1 overflow-hidden max-h-5">
+              {stats.topEntities.slice(0, 5).map((e) => (
+                <span key={e.name} className="inline-flex items-center gap-1 rounded-full bg-violet-500/8 px-2 py-0.5 text-[10px] font-medium text-violet-600/80 dark:text-violet-400/80 whitespace-nowrap" title={`${e.name}: ${e.count} posts`}>
+                  {e.name}
+                  <span className="text-violet-400/40 font-bold">{e.count}</span>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Section wrapper — consistent header + content layout                */
+/* ------------------------------------------------------------------ */
+
+function Section({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`flex flex-col px-4 py-2.5 ${className}`}>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-none mb-1.5">{label}</span>
+      {children}
     </div>
   );
 }
@@ -239,17 +228,14 @@ function KpiCard({
   iconBg: string;
 }) {
   return (
-    <div className="flex items-center gap-2.5 px-5 py-3">
-      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
+    <div className="flex items-center gap-2.5 px-4 py-2.5">
+      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
         {icon}
       </div>
-      <div className="flex flex-col justify-center h-[42px]">
+      <div className="flex flex-col justify-center">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">{label}</span>
-        <span className="text-base font-bold tabular-nums text-foreground leading-tight mt-0.5">{value}</span>
-        {/* Always reserve space for sub line so all cards align */}
-        <span className="text-[10px] text-muted-foreground leading-none mt-0.5 h-3">
-          {sub ?? '\u00A0'}
-        </span>
+        <span className="text-sm font-bold tabular-nums text-foreground leading-tight mt-0.5">{value}</span>
+        {sub && <span className="text-[10px] text-muted-foreground leading-none mt-0.5">{sub}</span>}
       </div>
     </div>
   );

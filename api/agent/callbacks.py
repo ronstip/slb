@@ -279,37 +279,58 @@ def _build_collection_context(state: dict) -> Optional[str]:
     return "\n".join(lines)
 
 
-def _build_data_scope_context(state: dict) -> Optional[str]:
-    """Build task data scope block — shared between both modes."""
+def _build_agent_profile(state: dict) -> Optional[str]:
+    """Build agent identity + data scope block — shared between both modes."""
+    title = state.get("active_agent_title")
     data_scope = state.get("active_agent_data_scope")
-    if not data_scope:
+    if not title and not data_scope:
         return None
 
-    lines = ["## Task Context"]
+    lines = ["## Agent Profile"]
+
+    # Identity
+    if title:
+        agent_type = state.get("active_agent_type", "one_shot")
+        status = state.get("active_agent_status", "")
+        lines.append(f"**{title}** ({agent_type}, {status})" if status else f"**{title}** ({agent_type})")
+
+    if not data_scope:
+        return "\n".join(lines)
+
+    # Context paragraph — the agent's purpose
     enrichment_ctx = data_scope.get("enrichment_context", "")
     if enrichment_ctx:
-        lines.append(f"- Focus: {enrichment_ctx}")
+        lines.append(f"\n{enrichment_ctx}")
 
+    # Searches — full details
     searches = data_scope.get("searches", [])
     if searches:
+        lines.append("")
         for i, s in enumerate(searches):
             platforms = ", ".join(s.get("platforms", []))
             keywords = ", ".join(s.get("keywords", []))
             start = s.get("start_date", "")
             end = s.get("end_date", "")
             days = s.get("time_range_days")
-            date_info = f"{start} to {end}" if start and end else f"last {days} days from task creation" if days else ""
-            if platforms or keywords:
-                label = f"Search {i+1}" if len(searches) > 1 else "Search"
-                parts = []
-                if keywords:
-                    parts.append(f"keywords=[{keywords}]")
-                if platforms:
-                    parts.append(f"platforms=[{platforms}]")
-                if date_info:
-                    parts.append(date_info)
+            geo = s.get("geo_scope", "")
+            n_posts = s.get("n_posts")
+            date_info = f"{start} to {end}" if start and end else f"last {days} days" if days else ""
+            label = f"Search {i+1}" if len(searches) > 1 else "Search"
+            parts = []
+            if keywords:
+                parts.append(f"keywords=[{keywords}]")
+            if platforms:
+                parts.append(f"platforms=[{platforms}]")
+            if date_info:
+                parts.append(date_info)
+            if geo and geo != "global":
+                parts.append(f"geo={geo}")
+            if n_posts:
+                parts.append(f"n_posts={n_posts}")
+            if parts:
                 lines.append(f"- {label}: {', '.join(parts)}")
 
+    # Custom fields
     custom_fields = data_scope.get("custom_fields", [])
     if custom_fields:
         cf_parts = []
@@ -323,7 +344,7 @@ def _build_data_scope_context(state: dict) -> Optional[str]:
                 cf_parts.append(f"{name} ({ctype})")
         lines.append(f"- Custom fields: {', '.join(cf_parts)}")
 
-    return "\n".join(lines) if len(lines) > 1 else None
+    return "\n".join(lines)
 
 
 def _build_chat_context(state: dict) -> Optional[str]:
@@ -355,10 +376,10 @@ def _build_chat_context(state: dict) -> Optional[str]:
     if collection_block:
         blocks.append(collection_block)
 
-    # Task data scope
-    scope_block = _build_data_scope_context(state)
-    if scope_block:
-        blocks.append(scope_block)
+    # Agent profile (identity + data scope)
+    profile_block = _build_agent_profile(state)
+    if profile_block:
+        blocks.append(profile_block)
 
     # Continuation mode (chat-side — user is online after collection completes)
     if state.get("continuation_mode"):
@@ -422,10 +443,10 @@ def _build_autonomous_context(state: dict) -> Optional[str]:
     if collection_block:
         blocks.append(collection_block)
 
-    # Full data scope (autonomous needs complete context)
-    scope_block = _build_data_scope_context(state)
-    if scope_block:
-        blocks.append(scope_block)
+    # Agent profile (identity + data scope)
+    profile_block = _build_agent_profile(state)
+    if profile_block:
+        blocks.append(profile_block)
 
     # Continuation instruction (always true for autonomous)
     blocks.append(

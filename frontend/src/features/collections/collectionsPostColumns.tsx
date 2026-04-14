@@ -44,32 +44,6 @@ function CollectionBadge({ name, collectionId }: { name: string; collectionId: s
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Engagement cell with micro bar                                      */
-/* ------------------------------------------------------------------ */
-
-function engagementColor(pct: number): string {
-  if (pct >= 70) return '#22c55e';
-  if (pct >= 40) return '#3b82f6';
-  if (pct >= 15) return '#f59e0b';
-  return '#94a3b8';
-}
-
-function EngagementBarCell({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
-  const color = engagementColor(pct);
-  return (
-    <div className="flex flex-col items-end gap-0.5">
-      <span className="tabular-nums text-xs font-medium">{formatNumber(value)}</span>
-      <div className="h-[3px] w-full rounded-full bg-muted/60">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: color }}
-        />
-      </div>
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* Filter state type — all multi-select columns use Set<string>        */
@@ -231,9 +205,6 @@ export function extractFilterOptions(posts: FeedPost[]): FilterOptionsWithCounts
 interface CollectionPostColumnsOptions {
   collectionNames: Map<string, string>;
   showCollectionColumn: boolean;
-  maxViews: number;
-  maxLikes: number;
-  maxComments: number;
   filters: ColumnFilters;
   onFiltersChange: (filters: ColumnFilters) => void;
   filterOptions: FilterOptionsWithCounts;
@@ -244,7 +215,6 @@ export function collectionsPostColumns(
 ): ColumnDef<FeedPost>[] {
   const {
     collectionNames, showCollectionColumn,
-    maxViews, maxLikes, maxComments,
     filters, onFiltersChange, filterOptions,
   } = opts;
 
@@ -376,7 +346,7 @@ export function collectionsPostColumns(
       width: 'w-[6%]',
       align: 'right' as const,
       sortable: true,
-      render: (row) => <EngagementBarCell value={row.views ?? 0} max={maxViews} />,
+      render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.views ?? 0)}</span>,
     },
 
     // Likes
@@ -386,7 +356,7 @@ export function collectionsPostColumns(
       width: 'w-[6%]',
       align: 'right' as const,
       sortable: true,
-      render: (row) => <EngagementBarCell value={row.likes ?? 0} max={maxLikes} />,
+      render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.likes ?? 0)}</span>,
     },
 
     // Comments
@@ -396,7 +366,7 @@ export function collectionsPostColumns(
       width: 'w-[6%]',
       align: 'right' as const,
       sortable: true,
-      render: (row) => <EngagementBarCell value={row.comments_count ?? 0} max={maxComments} />,
+      render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.comments_count ?? 0)}</span>,
     },
 
     // Sentiment

@@ -684,7 +684,7 @@ class PipelineRunner:
                     # Don't crash the loop — posts will be re-picked up next iteration
                     continue
 
-                # Periodic progress log to task activity (every 30s)
+                # Periodic progress log to task activity (every 30s, skip duplicates)
                 now = _time.monotonic()
                 if now - last_progress_log > 30:
                     last_progress_log = now
@@ -693,10 +693,17 @@ class PipelineRunner:
                     total = self.state_manager.get_total_posts()
                     enriched = counts.get("ENRICHED", 0) + done
                     if total > 0:
-                        self._log_task(
-                            f"Processing: {enriched}/{total} posts enriched",
-                            metadata={"phase": "processing", "enriched": enriched, "total": total},
+                        # Update posts_enriched on collection_status so frontend shows progress
+                        self.fs.update_collection_status(
+                            self.collection_id, posts_enriched=enriched,
                         )
+                        msg = f"Processing: {enriched}/{total} posts enriched"
+                        if not hasattr(self, "_last_progress_msg") or self._last_progress_msg != msg:
+                            self._last_progress_msg = msg
+                            self._log_task(
+                                msg,
+                                metadata={"phase": "processing", "enriched": enriched, "total": total},
+                            )
 
                 # After download step, persist GCS URIs back to BQ (background — don't block loop)
                 if step.name == "download" and media_refs:
@@ -826,9 +833,17 @@ class PipelineRunner:
 
         logger.info("── Running collection gates for %s", self.collection_id)
 
-        # Update enrichment counts
+        # Update enrichment counts and log final tally
         try:
             update_enrichment_counts(self.collection_id)
+            cs = self.fs.get_collection_status(self.collection_id) or {}
+            enriched = cs.get("posts_enriched", 0)
+            total = cs.get("posts_collected", 0)
+            if total > 0:
+                self._log_task(
+                    f"Enrichment complete: {enriched}/{total} posts",
+                    metadata={"phase": "processing", "enriched": enriched, "total": total},
+                )
         except Exception:
             logger.exception("Failed to update enrichment counts for %s", self.collection_id)
 

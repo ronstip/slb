@@ -2,13 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Archive,
   BarChart3,
   CalendarClock,
-  Check,
   CheckCircle2,
   Circle,
-  CircleDot,
   Clock,
   Compass,
   FileText,
@@ -20,7 +17,7 @@ import {
   StopCircle,
   Table2,
 } from 'lucide-react';
-import type { Agent, AgentStatus, AgentLogEntry } from '../../api/endpoints/agents.ts';
+import type { Agent, AgentStatus } from '../../api/endpoints/agents.ts';
 import { getAgent, runAgent, updateAgent as patchAgent, getAgentArtifacts, getAgentLogs } from '../../api/endpoints/agents.ts';
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
@@ -28,6 +25,7 @@ import type { Source } from '../../stores/sources-store.ts';
 import type { CollectionConfig } from '../../api/types.ts';
 import type { ArtifactListItem } from '../../api/endpoints/artifacts.ts';
 import { ARTIFACT_STYLES } from '../artifacts/artifact-utils.ts';
+import { AgentActivityLog } from './detail/AgentActivityLog.tsx';
 import { CollectionProgressCard } from '../chat/cards/CollectionProgressCard.tsx';
 import { StatsModal } from '../sources/StatsModal.tsx';
 import { TableModal } from '../sources/TableModal.tsx';
@@ -88,15 +86,6 @@ function formatDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function formatLogTime(iso: string) {
-  const d = new Date(iso);
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  if (diffMs < 60_000) return 'just now';
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
-  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
 
 function buildSourceForCollection(collectionId: string): Source {
   const stored = useSourcesStore.getState().sources.find((s) => s.collectionId === collectionId);
@@ -132,7 +121,6 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const [isStopping, setIsStopping] = useState(false);
   const [statsCollectionId, setStatsCollectionId] = useState<string | null>(null);
   const [tableCollectionId, setTableCollectionId] = useState<string | null>(null);
-  const [showAllLogs, setShowAllLogs] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [editPreset, setEditPreset] = useState<SchedulePreset>('daily');
   const [editTime, setEditTime] = useState('09:00');
@@ -281,7 +269,6 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
 
   // Logs display
   const allLogs = logs ?? [];
-  const logsToShow = showAllLogs ? allLogs : allLogs.slice(0, 8);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -544,46 +531,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
           {/* Activity Logs */}
           <div className="mt-6">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Activity</h3>
-            {allLogs.length === 0 ? (
-              <p className="text-xs text-muted-foreground/50 italic">No activity recorded yet</p>
-            ) : (
-              <>
-                <div className="space-y-0.5">
-                  {logsToShow.map((log: AgentLogEntry, i: number) => {
-                    const isLatest = i === 0 && displayTask.status === 'running';
-                    return (
-                      <div key={log.id} className="flex items-start gap-2 py-1">
-                        {isLatest ? (
-                          <CircleDot className="h-3 w-3 mt-0.5 shrink-0 animate-pulse text-accent-vibrant/70" />
-                        ) : (
-                          <Check className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/40" strokeWidth={2.5} />
-                        )}
-                        <span
-                          className={`text-xs leading-snug ${
-                            isLatest ? 'text-foreground font-medium' : 'text-muted-foreground/60'
-                          }`}
-                        >
-                          {log.message}
-                        </span>
-                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/40 tabular-nums">
-                          {formatLogTime(log.timestamp)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {allLogs.length > 8 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-1 text-xs"
-                    onClick={() => setShowAllLogs((v) => !v)}
-                  >
-                    {showAllLogs ? 'Show less' : `Show all ${allLogs.length}`}
-                  </Button>
-                )}
-              </>
-            )}
+            <AgentActivityLog logs={allLogs} isRunning={displayTask.status === 'running'} />
           </div>
 
           {/* Todos snapshot */}
