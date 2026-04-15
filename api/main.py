@@ -1911,7 +1911,7 @@ async def get_agent_logs(
         raise HTTPException(status_code=403, detail="Access denied")
 
     fs = get_fs()
-    return fs.get_agent_logs(agent_id, limit=min(limit, 200))
+    return fs.get_agent_logs(agent_id, limit=min(limit, 500))
 
 
 @app.get("/agents/{agent_id}/runs")

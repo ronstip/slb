@@ -402,7 +402,7 @@ function LiveCollectionProgress({ collectionIds }: { collectionIds: string[] }) 
     enabled: !!latestId,
     refetchInterval: (query) => {
       const s = query.state.data?.status;
-      return s === 'success' || s === 'failed' ? false : 5_000;
+      return s === 'success' || s === 'failed' ? false : 10_000;
     },
   });
 

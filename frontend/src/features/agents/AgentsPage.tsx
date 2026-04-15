@@ -135,7 +135,7 @@ export function AgentsPage() {
   const hasExecuting = useAgentStore((s) => s.agents.some((t) => t.status === 'running'));
   useEffect(() => {
     if (!hasExecuting) return;
-    const interval = setInterval(() => fetchAgents(), 15_000);
+    const interval = setInterval(() => fetchAgents(), 30_000);
     return () => clearInterval(interval);
   }, [hasExecuting, fetchAgents]);
 
@@ -395,7 +395,7 @@ export function AgentsPage() {
               <div className="flex gap-3 pb-3">
                 {recentAgents.map((agent) => (
                   <div key={agent.agent_id} className="w-[300px] shrink-0">
-                    <AgentCard task={agent} compact onClick={() => handleRowClick(agent)} />
+                    <AgentCard task={agent} compact skipThumbnails onClick={() => handleRowClick(agent)} />
                   </div>
                 ))}
                 {/* New Agent card */}

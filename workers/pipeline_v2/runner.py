@@ -692,17 +692,22 @@ class PipelineRunner:
                     done = counts.get("DONE", 0)
                     total = self.state_manager.get_total_posts()
                     enriched = counts.get("ENRICHED", 0) + done
+                    downloading = counts.get("COLLECTED_WITH_MEDIA", 0)
                     if total > 0:
                         # Update posts_enriched on collection_status so frontend shows progress
                         self.fs.update_collection_status(
                             self.collection_id, posts_enriched=enriched,
                         )
-                        msg = f"Processing: {enriched}/{total} posts enriched"
+                        # Build informative progress message
+                        parts = [f"{enriched}/{total} posts enriched"]
+                        if downloading > 0:
+                            parts.append(f"{downloading} downloading media")
+                        msg = f"Processing: {', '.join(parts)}"
                         if not hasattr(self, "_last_progress_msg") or self._last_progress_msg != msg:
                             self._last_progress_msg = msg
                             self._log_task(
                                 msg,
-                                metadata={"phase": "processing", "enriched": enriched, "total": total},
+                                metadata={"phase": "processing", "enriched": enriched, "downloading": downloading, "total": total},
                             )
 
                 # After download step, persist GCS URIs back to BQ (background — don't block loop)

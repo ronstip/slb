@@ -62,6 +62,7 @@ import { toast } from 'sonner';
 interface TaskCardProps {
   task: Agent;
   compact?: boolean;
+  skipThumbnails?: boolean;
   onClick?: () => void;
 }
 
@@ -138,7 +139,7 @@ function ThumbnailGrid({ collectionIds, compact }: { collectionIds: string[]; co
   );
 }
 
-export function AgentCard({ task, compact, onClick }: TaskCardProps) {
+export function AgentCard({ task, compact, skipThumbnails, onClick }: TaskCardProps) {
   const navigate = useNavigate();
   const fetchAgents = useAgentStore((s) => s.fetchAgents);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -248,7 +249,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
         className="group flex flex-col rounded-xl border bg-card overflow-hidden transition-all hover:border-primary/30 hover:shadow-md cursor-pointer"
         onClick={() => handleOpen()}
       >
-        <ThumbnailGrid collectionIds={task.collection_ids} compact={compact} />
+        {!skipThumbnails && <ThumbnailGrid collectionIds={task.collection_ids} compact={compact} />}
 
         <div className={cn('flex flex-1 flex-col', compact ? 'p-3' : 'p-4')}>
           <div className="flex items-start justify-between gap-2 mb-1.5">

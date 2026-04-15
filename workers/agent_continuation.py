@@ -199,11 +199,14 @@ async def _async_agent_continuation(agent_id: str) -> None:
             enriched = cs.get("posts_enriched", 0)
             collection_summaries.append(f"- Collection `{cid}`: {posts} posts collected, {enriched} enriched")
 
-    # Include the actual plan/todos so the agent knows exactly what to do
+    # Include the full plan/todos so the agent sees completed + remaining steps
     todos = agent.get("todos") or []
+    completed_steps = []
     remaining_steps = []
     for t in todos:
-        if t.get("status") != "completed":
+        if t.get("status") == "completed":
+            completed_steps.append(f"- ~~{t['content']}~~ ✓")
+        else:
             remaining_steps.append(f"- {t['content']}")
 
     # Include data scope context
@@ -220,15 +223,21 @@ async def _async_agent_continuation(agent_id: str) -> None:
     if enrichment_context:
         message_parts += ["", "## Context", enrichment_context]
 
-    if remaining_steps:
-        message_parts += [
-            "",
-            "## Remaining Steps (execute ALL of these in order)",
-            *remaining_steps,
-            "",
-            "Complete each step above. Use `update_todos` to mark each step done as you go.",
-            "Do NOT skip steps. Every step must be executed, including custom ones like sending emails or creating specific charts.",
-        ]
+    # Show the full plan: completed steps first, then remaining
+    if completed_steps or remaining_steps:
+        message_parts += ["", "## Full Plan"]
+        if completed_steps:
+            message_parts += ["### Completed (automated)", *completed_steps]
+        if remaining_steps:
+            message_parts += [
+                "",
+                "### Your Steps (execute ALL of these in order)",
+                *remaining_steps,
+                "",
+                "Complete each step above. Use `update_todos` to mark each step done as you go.",
+                "Do NOT remove or modify the completed steps above — they are managed by the system.",
+                "Do NOT skip steps. Every step must be executed, including custom ones like sending emails or creating specific charts.",
+            ]
     else:
         message_parts += [
             "",
@@ -393,7 +402,7 @@ def _emit_activity(fs, agent_id: str, event, tool_start_times: dict[str, float])
         elif hasattr(part, "text") and part.text and not getattr(part, "thought", False):
             import re
             clean = re.sub(r"<!--[\s\S]*?-->", "", part.text).strip()
-            if clean:
+            if clean and len(clean) > 5:  # Skip trivial fragments
                 fs.add_agent_log(
                     agent_id,
                     clean[:200],
@@ -472,8 +481,6 @@ def _emit_activity(fs, agent_id: str, event, tool_start_times: dict[str, float])
 
 def _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_id):
     """Extract and persist artifacts from agent continuation events."""
-    from api.deps import get_fs
-
     for event in events:
         if not hasattr(event, 'content') or not event.content:
             continue
@@ -484,18 +491,24 @@ def _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_i
                 continue
             fr = part.function_response
             tool_name = fr.name if hasattr(fr, 'name') else ''
-            result = fr.response if hasattr(fr, 'response') else {}
-            if not isinstance(result, dict):
+            raw_response = fr.response if hasattr(fr, 'response') else {}
+
+            # ADK returns proto Struct — convert to plain dict
+            try:
+                result = dict(raw_response) if raw_response else {}
+            except (TypeError, ValueError):
                 continue
 
             try:
                 from api.main import _maybe_persist_artifact
-                _maybe_persist_artifact(
+                artifact_id = _maybe_persist_artifact(
                     tool_name, result, user_id, org_id, session_id,
                     agent_id=agent_id,
                 )
+                if artifact_id:
+                    logger.info("Persisted artifact %s from continuation tool %s for agent %s", artifact_id, tool_name, agent_id)
             except Exception:
-                logger.debug("Failed to persist artifact from continuation: %s", tool_name)
+                logger.exception("Failed to persist artifact from continuation: %s (agent %s)", tool_name, agent_id)
 
 
 def _notify_agent_completion(agent_id: str, agent: dict, user_id: str) -> None:

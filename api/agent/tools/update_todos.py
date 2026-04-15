@@ -63,8 +63,18 @@ def update_todos(
     if not validated:
         return {"status": "error", "message": "No valid todo items provided"}
 
-    # Store in session state
+    # Merge with existing automated/completed steps that the agent may not know about.
+    # Automated steps (collect, enrich) are managed by the system — preserve them
+    # even if the agent omits them from its update.
     if tool_context:
+        existing = tool_context.state.get("todos") or []
+        agent_ids = {t["id"] for t in validated}
+        preserved = [
+            t for t in existing
+            if t.get("id") not in agent_ids
+            and (t.get("automated") or t.get("status") == "completed")
+        ]
+        validated = preserved + validated
         tool_context.state["todos"] = validated
 
     # Compute progress

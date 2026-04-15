@@ -154,7 +154,7 @@ interface AgentActivityLogProps {
   initialLimit?: number;
 }
 
-export function AgentActivityLog({ logs, isRunning, initialLimit = 8 }: AgentActivityLogProps) {
+export function AgentActivityLog({ logs, isRunning, initialLimit = 20 }: AgentActivityLogProps) {
   const [showAll, setShowAll] = useState(false);
 
   if (logs.length === 0) {
@@ -225,11 +225,16 @@ export function AgentActivityLog({ logs, isRunning, initialLimit = 8 }: AgentAct
   );
 }
 
-/** Deduplicate consecutive logs with the same message (keeps the most recent). */
+/** Deduplicate consecutive logs with the same content (keeps the most recent).
+ *  Uses full_text for thinking/text entries to avoid false dedup from truncation. */
 function deduplicateLogs(logs: AgentLogEntry[]): AgentLogEntry[] {
   const result: AgentLogEntry[] = [];
   for (const log of logs) {
-    if (result.length > 0 && result[result.length - 1].message === log.message) continue;
+    if (result.length === 0) { result.push(log); continue; }
+    const prev = result[result.length - 1];
+    const prevKey = prev.metadata?.full_text || prev.message;
+    const curKey = log.metadata?.full_text || log.message;
+    if (prevKey === curKey) continue;
     result.push(log);
   }
   return result;
