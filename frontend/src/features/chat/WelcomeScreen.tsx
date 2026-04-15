@@ -48,7 +48,7 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
       </div>
 
       {/* Input */}
-      <div className="w-full max-w-[520px] mb-10">
+      <div className="w-full max-w-2xl mb-10">
         <MessageInput onSend={onSend} centered />
       </div>
 

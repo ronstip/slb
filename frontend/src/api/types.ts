@@ -276,6 +276,7 @@ export interface CollectionStats {
   content_type_breakdown: BreakdownItem[];
   negative_sentiment_pct: number | null;
   total_posts_enriched: number;
+  daily_volume?: { post_date: string; platform: string; post_count: number }[];
   engagement_summary: {
     total_likes: number;
     total_views: number;

@@ -56,6 +56,7 @@ from api.schemas.responses import (
     BreakdownItem,
     CollectionStatsResponse,
     CollectionStatusResponse,
+    DailyVolumeItem,
     EngagementStats,
     FeedPostResponse,
     FeedResponse,
@@ -1205,6 +1206,7 @@ def _signature_to_response(data: dict) -> CollectionStatsResponse:
         content_type_breakdown=[BreakdownItem(**x) for x in data.get("content_type_breakdown", [])],
         negative_sentiment_pct=data.get("negative_sentiment_pct"),
         total_posts_enriched=data.get("total_posts_enriched", 0),
+        daily_volume=[DailyVolumeItem(**x) for x in data.get("daily_volume", [])],
         engagement_summary=EngagementStats(**eng) if eng else EngagementStats(),
     )
 

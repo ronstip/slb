@@ -176,7 +176,7 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
       {/* Input area */}
       <div className={cn(
         'flex items-end gap-3 rounded-2xl border border-border bg-card shadow-sm transition-all focus-within:border-primary/50 focus-within:shadow-md',
-        centered ? 'px-5 py-4' : 'px-4 py-3',
+        centered ? 'px-4 py-3' : 'px-4 py-3',
       )}>
         <textarea
           data-testid="chat-input"
@@ -186,10 +186,10 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
           onKeyDown={handleKeyDown}
           placeholder={centered ? CYCLING_PLACEHOLDERS[placeholderIndex] : 'Ask me anything on TikTok, Instagram, X, YouTube...'}
           disabled={isAgentResponding}
-          rows={centered ? 2 : 1}
+          rows={1}
           className={cn(
             'flex-1 resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50',
-            centered ? 'max-h-48 text-base' : 'max-h-36 text-sm',
+            centered ? 'max-h-36 text-sm' : 'max-h-36 text-sm',
           )}
         />
         <button

@@ -25,7 +25,8 @@ import type { Agent, SearchDef, TodoItem } from '../../../../api/endpoints/agent
 import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLogCompact, AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
-import { getCollectionStatus } from '../../../../api/endpoints/collections.ts';
+import { getCollectionStatus, getCollectionStats } from '../../../../api/endpoints/collections.ts';
+import type { CollectionStats } from '../../../../api/types.ts';
 import { STATUS_ACCENT, StatusBadge, formatDate } from '../agent-status-utils.tsx';
 import { Globe, Tag } from 'lucide-react';
 import { PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS } from '../../../../lib/constants.ts';
@@ -268,7 +269,7 @@ export function AgentOverviewTab({
                           )}>
                             <span className={cn(
                               'shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold mt-0.5',
-                              todo.status === 'completed' ? 'bg-green-500/15 text-green-600' :
+                              todo.status === 'completed' ? 'bg-black text-white dark:bg-white dark:text-black' :
                               isActive ? 'bg-amber-500/15 text-amber-600 animate-pulse' :
                               'bg-muted text-muted-foreground',
                             )}>
@@ -479,6 +480,37 @@ function SourcesSection({ task }: { task: Agent }) {
   }
   const uniquePlatforms = Object.keys(platformCounts);
 
+  // Fetch real stats from collections
+  const collectionIds = task.collection_ids ?? [];
+  const { data: allStats } = useQuery({
+    queryKey: ['agent-source-stats', task.agent_id, collectionIds],
+    queryFn: () => Promise.all(collectionIds.map((id) => getCollectionStats(id))),
+    enabled: collectionIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Aggregate per-platform totals and last-3-day counts from collection stats
+  const platformPostTotals: Record<string, number> = {};
+  const platformPostsLast3d: Record<string, number> = {};
+  if (allStats) {
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const cutoff = threeDaysAgo.toISOString().slice(0, 10);
+
+    for (const stats of allStats) {
+      for (const b of stats.platform_breakdown ?? []) {
+        platformPostTotals[b.value] = (platformPostTotals[b.value] || 0) + b.post_count;
+      }
+      for (const d of stats.daily_volume ?? []) {
+        if (d.post_date >= cutoff) {
+          platformPostsLast3d[d.platform] = (platformPostsLast3d[d.platform] || 0) + d.post_count;
+        }
+      }
+    }
+    // Update totalPosts from real data
+    totalPosts = Object.values(platformPostTotals).reduce((a, b) => a + b, 0);
+  }
+
   // Filter sources based on active tab
   const visibleSources = activeTab === 'summary'
     ? flatSources
@@ -584,7 +616,7 @@ function SourcesSection({ task }: { task: Agent }) {
       <div className="px-3 py-2 flex-1">
           {/* ── Summary view ── */}
           {activeTab === 'summary' && (
-            <SourcesSummaryView searches={searches} flatSources={flatSources} totalPosts={totalPosts} uniquePlatforms={uniquePlatforms} />
+            <SourcesSummaryView searches={searches} flatSources={flatSources} totalPosts={totalPosts} uniquePlatforms={uniquePlatforms} isActive={task.status === 'running' || (task.status === 'success' && !task.paused)} platformPostTotals={platformPostTotals} platformPostsLast3d={platformPostsLast3d} />
           )}
 
           {/* ── Files view ── */}
@@ -724,13 +756,19 @@ function SourcesSection({ task }: { task: Agent }) {
 
 function SourcesSummaryView({
   flatSources,
-  totalPosts,
+  isActive,
+  platformPostTotals,
+  platformPostsLast3d,
 }: {
   searches: SearchDef[];
   flatSources: FlatSource[];
   totalPosts: number;
   uniquePlatforms: string[];
+  isActive: boolean;
+  platformPostTotals: Record<string, number>;
+  platformPostsLast3d: Record<string, number>;
 }) {
+  const hasStats = Object.keys(platformPostTotals).length > 0;
   return (
     <div>
       {/* Table */}
@@ -739,9 +777,9 @@ function SourcesSummaryView({
           <tr className="border-b border-border/40 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
             <th className="text-left py-1.5 pr-2">Source</th>
             <th className="text-left py-1.5 pr-2">Query</th>
+            <th className="text-left py-1.5 pr-2">Activity</th>
             <th className="text-right py-1.5 pr-2">Posts</th>
-            <th className="text-right py-1.5 pr-2">Range</th>
-            <th className="text-right py-1.5">Region</th>
+            <th className="text-right py-1.5">Posts last 3d</th>
           </tr>
         </thead>
         <tbody>
@@ -753,6 +791,8 @@ function SourcesSummaryView({
                   ? search.keywords.join(', ')
                   : `${search.keywords.slice(0, 3).join(', ')}, +${search.keywords.length - 3}`
                 : '—';
+            const posts = hasStats ? (platformPostTotals[platform] ?? 0) : (search.n_posts || 0);
+            const last3d = platformPostsLast3d[platform] ?? 0;
             return (
               <tr key={key} className="border-b border-border/20 last:border-b-0">
                 <td className="py-1.5 pr-2">
@@ -762,22 +802,21 @@ function SourcesSummaryView({
                   </span>
                 </td>
                 <td className="py-1.5 pr-2 text-muted-foreground max-w-[160px] truncate">{query}</td>
-                <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(search.n_posts || 0)}</td>
-                <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{search.time_range_days}d</td>
-                <td className="py-1.5 text-right text-muted-foreground">{search.geo_scope || 'Global'}</td>
+                <td className="py-1.5 pr-2">
+                  <span className={cn(
+                    'inline-flex items-center gap-1 text-[10px] font-medium',
+                    isActive ? 'text-emerald-600' : 'text-muted-foreground',
+                  )}>
+                    <span className={cn('h-1.5 w-1.5 rounded-full', isActive ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+                    {isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(posts)}</td>
+                <td className="py-1.5 text-right text-muted-foreground tabular-nums">{hasStats ? formatNumber(last3d) : '—'}</td>
               </tr>
             );
           })}
         </tbody>
-        <tfoot>
-          <tr className="border-t border-border/40">
-            <td className="py-1.5 pr-2 text-[10px] font-medium text-muted-foreground">{flatSources.length} sources</td>
-            <td className="py-1.5 pr-2" />
-            <td className="py-1.5 pr-2 text-right text-[10px] font-medium text-muted-foreground tabular-nums">{formatNumber(totalPosts)}</td>
-            <td className="py-1.5 pr-2" />
-            <td className="py-1.5" />
-          </tr>
-        </tfoot>
       </table>
     </div>
   );
