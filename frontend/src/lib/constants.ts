@@ -61,6 +61,8 @@ export const PLATFORM_COLORS: Record<string, string> = {
   reddit: '#E05A00',
   youtube: '#E03030',
   facebook: '#1877F2',
+  google_search: '#4285F4',
+  web: '#4285F4',
 };
 
 export const PLATFORM_LABELS: Record<string, string> = {
@@ -70,6 +72,8 @@ export const PLATFORM_LABELS: Record<string, string> = {
   reddit: 'Reddit',
   youtube: 'YouTube',
   facebook: 'Facebook',
+  google_search: 'Web',
+  web: 'Web',
 };
 
 export const SENTIMENT_COLORS: Record<string, string> = {

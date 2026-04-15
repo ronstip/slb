@@ -18,6 +18,7 @@ import {
   Search,
   Square,
   TrendingUp,
+  Upload,
   X,
   Zap,
 } from 'lucide-react';
@@ -56,6 +57,13 @@ import { EnrichmentEditor } from '../../wizard/EnrichmentEditor.tsx';
 import type { AgentEditDraft } from '../useAgentEditMode.ts';
 
 // --- Constants ---
+
+const STATUS_BORDER_COLOR: Record<string, string> = {
+  running: 'rgb(245 158 11 / 0.5)',   // amber
+  success: 'rgb(34 197 94 / 0.5)',    // green
+  failed: 'rgb(239 68 68 / 0.5)',     // red
+  archived: 'rgb(156 163 175 / 0.3)', // gray
+};
 
 const TIME_RANGES = [
   { label: '24h', value: 1 },
@@ -133,8 +141,8 @@ export function AgentOverviewTab({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-      {/* Header */}
-      <div className="shrink-0 px-6 py-2.5 border-b border-border/40">
+      {/* Header — status-colored bottom accent */}
+      <div className="shrink-0 px-6 py-2.5 border-b-2" style={{ borderBottomColor: STATUS_BORDER_COLOR[task.status] || 'var(--border)' }}>
         <div className="flex items-center gap-3">
           {isEditing && draft ? (
             <Input
@@ -212,7 +220,7 @@ export function AgentOverviewTab({
       </div>
 
       <div className="flex-1 overflow-y-auto min-w-0">
-        <div className="w-full px-6 pb-6 space-y-5">
+        <div className="w-full px-6 pt-5 pb-6 space-y-5">
 
           {/* ── Layer 1: Crest | Context | Status ── */}
           <div className="flex gap-5 items-stretch" style={{ height: 200 }}>
@@ -229,8 +237,8 @@ export function AgentOverviewTab({
                 <ReadOnlyContextSection task={task} />
               )}
             </div>
-            {/* Status card — compact for sidebar layout */}
-            <div className="shrink-0 w-[240px] rounded-lg border border-border bg-card shadow-sm overflow-y-auto">
+            {/* Status card — compact for sidebar layout, colored left border */}
+            <div className="shrink-0 w-[240px] rounded-lg border border-border bg-card shadow-sm overflow-y-auto border-l-4" style={{ borderLeftColor: STATUS_BORDER_COLOR[task.status] || 'var(--border)' }}>
               <div className="px-3 py-2.5 space-y-2">
                 {/* Header + running state */}
                 <div className="flex items-center justify-between">
@@ -315,7 +323,7 @@ export function AgentOverviewTab({
               <EditablePlanSection draft={draft} onUpdateDraft={onUpdateDraft} />
             ) : (
               <div className="rounded-lg border border-border bg-card flex flex-col">
-                <h3 className="px-3 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</h3>
+                <h3 className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-primary/[0.06] border-b border-primary/10 rounded-t-lg">Plan</h3>
                 {task.todos && task.todos.length > 0 ? (
                   <div className="divide-y divide-border/40">
                     {task.todos.map((todo, i) => {
@@ -354,7 +362,7 @@ export function AgentOverviewTab({
               {/* Recent Activity — flex-1 to fill to bottom */}
               {logs.length > 0 && (
                 <div className="rounded-lg border border-border bg-card flex flex-col flex-1 min-h-0">
-                  <div className="flex items-center justify-between px-3 pt-3 pb-1.5 shrink-0">
+                  <div className="flex items-center justify-between px-3 py-2 shrink-0 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
                     <Button
                       variant="ghost"
@@ -490,7 +498,7 @@ interface FlatSource {
   key: string;
 }
 
-type SourceTab = 'summary' | string; // 'summary' or a platform name
+type SourceTab = 'summary' | 'files' | string; // 'summary', 'files', or a platform name
 
 function SourcesSection({ task }: { task: Agent }) {
   const [activeTab, setActiveTab] = useState<SourceTab>('summary');
@@ -526,21 +534,23 @@ function SourcesSection({ task }: { task: Agent }) {
   if (flatSources.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-card shadow-sm h-full flex flex-col">
-        <div className="px-3 py-3">
+        <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
-          <p className="mt-2 text-sm text-muted-foreground">No sources defined</p>
         </div>
+        <p className="px-3 py-4 text-sm text-muted-foreground">No sources defined</p>
       </div>
     );
   }
 
   return (
     <div className="rounded-lg border border-border bg-card shadow-sm h-full flex flex-col">
-      <div className="px-3 py-3 space-y-2 flex-1">
-        {/* Header */}
+      {/* Header bar */}
+      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg shrink-0">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
+      </div>
 
-        {/* Tab chips */}
+      {/* Tab chips */}
+      <div className="px-3 pt-2 pb-1 shrink-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* Summary chip */}
           <button
@@ -556,7 +566,7 @@ function SourcesSection({ task }: { task: Agent }) {
             Summary
           </button>
 
-          {/* Platform chips */}
+          {/* Platform chips — only shown when they have sources */}
           {uniquePlatforms.map((platform) => {
             const count = platformCounts[platform];
             const isActive = activeTab === platform;
@@ -588,26 +598,56 @@ function SourcesSection({ task }: { task: Agent }) {
             );
           })}
 
-          {/* + Add new source chip (inert for now) */}
+          {/* Files chip — always visible */}
           <button
             type="button"
-            disabled
-            className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border border-dashed border-border/50 text-muted-foreground/40 cursor-not-allowed"
+            onClick={() => { setActiveTab('files'); setExpandedKey(null); }}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
+              activeTab === 'files'
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-border/50 text-muted-foreground hover:border-border hover:bg-muted/30',
+            )}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Files
+          </button>
+
+          {/* + Add search chip (inert for now) */}
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all"
           >
             <Plus className="h-3 w-3" />
-            Add new source
+            Add Platforms
           </button>
         </div>
+      </div>
 
-        {/* Content area */}
-        <div className="border-t border-border/40 pt-2">
-          {/* ── Summary view: stats grid + keyword cloud ── */}
+      {/* Content area */}
+      <div className="px-3 py-2 flex-1">
+          {/* ── Summary view ── */}
           {activeTab === 'summary' && (
             <SourcesSummaryView searches={searches} flatSources={flatSources} totalPosts={totalPosts} uniquePlatforms={uniquePlatforms} />
           )}
 
+          {/* ── Files view ── */}
+          {activeTab === 'files' && (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted/50 mb-3">
+                <Upload className="h-5 w-5 text-muted-foreground/60" />
+              </div>
+              <p className="text-sm text-muted-foreground mb-1">No files uploaded yet</p>
+              <p className="text-[11px] text-muted-foreground/60 mb-3">Upload PDFs, documents, or images to add context</p>
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" disabled>
+                <Upload className="h-3 w-3" />
+                Upload file
+              </Button>
+            </div>
+          )}
+
           {/* ── Platform tab: filtered expandable rows ── */}
-          {activeTab !== 'summary' && visibleSources.map(({ platform, search, key }) => {
+          {activeTab !== 'summary' && activeTab !== 'files' && visibleSources.map(({ platform, search, key }) => {
             const isExpanded = autoExpand || expandedKey === key;
             const keywordsPreview = search.keywords?.length > 0
               ? search.keywords.length <= 3
@@ -719,7 +759,6 @@ function SourcesSection({ task }: { task: Agent }) {
               </div>
             );
           })}
-        </div>
       </div>
     </div>
   );
@@ -799,7 +838,7 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-3 h-full overflow-y-auto">
+    <div className="rounded-lg border border-border bg-gradient-to-br from-primary/[0.03] to-card p-4 space-y-3 h-full overflow-y-auto">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
       {task.data_scope.enrichment_context && (
         <p className="text-sm text-muted-foreground">{task.data_scope.enrichment_context}</p>
