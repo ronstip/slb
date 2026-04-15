@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Database } from 'lucide-react';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { DataTable } from '../../components/DataTable/DataTable.tsx';
+import { ExpandedPostRow } from '../../components/DataTable/ExpandedPostRow.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
 import { AnalyticsStrip, computeAnalyticsStats } from './AnalyticsStrip.tsx';
 import {
@@ -129,6 +130,7 @@ export function PostsDataPanel({
           pageSize={50}
           className="bg-white dark:bg-background"
           striped={false}
+          renderExpandedRow={(row) => <ExpandedPostRow row={row} />}
         />
       )}
     </div>
