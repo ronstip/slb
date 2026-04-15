@@ -880,6 +880,12 @@ export interface WizardPlan {
   auto_dashboard: boolean;
   custom_fields: CustomFieldDef[];
   enrichment_context: string;
+  context?: {
+    mission: string;
+    world_context: string;
+    relevance_boundaries: string;
+    analytical_lens: string;
+  };
 }
 
 export interface WizardClarification {

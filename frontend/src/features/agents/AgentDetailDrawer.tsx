@@ -590,7 +590,8 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Task overview</label>
               <div className="rounded-md bg-muted p-3 text-sm">
-                {displayTask.context_summary
+                {displayTask.context?.mission
+                  || displayTask.context_summary
                   || displayTask.title
                   + (displayTask.data_scope?.searches?.length
                     ? ` — ${displayTask.data_scope.searches.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`

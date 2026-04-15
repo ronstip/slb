@@ -37,6 +37,13 @@ export interface TodoItem {
   custom?: boolean;
 }
 
+export interface AgentContext {
+  mission: string;
+  world_context: string;
+  relevance_boundaries: string;
+  analytical_lens: string;
+}
+
 export interface Agent {
   agent_id: string;
   user_id: string;
@@ -49,6 +56,7 @@ export interface Agent {
     custom_fields?: Array<{ name: string; type: string; description: string }> | null;
     enrichment_context?: string;
   };
+  context?: AgentContext;
   paused?: boolean;
   schedule: AgentSchedule | null;
   todos: TodoItem[];
@@ -123,6 +131,7 @@ export interface CreateFromWizardPayload {
   schedule?: { frequency: string; frequency_label: string } | null;
   custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
   enrichment_context?: string;
+  context?: AgentContext;
   existing_collection_ids?: string[];
   auto_report?: boolean;
   auto_email?: boolean;
@@ -144,6 +153,12 @@ export function listAgentRuns(agentId: string, limit = 20): Promise<AgentRun[]> 
 
 export function getAgentRun(agentId: string, runId: string): Promise<AgentRun> {
   return apiGet<AgentRun>(`/agents/${agentId}/runs/${runId}`);
+}
+
+// --- Agent Context ---
+
+export function refreshAgentContext(agentId: string): Promise<{ status: string; world_context: string }> {
+  return apiPost<{ status: string; world_context: string }>(`/agents/${agentId}/refresh-context`, {});
 }
 
 // --- Agent Artifacts ---

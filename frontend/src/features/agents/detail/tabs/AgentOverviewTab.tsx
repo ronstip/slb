@@ -22,7 +22,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Agent, SearchDef, TodoItem } from '../../../../api/endpoints/agents.ts';
 import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLogCompact, AgentActivityLog } from '../AgentActivityLog.tsx';
@@ -54,6 +54,7 @@ import { AgentCrest } from '../../AgentCrest.tsx';
 import type { DetailTab } from '../../../../components/AppSidebar.tsx';
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { EnrichmentEditor } from '../../wizard/EnrichmentEditor.tsx';
+import { AgentContextEditor } from '../../wizard/AgentContextEditor.tsx';
 import type { AgentEditDraft } from '../useAgentEditMode.ts';
 
 // --- Constants ---
@@ -144,6 +145,7 @@ export function AgentOverviewTab({
       {/* Header — status-colored bottom accent */}
       <div className="shrink-0 px-6 py-2.5 border-b-2" style={{ borderBottomColor: STATUS_BORDER_COLOR[task.status] || 'var(--border)' }}>
         <div className="flex items-center gap-3">
+          <AgentCrest id={task.agent_id} size={28} />
           {isEditing && draft ? (
             <Input
               value={draft.title}
@@ -219,15 +221,13 @@ export function AgentOverviewTab({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-w-0">
-        <div className="w-full px-6 pt-5 pb-6 space-y-5">
+      <div className="flex-1 overflow-hidden min-w-0">
+        <div className="w-full h-full px-6 pt-5 pb-6 flex flex-col gap-5">
 
-          {/* ── Layer 1: Crest | Context | Status ── */}
-          <div className="flex gap-5 items-stretch" style={{ height: 200 }}>
-            <div className="shrink-0">
-              <AgentCrest id={task.agent_id} size={140} />
-            </div>
-            <div className="flex-1 min-w-0 overflow-y-auto">
+          {/* ── Layer 1: Context | Status ── */}
+          <div className="flex gap-5 items-stretch shrink-0" style={{ height: 272 }}>
+            {/* Context — takes remaining width */}
+            <div className="flex-1 min-w-0">
               {isEditing && draft ? (
                 <EditableContextSection
                   draft={draft}
@@ -237,7 +237,7 @@ export function AgentOverviewTab({
                 <ReadOnlyContextSection task={task} />
               )}
             </div>
-            {/* Status card — compact for sidebar layout, colored left border */}
+            {/* Status card */}
             <div className="shrink-0 w-[240px] rounded-lg border border-border bg-card shadow-sm overflow-y-auto border-l-4" style={{ borderLeftColor: STATUS_BORDER_COLOR[task.status] || 'var(--border)' }}>
               <div className="px-3 py-2.5 space-y-2">
                 {/* Header + running state */}
@@ -317,7 +317,7 @@ export function AgentOverviewTab({
           {/* ── Layer 2: Viewport-filling two-column grid ── */}
           {/* Plan (left) and Sources + Activity (right) fill to page bottom.
               Status + Live Progress sit below this grid — below the fold. */}
-          <div className="grid grid-cols-2 gap-5 items-stretch" style={{ minHeight: 'calc(100vh - 280px)' }}>
+          <div className="grid grid-cols-2 gap-5 items-stretch flex-1 min-h-0">
             {/* Left column: Plan fills entire height */}
             {isEditing && draft ? (
               <EditablePlanSection draft={draft} onUpdateDraft={onUpdateDraft} />
@@ -325,22 +325,30 @@ export function AgentOverviewTab({
               <div className="rounded-lg border border-border bg-card flex flex-col">
                 <h3 className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-primary/[0.06] border-b border-primary/10 rounded-t-lg">Plan</h3>
                 {task.todos && task.todos.length > 0 ? (
-                  <div className="divide-y divide-border/40">
+                  <div className="py-1">
                     {task.todos.map((todo, i) => {
                       const isAgentDone = task.status === 'success';
+                      const isActive = todo.status === 'in_progress';
                       return (
-                        <div key={todo.id} className={cn('flex items-center gap-2.5 px-3 py-2.5', todo.status === 'completed' && !isAgentDone && 'opacity-60')}>
-                          <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
+                        <div key={todo.id} className={cn(
+                          'flex items-start gap-3 px-4 py-3 rounded-md mx-2 transition-colors',
+                          isActive && 'bg-amber-500/5',
+                          todo.status === 'completed' && !isAgentDone && 'opacity-50',
+                        )}>
+                          <span className={cn(
+                            'shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold mt-0.5',
+                            todo.status === 'completed' ? 'bg-green-500/15 text-green-600' :
+                            isActive ? 'bg-amber-500/15 text-amber-600 animate-pulse' :
+                            'bg-muted text-muted-foreground',
+                          )}>
                             {i + 1}
                           </span>
-                          {todo.status === 'completed' ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
-                          ) : todo.status === 'in_progress' ? (
-                            <Play className="h-3.5 w-3.5 shrink-0 text-amber-500 animate-pulse" />
-                          ) : (
-                            <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/30" />
-                          )}
-                          <span className={cn('text-sm flex-1 font-normal', todo.status === 'completed' && !isAgentDone ? 'line-through text-muted-foreground' : 'text-foreground')}>
+                          <span className={cn(
+                            'text-sm flex-1 leading-relaxed',
+                            todo.status === 'completed' && !isAgentDone ? 'line-through text-muted-foreground font-medium' :
+                            isActive ? 'font-semibold text-foreground' :
+                            'font-medium text-foreground/80',
+                          )}>
                             {todo.content}
                           </span>
                         </div>
@@ -829,30 +837,84 @@ function SourcesSummaryView({
 
 // ─── Read-only Context Section ───────────────────────────────────────────────
 
+const CONTEXT_SECTIONS: Array<{ key: 'mission' | 'world_context' | 'relevance_boundaries' | 'analytical_lens'; label: string }> = [
+  { key: 'mission', label: 'Mission' },
+  { key: 'world_context', label: 'World Knowledge' },
+  { key: 'relevance_boundaries', label: 'Relevance Scope' },
+  { key: 'analytical_lens', label: 'Analytical Lens' },
+];
+
 function ReadOnlyContextSection({ task }: { task: Agent }) {
-  if (
-    !task.data_scope?.enrichment_context &&
-    (task.data_scope?.custom_fields?.length ?? 0) === 0
-  ) {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const ctx = task.context;
+  const hasContext = ctx && Object.values(ctx).some((v) => v);
+  const hasEnrichment = !!task.data_scope?.enrichment_context;
+  const hasCustomFields = (task.data_scope?.custom_fields?.length ?? 0) > 0;
+
+  if (!hasContext && !hasEnrichment && !hasCustomFields) {
     return null;
   }
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const { refreshAgentContext } = await import('../../../../api/endpoints/agents.ts');
+      await refreshAgentContext(task.agent_id);
+      await queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
-    <div className="rounded-lg border border-border bg-gradient-to-br from-primary/[0.03] to-card p-4 space-y-3 h-full overflow-y-auto">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
-      {task.data_scope.enrichment_context && (
-        <p className="text-sm text-muted-foreground">{task.data_scope.enrichment_context}</p>
+    <div className="rounded-lg border border-border bg-gradient-to-br from-primary/[0.03] to-card flex flex-col h-full">
+      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg shrink-0">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Agent Context</h3>
+      </div>
+      <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+      {/* Structured context sections */}
+      {hasContext && (
+        <div className="space-y-3">
+          {CONTEXT_SECTIONS.map(({ key, label }) =>
+            ctx[key] ? (
+              <div key={key} className="border-l-2 border-primary/20 pl-3 py-1.5">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-foreground/70">{label}</p>
+                  {key === 'world_context' && (
+                    <button
+                      type="button"
+                      onClick={handleRefresh}
+                      disabled={isRefreshing}
+                      className="text-[11px] font-medium text-primary hover:text-primary/80 disabled:opacity-50"
+                    >
+                      {isRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Refresh'}
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground/80 whitespace-pre-wrap leading-relaxed pl-4">{ctx[key]}</p>
+              </div>
+            ) : null,
+          )}
+        </div>
       )}
-        {(task.data_scope.custom_fields?.length ?? 0) > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {task.data_scope.custom_fields!.map((f) => (
-              <span key={f.name} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                <Tag className="h-2.5 w-2.5" />
-                {f.name}
-              </span>
-            ))}
-          </div>
-        )}
+
+      {/* Legacy enrichment_context fallback (shown when no structured context) */}
+      {!hasContext && hasEnrichment && (
+        <p className="text-sm text-muted-foreground leading-relaxed">{task.data_scope.enrichment_context}</p>
+      )}
+
+      {hasCustomFields && (
+        <div className="flex flex-wrap gap-2">
+          {task.data_scope.custom_fields!.map((f) => (
+            <span key={f.name} className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+              <Tag className="h-3 w-3" />
+              {f.name}
+            </span>
+          ))}
+        </div>
+      )}
+      </div>
     </div>
   );
 }
@@ -867,8 +929,17 @@ function EditableContextSection({
   onUpdateDraft: (patch: Partial<AgentEditDraft>) => void;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
+    <div className="rounded-lg border border-border bg-card flex flex-col h-full">
+      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg shrink-0">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Agent Context</h3>
+      </div>
+      <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+      {/* Structured agent context */}
+      <AgentContextEditor
+        context={draft.context}
+        onChange={(ctx) => onUpdateDraft({ context: ctx })}
+      />
+
       {/* Searches */}
         <div className="space-y-3">
           <Label className="text-xs font-medium text-muted-foreground">Sources</Label>
@@ -913,6 +984,7 @@ function EditableContextSection({
           onCustomFieldsChange={(fields) => onUpdateDraft({ custom_fields: fields })}
           generatedByAI={false}
         />
+      </div>
     </div>
   );
 }

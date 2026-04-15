@@ -21,6 +21,7 @@ def create_agent(
     org_id: str | None = None,
     todos: list | None = None,
     status: str = "running",
+    context: dict | None = None,
 ) -> dict:
     """Create a new agent in Firestore and BigQuery. Returns the agent dict."""
     fs = get_fs()
@@ -42,6 +43,8 @@ def create_agent(
         "collection_ids": [],
         "artifact_ids": [],
     }
+    if context:
+        agent_data["context"] = context
 
     # Firestore (real-time state)
     fs.create_agent(agent_id, agent_data)
@@ -81,7 +84,7 @@ def update_agent(agent_id: str, **fields) -> None:
     get_fs().update_agent(agent_id, **fields)
 
 
-VERSIONED_FIELDS = {"title", "data_scope", "todos"}
+VERSIONED_FIELDS = {"title", "data_scope", "todos", "context"}
 
 
 def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int:
@@ -106,6 +109,7 @@ def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int
             "title": updates.get("title", agent.get("title")),
             "data_scope": updates.get("data_scope", agent.get("data_scope")),
             "todos": updates.get("todos", agent.get("todos")),
+            "context": updates.get("context", agent.get("context")),
         }
         fs.create_agent_version(agent_id, new_version, snapshot, edited_by=user_id)
 
@@ -175,6 +179,13 @@ def dispatch_agent_run(
         enrichment_context = data_scope.get("enrichment_context")
         if enrichment_context:
             extra_config["enrichment_context"] = enrichment_context
+        # Pass structured context as supplementary enrichment info
+        agent_context = agent.get("context")
+        if agent_context:
+            from api.schemas.agent_context import context_to_enrichment_string
+            structured_ctx = context_to_enrichment_string(agent_context)
+            if structured_ctx:
+                extra_config["structured_context"] = structured_ctx
         city = search_def.get("city")
         if city:
             extra_config["city"] = city

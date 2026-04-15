@@ -78,7 +78,8 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Task overview</label>
             <div className="rounded-md bg-muted p-3 text-sm">
-              {task.context_summary
+              {task.context?.mission
+                || task.context_summary
                 || task.title
                 + (task.data_scope?.searches?.length
                   ? ` \u2014 ${task.data_scope.searches.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`

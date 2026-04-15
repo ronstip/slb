@@ -8,10 +8,12 @@ import { useAgentStore } from '../../../stores/agent-store.ts';
 import { planWizard } from '../../../api/endpoints/wizard.ts';
 import { createAgentFromWizard } from '../../../api/endpoints/agents.ts';
 import type { CustomFieldDef, WizardClarification, WizardPlan } from '../../../api/types.ts';
+import type { AgentContext } from '../../../api/endpoints/agents.ts';
 import { DescribePanel } from './DescribePanel.tsx';
 import { CollectionSettingsPanel } from './CollectionSettingsPanel.tsx';
 import { AgentSettingsPanel } from './AgentSettingsPanel.tsx';
 import { buildWizardRequestBody } from './wizard-utils.ts';
+import { EMPTY_CONTEXT } from './AgentContextEditor.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import {
   Tooltip,
@@ -96,6 +98,7 @@ export function AgentCreationWizard() {
   const [collectionSettings, setCollectionSettings] =
     useState<WizardCollectionSettings>(DEFAULT_COLLECTION);
   const [taskSettings, setTaskSettings] = useState<WizardAgentSettings>(DEFAULT_AGENT);
+  const [agentContext, setAgentContext] = useState<AgentContext>({ ...EMPTY_CONTEXT });
 
   const isStale = planStatus === 'ready' && description.trim() !== descriptionAtPlanTime;
 
@@ -136,6 +139,15 @@ export function AgentCreationWizard() {
       autoSlides: plan.auto_slides ?? false,
       autoDashboard: plan.auto_dashboard ?? false,
     });
+
+    if (plan.context) {
+      setAgentContext({
+        mission: plan.context.mission ?? '',
+        world_context: plan.context.world_context ?? '',
+        relevance_boundaries: plan.context.relevance_boundaries ?? '',
+        analytical_lens: plan.context.analytical_lens ?? '',
+      });
+    }
   };
 
   const handleContinue = async () => {
@@ -175,7 +187,7 @@ export function AgentCreationWizard() {
 
     setIsSubmitting(true);
     try {
-      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle);
+      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle, agentContext);
       const result = await createAgentFromWizard(body);
 
       // Add new collection IDs to sources store

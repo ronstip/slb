@@ -273,6 +273,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
     session.state["active_agent_status"] = "running"
     session.state["active_agent_type"] = agent.get("agent_type", "one_shot")
     session.state["active_agent_data_scope"] = data_scope
+    session.state["active_agent_context"] = agent.get("context")
     session.state["active_agent_created_at"] = agent.get("created_at", "")
     # Note: continuation_mode and autonomous_mode flags are no longer needed —
     # the agent is created with mode="autonomous" which selects the executor

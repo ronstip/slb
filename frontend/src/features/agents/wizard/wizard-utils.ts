@@ -1,6 +1,6 @@
 import { PLATFORM_LABELS, buildScheduleFromPreset, formatSchedule } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
-import type { CreateFromWizardPayload } from '../../../api/endpoints/agents.ts';
+import type { AgentContext, CreateFromWizardPayload } from '../../../api/endpoints/agents.ts';
 
 interface FormatOptions {
   title?: string;
@@ -109,6 +109,7 @@ export function buildWizardRequestBody(
   collection: WizardCollectionSettings,
   task: WizardAgentSettings,
   title: string,
+  context?: AgentContext,
 ): CreateFromWizardPayload {
   // Build searches array (one search per wizard config)
   const searches: CreateFromWizardPayload['searches'] = [];
@@ -151,6 +152,7 @@ export function buildWizardRequestBody(
     schedule,
     custom_fields: customFields,
     enrichment_context: collection.enrichmentContext.trim() || undefined,
+    context: context && Object.values(context).some((v) => v) ? context : undefined,
     existing_collection_ids: collection.existingCollectionIds.length > 0
       ? collection.existingCollectionIds
       : undefined,

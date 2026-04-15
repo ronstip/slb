@@ -91,6 +91,7 @@ class CreateFromWizardRequest(BaseModel):
     schedule: dict | None = None
     custom_fields: list[dict] | None = None
     enrichment_context: str = ""
+    context: dict | None = None  # Structured AgentContext: {mission, world_context, relevance_boundaries, analytical_lens}
     existing_collection_ids: list[str] = []
     auto_report: bool = True
     auto_email: bool = False

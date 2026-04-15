@@ -302,6 +302,14 @@ def _build_agent_profile(state: dict) -> Optional[str]:
     if enrichment_ctx:
         lines.append(f"\n{enrichment_ctx}")
 
+    # Structured agent context (mission, world context, relevance, lens)
+    agent_context = state.get("active_agent_context")
+    if agent_context:
+        from api.schemas.agent_context import context_to_agent_profile
+        ctx_block = context_to_agent_profile(agent_context)
+        if ctx_block:
+            lines.append(f"\n{ctx_block}")
+
     # Searches — full details
     searches = data_scope.get("searches", [])
     if searches:

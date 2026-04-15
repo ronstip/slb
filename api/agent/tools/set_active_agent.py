@@ -44,6 +44,7 @@ def set_active_agent(
         tool_context.state["active_agent_status"] = agent.get("status", "")
         tool_context.state["active_agent_type"] = agent.get("agent_type", "one_shot")
         tool_context.state["active_agent_data_scope"] = data_scope
+        tool_context.state["active_agent_context"] = agent.get("context")
 
         # Set working collections from the agent
         collection_ids = agent.get("collection_ids", [])

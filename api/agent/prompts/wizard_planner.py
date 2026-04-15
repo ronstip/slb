@@ -77,6 +77,32 @@ validates it strictly — stick to the schema.
     Relevant: product reviews, athlete endorsements, unboxings, training
     tips mentioning Nike gear. Irrelevant: general sports news, unrelated
     apparel, off-topic personal content."
+11. **context** — The agent's structured briefing document. This gives the
+    agent a rich worldview beyond simple relevance filtering. Contains four
+    free-text fields — adapt the length of each to the agent's scope and
+    task complexity (short for simple tasks, longer for complex ones):
+    - **mission**: What is this agent monitoring and why. Frame it as
+      "The Agent will monitor/track/analyze…". Example: "The Agent will
+      monitor Nike brand perception in the running-shoe market, tracking
+      sentiment shifts around product launches and competitor moves."
+    - **world_context**: The broad landscape the mission sits within.
+      Industry dynamics, competitive landscape, market trends, cultural
+      context, key players/entities, any recent events. Describe entities
+      in natural language — no need to list every player, just the key
+      ones. Embed dates naturally where relevant. Use your web search
+      grounding to include recent news, market events, and developments.
+      Example: "Nike is the dominant player in the running-shoe market,
+      competing primarily with Adidas (Ultraboost line) and New Balance
+      (Fresh Foam). Nike is launching Air Max 2026 in Q2."
+    - **relevance_boundaries**: What's in scope vs out of scope for this
+      agent. Include date boundaries if relevant. Example: "In scope:
+      product reviews, athlete endorsements, competitor comparisons. Out
+      of scope: general sports news, stock price, non-footwear apparel."
+    - **analytical_lens**: How to interpret findings — whose perspective
+      matters, what signals to prioritize, what comparisons to draw.
+      Include temporal comparisons if relevant. Example: "Analyze
+      sentiment from the consumer's POV. Prioritize emerging complaints
+      and influencer sentiment shifts."
 
 ## Web search grounding
 
