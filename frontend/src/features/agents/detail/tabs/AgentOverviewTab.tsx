@@ -3,6 +3,8 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Circle,
   Clock,
   Database,
@@ -13,6 +15,7 @@ import {
   Play,
   Plus,
   Repeat,
+  Search,
   Square,
   TrendingUp,
   X,
@@ -23,11 +26,10 @@ import type { Agent, SearchDef, TodoItem } from '../../../../api/endpoints/agent
 import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLogCompact, AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
-import type { CustomFieldDef } from '../../../../api/types.ts';
 import { getCollectionStatus } from '../../../../api/endpoints/collections.ts';
 import { STATUS_ACCENT, StatusBadge, formatDate } from '../agent-status-utils.tsx';
-import { Globe, Hash, Tag } from 'lucide-react';
-import { formatSchedule, PLATFORMS, PLATFORM_LABELS } from '../../../../lib/constants.ts';
+import { Globe, Tag } from 'lucide-react';
+import { formatSchedule, PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS } from '../../../../lib/constants.ts';
 import { formatNumber } from '../../../../lib/format.ts';
 import { Button } from '../../../../components/ui/button.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
@@ -212,12 +214,12 @@ export function AgentOverviewTab({
       <div className="flex-1 overflow-y-auto min-w-0">
         <div className="w-full px-6 pb-6 space-y-5">
 
-          {/* ── Layer 1: Crest | Context ── */}
-          <div className="flex gap-5 items-start">
+          {/* ── Layer 1: Crest | Context | Status ── */}
+          <div className="flex gap-5 items-stretch" style={{ height: 200 }}>
             <div className="shrink-0">
               <AgentCrest id={task.agent_id} size={140} />
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 overflow-y-auto">
               {isEditing && draft ? (
                 <EditableContextSection
                   draft={draft}
@@ -227,135 +229,132 @@ export function AgentOverviewTab({
                 <ReadOnlyContextSection task={task} />
               )}
             </div>
+            {/* Status card — compact for sidebar layout */}
+            <div className="shrink-0 w-[240px] rounded-lg border border-border bg-card shadow-sm overflow-y-auto">
+              <div className="px-3 py-2.5 space-y-2">
+                {/* Header + running state */}
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</h3>
+                  {task.status === 'running' && (
+                    <span className="flex items-center gap-1 text-[11px] text-amber-500 font-medium">
+                      <Zap className="h-3 w-3" /> Running
+                    </span>
+                  )}
+                </div>
+
+                {/* Date */}
+                <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Clock className="h-3 w-3 shrink-0" />
+                  {startDate}
+                  {endDate && <> → {endDate}</>}
+                </p>
+
+                {/* Progress bar */}
+                {progressPct !== null && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-muted-foreground">
+                        {completedSteps}/{stepsCount} steps
+                      </span>
+                      <span className="text-[10px] font-medium tabular-nums">{progressPct}%</span>
+                    </div>
+                    <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn('h-full rounded-full transition-all', accentClass)}
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Stats — compact inline rows */}
+                <div className="space-y-1 pt-1 border-t border-border/40">
+                  {[
+                    { value: collectionsCount, label: 'Collections', icon: Database, color: 'text-blue-500', onClick: () => onTabChange('collections') },
+                    { value: artifactsCount, label: 'Artifacts', icon: FileText, color: 'text-violet-500', onClick: () => artifactsCount > 0 && onTabChange('artifacts') },
+                    { value: stepsCount, label: 'Steps', icon: TrendingUp, color: 'text-emerald-500', onClick: undefined },
+                  ].map(({ value, label, icon: Icon, color, onClick }) => (
+                    <button
+                      key={label}
+                      onClick={onClick}
+                      disabled={!onClick}
+                      className={cn(
+                        'flex items-center gap-2 w-full rounded px-1 py-0.5 text-left transition-all',
+                        onClick ? 'hover:bg-muted/50 cursor-pointer' : 'cursor-default',
+                      )}
+                    >
+                      <Icon className={cn('h-3 w-3 shrink-0', color)} />
+                      <span className="text-[11px] font-bold tabular-nums">{value}</span>
+                      <span className="text-[10px] text-muted-foreground">{label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Schedule (for recurring) */}
+                {task.agent_type === 'recurring' && (
+                  <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <CalendarClock className="h-3 w-3" />
+                      {task.schedule ? formatSchedule(task.schedule.frequency) : 'No schedule'}
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1.5" onClick={onOpenSchedule}>
+                      <Pencil className="h-2.5 w-2.5 mr-0.5" /> Edit
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* ── Layer 2: Plan (50%) | Status + Activity (50%) ── */}
-          <div className="grid grid-cols-2 gap-5">
-            {/* Plan */}
-            <div>
-              {isEditing && draft ? (
-                <EditablePlanSection draft={draft} onUpdateDraft={onUpdateDraft} />
-              ) : (
-                <div className="rounded-lg border border-border bg-card h-full flex flex-col">
-                  <h3 className="px-3 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</h3>
-                  {task.todos && task.todos.length > 0 ? (
-                    <div className="divide-y divide-border/40">
-                      {task.todos.map((todo, i) => {
-                        const isAgentDone = task.status === 'success';
-                        return (
-                          <div key={todo.id} className={cn('flex items-center gap-2.5 px-3 py-2.5', todo.status === 'completed' && !isAgentDone && 'opacity-60')}>
-                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
-                              {i + 1}
-                            </span>
-                            {todo.status === 'completed' ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
-                            ) : todo.status === 'in_progress' ? (
-                              <Play className="h-3.5 w-3.5 shrink-0 text-amber-500 animate-pulse" />
-                            ) : (
-                              <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/30" />
-                            )}
-                            <span className={cn('text-sm flex-1 font-normal', todo.status === 'completed' && !isAgentDone ? 'line-through text-muted-foreground' : 'text-foreground')}>
-                              {todo.content}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="px-3 py-4 text-sm text-muted-foreground">No steps defined</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Status + Activity */}
-            <div className="space-y-4">
-              {/* Status card */}
-              <div className="rounded-lg border border-border bg-card shadow-sm">
-                <div className="px-3 py-3 space-y-2.5">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</h3>
-                  {/* Date + running state */}
-                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-                    <Clock className="h-3 w-3 shrink-0" />
-                    {startDate}
-                    {endDate && <> → {endDate}</>}
-                    {task.status === 'running' && (
-                      <span className="flex items-center gap-1 text-amber-500 font-medium">
-                        <Zap className="h-3 w-3" /> Running
-                      </span>
-                    )}
-                  </p>
-
-                  {/* Progress bar */}
-                  {progressPct !== null && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px] text-muted-foreground">Progress</span>
-                        <span className="text-[11px] font-medium tabular-nums">{progressPct}%</span>
-                      </div>
-                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                        <div
-                          className={cn('h-full rounded-full transition-all', accentClass)}
-                          style={{ width: `${progressPct}%` }}
-                        />
-                      </div>
-                      <p className="mt-1 text-[10px] text-muted-foreground">
-                        {task.status === 'running' && currentStep
-                          ? `Step ${currentStepIdx + 1}/${stepsCount}: ${currentStep.content.length > 50 ? currentStep.content.slice(0, 50) + '…' : currentStep.content}`
-                          : `${completedSteps} of ${stepsCount} steps complete`}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Stats row */}
-                  <div className="grid grid-cols-3 gap-2 pt-1.5 border-t border-border/40">
-                    {[
-                      { value: collectionsCount, label: 'Collections', icon: Database, color: 'text-blue-500', bg: 'bg-blue-500/10', onClick: () => onTabChange('collections') },
-                      { value: artifactsCount, label: 'Artifacts', icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10', onClick: () => artifactsCount > 0 && onTabChange('artifacts') },
-                      { value: stepsCount, label: 'Steps', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', onClick: undefined },
-                    ].map(({ value, label, icon: Icon, color, bg, onClick }) => (
-                      <button
-                        key={label}
-                        onClick={onClick}
-                        disabled={!onClick}
-                        className={cn(
-                          'flex flex-col items-center gap-1 rounded-lg py-2 text-center transition-all',
-                          onClick ? 'hover:bg-muted/50 cursor-pointer' : 'cursor-default',
-                        )}
-                      >
-                        <div className={cn('flex h-7 w-7 items-center justify-center rounded-md', bg)}>
-                          <Icon className={cn('h-3.5 w-3.5', color)} />
+          {/* ── Layer 2: Viewport-filling two-column grid ── */}
+          {/* Plan (left) and Sources + Activity (right) fill to page bottom.
+              Status + Live Progress sit below this grid — below the fold. */}
+          <div className="grid grid-cols-2 gap-5 items-stretch" style={{ minHeight: 'calc(100vh - 280px)' }}>
+            {/* Left column: Plan fills entire height */}
+            {isEditing && draft ? (
+              <EditablePlanSection draft={draft} onUpdateDraft={onUpdateDraft} />
+            ) : (
+              <div className="rounded-lg border border-border bg-card flex flex-col">
+                <h3 className="px-3 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</h3>
+                {task.todos && task.todos.length > 0 ? (
+                  <div className="divide-y divide-border/40">
+                    {task.todos.map((todo, i) => {
+                      const isAgentDone = task.status === 'success';
+                      return (
+                        <div key={todo.id} className={cn('flex items-center gap-2.5 px-3 py-2.5', todo.status === 'completed' && !isAgentDone && 'opacity-60')}>
+                          <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
+                            {i + 1}
+                          </span>
+                          {todo.status === 'completed' ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                          ) : todo.status === 'in_progress' ? (
+                            <Play className="h-3.5 w-3.5 shrink-0 text-amber-500 animate-pulse" />
+                          ) : (
+                            <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/30" />
+                          )}
+                          <span className={cn('text-sm flex-1 font-normal', todo.status === 'completed' && !isAgentDone ? 'line-through text-muted-foreground' : 'text-foreground')}>
+                            {todo.content}
+                          </span>
                         </div>
-                        <div className="text-lg font-bold leading-none tabular-nums">{value}</div>
-                        <div className="text-[10px] text-muted-foreground">{label}</div>
-                      </button>
-                    ))}
+                      );
+                    })}
                   </div>
+                ) : (
+                  <p className="px-3 py-4 text-sm text-muted-foreground">No steps defined</p>
+                )}
+              </div>
+            )}
 
-                  {/* Schedule (for recurring) */}
-                  {task.agent_type === 'recurring' && (
-                    <div className="flex items-center justify-between pt-2 border-t border-border/40">
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <CalendarClock className="h-3 w-3" />
-                        {task.schedule ? formatSchedule(task.schedule.frequency) : 'No schedule'}
-                      </div>
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2" onClick={onOpenSchedule}>
-                        <Pencil className="h-3 w-3 mr-1" /> Edit
-                      </Button>
-                    </div>
-                  )}
-                </div>
+            {/* Right column: Sources (natural) + Recent Activity (fills remaining) */}
+            <div className="flex flex-col gap-4">
+              <div className="shrink-0">
+                <SourcesSection task={task} />
               </div>
 
-              {/* Live Collection Progress — visible while agent is running and has collections */}
-              {task.status === 'running' && task.collection_ids?.length > 0 && (
-                <LiveCollectionProgress collectionIds={task.collection_ids} />
-              )}
-
-              {/* Recent Activity */}
+              {/* Recent Activity — flex-1 to fill to bottom */}
               {logs.length > 0 && (
-                <div className="rounded-lg border border-border bg-card">
-                  <div className="flex items-center justify-between px-3 pt-3 pb-1.5">
+                <div className="rounded-lg border border-border bg-card flex flex-col flex-1 min-h-0">
+                  <div className="flex items-center justify-between px-3 pt-3 pb-1.5 shrink-0">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
                     <Button
                       variant="ghost"
@@ -367,11 +366,21 @@ export function AgentOverviewTab({
                       Expand
                     </Button>
                   </div>
-                  <AgentActivityLogCompact logs={logs} isRunning={task.status === 'running'} />
+                  <div className="flex-1 overflow-y-auto">
+                    <AgentActivityLogCompact logs={logs} isRunning={task.status === 'running'} />
+                  </div>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Live Collection Progress — only when running */}
+          {task.status === 'running' && task.collection_ids?.length > 0 && (
+            <div className="grid grid-cols-2 gap-5">
+              <LiveCollectionProgress collectionIds={task.collection_ids} />
+              <div />
+            </div>
+          )}
 
         </div>
       </div>
@@ -471,44 +480,330 @@ function LiveCollectionProgress({ collectionIds }: { collectionIds: string[] }) 
   );
 }
 
+// ─── Sources Section ────────────────────────────────────────────────────────
+
+/** Flattened view of a single platform within a SearchDef */
+interface FlatSource {
+  platform: string;
+  search: SearchDef;
+  /** Key for React — combines searchDef index + platform */
+  key: string;
+}
+
+type SourceTab = 'summary' | string; // 'summary' or a platform name
+
+function SourcesSection({ task }: { task: Agent }) {
+  const [activeTab, setActiveTab] = useState<SourceTab>('summary');
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const searches = task.data_scope?.searches ?? [];
+
+  // Explode SearchDefs into per-platform rows
+  const flatSources: FlatSource[] = [];
+  for (let i = 0; i < searches.length; i++) {
+    const search = searches[i];
+    for (const platform of search.platforms) {
+      flatSources.push({ platform, search, key: `${i}-${platform}` });
+    }
+  }
+
+  // Aggregate stats
+  const platformCounts: Record<string, number> = {};
+  let totalPosts = 0;
+  for (const { platform, search } of flatSources) {
+    platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+    totalPosts += Math.round((search.n_posts || 0) / search.platforms.length);
+  }
+  const uniquePlatforms = Object.keys(platformCounts);
+
+  // Filter sources based on active tab
+  const visibleSources = activeTab === 'summary'
+    ? flatSources
+    : flatSources.filter((s) => s.platform === activeTab);
+
+  // Auto-expand single source when platform tab is selected
+  const autoExpand = activeTab !== 'summary' && visibleSources.length === 1;
+
+  if (flatSources.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-card shadow-sm h-full flex flex-col">
+        <div className="px-3 py-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
+          <p className="mt-2 text-sm text-muted-foreground">No sources defined</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card shadow-sm h-full flex flex-col">
+      <div className="px-3 py-3 space-y-2 flex-1">
+        {/* Header */}
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
+
+        {/* Tab chips */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Summary chip */}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('summary'); setExpandedKey(null); }}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
+              activeTab === 'summary'
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-border/50 text-muted-foreground hover:border-border hover:bg-muted/30',
+            )}
+          >
+            Summary
+          </button>
+
+          {/* Platform chips */}
+          {uniquePlatforms.map((platform) => {
+            const count = platformCounts[platform];
+            const isActive = activeTab === platform;
+            const color = PLATFORM_COLORS[platform] || '#6B7294';
+            return (
+              <button
+                key={platform}
+                type="button"
+                onClick={() => { setActiveTab(platform); setExpandedKey(null); }}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
+                  isActive
+                    ? 'border-current/40'
+                    : 'border-border/50 hover:border-border hover:bg-muted/30',
+                )}
+                style={isActive
+                  ? { backgroundColor: `${color}15`, color, borderColor: `${color}40` }
+                  : undefined
+                }
+              >
+                <PlatformIcon platform={platform} className="h-3.5 w-3.5" />
+                <span style={isActive ? { color } : undefined}>
+                  {PLATFORM_LABELS[platform] || platform}
+                </span>
+                {count > 1 && (
+                  <span className={isActive ? 'opacity-70' : 'text-muted-foreground'}>{count}</span>
+                )}
+              </button>
+            );
+          })}
+
+          {/* + Add new source chip (inert for now) */}
+          <button
+            type="button"
+            disabled
+            className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border border-dashed border-border/50 text-muted-foreground/40 cursor-not-allowed"
+          >
+            <Plus className="h-3 w-3" />
+            Add new source
+          </button>
+        </div>
+
+        {/* Content area */}
+        <div className="border-t border-border/40 pt-2">
+          {/* ── Summary view: stats grid + keyword cloud ── */}
+          {activeTab === 'summary' && (
+            <SourcesSummaryView searches={searches} flatSources={flatSources} totalPosts={totalPosts} uniquePlatforms={uniquePlatforms} />
+          )}
+
+          {/* ── Platform tab: filtered expandable rows ── */}
+          {activeTab !== 'summary' && visibleSources.map(({ platform, search, key }) => {
+            const isExpanded = autoExpand || expandedKey === key;
+            const keywordsPreview = search.keywords?.length > 0
+              ? search.keywords.length <= 3
+                ? search.keywords.join(', ')
+                : `${search.keywords.slice(0, 3).join(', ')}, +${search.keywords.length - 3}`
+              : null;
+            const channelsPreview = search.channels?.length
+              ? search.channels.length <= 2
+                ? search.channels.join(', ')
+                : `${search.channels.slice(0, 2).join(', ')}, +${search.channels.length - 2}`
+              : null;
+            const isChannelSearch = !!search.channels?.length;
+            const sharedWith = search.platforms.length > 1
+              ? search.platforms.filter((p) => p !== platform)
+              : null;
+
+            return (
+              <div key={key} className="border-b border-border/30 last:border-b-0">
+                {/* Collapsed row */}
+                <button
+                  type="button"
+                  onClick={() => !autoExpand && setExpandedKey(isExpanded ? null : key)}
+                  className={cn(
+                    'flex items-center gap-2 w-full px-1 py-2 text-left hover:bg-muted/30 transition-colors rounded-sm',
+                    autoExpand && 'cursor-default',
+                  )}
+                >
+                  {!autoExpand && (
+                    isExpanded
+                      ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+                      : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+                  )}
+                  <PlatformIcon platform={platform} className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-xs font-medium text-foreground shrink-0">
+                    {PLATFORM_LABELS[platform] || platform}
+                  </span>
+                  <span className="text-muted-foreground/30">·</span>
+                  <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">
+                    {isChannelSearch && channelsPreview && (
+                      <span>{channelsPreview}</span>
+                    )}
+                    {isChannelSearch && keywordsPreview && ' · '}
+                    {keywordsPreview && (
+                      <span>{keywordsPreview}</span>
+                    )}
+                    {!keywordsPreview && !channelsPreview && (
+                      <span className="italic">No keywords</span>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
+                    {search.n_posts || 0} · {search.time_range_days}d
+                  </span>
+                </button>
+
+                {/* Expanded details */}
+                {isExpanded && (
+                  <div className={cn('mb-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2 space-y-2', !autoExpand && 'ml-5 mr-1')}>
+                    {sharedWith && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <span className="font-medium">Shared config with:</span>
+                        {sharedWith.map((p) => (
+                          <span key={p} className="inline-flex items-center gap-0.5">
+                            <PlatformIcon platform={p} className="h-3 w-3" />
+                            <span>{PLATFORM_LABELS[p] || p}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {search.keywords?.length > 0 && (
+                      <div>
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Keywords</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {search.keywords.map((kw) => (
+                            <Badge key={kw} variant="secondary" className="text-[10px] py-0">
+                              {kw}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {search.channels?.length ? (
+                      <div>
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Channels</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {search.channels.map((ch) => (
+                            <Badge key={ch} variant="secondary" className="text-[10px] py-0">
+                              {ch}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Search className="h-2.5 w-2.5" />
+                        {search.n_posts || 0} posts
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-2.5 w-2.5" />
+                        {search.time_range_days} days
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Globe className="h-2.5 w-2.5" />
+                        {search.geo_scope || 'Global'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sources Summary View ───────────────────────────────────────────────────
+
+function SourcesSummaryView({
+  flatSources,
+  totalPosts,
+}: {
+  searches: SearchDef[];
+  flatSources: FlatSource[];
+  totalPosts: number;
+  uniquePlatforms: string[];
+}) {
+  return (
+    <div>
+      {/* Table */}
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border/40 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            <th className="text-left py-1.5 pr-2">Source</th>
+            <th className="text-left py-1.5 pr-2">Query</th>
+            <th className="text-right py-1.5 pr-2">Posts</th>
+            <th className="text-right py-1.5 pr-2">Range</th>
+            <th className="text-right py-1.5">Region</th>
+          </tr>
+        </thead>
+        <tbody>
+          {flatSources.map(({ platform, search, key }) => {
+            const query = search.channels?.length
+              ? search.channels.join(', ')
+              : search.keywords?.length
+                ? search.keywords.length <= 3
+                  ? search.keywords.join(', ')
+                  : `${search.keywords.slice(0, 3).join(', ')}, +${search.keywords.length - 3}`
+                : '—';
+            return (
+              <tr key={key} className="border-b border-border/20 last:border-b-0">
+                <td className="py-1.5 pr-2">
+                  <span className="inline-flex items-center gap-1.5">
+                    <PlatformIcon platform={platform} className="h-3.5 w-3.5 shrink-0" />
+                    <span className="font-medium text-foreground">{PLATFORM_LABELS[platform] || platform}</span>
+                  </span>
+                </td>
+                <td className="py-1.5 pr-2 text-muted-foreground max-w-[160px] truncate">{query}</td>
+                <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(search.n_posts || 0)}</td>
+                <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{search.time_range_days}d</td>
+                <td className="py-1.5 text-right text-muted-foreground">{search.geo_scope || 'Global'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-border/40">
+            <td className="py-1.5 pr-2 text-[10px] font-medium text-muted-foreground">{flatSources.length} sources</td>
+            <td className="py-1.5 pr-2" />
+            <td className="py-1.5 pr-2 text-right text-[10px] font-medium text-muted-foreground tabular-nums">{formatNumber(totalPosts)}</td>
+            <td className="py-1.5 pr-2" />
+            <td className="py-1.5" />
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
 // ─── Read-only Context Section ───────────────────────────────────────────────
 
 function ReadOnlyContextSection({ task }: { task: Agent }) {
   if (
     !task.data_scope?.enrichment_context &&
-    (task.data_scope?.searches?.length ?? 0) === 0 &&
     (task.data_scope?.custom_fields?.length ?? 0) === 0
   ) {
     return null;
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3 h-full overflow-y-auto">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Context</h3>
       {task.data_scope.enrichment_context && (
         <p className="text-sm text-muted-foreground">{task.data_scope.enrichment_context}</p>
       )}
-        {task.data_scope.searches?.length > 0 && (
-          <div className="space-y-2">
-            {task.data_scope.searches.map((search: SearchDef, i: number) => (
-              <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  <Globe className="h-3 w-3" />
-                  {search.platforms?.join(', ')}
-                </span>
-                {search.keywords?.length > 0 && (
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <Hash className="h-3 w-3" />
-                    {search.keywords.join(', ')}
-                  </span>
-                )}
-                <span className="text-muted-foreground/50">
-                  {search.n_posts} posts · {search.time_range_days}d · {search.geo_scope}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
         {(task.data_scope.custom_fields?.length ?? 0) > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {task.data_scope.custom_fields!.map((f) => (
