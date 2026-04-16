@@ -1365,7 +1365,28 @@ async def get_multi_collection_feed(
 
     bq = get_bq()
 
-    where_clauses = ["p.collection_id IN UNNEST(@collection_ids)", "p._rn = 1"]
+    # Build posts subquery — optionally dedup across collections by post_id
+    if request.dedup:
+        posts_subquery = """(
+            SELECT * FROM (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
+                FROM (
+                    SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+                    FROM social_listening.posts
+                ) sub
+                WHERE _rn = 1
+            ) deduped
+            WHERE _dedup_rn = 1
+        )"""
+    else:
+        posts_subquery = """(
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+            FROM social_listening.posts
+        )"""
+
+    where_clauses = ["p.collection_id IN UNNEST(@collection_ids)"]
+    if not request.dedup:
+        where_clauses.append("p._rn = 1")
     params: dict = {"collection_ids": request.collection_ids}
 
     if request.platform != "all":
@@ -1426,10 +1447,7 @@ async def get_multi_collection_feed(
         ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields,
         ep.context, ep.is_related_to_task, ep.detected_brands, ep.channel_type,
         COUNT(*) OVER() as _total
-    FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-        FROM social_listening.posts
-    ) p
+    FROM {posts_subquery} p
     LEFT JOIN (
         SELECT *,
                ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
@@ -1608,6 +1626,20 @@ async def create_from_wizard_endpoint(
         fs.add_agent_collection(agent_id, cid)
         fs.update_collection_status(cid, agent_id=agent_id)
         attached_existing.append(cid)
+
+    # Attach collections from other agents
+    for src_agent_id in body.existing_agent_ids:
+        src_agent = fs.get_agent(src_agent_id)
+        if not src_agent:
+            continue
+        src_owner = src_agent.get("user_id")
+        src_org = src_agent.get("org_id")
+        if src_owner != user.uid and not (user.org_id and src_org == user.org_id):
+            continue
+        for cid in src_agent.get("collection_ids", []):
+            if cid not in attached_existing:
+                fs.add_agent_collection(agent_id, cid)
+                attached_existing.append(cid)
 
     # Dispatch new collections from searches
     run_id: str | None = None

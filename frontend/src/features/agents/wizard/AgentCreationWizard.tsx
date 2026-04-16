@@ -31,7 +31,7 @@ export interface WizardCollectionSettings {
   timeRangeDays: number;
   geoScope: string;
   nPosts: number;
-  existingCollectionIds: string[];
+  existingAgentIds: string[];
   newCollectionEnabled: boolean;
   customFields: CustomFieldDef[];
   enrichmentContext: string;
@@ -55,7 +55,7 @@ const DEFAULT_COLLECTION: WizardCollectionSettings = {
   timeRangeDays: 90,
   geoScope: 'global',
   nPosts: 500,
-  existingCollectionIds: [],
+  existingAgentIds: [],
   newCollectionEnabled: true,
   customFields: [],
   enrichmentContext: '',
@@ -102,7 +102,7 @@ export function AgentCreationWizard() {
 
   const isStale = planStatus === 'ready' && description.trim() !== descriptionAtPlanTime;
 
-  const hasExisting = collectionSettings.existingCollectionIds.length > 0;
+  const hasExisting = collectionSettings.existingAgentIds.length > 0;
   const hasNew =
     collectionSettings.newCollectionEnabled && collectionSettings.platforms.length > 0;
   const canSubmit =
@@ -123,7 +123,7 @@ export function AgentCreationWizard() {
       timeRangeDays: nc?.time_range_days ?? 90,
       geoScope: nc?.geo_scope ?? 'global',
       nPosts: nc?.n_posts ?? 500,
-      existingCollectionIds: plan.existing_collection_ids ?? [],
+      existingAgentIds: [],
       newCollectionEnabled: nc !== null,
       customFields: plan.custom_fields ?? [],
       enrichmentContext: plan.enrichment_context ?? '',

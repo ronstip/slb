@@ -15,37 +15,6 @@ import { formatNumber, timeAgo } from '../../lib/format.ts';
 import { MultiSelectFilterHeader, TextFilterHeader } from './ColumnFilterHeader.tsx';
 
 /* ------------------------------------------------------------------ */
-/* Collection badge                                                    */
-/* ------------------------------------------------------------------ */
-
-const BADGE_PALETTE = [
-  '#6366F1', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981',
-  '#3B82F6', '#EF4444', '#14B8A6', '#F97316', '#A855F7',
-];
-
-function hashColor(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
-  }
-  return BADGE_PALETTE[Math.abs(hash) % BADGE_PALETTE.length];
-}
-
-function CollectionBadge({ name, collectionId }: { name: string; collectionId: string }) {
-  const color = hashColor(collectionId);
-  return (
-    <span
-      className="inline-block max-w-[110px] truncate rounded-full px-2 py-0.5 text-[10px] font-medium"
-      style={{ color, backgroundColor: `${color}15` }}
-      title={name}
-    >
-      {name}
-    </span>
-  );
-}
-
-
-/* ------------------------------------------------------------------ */
 /* Filter state type — all multi-select columns use Set<string>        */
 /* ------------------------------------------------------------------ */
 
@@ -59,7 +28,6 @@ export interface ColumnFilters {
   themes: Set<string>;
   entities: Set<string>;
   brands: Set<string>;
-  collection: Set<string>;
   content: string; // free-text only for content/summary
 }
 
@@ -74,7 +42,6 @@ export function createEmptyFilters(): ColumnFilters {
     themes: new Set(),
     entities: new Set(),
     brands: new Set(),
-    collection: new Set(),
     content: '',
   };
 }
@@ -90,7 +57,6 @@ export function hasActiveFilters(f: ColumnFilters): boolean {
     f.themes.size > 0 ||
     f.entities.size > 0 ||
     f.brands.size > 0 ||
-    f.collection.size > 0 ||
     f.content.length > 0
   );
 }
@@ -123,8 +89,6 @@ export function applyColumnFilters(posts: FeedPost[], filters: ColumnFilters): F
     result = result.filter((p) => (p.entities ?? []).some((e) => filters.entities.has(e)));
   if (filters.brands.size > 0)
     result = result.filter((p) => (p.detected_brands ?? []).some((b) => filters.brands.has(b)));
-  if (filters.collection.size > 0)
-    result = result.filter((p) => p.collection_id && filters.collection.has(p.collection_id));
 
   return result;
 }
@@ -203,8 +167,6 @@ export function extractFilterOptions(posts: FeedPost[]): FilterOptionsWithCounts
 /* ------------------------------------------------------------------ */
 
 interface CollectionPostColumnsOptions {
-  collectionNames: Map<string, string>;
-  showCollectionColumn: boolean;
   filters: ColumnFilters;
   onFiltersChange: (filters: ColumnFilters) => void;
   filterOptions: FilterOptionsWithCounts;
@@ -214,7 +176,6 @@ export function collectionsPostColumns(
   opts: CollectionPostColumnsOptions,
 ): ColumnDef<FeedPost>[] {
   const {
-    collectionNames, showCollectionColumn,
     filters, onFiltersChange, filterOptions,
   } = opts;
 
@@ -235,35 +196,6 @@ export function collectionsPostColumns(
       ),
     },
   ];
-
-  // Collection column (multi-collection mode)
-  if (showCollectionColumn) {
-    const collectionOptions: FilterOption[] = [...collectionNames.entries()].map(([id]) => ({
-      value: id,
-      count: 0,
-    }));
-    cols.push({
-      key: 'collection',
-      header: (
-        <MultiSelectFilterHeader
-          label="Collection"
-          options={collectionOptions}
-          selected={filters.collection}
-          onChange={(v) => setFilter('collection', v)}
-          renderOption={(id) => (
-            <span className="truncate text-[11px]">{collectionNames.get(id) ?? id}</span>
-          )}
-        />
-      ),
-      width: 'w-[9%]',
-      render: (row) => (
-        <CollectionBadge
-          name={collectionNames.get(row.collection_id ?? '') ?? '---'}
-          collectionId={row.collection_id ?? ''}
-        />
-      ),
-    });
-  }
 
   cols.push(
     // Platform

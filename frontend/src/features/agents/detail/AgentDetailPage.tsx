@@ -29,7 +29,7 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'chat', 'collections', 'artifacts', 'explorer'];
+const VALID_TABS: DetailTab[] = ['overview', 'chat', 'data', 'artifacts', 'explorer'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -220,7 +220,7 @@ export function AgentDetailPage() {
             />
           )}
           {activeTab === 'chat' && <AgentChatTab task={task} />}
-          {activeTab === 'collections' && <AgentCollectionsTab task={task} />}
+          {activeTab === 'data' && <AgentCollectionsTab task={task} />}
           {activeTab === 'artifacts' && <AgentArtifactsTab task={task} artifacts={artifacts} />}
           {activeTab === 'explorer' && (
             <AgentExplorerTab

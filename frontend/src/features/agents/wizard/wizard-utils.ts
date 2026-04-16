@@ -20,12 +20,12 @@ export function formatWizardAsPrompt(
   }
   lines.push(`Description: ${description.trim()}`);
 
-  // Existing collections to attach (link-only)
-  if (collection.existingCollectionIds.length > 0) {
-    const ids = JSON.stringify(collection.existingCollectionIds);
-    lines.push(`Attach existing collections: ${ids}`);
+  // Existing agent data to attach
+  if (collection.existingAgentIds.length > 0) {
+    const ids = JSON.stringify(collection.existingAgentIds);
+    lines.push(`Attach data from existing agents: ${ids}`);
     lines.push(
-      `When calling start_agent, pass existing_collection_ids=${ids} so these collections are linked to the new agent without re-collecting.`,
+      `When calling start_agent, pass existing_agent_ids=${ids} so data from these agents is linked to the new agent.`,
     );
   }
 
@@ -153,8 +153,8 @@ export function buildWizardRequestBody(
     custom_fields: customFields,
     enrichment_context: collection.enrichmentContext.trim() || undefined,
     context: context && Object.values(context).some((v) => v) ? context : undefined,
-    existing_collection_ids: collection.existingCollectionIds.length > 0
-      ? collection.existingCollectionIds
+    existing_agent_ids: collection.existingAgentIds.length > 0
+      ? collection.existingAgentIds
       : undefined,
     auto_report: task.autoReport,
     auto_email: task.autoEmail,

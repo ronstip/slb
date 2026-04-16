@@ -231,7 +231,7 @@ export function AgentOverviewTab({
                 <span className="w-px h-3 bg-border" />
                 <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Database className="h-3 w-3 text-blue-500" />
-                  <span className="font-semibold text-foreground">{collectionsCount}</span> Collections
+                  <span className="font-semibold text-foreground">{collectionsCount}</span> Data Sources
                 </span>
               </>
             )}

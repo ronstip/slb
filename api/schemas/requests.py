@@ -65,6 +65,7 @@ class MultiFeedRequest(BaseModel):
     offset: int = 0
     topic_cluster_id: str | None = None
     has_media: bool = False
+    dedup: bool = True
 
 
 class DashboardDataRequest(BaseModel):
@@ -93,6 +94,7 @@ class CreateFromWizardRequest(BaseModel):
     enrichment_context: str = ""
     context: dict | None = None  # Structured AgentContext: {mission, world_context, relevance_boundaries, analytical_lens}
     existing_collection_ids: list[str] = []
+    existing_agent_ids: list[str] = []
     auto_report: bool = True
     auto_email: bool = False
     auto_slides: bool = False

@@ -132,7 +132,7 @@ export interface CreateFromWizardPayload {
   custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
   enrichment_context?: string;
   context?: AgentContext;
-  existing_collection_ids?: string[];
+  existing_agent_ids?: string[];
   auto_report?: boolean;
   auto_email?: boolean;
   auto_slides?: boolean;

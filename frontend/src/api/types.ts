@@ -253,6 +253,7 @@ export interface MultiFeedParams {
   offset?: number;
   topic_cluster_id?: string;
   has_media?: boolean;
+  dedup?: boolean;
 }
 
 export interface BreakdownItem {

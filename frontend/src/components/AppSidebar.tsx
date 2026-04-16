@@ -56,14 +56,14 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'collections' | 'artifacts' | 'explorer';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Agent Profile', icon: LayoutDashboard },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
   { id: 'artifacts', label: 'Artifacts', icon: FileText },
-  { id: 'collections', label: 'Collections', icon: Database },
+  { id: 'data', label: 'Data', icon: Database },
 ];
 
 interface AppSidebarProps {
