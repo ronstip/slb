@@ -133,7 +133,14 @@ export function PostsDataPanel({
   // Analytics stats — computed from posts, then enriched with collection stats for status fields
   const analyticsStats = useMemo(() => {
     const base = computeAnalyticsStats(filteredPosts);
-    if (!base || !allStats) return base;
+    if (!base) return base;
+
+    // Relevance: count posts marked as relevant + deduped unique post_ids
+    const uniquePostIds = new Set(allPosts.map((p) => p.post_id));
+    base.dedupedCount = uniquePostIds.size;
+    base.relevantCount = allPosts.filter((p) => p.is_related_to_task === true).length;
+
+    if (!allStats) return base;
 
     // Merge daily_volume across all collections (aggregate by date)
     const dailyMap = new Map<string, number>();
@@ -156,7 +163,7 @@ export function PostsDataPanel({
     base.latestDate = dates.length > 0 ? dates.sort().pop()! : null;
 
     return base;
-  }, [filteredPosts, allStats]);
+  }, [filteredPosts, allPosts, allStats]);
 
   // Build source options from collections prop
   const sourceOptions = useMemo(() => {

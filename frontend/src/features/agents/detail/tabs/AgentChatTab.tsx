@@ -9,7 +9,6 @@ import { useCollectionsSync } from '../../../collections/useCollectionsSync.ts';
 import { ChatPanel } from '../../../chat/ChatPanel.tsx';
 import { StudioPanel } from '../../../studio/StudioPanel.tsx';
 import { StatusBadge } from '../agent-status-utils.tsx';
-import { CollectionSelector } from '../../../chat/CollectionSelector.tsx';
 import { TaskSelector } from '../../../chat/TaskSelector.tsx';
 
 interface TaskChatTabProps {
@@ -61,7 +60,6 @@ export function AgentChatTab({ task }: TaskChatTabProps) {
           <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
           <StatusBadge status={task.status} />
           <div className="flex-1" />
-          <CollectionSelector />
           <TaskSelector />
         </div>
         <ChatPanel hideHeader />

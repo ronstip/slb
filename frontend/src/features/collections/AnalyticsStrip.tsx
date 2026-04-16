@@ -31,12 +31,16 @@ export interface AnalyticsStats {
   sentiments: { name: string; count: number; color: string }[];
   topThemes: { name: string; count: number }[];
   topEntities: { name: string; count: number }[];
-  /** Number of enriched posts (for status panel) */
+  /** Number of enriched posts */
   enrichedCount?: number;
-  /** ISO date of most recent post (for freshness) */
+  /** ISO date of most recent post */
   latestDate?: string | null;
   /** Daily post volume for time-windowed metrics */
   dailyVolume?: { date: string; count: number }[];
+  /** Relevance: posts marked relevant to the task */
+  relevantCount?: number;
+  /** Deduped post count (unique post_ids across collections) */
+  dedupedCount?: number;
 }
 
 type Signal = 'green' | 'yellow' | 'red' | 'neutral';
@@ -200,24 +204,22 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
   const vol30d = volForWindow(30);
   const activitySignal: Signal = dv.length === 0 ? 'neutral' : vol24h > 0 ? 'green' : vol7d > 0 ? 'yellow' : 'red';
 
-  // Status: health — composite from enrichment + freshness + sentiment
-  const enrichedCount = stats.enrichedCount ?? stats.totalPosts;
-  const enrichPct = stats.totalPosts > 0 ? Math.round((enrichedCount / stats.totalPosts) * 100) : 100;
-  const negEntry = stats.sentiments.find((s) => s.name === 'negative');
-  const negPct = stats.totalPosts > 0 && negEntry ? Math.round((negEntry.count / stats.totalPosts) * 100) : 0;
-  const freshLabel = stats.latestDate ? timeAgo(stats.latestDate) : null;
+  // Status: last post
+  const freshLabel = stats.latestDate ? timeAgo(stats.latestDate) : 'N/A';
   const hoursStale = stats.latestDate ? (Date.now() - new Date(stats.latestDate).getTime()) / 3_600_000 : Infinity;
+  const freshSignal: Signal = hoursStale < 24 ? 'green' : hoursStale < 72 ? 'yellow' : 'red';
 
-  const healthIssues: string[] = [];
-  if (enrichPct < 80) healthIssues.push(`${enrichPct}% enriched`);
-  if (negPct > 30) healthIssues.push(`${negPct}% negative`);
-  if (hoursStale > 72) healthIssues.push(freshLabel ? `${freshLabel} old` : 'no data');
-  else if (freshLabel) healthIssues.push(`${freshLabel} fresh`);
+  // Status: enrichment rate
+  const enrichedCount = stats.enrichedCount ?? 0;
+  const enrichPct = stats.totalPosts > 0 ? Math.round((enrichedCount / stats.totalPosts) * 100) : 0;
+  const enrichSignal: Signal = enrichPct >= 95 ? 'green' : enrichPct >= 70 ? 'yellow' : 'red';
 
-  const healthSignal: Signal =
-    (enrichPct < 50 || hoursStale > 72) ? 'red' :
-    (enrichPct < 80 || negPct > 30 || hoursStale > 24) ? 'yellow' : 'green';
-  const healthLabel = healthSignal === 'green' ? 'Good' : healthSignal === 'yellow' ? 'Fair' : 'Poor';
+  // Status: relevance rate
+  const relevantCount = stats.relevantCount ?? 0;
+  const dedupedCount = stats.dedupedCount ?? stats.totalPosts;
+  const relevancePct = dedupedCount > 0 ? Math.round((relevantCount / dedupedCount) * 100) : 0;
+  const relevanceSignal: Signal = relevancePct >= 70 ? 'green' : relevancePct >= 40 ? 'yellow' : 'red';
+  const relevanceTooltip = `${relevantCount} relevant of ${dedupedCount} unique posts (${stats.totalPosts} total across sources)`;
 
   return (
     <div className="border-b border-border/40 bg-gradient-to-r from-card via-card to-primary/[0.02] shrink-0 overflow-hidden">
@@ -282,12 +284,12 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
 
         <div className="w-px bg-border/30 my-2 shrink-0" />
 
-        {/* Status area */}
-        <div className="flex flex-col px-4 py-2 flex-1 min-w-0 overflow-hidden justify-center gap-[6px]">
-          {/* Activity pulse — volume per time window */}
+        {/* Status area — pushed to the right */}
+        <div className="flex flex-col px-4 py-2 ml-auto shrink-0 justify-center gap-[5px]">
+          {/* Activity — volume per time window */}
           <div className="flex items-center gap-2 min-w-0">
             <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', SIGNAL_COLORS[activitySignal])} />
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">Activity</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground w-[52px] shrink-0">Activity</span>
             <div className="flex items-baseline gap-3">
               <span className="text-[10px] text-muted-foreground">24h <span className="text-[11px] font-bold tabular-nums text-foreground">{formatNumber(vol24h)}</span></span>
               <span className="text-[10px] text-muted-foreground">7d <span className="text-[11px] font-bold tabular-nums text-foreground">{formatNumber(vol7d)}</span></span>
@@ -295,14 +297,22 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
             </div>
           </div>
 
-          {/* Health — composite signal */}
+          {/* Last post */}
           <div className="flex items-center gap-2 min-w-0">
-            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', SIGNAL_COLORS[healthSignal])} />
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">Health</span>
-            <span className="text-[11px] font-bold tabular-nums text-foreground">{healthLabel}</span>
-            {healthIssues.length > 0 && (
-              <span className="text-[10px] text-muted-foreground truncate">{healthIssues.join(' · ')}</span>
-            )}
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', SIGNAL_COLORS[freshSignal])} />
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground w-[52px] shrink-0">Last post</span>
+            <span className="text-[11px] font-bold tabular-nums text-foreground">{freshLabel}</span>
+          </div>
+
+          {/* Enrichment + Relevance on one row */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', SIGNAL_COLORS[enrichSignal])} />
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground w-[52px] shrink-0">Enriched</span>
+            <span className="text-[11px] font-bold tabular-nums text-foreground">{enrichPct}%</span>
+            <span className="text-muted-foreground/30 mx-1">|</span>
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', SIGNAL_COLORS[relevanceSignal])} />
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">Relevant</span>
+            <span className="text-[11px] font-bold tabular-nums text-foreground cursor-default" title={relevanceTooltip}>{relevancePct}%</span>
           </div>
         </div>
 

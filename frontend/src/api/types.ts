@@ -8,7 +8,6 @@
 export interface ChatRequest {
   message: string;
   session_id?: string;
-  selected_sources?: string[];
   is_system?: boolean;
   accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
   theme?: 'light' | 'dark';  // resolved theme (never "system")
@@ -329,7 +328,6 @@ export type SSEEvent =
   | { event_type: 'needs_decision'; content: string; metadata: Record<string, unknown>; author?: string }
   | { event_type: 'finding'; content: string; metadata: Record<string, unknown>; author?: string }
   | { event_type: 'plan'; content: string; metadata: Record<string, unknown>; author?: string }
-  | { event_type: 'context_update'; agent_selected_sources: string[]; reason?: string }
   | { event_type: 'done'; session_id: string; session_title?: string; content: string; suggestions?: string[] }
   | { event_type: 'error'; content: string };
 

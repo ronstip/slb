@@ -22,7 +22,6 @@ from api.agent.tools.get_agent_status import get_agent_status
 from api.agent.tools.get_collection_stats import get_collection_stats
 from api.agent.tools.get_past_collections import get_collection_details
 from api.agent.tools.set_active_agent import set_active_agent
-from api.agent.tools.set_working_collections import set_working_collections
 from api.agent.tools.show_metrics import show_metrics
 from api.agent.tools.show_topics import show_topics
 from api.agent.tools.start_agent import start_agent
@@ -54,7 +53,6 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("ask_user", ask_user, "user", True, "Prompt the user for structured input"),
         # Collection context
         ToolSpec("get_collection_stats", get_collection_stats, "collection", False, "Fetch collection statistics"),
-        ToolSpec("set_working_collections", set_working_collections, "collection", True, "Pin working collections for the session"),
         # Output & visualization
         ToolSpec("create_chart", create_chart, "reporting", False, "Generate a chart spec"),
         ToolSpec("export_data", export_data, "reporting", False, "Export posts as CSV"),
@@ -74,7 +72,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
     "chat": {
         # Analysis & data
         "create_chart", "get_collection_stats", "get_collection_details",
-        "set_working_collections", "export_data",
+        "export_data",
         # Agent management (interactive)
         "start_agent", "set_active_agent", "get_agent_status",
         # User interaction
@@ -88,7 +86,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
     "autonomous": {
         # Analysis & data
         "create_chart", "get_collection_stats", "get_collection_details",
-        "set_working_collections", "export_data",
+        "export_data",
         # Planning & output (shared)
         "update_todos", "generate_report", "generate_dashboard",
         "generate_presentation", "compose_email",

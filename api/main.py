@@ -531,7 +531,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "org_id": user.org_id,
                 "is_anonymous": user.is_anonymous,
                 "session_id": session_id,
-                "selected_sources": chat_request.selected_sources or [],
                 "session_title": "New Session",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "message_count": 0,
@@ -547,9 +546,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         session.state["user_id"] = user_id
         session.state["org_id"] = user.org_id
         session.state["is_anonymous"] = user.is_anonymous
-        # Update selected_sources in session state
-        if chat_request.selected_sources is not None:
-            session.state["selected_sources"] = chat_request.selected_sources
         # Always update theme preferences so they stay current
         if chat_request.accent_color:
             session.state["accent_color"] = chat_request.accent_color
@@ -618,10 +614,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     # The before_model_callback reads from state only.
     _cid = session.state.get("active_collection_id")
     if not _cid:
-        _eff = list(dict.fromkeys(
-            (session.state.get("selected_sources") or []) +
-            (session.state.get("agent_selected_sources") or [])
-        ))
+        _eff = session.state.get("agent_selected_sources") or []
         _cid = _eff[0] if _eff else None
     if _cid:
         _live = get_fs().get_collection_status(_cid)
@@ -753,24 +746,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         "event": et,
                         "data": json.dumps(event_data),
                     }
-
-                    # Emit context_update when agent changes its working set
-                    if et in ("tool_call", "tool_result"):
-                        tool_name = event_data.get("metadata", {}).get("name", "")
-                        if (
-                            et == "tool_result"
-                            and tool_name == "set_working_collections"
-                        ):
-                            result = event_data.get("metadata", {}).get("result", {})
-                            if result.get("status") == "success":
-                                yield {
-                                    "event": "context_update",
-                                    "data": json.dumps({
-                                        "event_type": "context_update",
-                                        "agent_selected_sources": result.get("active_collections", []),
-                                        "reason": result.get("reason", ""),
-                                    }),
-                                }
 
                     # Reset streaming flags after tool results so the next
                     # text/thinking segment (post-tool) streams fresh

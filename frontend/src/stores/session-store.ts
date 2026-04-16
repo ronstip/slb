@@ -69,7 +69,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useChatStore.getState().reset();
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
-    useSourcesStore.getState().setAgentSelectedSources([]);
 
     try {
       const detail = await getSession(id);
@@ -114,7 +113,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useChatStore.getState().reset();
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
-    useSourcesStore.getState().setAgentSelectedSources([]);
     useAgentStore.getState().setActiveAgent(null);
 
     set({
@@ -130,7 +128,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useChatStore.getState().reset();
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
-    useSourcesStore.getState().setAgentSelectedSources([]);
 
     set({
       activeSessionId: null,

@@ -49,7 +49,7 @@ TOOLS_WITH_COLLECTION_ID = {
 }
 TOOLS_WITH_COLLECTION_IDS = {
     "get_collection_stats", "generate_report", "generate_dashboard",
-    "set_working_collections", "export_data", "generate_presentation",
+    "export_data", "generate_presentation",
 }
 
 
@@ -71,13 +71,7 @@ def collection_state_tracker(
     """
     tool_name = tool.name
 
-    if tool_name == "set_working_collections":
-        if tool_response.get("status") == "success":
-            tool_context.state["agent_selected_sources"] = (
-                tool_response.get("active_collections") or []
-            )
-
-    elif tool_name == "update_todos":
+    if tool_name == "update_todos":
         pass  # State updated inside the tool
 
     elif tool_name == "start_agent":
@@ -221,60 +215,21 @@ def enforce_collection_access(
 # ---------------------------------------------------------------------------
 
 
-def _build_collection_context(state: dict) -> Optional[str]:
-    """Build collection context block — shared between both modes."""
-    collection_id = state.get("active_collection_id")
-    ui_sources: list[str] = state.get("selected_sources") or []
-    agent_sources: list[str] = state.get("agent_selected_sources") or []
-
-    # Merge: UI-forced first, then agent-chosen, deduplicated
-    effective_sources = list(dict.fromkeys(ui_sources + agent_sources))
-
-    # Fallback: use first effective source as active if none explicitly set
-    if not collection_id and effective_sources:
-        collection_id = effective_sources[0]
-
-    if not collection_id and not effective_sources:
+def _build_data_pool(state: dict) -> Optional[str]:
+    """Build data pool block from the active agent's collections."""
+    collection_ids: list[str] = state.get("agent_selected_sources") or []
+    if not collection_ids:
         return None
 
-    status = state.get("collection_status", "unknown")
-    posts = state.get("posts_collected", 0)
-    enriched = state.get("posts_enriched", 0)
-    embedded = state.get("posts_embedded", 0)
-
+    ids_fmt = ", ".join(f"`{cid}`" for cid in collection_ids)
     lines = [
-        "## Current Collection Context",
-        f"- Active collection: `{collection_id}`",
-        f"- Status: **{status}**",
-        f"- Posts collected: {posts}",
-        f"- Posts enriched: {enriched}",
+        "## Data Pool",
+        f"Collection IDs: {ids_fmt}",
+        "",
+        "Use these IDs in your SQL queries (`WHERE collection_id IN UNNEST(@collection_ids)` for multi-collection, "
+        "or `WHERE collection_id = @collection_id` for single). "
+        "Apply operations to ALL collections unless the question targets a subset.",
     ]
-    if embedded:
-        lines.append(f"- Posts embedded: {embedded}")
-
-    if ui_sources:
-        ids_fmt = ", ".join(f"`{sid}`" for sid in ui_sources)
-        lines.append(f"- User-selected (forced): {ids_fmt}")
-
-    if agent_sources:
-        ids_fmt = ", ".join(f"`{sid}`" for sid in agent_sources)
-        lines.append(f"- Agent-selected: {ids_fmt}")
-
-    if effective_sources:
-        ids_fmt = ", ".join(f"`{sid}`" for sid in effective_sources)
-        lines.append(f"- Effective working set: {ids_fmt}")
-        if len(effective_sources) > 1:
-            lines.append(
-                "- IMPORTANT: Multiple collections are active. "
-                "Apply operations to ALL of them unless the user specifies one."
-            )
-
-    lines.append("")
-    lines.append(
-        "Use this context when the user references 'the collection' or "
-        "'my data' without specifying a collection ID. "
-        "User-forced collections cannot be removed from the working set."
-    )
 
     return "\n".join(lines)
 
@@ -380,7 +335,7 @@ def _build_chat_context(state: dict) -> Optional[str]:
         blocks.append("\n".join(lines))
 
     # Collection context
-    collection_block = _build_collection_context(state)
+    collection_block = _build_data_pool(state)
     if collection_block:
         blocks.append(collection_block)
 
@@ -447,7 +402,7 @@ def _build_autonomous_context(state: dict) -> Optional[str]:
         blocks.append("\n".join(lines))
 
     # Collection context
-    collection_block = _build_collection_context(state)
+    collection_block = _build_data_pool(state)
     if collection_block:
         blocks.append(collection_block)
 
@@ -483,7 +438,6 @@ def _get_phase_priority(state: dict) -> list[set[str]]:
     collection_status = state.get("collection_status")
     has_collection = bool(
         state.get("active_collection_id")
-        or state.get("selected_sources")
         or state.get("agent_selected_sources")
     )
 
