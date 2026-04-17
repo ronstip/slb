@@ -41,7 +41,7 @@ interface PostsDataPanelProps {
 
 export function PostsDataPanel({
   selectedCollectionIds,
-  collectionNames,
+  collectionNames: _collectionNames,
   collections,
   globalSearch,
   dedup,

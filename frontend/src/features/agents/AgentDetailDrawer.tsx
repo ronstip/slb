@@ -17,7 +17,8 @@ import {
   StopCircle,
   Table2,
 } from 'lucide-react';
-import type { Agent, AgentStatus } from '../../api/endpoints/agents.ts';
+import type { Agent } from '../../api/endpoints/agents.ts';
+import { RUNNABLE_STATUSES, STATUS_ACCENT, StatusBadge } from './detail/agent-status-utils.tsx';
 import { getAgent, runAgent, updateAgent as patchAgent, getAgentArtifacts, getAgentLogs } from '../../api/endpoints/agents.ts';
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';

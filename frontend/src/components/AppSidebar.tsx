@@ -97,7 +97,7 @@ export function AppSidebar({
   onPauseResume,
   onOpenSchedule,
   agentSessions,
-  activeSessionId,
+  activeSessionId: _activeSessionId,
   onSessionSelect,
   onNewChat,
   agentLayouts,
@@ -492,8 +492,8 @@ export function AppSidebar({
 
           {/* Actions */}
           {(activeAgent.status === 'running' || canRun ||
-            (activeAgent.agent_type === 'recurring' && activeAgent.status !== 'running') ||
-            (activeAgent.agent_type !== 'recurring' && activeAgent.status === 'success')) && (
+            activeAgent.agent_type === 'recurring' ||
+            activeAgent.status === 'success') && (
             <>
               <div className="mx-3 border-t border-border my-1" />
               <div className="flex flex-col gap-0.5 px-3 pb-2">

@@ -614,7 +614,7 @@ export function AgentsPage() {
 
                   {/* Next Run */}
                   <div className="text-xs text-muted-foreground">
-                    {task.status === 'paused'
+                    {task.paused
                       ? 'Paused'
                       : task.next_run_at
                         ? formatRelativeTime(task.next_run_at)

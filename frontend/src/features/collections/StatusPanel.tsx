@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+// React imports as needed
 import { Activity, TrendingUp, TrendingDown, Minus, Heart, AlertTriangle, Clock } from 'lucide-react';
 import { formatNumber, timeAgo } from '../../lib/format.ts';
 import type { AnalyticsStats } from './AnalyticsStrip.tsx';
@@ -90,6 +90,7 @@ function Sparkline({ data, className }: { data: number[]; className?: string }) 
 /* Trend indicator                                                     */
 /* ------------------------------------------------------------------ */
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TrendBadge({ value, suffix = '' }: { value: number | null; suffix?: string }) {
   if (value === null) return null;
   const isUp = value > 0;
