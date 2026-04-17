@@ -1,20 +1,20 @@
-"""ADK callbacks for the social listening meta-agent.
+"""ADK callbacks for the social listening agent.
 
-Callbacks are registered on the meta-agent in agent.py. This module
+Callbacks are registered on the agent in agent.py. This module
 keeps callback logic separate from agent construction.
 
-Six categories:
-1. State tracking   — after_tool_callback captures collection state
-2. Gating           — before_tool_callback blocks expensive tools without approval
-3. Access control   — before_tool_callback enforces user-scoped collection access
-4. Context injection — before_model_callback prepends collection context
-5. Tool reordering  — before_model_callback prioritizes relevant tools
+Categories:
+1. State tracking    — after_tool_callback captures collection state
+2. Gating            — before_tool_callback blocks tools during pipeline runs
+3. Access control    — before_tool_callback enforces user-scoped collection access
+4. Context injection — before_model_callback prepends context (mode-aware)
+5. Tool reordering   — before_model_callback prioritizes relevant tools (chat only)
 6. Observability     — after_tool_callback logs all tool invocations
 """
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
@@ -24,41 +24,37 @@ from google.adk.tools.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
-# ─── Tool priority groups for phase-based reordering ─────────────────
-# Tools listed first in the schema are naturally favoured by the model.
+AgentMode = Literal["chat", "autonomous"]
+
+# ─── Tool priority groups for phase-based reordering (chat only) ────────
 
 PLANNING_TOOLS = {"update_todos"}
 AGENT_TOOLS = {"start_agent", "get_agent_status", "set_active_agent"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
-RESEARCH_DESIGN_TOOLS: set[str] = set()  # design_research removed (internal only)
-COLLECTION_TOOLS = {"cancel_collection", "get_progress", "enrich_collection", "refresh_engagements"}
 OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard", "generate_presentation"}
 
-# ─── Hard gate: tools blocked while a collection pipeline is running ──
-# cancel_collection is intentionally excluded — user can always cancel.
+# ─── Hard gate: tools blocked while a collection pipeline is running ────
 COLLECTION_RUNNING_BLOCKED = {
-    "get_progress", "get_agent_status", "get_collection_stats",
-    "enrich_collection", "refresh_engagements",
+    "get_agent_status", "get_collection_stats",
 }
 
 
-# ─── Collection access enforcement ─────────────────────────────────
+# ─── Collection access enforcement ─────────────────────────────────────
 # Tools whose `collection_id` (single) or `collection_ids` (list) args
 # must be validated against the authenticated user's ownership / org access.
 
 TOOLS_WITH_COLLECTION_ID = {
-    "enrich_collection", "get_progress", "cancel_collection",
-    "refresh_engagements", "export_data", "get_collection_details",
+    "export_data", "get_collection_details",
 }
 TOOLS_WITH_COLLECTION_IDS = {
     "get_collection_stats", "generate_report", "generate_dashboard",
-    "set_working_collections", "export_data", "generate_presentation",
+    "export_data", "generate_presentation",
 }
 
 
 # ---------------------------------------------------------------------------
-# 1. State tracking — after_tool_callback for meta_agent
+# 1. State tracking — after_tool_callback
 # ---------------------------------------------------------------------------
 
 
@@ -68,49 +64,14 @@ def collection_state_tracker(
     tool_context: ToolContext,
     tool_response: dict,
 ) -> None:
-    """Capture key collection data into session state after tool execution.
+    """Capture key state after tool execution.
 
-    The meta-agent calls collection tools directly. This callback captures
-    results so inject_collection_context can prepend them to future turns.
+    The agent calls tools directly. This callback captures results so
+    the context injector can prepend them to future turns.
     """
     tool_name = tool.name
 
-    if tool_name == "get_progress":
-        if tool_response.get("status") == "success":
-            tool_context.state["collection_status"] = tool_response.get(
-                "collection_status", "unknown"
-            )
-            tool_context.state["posts_collected"] = tool_response.get(
-                "posts_collected", 0
-            )
-            tool_context.state["posts_enriched"] = tool_response.get(
-                "posts_enriched", 0
-            )
-            tool_context.state["posts_embedded"] = tool_response.get(
-                "posts_embedded", 0
-            )
-            cid = args.get("collection_id")
-            if cid:
-                tool_context.state["active_collection_id"] = cid
-
-    elif tool_name == "enrich_collection":
-        if tool_response.get("status") == "success":
-            tool_context.state["collection_status"] = "enriching"
-            cid = args.get("collection_id")
-            if cid:
-                tool_context.state["active_collection_id"] = cid
-
-    elif tool_name == "cancel_collection":
-        if tool_response.get("status") == "success":
-            tool_context.state["collection_status"] = "cancelled"
-
-    elif tool_name == "set_working_collections":
-        if tool_response.get("status") == "success":
-            tool_context.state["agent_selected_sources"] = (
-                tool_response.get("active_collections") or []
-            )
-
-    elif tool_name == "update_todos":
+    if tool_name == "update_todos":
         pass  # State updated inside the tool
 
     elif tool_name == "start_agent":
@@ -141,11 +102,11 @@ def collection_state_tracker(
 
 
 # ---------------------------------------------------------------------------
-# 2. Human-in-the-loop gate — before_tool_callback
+# 2. Gating — before_tool_callback
 # ---------------------------------------------------------------------------
 
 
-ANONYMOUS_BLOCKED = {"start_collection"}
+ANONYMOUS_BLOCKED = {"start_agent"}
 
 
 def gate_expensive_tools(
@@ -153,7 +114,7 @@ def gate_expensive_tools(
     args: dict[str, Any],
     tool_context: ToolContext,
 ) -> Optional[dict]:
-    """Block collection tools while a pipeline is running or for anonymous users.
+    """Block tools during active pipeline runs or for anonymous users.
 
     Returns a dict (tool response override) to block, or None to allow.
     """
@@ -171,28 +132,6 @@ def gate_expensive_tools(
                 "status": "blocked",
                 "message": "Collection is running. Do not ask questions — confirm briefly and wait.",
             }
-
-    # Block ask_user in autonomous mode (server-side agent invocation)
-    if tool.name == "ask_user" and tool_context.state.get("autonomous_mode"):
-        return {
-            "status": "blocked",
-            "message": (
-                "Running in autonomous mode — cannot ask the user questions. "
-                "Proceed with the analysis using your best judgment and the task protocol."
-            ),
-        }
-
-    # Soft guidance for ask_user in continuation mode (user is online but
-    # agent should avoid unnecessary questions)
-    if tool.name == "ask_user" and tool_context.state.get("continuation_mode"):
-        return {
-            "status": "blocked",
-            "message": (
-                "You are continuing after data collection. The user already approved "
-                "the strategy — proceed with analysis and delivery. Only ask the user "
-                "if you encounter something truly unexpected that requires their input."
-            ),
-        }
 
     if tool.name in ANONYMOUS_BLOCKED and tool_context.state.get("is_anonymous"):
         return {
@@ -272,15 +211,255 @@ def enforce_collection_access(
 
 
 # ---------------------------------------------------------------------------
-# 4. Dynamic context injection — before_model_callback
+# 4. Dynamic context injection — before_model_callback (mode-aware)
 # ---------------------------------------------------------------------------
 
 
-def _build_context_block(state: dict) -> Optional[str]:
-    """Build a context block from session state, or None if nothing to inject."""
+def _build_data_pool(state: dict) -> Optional[str]:
+    """Build data pool block from the active agent's collections."""
+    collection_ids: list[str] = state.get("agent_selected_sources") or []
+    if not collection_ids:
+        return None
+
+    ids_fmt = ", ".join(f"`{cid}`" for cid in collection_ids)
+    lines = [
+        "## Your Data (internal — never describe this section to the user)",
+        f"IDs: {ids_fmt}",
+        "",
+        "Use in SQL: `WHERE collection_id IN UNNEST(@collection_ids)` or "
+        "`WHERE collection_id = @collection_id`. "
+        "Query ALL unless the question targets a subset. "
+        "Multi-source tools (`get_collection_stats`, `generate_report`, etc.) accept `collection_ids` lists. "
+        "Never mention source IDs, source counts, or internal data structure to the user.",
+    ]
+
+    return "\n".join(lines)
+
+
+def _build_agent_profile(state: dict) -> Optional[str]:
+    """Build agent identity + data scope block — shared between both modes."""
+    title = state.get("active_agent_title")
+    data_scope = state.get("active_agent_data_scope")
+    if not title and not data_scope:
+        return None
+
+    lines = ["## Your Identity"]
+
+    # Identity
+    if title:
+        status = state.get("active_agent_status", "")
+        status_note = f" (status: {status})" if status else ""
+        lines.append(f"You are **{title}**{status_note}. Adopt this mission and perspective as your own.")
+
+    if not data_scope:
+        return "\n".join(lines)
+
+    # Context paragraph — the agent's purpose
+    enrichment_ctx = data_scope.get("enrichment_context", "")
+    if enrichment_ctx:
+        lines.append(f"\n{enrichment_ctx}")
+
+    # Constitution (6-section identity doc) or legacy AgentContext (4 fields)
+    constitution = state.get("active_agent_constitution")
+    if constitution:
+        from api.schemas.agent_constitution import constitution_to_agent_profile
+        profile_block = constitution_to_agent_profile(constitution)
+        if profile_block:
+            lines[0] = "## Agent Constitution"
+            lines.append(f"\n{profile_block}")
+    else:
+        agent_context = state.get("active_agent_context")
+        if agent_context:
+            from api.schemas.agent_context import context_to_agent_profile
+            ctx_block = context_to_agent_profile(agent_context)
+            if ctx_block:
+                lines.append(f"\n{ctx_block}")
+
+    # Searches — what was searched (not config details like n_posts)
+    searches = data_scope.get("searches", [])
+    if searches:
+        lines.append("\n**Data scope:**")
+        for i, s in enumerate(searches):
+            platforms = ", ".join(s.get("platforms", []))
+            keywords = ", ".join(s.get("keywords", []))
+            start = s.get("start_date", "")
+            end = s.get("end_date", "")
+            days = s.get("time_range_days")
+            geo = s.get("geo_scope", "")
+            date_info = f"{start} to {end}" if start and end else f"last {days} days" if days else ""
+            label = f"Search {i+1}" if len(searches) > 1 else "Search"
+            parts = []
+            if keywords:
+                parts.append(keywords)
+            if platforms:
+                parts.append(f"on {platforms}")
+            if date_info:
+                parts.append(date_info)
+            if geo and geo != "global":
+                parts.append(f"geo: {geo}")
+            if parts:
+                lines.append(f"- {label}: {', '.join(parts)}")
+        lines.append("\nNote: these are search parameters, not actual post counts. Use `get_collection_stats` or SQL to get real numbers.")
+
+    # Custom fields
+    custom_fields = data_scope.get("custom_fields", [])
+    if custom_fields:
+        cf_parts = []
+        for cf in custom_fields:
+            name = cf.get("name", "")
+            ctype = cf.get("type", "str")
+            if ctype == "literal":
+                opts = cf.get("options", [])
+                cf_parts.append(f"{name} (one of: {', '.join(opts)})")
+            else:
+                cf_parts.append(f"{name} ({ctype})")
+        lines.append(f"- Custom fields: {', '.join(cf_parts)}")
+
+    return "\n".join(lines)
+
+
+def _build_operational_context(state: dict) -> Optional[str]:
+    """Build dynamic operational context — runtime params the agent needs.
+
+    This is the "here and now": dates, data windows, run history, version info.
+    Assembled per-invocation by the orchestrator, never persisted.
+    """
+    lines = ["## Operational Context"]
+
+    from datetime import datetime, timezone
+    lines.append(f"**Current date:** {datetime.now(timezone.utc).strftime('%B %d, %Y')}")
+
+    # Run info
+    run_number = state.get("active_run_number")
+    run_trigger = state.get("active_run_trigger")
+    if run_number:
+        trigger_note = f" (trigger: {run_trigger})" if run_trigger else ""
+        lines.append(f"**Run:** #{run_number}{trigger_note}")
+
+    # Agent version
+    version = state.get("active_agent_version")
+    if version:
+        lines.append(f"**Agent version:** {version}")
+
+    # Data window boundaries — the critical scope-awareness framing
+    data_scope = state.get("active_agent_data_scope") or {}
+    searches = data_scope.get("searches", [])
+    if searches:
+        for i, s in enumerate(searches):
+            start = s.get("start_date", "")
+            end = s.get("end_date", "")
+            days = s.get("time_range_days")
+            if start and end:
+                date_info = f"{start} to {end}"
+            elif days:
+                date_info = f"last {days} days"
+            else:
+                continue
+            label = f"Search {i+1}" if len(searches) > 1 else "Data window"
+            lines.append(f"**{label}:** {date_info}")
+        lines.append(
+            "\n**Important:** Data boundaries are artifacts of collection scope, not real-world events. "
+            "Do not interpret the start of your data window as a trend inflection point or anomaly."
+        )
+
+    # Run history dates
+    run_dates = state.get("run_history_dates", [])
+    if run_dates:
+        formatted = [d[:10] if isinstance(d, str) and len(d) >= 10 else str(d) for d in run_dates[-10:]]
+        lines.append(f"**Previous runs:** {', '.join(formatted)}")
+
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
+def _build_chat_context(state: dict) -> Optional[str]:
+    """Build context for chat mode — lightweight agent summary."""
     blocks: list[str] = []
 
-    # ── Todo List ──────────────────────────────────────────────────
+    # Todo list (lightweight — no heavy "CURRENT: focus on this" directive)
+    todos: list[dict] = state.get("todos", [])
+    if todos:
+        completed = sum(1 for t in todos if t.get("status") == "completed")
+        total = len(todos)
+
+        lines = [f"## Todo List ({completed}/{total} done)"]
+        for t in todos:
+            icon = {"completed": "[x]", "in_progress": "[>]"}.get(
+                t.get("status", ""), "[ ]"
+            )
+            lines.append(f"- {icon} {t['content']}")
+
+        if completed == total and total > 0:
+            lines.append(
+                "\nAll todos complete. Verify you've answered the original question, "
+                "then wrap up with a concise summary."
+            )
+        blocks.append("\n".join(lines))
+
+    # Collection context
+    collection_block = _build_data_pool(state)
+    if collection_block:
+        blocks.append(collection_block)
+
+    # Agent profile (identity + data scope)
+    profile_block = _build_agent_profile(state)
+    if profile_block:
+        blocks.append(profile_block)
+
+    # Operational context (dates, data window, run history)
+    operational_block = _build_operational_context(state)
+    if operational_block:
+        blocks.append(operational_block)
+
+    # Continuation mode (chat-side — user is online after collection completes)
+    if state.get("continuation_mode"):
+        blocks.append(
+            "## Continuation\n"
+            "Data collection is complete. Resume from your todo list. "
+            "Think critically about the data — consider alternative explanations "
+            "and potential biases before drawing conclusions. "
+            "Deliver what fits the original question."
+        )
+
+    # PPT Template + manifest
+    ppt_template = state.get("ppt_template")
+    if ppt_template and ppt_template.get("gcs_path"):
+        template_block = (
+            f"## Presentation Template\n"
+            f"The user has a saved PowerPoint template: **{ppt_template['filename']}** "
+            f"(gcs_path: `{ppt_template['gcs_path']}`). "
+            f"Before using it for a presentation, always confirm: "
+            f"\"I see you have a saved template ({ppt_template['filename']}) — should I use it for this deck?\" "
+            f"Only pass the gcs_path to generate_presentation if the user confirms."
+        )
+        manifest = ppt_template.get("manifest")
+        if manifest:
+            from api.utils.pptx_manifest import manifest_to_agent_context
+            template_block += "\n\n" + manifest_to_agent_context(manifest)
+        blocks.append(template_block)
+    else:
+        # Inject default template manifest so agent always knows available layouts
+        try:
+            from api.utils.pptx_manifest import extract_manifest, manifest_to_agent_context
+            from pathlib import Path
+            default_path = Path(__file__).parent.parent / "assets" / "templates" / "default.pptx"
+            if default_path.exists():
+                default_manifest = extract_manifest(default_path.read_bytes())
+                blocks.append(
+                    "## Presentation Template\n"
+                    "Using default template.\n\n"
+                    + manifest_to_agent_context(default_manifest)
+                )
+        except Exception:
+            pass
+
+    return "\n\n".join(blocks) if blocks else None
+
+
+def _build_autonomous_context(state: dict) -> Optional[str]:
+    """Build context for autonomous mode — full plan execution context."""
+    blocks: list[str] = []
+
+    # Full todo list with current step highlighted
     todos: list[dict] = state.get("todos", [])
     if todos:
         completed = sum(1 for t in todos if t.get("status") == "completed")
@@ -300,151 +479,82 @@ def _build_context_block(state: dict) -> Optional[str]:
         if current:
             lines.append(f"\n>> CURRENT: {current['content']}")
             lines.append(
-                "Focus on this. Call `update_todos` when done to mark progress."
+                "Focus on this step. Call `update_todos` when done to mark progress."
             )
         elif completed == total:
             lines.append(
-                "\nAll todos complete. Verify you've answered the original question, "
-                "then wrap up with a concise summary."
+                "\nAll todos complete. Generate final deliverables if not already done."
             )
-
         blocks.append("\n".join(lines))
 
-    # ── Task Library / Collections Library ─────────────────────────
-    # NOTE: Removed from automatic injection. Showing old tasks and
-    # collections on every ReAct step caused the model to jump tracks
-    # and work on unrelated past tasks. The agent can still discover
-    # past work via get_agent_status, get_collection_details, and
-    # set_active_agent tools when the user explicitly asks.
+    # Collection context
+    collection_block = _build_data_pool(state)
+    if collection_block:
+        blocks.append(collection_block)
 
-    # ── Collection context ──────────────────────────────────────────
-    collection_id = state.get("active_collection_id")
-    ui_sources: list[str] = state.get("selected_sources") or []
-    agent_sources: list[str] = state.get("agent_selected_sources") or []
+    # Agent profile (identity + data scope)
+    profile_block = _build_agent_profile(state)
+    if profile_block:
+        blocks.append(profile_block)
 
-    # Merge: UI-forced first, then agent-chosen, deduplicated
-    effective_sources = list(dict.fromkeys(ui_sources + agent_sources))
+    # Operational context (dates, data window, run history)
+    operational_block = _build_operational_context(state)
+    if operational_block:
+        blocks.append(operational_block)
 
-    # Fallback: use first effective source as active if none explicitly set
-    if not collection_id and effective_sources:
-        collection_id = effective_sources[0]
-
-    if collection_id or effective_sources:
-        # Collection status is fetched once per turn in main.py (not here,
-        # since this callback fires on every ReAct step within a turn).
-        status = state.get("collection_status", "unknown")
-        posts = state.get("posts_collected", 0)
-        enriched = state.get("posts_enriched", 0)
-        embedded = state.get("posts_embedded", 0)
-
-        lines = [
-            "## Current Collection Context",
-            f"- Active collection: `{collection_id}`",
-            f"- Status: **{status}**",
-            f"- Posts collected: {posts}",
-            f"- Posts enriched: {enriched}",
+    # Previous briefing (from last completed run)
+    previous_briefing = state.get("previous_briefing")
+    if previous_briefing:
+        briefing_lines = [
+            "## Previous Briefing",
+            "Written by you at the end of your previous run. "
+            "Treat quantitative claims as hypotheses — verify against current data before citing.",
         ]
-        if embedded:
-            lines.append(f"- Posts embedded: {embedded}")
+        if previous_briefing.get("state_of_the_world"):
+            briefing_lines.append(f"\n### State of the World\n{previous_briefing['state_of_the_world']}")
+        if previous_briefing.get("open_threads"):
+            briefing_lines.append(f"\n### Open Threads\n{previous_briefing['open_threads']}")
+        if previous_briefing.get("process_notes"):
+            briefing_lines.append(f"\n### Process Notes\n{previous_briefing['process_notes']}")
+        blocks.append("\n".join(briefing_lines))
 
-        if ui_sources:
-            ids_fmt = ", ".join(f"`{sid}`" for sid in ui_sources)
-            lines.append(f"- User-selected (forced): {ids_fmt}")
+    # Continuation instruction (always true for autonomous)
+    blocks.append(
+        "## Continuation\n"
+        "Data collection is complete. Resume from your todo list. "
+        "Think critically about the data — consider alternative explanations "
+        "and potential biases before drawing conclusions. "
+        "Complete all remaining steps and generate deliverables."
+    )
 
-        if agent_sources:
-            ids_fmt = ", ".join(f"`{sid}`" for sid in agent_sources)
-            lines.append(f"- Agent-selected: {ids_fmt}")
-
-        if effective_sources:
-            ids_fmt = ", ".join(f"`{sid}`" for sid in effective_sources)
-            lines.append(f"- Effective working set: {ids_fmt}")
-            if len(effective_sources) > 1:
-                lines.append(
-                    "- IMPORTANT: Multiple collections are active. "
-                    "Apply operations to ALL of them unless the user specifies one."
-                )
-
-        lines.append("")
-        lines.append(
-            "Use this context when the user references 'the collection' or "
-            "'my data' without specifying a collection ID. "
-            "User-forced collections cannot be removed from the working set."
-        )
-        blocks.append("\n".join(lines))
-
-    # ── Task data scope ──────────────────────────────────────────
-    data_scope = state.get("active_agent_data_scope")
-    if data_scope:
-        lines = ["## Task Context"]
-        enrichment_ctx = data_scope.get("enrichment_context", "")
-        if enrichment_ctx:
-            lines.append(f"- Focus: {enrichment_ctx}")
-
-        # Date window from searches
-        searches = data_scope.get("searches", [])
-        if searches:
-            task_created = state.get("active_agent_created_at", "")
-            for i, s in enumerate(searches):
-                platforms = ", ".join(s.get("platforms", []))
-                keywords = ", ".join(s.get("keywords", []))
-                start = s.get("start_date", "")
-                end = s.get("end_date", "")
-                days = s.get("time_range_days")
-                date_info = f"{start} to {end}" if start and end else f"last {days} days from task creation" if days else ""
-                if platforms or keywords:
-                    label = f"Search {i+1}" if len(searches) > 1 else "Search"
-                    parts = []
-                    if keywords:
-                        parts.append(f"keywords=[{keywords}]")
-                    if platforms:
-                        parts.append(f"platforms=[{platforms}]")
-                    if date_info:
-                        parts.append(date_info)
-                    lines.append(f"- {label}: {', '.join(parts)}")
-
-        custom_fields = data_scope.get("custom_fields", [])
-        if custom_fields:
-            cf_parts = []
-            for cf in custom_fields:
-                name = cf.get("name", "")
-                ctype = cf.get("type", "str")
-                if ctype == "literal":
-                    opts = cf.get("options", [])
-                    cf_parts.append(f"{name} (one of: {', '.join(opts)})")
-                else:
-                    cf_parts.append(f"{name} ({ctype})")
-            lines.append(f"- Custom fields: {', '.join(cf_parts)}")
-
-        if len(lines) > 1:
-            blocks.append("\n".join(lines))
-
-    # ── Continuation mode ──────────────────────────────────────────
-    if state.get("continuation_mode"):
-        blocks.append(
-            "## Continuation\n"
-            "Data collection is complete. Resume from your todo list. "
-            "Think critically about the data — consider alternative explanations "
-            "and potential biases before drawing conclusions. "
-            "Deliver what fits the original question."
-        )
-
-    # ── PPT Template ───────────────────────────────────────────────
+    # PPT Template + manifest (autonomous can use it without asking)
     ppt_template = state.get("ppt_template")
     if ppt_template and ppt_template.get("gcs_path"):
-        blocks.append(
-            f"## User PPT Template\n"
+        template_block = (
+            f"## Presentation Template\n"
             f"The user has a saved PowerPoint template: **{ppt_template['filename']}** "
             f"(gcs_path: `{ppt_template['gcs_path']}`). "
-            f"Before using it for a presentation, always confirm: "
-            f"\"I see you have a saved template ({ppt_template['filename']}) — should I use it for this deck?\" "
-            f"Only pass the gcs_path to generate_presentation if the user confirms."
+            f"Use this template for any presentation you generate."
         )
-
-    # ── User context ──────────────────────────────────────────────
-    # Removed: display_name and preferences injection.
-    # Injecting user history/preferences caused the agent to project
-    # past research interests onto unrelated tasks (context leakage).
-    # The agent discovers past work on-demand via tools instead.
+        manifest = ppt_template.get("manifest")
+        if manifest:
+            from api.utils.pptx_manifest import manifest_to_agent_context
+            template_block += "\n\n" + manifest_to_agent_context(manifest)
+        blocks.append(template_block)
+    else:
+        try:
+            from api.utils.pptx_manifest import extract_manifest, manifest_to_agent_context
+            from pathlib import Path
+            default_path = Path(__file__).parent.parent / "assets" / "templates" / "default.pptx"
+            if default_path.exists():
+                default_manifest = extract_manifest(default_path.read_bytes())
+                blocks.append(
+                    "## Presentation Template\n"
+                    "Using default template.\n\n"
+                    + manifest_to_agent_context(default_manifest)
+                )
+        except Exception:
+            pass
 
     return "\n\n".join(blocks) if blocks else None
 
@@ -454,20 +564,19 @@ def _get_phase_priority(state: dict) -> list[set[str]]:
     collection_status = state.get("collection_status")
     has_collection = bool(
         state.get("active_collection_id")
-        or state.get("selected_sources")
         or state.get("agent_selected_sources")
     )
 
     if not has_collection:
         # Research/task phase — task tools and context first
-        return [PLANNING_TOOLS, AGENT_TOOLS, RESEARCH_SUPPORT_TOOLS, COLLECTION_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS]
+        return [PLANNING_TOOLS, AGENT_TOOLS, RESEARCH_SUPPORT_TOOLS, CORE_TOOLS, OUTPUT_TOOLS]
     elif collection_status in ("collecting", "enriching"):
-        # Collection in progress — push collection tools LAST so the agent
-        # doesn't loop on get_progress. The UI handles progress display.
-        return [PLANNING_TOOLS, AGENT_TOOLS, CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS, RESEARCH_DESIGN_TOOLS, COLLECTION_TOOLS]
+        # Collection in progress — push analysis tools first, agent doesn't have
+        # collection polling tools anymore so no need to push them last
+        return [PLANNING_TOOLS, AGENT_TOOLS, CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS]
     else:
         # Collection complete (or unknown) — analysis + output first
-        return [PLANNING_TOOLS, AGENT_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, COLLECTION_TOOLS, RESEARCH_SUPPORT_TOOLS, RESEARCH_DESIGN_TOOLS]
+        return [PLANNING_TOOLS, AGENT_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_SUPPORT_TOOLS]
 
 
 def _tool_sort_key(tool_obj, priority_order: list[set[str]]) -> int:
@@ -493,7 +602,7 @@ def _reorder_tools(tools: list, priority_order: list[set[str]]) -> list:
 def _is_react_continuation(llm_request: LlmRequest) -> bool:
     """True when the model is re-invoked after tool execution in the same turn.
 
-    Detects the pattern: model(text/function_call) → function_response → [now].
+    Detects the pattern: model(text/function_call) -> function_response -> [now].
     When this fires, the model has already generated text visible to the user
     and should avoid restating it.
     """
@@ -515,89 +624,87 @@ _ANTI_REPEAT_INSTRUCTION = (
 )
 
 
-def inject_collection_context(
-    callback_context: CallbackContext,
-    llm_request: LlmRequest,
-) -> Optional[LlmResponse]:
-    """Prepend active collection context to the system instruction and
-    reorder tools based on session phase.
-    """
-    state = callback_context.state
-
-    # ── Hard stop after ask_user ─────────────────────────────────
-    # The agent must wait for the user's structured response before
-    # continuing.  Return an empty LlmResponse (no tool calls) to
-    # end the ReAct loop immediately.
-    if state.get("awaiting_user_input", False):
-        # Do NOT clear the flag here — it must persist so the chat endpoint
-        # can detect the next message as an ask_user response and preserve
-        # task state.  The chat endpoint clears it at the start of the next turn.
+def _append_to_system_instruction(llm_request: LlmRequest, text: str) -> None:
+    """Append text to the system instruction, handling both str and Content types."""
+    existing = llm_request.config.system_instruction or ""
+    if isinstance(existing, str):
+        llm_request.config.system_instruction = existing + "\n\n" + text
+    else:
         from google.genai import types as genai_types
-
-        return LlmResponse(
-            content=genai_types.Content(
-                role="model",
-                parts=[genai_types.Part.from_text(text="")],
-            )
-        )
-
-    # ── Hard stop while collection is running ────────────────────
-    # After start_agent succeeds, data collection runs asynchronously
-    # in a background worker.  The LLM must not re-enter the ReAct
-    # loop to poll get_agent_status / get_progress — that causes dozens
-    # of blocked tool calls.  End the turn immediately; main.py will
-    # resume the agent once the collection completes.
-    if state.get("collection_running") and _is_react_continuation(llm_request):
-        from google.genai import types as genai_types
-
-        return LlmResponse(
-            content=genai_types.Content(
-                role="model",
-                parts=[genai_types.Part.from_text(text="")],
-            )
-        )
-
-    # ── Context injection ─────────────────────────────────────────
-    context_block = _build_context_block(state)
-    if context_block:
-        existing = llm_request.config.system_instruction or ""
-        if isinstance(existing, str):
-            llm_request.config.system_instruction = existing + "\n\n" + context_block
+        context_part = genai_types.Part.from_text(text=text)
+        if hasattr(existing, "parts"):
+            existing.parts.append(context_part)
         else:
-            # system_instruction could be a Content object — append as text
-            from google.genai import types
+            llm_request.config.system_instruction = (
+                str(existing) + "\n\n" + text
+            )
 
-            context_part = types.Part.from_text(text=context_block)
-            if hasattr(existing, "parts"):
-                existing.parts.append(context_part)
-            else:
-                llm_request.config.system_instruction = (
-                    str(existing) + "\n\n" + context_block
+
+def get_context_injector(mode: AgentMode):
+    """Return a before_model_callback closure for the given agent mode.
+
+    The closure captures the mode at agent creation time, avoiding repeated
+    state lookups on every ReAct step.
+    """
+
+    def _inject(
+        callback_context: CallbackContext,
+        llm_request: LlmRequest,
+    ) -> Optional[LlmResponse]:
+        state = callback_context.state
+
+        # ── Hard stops (chat only) ──────────────────────────────────
+        if mode == "chat":
+            # After ask_user: wait for user response
+            if state.get("awaiting_user_input", False):
+                from google.genai import types as genai_types
+                return LlmResponse(
+                    content=genai_types.Content(
+                        role="model",
+                        parts=[genai_types.Part.from_text(text="")],
+                    )
                 )
 
-    # ── Anti-repetition for ReAct continuations ──────────────────
-    # When the model is re-invoked after tool results, inject a
-    # reminder not to repeat text it already generated this turn.
-    if _is_react_continuation(llm_request):
-        si = llm_request.config.system_instruction or ""
-        if isinstance(si, str):
-            llm_request.config.system_instruction = si + _ANTI_REPEAT_INSTRUCTION
-        elif hasattr(si, "parts"):
-            from google.genai import types as genai_types
-            si.parts.append(
-                genai_types.Part.from_text(text=_ANTI_REPEAT_INSTRUCTION)
-            )
+            # While collection running: don't re-enter ReAct loop
+            if state.get("collection_running") and _is_react_continuation(llm_request):
+                from google.genai import types as genai_types
+                return LlmResponse(
+                    content=genai_types.Content(
+                        role="model",
+                        parts=[genai_types.Part.from_text(text="")],
+                    )
+                )
 
-    # ── Tool reordering (soft filter) ─────────────────────────────
-    if llm_request.config.tools:
-        priority = _get_phase_priority(state)
-        llm_request.config.tools = _reorder_tools(llm_request.config.tools, priority)
+        # ── Context injection ───────────────────────────────────────
+        if mode == "autonomous":
+            context_block = _build_autonomous_context(state)
+        else:
+            context_block = _build_chat_context(state)
 
-    return None
+        if context_block:
+            _append_to_system_instruction(llm_request, context_block)
+
+        # ── Anti-repetition for ReAct continuations ─────────────────
+        if _is_react_continuation(llm_request):
+            _append_to_system_instruction(llm_request, _ANTI_REPEAT_INSTRUCTION)
+
+        # ── Tool reordering (chat only) ─────────────────────────────
+        if mode == "chat" and llm_request.config.tools:
+            priority = _get_phase_priority(state)
+            llm_request.config.tools = _reorder_tools(llm_request.config.tools, priority)
+
+        return None
+
+    return _inject
+
+
+# Keep the old name available for backwards compatibility during migration.
+# Once all callers use get_context_injector(), this can be removed.
+inject_collection_context = get_context_injector("chat")
 
 
 # ---------------------------------------------------------------------------
-# 4. Observability logging — after_tool_callback
+# 5. Observability logging — after_tool_callback
 # ---------------------------------------------------------------------------
 
 

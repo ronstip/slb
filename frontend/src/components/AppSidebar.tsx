@@ -27,6 +27,11 @@ import {
   UserCog,
 } from 'lucide-react';
 import type { Agent } from '../api/endpoints/agents.ts';
+import type { SessionListItem } from '../api/endpoints/sessions.ts';
+import type { ExplorerLayoutListItem } from '../api/endpoints/explorer-layouts.ts';
+import { DASHBOARD_DEFAULT_ID } from '../features/studio/dashboard/defaults-social-dashboard.ts';
+import { SessionCard } from './SessionCard.tsx';
+import { LayoutCard } from './LayoutCard.tsx';
 import { useAuth } from '../auth/useAuth.ts';
 import { useTheme } from './theme-provider.tsx';
 import { useAgentStore } from '../stores/agent-store.ts';
@@ -51,14 +56,14 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'collections' | 'artifacts' | 'explorer';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'overview', label: 'Agent Profile', icon: LayoutDashboard },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
   { id: 'artifacts', label: 'Artifacts', icon: FileText },
-  { id: 'collections', label: 'Collections', icon: Database },
+  { id: 'data', label: 'Data', icon: Database },
 ];
 
 interface AppSidebarProps {
@@ -71,6 +76,14 @@ interface AppSidebarProps {
   onStop?: () => void;
   onPauseResume?: () => void;
   onOpenSchedule?: () => void;
+  agentSessions?: SessionListItem[];
+  activeSessionId?: string | null;
+  onSessionSelect?: (sessionId: string) => void;
+  onNewChat?: () => void;
+  agentLayouts?: ExplorerLayoutListItem[];
+  activeLayoutId?: string | null;
+  onLayoutSelect?: (layoutId: string | null) => void;
+  onNewLayout?: () => void;
 }
 
 export function AppSidebar({
@@ -83,6 +96,14 @@ export function AppSidebar({
   onStop,
   onPauseResume,
   onOpenSchedule,
+  agentSessions,
+  activeSessionId,
+  onSessionSelect,
+  onNewChat,
+  agentLayouts,
+  activeLayoutId,
+  onLayoutSelect,
+  onNewLayout,
 }: AppSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,6 +116,8 @@ export function AppSidebar({
   const isDetailPage = !!activeAgent;
   // Default: expanded on non-detail pages, collapsed on detail pages
   const [recentAgentsOpen, setRecentAgentsOpen] = useState(!isDetailPage);
+  const [chatHistoryOpen, setChatHistoryOpen] = useState(true);
+  const [explorerHistoryOpen, setExplorerHistoryOpen] = useState(true);
   const [impersonateOpen, setImpersonateOpen] = useState(false);
   const isImpersonating = !!profile?.impersonation;
 
@@ -103,7 +126,7 @@ export function AppSidebar({
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const isAgentsPage = location.pathname === '/agents';
-  const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'executing';
+  const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'running';
 
   // During impersonation, profile contains the target user's data from /me,
   // while user is still the real admin's Firebase auth object — prefer profile.
@@ -313,8 +336,8 @@ export function AppSidebar({
         <>
           <div className="mx-3 my-2 border-t border-border" />
           <div className="px-3 pb-1">
-            <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-              Agent
+            <p className="mb-1 truncate px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50" title={activeAgent?.title}>
+              {activeAgent?.title || 'Agent'}
             </p>
           </div>
           <div className="flex flex-col gap-0.5 px-3 py-1">
@@ -323,40 +346,161 @@ export function AppSidebar({
               const disabled =
                 (id === 'explorer' && !hasCollections) ||
                 (id === 'artifacts' && !hasArtifacts);
+              const isChatTab = id === 'chat';
+              const isExplorerTab = id === 'explorer';
+              const hasSessions = isChatTab && agentSessions && agentSessions.length > 0;
+              const showChatExpander = isChatTab && isTabActive && hasSessions;
+              const showExplorerExpander = isExplorerTab && isTabActive && hasCollections;
 
               return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onTabChange(id)}
-                  className={cn(
-                    'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                    isTabActive
-                      ? 'bg-accent text-foreground font-medium'
-                      : disabled
-                        ? 'text-muted-foreground/30 cursor-not-allowed'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                <div key={id}>
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => {
+                        onTabChange(id);
+                        if (isChatTab && isTabActive) {
+                          setChatHistoryOpen((v) => !v);
+                        }
+                        if (isExplorerTab && isTabActive) {
+                          setExplorerHistoryOpen((v) => !v);
+                        }
+                      }}
+                      className={cn(
+                        'flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                        isTabActive
+                          ? 'bg-accent text-foreground font-medium'
+                          : disabled
+                            ? 'text-muted-foreground/30 cursor-not-allowed'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {label}
+                      {showChatExpander && (
+                        <span className="ml-auto flex items-center">
+                          {chatHistoryOpen
+                            ? <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
+                            : <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                          }
+                        </span>
+                      )}
+                      {showExplorerExpander && (
+                        <span className="ml-auto flex items-center">
+                          {explorerHistoryOpen
+                            ? <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
+                            : <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                          }
+                        </span>
+                      )}
+                    </button>
+                    {showChatExpander && onNewChat && (
+                      <button
+                        onClick={onNewChat}
+                        className="mr-1 rounded-md p-1 text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent transition-colors"
+                        title="New Chat"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {showExplorerExpander && onNewLayout && (
+                      <button
+                        onClick={onNewLayout}
+                        className="mr-1 rounded-md p-1 text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent transition-colors"
+                        title="New Layout"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {showChatExpander && chatHistoryOpen && onSessionSelect && (
+                    <div className="ml-5 flex flex-col gap-0.5 overflow-y-auto py-1">
+                      {agentSessions.map((session) => (
+                        <SessionCard
+                          key={session.session_id}
+                          session={session}
+                          onSelect={onSessionSelect}
+                          onDeleted={onNewChat}
+                        />
+                      ))}
+                    </div>
                   )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {label}
-                </button>
+                  {showExplorerExpander && explorerHistoryOpen && onLayoutSelect && (
+                    <div className="ml-5 flex flex-col gap-0.5 overflow-y-auto py-1">
+                      <div
+                        className={cn(
+                          'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
+                          activeLayoutId === null
+                            ? 'bg-accent/80 text-accent-foreground'
+                            : 'hover:bg-muted/60',
+                        )}
+                        onClick={() => onLayoutSelect(null)}
+                      >
+                        {activeLayoutId === null && (
+                          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent-vibrant" />
+                        )}
+                        <span className={cn(
+                          'block truncate text-[13px] leading-tight pl-1',
+                          activeLayoutId === null ? 'font-semibold' : 'font-medium text-foreground',
+                        )}>
+                          Overview Dashboard
+                        </span>
+                      </div>
+                      <div
+                        className={cn(
+                          'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
+                          activeLayoutId === DASHBOARD_DEFAULT_ID
+                            ? 'bg-accent/80 text-accent-foreground'
+                            : 'hover:bg-muted/60',
+                        )}
+                        onClick={() => onLayoutSelect(DASHBOARD_DEFAULT_ID)}
+                      >
+                        {activeLayoutId === DASHBOARD_DEFAULT_ID && (
+                          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent-vibrant" />
+                        )}
+                        <span className={cn(
+                          'block truncate text-[13px] leading-tight pl-1',
+                          activeLayoutId === DASHBOARD_DEFAULT_ID ? 'font-semibold' : 'font-medium text-foreground',
+                        )}>
+                          Dashboard Default
+                        </span>
+                      </div>
+                      {agentLayouts?.map((layout) => (
+                        <LayoutCard
+                          key={layout.layout_id}
+                          layout={layout}
+                          isActive={activeLayoutId === layout.layout_id}
+                          onSelect={onLayoutSelect}
+                        />
+                      ))}
+                      {(!agentLayouts || agentLayouts.length === 0) && onNewLayout && (
+                        <div
+                          onClick={onNewLayout}
+                          className="mt-1 flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary/5 px-2 py-2 opacity-60 transition-all hover:opacity-100 hover:bg-primary/10"
+                        >
+                          <Plus className="h-3 w-3 text-primary" />
+                          <span className="text-[12px] font-medium text-primary">New Layout</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
 
           {/* Actions */}
-          {(activeAgent.status === 'executing' || canRun ||
-            (activeAgent.agent_type === 'recurring' && (activeAgent.status === 'monitoring' || activeAgent.status === 'paused')) ||
-            (activeAgent.agent_type !== 'recurring' && ['completed', 'approved'].includes(activeAgent.status))) && (
+          {(activeAgent.status === 'running' || canRun ||
+            (activeAgent.agent_type === 'recurring' && activeAgent.status !== 'running') ||
+            (activeAgent.agent_type !== 'recurring' && activeAgent.status === 'success')) && (
             <>
               <div className="mx-3 border-t border-border my-1" />
               <div className="flex flex-col gap-0.5 px-3 pb-2">
                 <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
                   Actions
                 </p>
-                {activeAgent.status === 'executing' && onStop && (
+                {activeAgent.status === 'running' && onStop && (
                   <button
                     onClick={onStop}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
@@ -377,19 +521,19 @@ export function AppSidebar({
                     )}
                   </button>
                 )}
-                {activeAgent.agent_type === 'recurring' && (activeAgent.status === 'monitoring' || activeAgent.status === 'paused') && onPauseResume && (
+                {activeAgent.agent_type === 'recurring' && activeAgent.status !== 'running' && onPauseResume && (
                   <button
                     onClick={onPauseResume}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
-                    {activeAgent.status === 'monitoring' ? (
+                    {!activeAgent.paused ? (
                       <><Pause className="h-4 w-4 shrink-0" />Pause</>
                     ) : (
                       <><Play className="h-4 w-4 shrink-0" />Resume</>
                     )}
                   </button>
                 )}
-                {activeAgent.agent_type !== 'recurring' && ['completed', 'approved'].includes(activeAgent.status) && onOpenSchedule && (
+                {activeAgent.agent_type !== 'recurring' && activeAgent.status === 'success' && onOpenSchedule && (
                   <button
                     onClick={onOpenSchedule}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

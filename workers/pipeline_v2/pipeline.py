@@ -73,6 +73,13 @@ def recover_stale_pipelines(max_age_minutes: int = 60) -> int:
                 except Exception:
                     pass
 
+            # Trigger agent continuation so the agent doesn't stay stuck in "executing"
+            try:
+                from workers.agent_continuation import check_agent_completion
+                check_agent_completion(cid)
+            except Exception:
+                logger.exception("Agent continuation check failed for recovered pipeline %s", cid)
+
             logger.warning(
                 "Recovered stale pipeline %s (was %s, posts=%d) → %s",
                 cid, entry["status"], posts_collected, status,

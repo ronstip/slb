@@ -2,13 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Archive,
   BarChart3,
   CalendarClock,
-  Check,
   CheckCircle2,
   Circle,
-  CircleDot,
   Clock,
   Compass,
   FileText,
@@ -16,12 +13,11 @@ import {
   Pause,
   Pencil,
   Play,
-  Radio,
   Repeat,
   StopCircle,
   Table2,
 } from 'lucide-react';
-import type { Agent, AgentStatus, AgentLogEntry } from '../../api/endpoints/agents.ts';
+import type { Agent, AgentStatus } from '../../api/endpoints/agents.ts';
 import { getAgent, runAgent, updateAgent as patchAgent, getAgentArtifacts, getAgentLogs } from '../../api/endpoints/agents.ts';
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
@@ -29,6 +25,7 @@ import type { Source } from '../../stores/sources-store.ts';
 import type { CollectionConfig } from '../../api/types.ts';
 import type { ArtifactListItem } from '../../api/endpoints/artifacts.ts';
 import { ARTIFACT_STYLES } from '../artifacts/artifact-utils.ts';
+import { AgentActivityLog } from './detail/AgentActivityLog.tsx';
 import { CollectionProgressCard } from '../chat/cards/CollectionProgressCard.tsx';
 import { StatsModal } from '../sources/StatsModal.tsx';
 import { TableModal } from '../sources/TableModal.tsx';
@@ -75,64 +72,20 @@ import {
 } from '../../lib/constants.ts';
 import type { SchedulePreset } from '../../lib/constants.ts';
 
-// --- Shared exports (used by AgentsPage table too) ---
-
-export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-  approved: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Approved', color: 'text-blue-500' },
-  executing: { icon: <Play className="h-3 w-3" />, label: 'Running', color: 'text-amber-500' },
-  completed: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Completed', color: 'text-green-500' },
-  monitoring: { icon: <Radio className="h-3 w-3" />, label: 'Monitoring', color: 'text-violet-500' },
-  paused: { icon: <Pause className="h-3 w-3" />, label: 'Paused', color: 'text-muted-foreground' },
-  archived: { icon: <Archive className="h-3 w-3" />, label: 'Archived', color: 'text-muted-foreground' },
-};
-
-export function StatusBadge({ status }: { status: AgentStatus }) {
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.approved;
-  return (
-    <Badge variant="outline" className={`gap-1 text-[10px] ${config.color}`}>
-      {config.icon}
-      {config.label}
-    </Badge>
-  );
-}
-
-export const RUNNABLE_STATUSES: AgentStatus[] = ['completed', 'monitoring', 'paused', 'approved', 'executing'];
-
-export function formatLastRun(updatedAt: string | null | undefined): string {
-  if (!updatedAt) return '\u2014';
-  const d = new Date(updatedAt);
-  const diffMs = Date.now() - d.getTime();
-  const diffH = Math.floor(diffMs / 3_600_000);
-  if (diffH < 1) return 'Just now';
-  if (diffH < 24) return `${diffH}h ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-// --- Internal helpers ---
-
-const STATUS_ACCENT: Record<string, string> = {
-  approved: 'bg-blue-500',
-  executing: 'bg-amber-500',
-  completed: 'bg-green-500',
-  monitoring: 'bg-violet-500',
-  paused: 'bg-muted-foreground/50',
-  archived: 'bg-muted-foreground/30',
-};
+// --- Re-export shared status utils (canonical source) ---
+export {
+  STATUS_CONFIG,
+  StatusBadge,
+  RUNNABLE_STATUSES,
+  STATUS_ACCENT,
+  formatLastRun,
+} from './detail/agent-status-utils.tsx';
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return null;
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function formatLogTime(iso: string) {
-  const d = new Date(iso);
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  if (diffMs < 60_000) return 'just now';
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
-  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
 
 function buildSourceForCollection(collectionId: string): Source {
   const stored = useSourcesStore.getState().sources.find((s) => s.collectionId === collectionId);
@@ -168,7 +121,6 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const [isStopping, setIsStopping] = useState(false);
   const [statsCollectionId, setStatsCollectionId] = useState<string | null>(null);
   const [tableCollectionId, setTableCollectionId] = useState<string | null>(null);
-  const [showAllLogs, setShowAllLogs] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [editPreset, setEditPreset] = useState<SchedulePreset>('daily');
   const [editTime, setEditTime] = useState('09:00');
@@ -204,7 +156,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
     enabled: open && !!task?.agent_id,
     refetchInterval: (query) => {
       const s = query.state.data?.status ?? task?.status;
-      return s === 'executing' ? 10_000 : false;
+      return s === 'running' ? 10_000 : false;
     },
   });
   const displayTask = freshTask ?? task;
@@ -223,7 +175,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
     enabled: open && !!task?.agent_id,
     refetchInterval: () => {
       const s = displayTask?.status;
-      return s === 'executing' ? 5_000 : false;
+      return s === 'running' ? 5_000 : false;
     },
   });
 
@@ -257,7 +209,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const handleStop = async () => {
     setIsStopping(true);
     try {
-      await patchAgent(displayTask.agent_id, { status: 'completed' });
+      await patchAgent(displayTask.agent_id, { status: 'success' });
       queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
     } catch {
@@ -279,7 +231,6 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
       };
       if (displayTask.agent_type !== 'recurring') {
         updates.agent_type = 'recurring';
-        updates.status = 'monitoring';
       }
       await patchAgent(displayTask.agent_id, updates as Parameters<typeof patchAgent>[1]);
       if (editRunNow) {
@@ -295,9 +246,9 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
 
   const handlePauseResume = async () => {
     setIsPauseToggling(true);
-    const newStatus = displayTask.status === 'monitoring' ? 'paused' : 'monitoring';
+    const newPaused = !displayTask.paused;
     try {
-      await patchAgent(displayTask.agent_id, { status: newStatus });
+      await patchAgent(displayTask.agent_id, { paused: newPaused } as Parameters<typeof patchAgent>[1]);
       queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
     } catch {
@@ -312,15 +263,12 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const endDate = displayTask.completed_at ? formatDate(displayTask.completed_at) : null;
   const timelineText = endDate
     ? `${startDate} \u2192 ${endDate}`
-    : displayTask.status === 'executing'
+    : displayTask.status === 'running'
       ? `${startDate} \u2014 Running`
-      : displayTask.status === 'monitoring'
-        ? `${startDate} \u2014 Monitoring`
-        : startDate;
+      : startDate;
 
   // Logs display
   const allLogs = logs ?? [];
-  const logsToShow = showAllLogs ? allLogs : allLogs.slice(0, 8);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -331,7 +279,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
         <div className="px-6 pt-5 pb-6">
           <SheetHeader className="space-y-1">
             <div className="flex items-center gap-2">
-              <StatusBadge status={displayTask.status} />
+              <StatusBadge status={displayTask.status} paused={displayTask.paused} />
               {displayTask.agent_type === 'recurring' && (
                 <Badge variant="outline" className="gap-1 text-[10px]">
                   <Repeat className="h-2.5 w-2.5" />recurring
@@ -377,7 +325,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                 {displayTask.schedule?.auto_report && (
                   <div className="text-[10px] text-muted-foreground">Auto-report enabled</div>
                 )}
-                {displayTask.next_run_at && displayTask.status === 'monitoring' && (
+                {displayTask.next_run_at && (
                   <div className="text-xs text-muted-foreground">
                     Next run: {new Date(displayTask.next_run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {new Date(displayTask.next_run_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
                   </div>
@@ -394,7 +342,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                 size="sm"
                 onClick={() => {
                   onOpenChange(false);
-                  navigate(`/session/${sessionIds[0]}`);
+                  navigate(`/agents/${displayTask.agent_id}?tab=chat&session=${sessionIds[0]}`);
                 }}
               >
                 <MessageSquare className="mr-1.5 h-3 w-3" />
@@ -415,7 +363,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                       key={sid}
                       onClick={() => {
                         onOpenChange(false);
-                        navigate(`/session/${sid}`);
+                        navigate(`/agents/${displayTask.agent_id}?tab=chat&session=${sid}`);
                       }}
                     >
                       {i === 0 ? 'Conversation' : `Conversation ${i + 1}`}
@@ -425,7 +373,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </DropdownMenu>
             ) : null}
 
-            {displayTask.status === 'executing' && (
+            {displayTask.status === 'running' && (
               <Button
                 size="sm"
                 variant="destructive"
@@ -437,7 +385,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </Button>
             )}
 
-            {canRun && displayTask.status !== 'executing' && (
+            {canRun && displayTask.status !== 'running' && (
               <Button
                 size="sm"
                 variant="outline"
@@ -452,14 +400,14 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </Button>
             )}
 
-            {displayTask.agent_type === 'recurring' && (displayTask.status === 'monitoring' || displayTask.status === 'paused') && (
+            {displayTask.agent_type === 'recurring' && displayTask.status !== 'running' && (
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handlePauseResume}
                 disabled={isPauseToggling}
               >
-                {displayTask.status === 'monitoring' ? (
+                {!displayTask.paused ? (
                   <><Pause className="mr-1.5 h-3 w-3" />Pause</>
                 ) : (
                   <><Play className="mr-1.5 h-3 w-3" />Resume</>
@@ -467,7 +415,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
               </Button>
             )}
 
-            {displayTask.agent_type !== 'recurring' && ['completed', 'approved'].includes(displayTask.status) && (
+            {displayTask.agent_type !== 'recurring' && displayTask.status === 'success' && (
               <Button
                 size="sm"
                 variant="outline"
@@ -558,7 +506,10 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                       className="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
                       onClick={() => {
                         onOpenChange(false);
-                        navigate(`/session/${artifact.session_id}`);
+                        navigate(artifact.session_id
+                          ? `/agents/${displayTask.agent_id}?tab=chat&session=${artifact.session_id}`
+                          : `/agents/${displayTask.agent_id}?tab=artifacts`
+                        );
                       }}
                     >
                       <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${style?.bg ?? 'bg-muted'}`}>
@@ -580,46 +531,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
           {/* Activity Logs */}
           <div className="mt-6">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Activity</h3>
-            {allLogs.length === 0 ? (
-              <p className="text-xs text-muted-foreground/50 italic">No activity recorded yet</p>
-            ) : (
-              <>
-                <div className="space-y-0.5">
-                  {logsToShow.map((log: AgentLogEntry, i: number) => {
-                    const isLatest = i === 0 && displayTask.status === 'executing';
-                    return (
-                      <div key={log.id} className="flex items-start gap-2 py-1">
-                        {isLatest ? (
-                          <CircleDot className="h-3 w-3 mt-0.5 shrink-0 animate-pulse text-accent-vibrant/70" />
-                        ) : (
-                          <Check className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/40" strokeWidth={2.5} />
-                        )}
-                        <span
-                          className={`text-xs leading-snug ${
-                            isLatest ? 'text-foreground font-medium' : 'text-muted-foreground/60'
-                          }`}
-                        >
-                          {log.message}
-                        </span>
-                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/40 tabular-nums">
-                          {formatLogTime(log.timestamp)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {allLogs.length > 8 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-1 text-xs"
-                    onClick={() => setShowAllLogs((v) => !v)}
-                  >
-                    {showAllLogs ? 'Show less' : `Show all ${allLogs.length}`}
-                  </Button>
-                )}
-              </>
-            )}
+            <AgentActivityLog logs={allLogs} isRunning={displayTask.status === 'running'} />
           </div>
 
           {/* Todos snapshot */}
@@ -678,7 +590,8 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Task overview</label>
               <div className="rounded-md bg-muted p-3 text-sm">
-                {displayTask.context_summary
+                {displayTask.context?.mission
+                  || displayTask.context_summary
                   || displayTask.title
                   + (displayTask.data_scope?.searches?.length
                     ? ` — ${displayTask.data_scope.searches.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`

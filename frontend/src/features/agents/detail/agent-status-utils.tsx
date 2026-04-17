@@ -1,33 +1,37 @@
 import {
+  AlertCircle,
   Archive,
   CheckCircle2,
   Pause,
   Play,
-  Radio,
 } from 'lucide-react';
-import type { AgentStatus } from '../../../api/endpoints/agents.ts';
+import type { Agent, AgentStatus } from '../../../api/endpoints/agents.ts';
 import { Badge } from '../../../components/ui/badge.tsx';
 
 export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-  approved: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Approved', color: 'text-blue-500' },
-  executing: { icon: <Play className="h-3 w-3" />, label: 'Running', color: 'text-amber-500' },
-  completed: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Completed', color: 'text-green-500' },
-  monitoring: { icon: <Radio className="h-3 w-3" />, label: 'Monitoring', color: 'text-violet-500' },
-  paused: { icon: <Pause className="h-3 w-3" />, label: 'Paused', color: 'text-muted-foreground' },
+  running: { icon: <Play className="h-3 w-3" />, label: 'Running', color: 'text-amber-500' },
+  success: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Completed', color: 'text-green-500' },
+  failed: { icon: <AlertCircle className="h-3 w-3" />, label: 'Failed', color: 'text-destructive' },
   archived: { icon: <Archive className="h-3 w-3" />, label: 'Archived', color: 'text-muted-foreground' },
 };
 
 export const STATUS_ACCENT: Record<string, string> = {
-  approved: 'bg-blue-500',
-  executing: 'bg-amber-500',
-  completed: 'bg-green-500',
-  monitoring: 'bg-violet-500',
-  paused: 'bg-muted-foreground/50',
+  running: 'bg-amber-500',
+  success: 'bg-green-500',
+  failed: 'bg-destructive',
   archived: 'bg-muted-foreground/30',
 };
 
-export function StatusBadge({ status }: { status: AgentStatus }) {
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.approved;
+export function StatusBadge({ status, paused }: { status: AgentStatus; paused?: boolean }) {
+  if (paused) {
+    return (
+      <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
+        <Pause className="h-3 w-3" />
+        Paused
+      </Badge>
+    );
+  }
+  const config = STATUS_CONFIG[status] || STATUS_CONFIG.running;
   return (
     <Badge variant="outline" className={`gap-1 text-[10px] ${config.color}`}>
       {config.icon}
@@ -36,7 +40,11 @@ export function StatusBadge({ status }: { status: AgentStatus }) {
   );
 }
 
-export const RUNNABLE_STATUSES: AgentStatus[] = ['completed', 'monitoring', 'paused', 'approved', 'executing'];
+export function AgentStatusBadge({ agent }: { agent: Agent }) {
+  return <StatusBadge status={agent.status} paused={agent.paused} />;
+}
+
+export const RUNNABLE_STATUSES: AgentStatus[] = ['success', 'failed'];
 
 export function formatLastRun(updatedAt: string | null | undefined): string {
   if (!updatedAt) return '\u2014';

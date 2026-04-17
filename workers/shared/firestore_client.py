@@ -25,7 +25,7 @@ class FirestoreClient:
             {
                 "user_id": user_id,
                 "org_id": org_id,
-                "status": "running",
+                "status": "pending",
                 "error_message": None,
                 "posts_collected": 0,
                 "posts_enriched": 0,
@@ -251,10 +251,11 @@ class FirestoreClient:
         now = datetime.now(timezone.utc)
         data.setdefault("created_at", now)
         data.setdefault("updated_at", now)
-        data.setdefault("status", "approved")
+        data.setdefault("status", "running")
         data.setdefault("collection_ids", [])
         data.setdefault("artifact_ids", [])
         data.setdefault("todos", [])
+        data.setdefault("version", 1)
         doc_ref.set(data)
         logger.info("Created agent %s", agent_id)
 
@@ -264,6 +265,7 @@ class FirestoreClient:
             return None
         data = doc.to_dict()
         data["agent_id"] = doc.id
+        data.setdefault("version", 1)
         for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
             if key in data and hasattr(data[key], "isoformat"):
                 data[key] = data[key].isoformat()
@@ -376,13 +378,13 @@ class FirestoreClient:
         return results
 
     def get_due_recurring_agents(self) -> list[dict]:
-        """Return recurring agents whose next_run_at is in the past and status is 'monitoring'."""
+        """Return recurring agents whose next_run_at is in the past and status is 'success' (not paused)."""
         now = datetime.now(timezone.utc)
         try:
             docs = (
                 self._db.collection("agents")
                 .where("agent_type", "==", "recurring")
-                .where("status", "==", "monitoring")
+                .where("status", "==", "success")
                 .stream()
             )
             due = []
@@ -390,6 +392,9 @@ class FirestoreClient:
                 data = doc.to_dict()
                 next_run_at = data.get("next_run_at")
                 if next_run_at is None:
+                    continue
+                # Skip paused agents
+                if data.get("paused"):
                     continue
                 if hasattr(next_run_at, "isoformat"):
                     if getattr(next_run_at, "tzinfo", None) is None:
@@ -404,7 +409,29 @@ class FirestoreClient:
 
     # --- Run methods (subcollection: agents/{agent_id}/runs/{run_id}) ---
 
-    def create_run(self, agent_id: str, trigger: str = "manual") -> str:
+    def create_agent_version(
+        self,
+        agent_id: str,
+        version: int,
+        snapshot: dict,
+        edited_by: str,
+    ) -> None:
+        """Write a version snapshot to agents/{agent_id}/versions/{version}."""
+        doc_ref = (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("versions")
+            .document(str(version))
+        )
+        doc_ref.set({
+            "version": version,
+            **snapshot,
+            "edited_by": edited_by,
+            "edited_at": datetime.now(timezone.utc),
+        })
+        logger.info("Created version %d for agent %s", version, agent_id)
+
+    def create_run(self, agent_id: str, trigger: str = "manual", agent_version: int = 1) -> str:
         """Create a new run document under the agent. Returns the run_id."""
         doc_ref = (
             self._db.collection("agents")
@@ -417,12 +444,13 @@ class FirestoreClient:
             "run_id": doc_ref.id,
             "status": "running",
             "trigger": trigger,
+            "agent_version": agent_version,
             "started_at": now,
             "completed_at": None,
             "collection_ids": [],
             "artifact_ids": [],
         })
-        logger.info("Created run %s for agent %s (trigger=%s)", doc_ref.id, agent_id, trigger)
+        logger.info("Created run %s for agent %s (trigger=%s, v%d)", doc_ref.id, agent_id, trigger, agent_version)
         return doc_ref.id
 
     def get_run(self, agent_id: str, run_id: str) -> dict | None:
@@ -476,6 +504,23 @@ class FirestoreClient:
         """Return the most recent run for an agent, or None."""
         runs = self.list_runs(agent_id, limit=1)
         return runs[0] if runs else None
+
+    def get_latest_briefing(self, agent_id: str) -> dict | None:
+        """Return the most recent briefing from a completed run, or None."""
+        docs = (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("runs")
+            .order_by("started_at", direction=firestore.Query.DESCENDING)
+            .limit(10)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            briefing = data.get("briefing")
+            if briefing:
+                return briefing
+        return None
 
     def add_run_collection(self, agent_id: str, run_id: str, collection_id: str) -> None:
         """Append a collection_id to a run's collection_ids array."""

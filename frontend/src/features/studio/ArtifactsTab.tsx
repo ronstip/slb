@@ -41,8 +41,12 @@ async function downloadPresentation(id: string, title: string) {
     const a = document.createElement('a');
     a.href = url;
     a.download = `${title.replace(/\s+/g, '_').slice(0, 60)}.pptx`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    // Delay revoke so the browser has time to start the download
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (err) {
     console.error('Failed to download presentation:', err);
   }

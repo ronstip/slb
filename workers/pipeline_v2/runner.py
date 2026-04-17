@@ -79,6 +79,14 @@ class PipelineRunner:
         status = self.fs.get_collection_status(self.collection_id)
         return (status or {}).get("agent_id")
 
+    def _check_agent_completion(self) -> None:
+        """Trigger agent continuation check if this collection belongs to an agent."""
+        try:
+            from workers.agent_continuation import check_agent_completion
+            check_agent_completion(self.collection_id)
+        except Exception:
+            logger.exception("Task continuation check failed for %s", self.collection_id)
+
     def _log_task(self, message: str, level: str = "info", metadata: dict | None = None) -> None:
         """Write to the parent agent's activity log (no-op if no agent_id)."""
         agent_id = self._get_agent_id()
@@ -99,11 +107,13 @@ class PipelineRunner:
         ACTIVE_STATUSES = {"running"}
         STALE_THRESHOLD_SEC = 300  # 5 minutes
 
-        status_doc = self.fs.get_collection_status(self.collection_id)
-        if not status_doc:
+        # Read raw Firestore doc (bypass status normalization that maps pending→running)
+        raw_doc = self.fs._db.collection("collection_status").document(self.collection_id).get()
+        if not raw_doc.exists:
             logger.warning("Pipeline lock: no status doc for %s — proceeding", self.collection_id)
             return True
 
+        status_doc = raw_doc.to_dict()
         current_status = status_doc.get("status", "")
 
         # Already finished — don't re-run
@@ -139,8 +149,8 @@ class PipelineRunner:
         self.fs.update_collection_status(self.collection_id, pipeline_run_id=run_id)
 
         # Re-read to verify we won the race (simple optimistic lock)
-        status_doc = self.fs.get_collection_status(self.collection_id)
-        actual_run_id = (status_doc or {}).get("pipeline_run_id")
+        raw_doc2 = self.fs._db.collection("collection_status").document(self.collection_id).get()
+        actual_run_id = (raw_doc2.to_dict() or {}).get("pipeline_run_id") if raw_doc2.exists else None
         if actual_run_id and actual_run_id != run_id:
             logger.info(
                 "Pipeline lock: %s claimed by another instance (our=%s, theirs=%s) — aborting",
@@ -201,6 +211,7 @@ class PipelineRunner:
         status = self.fs.get_collection_status(self.collection_id)
         if (status or {}).get("status") == "failed":
             logger.info("Pipeline %s cancelled", self.collection_id)
+            self._check_agent_completion()
             return
 
         if self._crawl_error and self._total_posts_collected == 0:
@@ -210,6 +221,7 @@ class PipelineRunner:
                 error_message=f"Crawl failed: {self._crawl_error[:500]}",
             )
             logger.error("Pipeline %s failed: crawl error with 0 posts", self.collection_id)
+            self._check_agent_completion()
             return
 
         # Reconcile counters (fixes drift from incremental updates)
@@ -223,11 +235,7 @@ class PipelineRunner:
         self._set_final_status()
 
         # Check if this collection is part of a task — trigger continuation if all done
-        try:
-            from workers.agent_continuation import check_agent_completion
-            check_agent_completion(self.collection_id)
-        except Exception:
-            logger.exception("Task continuation check failed for %s", self.collection_id)
+        self._check_agent_completion()
 
         # Cleanup post states (transient data)
         try:
@@ -274,6 +282,75 @@ class PipelineRunner:
         if raw_cf:
             self._custom_fields = [CustomFieldDef(**f) for f in raw_cf]
         self._enrichment_context = self._config.get("enrichment_context")
+
+    # ------------------------------------------------------------------
+    # Crawl recovery
+    # ------------------------------------------------------------------
+
+    def _seed_post_states_from_bq(self) -> None:
+        """Populate post states from existing BQ data when crawl is skipped.
+
+        This handles re-runs where data is already in BQ but post_states
+        were cleaned up. Reads posts from BQ and marks them as collected
+        so the processing loop can pick them up for enrichment/embedding.
+        """
+        # Only seed if no post states exist yet
+        if self.state_manager.get_total_posts() > 0:
+            logger.info("Post states already populated for %s, skipping seed", self.collection_id)
+            return
+
+        rows = self.bq.query(
+            "SELECT post_id, platform, post_url, title, content, media_refs "
+            "FROM social_listening.posts WHERE collection_id = @cid",
+            {"cid": self.collection_id},
+        )
+        if not rows:
+            logger.warning("No posts found in BQ for %s", self.collection_id)
+            return
+
+        # Dedup by post_id
+        seen: set[str] = set()
+        unique_rows = []
+        for r in rows:
+            if r["post_id"] not in seen:
+                seen.add(r["post_id"])
+                unique_rows.append(r)
+
+        # Convert to Post objects for mark_collected
+        posts = []
+        for r in unique_rows:
+            media_urls = []
+            raw_refs = r.get("media_refs")
+            if raw_refs:
+                if isinstance(raw_refs, str):
+                    raw_refs = json.loads(raw_refs)
+                for ref in raw_refs or []:
+                    if isinstance(ref, dict):
+                        url = ref.get("original_url", "")
+                        if url:
+                            media_urls.append(url)
+
+            posts.append(Post(
+                post_id=r["post_id"],
+                platform=r.get("platform", ""),
+                post_url=r.get("post_url", ""),
+                title=r.get("title"),
+                content=r.get("content"),
+                media_urls=media_urls,
+            ))
+
+        self.state_manager.mark_collected(posts)
+        self._total_posts_collected = len(posts)
+
+        self.fs.update_collection_status(
+            self.collection_id,
+            posts_collected=len(posts),
+        )
+
+        logger.info(
+            "Seeded %d post states from BQ for %s",
+            len(posts), self.collection_id,
+        )
 
     # ------------------------------------------------------------------
     # Crawl
@@ -323,6 +400,8 @@ class PipelineRunner:
                 "Crawl skipped for %s: %d snapshots already downloaded (data already in BQ)",
                 self.collection_id, downloaded_count,
             )
+            # Seed post states from BQ so the processing loop can pick them up
+            self._seed_post_states_from_bq()
             self._crawl_complete.set()
             return
 
@@ -605,7 +684,7 @@ class PipelineRunner:
                     # Don't crash the loop — posts will be re-picked up next iteration
                     continue
 
-                # Periodic progress log to task activity (every 30s)
+                # Periodic progress log to task activity (every 30s, skip duplicates)
                 now = _time.monotonic()
                 if now - last_progress_log > 30:
                     last_progress_log = now
@@ -613,11 +692,23 @@ class PipelineRunner:
                     done = counts.get("DONE", 0)
                     total = self.state_manager.get_total_posts()
                     enriched = counts.get("ENRICHED", 0) + done
+                    downloading = counts.get("COLLECTED_WITH_MEDIA", 0)
                     if total > 0:
-                        self._log_task(
-                            f"Processing: {enriched}/{total} posts enriched",
-                            metadata={"phase": "processing", "enriched": enriched, "total": total},
+                        # Update posts_enriched on collection_status so frontend shows progress
+                        self.fs.update_collection_status(
+                            self.collection_id, posts_enriched=enriched,
                         )
+                        # Build informative progress message
+                        parts = [f"{enriched}/{total} posts enriched"]
+                        if downloading > 0:
+                            parts.append(f"{downloading} downloading media")
+                        msg = f"Processing: {', '.join(parts)}"
+                        if not hasattr(self, "_last_progress_msg") or self._last_progress_msg != msg:
+                            self._last_progress_msg = msg
+                            self._log_task(
+                                msg,
+                                metadata={"phase": "processing", "enriched": enriched, "downloading": downloading, "total": total},
+                            )
 
                 # After download step, persist GCS URIs back to BQ (background — don't block loop)
                 if step.name == "download" and media_refs:
@@ -732,6 +823,9 @@ class PipelineRunner:
         # Log to task activity
         self._log_task(friendly, level="error")
 
+        # Trigger agent continuation so the agent doesn't stay stuck in "running"
+        self._check_agent_completion()
+
     # ------------------------------------------------------------------
     # Collection gates
     # ------------------------------------------------------------------
@@ -744,9 +838,17 @@ class PipelineRunner:
 
         logger.info("── Running collection gates for %s", self.collection_id)
 
-        # Update enrichment counts
+        # Update enrichment counts and log final tally
         try:
             update_enrichment_counts(self.collection_id)
+            cs = self.fs.get_collection_status(self.collection_id) or {}
+            enriched = cs.get("posts_enriched", 0)
+            total = cs.get("posts_collected", 0)
+            if total > 0:
+                self._log_task(
+                    f"Enrichment complete: {enriched}/{total} posts",
+                    metadata={"phase": "processing", "enriched": enriched, "total": total},
+                )
         except Exception:
             logger.exception("Failed to update enrichment counts for %s", self.collection_id)
 

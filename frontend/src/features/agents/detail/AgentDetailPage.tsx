@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router';
+import { useParams, useNavigate, useSearchParams, useBlocker } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAgentStore } from '../../../stores/agent-store.ts';
+import { useSessionStore } from '../../../stores/session-store.ts';
+import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { runAgent, updateAgent as patchAgent } from '../../../api/endpoints/agents.ts';
 import { useAgentDetail } from './useAgentDetail.ts';
+import { useAgentEditMode } from './useAgentEditMode.ts';
 import { AppSidebar } from '../../../components/AppSidebar.tsx';
 import type { DetailTab } from '../../../components/AppSidebar.tsx';
 import { ScheduleDialog } from './ScheduleDialog.tsx';
@@ -15,8 +18,18 @@ import { AgentCollectionsTab } from './tabs/AgentCollectionsTab.tsx';
 import { AgentArtifactsTab } from './tabs/AgentArtifactsTab.tsx';
 import { AgentExplorerTab } from './tabs/AgentExplorerTab.tsx';
 import { RUNNABLE_STATUSES } from './agent-status-utils.tsx';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'chat', 'collections', 'artifacts', 'explorer'];
+const VALID_TABS: DetailTab[] = ['overview', 'chat', 'data', 'artifacts', 'explorer'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -26,6 +39,11 @@ export function AgentDetailPage() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const fetchAgents = useAgentStore((s) => s.fetchAgents);
   const sidebarCollapsed = useUIStore((s) => s.sourcesPanelCollapsed);
+  const agentSessions = useSessionStore((s) => s.agentSessions);
+  const activeSessionId = useSessionStore((s) => s.activeSessionId);
+  const agentLayouts = useExplorerLayoutStore((s) => s.agentLayouts);
+  const activeLayoutId = useExplorerLayoutStore((s) => s.activeLayoutId);
+  const startInEditMode = useExplorerLayoutStore((s) => s.startInEditMode);
 
   const tabParam = searchParams.get('tab') as DetailTab | null;
   const activeTab: DetailTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'overview';
@@ -34,13 +52,55 @@ export function AgentDetailPage() {
     setSearchParams(tab === 'overview' ? {} : { tab }, { replace: true });
   };
 
+  const handleSessionSelect = (sessionId: string) => {
+    setSearchParams({ tab: 'chat', session: sessionId }, { replace: true });
+  };
+
+  const handleNewChat = () => {
+    setSearchParams({ tab: 'chat' }, { replace: true });
+    if (taskId) {
+      useSessionStore.getState().startNewAgentSession(taskId);
+    }
+  };
+
+  const handleLayoutSelect = (layoutId: string | null) => {
+    useExplorerLayoutStore.getState().selectLayout(layoutId);
+    setSearchParams({ tab: 'explorer' }, { replace: true });
+  };
+
+  const handleNewLayout = async () => {
+    if (!taskId) return;
+    try {
+      await useExplorerLayoutStore.getState().createLayout(taskId, 'Untitled Layout');
+      setSearchParams({ tab: 'explorer' }, { replace: true });
+    } catch {
+      toast.error('Failed to create layout');
+    }
+  };
+
   useEffect(() => {
     if (taskId) {
       useAgentStore.getState().loadAgent(taskId);
+      useSessionStore.getState().fetchAgentSessions(taskId);
+      useExplorerLayoutStore.getState().fetchAgentLayouts(taskId);
     }
   }, [taskId]);
 
   const { task, isLoading, artifacts, logs } = useAgentDetail(taskId);
+  const editMode = useAgentEditMode(task);
+
+  // Block navigation when there are unsaved edits
+  const blocker = useBlocker(editMode.isDirty);
+
+  // Browser tab close / refresh guard
+  useEffect(() => {
+    if (!editMode.isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [editMode.isDirty]);
 
   const handleRun = async () => {
     if (!task) return;
@@ -57,7 +117,7 @@ export function AgentDetailPage() {
   const handleStop = async () => {
     if (!task) return;
     try {
-      await patchAgent(task.agent_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'success' });
       toast.success('Agent stopped');
       queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       fetchAgents();
@@ -68,9 +128,9 @@ export function AgentDetailPage() {
 
   const handlePauseResume = async () => {
     if (!task) return;
-    const newStatus = task.status === 'monitoring' ? 'paused' : 'monitoring';
+    const newPaused = !task.paused;
     try {
-      await patchAgent(task.agent_id, { status: newStatus });
+      await patchAgent(task.agent_id, { paused: newPaused } as Parameters<typeof patchAgent>[1]);
       queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       fetchAgents();
     } catch {
@@ -105,7 +165,7 @@ export function AgentDetailPage() {
     );
   }
 
-  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'executing';
+  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
 
   return (
     <div className="flex h-screen bg-background">
@@ -124,6 +184,14 @@ export function AgentDetailPage() {
           onStop={handleStop}
           onPauseResume={handlePauseResume}
           onOpenSchedule={() => setScheduleOpen(true)}
+          agentSessions={agentSessions}
+          activeSessionId={activeSessionId}
+          onSessionSelect={handleSessionSelect}
+          onNewChat={handleNewChat}
+          agentLayouts={agentLayouts}
+          activeLayoutId={activeLayoutId}
+          onLayoutSelect={handleLayoutSelect}
+          onNewLayout={handleNewLayout}
         />
       </aside>
 
@@ -141,16 +209,46 @@ export function AgentDetailPage() {
               onRun={handleRun}
               onStop={handleStop}
               canRun={canRun}
+              isEditing={editMode.isEditing}
+              draft={editMode.draft}
+              isDirty={editMode.isDirty}
+              isSaving={editMode.isSaving}
+              onEnterEdit={editMode.enterEdit}
+              onSave={editMode.save}
+              onCancelEdit={editMode.cancel}
+              onUpdateDraft={editMode.updateDraft}
             />
           )}
           {activeTab === 'chat' && <AgentChatTab task={task} />}
-          {activeTab === 'collections' && <AgentCollectionsTab task={task} />}
+          {activeTab === 'data' && <AgentCollectionsTab task={task} />}
           {activeTab === 'artifacts' && <AgentArtifactsTab task={task} artifacts={artifacts} />}
-          {activeTab === 'explorer' && <AgentExplorerTab task={task} />}
+          {activeTab === 'explorer' && (
+            <AgentExplorerTab
+              task={task}
+              activeLayoutId={activeLayoutId}
+              startInEditMode={startInEditMode}
+            />
+          )}
         </main>
       </div>
 
       <ScheduleDialog task={task} open={scheduleOpen} onOpenChange={setScheduleOpen} />
+
+      {/* Unsaved changes confirmation dialog */}
+      <AlertDialog open={blocker.state === 'blocked'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved edits. Are you sure you want to leave? Your changes will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => blocker.reset?.()}>Stay</AlertDialogCancel>
+            <AlertDialogAction onClick={() => blocker.proceed?.()}>Leave</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

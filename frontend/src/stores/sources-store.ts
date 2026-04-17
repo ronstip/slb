@@ -29,8 +29,6 @@ interface SourcesStore {
   sources: Source[];
   selectedSourceIds: string[];
   pendingSelectedIds: string[] | null;
-  /** Collection IDs autonomously selected by the agent */
-  agentSelectedIds: string[];
   /**
    * Pending task/session links for collections not yet in the store.
    * Applied when the collection is first added via setSources.
@@ -50,8 +48,6 @@ interface SourcesStore {
   removeSource: (id: string) => void;
   selectByIds: (ids: string[]) => void;
   setSources: (sources: Source[]) => void;
-  /** Update agent-selected collections (from SSE context_update event) */
-  setAgentSelectedSources: (ids: string[]) => void;
   /**
    * Store a pending taskId+sessionId for a collection not yet in the store.
    * When the collection syncs in, it will be auto-added to the session with this link.
@@ -66,7 +62,6 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
     return get().sources.filter((s) => s.active).map((s) => s.collectionId);
   },
   pendingSelectedIds: null,
-  agentSelectedIds: [],
   pendingLinks: {},
 
   addSource: (source) =>
@@ -168,26 +163,10 @@ export const useSourcesStore = create<SourcesStore>((set, get) => ({
       return { sources: processedSources, pendingLinks: newPendingLinks };
     }),
 
-  setAgentSelectedSources: (ids) =>
-    set((s) => {
-      const idSet = new Set(ids);
-      return {
-        agentSelectedIds: ids,
-        sources: s.sources.map((src) => {
-          // Agent selections contribute to agent context (active) but don't
-          // force the collection into the session panel (selected stays unchanged).
-          if (idSet.has(src.collectionId) && !src.active) {
-            return { ...src, active: true };
-          }
-          return src;
-        }),
-      };
-    }),
-
   setPendingLink: (collectionId, taskId, sessionId) =>
     set((s) => ({
       pendingLinks: { ...s.pendingLinks, [collectionId]: { taskId, sessionId } },
     })),
 
-  reset: () => set({ sources: [], pendingSelectedIds: null, agentSelectedIds: [], pendingLinks: {} }),
+  reset: () => set({ sources: [], pendingSelectedIds: null, pendingLinks: {} }),
 }));

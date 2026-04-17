@@ -52,7 +52,7 @@ export function TaskSelector() {
   }, [agents.length, fetchAgents]);
 
   const visibleAgents = agents.filter((t) =>
-    ['approved', 'executing', 'completed', 'monitoring', 'paused'].includes(t.status),
+    ['running', 'success', 'failed'].includes(t.status),
   );
 
   if (visibleAgents.length === 0 && !activeAgent) return null;

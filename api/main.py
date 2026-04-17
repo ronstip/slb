@@ -43,6 +43,7 @@ from api.routers import admin as admin_router
 from api.routers import dashboard as dashboard_router
 from api.routers import dashboard_shares as dashboard_shares_router
 from api.routers import dashboard_layouts as dashboard_layouts_router
+from api.routers import explorer_layouts as explorer_layouts_router
 import csv
 import io
 
@@ -55,6 +56,7 @@ from api.schemas.responses import (
     BreakdownItem,
     CollectionStatsResponse,
     CollectionStatusResponse,
+    DailyVolumeItem,
     EngagementStats,
     FeedPostResponse,
     FeedResponse,
@@ -144,6 +146,7 @@ app.include_router(admin_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(dashboard_shares_router.router)
 app.include_router(dashboard_layouts_router.router)
+app.include_router(explorer_layouts_router.router)
 app.include_router(artifacts_router.router)
 app.include_router(topics_router.router)
 app.include_router(feed_links_router.router)
@@ -190,6 +193,7 @@ def get_runner(model: str | None = None) -> Runner:
         if _session_service is None:
             _session_service = FirestoreSessionService()
         _runners[model_key] = create_runner(
+            mode="chat",
             model_override=model if model != "default" else None,
             session_service=_session_service,
         )
@@ -325,6 +329,7 @@ def _build_user_context(user_id: str, org_id: str) -> dict:
                     "filename": tmpl.get("filename", "template.pptx"),
                     "gcs_path": tmpl.get("gcs_path", ""),
                     "uploaded_at": tmpl.get("uploaded_at", ""),
+                    "manifest": tmpl.get("manifest"),
                 }
 
         # Build lightweight agents index
@@ -527,7 +532,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "org_id": user.org_id,
                 "is_anonymous": user.is_anonymous,
                 "session_id": session_id,
-                "selected_sources": chat_request.selected_sources or [],
                 "session_title": "New Session",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "message_count": 0,
@@ -537,9 +541,12 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             },
         )
     else:
-        # Update selected_sources in session state
-        if chat_request.selected_sources is not None:
-            session.state["selected_sources"] = chat_request.selected_sources
+        # Always refresh identity from the current auth context so that
+        # access checks use the correct user even after account linking
+        # or session migration.
+        session.state["user_id"] = user_id
+        session.state["org_id"] = user.org_id
+        session.state["is_anonymous"] = user.is_anonymous
         # Always update theme preferences so they stay current
         if chat_request.accent_color:
             session.state["accent_color"] = chat_request.accent_color
@@ -575,6 +582,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             for key in (
                 "active_agent_id", "active_agent_title", "active_agent_status",
                 "active_agent_protocol", "active_agent_type", "active_agent_context_summary",
+                "active_agent_context", "active_agent_constitution", "active_agent_data_scope",
                 "todos", "tool_result_history",
                 "active_collection_id", "agent_selected_sources",
                 "collection_status", "collection_running",
@@ -582,6 +590,29 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "autonomous_mode", "continuation_mode",
             ):
                 session.state.pop(key, None)
+
+    # Auto-load agent context when agent_id is provided (e.g., chatting from agent page).
+    # This ensures the agent's identity, data scope, and collections are available
+    # from the very first message without requiring the LLM to call set_active_agent.
+    if chat_request.agent_id and not session.state.get("active_agent_id"):
+        _agent_doc = get_fs().get_agent(chat_request.agent_id)
+        if _agent_doc and (_agent_doc.get("user_id") == user_id or _agent_doc.get("org_id") == user.org_id):
+            _ds = _agent_doc.get("data_scope", {})
+            session.state["active_agent_id"] = chat_request.agent_id
+            session.state["active_agent_title"] = _agent_doc.get("title", "")
+            session.state["active_agent_status"] = _agent_doc.get("status", "")
+            session.state["active_agent_type"] = _agent_doc.get("agent_type", "one_shot")
+            session.state["active_agent_data_scope"] = _ds
+            session.state["active_agent_constitution"] = _agent_doc.get("constitution")
+            session.state["active_agent_context"] = _agent_doc.get("context")
+            _cids = _agent_doc.get("collection_ids", [])
+            session.state["agent_selected_sources"] = _cids
+            if _cids:
+                session.state["active_collection_id"] = _cids[0]
+            # Note: NOT loading todos from agent doc — those are from previous runs.
+            # Chat mode starts fresh; the agent creates todos as needed.
+            # Link session to agent so it appears in agent's session history
+            get_fs().add_agent_session(chat_request.agent_id, session_id)
 
     # Window conversation history by user-message boundaries to prevent
     # prior agent context from contaminating new requests.  Keep events from
@@ -607,10 +638,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
     # The before_model_callback reads from state only.
     _cid = session.state.get("active_collection_id")
     if not _cid:
-        _eff = list(dict.fromkeys(
-            (session.state.get("selected_sources") or []) +
-            (session.state.get("agent_selected_sources") or [])
-        ))
+        _eff = session.state.get("agent_selected_sources") or []
         _cid = _eff[0] if _eff else None
     if _cid:
         _live = get_fs().get_collection_status(_cid)
@@ -631,6 +659,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             session.state["ppt_template"] = {
                 "filename": _tmpl.get("filename", "template.pptx"),
                 "gcs_path": _tmpl.get("gcs_path", ""),
+                "manifest": _tmpl.get("manifest"),
             }
         else:
             session.state.pop("ppt_template", None)
@@ -742,24 +771,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         "event": et,
                         "data": json.dumps(event_data),
                     }
-
-                    # Emit context_update when agent changes its working set
-                    if et in ("tool_call", "tool_result"):
-                        tool_name = event_data.get("metadata", {}).get("name", "")
-                        if (
-                            et == "tool_result"
-                            and tool_name == "set_working_collections"
-                        ):
-                            result = event_data.get("metadata", {}).get("result", {})
-                            if result.get("status") == "success":
-                                yield {
-                                    "event": "context_update",
-                                    "data": json.dumps({
-                                        "event_type": "context_update",
-                                        "agent_selected_sources": result.get("active_collections", []),
-                                        "reason": result.get("reason", ""),
-                                    }),
-                                }
 
                     # Reset streaming flags after tool results so the next
                     # text/thinking segment (post-tool) streams fresh
@@ -1195,6 +1206,7 @@ def _signature_to_response(data: dict) -> CollectionStatsResponse:
         content_type_breakdown=[BreakdownItem(**x) for x in data.get("content_type_breakdown", [])],
         negative_sentiment_pct=data.get("negative_sentiment_pct"),
         total_posts_enriched=data.get("total_posts_enriched", 0),
+        daily_volume=[DailyVolumeItem(**x) for x in data.get("daily_volume", [])],
         engagement_summary=EngagementStats(**eng) if eng else EngagementStats(),
     )
 
@@ -1353,7 +1365,20 @@ async def get_multi_collection_feed(
 
     bq = get_bq()
 
-    where_clauses = ["p.collection_id IN UNNEST(@collection_ids)", "p._rn = 1"]
+    # Build posts subquery — always dedup within collection, then across collections by post_id
+    posts_subquery = """(
+        SELECT * FROM (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+                FROM social_listening.posts
+            ) sub
+            WHERE _rn = 1
+        ) deduped
+        WHERE _dedup_rn = 1
+    )"""
+
+    where_clauses = ["p.collection_id IN UNNEST(@collection_ids)"]
     params: dict = {"collection_ids": request.collection_ids}
 
     if request.platform != "all":
@@ -1365,9 +1390,10 @@ async def get_multi_collection_feed(
         params["sentiment"] = request.sentiment
 
     if request.has_media:
-        # Only posts where at least one media_ref has a GCS URI (permanent copy, not expired CDN URL)
+        # Posts where at least one media_ref has a usable URL (GCS URI or valid original URL)
         where_clauses.append(
-            "TO_JSON_STRING(p.media_refs) LIKE '%\"gs://%'"
+            "(TO_JSON_STRING(p.media_refs) LIKE '%\"gs://%' "
+            "OR TO_JSON_STRING(p.media_refs) LIKE '%\"original_url\":\"http%')"
         )
 
     # Topic cluster filter
@@ -1413,10 +1439,7 @@ async def get_multi_collection_feed(
         ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields,
         ep.context, ep.is_related_to_task, ep.detected_brands, ep.channel_type,
         COUNT(*) OVER() as _total
-    FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-        FROM social_listening.posts
-    ) p
+    FROM {posts_subquery} p
     LEFT JOIN (
         SELECT *,
                ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
@@ -1525,7 +1548,7 @@ async def create_agent_endpoint(
         schedule=request.get("schedule"),
         org_id=user.org_id,
         session_id=request.get("session_id"),
-        status=request.get("status", "approved"),
+        status=request.get("status", "running"),
     )
     return agent
 
@@ -1544,6 +1567,7 @@ async def create_from_wizard_endpoint(
     dispatches new collections from searches.
     """
     from api.services.agent_service import create_agent, dispatch_agent_run
+    from api.agent.workflow_template import build_workflow_template
 
     fs = get_fs()
 
@@ -1565,6 +1589,9 @@ async def create_from_wizard_endpoint(
             "auto_dashboard": body.auto_dashboard,
         }
 
+    # Generate workflow template from data_scope
+    todos = build_workflow_template(data_scope, body.agent_type)
+
     agent = create_agent(
         user_id=user.uid,
         title=body.title,
@@ -1572,7 +1599,10 @@ async def create_from_wizard_endpoint(
         data_scope=data_scope,
         schedule=schedule,
         org_id=user.org_id,
-        status="approved",
+        todos=todos,
+        status="running",
+        context=body.context,
+        constitution=body.constitution,
     )
     agent_id = agent["agent_id"]
 
@@ -1590,6 +1620,20 @@ async def create_from_wizard_endpoint(
         fs.update_collection_status(cid, agent_id=agent_id)
         attached_existing.append(cid)
 
+    # Attach collections from other agents
+    for src_agent_id in body.existing_agent_ids:
+        src_agent = fs.get_agent(src_agent_id)
+        if not src_agent:
+            continue
+        src_owner = src_agent.get("user_id")
+        src_org = src_agent.get("org_id")
+        if src_owner != user.uid and not (user.org_id and src_org == user.org_id):
+            continue
+        for cid in src_agent.get("collection_ids", []):
+            if cid not in attached_existing:
+                fs.add_agent_collection(agent_id, cid)
+                attached_existing.append(cid)
+
     # Dispatch new collections from searches
     run_id: str | None = None
     dispatched_ids: list[str] = []
@@ -1597,7 +1641,7 @@ async def create_from_wizard_endpoint(
         fresh_agent = fs.get_agent(agent_id) or agent
         run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent)
     elif attached_existing and body.agent_type == "one_shot":
-        fs.update_agent(agent_id, status="completed")
+        fs.update_agent(agent_id, status="success")
 
     all_ids = list(dict.fromkeys(attached_existing + dispatched_ids))
 
@@ -1605,7 +1649,7 @@ async def create_from_wizard_endpoint(
         "agent_id": agent_id,
         "run_id": run_id,
         "collection_ids": all_ids,
-        "status": "executing" if dispatched_ids else ("completed" if attached_existing else "approved"),
+        "status": "running" if dispatched_ids else ("success" if attached_existing else "running"),
     }
 
 
@@ -1712,7 +1756,7 @@ async def update_agent_endpoint(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Update an agent's fields."""
-    from api.services.agent_service import get_agent, update_agent
+    from api.services.agent_service import get_agent, update_agent, update_agent_with_version, VERSIONED_FIELDS
 
     agent = get_agent(agent_id)
     if not agent:
@@ -1723,7 +1767,7 @@ async def update_agent_endpoint(
     # Only allow safe fields to be updated
     allowed = {
         "title", "status", "protocol", "data_scope", "schedule",
-        "agent_type", "context_summary",
+        "agent_type", "context_summary", "context", "constitution", "paused", "todos",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
 
@@ -1747,7 +1791,12 @@ async def update_agent_endpoint(
                 fs.update_collection_status(cid, status="cancelled")
 
     if safe_updates:
-        update_agent(agent_id, **safe_updates)
+        # Use versioned update if any config fields changed
+        if VERSIONED_FIELDS & set(safe_updates.keys()):
+            new_version = update_agent_with_version(agent_id, user.uid, safe_updates)
+            return {"ok": True, "version": new_version}
+        else:
+            update_agent(agent_id, **safe_updates)
     return {"ok": True}
 
 
@@ -1779,7 +1828,7 @@ async def approve_agent_protocol(
         schedule=schedule,
         org_id=user.org_id,
         session_id=session_id,
-        status="approved",
+        status="running",
     )
     agent_id = agent["agent_id"]
 
@@ -1796,13 +1845,13 @@ async def approve_agent_protocol(
     elif not run_now and schedule and agent_type == "recurring":
         now = datetime.now(timezone.utc)
         next_run = compute_next_run_at(schedule.get("frequency"), now)
-        update_agent(agent_id, status="monitoring", next_run_at=next_run)
+        update_agent(agent_id, status="success", next_run_at=next_run)
 
     return {
         "agent_id": agent_id,
         "run_id": run_id,
         "collection_ids": collection_ids,
-        "status": "executing" if collection_ids else "approved",
+        "status": "running" if collection_ids else "running",
     }
 
 
@@ -1827,10 +1876,10 @@ async def run_agent_endpoint(
     if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # If agent says 'executing', check if it's actually stuck
-    if agent.get("status") == "executing":
+    # If agent says 'running', check if it's actually stuck
+    if agent.get("status") == "running":
         fs = get_fs()
-        terminal = {"success", "failed", "monitoring"}
+        terminal = {"success", "failed"}
         all_done = all(
             (fs.get_collection_status(cid) or {}).get("status") in terminal
             for cid in (agent.get("collection_ids") or [])
@@ -1839,7 +1888,19 @@ async def run_agent_endpoint(
             raise HTTPException(status_code=409, detail="Agent is already running")
 
     run_id, collection_ids = dispatch_agent_run(agent_id, agent)
-    return {"agent_id": agent_id, "run_id": run_id, "collection_ids": collection_ids, "status": "executing"}
+    return {"agent_id": agent_id, "run_id": run_id, "collection_ids": collection_ids, "status": "running"}
+
+
+@app.post("/agents/{agent_id}/refresh-context")
+async def refresh_agent_context(
+    agent_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Deprecated: Constitution is static — world awareness evolves through briefings.
+
+    Kept for backward compatibility with old frontend builds. Returns a no-op success.
+    """
+    return {"status": "deprecated", "message": "Constitution is static. World awareness evolves through the briefing system."}
 
 
 @app.get("/agents/{agent_id}/artifacts")
@@ -1891,7 +1952,7 @@ async def get_agent_logs(
         raise HTTPException(status_code=403, detail="Access denied")
 
     fs = get_fs()
-    return fs.get_agent_logs(agent_id, limit=min(limit, 200))
+    return fs.get_agent_logs(agent_id, limit=min(limit, 500))
 
 
 @app.get("/agents/{agent_id}/runs")
@@ -2069,7 +2130,7 @@ async def agent_continue(request: dict):
 
     # Check if the frontend already picked up the continuation
     agent = get_fs().get_agent(agent_id)
-    if agent and agent.get("status") not in ("awaiting_analysis",):
+    if agent and not (agent.get("status") == "running" and agent.get("continuation_ready")):
         logger.info("Agent %s: skipping continuation — status is %s (frontend likely handled it)", agent_id, agent.get("status"))
         return {"ok": True, "agent_id": agent_id, "skipped": True}
 
@@ -2190,6 +2251,14 @@ async def upload_ppt_template(
         logger.error("PPT template upload failed for user %s: %s", user.uid, e)
         raise HTTPException(status_code=500, detail="Failed to store template")
 
+    # Extract manifest from the template
+    manifest = None
+    try:
+        from api.utils.pptx_manifest import extract_manifest
+        manifest = extract_manifest(contents)
+    except Exception as e:
+        logger.warning("Failed to extract pptx manifest for user %s: %s", user.uid, e)
+
     # Persist template reference to user profile
     safe_filename = (file.filename or "template.pptx")[:120]
     template_ref = {
@@ -2197,6 +2266,8 @@ async def upload_ppt_template(
         "filename": safe_filename,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
+    if manifest:
+        template_ref["manifest"] = manifest
     try:
         fs = get_fs()
         fs.update_user(user.uid, ppt_template=template_ref)

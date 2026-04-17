@@ -1,5 +1,7 @@
-import { ArrowRight, CalendarClock, Loader2, Sparkles, Zap } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ArrowRight, CalendarClock, Loader2, Sparkles, Upload, X, Zap } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
+import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
 import { Switch } from '../../../components/ui/switch.tsx';
 import {
@@ -10,7 +12,6 @@ import {
   SelectValue,
 } from '../../../components/ui/select.tsx';
 import { SCHEDULE_UTC_TIMES } from '../../../lib/constants.ts';
-import type { SchedulePreset } from '../../../lib/constants.ts';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { cn } from '../../../lib/utils.ts';
 import type { PlanStatus, WizardAgentSettings } from './AgentCreationWizard.tsx';
@@ -25,15 +26,26 @@ interface AgentSettingsPanelProps {
   planStatus: PlanStatus;
 }
 
-const SCHEDULE_PRESETS: { value: SchedulePreset; label: string; description: string }[] = [
-  { value: 'hourly', label: 'Hourly', description: 'Every hour' },
-  { value: 'daily', label: 'Daily', description: 'Once a day' },
-  { value: 'weekly', label: 'Weekly', description: 'Once a week' },
-];
+const HOUR_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 48, 168];
 
 export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, isSubmitting, planStatus }: AgentSettingsPanelProps) {
+  const [emailInput, setEmailInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const update = (partial: Partial<WizardAgentSettings>) => {
     onChange({ ...settings, ...partial });
+  };
+
+  const addEmail = () => {
+    const trimmed = emailInput.trim();
+    if (trimmed && !settings.emailRecipients.includes(trimmed)) {
+      update({ emailRecipients: [...settings.emailRecipients, trimmed] });
+    }
+    setEmailInput('');
+  };
+
+  const removeEmail = (email: string) => {
+    update({ emailRecipients: settings.emailRecipients.filter((e) => e !== email) });
   };
 
   if (planStatus === 'idle' || planStatus === 'clarifying') {
@@ -162,26 +174,27 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
           <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
             <div>
               <Label className="text-xs font-medium text-muted-foreground mb-2 block">Frequency</Label>
-              <div className="flex gap-1.5">
-                {SCHEDULE_PRESETS.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => update({ schedulePreset: value })}
-                    className={cn(
-                      'rounded-full border px-3 py-1 text-xs font-medium transition-all',
-                      settings.schedulePreset === value
-                        ? 'border-primary/40 bg-primary/10 text-primary'
-                        : 'border-border/50 text-muted-foreground hover:border-border',
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Every</span>
+                <Select
+                  value={String(settings.scheduleIntervalHours)}
+                  onValueChange={(v) => update({ scheduleIntervalHours: Number(v) })}
+                >
+                  <SelectTrigger className="h-8 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HOUR_OPTIONS.map((h) => (
+                      <SelectItem key={h} value={String(h)}>
+                        {h < 24 ? `${h} hour${h > 1 ? 's' : ''}` : h === 24 ? '1 day' : h === 48 ? '2 days' : '1 week'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {settings.schedulePreset !== 'hourly' && (
+            {settings.scheduleIntervalHours >= 24 && (
               <div>
                 <Label className="text-xs font-medium text-muted-foreground mb-2 block">Run At (UTC)</Label>
                 <Select
@@ -217,26 +230,95 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm font-medium">Email</Label>
-              <p className="text-[11px] text-muted-foreground">Send findings via email</p>
+          <div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium">Email</Label>
+                <p className="text-[11px] text-muted-foreground">Send findings via email</p>
+              </div>
+              <Switch
+                checked={settings.autoEmail}
+                onCheckedChange={(checked) => update({ autoEmail: checked, ...(!checked && { emailRecipients: [] }) })}
+              />
             </div>
-            <Switch
-              checked={settings.autoEmail}
-              onCheckedChange={(checked) => update({ autoEmail: checked })}
-            />
+            {settings.autoEmail && (
+              <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="flex gap-1.5">
+                  <Input
+                    type="email"
+                    placeholder="Add email address"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
+                    className="h-7 text-xs flex-1"
+                  />
+                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={addEmail}>
+                    Add
+                  </Button>
+                </div>
+                {settings.emailRecipients.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {settings.emailRecipients.map((email) => (
+                      <span key={email} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px]">
+                        {email}
+                        <button type="button" onClick={() => removeEmail(email)} className="text-muted-foreground hover:text-foreground">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm font-medium">Slides</Label>
-              <p className="text-[11px] text-muted-foreground">Create a presentation deck</p>
+          <div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium">Slides</Label>
+                <p className="text-[11px] text-muted-foreground">Create a presentation deck</p>
+              </div>
+              <Switch
+                checked={settings.autoSlides}
+                onCheckedChange={(checked) => update({ autoSlides: checked, ...(!checked && { slidesTemplateFile: null }) })}
+              />
             </div>
-            <Switch
-              checked={settings.autoSlides}
-              onCheckedChange={(checked) => update({ autoSlides: checked })}
-            />
+            {settings.autoSlides && (
+              <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pptx"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    update({ slidesTemplateFile: file });
+                  }}
+                />
+                {settings.slidesTemplateFile ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-3 py-2">
+                    <Upload className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs truncate flex-1">{settings.slidesTemplateFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => { update({ slidesTemplateFile: null }); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-2.5 text-xs text-muted-foreground hover:border-border hover:text-foreground transition-colors"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Upload .pptx template (optional)
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between">

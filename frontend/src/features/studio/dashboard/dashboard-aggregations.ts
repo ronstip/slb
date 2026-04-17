@@ -1,4 +1,4 @@
-import type { DashboardPost } from '../../../api/types.ts';
+import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { CustomChartConfig, CustomDimension, WidgetData } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
@@ -214,7 +214,16 @@ export interface KpiItem {
   value: number;
 }
 
-export function computeKpis(posts: DashboardPost[]): KpiItem[] {
+export function computeKpis(posts: DashboardPost[], serverKpis?: DashboardKpis): KpiItem[] {
+  if (serverKpis) {
+    return [
+      { label: 'Total Posts', value: serverKpis.total_posts },
+      { label: 'Total Views', value: serverKpis.total_views },
+      { label: 'Total Likes', value: serverKpis.total_likes },
+      { label: 'Total Comments', value: serverKpis.total_comments },
+      { label: 'Total Shares', value: serverKpis.total_shares },
+    ];
+  }
   let views = 0;
   let likes = 0;
   let comments = 0;
@@ -345,7 +354,7 @@ export interface EnhancedKpi {
   sparklineData: number[];
 }
 
-export function computeEnhancedKpis(posts: DashboardPost[]): EnhancedKpi[] {
+export function computeEnhancedKpis(posts: DashboardPost[], serverKpis?: DashboardKpis): EnhancedKpi[] {
   // Group by date for sparklines
   const byDate = new Map<string, { posts: number; views: number; engagement: number }>();
   let totalViews = 0;
@@ -363,18 +372,25 @@ export function computeEnhancedKpis(posts: DashboardPost[]): EnhancedKpi[] {
     totalEngagement += eng;
   }
 
+  // Use server-side KPIs for totals when available (avoids truncation issues)
+  if (serverKpis) {
+    totalViews = serverKpis.total_views;
+    totalEngagement = serverKpis.total_likes + serverKpis.total_comments + serverKpis.total_shares;
+  }
+
   const sorted = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   // Downsample to max 30 points
   const step = Math.max(1, Math.floor(sorted.length / 30));
   const sampled = sorted.filter((_, i) => i % step === 0);
 
+  const totalPosts = serverKpis?.total_posts ?? posts.length;
   const engagementRate = totalViews > 0 ? Math.round((totalEngagement / totalViews) * 10000) / 100 : 0;
-  const avgEngPerPost = posts.length > 0 ? Math.round(totalEngagement / posts.length) : 0;
+  const avgEngPerPost = totalPosts > 0 ? Math.round(totalEngagement / totalPosts) : 0;
 
   return [
     {
       label: 'Total Posts',
-      value: posts.length,
+      value: totalPosts,
       icon: 'posts',
       sparklineData: sampled.map(([, v]) => v.posts),
     },

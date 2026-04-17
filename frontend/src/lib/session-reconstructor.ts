@@ -169,7 +169,7 @@ export function reconstructSession(
             rows: result.rows as DataExportRow[],
             rowCount: result.row_count as number,
             columnNames: result.column_names as string[],
-            sourceIds: (state.selected_sources as string[]) || [],
+            sourceIds: (state.agent_selected_sources as string[]) || [],
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
         } else if (isReportResult(toolName, result)) {
@@ -240,6 +240,6 @@ export function reconstructSession(
   return {
     messages,
     artifacts,
-    selectedSourceIds: (state.selected_sources as string[]) || [],
+    selectedSourceIds: (state.agent_selected_sources as string[]) || [],
   };
 }

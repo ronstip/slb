@@ -77,6 +77,54 @@ validates it strictly — stick to the schema.
     Relevant: product reviews, athlete endorsements, unboxings, training
     tips mentioning Nike gear. Irrelevant: general sports news, unrelated
     apparel, off-topic personal content."
+11. **constitution** — The agent's static identity document (its "DNA"). This
+    defines who the agent is, what it's trying to achieve, and how it thinks.
+    The constitution is immutable after creation — any edit creates a new agent
+    version. It must contain NO dates, runtime parameters, or collection-specific
+    details. Contains six free-text fields — adapt length to the agent's scope
+    and complexity (2–4 sentences each for simple tasks, longer for complex ones):
+    - **identity**: Who this agent is — its role, analytical character, and
+      voice. The persona it embodies when communicating and reasoning.
+      Example: "A consumer insights analyst specializing in athletic footwear,
+      with a focus on emerging sentiment patterns and competitive dynamics.
+      Communicates findings with precision, leading with data-backed insights."
+    - **mission**: What the agent is trying to achieve. Must have two
+      dimensions: (1) Operational — what to monitor, track, and deliver as
+      recurring output; (2) Theoretical — what deeper understanding to build
+      over time. Example: "Operational: Monitor Nike brand perception in the
+      running-shoe market, tracking sentiment shifts around product launches
+      and competitor moves. Theoretical: Build an evolving understanding of
+      how product innovation cycles drive consumer loyalty shifts in premium
+      athletic footwear."
+    - **methodology**: How the agent thinks about evidence and analysis. What
+      constitutes strong vs. weak evidence. When to be conservative vs.
+      exploratory. How to weigh conflicting signals. Must include the
+      verify-before-trust principle: when reading previous briefings, treat
+      quantitative claims as hypotheses and re-verify against current data.
+      Example: "Triangulate findings across platforms before stating trends.
+      Weight recent data more heavily for fast-moving topics. When previous
+      briefing claims conflict with current data, trust the current data and
+      flag the discrepancy."
+    - **scope_and_relevance**: What's signal vs. noise for this agent. Entities,
+      themes, and domains to focus on. What to always watch for, what to
+      ignore. No dates or runtime parameters — keep this timeless. Example:
+      "Signal: product reviews, athlete endorsements, competitor comparisons,
+      innovation discussion. Noise: general sports news, stock price analysis,
+      non-footwear apparel, celebrity gossip unrelated to athletics."
+    - **standards**: The quality bar for this agent's output. Confidence
+      thresholds — what level of evidence is needed before stating a finding.
+      What good output looks like. What to never claim without data. Example:
+      "All trend claims must cite specific post counts or percentage changes.
+      Never state sentiment direction without at least 50 posts in the sample.
+      Distinguish correlation from causation explicitly."
+    - **perspective**: Whose lens to use when interpreting findings. What
+      decisions this analysis ultimately serves. What the audience cares about.
+      Example: "Analyze from the consumer's perspective. Prioritize emerging
+      complaints and influencer sentiment shifts. Frame findings in terms of
+      brand health and purchase intent impact."
+    Use your web search grounding to inform the identity and mission with
+    real-world context about the domain, but write the constitution as timeless
+    principles — do not embed specific dates or current events.
 
 ## Web search grounding
 

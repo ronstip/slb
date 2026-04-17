@@ -4,13 +4,9 @@ import type { ArtifactListItem } from './artifacts.ts';
 // --- Types ---
 
 export type AgentStatus =
-  | 'approved'
-  | 'executing'
-  | 'awaiting_analysis'
-  | 'analyzing'
-  | 'completed'
-  | 'monitoring'
-  | 'paused'
+  | 'running'
+  | 'success'
+  | 'failed'
   | 'archived';
 
 export type AgentType = 'one_shot' | 'recurring';
@@ -36,6 +32,34 @@ export interface TodoItem {
   id: string;
   content: string;
   status: 'pending' | 'in_progress' | 'completed';
+  phase?: string;
+  automated?: boolean;
+  custom?: boolean;
+}
+
+/** @deprecated Use Constitution instead. */
+export interface AgentContext {
+  mission: string;
+  world_context: string;
+  relevance_boundaries: string;
+  analytical_lens: string;
+}
+
+export interface Constitution {
+  identity: string;
+  mission: string;
+  methodology: string;
+  scope_and_relevance: string;
+  standards: string;
+  perspective: string;
+}
+
+export interface Briefing {
+  state_of_the_world: string;
+  open_threads: string;
+  process_notes: string;
+  generated_at: string;
+  word_count: number;
 }
 
 export interface Agent {
@@ -48,7 +72,11 @@ export interface Agent {
   data_scope: {
     searches: SearchDef[];
     custom_fields?: Array<{ name: string; type: string; description: string }> | null;
+    enrichment_context?: string;
   };
+  context?: AgentContext;
+  constitution?: Constitution;
+  paused?: boolean;
   schedule: AgentSchedule | null;
   todos: TodoItem[];
   collection_ids: string[];
@@ -57,6 +85,7 @@ export interface Agent {
   updated_at: string;
   completed_at: string | null;
   next_run_at: string | null;
+  version?: number;
   session_ids?: string[];
   active_run_id?: string | null;
   context_summary?: string;
@@ -68,10 +97,12 @@ export interface AgentRun {
   run_id: string;
   status: 'running' | 'success' | 'failed';
   trigger: 'wizard' | 'manual' | 'scheduled';
+  agent_version?: number;
   started_at: string;
   completed_at: string | null;
   collection_ids: string[];
   artifact_ids: string[];
+  briefing?: Briefing | null;
 }
 
 // --- API Functions ---
@@ -96,9 +127,9 @@ export function createAgent(data: {
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type'>>,
-): Promise<{ ok: boolean }> {
-  return apiPatch<{ ok: boolean }>(`/agents/${agentId}`, updates);
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution'>>,
+): Promise<{ ok: boolean; version?: number }> {
+  return apiPatch<{ ok: boolean; version?: number }>(`/agents/${agentId}`, updates);
 }
 
 export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }> {
@@ -120,9 +151,12 @@ export interface CreateFromWizardPayload {
   schedule?: { frequency: string; frequency_label: string } | null;
   custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
   enrichment_context?: string;
-  existing_collection_ids?: string[];
+  context?: AgentContext;
+  constitution?: Constitution;
+  existing_agent_ids?: string[];
   auto_report?: boolean;
   auto_email?: boolean;
+  email_recipients?: string[];
   auto_slides?: boolean;
   auto_dashboard?: boolean;
 }
@@ -143,6 +177,12 @@ export function getAgentRun(agentId: string, runId: string): Promise<AgentRun> {
   return apiGet<AgentRun>(`/agents/${agentId}/runs/${runId}`);
 }
 
+// --- Agent Context ---
+
+export function refreshAgentContext(agentId: string): Promise<{ status: string; world_context: string }> {
+  return apiPost<{ status: string; world_context: string }>(`/agents/${agentId}/refresh-context`, {});
+}
+
 // --- Agent Artifacts ---
 
 export function getAgentArtifacts(agentId: string): Promise<ArtifactListItem[]> {
@@ -151,13 +191,31 @@ export function getAgentArtifacts(agentId: string): Promise<ArtifactListItem[]> 
 
 // --- Agent Activity Logs ---
 
+/** Structured entry_type values emitted by autonomous agent execution. */
+export type AgentLogEntryType =
+  | 'tool_start'
+  | 'tool_complete'
+  | 'tool_error'
+  | 'thinking'
+  | 'text'
+  | 'todo_update';
+
 export interface AgentLogEntry {
   id: string;
   message: string;
   level: 'info' | 'warning' | 'error';
   source: string;
   timestamp: string;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    entry_type?: AgentLogEntryType;
+    tool_name?: string;
+    description?: string;
+    duration_ms?: number;
+    error?: string;
+    full_text?: string;
+    todos?: Array<{ id: string; content: string; status: string }>;
+    [key: string]: unknown;
+  };
 }
 
 export function getAgentLogs(agentId: string, limit = 50): Promise<AgentLogEntry[]> {

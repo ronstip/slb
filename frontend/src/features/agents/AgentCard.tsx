@@ -62,6 +62,7 @@ import { toast } from 'sonner';
 interface TaskCardProps {
   task: Agent;
   compact?: boolean;
+  skipThumbnails?: boolean;
   onClick?: () => void;
 }
 
@@ -87,14 +88,19 @@ function ThumbnailGrid({ collectionIds, compact }: { collectionIds: string[]; co
   });
 
   const posts = data?.posts ?? [];
-  // Only use refs with a gcs_uri — original CDN URLs (especially TikTok) expire quickly
+  // Prefer refs with gcs_uri (permanent), fall back to original_url (may expire but better than nothing)
   const candidates = posts
     .flatMap((p) => {
       const refs = p.media_refs ?? [];
       const imageRef =
-        refs.find((r) => r.media_type === 'image' && r.gcs_uri) ?? refs.find((r) => r.gcs_uri);
-      if (!imageRef?.gcs_uri) return [];
-      return [mediaUrl(imageRef.gcs_uri, imageRef.original_url)];
+        refs.find((r) => r.media_type === 'image' && r.gcs_uri) ??
+        refs.find((r) => r.gcs_uri) ??
+        refs.find((r) => r.media_type === 'image' && r.original_url) ??
+        refs.find((r) => r.original_url);
+      if (!imageRef) return [];
+      const url = mediaUrl(imageRef.gcs_uri, imageRef.original_url);
+      if (!url) return [];
+      return [url];
     })
     .slice(0, maxImages);
 
@@ -133,7 +139,7 @@ function ThumbnailGrid({ collectionIds, compact }: { collectionIds: string[]; co
   );
 }
 
-export function AgentCard({ task, compact, onClick }: TaskCardProps) {
+export function AgentCard({ task, compact, skipThumbnails, onClick }: TaskCardProps) {
   const navigate = useNavigate();
   const fetchAgents = useAgentStore((s) => s.fetchAgents);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -168,7 +174,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
   const handleStop = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await patchAgent(task.agent_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'success' });
       toast.success('Agent stopped');
       fetchAgents();
     } catch {
@@ -178,9 +184,9 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
 
   const handlePauseResume = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const newStatus = task.status === 'monitoring' ? 'paused' : 'monitoring';
+    const newPaused = !task.paused;
     try {
-      await patchAgent(task.agent_id, { status: newStatus });
+      await patchAgent(task.agent_id, { paused: newPaused } as Parameters<typeof patchAgent>[1]);
       fetchAgents();
     } catch {
       toast.error('Failed to update agent');
@@ -203,7 +209,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
 
   const handleRestore = async () => {
     try {
-      await patchAgent(task.agent_id, { status: 'completed' });
+      await patchAgent(task.agent_id, { status: 'success' });
       fetchAgents();
       toast.success('Agent restored');
     } catch {
@@ -233,7 +239,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
     }
   };
 
-  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'executing';
+  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
   const hasArtifacts = (task.artifact_ids?.length ?? 0) > 0;
   const hasCollections = (task.collection_ids?.length ?? 0) > 0;
 
@@ -243,7 +249,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
         className="group flex flex-col rounded-xl border bg-card overflow-hidden transition-all hover:border-primary/30 hover:shadow-md cursor-pointer"
         onClick={() => handleOpen()}
       >
-        <ThumbnailGrid collectionIds={task.collection_ids} compact={compact} />
+        {!skipThumbnails && <ThumbnailGrid collectionIds={task.collection_ids} compact={compact} />}
 
         <div className={cn('flex flex-1 flex-col', compact ? 'p-3' : 'p-4')}>
           <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -253,7 +259,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}>
               {task.title}
             </h3>
-            <StatusBadge status={task.status} />
+            <StatusBadge status={task.status} paused={task.paused} />
           </div>
 
           {/* Meta info — hidden in compact mode */}
@@ -313,7 +319,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}
 
             {/* Stop */}
-            {task.status === 'executing' && (
+            {task.status === 'running' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleStop}>
@@ -325,14 +331,14 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}
 
             {/* Pause / Resume */}
-            {task.agent_type === 'recurring' && (task.status === 'monitoring' || task.status === 'paused') && (
+            {task.agent_type === 'recurring' && task.status !== 'running' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePauseResume}>
-                    {task.status === 'monitoring' ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                    {!task.paused ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{task.status === 'monitoring' ? 'Pause' : 'Resume'}</TooltipContent>
+                <TooltipContent>{!task.paused ? 'Pause' : 'Resume'}</TooltipContent>
               </Tooltip>
             )}
 
@@ -352,7 +358,7 @@ export function AgentCard({ task, compact, onClick }: TaskCardProps) {
             )}
 
             {/* Schedule (one-time tasks that completed/approved) */}
-            {task.agent_type !== 'recurring' && ['completed', 'approved'].includes(task.status) && (
+            {task.agent_type !== 'recurring' && task.status === 'success' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {

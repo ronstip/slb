@@ -137,8 +137,9 @@ def start_agent(
     if not user_id:
         return {"status": "error", "message": "No authenticated user in session"}
 
-    # Snapshot current todos
-    todos_snapshot = state.get("todos", [])
+    # Build workflow template from data_scope
+    from api.agent.workflow_template import build_workflow_template
+    todos = build_workflow_template(data_scope, agent_type)
 
     # Create agent
     from api.deps import get_fs
@@ -151,8 +152,8 @@ def start_agent(
         data_scope=data_scope,
         schedule=schedule_obj,
         org_id=org_id,
-        todos=todos_snapshot,
-        status="approved",
+        todos=todos,
+        status="running",
     )
     agent_id = agent["agent_id"]
     fs = get_fs()
@@ -187,7 +188,7 @@ def start_agent(
         run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent, trigger="manual")
     elif attached_existing:
         if agent_type == "one_shot":
-            fs.update_agent(agent_id, status="completed")
+            fs.update_agent(agent_id, status="success")
 
     all_ids = list(dict.fromkeys(attached_existing + dispatched_ids))
     n_new = len(dispatched_ids)

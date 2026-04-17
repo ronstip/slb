@@ -8,10 +8,12 @@ import { useAgentStore } from '../../../stores/agent-store.ts';
 import { planWizard } from '../../../api/endpoints/wizard.ts';
 import { createAgentFromWizard } from '../../../api/endpoints/agents.ts';
 import type { CustomFieldDef, WizardClarification, WizardPlan } from '../../../api/types.ts';
+import type { Constitution } from '../../../api/endpoints/agents.ts';
 import { DescribePanel } from './DescribePanel.tsx';
 import { CollectionSettingsPanel } from './CollectionSettingsPanel.tsx';
 import { AgentSettingsPanel } from './AgentSettingsPanel.tsx';
 import { buildWizardRequestBody } from './wizard-utils.ts';
+import { EMPTY_CONSTITUTION } from './AgentContextEditor.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import {
   Tooltip,
@@ -29,7 +31,7 @@ export interface WizardCollectionSettings {
   timeRangeDays: number;
   geoScope: string;
   nPosts: number;
-  existingCollectionIds: string[];
+  existingAgentIds: string[];
   newCollectionEnabled: boolean;
   customFields: CustomFieldDef[];
   enrichmentContext: string;
@@ -38,12 +40,14 @@ export interface WizardCollectionSettings {
 
 export interface WizardAgentSettings {
   taskType: 'one_shot' | 'recurring';
-  schedulePreset: 'hourly' | 'daily' | 'weekly';
+  scheduleIntervalHours: number;
   scheduleTime: string;
   autoReport: boolean;
   autoEmail: boolean;
   autoSlides: boolean;
   autoDashboard: boolean;
+  emailRecipients: string[];
+  slidesTemplateFile: File | null;
 }
 
 const DEFAULT_COLLECTION: WizardCollectionSettings = {
@@ -53,7 +57,7 @@ const DEFAULT_COLLECTION: WizardCollectionSettings = {
   timeRangeDays: 90,
   geoScope: 'global',
   nPosts: 500,
-  existingCollectionIds: [],
+  existingAgentIds: [],
   newCollectionEnabled: true,
   customFields: [],
   enrichmentContext: '',
@@ -62,18 +66,21 @@ const DEFAULT_COLLECTION: WizardCollectionSettings = {
 
 const DEFAULT_AGENT: WizardAgentSettings = {
   taskType: 'one_shot',
-  schedulePreset: 'daily',
+  scheduleIntervalHours: 24,
   scheduleTime: '09:00',
   autoReport: true,
   autoEmail: false,
   autoSlides: false,
   autoDashboard: false,
+  emailRecipients: [],
+  slidesTemplateFile: null,
 };
 
-function mapFrequencyToPreset(freq: 'hourly' | 'daily' | 'weekly' | 'monthly'): 'hourly' | 'daily' | 'weekly' {
-  if (freq === 'hourly') return 'hourly';
-  if (freq === 'weekly' || freq === 'monthly') return 'weekly';
-  return 'daily';
+function mapFrequencyToIntervalHours(freq: 'hourly' | 'daily' | 'weekly' | 'monthly'): number {
+  if (freq === 'hourly') return 1;
+  if (freq === 'weekly') return 168;
+  if (freq === 'monthly') return 720;
+  return 24;
 }
 
 export function AgentCreationWizard() {
@@ -96,10 +103,11 @@ export function AgentCreationWizard() {
   const [collectionSettings, setCollectionSettings] =
     useState<WizardCollectionSettings>(DEFAULT_COLLECTION);
   const [taskSettings, setTaskSettings] = useState<WizardAgentSettings>(DEFAULT_AGENT);
+  const [constitution, setConstitution] = useState<Constitution>({ ...EMPTY_CONSTITUTION });
 
   const isStale = planStatus === 'ready' && description.trim() !== descriptionAtPlanTime;
 
-  const hasExisting = collectionSettings.existingCollectionIds.length > 0;
+  const hasExisting = collectionSettings.existingAgentIds.length > 0;
   const hasNew =
     collectionSettings.newCollectionEnabled && collectionSettings.platforms.length > 0;
   const canSubmit =
@@ -120,7 +128,7 @@ export function AgentCreationWizard() {
       timeRangeDays: nc?.time_range_days ?? 90,
       geoScope: nc?.geo_scope ?? 'global',
       nPosts: nc?.n_posts ?? 500,
-      existingCollectionIds: plan.existing_collection_ids ?? [],
+      existingAgentIds: [],
       newCollectionEnabled: nc !== null,
       customFields: plan.custom_fields ?? [],
       enrichmentContext: plan.enrichment_context ?? '',
@@ -129,13 +137,36 @@ export function AgentCreationWizard() {
 
     setTaskSettings({
       taskType: plan.agent_type,
-      schedulePreset: plan.schedule ? mapFrequencyToPreset(plan.schedule.frequency) : 'daily',
+      scheduleIntervalHours: plan.schedule ? mapFrequencyToIntervalHours(plan.schedule.frequency) : 24,
       scheduleTime: plan.schedule?.time ?? '09:00',
       autoReport: plan.auto_report,
       autoEmail: plan.auto_email ?? false,
       autoSlides: plan.auto_slides ?? false,
       autoDashboard: plan.auto_dashboard ?? false,
+      emailRecipients: [],
+      slidesTemplateFile: null,
     });
+
+    if (plan.constitution) {
+      setConstitution({
+        identity: plan.constitution.identity ?? '',
+        mission: plan.constitution.mission ?? '',
+        methodology: plan.constitution.methodology ?? '',
+        scope_and_relevance: plan.constitution.scope_and_relevance ?? '',
+        standards: plan.constitution.standards ?? '',
+        perspective: plan.constitution.perspective ?? '',
+      });
+    } else if (plan.context) {
+      // Backward compat: old plans may still return context
+      setConstitution({
+        identity: plan.context.world_context ?? '',
+        mission: plan.context.mission ?? '',
+        methodology: '',
+        scope_and_relevance: plan.context.relevance_boundaries ?? '',
+        standards: '',
+        perspective: plan.context.analytical_lens ?? '',
+      });
+    }
   };
 
   const handleContinue = async () => {
@@ -175,7 +206,7 @@ export function AgentCreationWizard() {
 
     setIsSubmitting(true);
     try {
-      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle);
+      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle, constitution);
       const result = await createAgentFromWizard(body);
 
       // Add new collection IDs to sources store

@@ -81,7 +81,8 @@ export function StatsTab() {
   }, [response?.posts, collectionFilter]);
 
   // Aggregations
-  const kpis = useMemo(() => computeKpis(posts), [posts]);
+  const serverKpis = collectionFilter.length === 0 ? response?.kpis : undefined;
+  const kpis = useMemo(() => computeKpis(posts, serverKpis), [posts, serverKpis]);
   const sentiment = useMemo(() => aggregateSentiment(posts), [posts]);
   const volume = useMemo(() => filterLast7Days(aggregateVolume(posts)), [posts]);
   const platforms = useMemo(() => aggregatePlatforms(posts), [posts]);

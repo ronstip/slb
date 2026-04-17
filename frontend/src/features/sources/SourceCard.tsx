@@ -15,7 +15,6 @@ import {
   Loader2,
   LogOut,
   MoreHorizontal,
-  Sparkles,
   Table2,
   Trash2,
   Users,
@@ -74,7 +73,6 @@ export function SourceCard({ source }: SourceCardProps) {
   const isOwner = !source.userId || source.userId === profile?.uid;
   const isInOrg = !!profile?.org_id;
   const isShared = source.visibility === 'org';
-  const isAgentSelected = useSourcesStore((s) => s.agentSelectedIds.includes(source.collectionId));
 
   const platforms = source.config.platforms
     .map((p) => PLATFORM_LABELS[p] || p)
@@ -199,12 +197,6 @@ export function SourceCard({ source }: SourceCardProps) {
             >
               {source.title}
             </span>
-            {isAgentSelected && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-violet-500/10 px-1 py-px" title="Selected by agent">
-                <Sparkles className="h-2.5 w-2.5 text-violet-500" />
-                <span className="text-[8px] font-semibold uppercase tracking-wider text-violet-500">AI</span>
-              </span>
-            )}
             {isShared && <Globe className="h-3 w-3 shrink-0 text-accent-blue" />}
           </div>
 

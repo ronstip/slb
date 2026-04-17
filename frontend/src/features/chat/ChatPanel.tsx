@@ -9,7 +9,6 @@ import { MessageList } from './MessageList.tsx';
 import { MessageInput } from './MessageInput.tsx';
 import { WelcomeScreen } from './WelcomeScreen.tsx';
 import { TaskSelector } from './TaskSelector.tsx';
-import { CollectionSelector } from './CollectionSelector.tsx';
 import { StructuredPromptPanel } from './StructuredPromptPanel.tsx';
 import { TaskProgressPill } from './TaskProgressPill.tsx';
 
@@ -52,7 +51,7 @@ export function ChatPanel({ hideHeader }: { hideHeader?: boolean } = {}) {
     const TERMINAL = new Set(['success', 'failed']);
 
     for (const task of tasks) {
-      if (task.status !== 'awaiting_analysis') continue;
+      if (task.status !== 'running') continue;
       if (!task.session_ids?.includes(sessionId)) continue;
 
       // Verify all collections are terminal
@@ -81,7 +80,6 @@ export function ChatPanel({ hideHeader }: { hideHeader?: boolean } = {}) {
       {/* Top bar — collection + task selectors */}
       {!hideHeader && (
         <div className="flex shrink-0 items-center gap-2 px-4 py-2">
-          <CollectionSelector />
           <TaskSelector />
         </div>
       )}

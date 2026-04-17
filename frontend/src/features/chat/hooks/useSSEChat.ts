@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
+import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
@@ -12,7 +13,7 @@ import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChart
 import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
 
 // Tools that are internal plumbing — skip from activity log
-const INTERNAL_TOOLS = new Set(['update_todos', 'set_working_collections']);
+const INTERNAL_TOOLS = new Set(['update_todos']);
 
 /** Extract a short description from tool_call args for display below the header. */
 function getToolDescription(toolName: string, args: Record<string, unknown>): string | undefined {
@@ -82,10 +83,6 @@ export function useSSEChat() {
       const messageId = cs.startAgentMessage();
       activeMessageRef.current = messageId;
 
-      const selectedSources = useSourcesStore.getState().sources
-        .filter((s) => s.active)
-        .map((s) => s.collectionId);
-
       let createdTaskId: string | undefined;
 
       try {
@@ -97,7 +94,7 @@ export function useSSEChat() {
           {
             message: text,
             session_id: cs.sessionId ?? undefined,
-            selected_sources: selectedSources,
+            agent_id: useAgentStore.getState().activeAgentId ?? undefined,
             is_system: opts?.isSystem,
             accent_color: accentColor,
             theme: resolvedTheme,
@@ -140,25 +137,6 @@ export function useSSEChat() {
 
             // Removed marker-based events (status, intent, suggestions).
             // Native Gemini thinking replaces markers; tools handle the rest.
-
-            case 'context_update': {
-              // Agent changed its working collection set — validate IDs exist
-              try {
-                const sourcesState = useSourcesStore.getState();
-                const knownIds = new Set(sourcesState.sources.map((s) => s.collectionId));
-                const validIds = (event.agent_selected_sources ?? []).filter((id: string) => {
-                  if (!knownIds.has(id)) {
-                    console.warn(`[context_update] Unknown collection ID from agent: ${id}`);
-                    return false;
-                  }
-                  return true;
-                });
-                sourcesState.setAgentSelectedSources(validIds);
-              } catch (err) {
-                console.error('[context_update] Failed to process agent context update:', err);
-              }
-              break;
-            }
 
             case 'tool_call': {
               const toolName = event.metadata.name;
@@ -233,7 +211,7 @@ export function useSSEChat() {
                   rows: result.rows as DataExportRow[],
                   rowCount: result.row_count as number,
                   columnNames: result.column_names as string[],
-                  sourceIds: selectedSources,
+                  sourceIds: useAgentStore.getState().activeAgent?.collection_ids ?? [],
                   createdAt: new Date(),
                 });
                 // Open studio panel, switch to artifacts, expand the export
@@ -308,7 +286,7 @@ export function useSSEChat() {
                     const sourcesState = useSourcesStore.getState();
                     const alreadyInStore = sourcesState.sources.some((s) => s.collectionId === cid);
                     if (alreadyInStore) {
-                      sourcesState.addToSession(cid);
+                      sourcesState.updateSource(cid, { selected: true, active: true });
                       if (taskId) {
                         sourcesState.updateSource(cid, { taskId, sessionId: currentSessionId });
                       }
@@ -393,6 +371,11 @@ export function useSSEChat() {
                 // the current page — AgentHome will show a ChatPanel for interaction.
               } else if (createdTaskId) {
                 navigate(`/agents/${createdTaskId}?tab=chat`);
+              }
+              // Refresh agent session list so the new/updated session appears in sidebar
+              const agentId = useAgentStore.getState().activeAgentId;
+              if (agentId) {
+                sessionStore.fetchAgentSessions(agentId);
               }
               break;
             }

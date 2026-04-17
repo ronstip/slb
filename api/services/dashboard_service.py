@@ -34,9 +34,17 @@ SELECT
     COALESCE(pe.comments_count, 0) AS comment_count,
     COALESCE(pe.shares, 0) AS share_count
 FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-    FROM social_listening.posts
+    SELECT * FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+            FROM social_listening.posts
+        ) sub
+        WHERE _rn = 1
+    ) deduped
+    WHERE _dedup_rn = 1
 ) p
 LEFT JOIN (
     SELECT *,
@@ -48,8 +56,37 @@ LEFT JOIN (
            ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn
     FROM social_listening.post_engagements
 ) pe ON p.post_id = pe.post_id AND pe.rn = 1
-WHERE p.collection_id IN UNNEST(@collection_ids) AND p._rn = 1
+WHERE p.collection_id IN UNNEST(@collection_ids)
 LIMIT {max_rows}
+"""
+
+DASHBOARD_KPIS_SQL = """
+WITH deduped_posts AS (
+    SELECT * FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+            FROM social_listening.posts
+        ) sub
+        WHERE _rn = 1
+    ) deduped
+    WHERE _dedup_rn = 1
+)
+SELECT
+    COUNT(*) AS total_posts,
+    COALESCE(SUM(COALESCE(pe.views, 0)), 0) AS total_views,
+    COALESCE(SUM(COALESCE(pe.likes, 0)), 0) AS total_likes,
+    COALESCE(SUM(COALESCE(pe.comments_count, 0)), 0) AS total_comments,
+    COALESCE(SUM(COALESCE(pe.shares, 0)), 0) AS total_shares
+FROM deduped_posts p
+LEFT JOIN (
+    SELECT post_id, likes, shares, comments_count, views,
+           ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn
+    FROM social_listening.post_engagements
+) pe ON p.post_id = pe.post_id AND pe.rn = 1
+WHERE p.collection_id IN UNNEST(@collection_ids)
 """
 
 COLLECTION_NAMES_SQL = """

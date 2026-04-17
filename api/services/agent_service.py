@@ -20,7 +20,9 @@ def create_agent(
     schedule: dict | None = None,
     org_id: str | None = None,
     todos: list | None = None,
-    status: str = "approved",
+    status: str = "running",
+    context: dict | None = None,
+    constitution: dict | None = None,
 ) -> dict:
     """Create a new agent in Firestore and BigQuery. Returns the agent dict."""
     fs = get_fs()
@@ -38,9 +40,14 @@ def create_agent(
         "data_scope": data_scope or {},
         "schedule": schedule,
         "todos": todos or [],
+        "version": 1,
         "collection_ids": [],
         "artifact_ids": [],
     }
+    if constitution:
+        agent_data["constitution"] = constitution
+    if context:
+        agent_data["context"] = context
 
     # Firestore (real-time state)
     fs.create_agent(agent_id, agent_data)
@@ -80,6 +87,41 @@ def update_agent(agent_id: str, **fields) -> None:
     get_fs().update_agent(agent_id, **fields)
 
 
+VERSIONED_FIELDS = {"title", "data_scope", "todos", "context", "constitution"}
+
+
+def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int:
+    """Update agent and create a version snapshot if config fields changed.
+
+    Returns the new version number.
+    """
+    fs = get_fs()
+    agent = fs.get_agent(agent_id)
+    if not agent:
+        raise ValueError(f"Agent {agent_id} not found")
+
+    needs_version = bool(VERSIONED_FIELDS & set(updates.keys()))
+    current_version = agent.get("version") or 1
+    new_version = current_version
+
+    if needs_version:
+        new_version = current_version + 1
+        updates["version"] = new_version
+
+        snapshot = {
+            "title": updates.get("title", agent.get("title")),
+            "data_scope": updates.get("data_scope", agent.get("data_scope")),
+            "todos": updates.get("todos", agent.get("todos")),
+            "context": updates.get("context", agent.get("context")),
+            "constitution": updates.get("constitution", agent.get("constitution")),
+        }
+        fs.create_agent_version(agent_id, new_version, snapshot, edited_by=user_id)
+
+    fs.update_agent(agent_id, **updates)
+    logger.info("Updated agent %s (version %d → %d)", agent_id, current_version, new_version)
+    return new_version
+
+
 def dispatch_agent_run(
     agent_id: str,
     agent: dict,
@@ -92,6 +134,7 @@ def dispatch_agent_run(
     from api.schemas.requests import CreateCollectionRequest
     from api.services.collection_service import create_collection_from_request
     from workers.pipeline_v2.schedule_utils import compute_next_run_at
+    from api.agent.workflow_template import build_workflow_template, progress_automated_steps
 
     fs = get_fs()
 
@@ -107,11 +150,12 @@ def dispatch_agent_run(
         logger.warning("Agent %s has no searches defined", agent_id)
         return "", []
 
-    # Create a run record
-    run_id = fs.create_run(agent_id, trigger=trigger)
+    # Create a run record (stamped with current agent version)
+    agent_version = agent.get("version", 1)
+    run_id = fs.create_run(agent_id, trigger=trigger, agent_version=agent_version)
 
     # Update agent status to executing
-    fs.update_agent(agent_id, status="executing", active_run_id=run_id)
+    fs.update_agent(agent_id, status="running", active_run_id=run_id)
 
     collection_ids = []
     for search_def in searches:
@@ -139,6 +183,21 @@ def dispatch_agent_run(
         enrichment_context = data_scope.get("enrichment_context")
         if enrichment_context:
             extra_config["enrichment_context"] = enrichment_context
+        # Pass structured context as supplementary enrichment info
+        agent_constitution = agent.get("constitution")
+        if agent_constitution:
+            from api.schemas.agent_constitution import constitution_to_enrichment_string
+            structured_ctx = constitution_to_enrichment_string(agent_constitution)
+            if structured_ctx:
+                extra_config["structured_context"] = structured_ctx
+        else:
+            # Backward compat: fall back to old AgentContext
+            agent_context = agent.get("context")
+            if agent_context:
+                from api.schemas.agent_context import context_to_enrichment_string
+                structured_ctx = context_to_enrichment_string(agent_context)
+                if structured_ctx:
+                    extra_config["structured_context"] = structured_ctx
         city = search_def.get("city")
         if city:
             extra_config["city"] = city
@@ -156,6 +215,25 @@ def dispatch_agent_run(
         fs.add_agent_collection(agent_id, cid)
         fs.add_run_collection(agent_id, run_id, cid)
         fs.update_collection_status(cid, agent_id=agent_id)
+
+    # Build fresh workflow template for each run.
+    # Preserve custom steps from previous runs (user-added) but reset all statuses.
+    fresh_todos = build_workflow_template(data_scope, agent_type)
+    old_todos = agent.get("todos") or []
+    custom_steps = [
+        {**t, "status": "pending"}
+        for t in old_todos
+        if t.get("custom")
+    ]
+    if custom_steps:
+        # Insert custom steps before the deliver phase (last standard step)
+        deliver_idx = next(
+            (i for i, t in enumerate(fresh_todos) if t.get("phase") == "deliver"),
+            len(fresh_todos),
+        )
+        fresh_todos = fresh_todos[:deliver_idx] + custom_steps + fresh_todos[deliver_idx:]
+    todos = progress_automated_steps(fresh_todos, "collect_started", "in_progress")
+    fs.update_agent(agent_id, todos=todos)
 
     # Update agent-level denormalized collection_ids + next_run_at for recurring
     now = datetime.now(timezone.utc)

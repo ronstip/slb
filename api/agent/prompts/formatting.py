@@ -31,7 +31,7 @@ Every response must be structured, visually scannable, and opinionated. These ru
 
 ### Emphasis
 - **Bold** key numbers, findings, statuses, platform names, and critical terms.
-- Use `inline code` for IDs, collection names, column names, and technical identifiers.
+- Use `inline code` for IDs, column names, and technical identifiers.
 - Use blockquotes (`>`) only for direct quotes from source material — not for emphasis.
 
 ### Lists

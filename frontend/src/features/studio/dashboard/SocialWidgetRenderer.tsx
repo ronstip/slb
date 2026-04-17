@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { DashboardPost } from '../../../api/types.ts';
+import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField } from './types-social-dashboard.ts';
 import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS } from './types-social-dashboard.ts';
 import { aggregateCustom } from './dashboard-aggregations.ts';
@@ -145,8 +145,8 @@ interface FrameProps {
 
 // ── Sub-components (each calls hooks unconditionally) ─────────────────────────
 
-function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
-  const kpis = useMemo(() => computeEnhancedKpis(posts), [posts]);
+function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, serverKpis }: FrameProps & { posts: DashboardPost[]; serverKpis?: DashboardKpis }) {
+  const kpis = useMemo(() => computeEnhancedKpis(posts, serverKpis), [posts, serverKpis]);
   const kpi = kpis[widget.kpiIndex ?? 0];
   return (
     <SocialKpiCard
@@ -459,6 +459,7 @@ interface SocialWidgetRendererProps {
   onRemove: () => void;
   onDuplicate?: () => void;
   onFilterToggle?: (key: string, value: string) => void;
+  serverKpis?: DashboardKpis;
 }
 
 export function SocialWidgetRenderer({
@@ -469,6 +470,7 @@ export function SocialWidgetRenderer({
   onRemove,
   onDuplicate,
   onFilterToggle,
+  serverKpis,
 }: SocialWidgetRendererProps) {
   const widgetPosts = useMemo(
     () => applyWidgetFilters(filteredPosts, widget.filters),
@@ -484,7 +486,7 @@ export function SocialWidgetRenderer({
     return <CustomWidget {...frameProps} posts={widgetPosts} />;
   }
   if (widget.chartType === 'number-card') {
-    return <KpiWidget {...frameProps} posts={widgetPosts} />;
+    return <KpiWidget {...frameProps} posts={widgetPosts} serverKpis={serverKpis} />;
   }
   if (widget.chartType === 'word-cloud') {
     return <WordCloudWidget {...frameProps} posts={widgetPosts} onFilterToggle={onFilterToggle} />;

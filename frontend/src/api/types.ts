@@ -8,7 +8,7 @@
 export interface ChatRequest {
   message: string;
   session_id?: string;
-  selected_sources?: string[];
+  agent_id?: string;  // Active agent — auto-loads context into session
   is_system?: boolean;
   accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
   theme?: 'light' | 'dark';  // resolved theme (never "system")
@@ -253,6 +253,7 @@ export interface MultiFeedParams {
   offset?: number;
   topic_cluster_id?: string;
   has_media?: boolean;
+  dedup?: boolean;
 }
 
 export interface BreakdownItem {
@@ -276,6 +277,7 @@ export interface CollectionStats {
   content_type_breakdown: BreakdownItem[];
   negative_sentiment_pct: number | null;
   total_posts_enriched: number;
+  daily_volume?: { post_date: string; platform: string; post_count: number }[];
   engagement_summary: {
     total_likes: number;
     total_views: number;
@@ -327,7 +329,6 @@ export type SSEEvent =
   | { event_type: 'needs_decision'; content: string; metadata: Record<string, unknown>; author?: string }
   | { event_type: 'finding'; content: string; metadata: Record<string, unknown>; author?: string }
   | { event_type: 'plan'; content: string; metadata: Record<string, unknown>; author?: string }
-  | { event_type: 'context_update'; agent_selected_sources: string[]; reason?: string }
   | { event_type: 'done'; session_id: string; session_title?: string; content: string; suggestions?: string[] }
   | { event_type: 'error'; content: string };
 
@@ -538,10 +539,19 @@ export interface DashboardPost {
   share_count: number;
 }
 
+export interface DashboardKpis {
+  total_posts: number;
+  total_views: number;
+  total_likes: number;
+  total_comments: number;
+  total_shares: number;
+}
+
 export interface DashboardDataResponse {
   posts: DashboardPost[];
   collection_names: Record<string, string>;
   truncated: boolean;
+  kpis?: DashboardKpis;
 }
 
 export interface DashboardShareInfo {
@@ -880,6 +890,20 @@ export interface WizardPlan {
   auto_dashboard: boolean;
   custom_fields: CustomFieldDef[];
   enrichment_context: string;
+  context?: {
+    mission: string;
+    world_context: string;
+    relevance_boundaries: string;
+    analytical_lens: string;
+  };
+  constitution?: {
+    identity: string;
+    mission: string;
+    methodology: string;
+    scope_and_relevance: string;
+    standards: string;
+    perspective: string;
+  };
 }
 
 export interface WizardClarification {

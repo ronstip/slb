@@ -96,13 +96,31 @@ def _extract_event_fallback(event) -> dict | None:
 
 
 @router.get("/sessions", response_model=list[SessionListItem])
-async def list_sessions(user: CurrentUser = Depends(get_current_user)):
-    """List all sessions for the authenticated user (metadata only, no events)."""
+async def list_sessions(
+    user: CurrentUser = Depends(get_current_user),
+    agent_id: str | None = None,
+):
+    """List all sessions for the authenticated user (metadata only, no events).
+
+    If ``agent_id`` is provided, only sessions linked to that agent are returned.
+    """
     svc = _get_session_service()
     response = await svc.list_sessions(app_name=APP_NAME, user_id=user.uid)
 
+    # When filtering by agent, use the agent's session_ids as the source of truth
+    allowed_session_ids: set[str] | None = None
+    if agent_id:
+        agent = get_fs().get_agent(agent_id)
+        if agent:
+            allowed_session_ids = set(agent.get("session_ids") or [])
+        else:
+            allowed_session_ids = set()
+
     items = []
     for session in response.sessions:
+        if allowed_session_ids is not None and session.id not in allowed_session_ids:
+            continue
+
         state = session.state or {}
         items.append(
             SessionListItem(
@@ -116,6 +134,7 @@ async def list_sessions(user: CurrentUser = Depends(get_current_user)):
                 ),
                 message_count=state.get("message_count", 0),
                 preview=state.get("first_message", "")[:120] if state.get("first_message") else None,
+                task_id=state.get("active_agent_id"),
             )
         )
 

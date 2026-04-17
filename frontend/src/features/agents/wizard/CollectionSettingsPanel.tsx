@@ -14,8 +14,7 @@ import {
 } from '../../../components/ui/select.tsx';
 import { MultiSelect, type MultiSelectOption } from '../../../components/ui/multi-select.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
-import { listCollections } from '../../../api/endpoints/collections.ts';
-import type { CollectionStatusResponse } from '../../../api/types.ts';
+import { listAgents, type Agent } from '../../../api/endpoints/agents.ts';
 import { cn } from '../../../lib/utils.ts';
 import type { PlanStatus, WizardCollectionSettings } from './AgentCreationWizard.tsx';
 import { AIThinkingCard } from './AIThinkingCard.tsx';
@@ -35,33 +34,30 @@ const TIME_RANGES = [
   { label: '1 year', value: 365 },
 ];
 
-function collectionLabel(c: CollectionStatusResponse): string {
-  const kw = c.config?.keywords?.[0];
-  const plats = c.config?.platforms?.slice(0, 2).join('/');
-  if (kw && plats) return `${kw} — ${plats}`;
-  if (kw) return kw;
-  if (plats) return plats;
-  return c.collection_id.slice(0, 8);
+function agentLabel(a: Agent): string {
+  const postCount = a.collection_ids?.length ?? 0;
+  const suffix = postCount > 0 ? ` (${postCount} collection${postCount > 1 ? 's' : ''})` : '';
+  return `${a.title}${suffix}`;
 }
 
 export function CollectionSettingsPanel({ settings, onChange, planStatus }: CollectionSettingsPanelProps) {
   const [keywordInput, setKeywordInput] = useState('');
-  const [availableCollections, setAvailableCollections] = useState<CollectionStatusResponse[]>([]);
-  const [collectionsLoading, setCollectionsLoading] = useState(true);
+  const [availableAgents, setAvailableAgents] = useState<Agent[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    listCollections()
+    listAgents()
       .then((list) => {
         if (cancelled) return;
-        const ready = list.filter((c) => c.status === 'success' || c.posts_collected > 0);
-        setAvailableCollections(ready);
+        const withData = list.filter((a) => (a.collection_ids?.length ?? 0) > 0);
+        setAvailableAgents(withData);
       })
       .catch(() => {
-        if (!cancelled) setAvailableCollections([]);
+        if (!cancelled) setAvailableAgents([]);
       })
       .finally(() => {
-        if (!cancelled) setCollectionsLoading(false);
+        if (!cancelled) setAgentsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -72,9 +68,9 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
     onChange({ ...settings, ...partial });
   };
 
-  const collectionOptions: MultiSelectOption[] = availableCollections.map((c) => ({
-    value: c.collection_id,
-    label: collectionLabel(c),
+  const agentOptions: MultiSelectOption[] = availableAgents.map((a) => ({
+    value: a.agent_id,
+    label: agentLabel(a),
   }));
 
   const togglePlatform = (p: string) => {
@@ -110,11 +106,11 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
           2
         </span>
         <h3 className="text-lg font-semibold text-foreground tracking-tight">
-          Collection Settings
+          Data Settings
         </h3>
       </div>
       <p className="text-xs text-muted-foreground mb-4 -mt-2">
-        Attach existing collections, configure a new one, or both.
+        Attach data from other agents, configure a new collection, or both.
       </p>
 
       {(planStatus === 'idle' || planStatus === 'clarifying') && (
@@ -160,16 +156,16 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
       {(planStatus === 'ready' || planStatus === 'error') && (
       <div className="space-y-4 flex-1">
         {/* Existing collections picker */}
-        {(collectionsLoading || availableCollections.length > 0) && (
+        {(agentsLoading || availableAgents.length > 0) && (
           <div>
             <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-              Use existing collections <span className="text-muted-foreground/50">(optional)</span>
+              Attach data from other agents <span className="text-muted-foreground/50">(optional)</span>
             </Label>
             <MultiSelect
-              value={settings.existingCollectionIds}
-              options={collectionOptions}
-              onChange={(ids) => update({ existingCollectionIds: ids })}
-              placeholder={collectionsLoading ? 'Loading…' : 'Select collections to attach'}
+              value={settings.existingAgentIds}
+              options={agentOptions}
+              onChange={(ids) => update({ existingAgentIds: ids })}
+              placeholder={agentsLoading ? 'Loading…' : 'Select agents to attach data from'}
             />
           </div>
         )}
@@ -238,7 +234,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
                 <Badge key={kw} variant="secondary" className="gap-1 text-xs">
                   {kw}
                   <X
-                    className="h-3 w-3 cursor-pointer hover:text-destructive"
+                    className="h-3 w-3 cursor-pointer hover:text-destructive pointer-events-auto"
                     onClick={() => removeKeyword(kw)}
                   />
                 </Badge>

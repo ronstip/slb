@@ -1,5 +1,8 @@
 import type { SocialDashboardWidget } from './types-social-dashboard.ts';
 
+/** Sentinel ID used for the full "Dashboard Default" built-in layout */
+export const DASHBOARD_DEFAULT_ID = '__dashboard_default__';
+
 let _idCounter = 0;
 function uid(): string {
   return `w${++_idCounter}`;
@@ -170,5 +173,16 @@ export function getExplorerDefaultLayout(): SocialDashboardWidget[] {
 
     // ── Row 3: Posts table — hero (y=7, h=14) ────────────────────────
     { i: uid(), x: 0, y: 7, w: 12, h: 14, aggregation: 'posts', chartType: 'data-table', title: 'Posts' },
+  ];
+}
+
+/**
+ * Minimal starter layout for newly created explorer layouts.
+ * Single small widget so the canvas feels empty — user builds from scratch in edit mode.
+ */
+export function getNewLayoutStarterWidgets(): SocialDashboardWidget[] {
+  _idCounter = 100;
+  return [
+    { i: uid(), x: 0, y: 0, w: 3, h: 2, aggregation: 'kpi', kpiIndex: 0, chartType: 'number-card', title: 'Total Posts' },
   ];
 }

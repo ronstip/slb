@@ -17,10 +17,14 @@ interface SessionStore {
   activeSessionTitle: string;
   isRestoring: boolean;
   isLoadingSessions: boolean;
+  agentSessions: SessionListItem[];
+  isLoadingAgentSessions: boolean;
 
   fetchSessions: () => Promise<void>;
+  fetchAgentSessions: (agentId: string) => Promise<void>;
   restoreSession: (id: string) => Promise<void>;
   startNewSession: () => void;
+  startNewAgentSession: (agentId: string) => void;
   setActiveSession: (id: string) => void;
   setActiveSessionTitle: (title: string) => void;
   touchSession: (id: string) => void;
@@ -34,6 +38,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   activeSessionTitle: 'New Session',
   isRestoring: false,
   isLoadingSessions: false,
+  agentSessions: [],
+  isLoadingAgentSessions: false,
+
+  fetchAgentSessions: async (agentId: string) => {
+    set({ isLoadingAgentSessions: true });
+    try {
+      const agentSessions = await listSessions(agentId);
+      set({ agentSessions, isLoadingAgentSessions: false });
+    } catch {
+      set({ isLoadingAgentSessions: false });
+    }
+  },
 
   fetchSessions: async () => {
     set({ isLoadingSessions: true });
@@ -53,7 +69,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useChatStore.getState().reset();
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
-    useSourcesStore.getState().setAgentSelectedSources([]);
 
     try {
       const detail = await getSession(id);
@@ -98,7 +113,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useChatStore.getState().reset();
     useStudioStore.getState().reset();
     useSourcesStore.getState().deselectAll();
-    useSourcesStore.getState().setAgentSelectedSources([]);
     useAgentStore.getState().setActiveAgent(null);
 
     set({
@@ -108,6 +122,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     // Re-fetch sessions so the one we just left appears in the list
     get().fetchSessions();
+  },
+
+  startNewAgentSession: (agentId: string) => {
+    useChatStore.getState().reset();
+    useStudioStore.getState().reset();
+    useSourcesStore.getState().deselectAll();
+
+    set({
+      activeSessionId: null,
+      activeSessionTitle: 'New Session',
+    });
+
+    // Keep agent context active so the next message links to this agent
+    useAgentStore.getState().setActiveAgent(agentId);
+    get().fetchAgentSessions(agentId);
   },
 
   setActiveSession: (id: string) => {
@@ -154,6 +183,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       activeSessionTitle: 'New Session',
       isRestoring: false,
       isLoadingSessions: false,
+      agentSessions: [],
+      isLoadingAgentSessions: false,
     });
   },
 }));

@@ -147,7 +147,9 @@ export function DataTable<T>({
                   {isExpanded && renderExpandedRow && (
                     <tr>
                       <td colSpan={colCount} className="border-b border-border bg-card px-4 py-3">
-                        {renderExpandedRow(row)}
+                        <div className="max-h-[290px] overflow-y-auto">
+                          {renderExpandedRow(row)}
+                        </div>
                       </td>
                     </tr>
                   )}

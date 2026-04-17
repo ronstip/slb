@@ -83,10 +83,19 @@ class DashboardPostResponse(BaseModel):
     share_count: int = 0
 
 
+class DashboardKpis(BaseModel):
+    total_posts: int = 0
+    total_views: int = 0
+    total_likes: int = 0
+    total_comments: int = 0
+    total_shares: int = 0
+
+
 class DashboardDataResponse(BaseModel):
     posts: list[DashboardPostResponse]
     collection_names: dict[str, str]
     truncated: bool = False
+    kpis: DashboardKpis | None = None
 
 
 class DashboardShareResponse(BaseModel):
@@ -144,6 +153,12 @@ class EngagementStats(BaseModel):
     median_views: float = 0
 
 
+class DailyVolumeItem(BaseModel):
+    post_date: str
+    platform: str
+    post_count: int = 0
+
+
 class CollectionStatsResponse(BaseModel):
     computed_at: str | None = None
     collection_status_at_compute: str | None = None
@@ -158,6 +173,7 @@ class CollectionStatsResponse(BaseModel):
     content_type_breakdown: list[BreakdownItem] = []
     negative_sentiment_pct: float | None = None
     total_posts_enriched: int = 0
+    daily_volume: list[DailyVolumeItem] = []
     engagement_summary: EngagementStats
 
 
@@ -261,6 +277,7 @@ class SessionListItem(BaseModel):
     updated_at: str | None = None
     message_count: int = 0
     preview: str | None = None
+    task_id: str | None = None
 
 
 class SessionDetailResponse(BaseModel):

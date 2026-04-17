@@ -40,8 +40,8 @@ def check_task_completion(collection_id: str) -> None:
         logger.warning("Task %s not found for collection %s", task_id, collection_id)
         return
 
-    # Only continue if task is in executing state
-    if task.get("status") not in ("executing", "monitoring"):
+    # Only continue if task is in running state
+    if task.get("status") != "running":
         return
 
     # Check if ALL task collections are complete
@@ -55,7 +55,7 @@ def check_task_completion(collection_id: str) -> None:
         if not cs:
             all_complete = False
             break
-        if cs.get("status") not in ("completed", "completed_with_errors", "failed", "monitoring"):
+        if cs.get("status") not in ("success", "completed", "completed_with_errors", "failed"):
             all_complete = False
             break
 
@@ -69,12 +69,19 @@ def check_task_completion(collection_id: str) -> None:
     logger.info("Task %s: all collections complete — signaling for continuation", task_id)
     fs.add_task_log(task_id, "All collections complete — ready for analysis", source="continuation")
 
+    # Progress automated workflow steps (collect + enrich → completed, analyze → in_progress)
+    from api.agent.workflow_template import progress_automated_steps
+    todos = task.get("todos") or []
+    if todos:
+        updated_todos = progress_automated_steps(todos, "collection_complete", "completed")
+        fs.update_task(task_id, todos=updated_todos)
+
     # Signal continuation readiness via Firestore.
     # The frontend detects this via collection polling and re-engages the agent
     # in the user's session. The server-side agent is a fallback for offline users.
+    # Status stays "running" — the agent is still working (analysis phase).
     fs.update_task(
         task_id,
-        status="awaiting_analysis",
         continuation_ready=True,
         continuation_ready_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -103,8 +110,8 @@ def _delayed_fallback(task_id: str, delay_seconds: int = 60) -> None:
     task = fs.get_task(task_id)
     if not task:
         return
-    # If still awaiting_analysis, the user isn't online — run server-side
-    if task.get("status") == "awaiting_analysis":
+    # If still running with continuation_ready, the user isn't online — run server-side
+    if task.get("status") == "running" and task.get("continuation_ready"):
         logger.info("Task %s: offline fallback — running agent server-side", task_id)
         _run_agent_continuation(task_id)
     else:
@@ -126,7 +133,7 @@ def _run_agent_continuation(task_id: str) -> None:
         # Update task status to reflect the failure
         from workers.shared.firestore_client import FirestoreClient
         fs = FirestoreClient(get_settings())
-        fs.update_task(task_id, status="completed_with_errors",
+        fs.update_task(task_id, status="failed",
                        context_summary="Agent continuation failed after collection completion.")
 
 
@@ -234,16 +241,14 @@ async def _async_agent_continuation(task_id: str) -> None:
 
     # Update task status
     task_type = task.get("task_type", "one_shot")
+    fs.update_task(
+        task_id,
+        status="success",
+        completed_at=datetime.now(timezone.utc),
+    )
     if task_type == "one_shot":
-        fs.update_task(
-            task_id,
-            status="completed",
-            completed_at=datetime.now(timezone.utc),
-        )
         fs.add_task_log(task_id, "Task completed", source="continuation")
     else:
-        # Recurring — keep monitoring
-        fs.update_task(task_id, status="monitoring")
         fs.add_task_log(task_id, "Recurring run completed", source="continuation")
 
     # Send notification email

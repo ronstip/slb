@@ -1,6 +1,11 @@
-import { PLATFORM_LABELS, buildScheduleFromPreset, formatSchedule } from '../../../lib/constants.ts';
+import { PLATFORM_LABELS, buildScheduleString, formatSchedule } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
-import type { CreateFromWizardPayload } from '../../../api/endpoints/agents.ts';
+import type { Constitution, CreateFromWizardPayload } from '../../../api/endpoints/agents.ts';
+
+function intervalHoursToSchedule(hours: number, time: string): string {
+  if (hours < 24) return buildScheduleString('hour', hours, time);
+  return buildScheduleString('day', Math.round(hours / 24), time);
+}
 
 interface FormatOptions {
   title?: string;
@@ -20,12 +25,12 @@ export function formatWizardAsPrompt(
   }
   lines.push(`Description: ${description.trim()}`);
 
-  // Existing collections to attach (link-only)
-  if (collection.existingCollectionIds.length > 0) {
-    const ids = JSON.stringify(collection.existingCollectionIds);
-    lines.push(`Attach existing collections: ${ids}`);
+  // Existing agent data to attach
+  if (collection.existingAgentIds.length > 0) {
+    const ids = JSON.stringify(collection.existingAgentIds);
+    lines.push(`Attach data from existing agents: ${ids}`);
     lines.push(
-      `When calling start_agent, pass existing_collection_ids=${ids} so these collections are linked to the new agent without re-collecting.`,
+      `When calling start_agent, pass existing_agent_ids=${ids} so data from these agents is linked to the new agent.`,
     );
   }
 
@@ -65,7 +70,7 @@ export function formatWizardAsPrompt(
 
   // Agent type + schedule
   if (task.taskType === 'recurring') {
-    const schedule = buildScheduleFromPreset(task.schedulePreset, task.scheduleTime);
+    const schedule = intervalHoursToSchedule(task.scheduleIntervalHours, task.scheduleTime);
     lines.push(`Schedule: ${formatSchedule(schedule)}`);
   } else {
     lines.push(`Schedule: One-time (run now)`);
@@ -109,6 +114,7 @@ export function buildWizardRequestBody(
   collection: WizardCollectionSettings,
   task: WizardAgentSettings,
   title: string,
+  constitution?: Constitution,
 ): CreateFromWizardPayload {
   // Build searches array (one search per wizard config)
   const searches: CreateFromWizardPayload['searches'] = [];
@@ -126,7 +132,7 @@ export function buildWizardRequestBody(
   // Build schedule for recurring tasks
   let schedule: CreateFromWizardPayload['schedule'] = null;
   if (task.taskType === 'recurring') {
-    const frequency = buildScheduleFromPreset(task.schedulePreset, task.scheduleTime);
+    const frequency = intervalHoursToSchedule(task.scheduleIntervalHours, task.scheduleTime);
     schedule = {
       frequency,
       frequency_label: formatSchedule(frequency),
@@ -151,11 +157,13 @@ export function buildWizardRequestBody(
     schedule,
     custom_fields: customFields,
     enrichment_context: collection.enrichmentContext.trim() || undefined,
-    existing_collection_ids: collection.existingCollectionIds.length > 0
-      ? collection.existingCollectionIds
+    constitution: constitution && Object.values(constitution).some((v) => v) ? constitution : undefined,
+    existing_agent_ids: collection.existingAgentIds.length > 0
+      ? collection.existingAgentIds
       : undefined,
     auto_report: task.autoReport,
     auto_email: task.autoEmail,
+    email_recipients: task.emailRecipients.length > 0 ? task.emailRecipients : undefined,
     auto_slides: task.autoSlides,
     auto_dashboard: task.autoDashboard,
   };
