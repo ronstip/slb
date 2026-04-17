@@ -24,7 +24,7 @@ interface ExplorerLayoutStore {
   reset: () => void;
 }
 
-export const useExplorerLayoutStore = create<ExplorerLayoutStore>((set, get) => ({
+export const useExplorerLayoutStore = create<ExplorerLayoutStore>((set, _get) => ({
   agentLayouts: [],
   activeLayoutId: null,
   isLoadingLayouts: false,

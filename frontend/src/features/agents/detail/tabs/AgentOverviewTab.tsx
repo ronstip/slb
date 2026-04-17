@@ -28,8 +28,7 @@ import { listAgentRuns } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLogCompact, AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
 import { getCollectionStatus, getCollectionStats } from '../../../../api/endpoints/collections.ts';
-import type { CollectionStats } from '../../../../api/types.ts';
-import { STATUS_ACCENT, StatusBadge, formatDate } from '../agent-status-utils.tsx';
+import { StatusBadge, formatDate } from '../agent-status-utils.tsx';
 import { Globe, Tag } from 'lucide-react';
 import { PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS } from '../../../../lib/constants.ts';
 import { formatNumber } from '../../../../lib/format.ts';
@@ -913,7 +912,7 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
       {sections && data && (
         <div className="space-y-3">
           {sections.map(({ key, label }) =>
-            (data as Record<string, string>)[key] ? (
+            (data as unknown as Record<string, string>)[key] ? (
               <div key={key} className="border-l-2 border-primary/20 pl-3 py-1.5">
                 <div className="flex items-center gap-2 mb-1">
                   <p className="text-xs font-semibold uppercase tracking-wider text-foreground/70">{label}</p>
@@ -928,7 +927,7 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
                     </button>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground/80 whitespace-pre-wrap leading-relaxed pl-4">{(data as Record<string, string>)[key]}</p>
+                <p className="text-sm text-muted-foreground/80 whitespace-pre-wrap leading-relaxed pl-4">{(data as unknown as Record<string, string>)[key]}</p>
               </div>
             ) : null,
           )}
