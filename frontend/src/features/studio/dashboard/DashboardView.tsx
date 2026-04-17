@@ -276,6 +276,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             onToolbarReady={handleToolbarReady}
             gridRef={gridRef}
             defaultLayout={defaultLayout}
+            serverKpis={activeFilterCount === 0 ? response?.kpis : undefined}
           />
         )}
       </div>

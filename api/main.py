@@ -1364,28 +1364,20 @@ async def get_multi_collection_feed(
 
     bq = get_bq()
 
-    # Build posts subquery — optionally dedup across collections by post_id
-    if request.dedup:
-        posts_subquery = """(
-            SELECT * FROM (
-                SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
-                FROM (
-                    SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-                    FROM social_listening.posts
-                ) sub
-                WHERE _rn = 1
-            ) deduped
-            WHERE _dedup_rn = 1
-        )"""
-    else:
-        posts_subquery = """(
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-        )"""
+    # Build posts subquery — always dedup within collection, then across collections by post_id
+    posts_subquery = """(
+        SELECT * FROM (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+                FROM social_listening.posts
+            ) sub
+            WHERE _rn = 1
+        ) deduped
+        WHERE _dedup_rn = 1
+    )"""
 
     where_clauses = ["p.collection_id IN UNNEST(@collection_ids)"]
-    if not request.dedup:
-        where_clauses.append("p._rn = 1")
     params: dict = {"collection_ids": request.collection_ids}
 
     if request.platform != "all":

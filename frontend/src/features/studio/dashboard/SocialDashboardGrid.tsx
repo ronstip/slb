@@ -3,7 +3,7 @@ import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import type { Layout, LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import type { DashboardPost } from '../../../api/types.ts';
+import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget } from './types-social-dashboard.ts';
 import { SocialWidgetRenderer } from './SocialWidgetRenderer.tsx';
 
@@ -54,6 +54,7 @@ interface SocialDashboardGridProps {
   onDuplicate?: (widgetId: string) => void;
   onFilterToggle?: (key: string, value: string) => void;
   gridRef?: React.RefObject<HTMLElement | null>;
+  serverKpis?: DashboardKpis;
 }
 
 export function SocialDashboardGrid({
@@ -66,6 +67,7 @@ export function SocialDashboardGrid({
   onDuplicate,
   onFilterToggle,
   gridRef,
+  serverKpis,
 }: SocialDashboardGridProps) {
   const [currentBreakpoint, setCurrentBreakpoint] = useState<string>('lg');
   const isDragging = useRef(false);
@@ -134,6 +136,7 @@ export function SocialDashboardGrid({
               onRemove={() => onRemove(widget.i)}
               onDuplicate={onDuplicate ? () => onDuplicate(widget.i) : undefined}
               onFilterToggle={onFilterToggle}
+              serverKpis={serverKpis}
             />
           </div>
         ))}

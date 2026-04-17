@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs
 from api.schemas.requests import DashboardDataRequest
-from api.schemas.responses import DashboardDataResponse
+from api.schemas.responses import DashboardDataResponse, DashboardKpis
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
+    DASHBOARD_KPIS_SQL,
     DASHBOARD_SQL,
     MAX_ROWS,
     build_post_response,
@@ -55,11 +56,12 @@ async def get_dashboard_data(
     bq = get_bq()
     params = {"collection_ids": request.collection_ids}
 
-    # Fetch posts + collection names in parallel
+    # Fetch posts, KPIs, and collection names in parallel
     sql = DASHBOARD_SQL.format(max_rows=MAX_ROWS + 1)  # +1 to detect truncation
 
-    rows, name_rows = await asyncio.gather(
+    rows, kpi_rows, name_rows = await asyncio.gather(
         asyncio.to_thread(bq.query, sql, params),
+        asyncio.to_thread(bq.query, DASHBOARD_KPIS_SQL, params),
         asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, params),
     )
 
@@ -74,8 +76,18 @@ async def get_dashboard_data(
 
     posts = [build_post_response(row) for row in rows]
 
+    kpi_row = kpi_rows[0] if kpi_rows else {}
+    kpis = DashboardKpis(
+        total_posts=int(kpi_row.get("total_posts") or 0),
+        total_views=int(kpi_row.get("total_views") or 0),
+        total_likes=int(kpi_row.get("total_likes") or 0),
+        total_comments=int(kpi_row.get("total_comments") or 0),
+        total_shares=int(kpi_row.get("total_shares") or 0),
+    )
+
     return DashboardDataResponse(
         posts=posts,
         collection_names=collection_names,
         truncated=truncated,
+        kpis=kpis,
     )

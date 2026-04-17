@@ -539,10 +539,19 @@ export interface DashboardPost {
   share_count: number;
 }
 
+export interface DashboardKpis {
+  total_posts: number;
+  total_views: number;
+  total_likes: number;
+  total_comments: number;
+  total_shares: number;
+}
+
 export interface DashboardDataResponse {
   posts: DashboardPost[];
   collection_names: Record<string, string>;
   truncated: boolean;
+  kpis?: DashboardKpis;
 }
 
 export interface DashboardShareInfo {

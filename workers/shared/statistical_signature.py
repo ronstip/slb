@@ -17,9 +17,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _BASE_CTE = """WITH deduped_posts AS (
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-    FROM social_listening.posts
-    WHERE collection_id IN UNNEST(@collection_ids)
+    SELECT * FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+            FROM social_listening.posts
+            WHERE collection_id IN UNNEST(@collection_ids)
+        ) sub
+        WHERE _rn = 1
+    ) deduped
+    WHERE _dedup_rn = 1
 ),
 deduped_enriched AS (
     SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
@@ -42,7 +51,6 @@ base AS (
     FROM deduped_posts p
     LEFT JOIN deduped_engagements pe ON p.post_id = pe.post_id AND pe._rn = 1
     LEFT JOIN deduped_enriched    ep ON p.post_id = ep.post_id AND ep._rn = 1
-    WHERE p._rn = 1
 )"""
 
 _SUMMARY_SQL = (
@@ -121,17 +129,25 @@ SELECT 'entity' AS dim, * FROM entity_counts
 
 _DAILY_VOLUME_SQL = """
 WITH deduped_posts AS (
-    SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-    FROM social_listening.posts
-    WHERE collection_id IN UNNEST(@collection_ids)
+    SELECT * FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+            FROM social_listening.posts
+            WHERE collection_id IN UNNEST(@collection_ids)
+        ) sub
+        WHERE _rn = 1
+    ) deduped
+    WHERE _dedup_rn = 1
 )
 SELECT
     FORMAT_DATE('%Y-%m-%d', DATE(posted_at)) AS post_date,
     platform,
     COUNT(*) AS post_count
 FROM deduped_posts
-WHERE _rn = 1 AND posted_at IS NOT NULL
+WHERE posted_at IS NOT NULL
 GROUP BY post_date, platform
 ORDER BY post_date ASC
 """

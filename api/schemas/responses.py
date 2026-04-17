@@ -83,10 +83,19 @@ class DashboardPostResponse(BaseModel):
     share_count: int = 0
 
 
+class DashboardKpis(BaseModel):
+    total_posts: int = 0
+    total_views: int = 0
+    total_likes: int = 0
+    total_comments: int = 0
+    total_shares: int = 0
+
+
 class DashboardDataResponse(BaseModel):
     posts: list[DashboardPostResponse]
     collection_names: dict[str, str]
     truncated: bool = False
+    kpis: DashboardKpis | None = None
 
 
 class DashboardShareResponse(BaseModel):

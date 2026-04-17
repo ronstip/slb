@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { DashboardPost } from '../../../api/types.ts';
+import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget } from './types-social-dashboard.ts';
 import { AGGREGATION_META } from './types-social-dashboard.ts';
 import type { DashboardFilters, FilterOptions } from './use-dashboard-filters.ts';
@@ -56,6 +56,8 @@ interface SocialDashboardViewProps {
   gridRef?: React.RefObject<HTMLElement | null>;
   /** Custom default layout used when no saved layout exists */
   defaultLayout?: SocialDashboardWidget[];
+  /** Server-computed KPIs (passed only when no client filters are active) */
+  serverKpis?: DashboardKpis;
 }
 
 export function SocialDashboardView({
@@ -72,6 +74,7 @@ export function SocialDashboardView({
   onToolbarReady,
   gridRef,
   defaultLayout,
+  serverKpis,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
 
@@ -255,6 +258,7 @@ export function SocialDashboardView({
         onDuplicate={!readOnly ? handleDuplicateWidget : undefined}
         onFilterToggle={handleFilterToggle}
         gridRef={gridRef}
+        serverKpis={serverKpis}
       />
 
       {/* Single config dialog — used for both add and edit */}
