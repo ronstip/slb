@@ -135,6 +135,7 @@ export interface CreateFromWizardPayload {
   existing_agent_ids?: string[];
   auto_report?: boolean;
   auto_email?: boolean;
+  email_recipients?: string[];
   auto_slides?: boolean;
   auto_dashboard?: boolean;
 }

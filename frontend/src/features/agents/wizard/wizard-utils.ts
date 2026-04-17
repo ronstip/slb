@@ -1,6 +1,11 @@
-import { PLATFORM_LABELS, buildScheduleFromPreset, formatSchedule } from '../../../lib/constants.ts';
+import { PLATFORM_LABELS, buildScheduleString, formatSchedule } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
 import type { AgentContext, CreateFromWizardPayload } from '../../../api/endpoints/agents.ts';
+
+function intervalHoursToSchedule(hours: number, time: string): string {
+  if (hours < 24) return buildScheduleString('hour', hours, time);
+  return buildScheduleString('day', Math.round(hours / 24), time);
+}
 
 interface FormatOptions {
   title?: string;
@@ -65,7 +70,7 @@ export function formatWizardAsPrompt(
 
   // Agent type + schedule
   if (task.taskType === 'recurring') {
-    const schedule = buildScheduleFromPreset(task.schedulePreset, task.scheduleTime);
+    const schedule = intervalHoursToSchedule(task.scheduleIntervalHours, task.scheduleTime);
     lines.push(`Schedule: ${formatSchedule(schedule)}`);
   } else {
     lines.push(`Schedule: One-time (run now)`);
@@ -127,7 +132,7 @@ export function buildWizardRequestBody(
   // Build schedule for recurring tasks
   let schedule: CreateFromWizardPayload['schedule'] = null;
   if (task.taskType === 'recurring') {
-    const frequency = buildScheduleFromPreset(task.schedulePreset, task.scheduleTime);
+    const frequency = intervalHoursToSchedule(task.scheduleIntervalHours, task.scheduleTime);
     schedule = {
       frequency,
       frequency_label: formatSchedule(frequency),
@@ -158,6 +163,7 @@ export function buildWizardRequestBody(
       : undefined,
     auto_report: task.autoReport,
     auto_email: task.autoEmail,
+    email_recipients: task.emailRecipients.length > 0 ? task.emailRecipients : undefined,
     auto_slides: task.autoSlides,
     auto_dashboard: task.autoDashboard,
   };

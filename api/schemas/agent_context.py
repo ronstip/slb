@@ -48,16 +48,16 @@ def context_to_agent_profile(
     if not any([ctx.mission, ctx.world_context, ctx.relevance_boundaries, ctx.analytical_lens]):
         return None
 
-    lines = ["## Agent Context"]
+    lines = []
 
     if ctx.mission:
-        lines.append(f"\n### Mission\n{ctx.mission}")
+        lines.append(f"**Mission:** {ctx.mission}")
     if ctx.world_context:
-        lines.append(f"\n### World Context\n{ctx.world_context}")
+        lines.append(f"\n**World Context:** {ctx.world_context}")
     if ctx.relevance_boundaries:
-        lines.append(f"\n### Relevance Scope\n{ctx.relevance_boundaries}")
+        lines.append(f"\n**Relevance Scope:** {ctx.relevance_boundaries}")
     if ctx.analytical_lens:
-        lines.append(f"\n### Analytical Lens\n{ctx.analytical_lens}")
+        lines.append(f"\n**Analytical Lens:** {ctx.analytical_lens}")
 
     return "\n".join(lines)
 

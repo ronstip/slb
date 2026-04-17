@@ -223,12 +223,14 @@ def _build_data_pool(state: dict) -> Optional[str]:
 
     ids_fmt = ", ".join(f"`{cid}`" for cid in collection_ids)
     lines = [
-        "## Data Pool",
-        f"Collection IDs: {ids_fmt}",
+        "## Your Data (internal — never describe this section to the user)",
+        f"IDs: {ids_fmt}",
         "",
-        "Use these IDs in your SQL queries (`WHERE collection_id IN UNNEST(@collection_ids)` for multi-collection, "
-        "or `WHERE collection_id = @collection_id` for single). "
-        "Apply operations to ALL collections unless the question targets a subset.",
+        "Use in SQL: `WHERE collection_id IN UNNEST(@collection_ids)` or "
+        "`WHERE collection_id = @collection_id`. "
+        "Query ALL unless the question targets a subset. "
+        "Multi-source tools (`get_collection_stats`, `generate_report`, etc.) accept `collection_ids` lists. "
+        "Never mention source IDs, source counts, or internal data structure to the user.",
     ]
 
     return "\n".join(lines)
@@ -241,13 +243,13 @@ def _build_agent_profile(state: dict) -> Optional[str]:
     if not title and not data_scope:
         return None
 
-    lines = ["## Agent Profile"]
+    lines = ["## Your Identity"]
 
     # Identity
     if title:
-        agent_type = state.get("active_agent_type", "one_shot")
         status = state.get("active_agent_status", "")
-        lines.append(f"**{title}** ({agent_type}, {status})" if status else f"**{title}** ({agent_type})")
+        status_note = f" (status: {status})" if status else ""
+        lines.append(f"You are **{title}**{status_note}. Adopt this mission and perspective as your own.")
 
     if not data_scope:
         return "\n".join(lines)
@@ -265,10 +267,10 @@ def _build_agent_profile(state: dict) -> Optional[str]:
         if ctx_block:
             lines.append(f"\n{ctx_block}")
 
-    # Searches — full details
+    # Searches — what was searched (not config details like n_posts)
     searches = data_scope.get("searches", [])
     if searches:
-        lines.append("")
+        lines.append("\n**Data scope:**")
         for i, s in enumerate(searches):
             platforms = ", ".join(s.get("platforms", []))
             keywords = ", ".join(s.get("keywords", []))
@@ -276,22 +278,20 @@ def _build_agent_profile(state: dict) -> Optional[str]:
             end = s.get("end_date", "")
             days = s.get("time_range_days")
             geo = s.get("geo_scope", "")
-            n_posts = s.get("n_posts")
             date_info = f"{start} to {end}" if start and end else f"last {days} days" if days else ""
             label = f"Search {i+1}" if len(searches) > 1 else "Search"
             parts = []
             if keywords:
-                parts.append(f"keywords=[{keywords}]")
+                parts.append(keywords)
             if platforms:
-                parts.append(f"platforms=[{platforms}]")
+                parts.append(f"on {platforms}")
             if date_info:
                 parts.append(date_info)
             if geo and geo != "global":
-                parts.append(f"geo={geo}")
-            if n_posts:
-                parts.append(f"n_posts={n_posts}")
+                parts.append(f"geo: {geo}")
             if parts:
                 lines.append(f"- {label}: {', '.join(parts)}")
+        lines.append("\nNote: these are search parameters, not actual post counts. Use `get_collection_stats` or SQL to get real numbers.")
 
     # Custom fields
     custom_fields = data_scope.get("custom_fields", [])

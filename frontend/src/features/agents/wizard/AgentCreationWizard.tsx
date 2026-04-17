@@ -40,12 +40,14 @@ export interface WizardCollectionSettings {
 
 export interface WizardAgentSettings {
   taskType: 'one_shot' | 'recurring';
-  schedulePreset: 'hourly' | 'daily' | 'weekly';
+  scheduleIntervalHours: number;
   scheduleTime: string;
   autoReport: boolean;
   autoEmail: boolean;
   autoSlides: boolean;
   autoDashboard: boolean;
+  emailRecipients: string[];
+  slidesTemplateFile: File | null;
 }
 
 const DEFAULT_COLLECTION: WizardCollectionSettings = {
@@ -64,18 +66,21 @@ const DEFAULT_COLLECTION: WizardCollectionSettings = {
 
 const DEFAULT_AGENT: WizardAgentSettings = {
   taskType: 'one_shot',
-  schedulePreset: 'daily',
+  scheduleIntervalHours: 24,
   scheduleTime: '09:00',
   autoReport: true,
   autoEmail: false,
   autoSlides: false,
   autoDashboard: false,
+  emailRecipients: [],
+  slidesTemplateFile: null,
 };
 
-function mapFrequencyToPreset(freq: 'hourly' | 'daily' | 'weekly' | 'monthly'): 'hourly' | 'daily' | 'weekly' {
-  if (freq === 'hourly') return 'hourly';
-  if (freq === 'weekly' || freq === 'monthly') return 'weekly';
-  return 'daily';
+function mapFrequencyToIntervalHours(freq: 'hourly' | 'daily' | 'weekly' | 'monthly'): number {
+  if (freq === 'hourly') return 1;
+  if (freq === 'weekly') return 168;
+  if (freq === 'monthly') return 720;
+  return 24;
 }
 
 export function AgentCreationWizard() {
@@ -132,12 +137,14 @@ export function AgentCreationWizard() {
 
     setTaskSettings({
       taskType: plan.agent_type,
-      schedulePreset: plan.schedule ? mapFrequencyToPreset(plan.schedule.frequency) : 'daily',
+      scheduleIntervalHours: plan.schedule ? mapFrequencyToIntervalHours(plan.schedule.frequency) : 24,
       scheduleTime: plan.schedule?.time ?? '09:00',
       autoReport: plan.auto_report,
       autoEmail: plan.auto_email ?? false,
       autoSlides: plan.auto_slides ?? false,
       autoDashboard: plan.auto_dashboard ?? false,
+      emailRecipients: [],
+      slidesTemplateFile: null,
     });
 
     if (plan.context) {

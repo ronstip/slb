@@ -20,8 +20,8 @@ const SUGGESTIONS = [
     icon: Lightbulb,
   },
   {
-    label: 'Run a fresh collection',
-    prompt: 'Start a new data collection',
+    label: 'Gather fresh data',
+    prompt: 'Start a new data search',
     icon: RefreshCw,
   },
   {
@@ -43,7 +43,7 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
           I'm on it. Ask me anything.
         </h1>
         <p className="mt-2 text-sm text-muted-foreground/70">
-          I have access to your data, collections, and tools — just say the word.
+          I have access to your data and tools — just say the word.
         </p>
       </div>
 

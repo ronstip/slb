@@ -94,11 +94,8 @@ def create_agent(
 
     # ─── Agent identity ─────────────────────────────────────────────
     if mode == "chat":
-        name = "analyst"
-        description = (
-            "Interactive social analyst for ad-hoc research, "
-            "data exploration, and agent configuration."
-        )
+        name = "agent"
+        description = "The user's configured social listening agent."
     else:
         name = "executor"
         description = (

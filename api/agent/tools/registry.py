@@ -49,10 +49,10 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("get_agent_status", get_agent_status, "agent", False, "Read the status of an agent"),
         ToolSpec("set_active_agent", set_active_agent, "agent", True, "Set the active agent for the session"),
         # Research & context
-        ToolSpec("get_collection_details", get_collection_details, "collection", False, "Fetch full details for a collection"),
+        ToolSpec("get_collection_details", get_collection_details, "data", False, "Fetch full details for a data source"),
         ToolSpec("ask_user", ask_user, "user", True, "Prompt the user for structured input"),
-        # Collection context
-        ToolSpec("get_collection_stats", get_collection_stats, "collection", False, "Fetch collection statistics"),
+        # Data context
+        ToolSpec("get_collection_stats", get_collection_stats, "data", False, "Fetch data statistics and summary"),
         # Output & visualization
         ToolSpec("create_chart", create_chart, "reporting", False, "Generate a chart spec"),
         ToolSpec("export_data", export_data, "reporting", False, "Export posts as CSV"),

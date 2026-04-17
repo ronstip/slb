@@ -8,6 +8,7 @@
 export interface ChatRequest {
   message: string;
   session_id?: string;
+  agent_id?: string;  // Active agent — auto-loads context into session
   is_system?: boolean;
   accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
   theme?: 'light' | 'dark';  // resolved theme (never "system")

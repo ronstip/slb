@@ -94,6 +94,7 @@ export function useSSEChat() {
           {
             message: text,
             session_id: cs.sessionId ?? undefined,
+            agent_id: useAgentStore.getState().activeAgentId ?? undefined,
             is_system: opts?.isSystem,
             accent_color: accentColor,
             theme: resolvedTheme,

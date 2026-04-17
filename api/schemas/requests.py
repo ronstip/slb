@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
+    agent_id: str | None = None  # Active agent — auto-loads agent context into session
     model: str | None = None  # "flash" (default) or "pro"
     is_system: bool = False  # True for system-generated messages (e.g., collection continuation)
     accent_color: str | None = None  # User's selected accent hex, e.g. "#4A7C8F"

@@ -581,7 +581,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             for key in (
                 "active_agent_id", "active_agent_title", "active_agent_status",
                 "active_agent_protocol", "active_agent_type", "active_agent_context_summary",
-                "active_agent_context",
+                "active_agent_context", "active_agent_data_scope",
                 "todos", "tool_result_history",
                 "active_collection_id", "agent_selected_sources",
                 "collection_status", "collection_running",
@@ -589,6 +589,28 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 "autonomous_mode", "continuation_mode",
             ):
                 session.state.pop(key, None)
+
+    # Auto-load agent context when agent_id is provided (e.g., chatting from agent page).
+    # This ensures the agent's identity, data scope, and collections are available
+    # from the very first message without requiring the LLM to call set_active_agent.
+    if chat_request.agent_id and not session.state.get("active_agent_id"):
+        _agent_doc = get_fs().get_agent(chat_request.agent_id)
+        if _agent_doc and (_agent_doc.get("user_id") == user_id or _agent_doc.get("org_id") == user.org_id):
+            _ds = _agent_doc.get("data_scope", {})
+            session.state["active_agent_id"] = chat_request.agent_id
+            session.state["active_agent_title"] = _agent_doc.get("title", "")
+            session.state["active_agent_status"] = _agent_doc.get("status", "")
+            session.state["active_agent_type"] = _agent_doc.get("agent_type", "one_shot")
+            session.state["active_agent_data_scope"] = _ds
+            session.state["active_agent_context"] = _agent_doc.get("context")
+            _cids = _agent_doc.get("collection_ids", [])
+            session.state["agent_selected_sources"] = _cids
+            if _cids:
+                session.state["active_collection_id"] = _cids[0]
+            # Note: NOT loading todos from agent doc — those are from previous runs.
+            # Chat mode starts fresh; the agent creates todos as needed.
+            # Link session to agent so it appears in agent's session history
+            get_fs().add_agent_session(chat_request.agent_id, session_id)
 
     # Window conversation history by user-message boundaries to prevent
     # prior agent context from contaminating new requests.  Keep events from
