@@ -354,17 +354,37 @@ def _build_chat_context(state: dict) -> Optional[str]:
             "Deliver what fits the original question."
         )
 
-    # PPT Template
+    # PPT Template + manifest
     ppt_template = state.get("ppt_template")
     if ppt_template and ppt_template.get("gcs_path"):
-        blocks.append(
-            f"## User PPT Template\n"
+        template_block = (
+            f"## Presentation Template\n"
             f"The user has a saved PowerPoint template: **{ppt_template['filename']}** "
             f"(gcs_path: `{ppt_template['gcs_path']}`). "
             f"Before using it for a presentation, always confirm: "
             f"\"I see you have a saved template ({ppt_template['filename']}) — should I use it for this deck?\" "
             f"Only pass the gcs_path to generate_presentation if the user confirms."
         )
+        manifest = ppt_template.get("manifest")
+        if manifest:
+            from api.utils.pptx_manifest import manifest_to_agent_context
+            template_block += "\n\n" + manifest_to_agent_context(manifest)
+        blocks.append(template_block)
+    else:
+        # Inject default template manifest so agent always knows available layouts
+        try:
+            from api.utils.pptx_manifest import extract_manifest, manifest_to_agent_context
+            from pathlib import Path
+            default_path = Path(__file__).parent.parent / "assets" / "templates" / "default.pptx"
+            if default_path.exists():
+                default_manifest = extract_manifest(default_path.read_bytes())
+                blocks.append(
+                    "## Presentation Template\n"
+                    "Using default template.\n\n"
+                    + manifest_to_agent_context(default_manifest)
+                )
+        except Exception:
+            pass
 
     return "\n\n".join(blocks) if blocks else None
 
@@ -420,15 +440,34 @@ def _build_autonomous_context(state: dict) -> Optional[str]:
         "Complete all remaining steps and generate deliverables."
     )
 
-    # PPT Template (autonomous can use it without asking)
+    # PPT Template + manifest (autonomous can use it without asking)
     ppt_template = state.get("ppt_template")
     if ppt_template and ppt_template.get("gcs_path"):
-        blocks.append(
-            f"## User PPT Template\n"
+        template_block = (
+            f"## Presentation Template\n"
             f"The user has a saved PowerPoint template: **{ppt_template['filename']}** "
             f"(gcs_path: `{ppt_template['gcs_path']}`). "
             f"Use this template for any presentation you generate."
         )
+        manifest = ppt_template.get("manifest")
+        if manifest:
+            from api.utils.pptx_manifest import manifest_to_agent_context
+            template_block += "\n\n" + manifest_to_agent_context(manifest)
+        blocks.append(template_block)
+    else:
+        try:
+            from api.utils.pptx_manifest import extract_manifest, manifest_to_agent_context
+            from pathlib import Path
+            default_path = Path(__file__).parent.parent / "assets" / "templates" / "default.pptx"
+            if default_path.exists():
+                default_manifest = extract_manifest(default_path.read_bytes())
+                blocks.append(
+                    "## Presentation Template\n"
+                    "Using default template.\n\n"
+                    + manifest_to_agent_context(default_manifest)
+                )
+        except Exception:
+            pass
 
     return "\n\n".join(blocks) if blocks else None
 

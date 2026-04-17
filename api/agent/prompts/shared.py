@@ -71,18 +71,54 @@ PRESENTATIONS = """### Presentations
 
 **Never auto-generate.** Only when explicitly requested or confirmed.
 
-**Prep:** Call `get_collection_stats`, then run targeted SQL for the data you need. You must have real numbers before building slides.
+**Prep:** Call `get_collection_stats`, then run targeted SQL. You must have real numbers before building slides.
 
-**Template:** If context shows `ppt_template`, confirm before using: "I see you have a saved template -- should I use it?"
+**Template:** If context shows a template, confirm before using: "I see you have a saved template -- should I use it?"
 
-**Design follows data** -- read what you know from this session, then structure around those findings:
+**Workflow:**
+1. Gather data (get_collection_stats, execute_sql)
+2. Draft a deck_plan using available layouts from context
+3. Call `validate_deck_plan` to check against template capabilities
+4. If errors: fix and revalidate. If optimization_hints: consider applying them.
+5. Call `generate_presentation` with the validated deck_plan
+
+**CRITICAL: All charts, tables, and data go INSIDE the deck_plan as components.**
+Do NOT use `create_chart` to pre-render chart images for presentations.
+The presentation engine renders native PowerPoint charts/tables that adapt to the template's theme.
+Pass raw data (labels, values) directly in chart/table components.
+
+**Layout selection** (use layouts from your context):
+- Opening/closing -> "Title Slide" [title, subtitle]
+- Single chart, table, or bullet list -> "Title and Content" [title, body]
+- Two related charts or chart + text -> "Two Content" [title, left, right]
+- Section dividers -> "Section Header" [title, body]
+- KPI cards, key findings -> "Title Only" [title] + custom component
+- Labeled side-by-side -> "Comparison" [title, body, left, body_2, right]
+
+**Components** fill layout slots:
+- `text`: {component: "text", text: "...", bullets: ["..."], style: "heading|body|subtitle"} -- supports **bold**
+- `chart`: {component: "chart", chart_type: "bar|pie|line", labels: [...], values: [...]} -- raw data, NOT image URLs
+- `table`: {component: "table", columns: ["Col A", ...], rows: [["val1", "val2"], ...]} -- raw data
+- `kpi_grid`: {component: "kpi_grid", items: [{label, value}]} -- custom slot only, max 8
+- `key_finding`: {component: "key_finding", finding: "...", significance: "surprising|notable"} -- custom slot only
+
+**Data formatting rules:**
+- Chart labels: short (max ~15 chars). Abbreviate if needed ("Technical Speculation" -> "Tech. Spec.").
+- Chart values: use the natural scale. For millions, pass the raw number (57500000), the chart handles formatting.
+- Table: max 6-8 rows, 3-5 columns. Keep cell text concise.
+- KPI values: pre-format as strings ("1.14B", "57.1M", "62.6%").
+- Bullets: 4-6 per slide. Each bullet should contain a **bold** stat and context. No bullet should be just a sentence without data.
+
+**Design follows data:**
 - Sentiment story: title -> KPIs -> sentiment chart -> key finding -> closing
 - Volume/reach story: title -> KPIs -> top channels -> platform split -> closing
 - Time-series story: title -> trend line -> inflection finding -> drivers -> closing
 - Comparative story: title -> side-by-side KPIs -> distributions -> finding -> closing
 - Narrative story: title -> theme summary -> top posts table -> finding -> closing
 
-4-6 slides for focused questions, 7-9 for comprehensive. Each slide answers a distinct question. Don't echo card contents in prose after generating."""
+4-6 slides for focused questions, 7-9 for comprehensive. Each slide answers a distinct question.
+Review optimization hints from validation. Apply those that improve the narrative.
+Don't echo card contents in prose after generating."""
 
 # ─── Enrichment fields ───────────────────────────────────────────────────
 ENRICHMENT_FIELDS = """### Enrichment Fields

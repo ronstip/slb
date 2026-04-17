@@ -329,6 +329,7 @@ def _build_user_context(user_id: str, org_id: str) -> dict:
                     "filename": tmpl.get("filename", "template.pptx"),
                     "gcs_path": tmpl.get("gcs_path", ""),
                     "uploaded_at": tmpl.get("uploaded_at", ""),
+                    "manifest": tmpl.get("manifest"),
                 }
 
         # Build lightweight agents index
@@ -657,6 +658,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             session.state["ppt_template"] = {
                 "filename": _tmpl.get("filename", "template.pptx"),
                 "gcs_path": _tmpl.get("gcs_path", ""),
+                "manifest": _tmpl.get("manifest"),
             }
         else:
             session.state.pop("ppt_template", None)
@@ -2271,6 +2273,14 @@ async def upload_ppt_template(
         logger.error("PPT template upload failed for user %s: %s", user.uid, e)
         raise HTTPException(status_code=500, detail="Failed to store template")
 
+    # Extract manifest from the template
+    manifest = None
+    try:
+        from api.utils.pptx_manifest import extract_manifest
+        manifest = extract_manifest(contents)
+    except Exception as e:
+        logger.warning("Failed to extract pptx manifest for user %s: %s", user.uid, e)
+
     # Persist template reference to user profile
     safe_filename = (file.filename or "template.pptx")[:120]
     template_ref = {
@@ -2278,6 +2288,8 @@ async def upload_ppt_template(
         "filename": safe_filename,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
+    if manifest:
+        template_ref["manifest"] = manifest
     try:
         fs = get_fs()
         fs.update_user(user.uid, ppt_template=template_ref)
