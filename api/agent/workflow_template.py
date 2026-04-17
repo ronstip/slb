@@ -20,7 +20,6 @@ def build_workflow_template(data_scope: dict, agent_type: str) -> list[dict]:
     enrichment_context = data_scope.get("enrichment_context", "")
 
     steps: list[dict] = []
-    step_id = 1
 
     # ── Phase 1: Collection ──────────────────────────────────────
     total_posts = sum(s.get("n_posts", 0) for s in searches)
@@ -38,13 +37,12 @@ def build_workflow_template(data_scope: dict, agent_type: str) -> list[dict]:
         content = "Collect social data"
 
     steps.append({
-        "id": str(step_id),
+        "id": "collect",
         "phase": "collect",
         "content": content,
         "status": "pending",
         "automated": True,
     })
-    step_id += 1
 
     # ── Phase 2: Enrichment (only if custom fields or enrichment context) ──
     if custom_fields or enrichment_context:
@@ -54,47 +52,43 @@ def build_workflow_template(data_scope: dict, agent_type: str) -> list[dict]:
         else:
             detail = "AI enrichment and relevance filtering"
         steps.append({
-            "id": str(step_id),
+            "id": "enrich",
             "phase": "enrich",
             "content": detail,
             "status": "pending",
             "automated": True,
         })
-        step_id += 1
 
     # ── Phase 3: Analysis ────────────────────────────────────────
     steps.append({
-        "id": str(step_id),
+        "id": "analyze",
         "phase": "analyze",
         "content": "Analyze collected data: query patterns, segment by platform, identify key themes",
         "status": "pending",
         "automated": False,
     })
-    step_id += 1
 
     # ── Phase 4: Validation ──────────────────────────────────────
     steps.append({
-        "id": str(step_id),
+        "id": "validate",
         "phase": "validate",
         "content": "Validate findings: cross-reference across sources, check for biases, assess significance",
         "status": "pending",
         "automated": False,
     })
-    step_id += 1
 
     # ── Phase 5: Delivery ────────────────────────────────────────
     steps.append({
-        "id": str(step_id),
+        "id": "deliver",
         "phase": "deliver",
         "content": "Generate report with key findings and visualizations",
         "status": "pending",
         "automated": False,
     })
-    step_id += 1
 
     # ── Phase 6: Run Briefing ──────────────────────────────────
     steps.append({
-        "id": str(step_id),
+        "id": "briefing",
         "phase": "deliver",
         "content": "Generate run briefing: synthesize findings, flag open threads, note methodology observations",
         "status": "pending",
