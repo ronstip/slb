@@ -1,3 +1,10 @@
+"""Deprecated: Use agent_constitution.py instead.
+
+AgentContext (4 flat fields) is replaced by Constitution (6 rigid sections).
+This module is kept for backward compatibility during migration — existing agents
+with a `context` field but no `constitution` field still use these functions.
+"""
+
 import logging
 
 from pydantic import BaseModel

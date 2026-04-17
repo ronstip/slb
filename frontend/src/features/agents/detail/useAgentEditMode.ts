@@ -1,14 +1,14 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Agent, AgentContext, SearchDef, TodoItem } from '../../../api/endpoints/agents.ts';
+import type { Agent, Constitution, SearchDef, TodoItem } from '../../../api/endpoints/agents.ts';
 import { updateAgent } from '../../../api/endpoints/agents.ts';
 import type { CustomFieldDef } from '../../../api/types.ts';
-import { EMPTY_CONTEXT } from '../wizard/AgentContextEditor.tsx';
+import { EMPTY_CONSTITUTION } from '../wizard/AgentContextEditor.tsx';
 
 export interface AgentEditDraft {
   title: string;
   enrichment_context: string;
-  context: AgentContext;
+  constitution: Constitution;
   searches: SearchDef[];
   custom_fields: CustomFieldDef[];
   todos: TodoItem[];
@@ -18,7 +18,7 @@ function draftFromAgent(agent: Agent): AgentEditDraft {
   return {
     title: agent.title,
     enrichment_context: agent.data_scope?.enrichment_context ?? '',
-    context: agent.context ? structuredClone(agent.context) : { ...EMPTY_CONTEXT },
+    constitution: agent.constitution ? structuredClone(agent.constitution) : { ...EMPTY_CONSTITUTION },
     searches: structuredClone(agent.data_scope?.searches ?? []),
     custom_fields: structuredClone((agent.data_scope?.custom_fields ?? []) as CustomFieldDef[]),
     todos: structuredClone(agent.todos ?? []),
@@ -32,7 +32,7 @@ function draftsEqual(a: AgentEditDraft, b: AgentEditDraft): boolean {
 const EMPTY_DRAFT: AgentEditDraft = {
   title: '',
   enrichment_context: '',
-  context: { ...EMPTY_CONTEXT },
+  constitution: { ...EMPTY_CONSTITUTION },
   searches: [],
   custom_fields: [],
   todos: [],
@@ -76,7 +76,7 @@ export function useAgentEditMode(agent: Agent | null) {
           custom_fields: draft.custom_fields.length > 0 ? draft.custom_fields : null,
           enrichment_context: draft.enrichment_context || undefined,
         },
-        context: draft.context,
+        constitution: draft.constitution,
         todos: draft.todos,
       });
       await queryClient.invalidateQueries({ queryKey: ['agent-detail', agent.agent_id] });

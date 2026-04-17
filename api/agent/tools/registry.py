@@ -25,6 +25,7 @@ from api.agent.tools.set_active_agent import set_active_agent
 from api.agent.tools.show_metrics import show_metrics
 from api.agent.tools.show_topics import show_topics
 from api.agent.tools.start_agent import start_agent
+from api.agent.tools.generate_briefing import generate_briefing
 from api.agent.tools.update_todos import update_todos
 
 AgentMode = Literal["chat", "autonomous"]
@@ -63,6 +64,8 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("generate_presentation", generate_presentation, "reporting", True, "Generate a slide presentation"),
         ToolSpec("show_metrics", show_metrics, "reporting", False, "Display metric widgets in chat"),
         ToolSpec("show_topics", show_topics, "reporting", False, "Display topic widgets in chat"),
+        # Briefing (autonomous only)
+        ToolSpec("generate_briefing", generate_briefing, "reporting", True, "Generate and persist run briefing"),
     )
 }
 
@@ -91,6 +94,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
         # Planning & output (shared)
         "update_todos", "generate_report", "generate_dashboard",
         "validate_deck_plan", "generate_presentation", "compose_email",
+        "generate_briefing",
     },
 }
 

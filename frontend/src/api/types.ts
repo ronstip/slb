@@ -896,6 +896,14 @@ export interface WizardPlan {
     relevance_boundaries: string;
     analytical_lens: string;
   };
+  constitution?: {
+    identity: string;
+    mission: string;
+    methodology: string;
+    scope_and_relevance: string;
+    standards: string;
+    perspective: string;
+  };
 }
 
 export interface WizardClarification {

@@ -22,7 +22,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from api.agent.prompts.wizard_planner import WIZARD_PLANNER_PROMPT
-from api.schemas.agent_context import AgentContext
+from api.schemas.agent_constitution import Constitution
 from config.settings import get_settings
 from workers.enrichment.schema import CustomFieldDef
 
@@ -64,7 +64,7 @@ class WizardPlan(BaseModel):
     auto_dashboard: bool = False
     custom_fields: list[CustomFieldDef] = []
     enrichment_context: str = ""
-    context: AgentContext = Field(default_factory=AgentContext)
+    constitution: Constitution = Field(default_factory=Constitution)
 
 
 class WizardClarification(BaseModel):

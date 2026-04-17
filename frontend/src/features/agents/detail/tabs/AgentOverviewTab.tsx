@@ -10,6 +10,7 @@ import {
   Database,
   Expand,
   FileText,
+  History,
   Loader2,
   Pencil,
   Play,
@@ -21,8 +22,9 @@ import {
   X,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Agent, SearchDef, TodoItem } from '../../../../api/endpoints/agents.ts';
+import type { Agent, AgentRun, SearchDef, TodoItem } from '../../../../api/endpoints/agents.ts';
 import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
+import { listAgentRuns } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLogCompact, AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
 import { getCollectionStatus, getCollectionStats } from '../../../../api/endpoints/collections.ts';
@@ -48,12 +50,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../../../components/ui/select.tsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '../../../../components/ui/dropdown-menu.tsx';
 import { cn } from '../../../../lib/utils.ts';
 import { AgentCrest } from '../../AgentCrest.tsx';
+import { ARTIFACT_STYLES } from '../../../artifacts/artifact-utils.ts';
 import type { DetailTab } from '../../../../components/AppSidebar.tsx';
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { EnrichmentEditor } from '../../wizard/EnrichmentEditor.tsx';
-import { AgentContextEditor } from '../../wizard/AgentContextEditor.tsx';
+import { ConstitutionEditor } from '../../wizard/AgentContextEditor.tsx';
 import type { AgentEditDraft } from '../useAgentEditMode.ts';
 
 // --- Constants ---
@@ -64,6 +76,18 @@ const STATUS_BORDER_COLOR: Record<string, string> = {
   failed: 'rgb(239 68 68 / 0.5)',     // red
   archived: 'rgb(156 163 175 / 0.3)', // gray
 };
+
+function formatDuration(startIso: string, endIso: string | null): string {
+  if (!endIso) return '—';
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+  if (ms < 0) return '—';
+  const mins = Math.round(ms / 60_000);
+  if (mins < 1) return '<1m';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hours}h ${rem}m` : `${hours}h`;
+}
 
 const TIME_RANGES = [
   { label: '24h', value: 1 },
@@ -97,6 +121,7 @@ interface TaskOverviewTabProps {
 
 export function AgentOverviewTab({
   task,
+  artifacts,
   logs,
   onTabChange: _onTabChange,
   onOpenSchedule,
@@ -113,6 +138,12 @@ export function AgentOverviewTab({
   onUpdateDraft,
 }: TaskOverviewTabProps) {
   const [activityDialogOpen, setActivityDialogOpen] = useState(false);
+
+  const { data: runs } = useQuery({
+    queryKey: ['agent-runs', task.agent_id],
+    queryFn: () => listAgentRuns(task.agent_id),
+    staleTime: 30_000,
+  });
 
   const collectionsCount = task.collection_ids?.length || 0;
   const artifactsCount = task.artifact_ids?.length || 0;
@@ -198,6 +229,7 @@ export function AgentOverviewTab({
                   Schedule
                 </Button>
               )}
+              <RunHistoryDropdown runs={runs} artifacts={artifacts} />
               {canEdit && (
                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onEnterEdit}>
                   <Pencil className="h-3.5 w-3.5" />
@@ -831,15 +863,26 @@ const CONTEXT_SECTIONS: Array<{ key: 'mission' | 'world_context' | 'relevance_bo
   { key: 'analytical_lens', label: 'Analytical Lens' },
 ];
 
+const CONSTITUTION_SECTIONS: Array<{ key: keyof import('../../../../api/endpoints/agents.ts').Constitution; label: string }> = [
+  { key: 'identity', label: 'Identity' },
+  { key: 'mission', label: 'Mission' },
+  { key: 'methodology', label: 'Methodology' },
+  { key: 'scope_and_relevance', label: 'Scope & Relevance' },
+  { key: 'standards', label: 'Standards' },
+  { key: 'perspective', label: 'Perspective' },
+];
+
 function ReadOnlyContextSection({ task }: { task: Agent }) {
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const constitution = task.constitution;
   const ctx = task.context;
+  const hasConstitution = constitution && Object.values(constitution).some((v) => v);
   const hasContext = ctx && Object.values(ctx).some((v) => v);
   const hasEnrichment = !!task.data_scope?.enrichment_context;
   const hasCustomFields = (task.data_scope?.custom_fields?.length ?? 0) > 0;
 
-  if (!hasContext && !hasEnrichment && !hasCustomFields) {
+  if (!hasConstitution && !hasContext && !hasEnrichment && !hasCustomFields) {
     return null;
   }
 
@@ -854,17 +897,23 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
     }
   };
 
+  // Choose which sections to render — constitution (new) takes priority over context (legacy)
+  const sections = hasConstitution ? CONSTITUTION_SECTIONS : hasContext ? CONTEXT_SECTIONS : null;
+  const data = hasConstitution ? constitution : hasContext ? ctx : null;
+
   return (
     <div className="rounded-lg border border-border bg-gradient-to-br from-primary/[0.03] to-card flex flex-col h-full">
       <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg shrink-0">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Agent Context</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {hasConstitution ? 'Agent Constitution' : 'Agent Context'}
+        </h3>
       </div>
       <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
-      {/* Structured context sections */}
-      {hasContext && (
+      {/* Structured sections (constitution or legacy context) */}
+      {sections && data && (
         <div className="space-y-3">
-          {CONTEXT_SECTIONS.map(({ key, label }) =>
-            ctx[key] ? (
+          {sections.map(({ key, label }) =>
+            (data as Record<string, string>)[key] ? (
               <div key={key} className="border-l-2 border-primary/20 pl-3 py-1.5">
                 <div className="flex items-center gap-2 mb-1">
                   <p className="text-xs font-semibold uppercase tracking-wider text-foreground/70">{label}</p>
@@ -879,7 +928,7 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
                     </button>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground/80 whitespace-pre-wrap leading-relaxed pl-4">{ctx[key]}</p>
+                <p className="text-sm text-muted-foreground/80 whitespace-pre-wrap leading-relaxed pl-4">{(data as Record<string, string>)[key]}</p>
               </div>
             ) : null,
           )}
@@ -887,7 +936,7 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
       )}
 
       {/* Legacy enrichment_context fallback (shown when no structured context) */}
-      {!hasContext && hasEnrichment && (
+      {!hasConstitution && !hasContext && hasEnrichment && (
         <p className="text-sm text-muted-foreground leading-relaxed">{task.data_scope.enrichment_context}</p>
       )}
 
@@ -922,9 +971,9 @@ function EditableContextSection({
       </div>
       <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
       {/* Structured agent context */}
-      <AgentContextEditor
-        context={draft.context}
-        onChange={(ctx) => onUpdateDraft({ context: ctx })}
+      <ConstitutionEditor
+        constitution={draft.constitution}
+        onChange={(c) => onUpdateDraft({ constitution: c })}
       />
 
       {/* Searches */}
@@ -1232,6 +1281,151 @@ function EditablePlanSection({
             </button>
           </div>
         )}
+    </div>
+  );
+}
+
+// ─── Run History Dropdown ────────────────────────────────────────────────────
+
+const TRIGGER_LABELS: Record<string, string> = {
+  wizard: 'Wizard',
+  manual: 'Manual',
+  scheduled: 'Scheduled',
+};
+
+const STATUS_DOT_COLOR: Record<string, string> = {
+  running: 'bg-amber-500',
+  success: 'bg-green-500',
+  failed: 'bg-red-500',
+};
+
+function RunHistoryDropdown({
+  runs,
+  artifacts,
+}: {
+  runs: AgentRun[] | undefined;
+  artifacts: ArtifactListItem[];
+}) {
+  // Reverse so oldest = #1, newest = highest number
+  const numberedRuns = (runs ?? []).map((run, i, arr) => ({
+    ...run,
+    number: arr.length - i,
+  }));
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+          <History className="h-3 w-3" />
+          Runs
+          {numberedRuns.length > 0 && (
+            <span className="ml-0.5 text-muted-foreground">{numberedRuns.length}</span>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        {numberedRuns.length === 0 ? (
+          <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+            No runs yet
+          </DropdownMenuItem>
+        ) : (
+          numberedRuns.map((run) => {
+            const runArtifacts = artifacts.filter((a) => run.artifact_ids.includes(a.artifact_id));
+            const hasBriefing = run.briefing && (run.briefing.state_of_the_world || run.briefing.open_threads || run.briefing.process_notes);
+            const hasDetails = hasBriefing || runArtifacts.length > 0;
+
+            if (!hasDetails) {
+              return (
+                <DropdownMenuItem key={run.run_id} className="text-xs cursor-default">
+                  <RunItemContent run={run} />
+                </DropdownMenuItem>
+              );
+            }
+
+            return (
+              <DropdownMenuSub key={run.run_id}>
+                <DropdownMenuSubTrigger className="text-xs">
+                  <RunItemContent run={run} />
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-80 p-0">
+                  <div className="max-h-96 overflow-y-auto">
+                    {/* Header */}
+                    <div className="px-3 py-2 border-b border-border/50">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold">Run #{run.number}</span>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT_COLOR[run.status] ?? 'bg-muted-foreground')} />
+                        <span className="text-[11px] text-muted-foreground capitalize">{run.status}</span>
+                        <span className="flex-1" />
+                        <span className="text-[11px] text-muted-foreground">{formatDuration(run.started_at, run.completed_at)}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{formatDate(run.started_at)}</p>
+                    </div>
+
+                    {/* Briefing */}
+                    {hasBriefing && (
+                      <div className="px-3 py-2 space-y-2 border-b border-border/50">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Briefing</p>
+                        {run.briefing!.state_of_the_world && (
+                          <div>
+                            <p className="text-[10px] font-medium text-muted-foreground mb-0.5">State of the World</p>
+                            <p className="text-xs text-foreground/80 leading-relaxed">{run.briefing!.state_of_the_world}</p>
+                          </div>
+                        )}
+                        {run.briefing!.open_threads && (
+                          <div>
+                            <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Open Threads</p>
+                            <p className="text-xs text-foreground/80 leading-relaxed">{run.briefing!.open_threads}</p>
+                          </div>
+                        )}
+                        {run.briefing!.process_notes && (
+                          <div>
+                            <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Process Notes</p>
+                            <p className="text-xs text-foreground/80 leading-relaxed">{run.briefing!.process_notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Artifacts */}
+                    {runArtifacts.length > 0 && (
+                      <div className="px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Artifacts</p>
+                        {runArtifacts.map((artifact) => {
+                          const style = ARTIFACT_STYLES[artifact.type] ?? ARTIFACT_STYLES.chart;
+                          const Icon = style.icon;
+                          return (
+                            <a
+                              key={artifact.artifact_id}
+                              href={`/artifacts/${artifact.artifact_id}`}
+                              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 transition-colors"
+                            >
+                              <Icon className={cn('h-3.5 w-3.5 shrink-0', style.color)} />
+                              <span className="truncate flex-1">{artifact.title}</span>
+                              <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function RunItemContent({ run }: { run: AgentRun & { number: number } }) {
+  return (
+    <div className="flex items-center gap-2 w-full min-w-0">
+      <span className="text-[11px] font-semibold text-muted-foreground w-6 shrink-0">#{run.number}</span>
+      <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT_COLOR[run.status] ?? 'bg-muted-foreground')} />
+      <span className="text-xs truncate flex-1">{formatDate(run.started_at)}</span>
+      <span className="text-[10px] text-muted-foreground shrink-0">{TRIGGER_LABELS[run.trigger] ?? run.trigger}</span>
+      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{formatDuration(run.started_at, run.completed_at)}</span>
     </div>
   );
 }

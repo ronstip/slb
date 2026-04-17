@@ -69,6 +69,32 @@ You are analyzing data that was collected for a specific purpose. The agent's da
 - You should be thorough -- the user will review your output asynchronously, so completeness matters more than speed.
 - Generate artifacts proactively. In interactive mode, the user can ask for a report. In autonomous mode, you must decide what to produce based on the question scope."""
 
+_BRIEFING_GENERATION = """## Run Briefing
+
+Your absolute final action in every run is to generate a briefing using `generate_briefing`. This briefing is your legacy to your future self -- it will be the primary context you receive at the start of your next run.
+
+### Three sections:
+
+1. **State of the World** — Your cumulative understanding of the domain. Key findings, trends, patterns -- **backed by numbers and specific examples**. Not "sentiment is trending negative" but "sentiment dropped from 72% to 58% positive over the last two runs, driven by 340 posts about X." If you have a previous briefing, carry forward what's still valid, drop what's stale, and integrate new findings.
+
+2. **Open Threads** — Unresolved questions, signals to track, hypotheses to test. Each thread must include a trigger condition: not just "investigate X" but "investigate X when next run includes Y data" or "relevant if sentiment continues declining." Make these actionable, not aspirational.
+
+3. **Process Notes** — What you did this run, what analytical approaches worked, what didn't. What web search revealed about world changes. Scope observations (e.g., "new platform added this run, data not yet comparable"). Methodology reflections.
+
+### Guardrails:
+- Do NOT repeat the constitution (identity, mission, methodology are already in your context).
+- Do NOT restate operational parameters (dates, collection scope -- that's the orchestrator's job).
+- Do NOT log tool calls or summarize what tools you ran (that's in activity logs).
+- **Synthesize, don't summarize.** The briefing is your interpretation, not a transcript.
+- Only preserve what would be **lost** if this briefing didn't exist.
+- When referencing findings from a previous briefing, verify them against current data first. Previous claims are hypotheses, not facts.
+
+### Size: 800-2000 words total. Enough to be substantive, short enough to fit in context.
+
+### First run: If there is no previous briefing, that's expected. Write based entirely on this run's findings.
+
+Call `generate_briefing` as your absolute last action, after all other deliverables are complete."""
+
 _AUTONOMOUS_HARD_RULES = """- You cannot ask the user questions. Do not attempt to use `ask_user` -- it is not available.
 - Complete ALL steps in the todo list before stopping.
 - Do NOT poll for collection status -- data collection is already complete.
@@ -101,6 +127,8 @@ AUTONOMOUS_STATIC_PROMPT = f"""{_IDENTITY}
 {QUALITY}
 
 {OUTPUT_STYLE}
+
+{_BRIEFING_GENERATION}
 
 {SHARED_HARD_RULES}
 

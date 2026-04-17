@@ -37,11 +37,29 @@ export interface TodoItem {
   custom?: boolean;
 }
 
+/** @deprecated Use Constitution instead. */
 export interface AgentContext {
   mission: string;
   world_context: string;
   relevance_boundaries: string;
   analytical_lens: string;
+}
+
+export interface Constitution {
+  identity: string;
+  mission: string;
+  methodology: string;
+  scope_and_relevance: string;
+  standards: string;
+  perspective: string;
+}
+
+export interface Briefing {
+  state_of_the_world: string;
+  open_threads: string;
+  process_notes: string;
+  generated_at: string;
+  word_count: number;
 }
 
 export interface Agent {
@@ -57,6 +75,7 @@ export interface Agent {
     enrichment_context?: string;
   };
   context?: AgentContext;
+  constitution?: Constitution;
   paused?: boolean;
   schedule: AgentSchedule | null;
   todos: TodoItem[];
@@ -83,6 +102,7 @@ export interface AgentRun {
   completed_at: string | null;
   collection_ids: string[];
   artifact_ids: string[];
+  briefing?: Briefing | null;
 }
 
 // --- API Functions ---
@@ -107,7 +127,7 @@ export function createAgent(data: {
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused' | 'todos'>>,
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution'>>,
 ): Promise<{ ok: boolean; version?: number }> {
   return apiPatch<{ ok: boolean; version?: number }>(`/agents/${agentId}`, updates);
 }
@@ -132,6 +152,7 @@ export interface CreateFromWizardPayload {
   custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
   enrichment_context?: string;
   context?: AgentContext;
+  constitution?: Constitution;
   existing_agent_ids?: string[];
   auto_report?: boolean;
   auto_email?: boolean;

@@ -22,6 +22,7 @@ def create_agent(
     todos: list | None = None,
     status: str = "running",
     context: dict | None = None,
+    constitution: dict | None = None,
 ) -> dict:
     """Create a new agent in Firestore and BigQuery. Returns the agent dict."""
     fs = get_fs()
@@ -43,6 +44,8 @@ def create_agent(
         "collection_ids": [],
         "artifact_ids": [],
     }
+    if constitution:
+        agent_data["constitution"] = constitution
     if context:
         agent_data["context"] = context
 
@@ -84,7 +87,7 @@ def update_agent(agent_id: str, **fields) -> None:
     get_fs().update_agent(agent_id, **fields)
 
 
-VERSIONED_FIELDS = {"title", "data_scope", "todos", "context"}
+VERSIONED_FIELDS = {"title", "data_scope", "todos", "context", "constitution"}
 
 
 def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int:
@@ -110,6 +113,7 @@ def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int
             "data_scope": updates.get("data_scope", agent.get("data_scope")),
             "todos": updates.get("todos", agent.get("todos")),
             "context": updates.get("context", agent.get("context")),
+            "constitution": updates.get("constitution", agent.get("constitution")),
         }
         fs.create_agent_version(agent_id, new_version, snapshot, edited_by=user_id)
 
@@ -180,12 +184,20 @@ def dispatch_agent_run(
         if enrichment_context:
             extra_config["enrichment_context"] = enrichment_context
         # Pass structured context as supplementary enrichment info
-        agent_context = agent.get("context")
-        if agent_context:
-            from api.schemas.agent_context import context_to_enrichment_string
-            structured_ctx = context_to_enrichment_string(agent_context)
+        agent_constitution = agent.get("constitution")
+        if agent_constitution:
+            from api.schemas.agent_constitution import constitution_to_enrichment_string
+            structured_ctx = constitution_to_enrichment_string(agent_constitution)
             if structured_ctx:
                 extra_config["structured_context"] = structured_ctx
+        else:
+            # Backward compat: fall back to old AgentContext
+            agent_context = agent.get("context")
+            if agent_context:
+                from api.schemas.agent_context import context_to_enrichment_string
+                structured_ctx = context_to_enrichment_string(agent_context)
+                if structured_ctx:
+                    extra_config["structured_context"] = structured_ctx
         city = search_def.get("city")
         if city:
             extra_config["city"] = city

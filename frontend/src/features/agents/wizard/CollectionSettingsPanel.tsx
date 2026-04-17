@@ -234,7 +234,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
                 <Badge key={kw} variant="secondary" className="gap-1 text-xs">
                   {kw}
                   <X
-                    className="h-3 w-3 cursor-pointer hover:text-destructive"
+                    className="h-3 w-3 cursor-pointer hover:text-destructive pointer-events-auto"
                     onClick={() => removeKeyword(kw)}
                   />
                 </Badge>

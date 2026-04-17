@@ -213,6 +213,11 @@ async def _async_agent_continuation(agent_id: str) -> None:
     data_scope = agent.get("data_scope") or {}
     enrichment_context = data_scope.get("enrichment_context", "")
 
+    # Fetch previous run briefing for continuity
+    previous_briefing = fs.get_latest_briefing(agent_id)
+    if previous_briefing:
+        session.state["previous_briefing"] = previous_briefing
+
     message_parts = [
         f'All data collection for agent "{title}" is complete.',
         "",
@@ -222,6 +227,22 @@ async def _async_agent_continuation(agent_id: str) -> None:
 
     if enrichment_context:
         message_parts += ["", "## Context", enrichment_context]
+
+    # Include previous briefing in continuation message
+    if previous_briefing:
+        message_parts += [
+            "",
+            "## Previous Run Briefing",
+            "This was written by you at the end of your previous run. "
+            "Treat quantitative claims as hypotheses — verify against current data before citing.",
+            "",
+        ]
+        if previous_briefing.get("state_of_the_world"):
+            message_parts += ["### State of the World", previous_briefing["state_of_the_world"], ""]
+        if previous_briefing.get("open_threads"):
+            message_parts += ["### Open Threads", previous_briefing["open_threads"], ""]
+        if previous_briefing.get("process_notes"):
+            message_parts += ["### Process Notes", previous_briefing["process_notes"], ""]
 
     # Show the full plan: completed steps first, then remaining
     if completed_steps or remaining_steps:
@@ -273,8 +294,20 @@ async def _async_agent_continuation(agent_id: str) -> None:
     session.state["active_agent_status"] = "running"
     session.state["active_agent_type"] = agent.get("agent_type", "one_shot")
     session.state["active_agent_data_scope"] = data_scope
+    session.state["active_agent_constitution"] = agent.get("constitution")
     session.state["active_agent_context"] = agent.get("context")
     session.state["active_agent_created_at"] = agent.get("created_at", "")
+    session.state["active_agent_version"] = agent.get("version", 1)
+    session.state["active_run_id"] = active_run_id
+
+    # Operational context for scope awareness
+    all_runs = fs.list_runs(agent_id) if hasattr(fs, "list_runs") else []
+    session.state["active_run_number"] = len(all_runs) + (0 if all_runs else 1)
+    session.state["active_run_trigger"] = (run or {}).get("trigger", "unknown")
+    session.state["run_history_dates"] = [
+        r.get("started_at", "") for r in all_runs if r.get("started_at")
+    ]
+
     # Note: continuation_mode and autonomous_mode flags are no longer needed —
     # the agent is created with mode="autonomous" which selects the executor
     # persona, tools, and context injection. Kept for backwards compatibility
@@ -354,6 +387,7 @@ _TOOL_DISPLAY_NAMES: dict[str, str] = {
     "set_working_collections": "Setting working collections",
     "compose_email": "Composing email",
     "update_todos": "Updating plan",
+    "generate_briefing": "Writing run briefing",
     "google_search": "Searching the web",
 }
 

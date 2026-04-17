@@ -8,12 +8,12 @@ import { useAgentStore } from '../../../stores/agent-store.ts';
 import { planWizard } from '../../../api/endpoints/wizard.ts';
 import { createAgentFromWizard } from '../../../api/endpoints/agents.ts';
 import type { CustomFieldDef, WizardClarification, WizardPlan } from '../../../api/types.ts';
-import type { AgentContext } from '../../../api/endpoints/agents.ts';
+import type { Constitution } from '../../../api/endpoints/agents.ts';
 import { DescribePanel } from './DescribePanel.tsx';
 import { CollectionSettingsPanel } from './CollectionSettingsPanel.tsx';
 import { AgentSettingsPanel } from './AgentSettingsPanel.tsx';
 import { buildWizardRequestBody } from './wizard-utils.ts';
-import { EMPTY_CONTEXT } from './AgentContextEditor.tsx';
+import { EMPTY_CONSTITUTION } from './AgentContextEditor.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import {
   Tooltip,
@@ -103,7 +103,7 @@ export function AgentCreationWizard() {
   const [collectionSettings, setCollectionSettings] =
     useState<WizardCollectionSettings>(DEFAULT_COLLECTION);
   const [taskSettings, setTaskSettings] = useState<WizardAgentSettings>(DEFAULT_AGENT);
-  const [agentContext, setAgentContext] = useState<AgentContext>({ ...EMPTY_CONTEXT });
+  const [constitution, setConstitution] = useState<Constitution>({ ...EMPTY_CONSTITUTION });
 
   const isStale = planStatus === 'ready' && description.trim() !== descriptionAtPlanTime;
 
@@ -147,12 +147,24 @@ export function AgentCreationWizard() {
       slidesTemplateFile: null,
     });
 
-    if (plan.context) {
-      setAgentContext({
+    if (plan.constitution) {
+      setConstitution({
+        identity: plan.constitution.identity ?? '',
+        mission: plan.constitution.mission ?? '',
+        methodology: plan.constitution.methodology ?? '',
+        scope_and_relevance: plan.constitution.scope_and_relevance ?? '',
+        standards: plan.constitution.standards ?? '',
+        perspective: plan.constitution.perspective ?? '',
+      });
+    } else if (plan.context) {
+      // Backward compat: old plans may still return context
+      setConstitution({
+        identity: plan.context.world_context ?? '',
         mission: plan.context.mission ?? '',
-        world_context: plan.context.world_context ?? '',
-        relevance_boundaries: plan.context.relevance_boundaries ?? '',
-        analytical_lens: plan.context.analytical_lens ?? '',
+        methodology: '',
+        scope_and_relevance: plan.context.relevance_boundaries ?? '',
+        standards: '',
+        perspective: plan.context.analytical_lens ?? '',
       });
     }
   };
@@ -194,7 +206,7 @@ export function AgentCreationWizard() {
 
     setIsSubmitting(true);
     try {
-      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle, agentContext);
+      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle, constitution);
       const result = await createAgentFromWizard(body);
 
       // Add new collection IDs to sources store

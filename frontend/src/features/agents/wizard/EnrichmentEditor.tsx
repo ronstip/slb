@@ -216,7 +216,7 @@ function CustomFieldRow({ field, onChange, onRemove }: CustomFieldRowProps) {
                 <Badge key={o} variant="secondary" className="gap-1 text-[10px]">
                   {o}
                   <X
-                    className="h-2.5 w-2.5 cursor-pointer hover:text-destructive"
+                    className="h-2.5 w-2.5 cursor-pointer hover:text-destructive pointer-events-auto"
                     onClick={() => removeOption(o)}
                   />
                 </Badge>

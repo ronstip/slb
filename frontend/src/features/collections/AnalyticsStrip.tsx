@@ -227,10 +227,10 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
       <div className="flex items-stretch">
         {/* KPI grid — 2 rows × 3 columns */}
         <div className="shrink-0 grid grid-cols-[repeat(3,minmax(160px,auto))] grid-rows-2 divide-x divide-border/30">
-          <KpiCard icon={<BarChart3 className="h-4 w-4 text-blue-500" />} label="Posts" value={formatNumber(stats.totalPosts)} iconBg="bg-blue-500/10" />
           <KpiCard icon={<Eye className="h-4 w-4 text-cyan-500" />} label="Views" value={formatNumber(stats.totalViews)} iconBg="bg-cyan-500/10" />
           <KpiCard icon={<Eye className="h-4 w-4 text-emerald-500" />} label="Avg Views" value={formatNumber(stats.avgViews)} iconBg="bg-emerald-500/10" />
           <KpiCard icon={<MessageCircle className="h-4 w-4 text-amber-500" />} label="Comments" value={formatNumber(stats.totalComments)} sub={`${formatNumber(stats.avgComments)} avg`} iconBg="bg-amber-500/10" />
+          <KpiCard icon={<BarChart3 className="h-4 w-4 text-blue-500" />} label="Posts" value={formatNumber(stats.totalPosts)} iconBg="bg-blue-500/10" />
           <KpiCard icon={<Heart className="h-4 w-4 text-rose-500" />} label="Avg Likes" value={formatNumber(stats.avgLikes)} sub={`${formatNumber(stats.totalLikes)} total`} iconBg="bg-rose-500/10" />
           <KpiCard icon={<Users className="h-4 w-4 text-violet-500" />} label="Creators" value={stats.uniqueHandles.toLocaleString()} iconBg="bg-violet-500/10" />
         </div>

@@ -505,6 +505,23 @@ class FirestoreClient:
         runs = self.list_runs(agent_id, limit=1)
         return runs[0] if runs else None
 
+    def get_latest_briefing(self, agent_id: str) -> dict | None:
+        """Return the most recent briefing from a completed run, or None."""
+        docs = (
+            self._db.collection("agents")
+            .document(agent_id)
+            .collection("runs")
+            .order_by("started_at", direction=firestore.Query.DESCENDING)
+            .limit(10)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            briefing = data.get("briefing")
+            if briefing:
+                return briefing
+        return None
+
     def add_run_collection(self, agent_id: str, run_id: str, collection_id: str) -> None:
         """Append a collection_id to a run's collection_ids array."""
         from google.cloud.firestore_v1 import transforms

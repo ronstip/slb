@@ -1,41 +1,50 @@
 import { Label } from '../../../components/ui/label.tsx';
 import { Textarea } from '../../../components/ui/textarea.tsx';
-import type { AgentContext } from '../../../api/endpoints/agents.ts';
+import type { Constitution } from '../../../api/endpoints/agents.ts';
 
-interface AgentContextEditorProps {
-  context: AgentContext;
-  onChange: (ctx: AgentContext) => void;
+interface ConstitutionEditorProps {
+  constitution: Constitution;
+  onChange: (c: Constitution) => void;
 }
 
 const FIELDS: Array<{
-  key: keyof AgentContext;
+  key: keyof Constitution;
   label: string;
   placeholder: string;
 }> = [
   {
+    key: 'identity',
+    label: 'Identity',
+    placeholder: "Who this agent is — its role, analytical character, and voice…",
+  },
+  {
     key: 'mission',
     label: 'Mission',
-    placeholder: "The Agent will monitor/track/analyze\u2026",
+    placeholder: "Operational: what to monitor/deliver. Theoretical: what understanding to build over time…",
   },
   {
-    key: 'world_context',
-    label: 'World Context',
-    placeholder:
-      "Broad landscape, industry dynamics, key players, recent events\u2026",
+    key: 'methodology',
+    label: 'Methodology',
+    placeholder: "How it thinks — evidence standards, when to be conservative vs. exploratory…",
   },
   {
-    key: 'relevance_boundaries',
-    label: 'Relevance Scope',
-    placeholder: "What's in scope vs out of scope for this agent\u2026",
+    key: 'scope_and_relevance',
+    label: 'Scope & Relevance',
+    placeholder: "What's signal vs. noise — entities, themes, domains to focus on…",
   },
   {
-    key: 'analytical_lens',
-    label: 'Analytical Lens',
-    placeholder: "Whose perspective matters, what signals to prioritize\u2026",
+    key: 'standards',
+    label: 'Standards',
+    placeholder: "Quality bar — confidence thresholds, what to never claim without evidence…",
+  },
+  {
+    key: 'perspective',
+    label: 'Perspective',
+    placeholder: "Whose lens to use, what decisions this analysis serves…",
   },
 ];
 
-export function AgentContextEditor({ context, onChange }: AgentContextEditorProps) {
+export function ConstitutionEditor({ constitution, onChange }: ConstitutionEditorProps) {
   return (
     <div className="space-y-3">
       {FIELDS.map(({ key, label, placeholder }) => (
@@ -44,8 +53,8 @@ export function AgentContextEditor({ context, onChange }: AgentContextEditorProp
             {label}
           </Label>
           <Textarea
-            value={context[key] || ''}
-            onChange={(e) => onChange({ ...context, [key]: e.target.value })}
+            value={constitution[key] || ''}
+            onChange={(e) => onChange({ ...constitution, [key]: e.target.value })}
             placeholder={placeholder}
             className="text-xs min-h-12"
           />
@@ -55,7 +64,19 @@ export function AgentContextEditor({ context, onChange }: AgentContextEditorProp
   );
 }
 
-export const EMPTY_CONTEXT: AgentContext = {
+export const EMPTY_CONSTITUTION: Constitution = {
+  identity: '',
+  mission: '',
+  methodology: '',
+  scope_and_relevance: '',
+  standards: '',
+  perspective: '',
+};
+
+/** @deprecated Use ConstitutionEditor and EMPTY_CONSTITUTION instead. */
+export { ConstitutionEditor as AgentContextEditor };
+/** @deprecated Use EMPTY_CONSTITUTION instead. */
+export const EMPTY_CONTEXT = {
   mission: '',
   world_context: '',
   relevance_boundaries: '',

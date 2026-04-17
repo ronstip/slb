@@ -259,13 +259,21 @@ def _build_agent_profile(state: dict) -> Optional[str]:
     if enrichment_ctx:
         lines.append(f"\n{enrichment_ctx}")
 
-    # Structured agent context (mission, world context, relevance, lens)
-    agent_context = state.get("active_agent_context")
-    if agent_context:
-        from api.schemas.agent_context import context_to_agent_profile
-        ctx_block = context_to_agent_profile(agent_context)
-        if ctx_block:
-            lines.append(f"\n{ctx_block}")
+    # Constitution (6-section identity doc) or legacy AgentContext (4 fields)
+    constitution = state.get("active_agent_constitution")
+    if constitution:
+        from api.schemas.agent_constitution import constitution_to_agent_profile
+        profile_block = constitution_to_agent_profile(constitution)
+        if profile_block:
+            lines[0] = "## Agent Constitution"
+            lines.append(f"\n{profile_block}")
+    else:
+        agent_context = state.get("active_agent_context")
+        if agent_context:
+            from api.schemas.agent_context import context_to_agent_profile
+            ctx_block = context_to_agent_profile(agent_context)
+            if ctx_block:
+                lines.append(f"\n{ctx_block}")
 
     # Searches — what was searched (not config details like n_posts)
     searches = data_scope.get("searches", [])
@@ -310,6 +318,59 @@ def _build_agent_profile(state: dict) -> Optional[str]:
     return "\n".join(lines)
 
 
+def _build_operational_context(state: dict) -> Optional[str]:
+    """Build dynamic operational context — runtime params the agent needs.
+
+    This is the "here and now": dates, data windows, run history, version info.
+    Assembled per-invocation by the orchestrator, never persisted.
+    """
+    lines = ["## Operational Context"]
+
+    from datetime import datetime, timezone
+    lines.append(f"**Current date:** {datetime.now(timezone.utc).strftime('%B %d, %Y')}")
+
+    # Run info
+    run_number = state.get("active_run_number")
+    run_trigger = state.get("active_run_trigger")
+    if run_number:
+        trigger_note = f" (trigger: {run_trigger})" if run_trigger else ""
+        lines.append(f"**Run:** #{run_number}{trigger_note}")
+
+    # Agent version
+    version = state.get("active_agent_version")
+    if version:
+        lines.append(f"**Agent version:** {version}")
+
+    # Data window boundaries — the critical scope-awareness framing
+    data_scope = state.get("active_agent_data_scope") or {}
+    searches = data_scope.get("searches", [])
+    if searches:
+        for i, s in enumerate(searches):
+            start = s.get("start_date", "")
+            end = s.get("end_date", "")
+            days = s.get("time_range_days")
+            if start and end:
+                date_info = f"{start} to {end}"
+            elif days:
+                date_info = f"last {days} days"
+            else:
+                continue
+            label = f"Search {i+1}" if len(searches) > 1 else "Data window"
+            lines.append(f"**{label}:** {date_info}")
+        lines.append(
+            "\n**Important:** Data boundaries are artifacts of collection scope, not real-world events. "
+            "Do not interpret the start of your data window as a trend inflection point or anomaly."
+        )
+
+    # Run history dates
+    run_dates = state.get("run_history_dates", [])
+    if run_dates:
+        formatted = [d[:10] if isinstance(d, str) and len(d) >= 10 else str(d) for d in run_dates[-10:]]
+        lines.append(f"**Previous runs:** {', '.join(formatted)}")
+
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
 def _build_chat_context(state: dict) -> Optional[str]:
     """Build context for chat mode — lightweight agent summary."""
     blocks: list[str] = []
@@ -343,6 +404,11 @@ def _build_chat_context(state: dict) -> Optional[str]:
     profile_block = _build_agent_profile(state)
     if profile_block:
         blocks.append(profile_block)
+
+    # Operational context (dates, data window, run history)
+    operational_block = _build_operational_context(state)
+    if operational_block:
+        blocks.append(operational_block)
 
     # Continuation mode (chat-side — user is online after collection completes)
     if state.get("continuation_mode"):
@@ -430,6 +496,27 @@ def _build_autonomous_context(state: dict) -> Optional[str]:
     profile_block = _build_agent_profile(state)
     if profile_block:
         blocks.append(profile_block)
+
+    # Operational context (dates, data window, run history)
+    operational_block = _build_operational_context(state)
+    if operational_block:
+        blocks.append(operational_block)
+
+    # Previous briefing (from last completed run)
+    previous_briefing = state.get("previous_briefing")
+    if previous_briefing:
+        briefing_lines = [
+            "## Previous Briefing",
+            "Written by you at the end of your previous run. "
+            "Treat quantitative claims as hypotheses — verify against current data before citing.",
+        ]
+        if previous_briefing.get("state_of_the_world"):
+            briefing_lines.append(f"\n### State of the World\n{previous_briefing['state_of_the_world']}")
+        if previous_briefing.get("open_threads"):
+            briefing_lines.append(f"\n### Open Threads\n{previous_briefing['open_threads']}")
+        if previous_briefing.get("process_notes"):
+            briefing_lines.append(f"\n### Process Notes\n{previous_briefing['process_notes']}")
+        blocks.append("\n".join(briefing_lines))
 
     # Continuation instruction (always true for autonomous)
     blocks.append(

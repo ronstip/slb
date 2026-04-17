@@ -90,6 +90,16 @@ def build_workflow_template(data_scope: dict, agent_type: str) -> list[dict]:
         "status": "pending",
         "automated": False,
     })
+    step_id += 1
+
+    # ── Phase 6: Run Briefing ──────────────────────────────────
+    steps.append({
+        "id": str(step_id),
+        "phase": "deliver",
+        "content": "Generate run briefing: synthesize findings, flag open threads, note methodology observations",
+        "status": "pending",
+        "automated": False,
+    })
 
     return steps
 

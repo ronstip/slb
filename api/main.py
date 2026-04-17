@@ -582,7 +582,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             for key in (
                 "active_agent_id", "active_agent_title", "active_agent_status",
                 "active_agent_protocol", "active_agent_type", "active_agent_context_summary",
-                "active_agent_context", "active_agent_data_scope",
+                "active_agent_context", "active_agent_constitution", "active_agent_data_scope",
                 "todos", "tool_result_history",
                 "active_collection_id", "agent_selected_sources",
                 "collection_status", "collection_running",
@@ -603,6 +603,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
             session.state["active_agent_status"] = _agent_doc.get("status", "")
             session.state["active_agent_type"] = _agent_doc.get("agent_type", "one_shot")
             session.state["active_agent_data_scope"] = _ds
+            session.state["active_agent_constitution"] = _agent_doc.get("constitution")
             session.state["active_agent_context"] = _agent_doc.get("context")
             _cids = _agent_doc.get("collection_ids", [])
             session.state["agent_selected_sources"] = _cids
@@ -1601,6 +1602,7 @@ async def create_from_wizard_endpoint(
         todos=todos,
         status="running",
         context=body.context,
+        constitution=body.constitution,
     )
     agent_id = agent["agent_id"]
 
@@ -1765,7 +1767,7 @@ async def update_agent_endpoint(
     # Only allow safe fields to be updated
     allowed = {
         "title", "status", "protocol", "data_scope", "schedule",
-        "agent_type", "context_summary", "context", "paused", "todos",
+        "agent_type", "context_summary", "context", "constitution", "paused", "todos",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
 
@@ -1894,27 +1896,11 @@ async def refresh_agent_context(
     agent_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Refresh the agent's world_context using web search grounding."""
-    from api.services.agent_service import get_agent, update_agent
-    from api.schemas.agent_context import AgentContext, refresh_world_context
+    """Deprecated: Constitution is static — world awareness evolves through briefings.
 
-    agent = get_agent(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Only the agent owner can refresh context")
-
-    ctx_dict = agent.get("context") or {}
-    ctx = AgentContext(**ctx_dict)
-
-    if not ctx.mission and not ctx.world_context:
-        raise HTTPException(status_code=400, detail="Agent has no context to refresh")
-
-    updated_world_context = await refresh_world_context(ctx)
-    ctx_dict["world_context"] = updated_world_context
-    update_agent(agent_id, context=ctx_dict)
-
-    return {"status": "success", "world_context": updated_world_context}
+    Kept for backward compatibility with old frontend builds. Returns a no-op success.
+    """
+    return {"status": "deprecated", "message": "Constitution is static. World awareness evolves through the briefing system."}
 
 
 @app.get("/agents/{agent_id}/artifacts")
