@@ -1,5 +1,5 @@
 // React imports as needed
-import { Activity, TrendingUp, TrendingDown, Minus, Heart, AlertTriangle, Clock } from 'lucide-react';
+import { Activity, Heart, AlertTriangle, Clock } from 'lucide-react';
 import { formatNumber, timeAgo } from '../../lib/format.ts';
 import type { AnalyticsStats } from './AnalyticsStrip.tsx';
 import { cn } from '../../lib/utils.ts';
@@ -83,27 +83,6 @@ function Sparkline({ data, className }: { data: number[]; className?: string }) 
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Trend indicator                                                     */
-/* ------------------------------------------------------------------ */
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function TrendBadge({ value, suffix = '' }: { value: number | null; suffix?: string }) {
-  if (value === null) return null;
-  const isUp = value > 0;
-  const isFlat = value === 0;
-
-  return (
-    <span className={cn(
-      "inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums",
-      isUp ? "text-green-600" : isFlat ? "text-muted-foreground" : "text-red-500",
-    )}>
-      {isUp ? <TrendingUp className="h-3 w-3" /> : isFlat ? <Minus className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-      {isUp ? '+' : ''}{value}{suffix}
-    </span>
   );
 }
 
