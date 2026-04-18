@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Database, X } from 'lucide-react';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { getCollectionStats } from '../../api/endpoints/collections.ts';
-import type { CollectionStats } from '../../api/types.ts';
 import { DataTable } from '../../components/DataTable/DataTable.tsx';
 import { ExpandedPostRow } from '../../components/DataTable/ExpandedPostRow.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
