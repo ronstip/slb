@@ -36,7 +36,7 @@ export function TableModal({ source, open, onClose }: TableModalProps) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="flex h-[90vh] w-[96vw] max-w-screen-2xl sm:max-w-screen-2xl flex-col gap-0 p-0">
         <DialogHeader className="shrink-0 border-b px-5 py-3">
-          <DialogTitle className="text-sm font-semibold">
+          <DialogTitle className="font-heading text-sm font-semibold tracking-tight">
             {source.title}
             {allPosts.length > 0 && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">

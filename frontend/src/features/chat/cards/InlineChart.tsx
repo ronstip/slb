@@ -122,7 +122,7 @@ export function InlineChart({ data }: InlineChartProps) {
   }
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-border/40 bg-background">
+    <div className="mt-3 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-3 pb-1">
         <h4 className="text-xs font-medium text-muted-foreground">{title || 'Chart'}</h4>

@@ -59,7 +59,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../../components/ui/dropdown-menu.tsx';
 import { cn } from '../../../../lib/utils.ts';
-import { AgentCrest } from '../../AgentCrest.tsx';
+import { BotAvatar } from '../../../../components/BrandElements.tsx';
 import { ARTIFACT_STYLES } from '../../../artifacts/artifact-utils.ts';
 import type { DetailTab } from '../../../../components/AppSidebar.tsx';
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
@@ -162,7 +162,7 @@ export function AgentOverviewTab({
       {/* Header — status-colored bottom accent */}
       <div className="shrink-0 px-6 py-2.5 border-b-2" style={{ borderBottomColor: STATUS_BORDER_COLOR[task.status] || 'var(--border)' }}>
         <div className="flex items-center gap-3">
-          <AgentCrest id={task.agent_id} size={28} />
+          <BotAvatar seed={task.agent_id} size={28} />
           {isEditing && draft ? (
             <Input
               value={draft.title}
@@ -171,7 +171,7 @@ export function AgentOverviewTab({
               autoFocus
             />
           ) : (
-            <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
+            <h1 className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">{task.title}</h1>
           )}
           <StatusBadge status={task.status} paused={task.paused} />
           <div className="flex-1" />
@@ -242,8 +242,7 @@ export function AgentOverviewTab({
       <div className="flex-1 overflow-hidden min-w-0">
         <div className="w-full h-full px-6 pt-5 pb-6 flex flex-col gap-5">
 
-          {/* ── Status Strip ── */}
-          <div className="shrink-0 flex items-center gap-4 px-4 py-2 rounded-lg bg-muted/40 border border-border/50">
+          <div className="shrink-0 flex items-center gap-4 px-4 py-2 rounded-xl bg-muted/40 border border-border/50">
             <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <Clock className="h-3 w-3" />
               {startDate}
@@ -285,8 +284,8 @@ export function AgentOverviewTab({
               {isEditing && draft ? (
                 <EditablePlanSection draft={draft} onUpdateDraft={onUpdateDraft} />
               ) : (
-                <div className="rounded-lg border border-border bg-card flex flex-col min-h-0 flex-[2]">
-                  <h3 className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-primary/[0.06] border-b border-primary/10 rounded-t-lg shrink-0">Plan</h3>
+                <div className="rounded-xl border border-border bg-card flex flex-col min-h-0 flex-[2]">
+                  <h3 className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-primary/[0.06] border-b border-primary/10 rounded-t-xl shrink-0">Plan</h3>
                   {task.todos && task.todos.length > 0 ? (
                     <div className="py-1 overflow-y-auto flex-1 min-h-0">
                       {task.todos.map((todo, i) => {
@@ -324,9 +323,8 @@ export function AgentOverviewTab({
                 </div>
               )}
 
-              {/* Recent Activity */}
-              <div className="rounded-lg border border-border bg-card flex flex-col min-h-0 flex-[1]">
-                <div className="flex items-center justify-between px-3 py-2 shrink-0 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg">
+              <div className="rounded-xl border border-border bg-card flex flex-col min-h-0 flex-[1]">
+                <div className="flex items-center justify-between px-3 py-2 shrink-0 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
                   {logs.length > 0 && (
                     <Button
@@ -385,7 +383,7 @@ export function AgentOverviewTab({
       <Dialog open={activityDialogOpen} onOpenChange={setActivityDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Activity Log</DialogTitle>
+            <DialogTitle className="font-heading tracking-tight">Activity Log</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto -mx-6 px-6">
             <AgentActivityLog logs={logs} isRunning={task.status === 'running'} initialLimit={200} />
@@ -419,7 +417,7 @@ function LiveCollectionProgress({ collectionIds }: { collectionIds: string[] }) 
   const enriched = status.posts_enriched ?? 0;
 
   return (
-    <div className="rounded-lg border border-border/60 bg-card">
+    <div className="rounded-xl border border-border/60 bg-card">
       <div className="px-3 py-2.5 space-y-2">
         <div className="flex items-center gap-2">
           {isCollecting ? (
@@ -552,8 +550,8 @@ function SourcesSection({ task }: { task: Agent }) {
 
   if (flatSources.length === 0) {
     return (
-      <div className="rounded-lg border border-border bg-card shadow-sm h-full flex flex-col">
-        <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg">
+      <div className="rounded-xl border border-border bg-card shadow-sm h-full flex flex-col">
+        <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
         </div>
         <p className="px-3 py-4 text-sm text-muted-foreground">No sources defined</p>
@@ -562,9 +560,8 @@ function SourcesSection({ task }: { task: Agent }) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card shadow-sm h-full flex flex-col">
-      {/* Header bar */}
-      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg shrink-0">
+    <div className="rounded-xl border border-border bg-card shadow-sm h-full flex flex-col">
+      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl shrink-0">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
       </div>
 
@@ -901,8 +898,8 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
   const data = hasConstitution ? constitution : hasContext ? ctx : null;
 
   return (
-    <div className="rounded-lg border border-border bg-gradient-to-br from-primary/[0.03] to-card flex flex-col h-full">
-      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg shrink-0">
+    <div className="rounded-xl border border-border bg-gradient-to-br from-primary/[0.03] to-card flex flex-col h-full">
+      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl shrink-0">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {hasConstitution ? 'Agent Constitution' : 'Agent Context'}
         </h3>
@@ -964,8 +961,8 @@ function EditableContextSection({
   onUpdateDraft: (patch: Partial<AgentEditDraft>) => void;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card flex flex-col h-full">
-      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-lg shrink-0">
+    <div className="rounded-xl border border-border bg-card flex flex-col h-full">
+      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl shrink-0">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Agent Context</h3>
       </div>
       <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
@@ -1060,7 +1057,7 @@ function SearchDefEditor({
   };
 
   return (
-    <div className="rounded-lg border border-border/50 bg-muted/20 p-3 space-y-3">
+    <div className="rounded-xl border border-border/50 bg-muted/20 p-3 space-y-3">
       {/* Header with optional remove */}
       {onRemove && (
         <div className="flex justify-end">
@@ -1208,7 +1205,7 @@ function EditablePlanSection({
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="rounded-xl border border-border bg-card">
       <h3 className="px-3 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</h3>
         {draft.todos.map((todo, i) => (
           <div key={todo.id}>

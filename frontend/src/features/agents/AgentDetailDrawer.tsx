@@ -287,25 +287,24 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                 </Badge>
               )}
             </div>
-            <SheetTitle className="text-lg leading-tight">{displayTask.title}</SheetTitle>
+            <SheetTitle className="font-heading text-lg font-semibold tracking-tight leading-tight">{displayTask.title}</SheetTitle>
             <SheetDescription className="flex items-center gap-1.5 text-xs">
               <Clock className="h-3 w-3" />
               {timelineText}
             </SheetDescription>
           </SheetHeader>
 
-          {/* Stats row */}
           <div className="mt-5 grid grid-cols-3 gap-3">
-            <div className="rounded-lg bg-muted/40 p-3 text-center">
-              <div className="text-xl font-bold">{collectionsCount}</div>
+            <div className="rounded-xl border border-border/60 bg-muted/40 p-3 text-center">
+              <div className="font-heading text-xl font-semibold tracking-tight">{collectionsCount}</div>
               <div className="text-[10px] text-muted-foreground">Collections</div>
             </div>
-            <div className="rounded-lg bg-muted/40 p-3 text-center">
-              <div className="text-xl font-bold">{artifactsCount}</div>
+            <div className="rounded-xl border border-border/60 bg-muted/40 p-3 text-center">
+              <div className="font-heading text-xl font-semibold tracking-tight">{artifactsCount}</div>
               <div className="text-[10px] text-muted-foreground">Artifacts</div>
             </div>
-            <div className="rounded-lg bg-muted/40 p-3 text-center">
-              <div className="text-xl font-bold">{displayTask.todos?.length || 0}</div>
+            <div className="rounded-xl border border-border/60 bg-muted/40 p-3 text-center">
+              <div className="font-heading text-xl font-semibold tracking-tight">{displayTask.todos?.length || 0}</div>
               <div className="text-[10px] text-muted-foreground">Steps</div>
             </div>
           </div>
@@ -314,7 +313,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
           {displayTask.agent_type === 'recurring' && (
             <div className="mt-6">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Schedule</h3>
-              <div className="rounded-lg border p-3 space-y-2">
+              <div className="rounded-xl border border-border bg-card/40 p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">
                     {displayTask.schedule ? formatSchedule(displayTask.schedule.frequency) : 'No schedule'}
@@ -443,7 +442,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
           {collectionsCount > 0 && (
             <div className="mt-6">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Collections</h3>
-              <div className="rounded-lg border overflow-hidden divide-y divide-border/40">
+              <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/40">
                 {collectionsToShow.map((cid) => (
                   <div key={cid} className="flex items-center gap-2 px-3 py-2">
                     <div className="flex-1 min-w-0">
@@ -504,7 +503,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                   return (
                     <button
                       key={artifact.artifact_id}
-                      className="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
+                      className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-all hover:border-primary/40 hover:shadow-[0_4px_20px_rgba(110,86,207,0.12)]"
                       onClick={() => {
                         onOpenChange(false);
                         navigate(artifact.session_id
@@ -582,7 +581,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Set Schedule</DialogTitle>
+            <DialogTitle className="font-heading tracking-tight">Set Schedule</DialogTitle>
             <DialogDescription>
               Set how often this agent runs automatically
             </DialogDescription>

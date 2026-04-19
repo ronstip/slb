@@ -36,7 +36,7 @@ export function AdminPage() {
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
           <ShieldCheck className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h2 className="mt-4 text-lg font-semibold text-foreground">Access Denied</h2>
+          <h2 className="mt-4 font-heading text-lg font-semibold tracking-tight text-foreground">Access Denied</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             You don't have permission to access the admin dashboard.
           </p>
@@ -62,20 +62,20 @@ export function AdminPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar */}
-      <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-card">
+      <aside className="flex w-[300px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
         {/* Logo + Back */}
         <div className="flex items-center justify-between px-3 py-3">
           <button onClick={() => navigate(getAppPath())} className="focus:outline-none">
             <Logo size="sm" />
           </button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => navigate(getAppPath())}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => navigate(getAppPath())}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Title */}
         <div className="px-3 pb-3">
-          <span className="text-xs font-medium text-muted-foreground">Admin Dashboard</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-sidebar-foreground/50">Admin Dashboard</span>
         </div>
 
         {/* Nav */}
@@ -97,7 +97,7 @@ export function AdminPage() {
             />
           ) : (
             <>
-              <h1 className="mb-6 text-xl font-semibold text-foreground">
+              <h1 className="mb-6 font-heading text-xl font-semibold tracking-tight text-foreground">
                 {SECTION_TITLES[activeSection]}
               </h1>
               {activeSection === 'overview' && <OverviewSection />}

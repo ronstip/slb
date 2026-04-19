@@ -39,7 +39,7 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
       {/* Greeting */}
       <div className="flex flex-col items-center mb-10">
         <Logo size="lg" showText={false} />
-        <h1 className="mt-5 text-[22px] font-bold tracking-tight text-foreground">
+        <h1 className="mt-5 font-heading text-[22px] font-semibold tracking-tight text-foreground">
           I'm on it. Ask me anything.
         </h1>
         <p className="mt-2 text-sm text-muted-foreground/70">

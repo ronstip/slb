@@ -5,10 +5,10 @@ export interface AccentPreset {
   hex: string;
 }
 
-export const DEFAULT_ACCENT = '#7f22fe'; // Violet
+export const DEFAULT_ACCENT = '#6E56CF'; // Brand purple
 
 export const ACCENT_PRESETS: AccentPreset[] = [
-  { name: 'Violet', hex: '#7f22fe' },
+  { name: 'Brand Purple', hex: '#6E56CF' },
   { name: 'Purple', hex: '#A855F7' },
   { name: 'Navy', hex: '#3B5998' },
   { name: 'Slate Blue', hex: '#5A7FA0' },
@@ -104,6 +104,9 @@ export function generateAccentVariants(
     '--color-accent-vibrant': accentHex,
     '--primary': accentHex,
     '--primary-foreground': '#FFFFFF',
+    '--sidebar-primary': accentHex,
+    '--sidebar-primary-foreground': '#FFFFFF',
+    '--sidebar-ring': accentHex,
     '--ring': accentHex,
     '--chart-1': palette[0],
     '--chart-2': palette[1],

@@ -57,7 +57,7 @@ export function AgentChatTab({ task }: TaskChatTabProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header: name+status left, selectors right */}
         <div className="flex h-11 shrink-0 items-center gap-3 px-6">
-          <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
+          <h1 className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">{task.title}</h1>
           <StatusBadge status={task.status} />
           <div className="flex-1" />
           <TaskSelector />

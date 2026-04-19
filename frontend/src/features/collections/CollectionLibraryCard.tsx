@@ -135,14 +135,16 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
   return (
     <>
       <div className={cn(
-        'overflow-hidden rounded-lg border bg-card p-3 transition-all duration-150',
-        isInSession ? 'border-accent-vibrant/30 shadow-sm' : 'border-border hover:border-border/80 hover:shadow-sm',
+        'overflow-hidden rounded-xl border bg-card p-3 transition-all duration-150',
+        isInSession
+          ? 'border-accent-vibrant/30 shadow-sm'
+          : 'border-border hover:border-primary/40 hover:shadow-[0_4px_20px_rgba(110,86,207,0.12)]',
       )}>
         {/* Top row: title + actions */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-sm font-medium text-foreground">
+              <span className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">
                 {source.title}
               </span>
               {isShared && <Globe className="h-3 w-3 shrink-0 text-accent-blue" />}
@@ -261,7 +263,7 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete Collection</DialogTitle>
+            <DialogTitle className="font-heading tracking-tight">Delete Collection</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "{source.title}"? This will permanently remove all collected data.
             </DialogDescription>

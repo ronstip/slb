@@ -241,7 +241,7 @@ export function AgentCreationWizard() {
   return (
     <div className="space-y-6">
       {planStatus === 'ready' && (
-        <div className="flex items-start gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4">
+        <div className="flex items-start gap-3 rounded-2xl border border-primary/30 bg-primary/5 shadow-[0_4px_20px_rgba(110,86,207,0.12)] px-5 py-4">
           <div className="flex-1 min-w-0">
             {titleEditing ? (
               <Input
@@ -252,13 +252,13 @@ export function AgentCreationWizard() {
                   if (e.key === 'Enter') setTitleEditing(false);
                 }}
                 autoFocus
-                className="h-8 text-base font-semibold"
+                className="h-8 font-heading text-base font-semibold tracking-tight"
               />
             ) : (
               <button
                 type="button"
                 onClick={() => setTitleEditing(true)}
-                className="group flex items-center gap-1.5 text-left text-base font-semibold text-foreground hover:text-primary"
+                className="group flex items-center gap-1.5 text-left font-heading text-base font-semibold tracking-tight text-foreground hover:text-primary"
               >
                 {agentTitle || 'New agent'}
                 <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

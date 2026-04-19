@@ -50,12 +50,12 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
 
   if (planStatus === 'idle' || planStatus === 'clarifying') {
     return (
-      <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+      <div className="flex flex-col rounded-2xl border border-border bg-card p-6 shadow-sm opacity-60">
         <div className="flex items-center gap-2.5 mb-4">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-xs font-bold text-secondary-foreground">
             3
           </span>
-          <h3 className="text-lg font-semibold text-foreground tracking-tight">Agent Settings</h3>
+          <h3 className="font-heading text-lg font-semibold tracking-tight">Agent Settings</h3>
         </div>
         <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border/50 p-8 text-center">
           <p className="text-xs text-muted-foreground">
@@ -70,12 +70,12 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
 
   if (planStatus === 'planning') {
     return (
-      <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+      <div className="flex flex-col rounded-2xl border border-border bg-card p-6 shadow-sm ">
         <div className="flex items-center gap-2.5 mb-4">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
             3
           </span>
-          <h3 className="text-lg font-semibold text-foreground tracking-tight">Agent Settings</h3>
+          <h3 className="font-heading text-lg font-semibold tracking-tight">Agent Settings</h3>
         </div>
         <div className="space-y-4 flex-1 pointer-events-none animate-pulse">
           <AIThinkingCard label="Planning schedule" />
@@ -102,12 +102,12 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
   }
 
   return (
-    <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+    <div className="flex flex-col rounded-2xl border border-border bg-card p-6 shadow-sm ">
       <div className="flex items-center gap-2.5 mb-4">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
           3
         </span>
-        <h3 className="text-lg font-semibold text-foreground tracking-tight">
+        <h3 className="font-heading text-lg font-semibold tracking-tight">
           Agent Settings
         </h3>
       </div>

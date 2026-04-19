@@ -56,18 +56,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '../../components/ui/tooltip.tsx';
+import { BotAvatar } from '../../components/BrandElements.tsx';
 import { cn } from '../../lib/utils.ts';
 import { toast } from 'sonner';
 
 interface TaskCardProps {
   task: Agent;
   compact?: boolean;
+  simple?: boolean;
   skipThumbnails?: boolean;
   onClick?: () => void;
 }
 
-function ThumbnailGrid({ collectionIds, compact }: { collectionIds: string[]; compact?: boolean }) {
-  const maxImages = compact ? 3 : 6;
+function ThumbnailGrid({ collectionIds, compact, agentId }: { collectionIds: string[]; compact?: boolean; agentId: string }) {
   const heightClass = compact ? 'h-24' : 'h-32';
   const [imageStates, setImageStates] = useState<Record<string, 'loaded' | 'error'>>({});
 
@@ -88,7 +89,6 @@ function ThumbnailGrid({ collectionIds, compact }: { collectionIds: string[]; co
   });
 
   const posts = data?.posts ?? [];
-  // Prefer refs with gcs_uri (permanent), fall back to original_url (may expire but better than nothing)
   const candidates = posts
     .flatMap((p) => {
       const refs = p.media_refs ?? [];
@@ -102,44 +102,68 @@ function ThumbnailGrid({ collectionIds, compact }: { collectionIds: string[]; co
       if (!url) return [];
       return [url];
     })
-    .slice(0, maxImages);
+    .slice(0, 3);
 
   const hasLoaded = candidates.some((url) => imageStates[url] === 'loaded');
+  const [u1, u2, u3] = candidates;
+  const avatarSize = compact ? 36 : 44;
 
   return (
-    <div className={cn('relative overflow-hidden', heightClass)}>
-      {/* Logo — always rendered as background; hidden once an image loads */}
-      {!hasLoaded && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/20">
-          <Logo size="sm" showText className="opacity-20" />
-        </div>
-      )}
-
-      {candidates.length > 0 && (
-        <div className="grid grid-cols-3 gap-0.5 h-full">
-          {candidates.map((url) => (
-            <div key={url} className="relative overflow-hidden bg-muted/30">
+    <div className="relative">
+      <div className={cn('relative overflow-hidden bg-muted/20', heightClass)}>
+        {!hasLoaded && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Logo size="sm" showText className="opacity-20" />
+          </div>
+        )}
+        {u1 && (
+          <div className="flex h-full">
+            <div className="w-1/2 h-full border-r border-background/50 overflow-hidden">
               <img
-                src={url}
+                src={u1}
                 alt=""
-                className={cn(
-                  'h-full w-full object-cover transition-opacity duration-300',
-                  imageStates[url] === 'loaded' ? 'opacity-100' : 'opacity-0',
-                )}
+                className={cn('h-full w-full object-cover transition-opacity duration-300', imageStates[u1] === 'loaded' ? 'opacity-100' : 'opacity-0')}
                 loading="lazy"
                 referrerPolicy="no-referrer"
-                onLoad={() => setImageStates((s) => ({ ...s, [url]: 'loaded' }))}
-                onError={() => setImageStates((s) => ({ ...s, [url]: 'error' }))}
+                onLoad={() => setImageStates((s) => ({ ...s, [u1]: 'loaded' }))}
+                onError={() => setImageStates((s) => ({ ...s, [u1]: 'error' }))}
               />
             </div>
-          ))}
-        </div>
-      )}
+            <div className="w-1/2 h-full flex flex-col">
+              <div className="h-1/2 border-b border-background/50 overflow-hidden">
+                <img
+                  src={u2 ?? u1}
+                  alt=""
+                  className={cn('h-full w-full object-cover transition-opacity duration-300', imageStates[u2 ?? u1] === 'loaded' ? 'opacity-100' : 'opacity-0')}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setImageStates((s) => ({ ...s, [u2 ?? u1]: 'loaded' }))}
+                  onError={() => setImageStates((s) => ({ ...s, [u2 ?? u1]: 'error' }))}
+                />
+              </div>
+              <div className="h-1/2 overflow-hidden">
+                <img
+                  src={u3 ?? u1}
+                  alt=""
+                  className={cn('h-full w-full object-cover transition-opacity duration-300', imageStates[u3 ?? u1] === 'loaded' ? 'opacity-100' : 'opacity-0')}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setImageStates((s) => ({ ...s, [u3 ?? u1]: 'loaded' }))}
+                  onError={() => setImageStates((s) => ({ ...s, [u3 ?? u1]: 'error' }))}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="absolute -bottom-5 left-3 z-10 rounded-xl border-[3px] border-card">
+        <BotAvatar seed={agentId} size={avatarSize} />
+      </div>
     </div>
   );
 }
 
-export function AgentCard({ task, compact, skipThumbnails, onClick }: TaskCardProps) {
+export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: TaskCardProps) {
   const navigate = useNavigate();
   const fetchAgents = useAgentStore((s) => s.fetchAgents);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -246,15 +270,15 @@ export function AgentCard({ task, compact, skipThumbnails, onClick }: TaskCardPr
   return (
     <>
       <div
-        className="group flex flex-col rounded-xl border bg-card overflow-hidden transition-all hover:border-primary/30 hover:shadow-md cursor-pointer"
+        className="group flex h-full flex-col rounded-xl border border-border bg-card overflow-hidden shadow-sm transition-all hover:border-primary/30 hover:shadow-md cursor-pointer"
         onClick={() => handleOpen()}
       >
-        {!skipThumbnails && <ThumbnailGrid collectionIds={task.collection_ids} compact={compact} />}
+        {!skipThumbnails && <ThumbnailGrid collectionIds={task.collection_ids} compact={compact} agentId={task.agent_id} />}
 
-        <div className={cn('flex flex-1 flex-col', compact ? 'p-3' : 'p-4')}>
+        <div className={cn('flex flex-1 flex-col', compact ? 'p-3 pt-7' : 'p-4 pt-8')}>
           <div className="flex items-start justify-between gap-2 mb-1.5">
             <h3 className={cn(
-              'line-clamp-2 font-semibold leading-tight text-foreground',
+              'line-clamp-2 font-heading font-semibold leading-tight tracking-tight text-foreground',
               compact ? 'text-xs' : 'text-sm',
             )}>
               {task.title}
@@ -262,8 +286,8 @@ export function AgentCard({ task, compact, skipThumbnails, onClick }: TaskCardPr
             <StatusBadge status={task.status} paused={task.paused} />
           </div>
 
-          {/* Meta info — hidden in compact mode */}
-          {!compact && (
+          {/* Meta info — hidden in compact/simple mode */}
+          {!compact && !simple && (
             <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Database className="h-3 w-3" />
@@ -284,138 +308,156 @@ export function AgentCard({ task, compact, skipThumbnails, onClick }: TaskCardPr
             </div>
           )}
 
-          {!compact && (
+          {!compact && !simple && (
             <div className="text-[11px] text-muted-foreground/60 mt-1">
               Last run: {formatLastRun(task.updated_at)}
             </div>
           )}
 
           {/* Actions */}
-          <div className={cn(
-            'flex items-center gap-1 mt-auto border-t',
-            compact ? 'pt-2 mt-2' : 'pt-3 mt-3',
-          )} onClick={(e) => e.stopPropagation()}>
-
-            {/* Chat */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleOpenChat}>
-                  <MessageSquare className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Chat</TooltipContent>
-            </Tooltip>
-
-            {/* Run / Re-run */}
-            {canRun && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRun}>
-                    <Play className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{task.agent_type === 'recurring' ? 'Run now' : 'Re-run'}</TooltipContent>
-              </Tooltip>
-            )}
-
-            {/* Stop */}
-            {task.status === 'running' && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleStop}>
-                    <StopCircle className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Stop</TooltipContent>
-              </Tooltip>
-            )}
-
-            {/* Pause / Resume */}
-            {task.agent_type === 'recurring' && task.status !== 'running' && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePauseResume}>
-                    {!task.paused ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{!task.paused ? 'Pause' : 'Resume'}</TooltipContent>
-              </Tooltip>
-            )}
-
-            {/* Artifacts */}
-            {hasArtifacts && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/agents/${task.agent_id}?tab=artifacts`);
-                  }}>
-                    <FileText className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Artifacts</TooltipContent>
-              </Tooltip>
-            )}
-
-            {/* Schedule (one-time tasks that completed/approved) */}
-            {task.agent_type !== 'recurring' && task.status === 'success' && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {
-                    e.stopPropagation();
-                    setScheduleOpen(true);
-                  }}>
-                    <Timer className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Schedule</TooltipContent>
-              </Tooltip>
-            )}
-
-            {/* Explorer */}
-            {hasCollections && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/agents/${task.agent_id}?tab=explorer`);
-                  }}>
-                    <Compass className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Explorer</TooltipContent>
-              </Tooltip>
-            )}
-
-            <div className="flex-1" />
-
-            {/* Three-dot menu: management actions only */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                <DropdownMenuItem onClick={handleRenameOpen}>
-                  <Pencil className="mr-2 h-3.5 w-3.5" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {task.status === 'archived' ? (
-                  <DropdownMenuItem onClick={handleRestore}>
-                    <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
-                    Restore
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem onClick={() => setArchiveConfirmOpen(true)}>
-                    <Archive className="mr-2 h-3.5 w-3.5" />
-                    Archive
-                  </DropdownMenuItem>
+          {simple ? (
+            /* Simple Figma-style footer: plain grey icons, no tooltips */
+            <div className="flex items-center justify-between mt-auto pt-3 mt-3 border-t border-border/50 text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+              <div className="flex gap-3">
+                <button type="button" className="transition-colors hover:text-primary" onClick={handleOpenChat}>
+                  <MessageSquare className="h-4 w-4" />
+                </button>
+                {hasArtifacts && (
+                  <button type="button" className="transition-colors hover:text-primary" onClick={(e) => { e.stopPropagation(); navigate(`/agents/${task.agent_id}?tab=artifacts`); }}>
+                    <FileText className="h-4 w-4" />
+                  </button>
                 )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                {hasCollections && (
+                  <button type="button" className="transition-colors hover:text-primary" onClick={(e) => { e.stopPropagation(); navigate(`/agents/${task.agent_id}?tab=explorer`); }}>
+                    <Compass className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="transition-colors hover:text-foreground" onClick={(e) => e.stopPropagation()}>
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={handleRenameOpen}>
+                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {task.status === 'archived' ? (
+                    <DropdownMenuItem onClick={handleRestore}>
+                      <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                      Restore
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={() => setArchiveConfirmOpen(true)}>
+                      <Archive className="mr-2 h-3.5 w-3.5" />
+                      Archive
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : (
+            /* Full action bar with tooltips */
+            <div className={cn('flex items-center gap-1 mt-auto border-t', compact ? 'pt-2 mt-2' : 'pt-3 mt-3')} onClick={(e) => e.stopPropagation()}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleOpenChat}>
+                    <MessageSquare className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Chat</TooltipContent>
+              </Tooltip>
+              {canRun && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRun}>
+                      <Play className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{task.agent_type === 'recurring' ? 'Run now' : 'Re-run'}</TooltipContent>
+                </Tooltip>
+              )}
+              {task.status === 'running' && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleStop}>
+                      <StopCircle className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Stop</TooltipContent>
+                </Tooltip>
+              )}
+              {task.agent_type === 'recurring' && task.status !== 'running' && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePauseResume}>
+                      {!task.paused ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{!task.paused ? 'Pause' : 'Resume'}</TooltipContent>
+                </Tooltip>
+              )}
+              {hasArtifacts && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); navigate(`/agents/${task.agent_id}?tab=artifacts`); }}>
+                      <FileText className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Artifacts</TooltipContent>
+                </Tooltip>
+              )}
+              {task.agent_type !== 'recurring' && task.status === 'success' && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setScheduleOpen(true); }}>
+                      <Timer className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Schedule</TooltipContent>
+                </Tooltip>
+              )}
+              {hasCollections && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); navigate(`/agents/${task.agent_id}?tab=explorer`); }}>
+                      <Compass className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Explorer</TooltipContent>
+                </Tooltip>
+              )}
+              <div className="flex-1" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={handleRenameOpen}>
+                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {task.status === 'archived' ? (
+                    <DropdownMenuItem onClick={handleRestore}>
+                      <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                      Restore
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={() => setArchiveConfirmOpen(true)}>
+                      <Archive className="mr-2 h-3.5 w-3.5" />
+                      Archive
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
       </div>
 
@@ -423,7 +465,7 @@ export function AgentCard({ task, compact, skipThumbnails, onClick }: TaskCardPr
       <AlertDialog open={archiveConfirmOpen} onOpenChange={setArchiveConfirmOpen}>
         <AlertDialogContent onClick={(e) => e.stopPropagation()}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Archive this agent?</AlertDialogTitle>
+            <AlertDialogTitle className="font-heading tracking-tight">Archive this agent?</AlertDialogTitle>
             <AlertDialogDescription>
               Any active data collection and scheduled runs will be stopped. You can restore the agent later from the archived filter.
             </AlertDialogDescription>
@@ -442,7 +484,7 @@ export function AgentCard({ task, compact, skipThumbnails, onClick }: TaskCardPr
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent className="sm:max-w-sm" onClick={(e) => e.stopPropagation()}>
           <DialogHeader>
-            <DialogTitle>Rename Agent</DialogTitle>
+            <DialogTitle className="font-heading tracking-tight">Rename Agent</DialogTitle>
           </DialogHeader>
           <Input
             value={renameValue}

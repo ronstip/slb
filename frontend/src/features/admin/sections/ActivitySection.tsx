@@ -102,7 +102,7 @@ export function ActivitySection() {
       ) : chartData.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Activity Over Time</CardTitle>
+            <CardTitle className="font-heading text-base font-semibold tracking-tight">Activity Over Time</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={350}>
