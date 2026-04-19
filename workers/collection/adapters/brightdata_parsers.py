@@ -57,8 +57,8 @@ def _extract_search_keyword(item: dict) -> str | None:
 
 def parse_brightdata_tiktok_post(item: dict) -> Post:
     """Parse a TikTok post from Bright Data's dataset response."""
-    post_id = str(item.get("post_id", ""))
-    username = item.get("profile_username", "")
+    post_id = str(item.get("post_id") or "")
+    username = item.get("profile_username") or ""
 
     # Media URLs — skip video_url (TikTok CDN tokens expire within minutes,
     # causing 100% 403 failures). Keep thumbnails + carousel images only.
@@ -76,12 +76,12 @@ def parse_brightdata_tiktok_post(item: dict) -> Post:
         post_id=post_id,
         platform="tiktok",
         channel_handle=username,
-        channel_id=str(item.get("profile_id", "")),
+        channel_id=str(item.get("profile_id") or ""),
         title=None,
         content=item.get("description"),
-        post_url=item.get("url", ""),
+        post_url=item.get("url") or "",
         posted_at=_parse_iso_timestamp(item.get("create_time")),
-        post_type=item.get("post_type", "video"),
+        post_type=item.get("post_type") or "video",
         parent_post_id=None,
         media_urls=media_urls,
         media_refs=[],
@@ -109,9 +109,9 @@ def parse_brightdata_tiktok_post(item: dict) -> Post:
 
 def parse_brightdata_tiktok_channel(item: dict) -> Channel:
     """Parse a TikTok channel from Bright Data's post response (profile fields embedded)."""
-    username = item.get("account_id") or item.get("profile_username", "")
+    username = item.get("account_id") or item.get("profile_username") or ""
     return Channel(
-        channel_id=str(item.get("profile_id", "")),
+        channel_id=str(item.get("profile_id") or ""),
         platform="tiktok",
         channel_handle=username,
         subscribers=_safe_int(item.get("profile_followers")),
@@ -132,7 +132,7 @@ def parse_brightdata_tiktok_channel(item: dict) -> Channel:
 
 def parse_brightdata_youtube_post(item: dict) -> Post:
     """Parse a YouTube video from Bright Data's dataset response."""
-    video_id = str(item.get("video_id", ""))
+    video_id = str(item.get("video_id") or "")
 
     media_urls: list[str] = []
     preview = item.get("preview_image")
@@ -144,16 +144,16 @@ def parse_brightdata_youtube_post(item: dict) -> Post:
     if video_url:
         media_urls.append(video_url)
 
-    channel_handle = item.get("youtuber") or item.get("handle_name", "")
+    channel_handle = item.get("youtuber") or item.get("handle_name") or ""
 
     return Post(
         post_id=video_id,
         platform="youtube",
         channel_handle=channel_handle,
-        channel_id=str(item.get("youtuber_id", "")),
+        channel_id=str(item.get("youtuber_id") or ""),
         title=item.get("title"),
         content=item.get("description"),
-        post_url=item.get("url", ""),
+        post_url=item.get("url") or "",
         posted_at=_parse_iso_timestamp(item.get("date_posted")),
         post_type="video",
         parent_post_id=None,
@@ -182,8 +182,8 @@ def parse_brightdata_youtube_post(item: dict) -> Post:
 
 def parse_brightdata_youtube_channel(item: dict) -> Channel:
     """Parse a YouTube channel from Bright Data's post response (channel fields embedded)."""
-    ch_id = str(item.get("youtuber_id", ""))
-    name = item.get("youtuber") or item.get("handle_name", "")
+    ch_id = str(item.get("youtuber_id") or "")
+    name = item.get("youtuber") or item.get("handle_name") or ""
     return Channel(
         channel_id=ch_id,
         platform="youtube",
@@ -221,13 +221,13 @@ def parse_brightdata_reddit_post(item: dict) -> Post:
         post_type = "text"
 
     return Post(
-        post_id=str(item.get("post_id", "")),
+        post_id=str(item.get("post_id") or ""),
         platform="reddit",
-        channel_handle=item.get("user_posted", ""),
-        channel_id=item.get("community_name", ""),
+        channel_handle=item.get("user_posted") or "",
+        channel_id=item.get("community_name") or "",
         title=item.get("title"),
         content=item.get("description"),
-        post_url=item.get("url", ""),
+        post_url=item.get("url") or "",
         posted_at=_parse_iso_timestamp(item.get("date_posted")),
         post_type=post_type,
         parent_post_id=None,
@@ -253,7 +253,7 @@ def parse_brightdata_reddit_post(item: dict) -> Post:
 
 def parse_brightdata_reddit_channel(item: dict) -> Channel:
     """Parse a Reddit community/channel from Bright Data's post response."""
-    community = item.get("community_name", "")
+    community = item.get("community_name") or ""
     return Channel(
         channel_id=community,
         platform="reddit",
@@ -307,16 +307,16 @@ def parse_brightdata_facebook_group_post(item: dict) -> Post:
     post_type_raw = item.get("post_type", "Post")
     post_type = post_type_raw.lower() if post_type_raw else "text"
 
-    username = item.get("user_username_raw", "")
+    username = item.get("user_username_raw") or ""
 
     return Post(
-        post_id=str(item.get("post_id", "")),
+        post_id=str(item.get("post_id") or ""),
         platform="facebook",
         channel_handle=username,
-        channel_id=str(item.get("group_id", "")),
+        channel_id=str(item.get("group_id") or ""),
         title=None,
         content=content,
-        post_url=item.get("url", ""),
+        post_url=item.get("url") or "",
         posted_at=_parse_iso_timestamp(item.get("date_posted")),
         post_type=post_type,
         parent_post_id=None,
@@ -349,8 +349,8 @@ def parse_brightdata_facebook_group_post(item: dict) -> Post:
 
 def parse_brightdata_facebook_group_channel(item: dict) -> Channel:
     """Parse a Facebook group as a channel from Bright Data's post response."""
-    group_id = str(item.get("group_id") or item.get("group_url", ""))
-    group_name = item.get("group_name", "")
+    group_id = str(item.get("group_id") or item.get("group_url") or "")
+    group_name = item.get("group_name") or ""
     return Channel(
         channel_id=group_id,
         platform="facebook",
@@ -377,18 +377,18 @@ def parse_brightdata_facebook_marketplace_post(item: dict) -> Post:
     videos = item.get("videos") or []
     media_urls = images + videos
 
-    title = item.get("title", "")
-    description = item.get("description", "")
+    title = item.get("title") or ""
+    description = item.get("description") or ""
     content = f"{title}\n{description}".strip() if description else title
 
     return Post(
-        post_id=str(item.get("product_id", "")),
+        post_id=str(item.get("product_id") or ""),
         platform="facebook",
-        channel_handle=item.get("profile_id", ""),
-        channel_id=item.get("profile_id", ""),
+        channel_handle=item.get("profile_id") or "",
+        channel_id=item.get("profile_id") or "",
         title=title,
         content=content,
-        post_url=item.get("url", ""),
+        post_url=item.get("url") or "",
         posted_at=_parse_iso_timestamp(item.get("listing_date")),
         post_type="marketplace_listing",
         parent_post_id=None,
@@ -421,7 +421,7 @@ def parse_brightdata_facebook_marketplace_post(item: dict) -> Post:
 
 def parse_brightdata_facebook_marketplace_channel(item: dict) -> Channel:
     """Stub channel parser for marketplace listings (sellers are minimal)."""
-    profile_id = item.get("profile_id", "")
+    profile_id = item.get("profile_id") or ""
     return Channel(
         channel_id=str(profile_id),
         platform="facebook",

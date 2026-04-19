@@ -1482,17 +1482,23 @@ async def get_multi_collection_feed(
             except (json.JSONDecodeError, TypeError):
                 media_refs = []
 
+        # Skip rows with a missing post_id — corrupted ingestion produces
+        # rows with null ids and non-null string fields that fail the
+        # response model.
+        if not row.get("post_id"):
+            continue
+
         posts.append(
             FeedPostResponse(
                 post_id=row["post_id"],
                 platform=row["platform"],
-                channel_handle=row.get("channel_handle", ""),
+                channel_handle=row.get("channel_handle") or "",
                 channel_id=row.get("channel_id"),
                 title=row.get("title"),
                 content=row.get("content"),
-                post_url=row.get("post_url", ""),
-                posted_at=str(row.get("posted_at", "")),
-                post_type=row.get("post_type", ""),
+                post_url=row.get("post_url") or "",
+                posted_at=str(row.get("posted_at") or ""),
+                post_type=row.get("post_type") or "",
                 media_refs=media_refs if isinstance(media_refs, list) else [],
                 likes=row.get("likes", 0),
                 shares=row.get("shares", 0),

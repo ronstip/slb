@@ -47,23 +47,25 @@ async def list_explorer_layouts(
     fs=Depends(get_fs),
 ):
     """List all explorer layouts for an agent belonging to the current user."""
-    docs = (
+    # Sort client-side to avoid requiring a composite (agent_id, user_id, updated_at) index.
+    docs = list(
         fs._db.collection(COLLECTION)
         .where("agent_id", "==", agent_id)
         .where("user_id", "==", user.uid)
-        .order_by("updated_at", direction="DESCENDING")
         .stream()
     )
-    return [
+    items = [
         ExplorerLayoutListItem(
             layout_id=doc.id,
-            agent_id=doc.get("agent_id"),
-            title=doc.get("title"),
-            created_at=doc.get("created_at"),
-            updated_at=doc.get("updated_at"),
+            agent_id=doc.get("agent_id") or "",
+            title=doc.get("title") or "",
+            created_at=doc.get("created_at") or "",
+            updated_at=doc.get("updated_at") or "",
         )
         for doc in docs
     ]
+    items.sort(key=lambda x: x.updated_at, reverse=True)
+    return items
 
 
 @router.post("", response_model=ExplorerLayoutResponse, status_code=201)
