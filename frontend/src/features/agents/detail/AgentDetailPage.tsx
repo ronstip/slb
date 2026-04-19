@@ -81,13 +81,16 @@ export function AgentDetailPage() {
 
   useEffect(() => {
     if (taskId) {
-      useAgentStore.getState().loadAgent(taskId);
       useSessionStore.getState().fetchAgentSessions(taskId);
       useExplorerLayoutStore.getState().fetchAgentLayouts(taskId);
     }
   }, [taskId]);
 
   const { task, isLoading, artifacts, logs } = useAgentDetail(taskId);
+
+  useEffect(() => {
+    if (task) useAgentStore.getState().upsertAgent(task);
+  }, [task]);
   const editMode = useAgentEditMode(task);
 
   // Block navigation when there are unsaved edits

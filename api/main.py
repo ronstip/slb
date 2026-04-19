@@ -1928,18 +1928,21 @@ async def get_agent_artifacts(
         return []
 
     fs = get_fs()
-    artifacts = []
-    for aid in artifact_ids:
-        doc = fs._db.collection("artifacts").document(aid).get()
-        if doc.exists:
-            data = doc.to_dict()
-            data["artifact_id"] = doc.id
-            # Convert timestamps
-            for key in ("created_at", "updated_at"):
-                if hasattr(data.get(key), "isoformat"):
-                    data[key] = data[key].isoformat()
-            artifacts.append(data)
-    return artifacts
+    refs = [fs._db.collection("artifacts").document(aid) for aid in artifact_ids]
+    docs = fs._db.get_all(refs)
+
+    by_id: dict[str, dict] = {}
+    for doc in docs:
+        if not doc.exists:
+            continue
+        data = doc.to_dict()
+        data["artifact_id"] = doc.id
+        for key in ("created_at", "updated_at"):
+            if hasattr(data.get(key), "isoformat"):
+                data[key] = data[key].isoformat()
+        by_id[doc.id] = data
+
+    return [by_id[aid] for aid in artifact_ids if aid in by_id]
 
 
 @app.get("/agents/{agent_id}/logs")

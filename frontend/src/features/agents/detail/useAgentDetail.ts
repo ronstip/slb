@@ -15,7 +15,7 @@ export function useAgentDetail(taskId: string | undefined) {
   const artifactsQuery = useQuery({
     queryKey: ['agent-artifacts', taskId],
     queryFn: () => getAgentArtifacts(taskId!),
-    enabled: !!taskId && (taskQuery.data?.artifact_ids?.length ?? 0) > 0,
+    enabled: !!taskId,
   });
 
   const logsQuery = useQuery({
