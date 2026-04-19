@@ -125,7 +125,7 @@ export function CollectionsPage() {
         <Logo size="sm" showText className="shrink-0" />
 
         <span className="text-sm text-muted-foreground/50 font-light">/</span>
-        <h1 className="text-sm font-semibold text-foreground/80">Collections</h1>
+        <h1 className="font-heading text-sm font-semibold tracking-tight text-foreground/80">Collections</h1>
 
         <div className="h-5 w-px bg-border/50 ml-1" />
 

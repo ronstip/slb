@@ -307,7 +307,7 @@ export function SourceCard({ source }: SourceCardProps) {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete Collection</DialogTitle>
+            <DialogTitle className="font-heading tracking-tight">Delete Collection</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "{source.title}"? This will permanently remove all collected data. This action cannot be undone.
             </DialogDescription>

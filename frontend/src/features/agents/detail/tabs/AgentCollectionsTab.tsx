@@ -51,7 +51,7 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex h-11 shrink-0 items-center gap-3 px-6">
-          <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
+          <h1 className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">{task.title}</h1>
           <StatusBadge status={task.status} />
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -67,7 +67,7 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
     <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
       {/* Header row: title + status + search + export */}
       <div className="flex h-11 shrink-0 items-center gap-3 px-6">
-        <h1 className="truncate text-sm font-semibold text-foreground">{task.title}</h1>
+        <h1 className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">{task.title}</h1>
         <StatusBadge status={task.status} />
         <div className="flex-1" />
         <div className="relative w-48">

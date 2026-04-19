@@ -40,6 +40,7 @@ import { useUIStore } from '../stores/ui-store.ts';
 import { ImpersonateUserModal } from '../features/admin/ImpersonateUserModal.tsx';
 import { RUNNABLE_STATUSES, STATUS_CONFIG } from '../features/agents/detail/agent-status-utils.tsx';
 import { Logo } from './Logo.tsx';
+import { RadarPulse } from './BrandElements.tsx';
 import { Button } from './ui/button.tsx';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar.tsx';
 import {
@@ -67,6 +68,15 @@ const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
   { id: 'data', label: 'Data', icon: Database },
   { id: 'topics', label: 'Topics', icon: Hash },
 ];
+
+// ── Shared class fragments — sidebar uses the always-dark sidebar-* tokens ──
+const NAV_ITEM_BASE =
+  'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors';
+const NAV_ITEM_IDLE =
+  'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground';
+const NAV_ITEM_ACTIVE = 'bg-sidebar-accent text-sidebar-foreground font-medium';
+const SECTION_LABEL =
+  'px-2.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50';
 
 interface AppSidebarProps {
   activeAgent?: Agent | null;
@@ -213,7 +223,7 @@ export function AppSidebar({
       <>
       <ImpersonateUserModal open={impersonateOpen} onOpenChange={setImpersonateOpen} />
       <div
-        className="flex h-full cursor-pointer flex-col items-center bg-white py-3 dark:bg-[var(--background)]"
+        className="flex h-full cursor-pointer flex-col items-center bg-sidebar text-sidebar-foreground py-3"
         onClick={(e) => {
           if (e.target === e.currentTarget) toggle();
         }}
@@ -229,7 +239,7 @@ export function AppSidebar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-2 h-8 w-8 text-muted-foreground" onClick={toggle}>
+            <Button variant="ghost" size="icon" className="mt-2 h-8 w-8 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={toggle}>
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -238,7 +248,7 @@ export function AppSidebar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={() => navigate('/?create=1')}>
+            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => navigate('/?create=1')}>
               <Plus className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -247,7 +257,7 @@ export function AppSidebar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-muted-foreground" onClick={() => navigate('/agents')}>
+            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => navigate('/agents')}>
               <LayoutGrid className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -260,10 +270,10 @@ export function AppSidebar({
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <button className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <button className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
                   <Avatar className="h-7 w-7">
                     <AvatarImage src={displayPhoto} referrerPolicy="no-referrer" />
-                    <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
+                    <AvatarFallback className="bg-sidebar-accent text-xs font-medium text-sidebar-foreground">
                       {displayInitial}
                     </AvatarFallback>
                   </Avatar>
@@ -283,22 +293,22 @@ export function AppSidebar({
   return (
     <>
     <ImpersonateUserModal open={impersonateOpen} onOpenChange={setImpersonateOpen} />
-    <div className="flex h-full flex-col bg-white dark:bg-[var(--background)]">
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       {/* Top: Logo + collapse button */}
-      <div className="flex items-center justify-between px-3 py-3">
+      <div className="flex h-16 items-center justify-between px-4">
         <button onClick={() => navigate('/')} className="cursor-pointer focus:outline-none transition-opacity hover:opacity-75">
           <Logo size="sm" />
         </button>
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={toggle}>
+        <Button variant="ghost" size="icon" className="h-7 w-7 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={toggle}>
           <PanelLeftClose className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* New Agent */}
-      <div className="px-3 mb-2">
+      {/* New Agent — primary purple button per Figma */}
+      <div className="mb-2 px-3">
         <button
           onClick={() => navigate('/?create=1')}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="flex w-full items-center gap-2.5 rounded-lg bg-sidebar-primary px-2.5 py-2.5 text-left text-sm font-medium text-sidebar-primary-foreground shadow-sm transition-opacity hover:opacity-90"
         >
           <Plus className="h-4 w-4 shrink-0" />
           New Agent
@@ -309,12 +319,7 @@ export function AppSidebar({
       <div className="flex flex-col gap-0.5 px-3">
         <button
           onClick={() => navigate('/agents')}
-          className={cn(
-            'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-            isAgentsPage
-              ? 'bg-accent text-foreground font-medium'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-          )}
+          className={cn(NAV_ITEM_BASE, isAgentsPage ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE)}
         >
           <LayoutGrid className="h-4 w-4 shrink-0" />
           All Agents
@@ -322,10 +327,8 @@ export function AppSidebar({
         <button
           onClick={() => navigate('/settings/account')}
           className={cn(
-            'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-            location.pathname.startsWith('/settings')
-              ? 'bg-accent text-foreground font-medium'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+            NAV_ITEM_BASE,
+            location.pathname.startsWith('/settings') ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
           )}
         >
           <Settings className="h-4 w-4 shrink-0" />
@@ -336,9 +339,9 @@ export function AppSidebar({
       {/* Agent-specific tabs (on detail pages, right after nav) */}
       {isDetailPage && onTabChange && (
         <>
-          <div className="mx-3 my-2 border-t border-border" />
+          <div className="mx-3 my-2 border-t border-sidebar-border" />
           <div className="px-3 pb-1">
-            <p className="mb-1 truncate px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50" title={activeAgent?.title}>
+            <p className="mb-1 truncate px-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40" title={activeAgent?.title}>
               {activeAgent?.title || 'Agent'}
             </p>
           </div>
@@ -372,10 +375,10 @@ export function AppSidebar({
                       className={cn(
                         'flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
                         isTabActive
-                          ? 'bg-accent text-foreground font-medium'
+                          ? NAV_ITEM_ACTIVE
                           : disabled
-                            ? 'text-muted-foreground/30 cursor-not-allowed'
-                            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                            ? 'text-sidebar-foreground/25 cursor-not-allowed'
+                            : NAV_ITEM_IDLE,
                       )}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
@@ -383,16 +386,16 @@ export function AppSidebar({
                       {showChatExpander && (
                         <span className="ml-auto flex items-center">
                           {chatHistoryOpen
-                            ? <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
-                            : <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                            ? <ChevronDown className="h-3 w-3 text-sidebar-foreground/50" />
+                            : <ChevronRight className="h-3 w-3 text-sidebar-foreground/50" />
                           }
                         </span>
                       )}
                       {showExplorerExpander && (
                         <span className="ml-auto flex items-center">
                           {explorerHistoryOpen
-                            ? <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
-                            : <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                            ? <ChevronDown className="h-3 w-3 text-sidebar-foreground/50" />
+                            : <ChevronRight className="h-3 w-3 text-sidebar-foreground/50" />
                           }
                         </span>
                       )}
@@ -400,7 +403,7 @@ export function AppSidebar({
                     {showChatExpander && onNewChat && (
                       <button
                         onClick={onNewChat}
-                        className="mr-1 rounded-md p-1 text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent transition-colors"
+                        className="mr-1 rounded-md p-1 text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         title="New Chat"
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -409,7 +412,7 @@ export function AppSidebar({
                     {showExplorerExpander && onNewLayout && (
                       <button
                         onClick={onNewLayout}
-                        className="mr-1 rounded-md p-1 text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent transition-colors"
+                        className="mr-1 rounded-md p-1 text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         title="New Layout"
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -434,17 +437,17 @@ export function AppSidebar({
                         className={cn(
                           'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
                           activeLayoutId === null
-                            ? 'bg-accent/80 text-accent-foreground'
-                            : 'hover:bg-muted/60',
+                            ? 'bg-sidebar-accent/80 text-sidebar-foreground'
+                            : 'hover:bg-sidebar-accent/60',
                         )}
                         onClick={() => onLayoutSelect(null)}
                       >
                         {activeLayoutId === null && (
-                          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent-vibrant" />
+                          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-sidebar-primary" />
                         )}
                         <span className={cn(
                           'block truncate text-[13px] leading-tight pl-1',
-                          activeLayoutId === null ? 'font-semibold' : 'font-medium text-foreground',
+                          activeLayoutId === null ? 'font-semibold' : 'font-medium',
                         )}>
                           Overview Dashboard
                         </span>
@@ -453,17 +456,17 @@ export function AppSidebar({
                         className={cn(
                           'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
                           activeLayoutId === DASHBOARD_DEFAULT_ID
-                            ? 'bg-accent/80 text-accent-foreground'
-                            : 'hover:bg-muted/60',
+                            ? 'bg-sidebar-accent/80 text-sidebar-foreground'
+                            : 'hover:bg-sidebar-accent/60',
                         )}
                         onClick={() => onLayoutSelect(DASHBOARD_DEFAULT_ID)}
                       >
                         {activeLayoutId === DASHBOARD_DEFAULT_ID && (
-                          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent-vibrant" />
+                          <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-sidebar-primary" />
                         )}
                         <span className={cn(
                           'block truncate text-[13px] leading-tight pl-1',
-                          activeLayoutId === DASHBOARD_DEFAULT_ID ? 'font-semibold' : 'font-medium text-foreground',
+                          activeLayoutId === DASHBOARD_DEFAULT_ID ? 'font-semibold' : 'font-medium',
                         )}>
                           Dashboard Default
                         </span>
@@ -479,10 +482,10 @@ export function AppSidebar({
                       {(!agentLayouts || agentLayouts.length === 0) && onNewLayout && (
                         <div
                           onClick={onNewLayout}
-                          className="mt-1 flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary/5 px-2 py-2 opacity-60 transition-all hover:opacity-100 hover:bg-primary/10"
+                          className="mt-1 flex cursor-pointer items-center gap-1.5 rounded-lg bg-sidebar-primary/10 px-2 py-2 opacity-60 transition-all hover:bg-sidebar-primary/20 hover:opacity-100"
                         >
-                          <Plus className="h-3 w-3 text-primary" />
-                          <span className="text-[12px] font-medium text-primary">New Layout</span>
+                          <Plus className="h-3 w-3 text-sidebar-primary" />
+                          <span className="text-[12px] font-medium text-sidebar-primary">New Layout</span>
                         </div>
                       )}
                     </div>
@@ -497,11 +500,9 @@ export function AppSidebar({
             activeAgent.agent_type === 'recurring' ||
             activeAgent.status === 'success') && (
             <>
-              <div className="mx-3 border-t border-border my-1" />
+              <div className="mx-3 my-1 border-t border-sidebar-border" />
               <div className="flex flex-col gap-0.5 px-3 pb-2">
-                <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-                  Actions
-                </p>
+                <p className={cn('mb-1', SECTION_LABEL)}>Actions</p>
                 {activeAgent.status === 'running' && onStop && (
                   <button
                     onClick={onStop}
@@ -514,7 +515,7 @@ export function AppSidebar({
                 {canRun && onRun && (
                   <button
                     onClick={onRun}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className={cn(NAV_ITEM_BASE, NAV_ITEM_IDLE)}
                   >
                     {activeAgent.agent_type === 'recurring' ? (
                       <><Play className="h-4 w-4 shrink-0" />Run Now</>
@@ -526,7 +527,7 @@ export function AppSidebar({
                 {activeAgent.agent_type === 'recurring' && activeAgent.status !== 'running' && onPauseResume && (
                   <button
                     onClick={onPauseResume}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className={cn(NAV_ITEM_BASE, NAV_ITEM_IDLE)}
                   >
                     {!activeAgent.paused ? (
                       <><Pause className="h-4 w-4 shrink-0" />Pause</>
@@ -538,7 +539,7 @@ export function AppSidebar({
                 {activeAgent.agent_type !== 'recurring' && activeAgent.status === 'success' && onOpenSchedule && (
                   <button
                     onClick={onOpenSchedule}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className={cn(NAV_ITEM_BASE, NAV_ITEM_IDLE)}
                   >
                     <CalendarClock className="h-4 w-4 shrink-0" />
                     Schedule
@@ -551,14 +552,17 @@ export function AppSidebar({
       )}
 
       {/* Divider before recent agents */}
-      {agents.length > 0 && <div className="mx-3 my-2 border-t border-border" />}
+      {agents.length > 0 && <div className="mx-3 my-2 border-t border-sidebar-border" />}
 
       {/* Recent Agents — collapsible */}
       {agents.length > 0 && (
         <div className="flex flex-col overflow-hidden px-3">
           <button
             onClick={() => setRecentAgentsOpen((v) => !v)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            className={cn(
+              'flex items-center gap-1.5 py-1 transition-colors hover:text-sidebar-foreground/70',
+              SECTION_LABEL,
+            )}
           >
             {recentAgentsOpen
               ? <ChevronDown className="h-3 w-3" />
@@ -574,6 +578,7 @@ export function AppSidebar({
                 .slice(0, 8)
                 .map((agent) => {
                   const isActive = activeAgent?.agent_id === agent.agent_id;
+                  const isRunning = agent.status === 'running';
                   const cfg = STATUS_CONFIG[agent.status];
                   return (
                     <button
@@ -581,14 +586,19 @@ export function AppSidebar({
                       onClick={() => navigate(`/agents/${agent.agent_id}`)}
                       className={cn(
                         'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
-                        isActive
-                          ? 'bg-accent text-foreground font-medium'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                        isActive ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
                       )}
                     >
-                      <Circle
-                        className={`h-2 w-2 shrink-0 fill-current ${cfg?.color || 'text-muted-foreground'}`}
-                      />
+                      {isRunning ? (
+                        <RadarPulse />
+                      ) : (
+                        <Circle
+                          className={cn(
+                            'h-2 w-2 shrink-0 fill-current',
+                            cfg?.color || 'text-sidebar-foreground/40',
+                          )}
+                        />
+                      )}
                       <span className="truncate text-xs">{agent.title}</span>
                     </button>
                   );
@@ -602,20 +612,20 @@ export function AppSidebar({
       <div className="flex-1" />
 
       {/* Bottom: User card */}
-      <div className="border-t border-border px-3 py-3">
+      <div className="border-t border-sidebar-border px-3 py-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
               <Avatar className="h-7 w-7 shrink-0">
                 <AvatarImage src={displayPhoto} referrerPolicy="no-referrer" />
-                <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
+                <AvatarFallback className="bg-sidebar-accent text-xs font-medium text-sidebar-foreground">
                   {displayInitial}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
+                <p className="truncate text-sm font-medium">{displayName}</p>
                 {displayEmail && (
-                  <p className="truncate text-[11px] text-muted-foreground">{displayEmail}</p>
+                  <p className="truncate text-[11px] text-sidebar-foreground/50">{displayEmail}</p>
                 )}
               </div>
             </button>

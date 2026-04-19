@@ -27,7 +27,7 @@ export function SignUpPrompt() {
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Create a free account</DialogTitle>
+          <DialogTitle className="font-heading tracking-tight">Create a free account</DialogTitle>
           <DialogDescription>
             Sign up to start collecting social media data. Your conversation will be preserved.
           </DialogDescription>

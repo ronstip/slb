@@ -89,7 +89,7 @@ export function StatsModal({ source, open, onClose }: StatsModalProps) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-base">{source.title}</DialogTitle>
+          <DialogTitle className="font-heading text-base tracking-tight">{source.title}</DialogTitle>
         </DialogHeader>
 
         {isLoading ? (

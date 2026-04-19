@@ -57,12 +57,13 @@ export function DescribePanel({
   else buttonLabel = 'Continue';
 
   return (
-    <div className="flex flex-col rounded-2xl border border-primary/20 bg-card p-6 shadow-sm">
+    <div className="relative flex flex-col rounded-2xl border-2 border-primary/20 bg-card p-6 shadow-sm overflow-hidden">
+      <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
       <div className="flex items-center gap-2.5 mb-4">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
           1
         </span>
-        <h3 className="text-lg font-semibold text-primary tracking-tight">
+        <h3 className="font-heading text-lg font-semibold tracking-tight">
           Describe what you need
         </h3>
       </div>
@@ -174,7 +175,7 @@ function ClarificationPrompt({
   onChange: (values: string[]) => void;
 }) {
   return (
-    <div className="rounded-lg border border-primary/10 bg-primary/[0.02] p-3">
+    <div className="rounded-xl border border-primary/15 bg-primary/[0.03] p-3">
       <p className="text-sm font-medium text-foreground mb-2">{c.question}</p>
       {c.type === 'pill_row' && (
         <PillRow options={c.options ?? []} values={values} onChange={onChange} multiSelect={c.multi_select} />

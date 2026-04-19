@@ -39,7 +39,7 @@ export function AboutPage() {
             </div>
 
             {/* Main Headline */}
-            <h1 className="mb-6 text-6xl font-bold leading-tight tracking-tight">
+            <h1 className="mb-6 font-heading text-6xl font-bold leading-tight tracking-tight">
               The most intelligent way to
               <br />
               <span className="bg-gradient-to-r from-accent-vibrant to-accent-pink bg-clip-text text-transparent">
@@ -74,7 +74,7 @@ export function AboutPage() {
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-accent-vibrant/10">
                   <MessageSquare className="h-5 w-5 text-accent-vibrant" />
                 </div>
-                <h3 className="mb-2 font-semibold text-foreground">Conversational Interface</h3>
+                <h3 className="mb-2 font-heading font-semibold tracking-tight text-foreground">Conversational Interface</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Just ask questions in plain English. No complex dashboards, filters, or Boolean queries required.
                 </p>
@@ -84,7 +84,7 @@ export function AboutPage() {
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-chart-2/10">
                   <Zap className="h-5 w-5 text-chart-2" />
                 </div>
-                <h3 className="mb-2 font-semibold text-foreground">Instant Setup</h3>
+                <h3 className="mb-2 font-heading font-semibold tracking-tight text-foreground">Instant Setup</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Get insights in minutes, not weeks. AI automatically configures data collection based on your questions.
                 </p>
@@ -94,7 +94,7 @@ export function AboutPage() {
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-chart-3/10">
                   <Target className="h-5 w-5 text-chart-3" />
                 </div>
-                <h3 className="mb-2 font-semibold text-foreground">Pay Per Use</h3>
+                <h3 className="mb-2 font-heading font-semibold tracking-tight text-foreground">Pay Per Use</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Only pay for what you need. No annual contracts or enterprise licensing. ~$20 per query, $12/mo for monitoring.
                 </p>
@@ -104,7 +104,7 @@ export function AboutPage() {
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-chart-5/10">
                   <TrendingUp className="h-5 w-5 text-chart-5" />
                 </div>
-                <h3 className="mb-2 font-semibold text-foreground">Research Becomes Monitoring</h3>
+                <h3 className="mb-2 font-heading font-semibold tracking-tight text-foreground">Research Becomes Monitoring</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Every question can automatically become ongoing monitoring. Track your brand, competitors, and market trends continuously with one click.
                 </p>

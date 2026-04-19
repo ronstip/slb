@@ -13,14 +13,14 @@ export function LatestAgentsRow({ tasks }: LatestTasksRowProps) {
 
   const sorted = [...tasks]
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    .slice(0, 5);
+    .slice(0, 4);
 
   if (sorted.length === 0) return null;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-foreground">Recent Agents</h2>
+        <h2 className="font-heading text-lg font-semibold tracking-tight text-foreground">Recent Agents</h2>
         <Button
           variant="ghost"
           size="sm"
@@ -32,10 +32,10 @@ export function LatestAgentsRow({ tasks }: LatestTasksRowProps) {
         </Button>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-4">
         {sorted.map((task) => (
-          <div key={task.agent_id} className="flex-1 min-w-[160px] max-w-[280px]">
-            <AgentCard task={task} compact />
+          <div key={task.agent_id} className="flex-1 min-w-0 flex">
+            <AgentCard task={task} simple />
           </div>
         ))}
       </div>

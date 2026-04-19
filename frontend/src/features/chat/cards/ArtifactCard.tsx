@@ -211,7 +211,7 @@ export function ArtifactCard({ type, data }: ArtifactCardProps) {
             <config.Icon className={`h-4 w-4 ${config.iconColor}`} />
           </div>
           <div className="flex flex-col min-w-0">
-            <h4 className="text-sm font-semibold text-foreground truncate">{title}</h4>
+            <h4 className="font-heading text-sm font-semibold tracking-tight text-foreground truncate">{title}</h4>
             <p className="text-[11px] text-muted-foreground truncate">{meta}</p>
           </div>
         </div>

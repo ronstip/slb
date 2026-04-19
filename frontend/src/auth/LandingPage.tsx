@@ -122,7 +122,7 @@ function FeatureCard({
       <div className={`h-11 w-11 rounded-xl ${iconBg} flex items-center justify-center mb-5`}>
         {icon}
       </div>
-      <h3 className="font-semibold text-base mb-2">{title}</h3>
+      <h3 className="font-heading text-base font-semibold tracking-tight mb-2">{title}</h3>
       <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
     </div>
   );
@@ -134,7 +134,7 @@ function StepCard({ number, title, desc }: { number: string; title: string; desc
       <div className="h-16 w-16 rounded-2xl bg-accent-vibrant/10 border border-accent-vibrant/20 flex items-center justify-center mb-5 relative z-10">
         <span className="text-xl font-bold text-accent-vibrant">{number}</span>
       </div>
-      <h3 className="font-semibold mb-2">{title}</h3>
+      <h3 className="font-heading font-semibold tracking-tight mb-2">{title}</h3>
       <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">{desc}</p>
     </div>
   );
@@ -410,7 +410,7 @@ export function LandingPage() {
               <Sparkles className="h-3.5 w-3.5" />
               AI agents for social brand intelligence
             </div>
-            <h1 className={`text-5xl sm:text-6xl font-bold tracking-tight leading-[1.06] mb-6 ${heroFade(80)}`}>
+            <h1 className={`font-heading text-5xl sm:text-6xl font-bold tracking-tight leading-[1.06] mb-6 ${heroFade(80)}`}>
               Your brand is being
               <br />talked about.
               <br />
@@ -483,7 +483,7 @@ export function LandingPage() {
       <section className="py-20 px-6 overflow-hidden">
         <div className="max-w-6xl mx-auto">
           <AnimateIn direction="up" className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold tracking-tight mb-4">
               Your AI-powered social media analysts
             </h2>
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">
@@ -505,7 +505,7 @@ export function LandingPage() {
       <section className="py-20 px-6 bg-muted/20 border-y border-border/40 overflow-hidden">
         <div className="max-w-4xl mx-auto">
           <AnimateIn direction="up" className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">How it works</h2>
+            <h2 className="font-heading text-3xl md:text-4xl font-bold tracking-tight mb-4">How it works</h2>
             <p className="text-muted-foreground text-lg">From idea to insight in under a minute.</p>
           </AnimateIn>
 
@@ -562,7 +562,7 @@ export function LandingPage() {
             <Sparkles className="h-3.5 w-3.5" />
             Get started today
           </div>
-          <h2 className="text-3xl md:text-5xl font-bold leading-tight mb-6">
+          <h2 className="font-heading text-3xl md:text-5xl font-bold tracking-tight leading-tight mb-6">
             Your audience is talking.
             <br />
             <span className="text-muted-foreground">Deploy your agents.</span>

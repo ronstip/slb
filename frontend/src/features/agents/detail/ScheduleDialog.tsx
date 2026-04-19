@@ -71,13 +71,13 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set Schedule</DialogTitle>
+          <DialogTitle className="font-heading tracking-tight">Set Schedule</DialogTitle>
           <DialogDescription>Set how often this agent runs automatically</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Task overview</label>
-            <div className="rounded-md bg-muted p-3 text-sm">
+            <div className="rounded-xl border border-border/60 bg-muted p-3 text-sm">
               {task.context?.mission
                 || task.context_summary
                 || task.title

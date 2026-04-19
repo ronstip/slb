@@ -172,7 +172,7 @@ export function AgentDetailPage() {
     <div className="flex h-screen bg-background">
       {/* Unified sidebar */}
       <aside
-        className="shrink-0 overflow-hidden border-r border-border bg-white dark:bg-[#0B1120]"
+        className="shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar"
         style={{ width: sidebarCollapsed ? 48 : 280 }}
       >
         <AppSidebar

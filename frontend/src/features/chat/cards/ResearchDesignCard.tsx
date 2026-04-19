@@ -107,7 +107,7 @@ export function ResearchDesignCard({ data, onCollectionStarted }: ResearchDesign
         </div>
 
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <h4 className="shrink-0 text-[13px] font-semibold text-foreground">Research Design</h4>
+          <h4 className="shrink-0 font-heading text-[13px] font-semibold tracking-tight text-foreground">Research Design</h4>
 
           <div className="flex items-center gap-1.5">
             {localConfig.platforms.map((p) => (
