@@ -99,13 +99,21 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
     }
   };
 
+  const isInactive = planStatus === 'idle' || planStatus === 'clarifying';
+
   return (
-    <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+    <div className={cn(
+      'flex flex-col rounded-2xl border border-border bg-card p-6 shadow-sm',
+      isInactive && 'opacity-60',
+    )}>
       <div className="flex items-center gap-2.5 mb-4">
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+        <span className={cn(
+          'flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold',
+          isInactive ? 'bg-secondary text-secondary-foreground' : 'bg-primary text-primary-foreground',
+        )}>
           2
         </span>
-        <h3 className="text-lg font-semibold text-foreground tracking-tight">
+        <h3 className="font-heading text-lg font-semibold tracking-tight">
           Data Settings
         </h3>
       </div>
@@ -113,7 +121,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
         Attach data from other agents, configure a new collection, or both.
       </p>
 
-      {(planStatus === 'idle' || planStatus === 'clarifying') && (
+      {isInactive && (
         <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border/50 p-8 text-center">
           <p className="text-xs text-muted-foreground">
             Describe your agent in step 1,

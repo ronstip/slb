@@ -69,7 +69,7 @@ export function ImpersonateUserModal({ open, onOpenChange }: ImpersonateUserModa
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>View as User</DialogTitle>
+          <DialogTitle className="font-heading tracking-tight">View as User</DialogTitle>
           <DialogDescription>
             See the app exactly as the selected user sees it. Everything you do
             will be performed as that user until you exit. Super admins are

@@ -124,7 +124,7 @@ export function OverviewSection() {
       {chartData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Daily Activity (Last 30 Days)</CardTitle>
+            <CardTitle className="font-heading text-base font-semibold tracking-tight">Daily Activity (Last 30 Days)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>

@@ -78,7 +78,7 @@ export function EditCollectionDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Collection</DialogTitle>
+          <DialogTitle className="font-heading tracking-tight">Edit Collection</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">

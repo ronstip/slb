@@ -62,10 +62,9 @@ import {
 import { formatSchedule } from '../../lib/constants.ts';
 import { AgentCardGrid } from './AgentCardGrid.tsx';
 import { AgentCard } from './AgentCard.tsx';
-import { AgentCrest } from './AgentCrest.tsx';
+import { BotAvatar } from '../../components/BrandElements.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
 import { useUIStore } from '../../stores/ui-store.ts';
-import { ScrollArea, ScrollBar } from '../../components/ui/scroll-area.tsx';
 import { cn } from '../../lib/utils.ts';
 
 type ViewMode = 'table' | 'grid';
@@ -290,7 +289,7 @@ export function AgentsPage() {
   return (
     <div className="flex h-screen w-full overflow-x-hidden bg-background">
       <aside
-        className="shrink-0 overflow-hidden border-r border-border bg-white dark:bg-[#0B1120]"
+        className="shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar"
         style={{ width: sidebarCollapsed ? 48 : 280 }}
       >
         <AppSidebar />
@@ -298,7 +297,7 @@ export function AgentsPage() {
       <div className="flex flex-1 flex-col overflow-x-hidden">
       {/* Toolbar */}
       <div className="flex shrink-0 items-center gap-3 px-6 pt-5 pb-3">
-        <h1 className="text-base font-semibold text-foreground">Agents</h1>
+        <h1 className="font-heading text-base font-semibold tracking-tight text-foreground">Agents</h1>
 
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -385,22 +384,22 @@ export function AgentsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Recent Agents carousel */}
+        {/* Recent Agents row */}
         {!search && statusFilter.size === 0 && tasks.length > 0 && (
           <div className="px-6 pt-4 pb-2">
             <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
               Recent Agents
             </h2>
-            <ScrollArea className="w-full">
-              <div className="flex gap-3 pb-3">
-                {recentAgents.map((agent) => (
-                  <div key={agent.agent_id} className="w-[300px] shrink-0">
-                    <AgentCard task={agent} compact skipThumbnails onClick={() => handleRowClick(agent)} />
-                  </div>
-                ))}
-                {/* New Agent card */}
+            <div className="flex gap-4">
+              {recentAgents.map((agent) => (
+                <div key={agent.agent_id} className="flex-1 min-w-0 flex">
+                  <AgentCard task={agent} simple onClick={() => handleRowClick(agent)} />
+                </div>
+              ))}
+              {/* New Agent card — matches mini card dimensions */}
+              <div className="flex-1 min-w-0">
                 <div
-                  className="w-[300px] shrink-0 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border hover:border-primary/40 hover:bg-accent/30 cursor-pointer transition-all min-h-[160px]"
+                  className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card shadow-sm cursor-pointer transition-all hover:border-primary/30 hover:shadow-md hover:bg-accent/20 min-h-[200px]"
                   onClick={() => navigate('/?create=1')}
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 mb-2">
@@ -409,8 +408,7 @@ export function AgentsPage() {
                   <span className="text-sm font-medium text-muted-foreground">New Agent</span>
                 </div>
               </div>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
+            </div>
           </div>
         )}
 
@@ -486,28 +484,20 @@ export function AgentsPage() {
                   key={task.agent_id}
                   onClick={() => handleRowClick(task)}
                   className={cn(
-                    'group relative grid items-center gap-2 rounded-lg border border-l-4 bg-card px-4 py-3 cursor-pointer transition-all overflow-hidden',
-                    'hover:shadow-sm hover:border-primary/20',
+                    'group relative grid items-center gap-2 rounded-xl border border-border border-l-4 bg-card px-4 py-3 cursor-pointer transition-all overflow-hidden',
+                    'hover:border-primary/40 hover:shadow-[0_4px_20px_rgba(110,86,207,0.15)]',
                     borderColor,
                   )}
                   style={{ gridTemplateColumns: '1fr auto 6rem 6rem 6rem 6rem 5rem 5rem' }}
                 >
-                  {/* Shimmer overlay for executing */}
                   {isExecuting && (
-                    <div className="absolute inset-0 pointer-events-none -translate-x-full animate-[shimmer_2.5s_infinite] bg-gradient-to-r from-transparent via-amber-500/[0.04] to-transparent" aria-hidden />
+                    <div className="absolute inset-0 pointer-events-none -translate-x-full animate-[shimmer_2.5s_infinite] bg-gradient-to-r from-transparent via-primary/[0.06] to-transparent" aria-hidden />
                   )}
 
-                  {/* Title + subtitle */}
                   <div className="flex items-center gap-3 min-w-0">
-                    <AgentCrest id={task.agent_id} />
-                    {isExecuting && (
-                      <span className="relative flex h-2 w-2 shrink-0">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-50" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
-                      </span>
-                    )}
+                    <BotAvatar seed={task.agent_id} size={32} />
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-foreground truncate">
+                      <div className="font-heading text-sm font-semibold tracking-tight text-foreground truncate">
                         {task.title}
                       </div>
                       <div className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">

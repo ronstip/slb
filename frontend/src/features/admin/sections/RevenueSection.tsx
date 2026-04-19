@@ -88,7 +88,7 @@ export function RevenueSection() {
       {chartData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Revenue Over Time</CardTitle>
+            <CardTitle className="font-heading text-base font-semibold tracking-tight">Revenue Over Time</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -115,7 +115,7 @@ export function RevenueSection() {
       {/* Recent Purchases */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Recent Purchases</CardTitle>
+          <CardTitle className="font-heading text-base font-semibold tracking-tight">Recent Purchases</CardTitle>
         </CardHeader>
         <CardContent>
           {(data?.recent_purchases || []).length === 0 ? (

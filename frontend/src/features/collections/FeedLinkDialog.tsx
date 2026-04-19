@@ -98,7 +98,7 @@ export function FeedLinkDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
+          <DialogTitle className="flex items-center gap-2 font-heading text-base tracking-tight">
             <Link2 className="h-4 w-4 text-primary" />
             Create Feed Link
           </DialogTitle>

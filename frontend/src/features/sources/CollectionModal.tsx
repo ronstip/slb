@@ -16,7 +16,7 @@ export function CollectionModal() {
     <Dialog open onOpenChange={(open) => { if (!open) closeModal(); }}>
       <DialogContent className="max-w-lg p-0">
         <DialogHeader className="border-b border-border px-6 py-4">
-          <DialogTitle>New Collection</DialogTitle>
+          <DialogTitle className="font-heading tracking-tight">New Collection</DialogTitle>
         </DialogHeader>
         <CollectionForm prefill={prefill ?? undefined} onClose={closeModal} />
       </DialogContent>

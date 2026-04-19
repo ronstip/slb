@@ -87,7 +87,7 @@ function AuditDialog({ collectionId, open, onClose }: { collectionId: string; op
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 font-mono text-sm">
+          <DialogTitle className="flex items-center gap-2 font-heading text-sm font-semibold tracking-tight">
             Collection Audit
             <span className="text-muted-foreground">{collectionId}</span>
             <CopyButton text={collectionId} />

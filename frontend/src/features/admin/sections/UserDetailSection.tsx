@@ -59,7 +59,7 @@ export function UserDetailSection({ userId, onBack }: UserDetailSectionProps) {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-xl font-semibold text-foreground">
+          <h1 className="font-heading text-xl font-semibold tracking-tight text-foreground">
             {user.display_name || user.email}
           </h1>
           <p className="text-sm text-muted-foreground">{user.email}</p>
@@ -133,7 +133,7 @@ export function UserDetailSection({ userId, onBack }: UserDetailSectionProps) {
       {trendData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Usage Trend (Last 30 Days)</CardTitle>
+            <CardTitle className="font-heading text-base font-semibold tracking-tight">Usage Trend (Last 30 Days)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
@@ -162,7 +162,7 @@ export function UserDetailSection({ userId, onBack }: UserDetailSectionProps) {
       {/* Recent Activity */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Recent Activity</CardTitle>
+          <CardTitle className="font-heading text-base font-semibold tracking-tight">Recent Activity</CardTitle>
         </CardHeader>
         <CardContent>
           {(user.recent_events || []).length === 0 ? (

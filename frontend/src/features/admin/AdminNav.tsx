@@ -26,8 +26,8 @@ export function AdminNav({ activeSection, onSelect }: AdminNavProps) {
           className={cn(
             'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
             activeSection === id
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+              : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
           )}
         >
           <Icon className="h-4 w-4" />
