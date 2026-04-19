@@ -1,24 +1,24 @@
 import { apiGet } from '../client.ts';
 import type { TopicCluster, TopicAnalytics, TopicPost } from '../types.ts';
 
-export async function getTopics(collectionId: string): Promise<TopicCluster[]> {
-  return apiGet(`/collections/${collectionId}/topics`);
+export async function getAgentTopics(agentId: string): Promise<TopicCluster[]> {
+  return apiGet(`/agents/${agentId}/topics`);
 }
 
-export async function getTopicAnalytics(
+export async function getAgentTopicAnalytics(
+  agentId: string,
   clusterId: string,
-  collectionId: string,
 ): Promise<TopicAnalytics> {
-  return apiGet(`/topics/${clusterId}/analytics`, { collection_id: collectionId });
+  return apiGet(`/agents/${agentId}/topics/${clusterId}/analytics`);
 }
 
-export async function getTopicPosts(
+export async function getAgentTopicPosts(
+  agentId: string,
   clusterId: string,
-  collectionId: string,
   params: { limit?: number; offset?: number } = {},
 ): Promise<TopicPost[]> {
-  const queryParams: Record<string, string> = { collection_id: collectionId };
+  const queryParams: Record<string, string> = {};
   if (params.limit) queryParams.limit = String(params.limit);
   if (params.offset) queryParams.offset = String(params.offset);
-  return apiGet(`/topics/${clusterId}/posts`, queryParams);
+  return apiGet(`/agents/${agentId}/topics/${clusterId}/posts`, queryParams);
 }

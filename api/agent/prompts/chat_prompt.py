@@ -80,7 +80,7 @@ On the system notification that data gathering finished:
 3. Deliver what fits the question. Don't auto-generate dashboards and exports on every completion -- use judgment."""
 
 _DISPLAY_TOOLS = """## Inline Display
-- Topics: `show_topics(collection_id="...")`
+- Topics: `show_topics(agent_id="...")`
 - Metrics: `show_metrics(collection_id="...")` or `show_metrics(items=[{"label": "...", "value": ...}])`"""
 
 _CHAT_HARD_RULES = """- After `start_agent`, confirm briefly. Do NOT poll.

@@ -15,7 +15,7 @@ import { Card } from '../../components/ui/card.tsx';
 import { Badge } from '../../components/ui/badge.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Separator } from '../../components/ui/separator.tsx';
-import { getTopicAnalytics, getTopicPosts } from '../../api/endpoints/topics.ts';
+import { getAgentTopicAnalytics, getAgentTopicPosts } from '../../api/endpoints/topics.ts';
 import { mediaUrl } from '../../api/client.ts';
 import { formatNumber } from '../../lib/format.ts';
 import { SENTIMENT_COLORS } from '../../lib/constants.ts';
@@ -26,7 +26,7 @@ import type { TopicCluster, TopicPost } from '../../api/types.ts';
 
 interface TopicCardProps {
   topic: TopicCluster;
-  collectionId: string;
+  agentId: string;
   rank?: number;
   onViewPosts?: (clusterId: string, topicName: string) => void;
 }
@@ -86,7 +86,7 @@ function resolvePostThumbnail(post: TopicPost): string | null {
   return null;
 }
 
-export function TopicCard({ topic, collectionId, rank, onViewPosts }: TopicCardProps) {
+export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps) {
   const [expanded, setExpanded] = useState(false);
   const thumbSrc = resolveThumbnail(topic);
   const sentiment = dominantSentiment(topic);
@@ -248,17 +248,17 @@ export function TopicCard({ topic, collectionId, rank, onViewPosts }: TopicCardP
 
       {/* Expanded detail */}
       {expanded && (
-        <TopicDetail clusterId={topic.cluster_id} collectionId={collectionId} topicSummary={topic.topic_summary} />
+        <TopicDetail clusterId={topic.cluster_id} agentId={agentId} topicSummary={topic.topic_summary} />
       )}
     </Card>
   );
 }
 
 
-function TopicDetail({ clusterId, collectionId, topicSummary }: { clusterId: string; collectionId: string; topicSummary: string }) {
+function TopicDetail({ clusterId, agentId, topicSummary }: { clusterId: string; agentId: string; topicSummary: string }) {
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
-    queryKey: ['topic-analytics', clusterId, collectionId],
-    queryFn: () => getTopicAnalytics(clusterId, collectionId),
+    queryKey: ['topic-analytics', clusterId, agentId],
+    queryFn: () => getAgentTopicAnalytics(agentId, clusterId),
   });
 
   const {
@@ -267,9 +267,9 @@ function TopicDetail({ clusterId, collectionId, topicSummary }: { clusterId: str
     hasNextPage,
     isFetching: postsFetching,
   } = useInfiniteQuery({
-    queryKey: ['topic-posts', clusterId, collectionId],
+    queryKey: ['topic-posts', clusterId, agentId],
     queryFn: ({ pageParam = 0 }) =>
-      getTopicPosts(clusterId, collectionId, { limit: 6, offset: pageParam }),
+      getAgentTopicPosts(agentId, clusterId, { limit: 6, offset: pageParam }),
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.length < 6) return undefined;
       return allPages.flatMap((p) => p).length;

@@ -889,13 +889,19 @@ class PipelineRunner:
         except Exception:
             logger.exception("Failed to update embedded count for %s", self.collection_id)
 
-        # Topic clustering
+        # Topic clustering (agent-wide)
         try:
-            result = run_clustering(self.collection_id)
-            logger.info(
-                "Topic clustering: %d topics for %s",
-                result.get("topics_count", 0), self.collection_id,
-            )
+            agent_id = self._get_agent_id()
+            if agent_id:
+                agent_doc = self.fs.get_agent(agent_id)
+                collection_ids = (agent_doc or {}).get("collection_ids", [])
+                result = run_clustering(agent_id, collection_ids)
+                logger.info(
+                    "Topic clustering: %d topics for agent %s",
+                    result.get("topics_count", 0), agent_id,
+                )
+            else:
+                logger.info("No agent_id for %s — skipping topic clustering", self.collection_id)
         except Exception:
             logger.exception("Topic clustering failed for %s", self.collection_id)
 

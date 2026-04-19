@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { getTopics } from '../../../api/endpoints/topics.ts';
+import { getAgentTopics } from '../../../api/endpoints/topics.ts';
 import { TopicCard } from '../../studio/TopicCard.tsx';
 
 interface TopicsSectionCardProps {
@@ -12,16 +12,16 @@ const INITIAL_COUNT = 5;
 const MIN_POSTS_PER_TOPIC = 5;
 
 export function TopicsSectionCard({ data }: TopicsSectionCardProps) {
-  const collectionId = data.collection_id as string;
+  const agentId = data.agent_id as string;
   const [showAll, setShowAll] = useState(false);
 
   const { data: topics, isLoading } = useQuery({
-    queryKey: ['topics', collectionId],
-    queryFn: () => getTopics(collectionId),
-    enabled: !!collectionId,
+    queryKey: ['topics', agentId],
+    queryFn: () => getAgentTopics(agentId),
+    enabled: !!agentId,
   });
 
-  if (!collectionId) return null;
+  if (!agentId) return null;
 
   if (isLoading) {
     return (
@@ -49,7 +49,7 @@ export function TopicsSectionCard({ data }: TopicsSectionCardProps) {
   return (
     <div className="mt-3 space-y-2">
       {visible.map((topic, i) => (
-        <TopicCard key={topic.cluster_id} topic={topic} collectionId={collectionId} rank={i + 1} />
+        <TopicCard key={topic.cluster_id} topic={topic} agentId={agentId} rank={i + 1} />
       ))}
       {hasMore && (
         <button

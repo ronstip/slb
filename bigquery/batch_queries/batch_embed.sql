@@ -15,12 +15,7 @@ FROM AI.GENERATE_EMBEDDING(
     (
         SELECT
             ep.post_id,
-            CONCAT(
-                COALESCE(ep.ai_summary, ''), ' | ',
-                'sentiment: ', COALESCE(ep.sentiment, 'unknown'), ' | ',
-                'emotion: ', COALESCE(ep.emotion, 'unknown'), ' | ',
-                'themes: ', COALESCE(ARRAY_TO_STRING(ep.themes, ', '), '')
-            ) AS content
+            COALESCE(ep.ai_summary, '') AS content
         FROM social_listening.enriched_posts ep
         JOIN social_listening.posts p ON p.post_id = ep.post_id
         WHERE ep.ai_summary IS NOT NULL

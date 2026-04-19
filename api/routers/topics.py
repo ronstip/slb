@@ -1,4 +1,7 @@
-"""Topics router — list topics, get analytics, get posts for a topic."""
+"""Topics router — list topics, get analytics, get posts for a topic.
+
+Topics are agent-scoped: they cluster posts across all of an agent's collections.
+"""
 
 import logging
 
@@ -11,15 +14,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Shared CTE fragment for latest clustering run
+# Shared CTE fragment for latest clustering run (agent-scoped)
 _LATEST_CTE = """
     WITH latest AS (
         SELECT MAX(clustered_at) as latest_at
         FROM social_listening.topic_cluster_members
-        WHERE collection_id = @collection_id
+        WHERE agent_id = @agent_id
     )"""
 
-# Deduplication subqueries matching the feed endpoint pattern (main.py:1241-1254)
+# Deduplication subqueries matching the feed endpoint pattern
 _POSTS_DEDUP = """(
         SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
         FROM social_listening.posts
@@ -37,36 +40,34 @@ _ENGAGEMENTS_DEDUP = """(
     ) pe ON pe.post_id = m.post_id AND pe.rn = 1"""
 
 
-def _check_collection_access(fs, user: CurrentUser, collection_id: str) -> dict:
-    """Validate collection exists and user has access. Returns collection status."""
-    status = fs.get_collection_status(collection_id)
-    if not status:
-        raise HTTPException(404, "Collection not found")
-    # Owner or org member with org visibility
-    if status.get("user_id") == user.uid:
-        return status
+def _check_agent_access(fs, user: CurrentUser, agent_id: str) -> dict:
+    """Validate agent exists and user has access. Returns agent doc."""
+    agent = fs.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    if agent.get("user_id") == user.uid:
+        return agent
     if (
         user.org_id
-        and status.get("org_id") == user.org_id
-        and status.get("visibility") == "org"
+        and agent.get("org_id") == user.org_id
     ):
-        return status
+        return agent
     raise HTTPException(403, "Access denied")
 
 
-@router.get("/collections/{collection_id}/topics")
-async def list_topics(
-    collection_id: str,
+@router.get("/agents/{agent_id}/topics")
+async def list_agent_topics(
+    agent_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """List all topics for a collection (from Firestore + BQ summary metrics)."""
+    """List all topics for an agent (from Firestore + BQ summary metrics)."""
     fs = get_fs()
     bq = get_bq()
-    _check_collection_access(fs, user, collection_id)
+    _check_agent_access(fs, user, agent_id)
 
     topics_ref = (
-        fs._db.collection("collection_status")
-        .document(collection_id)
+        fs._db.collection("agents")
+        .document(agent_id)
         .collection("topics")
     )
 
@@ -91,7 +92,7 @@ async def list_topics(
         members AS (
             SELECT tcm.cluster_id, tcm.post_id
             FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.collection_id = @collection_id
+            WHERE tcm.agent_id = @agent_id
               AND tcm.clustered_at = latest.latest_at
         )
         SELECT
@@ -107,7 +108,7 @@ async def list_topics(
         LEFT JOIN {_ENGAGEMENTS_DEDUP}
         GROUP BY m.cluster_id
         """,
-        {"collection_id": collection_id},
+        {"agent_id": agent_id},
     )
     summary_map = {r["cluster_id"]: r for r in summary_rows}
 
@@ -118,7 +119,7 @@ async def list_topics(
         rep_members AS (
             SELECT tcm.cluster_id, tcm.post_id
             FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.collection_id = @collection_id
+            WHERE tcm.agent_id = @agent_id
               AND tcm.clustered_at = latest.latest_at
               AND tcm.is_representative = TRUE
         ),
@@ -137,7 +138,7 @@ async def list_topics(
         WHERE rn = 1
           AND JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') IS NOT NULL
         """,
-        {"collection_id": collection_id},
+        {"agent_id": agent_id},
     )
     thumb_map = {r["cluster_id"]: r for r in thumb_rows}
 
@@ -156,27 +157,27 @@ async def list_topics(
             topic["thumbnail_url"] = thumb_map[cid].get("thumbnail_url")
             topic["thumbnail_gcs_uri"] = thumb_map[cid].get("thumbnail_gcs_uri")
 
-    # Sort: real topic names first (by post_count desc), then generic "Topic N" names last
+    # Sort: by recency_score desc (trending first), then by post_count desc
     import re
     def _sort_key(t):
         name = t.get("topic_name", "")
         is_generic = bool(re.match(r"^Topic \d+$", name))
-        return (is_generic, -t.get("post_count", 0))
+        return (is_generic, -t.get("recency_score", 0), -t.get("post_count", 0))
 
     topics.sort(key=_sort_key)
     return topics
 
 
-@router.get("/topics/{cluster_id}/analytics")
-async def get_topic_analytics(
+@router.get("/agents/{agent_id}/topics/{cluster_id}/analytics")
+async def get_agent_topic_analytics(
+    agent_id: str,
     cluster_id: str,
-    collection_id: str = Query(...),
     user: CurrentUser = Depends(get_current_user),
 ):
     """On-demand analytics for a topic — sentiment, platform, engagement distributions."""
     fs = get_fs()
     bq = get_bq()
-    _check_collection_access(fs, user, collection_id)
+    _check_agent_access(fs, user, agent_id)
 
     # Totals query (with dedup JOINs to prevent inflated counts)
     totals = bq.query(
@@ -185,7 +186,7 @@ async def get_topic_analytics(
         members AS (
             SELECT tcm.post_id
             FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.collection_id = @collection_id
+            WHERE tcm.agent_id = @agent_id
               AND tcm.cluster_id = @cluster_id
               AND tcm.clustered_at = latest.latest_at
         )
@@ -205,7 +206,7 @@ async def get_topic_analytics(
         LEFT JOIN {_ENRICHED_DEDUP}
         LEFT JOIN {_ENGAGEMENTS_DEDUP}
         """,
-        {"collection_id": collection_id, "cluster_id": cluster_id},
+        {"agent_id": agent_id, "cluster_id": cluster_id},
     )
 
     # Platform breakdown (with dedup JOINs)
@@ -215,7 +216,7 @@ async def get_topic_analytics(
         members AS (
             SELECT tcm.post_id
             FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.collection_id = @collection_id
+            WHERE tcm.agent_id = @agent_id
               AND tcm.cluster_id = @cluster_id
               AND tcm.clustered_at = latest.latest_at
         )
@@ -229,7 +230,7 @@ async def get_topic_analytics(
         LEFT JOIN {_ENGAGEMENTS_DEDUP}
         GROUP BY p.platform
         """,
-        {"collection_id": collection_id, "cluster_id": cluster_id},
+        {"agent_id": agent_id, "cluster_id": cluster_id},
     )
 
     return {
@@ -238,10 +239,10 @@ async def get_topic_analytics(
     }
 
 
-@router.get("/topics/{cluster_id}/posts")
-async def get_topic_posts(
+@router.get("/agents/{agent_id}/topics/{cluster_id}/posts")
+async def get_agent_topic_posts(
+    agent_id: str,
     cluster_id: str,
-    collection_id: str = Query(...),
     limit: int = Query(default=20, le=100),
     offset: int = Query(default=0, ge=0),
     user: CurrentUser = Depends(get_current_user),
@@ -249,7 +250,7 @@ async def get_topic_posts(
     """Paginated posts within a topic."""
     fs = get_fs()
     bq = get_bq()
-    _check_collection_access(fs, user, collection_id)
+    _check_agent_access(fs, user, agent_id)
 
     posts = bq.query(
         f"""
@@ -257,7 +258,7 @@ async def get_topic_posts(
         members AS (
             SELECT tcm.post_id, tcm.distance_to_centroid, tcm.is_representative
             FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.collection_id = @collection_id
+            WHERE tcm.agent_id = @agent_id
               AND tcm.cluster_id = @cluster_id
               AND tcm.clustered_at = latest.latest_at
         )
@@ -277,7 +278,7 @@ async def get_topic_posts(
         LIMIT @limit OFFSET @offset
         """,
         {
-            "collection_id": collection_id,
+            "agent_id": agent_id,
             "cluster_id": cluster_id,
             "limit": limit,
             "offset": offset,

@@ -654,6 +654,7 @@ export interface TopicCluster {
   total_likes?: number;
   thumbnail_url?: string | null;
   thumbnail_gcs_uri?: string | null;
+  recency_score?: number;
 }
 
 export interface TopicAnalyticsTotals {

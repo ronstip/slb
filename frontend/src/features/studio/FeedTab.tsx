@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSourcesStore } from '../../stores/sources-store.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { PostCard } from './PostCard.tsx';
@@ -17,6 +18,7 @@ function splitColumns(posts: FeedPost[], numCols: number): FeedPost[][] {
 }
 
 export function FeedTab() {
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const sources = useSourcesStore((s) => s.sources);
   // All active (checkbox-checked) collections in session
   const activeSources = sources.filter((s) => s.active && s.selected);
@@ -178,14 +180,16 @@ export function FeedTab() {
 
       {viewMode === 'topics' ? (
         <div className="flex-1 overflow-y-auto bg-muted">
-          <TopicsFeed
-            collectionIds={effectiveIds}
-            onTopicCount={stableSetTopicCount}
-            onViewPosts={(clusterId, topicName) => {
-              setTopicFilter({ id: clusterId, name: topicName });
-              setViewMode('posts');
-            }}
-          />
+          {activeAgentId && (
+            <TopicsFeed
+              agentId={activeAgentId}
+              onTopicCount={stableSetTopicCount}
+              onViewPosts={(clusterId, topicName) => {
+                setTopicFilter({ id: clusterId, name: topicName });
+                setViewMode('posts');
+              }}
+            />
+          )}
         </div>
       ) : (
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>

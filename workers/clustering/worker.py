@@ -2,12 +2,18 @@
 
 Flow: fetch embeddings from BQ -> run brothers algorithm -> compute centroids
 -> select representatives -> Gemini labeling -> write to BQ + Firestore.
+
+Scope: agent-wide — clusters ALL relevant posts across all agent collections,
+filtered to is_related_to_task=TRUE and posted within the last 30 days.
 """
 
 import logging
+import math
+import re
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -17,6 +23,30 @@ from workers.clustering.brothers import brothers_cluster
 from workers.clustering.labeler import label_topics
 from workers.shared.bq_client import BQClient
 from workers.shared.firestore_client import FirestoreClient
+from workers.shared.sql_dedup import DEDUP_EMBEDDINGS
+
+_SQL_DIR = Path(__file__).resolve().parent.parent.parent / "bigquery"
+
+
+def _load_underlying_data_ctes() -> str:
+    """Load the CTE definitions from underlying_data.sql (everything up to the
+    final SELECT).  Strips the @created_at anchor so the query returns current
+    data rather than a frozen snapshot.
+
+    Returns the WITH ... clause (without trailing comma) ready to have extra
+    CTEs appended via ", <extra_cte>".
+    """
+    raw = (_SQL_DIR / "export_queries" / "underlying_data.sql").read_text()
+    # Remove @created_at timestamp filters
+    sql = raw.replace("AND collected_at <= @created_at", "")
+    sql = sql.replace("WHERE enriched_at <= @created_at", "")
+    sql = sql.replace("WHERE fetched_at <= @created_at", "")
+    # Extract just the WITH ... CTEs block (everything before the final SELECT)
+    match = re.split(r"\nSELECT\b", sql, maxsplit=1, flags=re.IGNORECASE)
+    if len(match) < 2:
+        raise ValueError("Could not parse CTEs from underlying_data.sql")
+    ctes = match[0].strip().rstrip(",")
+    return ctes
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +57,16 @@ SAMPLE_SIZE = 3000
 TOP_ENGAGEMENT_RATIO = 0.20
 MAX_REPRESENTATIVES = 6
 
+# Recency score: exponential decay with 7-day half-life
+HALF_LIFE_DAYS = 7.0
+_LAMBDA = math.log(2) / HALF_LIFE_DAYS
 
-def run_clustering(collection_id: str) -> dict[str, Any]:
-    """Run the full topic clustering pipeline for a collection.
+
+def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
+    """Run the full topic clustering pipeline across all agent collections.
+
+    Clusters only posts that are relevant (is_related_to_task=TRUE) and
+    published within the last 30 days.
 
     Returns a stats dict with topics_count and other metadata.
     """
@@ -37,30 +74,40 @@ def run_clustering(collection_id: str) -> dict[str, Any]:
     bq = BQClient()
     fs = FirestoreClient()
 
-    # 1. Fetch embeddings + metadata from BQ
-    logger.info("Fetching embeddings for collection %s", collection_id)
+    if not collection_ids:
+        logger.warning("No collection_ids for agent %s — skipping clustering", agent_id)
+        return {"topics_count": 0, "error": "no collections"}
+
+    # 1. Fetch embeddings + metadata from BQ (agent-wide, filtered)
+    logger.info("Fetching embeddings for agent %s (%d collections)", agent_id, len(collection_ids))
     rows = bq.query(
-        """
+        f"""
+        {_load_underlying_data_ctes()},
+        {DEDUP_EMBEDDINGS}
         SELECT
             p.post_id,
             pe.embedding,
             p.platform,
             p.title,
             p.content,
+            p.collection_id,
+            p.posted_at,
             ep.ai_summary,
             COALESCE(eng.views, 0) + COALESCE(eng.likes, 0) * 10
                 + COALESCE(eng.comments_count, 0) * 20 AS engagement_score
-        FROM social_listening.posts p
-        JOIN social_listening.post_embeddings pe ON pe.post_id = p.post_id
-        LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id
-        LEFT JOIN social_listening.post_engagements eng ON eng.post_id = p.post_id
-        WHERE p.collection_id = @collection_id
+        FROM deduped_posts p
+        JOIN deduped_embeddings pe ON pe.post_id = p.post_id AND pe._rn = 1
+        JOIN deduped_enriched ep ON ep.post_id = p.post_id AND ep._rn = 1
+            AND ep.is_related_to_task = TRUE
+        LEFT JOIN deduped_engagements eng ON eng.post_id = p.post_id AND eng._rn = 1
+        WHERE p._rn = 1
+          AND p.posted_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
         """,
-        {"collection_id": collection_id},
+        {"collection_ids": collection_ids},
     )
 
     if len(rows) < 2:
-        logger.warning("Collection %s has %d embedded posts — skipping clustering", collection_id, len(rows))
+        logger.warning("Agent %s has %d eligible posts — skipping clustering", agent_id, len(rows))
         return {"topics_count": 0, "error": "not enough posts"}
 
     logger.info("Fetched %d posts with embeddings", len(rows))
@@ -70,10 +117,10 @@ def run_clustering(collection_id: str) -> dict[str, Any]:
     metadata = {r["post_id"]: r for r in rows}
     embeddings = np.array([_parse_embedding(r["embedding"]) for r in rows], dtype=np.float32)
 
-    # 2. Sampling for large collections
+    # 2. Sampling for large datasets
     sample_indices = None
     if len(rows) > DIRECT_CLUSTER_LIMIT:
-        logger.info("Large collection (%d posts) — sampling %d for clustering", len(rows), SAMPLE_SIZE)
+        logger.info("Large dataset (%d posts) — sampling %d for clustering", len(rows), SAMPLE_SIZE)
         sample_indices = _sample_indices(rows, SAMPLE_SIZE)
         sample_embeddings = embeddings[sample_indices]
     else:
@@ -94,13 +141,11 @@ def run_clustering(collection_id: str) -> dict[str, Any]:
         cluster_assignments = _two_pass_assign(
             embeddings, sample_indices, cluster_assignments,
         )
-        # Remap post_ids to full set
         full_post_ids = post_ids
     else:
         full_post_ids = post_ids
 
     # 5. Build cluster groups
-    n_clusters = int(np.nanmax(cluster_assignments)) + 1 if not np.all(np.isnan(cluster_assignments)) else 0
     cluster_groups: dict[int, list[int]] = {}
     for idx, cid in enumerate(cluster_assignments):
         if not np.isnan(cid):
@@ -108,14 +153,16 @@ def run_clustering(collection_id: str) -> dict[str, Any]:
             cluster_groups.setdefault(cid_int, []).append(idx)
 
     if not cluster_groups:
-        logger.warning("No clusters formed for collection %s", collection_id)
+        logger.warning("No clusters formed for agent %s", agent_id)
         return {"topics_count": 0, "error": "no clusters formed"}
 
     logger.info("Formed %d clusters", len(cluster_groups))
 
-    # 6. Compute centroids and select representatives
+    # 6. Compute centroids, recency scores, and select representatives
+    now = datetime.now(timezone.utc)
     cluster_ids: dict[int, str] = {}  # cluster_index -> uuid
     centroids: dict[int, np.ndarray] = {}
+    recency_scores: dict[int, float] = {}
     clusters_for_labeling: list[dict[str, Any]] = []
 
     for cid, member_indices in sorted(cluster_groups.items()):
@@ -125,6 +172,9 @@ def run_clustering(collection_id: str) -> dict[str, Any]:
         # Centroid
         member_embeddings = embeddings[member_indices]
         centroids[cid] = member_embeddings.mean(axis=0)
+
+        # Recency score
+        recency_scores[cid] = _compute_recency_score(member_indices, full_post_ids, metadata, now)
 
         # Select representatives: top by engagement score
         member_posts = [(i, metadata[full_post_ids[i]]) for i in member_indices]
@@ -167,7 +217,8 @@ def run_clustering(collection_id: str) -> dict[str, Any]:
             bq_rows.append({
                 "cluster_id": cluster_uuid,
                 "post_id": full_post_ids[idx],
-                "collection_id": collection_id,
+                "agent_id": agent_id,
+                "collection_id": metadata[full_post_ids[idx]].get("collection_id", ""),
                 "distance_to_centroid": round(dist, 6),
                 "is_representative": idx in rep_indices,
                 "clustered_at": clustered_at,
@@ -180,13 +231,13 @@ def run_clustering(collection_id: str) -> dict[str, Any]:
 
     # 9. Write to Firestore — delete old topics, write new ones
     _write_firestore_topics(
-        fs, collection_id, cluster_groups, cluster_ids, centroids,
-        label_map, full_post_ids, metadata, clustered_at,
+        fs, agent_id, cluster_groups, cluster_ids, centroids,
+        recency_scores, label_map, full_post_ids, metadata, clustered_at,
     )
 
-    # 10. Update collection status
-    fs.update_collection_status(
-        collection_id,
+    # 10. Update agent status
+    fs.update_agent(
+        agent_id,
         topics_count=len(cluster_groups),
         topics_generated_at=datetime.now(timezone.utc),
     )
@@ -197,8 +248,31 @@ def run_clustering(collection_id: str) -> dict[str, Any]:
         "clustered_posts": sum(len(m) for m in cluster_groups.values()),
         "ungrouped_posts": int(np.isnan(cluster_assignments).sum()),
     }
-    logger.info("Clustering complete for %s: %s", collection_id, result)
+    logger.info("Clustering complete for agent %s: %s", agent_id, result)
     return result
+
+
+def _compute_recency_score(
+    member_indices: list[int],
+    post_ids: list[str],
+    metadata: dict[str, dict],
+    now: datetime,
+) -> float:
+    """Compute exponential-decay recency score for a cluster.
+
+    Each post contributes exp(-lambda * age_days).  Half-life = 7 days.
+    """
+    score = 0.0
+    for idx in member_indices:
+        posted_at = metadata[post_ids[idx]].get("posted_at")
+        if posted_at:
+            if isinstance(posted_at, str):
+                posted_at = datetime.fromisoformat(posted_at)
+            if posted_at.tzinfo is None:
+                posted_at = posted_at.replace(tzinfo=timezone.utc)
+            age_days = (now - posted_at).total_seconds() / 86400
+            score += math.exp(-_LAMBDA * max(age_days, 0))
+    return round(score, 4)
 
 
 def _parse_embedding(value: Any) -> list[float]:
@@ -280,20 +354,21 @@ def _two_pass_assign(
 
 def _write_firestore_topics(
     fs: FirestoreClient,
-    collection_id: str,
+    agent_id: str,
     cluster_groups: dict[int, list[int]],
     cluster_ids: dict[int, str],
     centroids: dict[int, np.ndarray],
+    recency_scores: dict[int, float],
     label_map: dict[int, dict],
     post_ids: list[str],
     metadata: dict[str, dict],
     clustered_at: str,
 ) -> None:
-    """Delete old topic docs and write new ones to Firestore subcollection."""
+    """Delete old topic docs and write new ones to agent-level Firestore subcollection."""
     db = fs._db
     topics_ref = (
-        db.collection("collection_status")
-        .document(collection_id)
+        db.collection("agents")
+        .document(agent_id)
         .collection("topics")
     )
 
@@ -319,10 +394,11 @@ def _write_firestore_topics(
             "post_count": len(member_indices),
             "representative_post_ids": rep_post_ids,
             "centroid": centroids[cid].tolist(),
+            "recency_score": recency_scores[cid],
             "algorithm_version": "brothers_v1",
             "created_at": datetime.now(timezone.utc),
         }
 
         topics_ref.document(cluster_uuid).set(topic_doc)
 
-    logger.info("Wrote %d topic docs to Firestore for %s", len(cluster_groups), collection_id)
+    logger.info("Wrote %d topic docs to Firestore for agent %s", len(cluster_groups), agent_id)

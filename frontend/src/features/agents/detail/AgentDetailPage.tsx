@@ -17,6 +17,7 @@ import { AgentChatTab } from './tabs/AgentChatTab.tsx';
 import { AgentCollectionsTab } from './tabs/AgentCollectionsTab.tsx';
 import { AgentArtifactsTab } from './tabs/AgentArtifactsTab.tsx';
 import { AgentExplorerTab } from './tabs/AgentExplorerTab.tsx';
+import { AgentTopicsTab } from './tabs/AgentTopicsTab.tsx';
 import { RUNNABLE_STATUSES } from './agent-status-utils.tsx';
 import {
   AlertDialog,
@@ -29,7 +30,7 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'chat', 'data', 'artifacts', 'explorer'];
+const VALID_TABS: DetailTab[] = ['overview', 'chat', 'data', 'topics', 'artifacts', 'explorer'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -221,6 +222,7 @@ export function AgentDetailPage() {
           )}
           {activeTab === 'chat' && <AgentChatTab task={task} />}
           {activeTab === 'data' && <AgentCollectionsTab task={task} />}
+          {activeTab === 'topics' && <AgentTopicsTab task={task} />}
           {activeTab === 'artifacts' && <AgentArtifactsTab task={task} artifacts={artifacts} />}
           {activeTab === 'explorer' && (
             <AgentExplorerTab
