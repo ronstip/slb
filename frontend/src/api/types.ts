@@ -249,6 +249,7 @@ export interface MultiFeedParams {
   sort?: 'engagement' | 'recent' | 'sentiment' | 'views';
   platform?: string;
   sentiment?: string;
+  relevant_to_task?: string;
   limit?: number;
   offset?: number;
   topic_cluster_id?: string;

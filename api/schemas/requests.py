@@ -61,6 +61,7 @@ class MultiFeedRequest(BaseModel):
     sort: str = "views"
     platform: str = "all"
     sentiment: str = "all"
+    relevant_to_task: str = "true"  # "all" | "true" | "false"
     limit: int = 12
     offset: int = 0
     topic_cluster_id: str | None = None

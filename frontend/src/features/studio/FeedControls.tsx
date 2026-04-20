@@ -27,9 +27,11 @@ interface FeedControlsProps {
   sort: FeedParams['sort'];
   platform: string;
   sentiment: string;
+  relevantToTask: string;
   onSortChange: (sort: FeedParams['sort']) => void;
   onPlatformChange: (platform: string) => void;
   onSentimentChange: (sentiment: string) => void;
+  onRelevantToTaskChange: (value: string) => void;
   totalCount: number;
   topicCount?: number;
   activeSources: Source[];
@@ -43,9 +45,11 @@ export function FeedControls({
   sort,
   platform,
   sentiment,
+  relevantToTask,
   onSortChange,
   onPlatformChange,
   onSentimentChange,
+  onRelevantToTaskChange,
   totalCount,
   topicCount,
   activeSources,
@@ -55,7 +59,10 @@ export function FeedControls({
   onViewModeChange,
 }: FeedControlsProps) {
   const hasActiveFilter =
-    platform !== 'all' || sentiment !== 'all' || collectionFilter.length > 0;
+    platform !== 'all' ||
+    sentiment !== 'all' ||
+    relevantToTask !== 'true' ||
+    collectionFilter.length > 0;
 
   function isCollectionShown(id: string) {
     return collectionFilter.length === 0 || collectionFilter.includes(id);
@@ -163,6 +170,13 @@ export function FeedControls({
                 <DropdownMenuRadioItem value="negative">Negative</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="neutral">Neutral</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="mixed">Mixed</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[10px]">Relevant to task</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={relevantToTask} onValueChange={onRelevantToTaskChange}>
+                <DropdownMenuRadioItem value="true">Relevant only</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="false">Not relevant only</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>

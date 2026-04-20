@@ -47,6 +47,7 @@ export function FeedTab() {
   const [sort, setSort] = useState<FeedParams['sort']>('views');
   const [platform, setPlatform] = useState('all');
   const [sentiment, setSentiment] = useState('all');
+  const [relevantToTask, setRelevantToTask] = useState('true');
   // Which of the active collections to show (empty = all)
   const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
   // Topic filter (set from TopicCard "Posts" button)
@@ -83,13 +84,14 @@ export function FeedTab() {
   );
 
   const { data, fetchNextPage, hasNextPage, isFetching, isLoading, isError } = useInfiniteQuery({
-    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, topicFilter?.id ?? ''],
+    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, relevantToTask, topicFilter?.id ?? ''],
     queryFn: ({ pageParam = 0 }) =>
       getMultiCollectionPosts({
         collection_ids: effectiveIds,
         sort,
         platform,
         sentiment,
+        relevant_to_task: relevantToTask,
         limit: 12,
         offset: pageParam,
         ...(topicFilter ? { topic_cluster_id: topicFilter.id } : {}),
@@ -152,9 +154,11 @@ export function FeedTab() {
         sort={sort}
         platform={platform}
         sentiment={sentiment}
+        relevantToTask={relevantToTask}
         onSortChange={setSort}
         onPlatformChange={setPlatform}
         onSentimentChange={setSentiment}
+        onRelevantToTaskChange={setRelevantToTask}
         totalCount={totalCount}
         activeSources={activeSources}
         collectionFilter={collectionFilter}

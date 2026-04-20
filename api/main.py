@@ -1389,6 +1389,11 @@ async def get_multi_collection_feed(
         where_clauses.append("ep.sentiment = @sentiment")
         params["sentiment"] = request.sentiment
 
+    if request.relevant_to_task == "true":
+        where_clauses.append("ep.is_related_to_task = TRUE")
+    elif request.relevant_to_task == "false":
+        where_clauses.append("ep.is_related_to_task = FALSE")
+
     if request.has_media:
         # Posts where at least one media_ref has a usable URL (GCS URI or valid original URL)
         where_clauses.append(

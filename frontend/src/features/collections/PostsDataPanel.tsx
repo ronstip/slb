@@ -51,6 +51,7 @@ export function PostsDataPanel({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [platformFilter, setPlatformFilter] = useState('all');
   const [sentimentFilter, setSentimentFilter] = useState('all');
+  const [relevantFilter, setRelevantFilter] = useState('true');
 
   // Compute effective collection IDs based on source filter
   const effectiveCollectionIds = useMemo(() => {
@@ -61,7 +62,7 @@ export function PostsDataPanel({
   const hasSelection = effectiveCollectionIds.length > 0;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter],
+    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, relevantFilter],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: effectiveCollectionIds,
@@ -71,6 +72,7 @@ export function PostsDataPanel({
         dedup,
         platform: platformFilter !== 'all' ? platformFilter : undefined,
         sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
+        relevant_to_task: relevantFilter,
       }),
     enabled: hasSelection,
     staleTime: 30_000,
@@ -105,9 +107,14 @@ export function PostsDataPanel({
     setSourceFilter('all');
     setPlatformFilter('all');
     setSentimentFilter('all');
+    setRelevantFilter('true');
   }, []);
 
-  const hasAnyTopFilter = sourceFilter !== 'all' || platformFilter !== 'all' || sentimentFilter !== 'all';
+  const hasAnyTopFilter =
+    sourceFilter !== 'all' ||
+    platformFilter !== 'all' ||
+    sentimentFilter !== 'all' ||
+    relevantFilter !== 'true';
   const hasAnyFilter = hasAnyTopFilter || hasActiveFilters(columnFilters);
 
   // Build columns
@@ -244,6 +251,19 @@ export function PostsDataPanel({
                 </span>
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        {/* Relevant to task filter */}
+        <Select value={relevantFilter} onValueChange={setRelevantFilter}>
+          <SelectTrigger className="h-7 w-auto min-w-[140px] text-xs gap-1.5 bg-background">
+            <span className="text-muted-foreground font-medium mr-1">Relevant:</span>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="true">Relevant only</SelectItem>
+            <SelectItem value="false">Not relevant only</SelectItem>
+            <SelectItem value="all">All</SelectItem>
           </SelectContent>
         </Select>
 
