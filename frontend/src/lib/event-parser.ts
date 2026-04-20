@@ -1,4 +1,4 @@
-import type { DesignResearchResult, DataExportResult, InsightReportPayload, DashboardPayload, StructuredPromptResult } from '../api/types.ts';
+import type { DesignResearchResult, DataExportResult, DashboardPayload, StructuredPromptResult } from '../api/types.ts';
 import { TOOL_DISPLAY_NAMES } from './constants.ts';
 
 export function getToolDisplayText(toolName: string): string {
@@ -24,13 +24,6 @@ export function isChartResult(
   result?: Record<string, unknown>,
 ): boolean {
   return toolName === 'create_chart' && result?.status === 'success' && !!result?.chart_type;
-}
-
-export function isReportResult(
-  toolName: string,
-  result?: Record<string, unknown>,
-): result is Record<string, unknown> & InsightReportPayload {
-  return toolName === 'generate_report' && result?.status === 'success' && Array.isArray(result?.cards);
 }
 
 export function isDashboardResult(

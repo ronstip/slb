@@ -7,7 +7,6 @@ import { Skeleton } from '../../components/ui/skeleton.tsx';
 import { getArtifact } from '../../api/endpoints/artifacts.ts';
 import { ARTIFACT_STYLES, convertToStudioArtifact } from './artifact-utils.ts';
 import { ChartArtifactView } from '../studio/ChartArtifactView.tsx';
-import { InsightReportView } from '../studio/InsightReportView.tsx';
 import { DataExportView } from '../studio/DataExportView.tsx';
 import { DashboardView } from '../studio/dashboard/DashboardView.tsx';
 import { cn } from '../../lib/utils.ts';
@@ -111,8 +110,6 @@ function ArtifactRenderer({ artifact }: { artifact: Artifact }) {
   switch (artifact.type) {
     case 'chart':
       return <ChartArtifactView artifact={artifact} />;
-    case 'insight_report':
-      return <InsightReportView artifact={artifact} />;
     case 'data_export':
       return <DataExportView artifact={artifact} />;
     case 'dashboard':

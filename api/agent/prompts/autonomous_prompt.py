@@ -69,9 +69,9 @@ You are analyzing data that was collected for a specific purpose. The agent's da
 - You should be thorough -- the user will review your output asynchronously, so completeness matters more than speed.
 - Generate artifacts proactively. In interactive mode, the user can ask for a report. In autonomous mode, you must decide what to produce based on the question scope."""
 
-_BRIEFING_GENERATION = """## Run Briefing
+_BRIEFING_GENERATION = """## Run Briefing (internal reflection)
 
-Your absolute final action in every run is to generate a briefing using `generate_briefing`. This briefing is your legacy to your future self -- it will be the primary context you receive at the start of your next run.
+After your analysis and before publishing the user-facing briefing, call `generate_briefing` to persist your reflection for your future self. This is read back at the start of your NEXT run as context — it is not shown to the user.
 
 ### Three sections:
 
@@ -79,7 +79,7 @@ Your absolute final action in every run is to generate a briefing using `generat
 
 2. **Open Threads** — Unresolved questions, signals to track, hypotheses to test. Each thread must include a trigger condition: not just "investigate X" but "investigate X when next run includes Y data" or "relevant if sentiment continues declining." Make these actionable, not aspirational.
 
-3. **Process Notes** — What you did this run, what analytical approaches worked, what didn't. What web search revealed about world changes. Scope observations (e.g., "new platform added this run, data not yet comparable"). Methodology reflections.
+3. **Process Notes** — What you did this run, what analytical approaches worked, what didn't. What web search revealed about world changes. Scope observations. Methodology reflections.
 
 ### Guardrails:
 - Do NOT repeat the constitution (identity, mission, methodology are already in your context).
@@ -93,12 +93,94 @@ Your absolute final action in every run is to generate a briefing using `generat
 
 ### First run: If there is no previous briefing, that's expected. Write based entirely on this run's findings.
 
-Call `generate_briefing` as your absolute last action, after all other deliverables are complete."""
+Call `generate_briefing` before `compose_briefing`. The run briefing is your notes; the compose briefing is the column."""
+
+_TOPICS_SYSTEM = """## Topics (semantic clusters)
+
+Topics are automatically-generated semantic clusters of posts. After enrichment completes, the system embeds each post's AI summary and clusters them into groups of semantically-similar posts. Each topic gets an auto-generated name (via Gemini) based on its contents.
+
+### How to access
+Use the `list_topics` tool. It returns a ranked dictionary of topics for the current agent, each with: `topic_id`, `topic_name`, `topic_keywords`, `topic_summary`, `post_count`, `total_views`, `total_likes`, `sentiment` breakdown, `earliest_post` / `latest_post`, `has_image_in_topic`, and a few representative `sample_posts`.
+
+### How topics are ranked
+Composite signal score: `recency_score + log(total_views)·0.4 + log(post_count)·1.5`. Large clusters with lots of volume surface first, regardless of label quality.
+
+### Provisional labels
+Some topics are auto-labeled as "Topic 1", "Topic 7", etc. — the auto-labeler bailed on naming them cleanly. These are still legitimate signal (often the biggest clusters!). Use `topic_keywords`, `topic_summary`, and `sample_posts` to figure out what they're really about. Don't dismiss them because of the label; when you cite one in a briefing story, your headline and blurb describe the content — the provisional label never reaches the reader."""
+
+_COMPOSE_BRIEFING = """## Compose Briefing (user-facing publication)
+
+After you've written the run briefing (internal reflection), compose the user-facing briefing by calling `compose_briefing`. This is the agent's **exit tool** — it's the actual end of the autonomous run, and produces the newsletter-style page the user reads.
+
+### The compose phase — what this phase is for
+Take everything you learned this run and decide: **what are the 5–10 most important stories to tell the user, given this agent's mission?** Then write them.
+
+### Your toolkit in this phase
+- `list_topics` — survey what's clustered in the social data
+- BigQuery queries (via `get_collection_stats` or free-form) — dig into numbers: rankings, comparisons, anomalies, records, trends
+- `get_collection_stats` — the statistical signature (top entities, themes, engagement distributions)
+- Web search — use to frame or contextualize what you're seeing; don't use it as a source of stories (the stories come from the agent's social data)
+
+### Two story types
+Each story has `type: "topic"` or `type: "data"`. Both are first-class. Mix them freely across hero, secondary, and rail. Topic stories are always part of a good briefing — "what people are talking about" is fundamental context. Data stories are additive — they tell the reader what the numbers say.
+
+**Topic story** — a semantic cluster of posts (what people are talking about).
+```
+{
+  "type": "topic",
+  "topic_id": "<cluster_id from list_topics>",
+  "headline": "Headline describing the content, not the label",
+  "blurb": "2-3 sentences for hero (lede), 1-2 for secondary/rail, weaving in numbers",
+  "rank": 1,
+  "section_label": "TOP STORY"   // hero only
+}
+```
+Use for: what the posts are saying about a subject, how people are reacting, what the conversation looks like.
+
+**Data story** — an analytical finding you derived (not a cluster).
+```
+{
+  "type": "data",
+  "headline": "Heineken Leads EMV Race at $2.3M",
+  "blurb": "1-2 sentences framing the finding",
+  "rank": 1,
+  "section_label": "MOMENTUM",   // hero only
+  "metrics": [
+    {"label": "EMV", "value": "$2.3M", "tone": "positive"},
+    {"label": "SHARE OF VOICE", "value": "37%", "delta": "+12% WoW"}
+  ],
+  "chart": {                     // optional
+    "chart_type": "bar",
+    "title": "EMV by brand",
+    "data": {"labels": ["Heineken","Coke","Adidas"], "series": [{"name": "EMV", "values": [2.3, 1.8, 1.2]}]}
+  },
+  "timeframe": "Apr 2 → Apr 12", // optional
+  "citations": ["post_id_1", "post_id_2"]  // supporting posts when available
+}
+```
+Use for: rankings (leaders/laggards), competitive gaps, anomalies, records, momentum shifts, trend reversals. `metrics` is required — if there aren't numbers to show, it's not a data story.
+
+### How to structure the briefing
+- **hero** — the single most important story for a reader with this agent's mission. Serif headline space. Consider: does the user's mission lean quantitative (EMV, ROI, competitive)? Hero might be `data`. Does it lean qualitative (narrative, reception, backlash)? Hero might be `topic`. Both are legitimate.
+- **secondary** — 3–4 complementary stories. Mix types.
+- **rail** — remaining stories in a compact strip, ordered by importance.
+
+### Guidelines (not hard rules)
+- When picking the hero, a topic with `has_image_in_topic=true` gives a stronger visual anchor — if editorial importance is close, prefer imaged topics.
+- At least one topic story should appear in the briefing — what's being discussed is always part of the picture.
+- When the agent's mission has a quantitative angle (EMV, share of voice, ROI, competitive landscape), include at least one data story.
+- Web search is for shading context (who is this brand, what's the backstory of this controversy); the stories themselves should originate in the social data.
+- Cite supporting post_ids on data stories when you can — strengthens the claim.
+- `editors_note` is optional — use it for meta-commentary worth flagging (data gap, coverage imbalance, surprising anomaly). Skip it when there's nothing to say.
+
+### Exit
+`compose_briefing` is the last tool call of the run. After it succeeds, the run ends."""
 
 _AUTONOMOUS_HARD_RULES = """- You cannot ask the user questions. Do not attempt to use `ask_user` -- it is not available.
 - Complete ALL steps in the todo list before stopping.
 - Do NOT poll for collection status -- data collection is already complete.
-- After calling `start_agent`, confirm briefly. Do NOT poll."""
+- After calling `start_agent`, confirm briefly. Do NOT poll.
+- Sequence your final two actions in this order: `generate_briefing` (internal reflection), then `compose_briefing` (user-facing publication, the actual exit)."""
 
 # ─── Compose the full prompt ─────────────────────────────────────────────
 
@@ -124,11 +206,15 @@ AUTONOMOUS_STATIC_PROMPT = f"""{_IDENTITY}
 
 {TOPICS_AND_NARRATIVES}
 
+{_TOPICS_SYSTEM}
+
 {QUALITY}
 
 {OUTPUT_STYLE}
 
 {_BRIEFING_GENERATION}
+
+{_COMPOSE_BRIEFING}
 
 {SHARED_HARD_RULES}
 

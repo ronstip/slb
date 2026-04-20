@@ -20,7 +20,6 @@ export const TOOL_CATEGORY: Record<string, ToolCategory> = {
   start_agent: 'tools',
   // Outputs — deliverables
   create_chart: 'outputs',
-  generate_report: 'outputs',
   generate_dashboard: 'outputs',
   generate_presentation: 'outputs',
   export_data: 'outputs',
@@ -41,7 +40,6 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   create_chart: 'Creating chart',
   get_table_info: 'Inspecting table schema',
   list_table_ids: 'Discovering tables',
-  generate_report: 'Generating insight report',
   generate_dashboard: 'Creating interactive dashboard',
   generate_presentation: 'Building presentation deck',
   ask_user: 'Preparing questions',

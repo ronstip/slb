@@ -16,6 +16,7 @@ interface AgentStore {
   fetchAgents: () => Promise<void>;
   setActiveAgent: (id: string | null, collectionIds?: string[]) => void;
   loadAgent: (id: string) => Promise<Agent | null>;
+  upsertAgent: (agent: Agent) => void;
   updateAgent: (id: string, updates: Partial<Agent>) => void;
   reset: () => void;
 }
@@ -54,20 +55,24 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   loadAgent: async (id: string) => {
     try {
       const agent = await fetchAgent(id);
-      set((s) => {
-        const exists = s.agents.some((t) => t.agent_id === id);
-        const agents = exists
-          ? s.agents.map((t) => (t.agent_id === id ? agent : t))
-          : [...s.agents, agent];
-        return {
-          agents,
-          activeAgent: s.activeAgentId === id ? agent : s.activeAgent,
-        };
-      });
+      get().upsertAgent(agent);
       return agent;
     } catch {
       return null;
     }
+  },
+
+  upsertAgent: (agent: Agent) => {
+    set((s) => {
+      const exists = s.agents.some((t) => t.agent_id === agent.agent_id);
+      const agents = exists
+        ? s.agents.map((t) => (t.agent_id === agent.agent_id ? agent : t))
+        : [...s.agents, agent];
+      return {
+        agents,
+        activeAgent: s.activeAgentId === agent.agent_id ? agent : s.activeAgent,
+      };
+    });
   },
 
   updateAgent: (id: string, updates: Partial<Agent>) => {

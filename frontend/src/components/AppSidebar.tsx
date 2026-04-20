@@ -9,11 +9,13 @@ import {
   Compass,
   Database,
   FileText,
+  Hash,
   LayoutDashboard,
   LayoutGrid,
   LogOut,
   MessageSquare,
   Moon,
+  Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
   Pause,
@@ -57,14 +59,16 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'topics' | 'artifacts' | 'explorer' | 'briefing';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Agent Profile', icon: LayoutDashboard },
+  { id: 'briefing', label: 'Briefing', icon: Newspaper },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
   { id: 'artifacts', label: 'Artifacts', icon: FileText },
   { id: 'data', label: 'Data', icon: Database },
+  { id: 'topics', label: 'Topics', icon: Hash },
 ];
 
 // ── Shared class fragments — sidebar uses the always-dark sidebar-* tokens ──

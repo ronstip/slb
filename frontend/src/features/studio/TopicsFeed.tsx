@@ -1,23 +1,19 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getTopics } from '../../api/endpoints/topics.ts';
+import { getAgentTopics } from '../../api/endpoints/topics.ts';
 import { TopicCard } from './TopicCard.tsx';
 
 interface TopicsFeedProps {
-  collectionIds: string[];
+  agentId: string;
   onViewPosts?: (clusterId: string, topicName: string) => void;
   onTopicCount?: (count: number) => void;
 }
 
-export function TopicsFeed({ collectionIds, onViewPosts, onTopicCount }: TopicsFeedProps) {
-  // For now, show topics for the first active collection
-  // (topics are per-collection scoped)
-  const collectionId = collectionIds[0];
-
+export function TopicsFeed({ agentId, onViewPosts, onTopicCount }: TopicsFeedProps) {
   const { data: topics, isLoading, isError } = useQuery({
-    queryKey: ['topics', collectionId],
-    queryFn: () => getTopics(collectionId),
-    enabled: !!collectionId,
+    queryKey: ['topics', agentId],
+    queryFn: () => getAgentTopics(agentId),
+    enabled: !!agentId,
   });
 
   // Report topic count to parent
@@ -25,11 +21,11 @@ export function TopicsFeed({ collectionIds, onViewPosts, onTopicCount }: TopicsF
     if (topics) onTopicCount?.(topics.length);
   }, [topics, onTopicCount]);
 
-  if (!collectionId) {
+  if (!agentId) {
     return (
       <div className="flex items-center justify-center py-12">
         <p className="text-sm text-muted-foreground">
-          Select a collection to view topics.
+          No agent selected.
         </p>
       </div>
     );
@@ -77,7 +73,7 @@ export function TopicsFeed({ collectionIds, onViewPosts, onTopicCount }: TopicsF
         <div className="h-px flex-1 bg-border" />
       </div>
       {topTopics.map((topic, i) => (
-        <TopicCard key={topic.cluster_id} topic={topic} collectionId={collectionId} rank={i + 1} onViewPosts={onViewPosts} />
+        <TopicCard key={topic.cluster_id} topic={topic} agentId={agentId} rank={i + 1} onViewPosts={onViewPosts} />
       ))}
 
       {otherTopics.length > 0 && (
@@ -90,7 +86,7 @@ export function TopicsFeed({ collectionIds, onViewPosts, onTopicCount }: TopicsF
             <div className="h-px flex-1 bg-border" />
           </div>
           {otherTopics.map((topic, i) => (
-            <TopicCard key={topic.cluster_id} topic={topic} collectionId={collectionId} rank={TOP_N + i + 1} onViewPosts={onViewPosts} />
+            <TopicCard key={topic.cluster_id} topic={topic} agentId={agentId} rank={TOP_N + i + 1} onViewPosts={onViewPosts} />
           ))}
         </>
       )}

@@ -25,6 +25,8 @@ _BASE_CTE = """WITH deduped_posts AS (
                    ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
             FROM social_listening.posts
             WHERE collection_id IN UNNEST(@collection_ids)
+              AND posted_at >= TIMESTAMP(@since)
+              AND collected_at >= TIMESTAMP(@since)
         ) sub
         WHERE _rn = 1
     ) deduped
@@ -137,6 +139,8 @@ WITH deduped_posts AS (
                    ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
             FROM social_listening.posts
             WHERE collection_id IN UNNEST(@collection_ids)
+              AND posted_at >= TIMESTAMP(@since)
+              AND collected_at >= TIMESTAMP(@since)
         ) sub
         WHERE _rn = 1
     ) deduped
@@ -158,6 +162,7 @@ WITH latest_channels AS (
            ROW_NUMBER() OVER (PARTITION BY platform, channel_handle ORDER BY observed_at DESC) AS rn
     FROM social_listening.channels
     WHERE collection_id IN UNNEST(@collection_ids)
+      AND observed_at >= TIMESTAMP(@since)
 ),
 channel_engagement AS (
     SELECT p.channel_handle, p.platform,
@@ -171,6 +176,8 @@ channel_engagement AS (
         FROM social_listening.post_engagements
     ) e ON e.post_id = p.post_id AND e.rn = 1
     WHERE p.collection_id IN UNNEST(@collection_ids)
+      AND p.posted_at >= TIMESTAMP(@since)
+      AND p.collected_at >= TIMESTAMP(@since)
     GROUP BY p.channel_handle, p.platform
 )
 SELECT lc.channel_handle, lc.platform, lc.subscribers, lc.channel_url,
@@ -184,9 +191,23 @@ LIMIT 20
 """
 
 
-def compute_statistical_signature(collection_ids: list[str], bq, fs) -> dict:
-    """Run 5 parallel BQ queries and assemble the signature dict (does not save)."""
-    params = {"collection_ids": collection_ids}
+_ALL_TIME_SINCE = "1900-01-01T00:00:00+00:00"
+
+
+def compute_statistical_signature(
+    collection_ids: list[str],
+    bq,
+    fs,
+    since: datetime | None = None,
+) -> dict:
+    """Run 5 parallel BQ queries and assemble the signature dict (does not save).
+
+    When `since` is None, no time window is applied (a 1900 sentinel is used so
+    every SQL path has a valid, harmless bound). When set, all metrics —
+    including top_channels — are filtered to rows at or after `since`.
+    """
+    since_iso = since.isoformat() if since else _ALL_TIME_SINCE
+    params = {"collection_ids": collection_ids, "since": since_iso}
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         f_summary = executor.submit(bq.query, _SUMMARY_SQL, params)
@@ -271,6 +292,7 @@ def compute_statistical_signature(collection_ids: list[str], bq, fs) -> dict:
 
     return {
         "computed_at": datetime.now(timezone.utc).isoformat(),
+        "window_since": since.isoformat() if since else None,
         "total_posts": total_posts,
         "total_unique_channels": int(s.get("total_unique_channels") or 0),
         "date_range": {
@@ -304,13 +326,18 @@ def compute_statistical_signature(collection_ids: list[str], bq, fs) -> dict:
     }
 
 
-def refresh_statistical_signature(collection_id: str, bq, fs) -> dict:
+def refresh_statistical_signature(
+    collection_id: str,
+    bq,
+    fs,
+    since: datetime | None = None,
+) -> dict:
     """Compute, persist, and return a new statistical signature."""
     collection_status = fs.get_collection_status(collection_id)
     fs_status = (collection_status or {}).get("status", "running")
     status_at_compute = "success" if fs_status == "success" else "running"
 
-    data = compute_statistical_signature([collection_id], bq, fs)
+    data = compute_statistical_signature([collection_id], bq, fs, since=since)
     data["collection_status_at_compute"] = status_at_compute
 
     fs.add_statistical_signature(collection_id, data)

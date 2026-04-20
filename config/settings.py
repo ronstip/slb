@@ -44,9 +44,9 @@ class Settings(BaseSettings):
     use_pipeline_v2: bool = True
 
     # Clustering (brothers algorithm) thresholds
-    clustering_brothers_threshold: float = 0.25
-    clustering_max_intra_group_mean: float = 0.26
-    clustering_max_distance_ungrouped: float = 0.29
+    clustering_brothers_threshold: float = 0.17
+    clustering_max_intra_group_mean: float = 0.20
+    clustering_max_distance_ungrouped: float = 0.21
 
     vetric_api_key_twitter: str = ""
     vetric_api_key_instagram: str = ""

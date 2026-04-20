@@ -1,10 +1,9 @@
 """
 Generate Dashboard Tool — creates an interactive dashboard artifact.
 
-Unlike generate_report (which fetches data and builds static cards),
-this tool is lightweight. It validates the collections exist and returns
-a metadata payload. The frontend fetches the actual data via the
-POST /dashboard/data REST endpoint and does all filtering client-side.
+Lightweight: validates the collections exist and returns a metadata payload.
+The frontend fetches the actual data via POST /dashboard/data and does all
+filtering client-side.
 """
 
 import logging
@@ -23,12 +22,9 @@ def generate_dashboard(
 
     WHEN TO USE: When the user wants to "explore", "filter", or interact
     with data. Also called automatically on collection completion.
-    WHEN NOT TO USE: When the user wants a narrative report with findings
-    and insights — use generate_report instead.
 
-    Provides the same charts as generate_report but with interactive filters:
-    sentiment, entities, language, collection, content_type, platform, date
-    range, themes, and channels.
+    Provides interactive charts filtered client-side by sentiment, entities,
+    language, collection, content_type, platform, date range, themes, channels.
 
     Args:
         collection_ids: List of collection IDs to include.

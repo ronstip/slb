@@ -51,6 +51,7 @@ from api.routers import sessions as sessions_router
 from api.routers import artifacts as artifacts_router
 from api.routers import feed_links as feed_links_router
 from api.routers import topics as topics_router
+from api.routers import briefing as briefing_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest, CreateFromWizardRequest, MultiFeedRequest, UpdateCollectionRequest
 from api.schemas.responses import (
     BreakdownItem,
@@ -149,6 +150,7 @@ app.include_router(dashboard_layouts_router.router)
 app.include_router(explorer_layouts_router.router)
 app.include_router(artifacts_router.router)
 app.include_router(topics_router.router)
+app.include_router(briefing_router.router)
 app.include_router(feed_links_router.router)
 
 # CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
@@ -225,18 +227,7 @@ def _maybe_persist_artifact(
     collection_ids: list[str] = []
     payload: dict = {}
 
-    if tool_name == "generate_report" and result.get("cards"):
-        artifact_type = "insight_report"
-        artifact_id = result.get("report_id", f"report-{uuid4().hex[:8]}")
-        title = result.get("title", "Insight Report")
-        collection_ids = result.get("collection_ids") or []
-        payload = {
-            "cards": result.get("cards", []),
-            "date_from": result.get("date_from"),
-            "date_to": result.get("date_to"),
-            "collection_names": result.get("collection_names", []),
-        }
-    elif tool_name == "create_chart" and result.get("chart_type"):
+    if tool_name == "create_chart" and result.get("chart_type"):
         artifact_type = "chart"
         artifact_id = f"chart-{uuid4().hex[:8]}"
         title = result.get("title", "Chart")
@@ -1389,6 +1380,11 @@ async def get_multi_collection_feed(
         where_clauses.append("ep.sentiment = @sentiment")
         params["sentiment"] = request.sentiment
 
+    if request.relevant_to_task == "true":
+        where_clauses.append("ep.is_related_to_task = TRUE")
+    elif request.relevant_to_task == "false":
+        where_clauses.append("ep.is_related_to_task = FALSE")
+
     if request.has_media:
         # Posts where at least one media_ref has a usable URL (GCS URI or valid original URL)
         where_clauses.append(
@@ -1482,17 +1478,23 @@ async def get_multi_collection_feed(
             except (json.JSONDecodeError, TypeError):
                 media_refs = []
 
+        # Skip rows with a missing post_id — corrupted ingestion produces
+        # rows with null ids and non-null string fields that fail the
+        # response model.
+        if not row.get("post_id"):
+            continue
+
         posts.append(
             FeedPostResponse(
                 post_id=row["post_id"],
                 platform=row["platform"],
-                channel_handle=row.get("channel_handle", ""),
+                channel_handle=row.get("channel_handle") or "",
                 channel_id=row.get("channel_id"),
                 title=row.get("title"),
                 content=row.get("content"),
-                post_url=row.get("post_url", ""),
-                posted_at=str(row.get("posted_at", "")),
-                post_type=row.get("post_type", ""),
+                post_url=row.get("post_url") or "",
+                posted_at=str(row.get("posted_at") or ""),
+                post_type=row.get("post_type") or "",
                 media_refs=media_refs if isinstance(media_refs, list) else [],
                 likes=row.get("likes", 0),
                 shares=row.get("shares", 0),
@@ -1922,18 +1924,21 @@ async def get_agent_artifacts(
         return []
 
     fs = get_fs()
-    artifacts = []
-    for aid in artifact_ids:
-        doc = fs._db.collection("artifacts").document(aid).get()
-        if doc.exists:
-            data = doc.to_dict()
-            data["artifact_id"] = doc.id
-            # Convert timestamps
-            for key in ("created_at", "updated_at"):
-                if hasattr(data.get(key), "isoformat"):
-                    data[key] = data[key].isoformat()
-            artifacts.append(data)
-    return artifacts
+    refs = [fs._db.collection("artifacts").document(aid) for aid in artifact_ids]
+    docs = fs._db.get_all(refs)
+
+    by_id: dict[str, dict] = {}
+    for doc in docs:
+        if not doc.exists:
+            continue
+        data = doc.to_dict()
+        data["artifact_id"] = doc.id
+        for key in ("created_at", "updated_at"):
+            if hasattr(data.get(key), "isoformat"):
+                data[key] = data[key].isoformat()
+        by_id[doc.id] = data
+
+    return [by_id[aid] for aid in artifact_ids if aid in by_id]
 
 
 @app.get("/agents/{agent_id}/logs")

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSourcesStore } from '../../stores/sources-store.ts';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { PostCard } from './PostCard.tsx';
@@ -17,6 +18,7 @@ function splitColumns(posts: FeedPost[], numCols: number): FeedPost[][] {
 }
 
 export function FeedTab() {
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const sources = useSourcesStore((s) => s.sources);
   // All active (checkbox-checked) collections in session
   const activeSources = sources.filter((s) => s.active && s.selected);
@@ -45,6 +47,7 @@ export function FeedTab() {
   const [sort, setSort] = useState<FeedParams['sort']>('views');
   const [platform, setPlatform] = useState('all');
   const [sentiment, setSentiment] = useState('all');
+  const [relevantToTask, setRelevantToTask] = useState('true');
   // Which of the active collections to show (empty = all)
   const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
   // Topic filter (set from TopicCard "Posts" button)
@@ -81,13 +84,14 @@ export function FeedTab() {
   );
 
   const { data, fetchNextPage, hasNextPage, isFetching, isLoading, isError } = useInfiniteQuery({
-    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, topicFilter?.id ?? ''],
+    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, relevantToTask, topicFilter?.id ?? ''],
     queryFn: ({ pageParam = 0 }) =>
       getMultiCollectionPosts({
         collection_ids: effectiveIds,
         sort,
         platform,
         sentiment,
+        relevant_to_task: relevantToTask,
         limit: 12,
         offset: pageParam,
         ...(topicFilter ? { topic_cluster_id: topicFilter.id } : {}),
@@ -150,9 +154,11 @@ export function FeedTab() {
         sort={sort}
         platform={platform}
         sentiment={sentiment}
+        relevantToTask={relevantToTask}
         onSortChange={setSort}
         onPlatformChange={setPlatform}
         onSentimentChange={setSentiment}
+        onRelevantToTaskChange={setRelevantToTask}
         totalCount={totalCount}
         activeSources={activeSources}
         collectionFilter={collectionFilter}
@@ -178,14 +184,16 @@ export function FeedTab() {
 
       {viewMode === 'topics' ? (
         <div className="flex-1 overflow-y-auto bg-muted">
-          <TopicsFeed
-            collectionIds={effectiveIds}
-            onTopicCount={stableSetTopicCount}
-            onViewPosts={(clusterId, topicName) => {
-              setTopicFilter({ id: clusterId, name: topicName });
-              setViewMode('posts');
-            }}
-          />
+          {activeAgentId && (
+            <TopicsFeed
+              agentId={activeAgentId}
+              onTopicCount={stableSetTopicCount}
+              onViewPosts={(clusterId, topicName) => {
+                setTopicFilter({ id: clusterId, name: topicName });
+                setViewMode('posts');
+              }}
+            />
+          )}
         </div>
       ) : (
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>

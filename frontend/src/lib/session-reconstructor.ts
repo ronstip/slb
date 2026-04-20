@@ -9,14 +9,13 @@
 
 import type { ChatMessage, TodoItem, ActivityEntry } from '../stores/chat-store.ts';
 import type { Artifact } from '../stores/studio-store.ts';
-import type { DataExportRow, ReportCard } from '../api/types.ts';
+import type { DataExportRow } from '../api/types.ts';
 import type { RawADKEvent } from '../api/endpoints/sessions.ts';
 import {
   getToolDisplayText,
   isDesignResearchResult,
   isDataExportResult,
   isChartResult,
-  isReportResult,
   isDashboardResult,
   isStartAgentResult,
   isTodoResult,
@@ -170,19 +169,6 @@ export function reconstructSession(
             rowCount: result.row_count as number,
             columnNames: result.column_names as string[],
             sourceIds: (state.agent_selected_sources as string[]) || [],
-            createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
-          });
-        } else if (isReportResult(toolName, result)) {
-          msg.cards.push({ type: 'insight_report', data: result });
-          artifacts.push({
-            id: (result._artifact_id as string) || (result.report_id as string) || `report-restored-${artifacts.length}`,
-            type: 'insight_report',
-            title: result.title as string,
-            collectionIds: (result.collection_ids as string[] | undefined) ?? (result.collection_id ? [result.collection_id as string] : undefined),
-            collectionId: result.collection_id as string | undefined,
-            dateFrom: result.date_from as string | undefined,
-            dateTo: result.date_to as string | undefined,
-            cards: result.cards as ReportCard[],
             createdAt: new Date(event.timestamp ? event.timestamp * 1000 : Date.now()),
           });
         } else if (isDashboardResult(toolName, result)) {

@@ -74,5 +74,8 @@ def generate_briefing(
     return {
         "status": "success",
         "word_count": word_count,
-        "message": f"Briefing saved for run {run_id} ({word_count} words).",
+        "message": (
+            f"Run briefing saved ({word_count} words). "
+            "Next: call `compose_briefing` to publish the user-facing briefing."
+        ),
     }

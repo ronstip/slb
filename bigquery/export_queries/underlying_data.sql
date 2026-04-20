@@ -53,6 +53,7 @@ SELECT
     ep.content_type
 FROM deduped_posts p
 LEFT JOIN deduped_engagements eng ON eng.post_id = p.post_id AND eng._rn = 1
-LEFT JOIN deduped_enriched ep ON ep.post_id = p.post_id AND ep._rn = 1
+JOIN deduped_enriched ep ON ep.post_id = p.post_id AND ep._rn = 1
+    AND ep.is_related_to_task = TRUE
 WHERE p._rn = 1
 ORDER BY p.posted_at DESC;
