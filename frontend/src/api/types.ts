@@ -459,57 +459,6 @@ export interface PlanPayload {
   estimated_queries: number;
 }
 
-// ─── Insight Report types ────────────────────────────────────────────
-
-export type ReportCardType =
-  // Report-specific types
-  | 'kpi_grid'
-  | 'narrative'
-  | 'key_finding'
-  | 'top_posts_table'
-  // Generic chart types
-  | 'bar'
-  | 'line'
-  | 'pie'
-  | 'doughnut'
-  | 'table'
-  | 'number';
-
-export interface ReportCard {
-  id: string;
-  card_type: ReportCardType;
-  title?: string;
-  data: Record<string, unknown>;
-  layout?: {
-    width?: 'full' | 'half';
-    zone?: 'header' | 'body' | 'footer';
-  };
-}
-
-export interface KpiItem {
-  label: string;
-  value: string | number;
-  change?: string;
-  sentiment?: 'positive' | 'negative' | 'neutral';
-}
-
-export interface InsightReportPayload {
-  status: string;
-  report_id: string;
-  title: string;
-  collection_ids?: string[];
-  collection_names?: string[];
-  /** @deprecated Use collection_ids — kept for backward compat */
-  collection_id?: string;
-  /** @deprecated Use collection_names — kept for backward compat */
-  collection_name?: string;
-  date_from?: string;
-  date_to?: string;
-  generated_at: string;
-  cards: ReportCard[];
-  message?: string;
-}
-
 // ─── Dashboard types ─────────────────────────────────────────────────
 
 export interface DashboardPost {

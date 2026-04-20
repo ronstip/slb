@@ -83,6 +83,17 @@ _DISPLAY_TOOLS = """## Inline Display
 - Topics: `show_topics(agent_id="...")`
 - Metrics: `show_metrics(collection_id="...")` or `show_metrics(items=[{"label": "...", "value": ...}])`"""
 
+_BRIEFING_ON_REQUEST = """## Refreshing the Briefing
+
+The user can ask you to refresh or re-compose the Briefing page ("refresh the briefing", "compose a new briefing focused on X", "add a story about Y"). When this happens:
+
+1. Use `list_topics` to survey current clusters.
+2. If the user asked for a specific angle, pull supporting numbers (BigQuery, `get_collection_stats`) — a `data` story usually needs 2-4 concrete metrics.
+3. Call `compose_briefing` with a full layout (hero + 3-4 secondary + rail). Stories are polymorphic: `{type: "topic", topic_id, headline, blurb, rank}` or `{type: "data", headline, blurb, rank, metrics: [{label, value, delta?, tone?}], chart?, timeframe?, citations?}`. Mix freely. Always include some topic stories — "what people are talking about" is part of the picture.
+4. Confirm briefly to the user when it's published — the Briefing tab will show the new version on next load.
+
+Only compose when the user asks. Don't auto-refresh."""
+
 _CHAT_HARD_RULES = """- After `start_agent`, confirm briefly. Do NOT poll.
 - After `ask_user`, STOP and wait for the user's response."""
 
@@ -119,6 +130,8 @@ CHAT_STATIC_PROMPT = f"""{_IDENTITY}
 {_DATA_COMPLETION}
 
 {_DISPLAY_TOOLS}
+
+{_BRIEFING_ON_REQUEST}
 
 {SHARED_HARD_RULES}
 

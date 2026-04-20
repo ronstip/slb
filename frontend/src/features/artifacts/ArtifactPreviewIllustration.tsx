@@ -35,8 +35,6 @@ export function ArtifactPreviewIllustration({
   switch (artifactType) {
     case 'chart':
       return <BarIllustration fillClass={fillClass} />;
-    case 'insight_report':
-      return <ReportIllustration fillClass={fillClass} />;
     case 'dashboard':
       return <DashboardIllustration fillClass={fillClass} />;
     case 'data_export':
@@ -140,23 +138,6 @@ function MetricsIllustration({ fillClass }: { fillClass: string }) {
       <rect x="42" y="26" width="34" height="16" rx="3" className={cn(fillClass, 'opacity-20')} />
       <rect x="46" y="30" width="18" height="3" rx="1" className={cn(fillClass, 'opacity-50')} />
       <rect x="46" y="36" width="10" height="3" rx="1" className={cn(fillClass, 'opacity-30')} />
-    </svg>
-  );
-}
-
-function ReportIllustration({ fillClass }: { fillClass: string }) {
-  return (
-    <svg viewBox="0 0 80 48" className="h-full w-full" aria-hidden>
-      {/* Doc shape */}
-      <rect x="18" y="4" width="44" height="40" rx="3" className={cn(fillClass, 'opacity-10')} />
-      {/* Title line */}
-      <rect x="24" y="10" width="28" height="3.5" rx="1.5" className={cn(fillClass, 'opacity-60')} />
-      {/* Text lines */}
-      <rect x="24" y="18" width="32" height="2.5" rx="1" className={cn(fillClass, 'opacity-25')} />
-      <rect x="24" y="23" width="24" height="2.5" rx="1" className={cn(fillClass, 'opacity-25')} />
-      <rect x="24" y="28" width="30" height="2.5" rx="1" className={cn(fillClass, 'opacity-25')} />
-      {/* Highlight block */}
-      <rect x="24" y="34" width="32" height="6" rx="2" className={cn(fillClass, 'opacity-15')} />
     </svg>
   );
 }

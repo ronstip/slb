@@ -1,27 +1,13 @@
-import { useRef, useState, useCallback } from 'react';
-import { BarChart3, FileText, Table2, LayoutDashboard, Download, Loader2 } from 'lucide-react';
-import type { ReportCard } from '../../../api/types.ts';
+import { useState, useCallback } from 'react';
+import { BarChart3, Table2, LayoutDashboard, Download, Loader2 } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
-import { downloadReportPdf } from '../../../lib/download-pdf.ts';
 import { downloadCollection } from '../../../api/endpoints/collections.ts';
 import { formatNumber } from '../../../lib/format.ts';
 
-// Report sub-components for off-screen PDF render
-import { KpiGrid } from './report/KpiGrid.tsx';
-import { NarrativeSection } from './report/NarrativeSection.tsx';
-import { KeyFindingCard } from './report/KeyFindingCard.tsx';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const PDF_CARD_COMPONENTS: Partial<Record<string, React.ComponentType<{ data: any }>>> = {
-  kpi_grid: KpiGrid,
-  narrative: NarrativeSection,
-  key_finding: KeyFindingCard,
-};
-
 // ── Type config ──────────────────────────────────────────────────────
 
-type ArtifactType = 'chart' | 'insight_report' | 'data_export' | 'dashboard';
+type ArtifactType = 'chart' | 'data_export' | 'dashboard';
 
 const TYPE_CONFIG: Record<ArtifactType, {
   Icon: typeof BarChart3;
@@ -38,14 +24,6 @@ const TYPE_CONFIG: Record<ArtifactType, {
     hoverBorder: 'hover:border-accent-success/40',
     iconBg: 'bg-accent-success/10',
     iconColor: 'text-accent-success',
-  },
-  insight_report: {
-    Icon: FileText,
-    border: 'border-accent-vibrant/20',
-    bg: 'from-accent-vibrant/5',
-    hoverBorder: 'hover:border-accent-vibrant/40',
-    iconBg: 'bg-accent-vibrant/10',
-    iconColor: 'text-accent-vibrant',
   },
   data_export: {
     Icon: Table2,
@@ -76,17 +54,9 @@ const CHART_TYPE_LABELS: Record<string, string> = {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function formatDateRange(dateFrom?: string | null, dateTo?: string | null): string | null {
-  if (!dateFrom || !dateTo) return null;
-  const fmt = (d: string) =>
-    new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  return `${fmt(dateFrom)} — ${fmt(dateTo)}`;
-}
-
 function deriveTitle(type: ArtifactType, data: Record<string, unknown>): string {
   return (data.title as string) || {
     chart: 'Chart',
-    insight_report: 'Insight Report',
     data_export: 'Data Export',
     dashboard: 'Interactive Dashboard',
   }[type];
@@ -97,15 +67,6 @@ function deriveMeta(type: ArtifactType, data: Record<string, unknown>): string {
     case 'chart': {
       const chartType = data.chart_type as string;
       return (data.collection_name as string) || CHART_TYPE_LABELS[chartType] || chartType?.replace(/_/g, ' ') || '';
-    }
-    case 'insight_report': {
-      const parts: string[] = [];
-      if (data.collection_name) parts.push(data.collection_name as string);
-      const dateRange = formatDateRange(data.date_from as string, data.date_to as string);
-      if (dateRange) parts.push(dateRange);
-      const cards = (data.cards ?? []) as unknown[];
-      if (cards.length > 0) parts.push(`${cards.length} cards`);
-      return parts.join(' · ') || 'Insight report';
     }
     case 'data_export': {
       const count = data.row_count as number;
@@ -130,7 +91,6 @@ function deriveMeta(type: ArtifactType, data: Record<string, unknown>): string {
 function getArtifactId(type: ArtifactType, data: Record<string, unknown>): string | undefined {
   return (data._artifactId as string)
     || (data._artifact_id as string)
-    || (type === 'insight_report' ? data.report_id as string : undefined)
     || (type === 'dashboard' ? data.dashboard_id as string : undefined);
 }
 
@@ -147,7 +107,6 @@ export function ArtifactCard({ type, data }: ArtifactCardProps) {
   const meta = deriveMeta(type, data);
   const artifactId = getArtifactId(type, data);
   const [downloading, setDownloading] = useState(false);
-  const pdfRef = useRef<HTMLDivElement>(null);
 
   const handleOpen = useCallback(() => {
     if (!artifactId) return;
@@ -156,26 +115,22 @@ export function ArtifactCard({ type, data }: ArtifactCardProps) {
     useStudioStore.getState().expandReport(artifactId);
   }, [artifactId]);
 
-  // Download handlers per type
   const handleDownload = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (downloading) return;
     setDownloading(true);
     try {
-      if (type === 'insight_report' && pdfRef.current) {
-        await downloadReportPdf(pdfRef.current, title.replace(/\s+/g, '_').toLowerCase());
-      } else if (type === 'data_export') {
+      if (type === 'data_export') {
         const collectionId = data.collection_id as string;
         if (collectionId) await downloadCollection(collectionId, 'Data Export');
       }
     } finally {
       setDownloading(false);
     }
-  }, [type, data, title, downloading]);
+  }, [type, data, downloading]);
 
-  const hasDownload = type === 'insight_report' || (type === 'data_export' && !!data.collection_id);
+  const hasDownload = type === 'data_export' && !!data.collection_id;
 
-  // Empty data export
   if (type === 'data_export' && (data.row_count as number) === 0) {
     return (
       <div className="rounded-2xl border border-border/40 bg-background p-4">
@@ -186,25 +141,6 @@ export function ArtifactCard({ type, data }: ArtifactCardProps) {
 
   return (
     <div onClick={handleOpen} className={`cursor-pointer overflow-hidden rounded-2xl border ${config.border} bg-gradient-to-b ${config.bg} to-background shadow-sm transition-colors ${config.hoverBorder}`}>
-      {/* Off-screen PDF render (insight_report only) */}
-      {type === 'insight_report' && (
-        <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', top: 0, width: '700px', pointerEvents: 'none' }}>
-          <div ref={pdfRef} style={{ padding: '24px', background: 'white' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '4px' }}>{title}</h2>
-            {(() => {
-              const dateRange = formatDateRange(data.date_from as string, data.date_to as string);
-              return dateRange ? <p style={{ fontSize: '12px', color: '#888', marginBottom: '16px' }}>{dateRange}</p> : null;
-            })()}
-            {((data.cards ?? []) as ReportCard[]).map((card) => {
-              const Comp = PDF_CARD_COMPONENTS[card.card_type];
-              if (!Comp) return null;
-              return <div key={card.id} style={{ marginBottom: '12px' }}><Comp data={card.data} /></div>;
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Card content */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${config.iconBg}`}>
@@ -220,7 +156,7 @@ export function ArtifactCard({ type, data }: ArtifactCardProps) {
             onClick={handleDownload}
             disabled={downloading}
             className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
-            title={type === 'insight_report' ? 'Download PDF' : 'Download CSV'}
+            title="Download CSV"
           >
             {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           </button>

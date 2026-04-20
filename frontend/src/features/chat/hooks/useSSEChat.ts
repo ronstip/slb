@@ -9,8 +9,8 @@ import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isReportResult, isDashboardResult, isStructuredPromptResult, isStartAgentResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
-import type { DataExportRow, ReportCard, StructuredPromptResult } from '../../../api/types.ts';
+import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isDashboardResult, isStructuredPromptResult, isStartAgentResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
+import type { DataExportRow, StructuredPromptResult } from '../../../api/types.ts';
 
 // Tools that are internal plumbing — skip from activity log
 const INTERNAL_TOOLS = new Set(['update_todos']);
@@ -37,7 +37,6 @@ function getToolDescription(toolName: string, args: Record<string, unknown>): st
     case 'set_active_agent':
       return (args.agent_id as string) || (args.task_id as string) || undefined;
     case 'create_chart':
-    case 'generate_report':
     case 'generate_dashboard':
     case 'generate_presentation':
       return (args.title as string) || undefined;
@@ -237,27 +236,6 @@ export function useSSEChat() {
                   sourceSql: (result?.source_sql as string | undefined) || undefined,
                   createdAt: new Date(),
                 });
-              } else if (isReportResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'insight_report',
-                  data: result,
-                });
-                // Auto-save to artifacts
-                useStudioStore.getState().addArtifact({
-                  id: (result._artifact_id as string) || (result.report_id as string),
-                  type: 'insight_report',
-                  title: result.title as string,
-                  collectionIds: (result.collection_ids as string[] | undefined) ?? (result.collection_id ? [result.collection_id as string] : undefined),
-                  collectionId: result.collection_id as string | undefined,
-                  dateFrom: result.date_from as string | undefined,
-                  dateTo: result.date_to as string | undefined,
-                  cards: result.cards as ReportCard[],
-                  createdAt: new Date(),
-                });
-                // Open studio panel, switch to artifacts, expand the report
-                useUIStore.getState().expandStudioPanel();
-                useStudioStore.getState().setActiveTab('artifacts');
-                useStudioStore.getState().expandReport((result._artifact_id as string) || (result.report_id as string));
               } else if (isDashboardResult(toolName, result)) {
                 chatState.addCard(messageId, {
                   type: 'dashboard',

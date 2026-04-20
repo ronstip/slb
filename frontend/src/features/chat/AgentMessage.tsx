@@ -45,7 +45,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
   const errorText = errorMatch ? errorMatch[1] : null;
 
   // ── Card classification ──
-  const ARTIFACT_TYPES = new Set(['insight_report', 'data_export', 'dashboard']);
+  const ARTIFACT_TYPES = new Set(['data_export', 'dashboard']);
   const artifactCards: typeof message.cards = [];
   const otherCards: typeof message.cards = [];
   message.cards.forEach((card) => {
@@ -166,7 +166,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
             {artifactCards.map((card, i) => (
               <ArtifactCard
                 key={`artifact-${i}`}
-                type={card.type as 'chart' | 'insight_report' | 'data_export' | 'dashboard'}
+                type={card.type as 'chart' | 'data_export' | 'dashboard'}
                 data={card.data}
               />
             ))}

@@ -51,6 +51,7 @@ from api.routers import sessions as sessions_router
 from api.routers import artifacts as artifacts_router
 from api.routers import feed_links as feed_links_router
 from api.routers import topics as topics_router
+from api.routers import briefing as briefing_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest, CreateFromWizardRequest, MultiFeedRequest, UpdateCollectionRequest
 from api.schemas.responses import (
     BreakdownItem,
@@ -149,6 +150,7 @@ app.include_router(dashboard_layouts_router.router)
 app.include_router(explorer_layouts_router.router)
 app.include_router(artifacts_router.router)
 app.include_router(topics_router.router)
+app.include_router(briefing_router.router)
 app.include_router(feed_links_router.router)
 
 # CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
@@ -225,18 +227,7 @@ def _maybe_persist_artifact(
     collection_ids: list[str] = []
     payload: dict = {}
 
-    if tool_name == "generate_report" and result.get("cards"):
-        artifact_type = "insight_report"
-        artifact_id = result.get("report_id", f"report-{uuid4().hex[:8]}")
-        title = result.get("title", "Insight Report")
-        collection_ids = result.get("collection_ids") or []
-        payload = {
-            "cards": result.get("cards", []),
-            "date_from": result.get("date_from"),
-            "date_to": result.get("date_to"),
-            "collection_names": result.get("collection_names", []),
-        }
-    elif tool_name == "create_chart" and result.get("chart_type"):
+    if tool_name == "create_chart" and result.get("chart_type"):
         artifact_type = "chart"
         artifact_id = f"chart-{uuid4().hex[:8]}"
         title = result.get("title", "Chart")

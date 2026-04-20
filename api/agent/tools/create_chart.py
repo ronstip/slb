@@ -71,8 +71,7 @@ def create_chart(
 
     WHEN TO USE: After execute_sql when results have 2+ data points that benefit
     from visualization. ALWAYS chart distributions, trends, and comparisons.
-    WHEN NOT TO USE: Single numbers, simple yes/no answers, or data already
-    shown via generate_report's standard charts.
+    WHEN NOT TO USE: Single numbers or simple yes/no answers.
 
     Chart types and their expected data format:
 

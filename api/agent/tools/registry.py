@@ -17,7 +17,6 @@ from api.agent.tools.create_chart import create_chart
 from api.agent.tools.export_data import export_data
 from api.agent.tools.generate_dashboard import generate_dashboard
 from api.agent.tools.presentation import generate_presentation, validate_deck_plan
-from api.agent.tools.generate_report import generate_report
 from api.agent.tools.get_agent_status import get_agent_status
 from api.agent.tools.get_collection_stats import get_collection_stats
 from api.agent.tools.get_past_collections import get_collection_details
@@ -26,6 +25,8 @@ from api.agent.tools.show_metrics import show_metrics
 from api.agent.tools.show_topics import show_topics
 from api.agent.tools.start_agent import start_agent
 from api.agent.tools.generate_briefing import generate_briefing
+from api.agent.tools.compose_briefing import compose_briefing
+from api.agent.tools.list_topics import list_topics
 from api.agent.tools.update_todos import update_todos
 
 AgentMode = Literal["chat", "autonomous"]
@@ -58,14 +59,15 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("create_chart", create_chart, "reporting", False, "Generate a chart spec"),
         ToolSpec("export_data", export_data, "reporting", False, "Export posts as CSV"),
         ToolSpec("compose_email", compose_email, "reporting", True, "Compose an email artifact"),
-        ToolSpec("generate_report", generate_report, "reporting", True, "Generate a detailed insight report"),
         ToolSpec("generate_dashboard", generate_dashboard, "reporting", True, "Generate a dashboard artifact"),
         ToolSpec("validate_deck_plan", validate_deck_plan, "reporting", False, "Validate a presentation deck plan"),
         ToolSpec("generate_presentation", generate_presentation, "reporting", True, "Generate a slide presentation"),
         ToolSpec("show_metrics", show_metrics, "reporting", False, "Display metric widgets in chat"),
         ToolSpec("show_topics", show_topics, "reporting", False, "Display topic widgets in chat"),
-        # Briefing (autonomous only)
-        ToolSpec("generate_briefing", generate_briefing, "reporting", True, "Generate and persist run briefing"),
+        # Topics + briefing (compose phase)
+        ToolSpec("list_topics", list_topics, "data", False, "List semantic clusters of posts with stats"),
+        ToolSpec("generate_briefing", generate_briefing, "reporting", True, "Persist the per-run reflection (state_of_the_world / open_threads / process_notes)"),
+        ToolSpec("compose_briefing", compose_briefing, "reporting", True, "Publish the user-facing briefing (hero + secondary + rail of topic/data stories) — exit tool"),
     )
 }
 
@@ -76,7 +78,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
     "chat": {
         # Analysis & data
         "create_chart", "get_collection_stats", "get_collection_details",
-        "export_data",
+        "export_data", "list_topics",
         # Agent management (interactive)
         "start_agent", "set_active_agent", "get_agent_status",
         # User interaction
@@ -84,17 +86,20 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
         # Inline display
         "show_metrics", "show_topics",
         # Planning & output (shared)
-        "update_todos", "generate_report", "generate_dashboard",
+        "update_todos", "generate_dashboard",
         "validate_deck_plan", "generate_presentation", "compose_email",
+        # Briefing composition on explicit user request (e.g. "refresh the briefing")
+        "compose_briefing",
     },
     "autonomous": {
         # Analysis & data
         "create_chart", "get_collection_stats", "get_collection_details",
-        "export_data",
-        # Planning & output (shared)
-        "update_todos", "generate_report", "generate_dashboard",
+        "export_data", "list_topics",
+        # Planning & output
+        "update_todos", "generate_dashboard",
         "validate_deck_plan", "generate_presentation", "compose_email",
-        "generate_briefing",
+        # Briefing (sequential exit: reflection → publication)
+        "generate_briefing", "compose_briefing",
     },
 }
 

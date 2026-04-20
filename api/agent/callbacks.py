@@ -32,7 +32,7 @@ PLANNING_TOOLS = {"update_todos"}
 AGENT_TOOLS = {"start_agent", "get_agent_status", "set_active_agent"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
-OUTPUT_TOOLS = {"export_data", "generate_report", "generate_dashboard", "generate_presentation"}
+OUTPUT_TOOLS = {"export_data", "generate_dashboard", "generate_presentation", "compose_briefing"}
 
 # ─── Hard gate: tools blocked while a collection pipeline is running ────
 COLLECTION_RUNNING_BLOCKED = {
@@ -48,7 +48,7 @@ TOOLS_WITH_COLLECTION_ID = {
     "export_data", "get_collection_details",
 }
 TOOLS_WITH_COLLECTION_IDS = {
-    "get_collection_stats", "generate_report", "generate_dashboard",
+    "get_collection_stats", "generate_dashboard",
     "export_data", "generate_presentation",
 }
 
@@ -229,7 +229,7 @@ def _build_data_pool(state: dict) -> Optional[str]:
         "Use in SQL: `WHERE collection_id IN UNNEST(@collection_ids)` or "
         "`WHERE collection_id = @collection_id`. "
         "Query ALL unless the question targets a subset. "
-        "Multi-source tools (`get_collection_stats`, `generate_report`, etc.) accept `collection_ids` lists. "
+        "Multi-source tools (`get_collection_stats`, `generate_dashboard`, etc.) accept `collection_ids` lists. "
         "Never mention source IDs, source counts, or internal data structure to the user.",
     ]
 

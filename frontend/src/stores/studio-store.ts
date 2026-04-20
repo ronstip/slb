@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DataExportRow, ReportCard } from '../api/types.ts';
+import type { DataExportRow } from '../api/types.ts';
 
 interface DataExportArtifact {
   id: string;
@@ -25,19 +25,6 @@ interface ChartArtifact {
   createdAt: Date;
 }
 
-interface InsightReportArtifact {
-  id: string;
-  type: 'insight_report';
-  title: string;
-  collectionIds?: string[];
-  /** @deprecated Use collectionIds */
-  collectionId?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  cards: ReportCard[];
-  createdAt: Date;
-}
-
 interface DashboardArtifact {
   id: string;
   type: 'dashboard';
@@ -57,7 +44,7 @@ interface PresentationArtifact {
 }
 
 export type StudioTab = 'feed' | 'artifacts' | 'stats' | 'protocol';
-export type Artifact = DataExportArtifact | ChartArtifact | InsightReportArtifact | DashboardArtifact | PresentationArtifact;
+export type Artifact = DataExportArtifact | ChartArtifact | DashboardArtifact | PresentationArtifact;
 
 export interface PendingTopicFilter {
   themes: string[];

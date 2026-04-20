@@ -18,6 +18,7 @@ import { AgentCollectionsTab } from './tabs/AgentCollectionsTab.tsx';
 import { AgentArtifactsTab } from './tabs/AgentArtifactsTab.tsx';
 import { AgentExplorerTab } from './tabs/AgentExplorerTab.tsx';
 import { AgentTopicsTab } from './tabs/AgentTopicsTab.tsx';
+import { AgentBriefingTab } from './tabs/AgentBriefingTab.tsx';
 import { RUNNABLE_STATUSES } from './agent-status-utils.tsx';
 import {
   AlertDialog,
@@ -30,7 +31,7 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'chat', 'data', 'topics', 'artifacts', 'explorer'];
+const VALID_TABS: DetailTab[] = ['overview', 'briefing', 'chat', 'data', 'topics', 'artifacts', 'explorer'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -223,6 +224,7 @@ export function AgentDetailPage() {
               onUpdateDraft={editMode.updateDraft}
             />
           )}
+          {activeTab === 'briefing' && <AgentBriefingTab task={task} />}
           {activeTab === 'chat' && <AgentChatTab task={task} />}
           {activeTab === 'data' && <AgentCollectionsTab task={task} />}
           {activeTab === 'topics' && <AgentTopicsTab task={task} />}

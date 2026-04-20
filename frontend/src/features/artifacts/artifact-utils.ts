@@ -1,4 +1,4 @@
-import { Table2, BarChart3, FileText, LayoutDashboard, Presentation } from 'lucide-react';
+import { Table2, BarChart3, LayoutDashboard, Presentation } from 'lucide-react';
 import type { ArtifactDetail } from '../../api/endpoints/artifacts.ts';
 import type { Artifact } from '../../stores/studio-store.ts';
 
@@ -11,7 +11,6 @@ export const ARTIFACT_STYLES: Record<string, {
   label: string;
 }> = {
   data_export: { icon: Table2, color: 'text-blue-500', bg: 'bg-blue-500/10', fill: 'fill-blue-500', gradientFrom: 'from-blue-500/12', label: 'Data Export' },
-  insight_report: { icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10', fill: 'fill-violet-500', gradientFrom: 'from-violet-500/12', label: 'Report' },
   chart: { icon: BarChart3, color: 'text-emerald-500', bg: 'bg-emerald-500/10', fill: 'fill-emerald-500', gradientFrom: 'from-emerald-500/12', label: 'Chart' },
   dashboard: { icon: LayoutDashboard, color: 'text-amber-500', bg: 'bg-amber-500/10', fill: 'fill-amber-500', gradientFrom: 'from-amber-500/12', label: 'Dashboard' },
   presentation: { icon: Presentation, color: 'text-orange-500', bg: 'bg-orange-500/10', fill: 'fill-orange-500', gradientFrom: 'from-orange-500/12', label: 'Presentation' },
@@ -26,15 +25,6 @@ export function convertToStudioArtifact(detail: ArtifactDetail): Artifact {
   const p = detail.payload;
 
   switch (detail.type) {
-    case 'insight_report':
-      return {
-        ...base,
-        type: 'insight_report',
-        cards: (p.cards ?? []) as Artifact extends { type: 'insight_report' } ? Artifact['cards'] : never,
-        collectionIds: detail.collection_ids,
-        dateFrom: p.date_from as string | undefined,
-        dateTo: p.date_to as string | undefined,
-      } as Extract<Artifact, { type: 'insight_report' }>;
     case 'chart':
       return {
         ...base,

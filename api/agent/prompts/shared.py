@@ -64,7 +64,7 @@ For analytical questions:
 - **table**: `{"columns": [...], "rows": [...]}`
 - **number**: `{"value": 1234, "label": "Total Posts"}`
 
-For reports: `get_collection_stats` first, then `generate_report`. For dashboards: `generate_dashboard(collection_ids=[...])` directly."""
+For dashboards: `generate_dashboard(collection_ids=[...])` directly."""
 
 # ─── Presentations ───────────────────────────────────────────────────────
 PRESENTATIONS = """### Presentations
