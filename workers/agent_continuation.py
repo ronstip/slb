@@ -357,6 +357,41 @@ async def _async_agent_continuation(agent_id: str) -> None:
                 t["status"] = "completed"
         fs.update_agent(agent_id, todos=todos)
 
+    # Compute the agent-run statistical signature BEFORE marking the run success.
+    # Scoped to the run's collections, windowed by the widest search in data_scope.
+    try:
+        if active_run_id:
+            from workers.shared.bq_client import BQClient
+            from workers.shared.statistical_signature import compute_statistical_signature
+
+            run_for_sig = fs.get_run(agent_id, active_run_id)
+            run_collection_ids = (run_for_sig or {}).get("collection_ids", [])
+            if run_collection_ids:
+                searches = ((agent or {}).get("data_scope") or {}).get("searches", [])
+                max_days = max(
+                    (s.get("time_range_days") or 90 for s in searches),
+                    default=90,
+                )
+                since = datetime.now(timezone.utc) - timedelta(days=max_days)
+                bq = BQClient(settings)
+                sig = compute_statistical_signature(
+                    collection_ids=run_collection_ids,
+                    bq=bq,
+                    fs=fs,
+                    since=since,
+                )
+                fs.update_run(agent_id, active_run_id, statistical_signature=sig)
+                logger.info(
+                    "Agent %s run %s: statistical signature saved (total_posts=%s, window_since=%s)",
+                    agent_id, active_run_id,
+                    sig.get("total_posts"), sig.get("window_since"),
+                )
+    except Exception:
+        logger.exception(
+            "Agent-run statistical signature failed for agent %s run %s",
+            agent_id, active_run_id,
+        )
+
     # Update agent status
     agent_type = (agent or {}).get("agent_type", "one_shot")
     fs.update_agent(
