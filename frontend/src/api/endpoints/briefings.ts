@@ -77,6 +77,61 @@ export interface BriefingPulse {
   posts_per_day?: number[];
 }
 
+// ─── Analytics block (server-computed) ──────────────────────────────
+
+export interface AnalyticsTopPlatform {
+  name: string;
+  post_count: number;
+  share_pct: number;
+}
+
+export interface AnalyticsTopChannel {
+  handle: string;
+  platform?: string | null;
+  post_count: number;
+  total_views: number;
+}
+
+export interface AnalyticsTopPost {
+  title: string;
+  views: number;
+  platform?: string | null;
+  channel?: string | null;
+}
+
+export interface AnalyticsPeakDay {
+  day: string;
+  post_count: number;
+}
+
+export interface AnalyticsMetrics {
+  top_platform?: AnalyticsTopPlatform | null;
+  top_channel?: AnalyticsTopChannel | null;
+  avg_interactions_per_post: number;
+  peak_day?: AnalyticsPeakDay | null;
+  top_post?: AnalyticsTopPost | null;
+}
+
+export interface AnalyticsPlatformShare {
+  name: string;
+  post_count: number;
+  share_pct: number;
+}
+
+export interface AnalyticsSentimentDay {
+  day: string;
+  positive: number;
+  negative: number;
+  neutral: number;
+  mixed: number;
+}
+
+export interface BriefingAnalytics {
+  metrics: AnalyticsMetrics;
+  platform_mix: AnalyticsPlatformShare[];
+  sentiment_trend: AnalyticsSentimentDay[];
+}
+
 // ─── Layout ─────────────────────────────────────────────────────────
 
 export interface BriefingLayout {
@@ -86,6 +141,7 @@ export interface BriefingLayout {
   secondary: Story[];
   rail: Story[];
   pulse?: BriefingPulse;
+  analytics?: BriefingAnalytics | null;
 }
 
 export function getAgentBriefing(agentId: string): Promise<BriefingLayout> {

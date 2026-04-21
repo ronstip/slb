@@ -403,6 +403,212 @@ def load_posts_per_day(bq, agent_id: str, days: int = 7) -> list[int]:
     return [counts_by_day.get(end_day - timedelta(days=days - 1 - i), 0) for i in range(days)]
 
 
+def load_briefing_analytics(bq, agent_id: str, trend_days: int = 14) -> dict:
+    """Compute the analytics block shown below the briefing's "More stories".
+
+    Returns four headline metrics plus two chart datasets (platform mix and a
+    sentiment-over-time stacked series). All aggregations are scoped to posts in
+    the agent's latest clustering snapshot.
+    """
+    from datetime import date, timedelta
+
+    def _as_date(v):
+        return v if isinstance(v, date) else date.fromisoformat(str(v))
+
+    summary_rows = list(
+        bq.query(
+            """
+            WITH latest AS (
+                SELECT MAX(clustered_at) as latest_at
+                FROM social_listening.topic_cluster_members
+                WHERE agent_id = @agent_id
+            ),
+            members AS (
+                SELECT DISTINCT tcm.post_id
+                FROM social_listening.topic_cluster_members tcm, latest
+                WHERE tcm.agent_id = @agent_id
+                  AND tcm.clustered_at = latest.latest_at
+            ),
+            dedup_posts AS (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+                FROM social_listening.posts
+            ),
+            dedup_eng AS (
+                SELECT post_id, views, likes, comments_count,
+                       ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
+                FROM social_listening.post_engagements
+            ),
+            joined AS (
+                SELECT
+                    m.post_id,
+                    p.platform, p.channel_handle, p.title, p.posted_at,
+                    COALESCE(e.views, 0) as views,
+                    COALESCE(e.likes, 0) as likes,
+                    COALESCE(e.comments_count, 0) as comments
+                FROM members m
+                JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
+                LEFT JOIN dedup_eng e ON e.post_id = m.post_id AND e.rn = 1
+            )
+            SELECT
+                (SELECT COUNT(*) FROM joined) as total_posts,
+                (SELECT SUM(likes + comments) FROM joined) as total_interactions,
+                ARRAY(
+                    SELECT AS STRUCT platform, COUNT(*) as cnt
+                    FROM joined
+                    WHERE platform IS NOT NULL AND platform != ''
+                    GROUP BY platform
+                    ORDER BY cnt DESC
+                    LIMIT 6
+                ) as platform_mix,
+                ARRAY(
+                    SELECT AS STRUCT channel_handle as handle, ANY_VALUE(platform) as platform,
+                                     COUNT(*) as post_count, SUM(views) as total_views
+                    FROM joined
+                    WHERE channel_handle IS NOT NULL AND channel_handle != ''
+                    GROUP BY channel_handle
+                    ORDER BY post_count DESC, total_views DESC
+                    LIMIT 1
+                ) as top_channel,
+                ARRAY(
+                    SELECT AS STRUCT title, views, platform, channel_handle
+                    FROM joined
+                    WHERE views > 0
+                    ORDER BY views DESC
+                    LIMIT 1
+                ) as top_post,
+                ARRAY(
+                    SELECT AS STRUCT DATE(posted_at) as day, COUNT(*) as cnt
+                    FROM joined
+                    WHERE posted_at IS NOT NULL
+                    GROUP BY day
+                    ORDER BY cnt DESC
+                    LIMIT 1
+                ) as peak_day
+            """,
+            {"agent_id": agent_id},
+        )
+    )
+    summary = summary_rows[0] if summary_rows else {}
+    total_posts = int(summary.get("total_posts") or 0)
+    total_interactions = int(summary.get("total_interactions") or 0)
+
+    platform_mix_raw = list(summary.get("platform_mix") or [])
+    platform_mix = [
+        {
+            "name": r["platform"],
+            "post_count": int(r["cnt"]),
+            "share_pct": round((int(r["cnt"]) / total_posts) * 100) if total_posts else 0,
+        }
+        for r in platform_mix_raw
+    ]
+    top_platform = platform_mix[0] if platform_mix else None
+    top_channel_raw = list(summary.get("top_channel") or [])
+    top_channel = (
+        {
+            "handle": top_channel_raw[0]["handle"],
+            "platform": top_channel_raw[0].get("platform"),
+            "post_count": int(top_channel_raw[0]["post_count"]),
+            "total_views": int(top_channel_raw[0].get("total_views") or 0),
+        }
+        if top_channel_raw
+        else None
+    )
+    top_post_raw = list(summary.get("top_post") or [])
+    top_post = (
+        {
+            "title": (top_post_raw[0].get("title") or "")[:120],
+            "views": int(top_post_raw[0].get("views") or 0),
+            "platform": top_post_raw[0].get("platform"),
+            "channel": top_post_raw[0].get("channel_handle"),
+        }
+        if top_post_raw
+        else None
+    )
+    peak_day_raw = list(summary.get("peak_day") or [])
+    peak_day = (
+        {
+            "day": _as_date(peak_day_raw[0]["day"]).isoformat(),
+            "post_count": int(peak_day_raw[0]["cnt"]),
+        }
+        if peak_day_raw
+        else None
+    )
+    avg_interactions = round(total_interactions / total_posts) if total_posts else 0
+
+    # Sentiment trend — separate query so the joined CTE above stays compact.
+    trend_rows = bq.query(
+        """
+        WITH latest AS (
+            SELECT MAX(clustered_at) as latest_at
+            FROM social_listening.topic_cluster_members
+            WHERE agent_id = @agent_id
+        ),
+        members AS (
+            SELECT DISTINCT tcm.post_id
+            FROM social_listening.topic_cluster_members tcm, latest
+            WHERE tcm.agent_id = @agent_id
+              AND tcm.clustered_at = latest.latest_at
+        ),
+        dedup_posts AS (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+            FROM social_listening.posts
+        ),
+        dedup_enr AS (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+            FROM social_listening.enriched_posts
+        ),
+        joined AS (
+            SELECT DATE(p.posted_at) as day, ep.sentiment
+            FROM members m
+            JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
+            LEFT JOIN dedup_enr ep ON ep.post_id = m.post_id AND ep._rn = 1
+            WHERE p.posted_at IS NOT NULL
+        ),
+        anchor AS (SELECT MAX(day) as end_day FROM joined)
+        SELECT
+            j.day,
+            COUNTIF(j.sentiment = 'positive') as positive,
+            COUNTIF(j.sentiment = 'negative') as negative,
+            COUNTIF(j.sentiment = 'neutral') as neutral,
+            COUNTIF(j.sentiment = 'mixed') as mixed
+        FROM joined j, anchor
+        WHERE j.day >= DATE_SUB(anchor.end_day, INTERVAL @days - 1 DAY)
+          AND j.day <= anchor.end_day
+        GROUP BY j.day
+        ORDER BY j.day
+        """,
+        {"agent_id": agent_id, "days": trend_days},
+    )
+    trend_by_day = {
+        _as_date(r["day"]): {
+            "positive": int(r["positive"]),
+            "negative": int(r["negative"]),
+            "neutral": int(r["neutral"]),
+            "mixed": int(r["mixed"]),
+        }
+        for r in trend_rows
+    }
+    sentiment_trend: list[dict] = []
+    if trend_by_day:
+        end_day = max(trend_by_day.keys())
+        for i in range(trend_days):
+            d = end_day - timedelta(days=trend_days - 1 - i)
+            row = trend_by_day.get(d) or {"positive": 0, "negative": 0, "neutral": 0, "mixed": 0}
+            sentiment_trend.append({"day": d.isoformat(), **row})
+
+    return {
+        "metrics": {
+            "top_platform": top_platform,
+            "top_channel": top_channel,
+            "avg_interactions_per_post": avg_interactions,
+            "peak_day": peak_day,
+            "top_post": top_post,
+        },
+        "platform_mix": platform_mix,
+        "sentiment_trend": sentiment_trend,
+    }
+
+
 def compute_pulse(all_topics: list[dict], bq=None, agent_id: str | None = None) -> dict:
     """Aggregate KPI strip across ALL topics (not just ones the agent selected).
 

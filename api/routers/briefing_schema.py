@@ -112,6 +112,62 @@ class Pulse(BaseModel):
     )
 
 
+# ─── Analytics block (server-computed) ──────────────────────────────
+
+
+class AnalyticsTopPlatform(BaseModel):
+    name: str
+    post_count: int
+    share_pct: int
+
+
+class AnalyticsTopChannel(BaseModel):
+    handle: str
+    platform: str | None = None
+    post_count: int
+    total_views: int
+
+
+class AnalyticsTopPost(BaseModel):
+    title: str
+    views: int
+    platform: str | None = None
+    channel: str | None = None
+
+
+class AnalyticsPeakDay(BaseModel):
+    day: str
+    post_count: int
+
+
+class AnalyticsMetrics(BaseModel):
+    top_platform: AnalyticsTopPlatform | None = None
+    top_channel: AnalyticsTopChannel | None = None
+    avg_interactions_per_post: int = 0
+    peak_day: AnalyticsPeakDay | None = None
+    top_post: AnalyticsTopPost | None = None
+
+
+class AnalyticsPlatformShare(BaseModel):
+    name: str
+    post_count: int
+    share_pct: int
+
+
+class AnalyticsSentimentDay(BaseModel):
+    day: str
+    positive: int
+    negative: int
+    neutral: int
+    mixed: int
+
+
+class BriefingAnalytics(BaseModel):
+    metrics: AnalyticsMetrics
+    platform_mix: list[AnalyticsPlatformShare] = Field(default_factory=list)
+    sentiment_trend: list[AnalyticsSentimentDay] = Field(default_factory=list)
+
+
 # ─── Layout ─────────────────────────────────────────────────────────
 
 
@@ -129,4 +185,6 @@ class BriefingLayout(BaseModel):
     )
     # Agent may override pulse aggregates; else server computes from all topics.
     pulse_override: Pulse | None = None
+    # Server-computed analytics block rendered below "More stories".
+    analytics: BriefingAnalytics | None = None
     generated_at: str = Field(default="", description="Set server-side on persist")

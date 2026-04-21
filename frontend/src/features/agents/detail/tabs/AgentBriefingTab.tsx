@@ -14,6 +14,7 @@ import {
   getAgentBriefing,
   type BriefingLayout,
   type BriefingPulse,
+  type BriefingAnalytics,
   type Story,
   type TopicStory,
   type DataStory,
@@ -98,6 +99,8 @@ export function AgentBriefingTab({ task }: AgentBriefingTabProps) {
         {briefing.secondary.length > 0 && (
           <SecondarySection stories={briefing.secondary} onOpen={openStory} />
         )}
+
+        {briefing.analytics && <AnalyticsSection analytics={briefing.analytics} />}
 
         {briefing.rail.length > 0 && (
           <RailSection stories={briefing.rail} onOpen={openStory} />
@@ -499,6 +502,239 @@ function TopicSecondaryCard({ story, onOpen }: { story: TopicStory; onOpen: () =
         {story.stats && <CompactStatsStrip stats={story.stats} />}
       </div>
     </button>
+  );
+}
+
+// ─── Analytics ──────────────────────────────────────────────────────
+
+const _PLATFORM_LABEL: Record<string, string> = {
+  tiktok: 'TikTok',
+  reddit: 'Reddit',
+  twitter: 'X',
+  x: 'X',
+  instagram: 'Instagram',
+  youtube: 'YouTube',
+  facebook: 'Facebook',
+  threads: 'Threads',
+};
+
+function platformLabel(name?: string | null): string {
+  if (!name) return '—';
+  return _PLATFORM_LABEL[name.toLowerCase()] ?? name;
+}
+
+function formatDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function AnalyticsSection({ analytics }: { analytics: BriefingAnalytics }) {
+  const { metrics, platform_mix, sentiment_trend } = analytics;
+  const hasMetrics =
+    metrics.top_platform ||
+    metrics.top_channel ||
+    metrics.peak_day ||
+    metrics.top_post ||
+    metrics.avg_interactions_per_post > 0;
+  const hasMix = platform_mix.length > 0;
+  const hasTrend = sentiment_trend.length >= 2;
+  if (!hasMetrics && !hasMix && !hasTrend) return null;
+
+  return (
+    <section className="mt-12">
+      <SectionHeader label="By the numbers" />
+      {hasMetrics && (
+        <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-5 border-y border-border py-5 lg:grid-cols-4">
+          {metrics.top_platform && (
+            <MetricBlock
+              kicker="Lead platform"
+              value={platformLabel(metrics.top_platform.name)}
+              detail={`${metrics.top_platform.share_pct}% · ${formatNumber(metrics.top_platform.post_count)} posts`}
+            />
+          )}
+          {metrics.top_channel && (
+            <MetricBlock
+              kicker="Most active voice"
+              value={metrics.top_channel.handle}
+              detail={`${formatNumber(metrics.top_channel.post_count)} posts · ${platformLabel(metrics.top_channel.platform)}`}
+            />
+          )}
+          {metrics.top_post && metrics.top_post.views > 0 && (
+            <MetricBlock
+              kicker="Top reach"
+              value={formatNumber(metrics.top_post.views)}
+              detail={
+                metrics.top_post.channel
+                  ? `${metrics.top_post.channel} · ${platformLabel(metrics.top_post.platform)}`
+                  : 'views (single post)'
+              }
+            />
+          )}
+          {metrics.peak_day && (
+            <MetricBlock
+              kicker="Peak day"
+              value={formatDay(metrics.peak_day.day)}
+              detail={`${formatNumber(metrics.peak_day.post_count)} posts`}
+            />
+          )}
+          {metrics.avg_interactions_per_post > 0 && (
+            <MetricBlock
+              kicker="Avg interactions"
+              value={formatNumber(metrics.avg_interactions_per_post)}
+              detail="likes + comments / post"
+            />
+          )}
+        </div>
+      )}
+
+      {(hasMix || hasTrend) && (
+        <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+          {hasMix && <PlatformMix items={platform_mix} />}
+          {hasTrend && <SentimentTrend series={sentiment_trend} />}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MetricBlock({ kicker, value, detail }: { kicker: string; value: string; detail?: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        {kicker}
+      </div>
+      <div className="mt-1.5 truncate font-serif text-[24px] font-bold leading-tight tracking-tight text-foreground">
+        {value}
+      </div>
+      {detail && (
+        <div className="mt-1 truncate text-[11px] text-muted-foreground tabular-nums">
+          {detail}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlatformMix({ items }: { items: BriefingAnalytics['platform_mix'] }) {
+  const max = Math.max(...items.map((i) => i.post_count), 1);
+  return (
+    <div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        Platform mix
+      </div>
+      <ul className="mt-3 space-y-2.5">
+        {items.map((p) => (
+          <li key={p.name} className="flex items-center gap-3 text-[12px] tabular-nums">
+            <span className="w-20 shrink-0 truncate font-serif text-[13px] font-semibold text-foreground">
+              {platformLabel(p.name)}
+            </span>
+            <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-border/60">
+              <span
+                className="absolute inset-y-0 left-0 bg-foreground/70"
+                style={{ width: `${(p.post_count / max) * 100}%` }}
+              />
+            </span>
+            <span className="w-10 shrink-0 text-right font-semibold text-foreground">
+              {p.share_pct}%
+            </span>
+            <span className="w-14 shrink-0 text-right text-muted-foreground">
+              {formatNumber(p.post_count)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SentimentTrend({ series }: { series: BriefingAnalytics['sentiment_trend'] }) {
+  const w = 360;
+  const h = 110;
+  const padX = 6;
+  const padY = 8;
+  const totals = series.map((d) => d.positive + d.negative + d.neutral + d.mixed);
+  const max = Math.max(...totals, 1);
+  const stepX = series.length > 1 ? (w - padX * 2) / (series.length - 1) : 0;
+  const yFor = (v: number) => padY + (h - padY * 2) * (1 - v / max);
+
+  // Stacked bands: positive (bottom), neutral, mixed, negative (top of stack)
+  const bandKeys: Array<{ key: keyof typeof series[number]; color: string; label: string }> = [
+    { key: 'positive', color: 'rgb(16 185 129)', label: 'Positive' },
+    { key: 'neutral', color: 'rgb(148 163 184)', label: 'Neutral' },
+    { key: 'mixed', color: 'rgb(245 158 11)', label: 'Mixed' },
+    { key: 'negative', color: 'rgb(244 63 94)', label: 'Negative' },
+  ];
+
+  // Build cumulative tops per day for stacked area paths.
+  const cumulativeTops = series.map((d) => {
+    let acc = 0;
+    return bandKeys.map(({ key }) => {
+      acc += (d[key] as number) ?? 0;
+      return acc;
+    });
+  });
+
+  const bandPaths = bandKeys.map((band, bi) => {
+    const top = (di: number) => yFor(cumulativeTops[di][bi]);
+    const bottom = (di: number) =>
+      bi === 0 ? yFor(0) : yFor(cumulativeTops[di][bi - 1]);
+    let d = '';
+    series.forEach((_, di) => {
+      const x = padX + di * stepX;
+      d += `${di === 0 ? 'M' : 'L'}${x.toFixed(1)},${top(di).toFixed(1)} `;
+    });
+    for (let di = series.length - 1; di >= 0; di--) {
+      const x = padX + di * stepX;
+      d += `L${x.toFixed(1)},${bottom(di).toFixed(1)} `;
+    }
+    d += 'Z';
+    return { ...band, d };
+  });
+
+  const totalLine = series
+    .map((_, di) => {
+      const x = padX + di * stepX;
+      const y = yFor(totals[di]);
+      return `${di === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  const firstDay = series[0]?.day;
+  const lastDay = series[series.length - 1]?.day;
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Sentiment trend
+        </div>
+        {firstDay && lastDay && (
+          <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground tabular-nums">
+            {formatDay(firstDay)} → {formatDay(lastDay)}
+          </div>
+        )}
+      </div>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        className="mt-3 h-[110px] w-full"
+        preserveAspectRatio="none"
+        aria-label="Sentiment over time"
+      >
+        {bandPaths.map((b) => (
+          <path key={b.label} d={b.d} fill={b.color} opacity={0.75} />
+        ))}
+        <path d={totalLine} fill="none" stroke="currentColor" strokeWidth={0.75} opacity={0.35} />
+      </svg>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+        {bandKeys.map((b) => (
+          <span key={b.label} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: b.color }} />
+            <span>{b.label}</span>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

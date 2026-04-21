@@ -36,6 +36,7 @@ from api.routers.briefing import (  # noqa: E402
     enrich_hero,
     enrich_story,
     load_best_image_per_topic,
+    load_briefing_analytics,
     load_topic_posts,
     load_topics_ranked,
     write_briefing_to_firestore,
@@ -208,6 +209,11 @@ def refresh_briefing(agent_id: str) -> dict:
     ]
     payload.pop("pulse_override", None)
     payload["pulse"] = compute_pulse(topics, bq=bq, agent_id=agent_id)
+    try:
+        payload["analytics"] = load_briefing_analytics(bq, agent_id)
+    except Exception as e:
+        print(f"  warn: analytics failed: {e}")
+        payload["analytics"] = None
 
     write_briefing_to_firestore(fs, agent_id, payload)
     print(f"[3/3] Persisted to agents/{agent_id}/briefings/latest. Schema version 8.")
