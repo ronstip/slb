@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 def get_collection_stats(collection_ids: list[str]) -> dict:
     """Return the statistical snapshot for one or more collections.
 
-    WHEN TO USE: As the FIRST step before generate_report. Also for quick
+    WHEN TO USE: As the FIRST step before generate_dashboard. Also for quick
     overview stats (total posts, sentiment split, top themes). Uses pre-computed
     cache — instant for single collections.
     WHEN NOT TO USE: For filtered/sliced analysis — use execute_sql instead.
     Don't use this to answer "how many negative posts mention X" — that needs SQL.
 
-    Call this as the FIRST step when generating a report. After reading the stats,
+    Call this as the FIRST step when generating a dashboard. After reading the stats,
     follow this sequence:
 
     1. Analyze the data internally:
@@ -50,8 +50,8 @@ def get_collection_stats(collection_ids: list[str]) -> dict:
        - Platform data → platform_bar (uses platform-specific colors)
        - Do NOT use platform_bar for sentiment data — colors will be wrong.
 
-    4. Call generate_report(collection_ids=[...], narrative="...", custom_charts=[...])
-       Do NOT echo the report — the UI renders it automatically.
+    4. Call generate_dashboard(collection_ids=[...], narrative="...", custom_charts=[...])
+       Do NOT echo the dashboard — the UI renders it automatically.
 
     Custom chart data schemas (identical to create_chart schemas):
       platform_bar:      [{platform, post_count}]
