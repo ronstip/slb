@@ -25,6 +25,7 @@ from api.routers.briefing import (
     enrich_hero,
     enrich_story,
     load_best_image_per_topic,
+    load_briefing_analytics,
     load_topics_ranked,
     write_briefing_to_firestore,
 )
@@ -120,6 +121,12 @@ def compose_briefing(
     else:
         payload.pop("pulse_override", None)
         payload["pulse"] = compute_pulse(all_topics, bq=bq, agent_id=agent_id)
+
+    try:
+        payload["analytics"] = load_briefing_analytics(bq, agent_id)
+    except Exception as e:
+        logger.warning("analytics computation failed for agent %s: %s", agent_id, e)
+        payload["analytics"] = None
 
     write_briefing_to_firestore(fs, agent_id, payload)
     logger.info(
