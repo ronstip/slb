@@ -80,38 +80,48 @@ def check_agent_completion(collection_id: str) -> None:
     logger.info("Agent %s: all collections complete — signaling for continuation", agent_id)
     fs.add_agent_log(agent_id, "All collections complete — ready for analysis", source="continuation")
 
-    # Update the active run status
     active_run_id = agent.get("active_run_id")
     run_status = "failed" if any_failed else "success"
-    if active_run_id:
-        fs.update_run(agent_id, active_run_id, status=run_status, completed_at=datetime.now(timezone.utc))
 
-    # Progress automated workflow steps (collect + enrich → completed, analyze → in_progress)
-    from api.agent.workflow_template import progress_automated_steps
-    todos = agent.get("todos") or []
-    if todos:
-        updated_todos = progress_automated_steps(todos, "collection_complete", "completed")
-        fs.update_agent(agent_id, todos=updated_todos)
-
-    # Signal continuation readiness via Firestore.
-    # Status stays "running" — the agent is still working (analysis phase).
+    # Safety net first: set continuation_ready + dispatch the fallback BEFORE
+    # any optional bookkeeping. If a later step fails (e.g. module import, Firestore
+    # hiccup) the agent can still be continued by the frontend or the Cloud Task.
     fs.update_agent(
         agent_id,
         continuation_ready=True,
         continuation_ready_at=datetime.now(timezone.utc).isoformat(),
     )
 
-    # Schedule offline fallback
-    if settings.is_dev:
-        thread = threading.Thread(
-            target=_delayed_fallback,
-            args=(agent_id,),
-            daemon=True,
-            name=f"agent-fallback-{agent_id[:8]}",
-        )
-        thread.start()
-    else:
-        _dispatch_continuation_task(settings, agent_id, delay_seconds=300)
+    try:
+        if settings.is_dev:
+            thread = threading.Thread(
+                target=_delayed_fallback,
+                args=(agent_id,),
+                daemon=True,
+                name=f"agent-fallback-{agent_id[:8]}",
+            )
+            thread.start()
+        else:
+            _dispatch_continuation_task(settings, agent_id, delay_seconds=300)
+    except Exception:
+        logger.exception("Failed to dispatch continuation fallback for agent %s", agent_id)
+
+    # Bookkeeping: run status + todo progression. Wrapped so a failure here
+    # can't strand the agent (safety net above already guarantees continuation).
+    if active_run_id:
+        try:
+            fs.update_run(agent_id, active_run_id, status=run_status, completed_at=datetime.now(timezone.utc))
+        except Exception:
+            logger.exception("Failed to update run %s status for agent %s", active_run_id, agent_id)
+
+    try:
+        from workers.shared.workflow_steps import progress_automated_steps
+        todos = agent.get("todos") or []
+        if todos:
+            updated_todos = progress_automated_steps(todos, "collection_complete", "completed")
+            fs.update_agent(agent_id, todos=updated_todos)
+    except Exception:
+        logger.exception("Failed to progress automated todos for agent %s", agent_id)
 
 
 def _delayed_fallback(agent_id: str, delay_seconds: int = 10) -> None:
@@ -611,9 +621,20 @@ def _notify_agent_completion(agent_id: str, agent: dict, user_id: str) -> None:
 
 
 def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0) -> None:
-    """Dispatch agent continuation via Cloud Tasks (production)."""
+    """Dispatch agent continuation via Cloud Tasks (production).
+
+    Targets the api service's /internal/agent/continue endpoint — the worker
+    container lacks api/* imports, so continuation must run on sl-api.
+    """
     import json
     from google.cloud import tasks_v2
+
+    target_url = (settings.api_service_url or "").rstrip("/")
+    if not target_url:
+        raise RuntimeError(
+            "api_service_url is not set — cannot dispatch continuation Cloud Task. "
+            "Set API_SERVICE_URL env var on the sl-worker service."
+        )
 
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(
@@ -621,17 +642,16 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
         settings.gcp_region,
         settings.cloud_tasks_queue,
     )
-    worker_url = settings.worker_service_url.rstrip("/")
     http_request = {
         "http_method": tasks_v2.HttpMethod.POST,
-        "url": f"{worker_url}/agent/continue",
+        "url": f"{target_url}/internal/agent/continue",
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps({"agent_id": agent_id}).encode(),
     }
     if settings.cloud_tasks_service_account:
         http_request["oidc_token"] = {
             "service_account_email": settings.cloud_tasks_service_account,
-            "audience": worker_url,
+            "audience": target_url,
         }
     task_config: dict = {"http_request": http_request}
     if delay_seconds > 0:
@@ -640,4 +660,5 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
         schedule_time.FromDatetime(datetime.now(timezone.utc) + timedelta(seconds=delay_seconds))
         task_config["schedule_time"] = schedule_time
     client.create_task(parent=parent, task=task_config)
-    logger.info("Dispatched Cloud Task for agent continuation %s (delay=%ds)", agent_id, delay_seconds)
+    logger.info("Dispatched Cloud Task for agent continuation %s → %s (delay=%ds)",
+                agent_id, target_url, delay_seconds)

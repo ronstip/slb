@@ -223,10 +223,23 @@ gcloud run services update sl-api \
     --update-env-vars "WORKER_SERVICE_URL=$WORKER_URL,CORS_ORIGINS=${FRONTEND_URL},FRONTEND_URL=${FRONTEND_URL}" \
     --quiet
 
+# Tell the worker where the API is — used by Cloud Task continuation dispatches
+gcloud run services update sl-worker \
+    --region "$REGION" \
+    --update-env-vars "API_SERVICE_URL=$API_URL,CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA" \
+    --quiet
+
 # Allow the API service account to invoke the worker (for Cloud Tasks)
 gcloud run services add-iam-policy-binding sl-worker \
     --region="$REGION" \
     --member="serviceAccount:$API_SA" \
+    --role="roles/run.invoker" \
+    --quiet
+
+# Allow the worker service account to invoke the API (for Cloud Task continuation dispatch)
+gcloud run services add-iam-policy-binding sl-api \
+    --region="$REGION" \
+    --member="serviceAccount:$WORKER_SA" \
     --role="roles/run.invoker" \
     --quiet
 
