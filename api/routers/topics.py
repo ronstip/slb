@@ -22,9 +22,12 @@ _LATEST_CTE = """
         WHERE agent_id = @agent_id
     )"""
 
-# Deduplication subqueries matching the feed endpoint pattern
+# Deduplication by post_id alone — cluster members join to posts by post_id only
+# (they don't carry a collection_id). Partitioning by (collection_id, post_id) would
+# return one row per collection the post appears in, inflating topic post counts
+# when the same post_id also lives in another agent's collection.
 _POSTS_DEDUP = """(
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
         FROM social_listening.posts
     ) p ON p.post_id = m.post_id AND p._rn = 1"""
 
