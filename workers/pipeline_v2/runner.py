@@ -84,8 +84,19 @@ class PipelineRunner:
         try:
             from workers.agent_continuation import check_agent_completion
             check_agent_completion(self.collection_id)
-        except Exception:
+        except Exception as e:
             logger.exception("Task continuation check failed for %s", self.collection_id)
+            agent_id = self._get_agent_id()
+            if agent_id:
+                try:
+                    self.fs.add_agent_log(
+                        agent_id,
+                        f"Agent continuation check failed: {type(e).__name__}: {e}",
+                        source="continuation",
+                        level="error",
+                    )
+                except Exception:
+                    logger.debug("Failed to log continuation error for agent %s", agent_id, exc_info=True)
 
     def _log_task(self, message: str, level: str = "info", metadata: dict | None = None) -> None:
         """Write to the parent agent's activity log (no-op if no agent_id)."""

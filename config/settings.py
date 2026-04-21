@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     # Worker service URL for Cloud Tasks dispatch (set in prod, e.g. https://sl-worker-xxx.run.app)
     worker_service_url: str = ""
 
+    # API service URL for Cloud Tasks that need to hit the api (e.g. agent continuation)
+    api_service_url: str = ""
+
     # Comma-separated allowlist of emails. Empty = anyone can sign in.
     allowed_emails: str = ""
 

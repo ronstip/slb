@@ -70,7 +70,7 @@ def check_task_completion(collection_id: str) -> None:
     fs.add_task_log(task_id, "All collections complete — ready for analysis", source="continuation")
 
     # Progress automated workflow steps (collect + enrich → completed, analyze → in_progress)
-    from api.agent.workflow_template import progress_automated_steps
+    from workers.shared.workflow_steps import progress_automated_steps
     todos = task.get("todos") or []
     if todos:
         updated_todos = progress_automated_steps(todos, "collection_complete", "completed")

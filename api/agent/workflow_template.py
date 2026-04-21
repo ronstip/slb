@@ -5,6 +5,8 @@ The agent can still call update_todos() at runtime to add sub-steps or
 adapt descriptions, but the core phases are always present.
 """
 
+from workers.shared.workflow_steps import progress_automated_steps  # noqa: F401
+
 WORKFLOW_PHASES = ["collect", "enrich", "analyze", "validate", "deliver"]
 
 
@@ -98,29 +100,5 @@ def build_workflow_template(data_scope: dict, agent_type: str) -> list[dict]:
     return steps
 
 
-def progress_automated_steps(todos: list[dict], phase: str, status: str) -> list[dict]:
-    """Update automated step statuses when system events occur.
-
-    Called by dispatch_agent_run (collect → in_progress) and
-    check_task_completion (collect/enrich → completed, analyze → in_progress).
-
-    Returns the updated todos list.
-    """
-    updated = [t.copy() for t in todos]
-
-    if phase == "collect_started":
-        for t in updated:
-            if t.get("phase") == "collect":
-                t["status"] = "in_progress"
-                break
-
-    elif phase == "collection_complete":
-        # Mark collect + enrich as completed, analyze as in_progress
-        for t in updated:
-            if t.get("phase") in ("collect", "enrich") and t.get("automated"):
-                t["status"] = "completed"
-            elif t.get("phase") == "analyze" and t["status"] == "pending":
-                t["status"] = "in_progress"
-                break  # Only advance the first pending agentic step
-
-    return updated
+# progress_automated_steps is re-exported at the top of this file from
+# workers.shared.workflow_steps so it's importable from both api/ and workers/.
