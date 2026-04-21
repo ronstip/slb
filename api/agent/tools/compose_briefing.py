@@ -34,6 +34,30 @@ from api.routers.briefing_schema import BriefingLayout
 logger = logging.getLogger(__name__)
 
 
+def _self_heal_story(story: dict, topics_by_id: dict, default_rank: int) -> dict:
+    """Fill required fields the LLM commonly omits on topic stories.
+
+    Only touches topic stories that have a known ``topic_id`` — uses the topic
+    doc's ``topic_name``/``topic_summary`` for missing ``headline``/``blurb``,
+    and falls back to the list position for missing ``rank``. Data stories
+    pass through untouched (no safe defaults for ``headline``/``metrics``).
+    """
+    if not isinstance(story, dict):
+        return story
+    healed = dict(story)
+    if healed.get("type") == "topic":
+        tid = healed.get("topic_id")
+        topic = topics_by_id.get(tid) if tid else None
+        if topic:
+            if not healed.get("headline"):
+                healed["headline"] = topic.get("topic_name") or ""
+            if not healed.get("blurb"):
+                healed["blurb"] = topic.get("topic_summary") or ""
+    if healed.get("rank") in (None, 0):
+        healed["rank"] = default_rank
+    return healed
+
+
 def compose_briefing(
     hero: dict,
     secondary: list[dict],
@@ -78,11 +102,24 @@ def compose_briefing(
             "message": "No active agent in tool context — cannot publish briefing.",
         }
 
+    # Load topics early so we can self-heal topic stories the agent under-specified.
+    fs = get_fs()
+    bq = get_bq()
+    all_topics = load_topics_ranked(fs, bq, agent_id)
+    topics_by_id = {t["cluster_id"]: t for t in all_topics}
+    best_image_per_topic = load_best_image_per_topic(bq, agent_id)
+
     # Build the layout dict the pydantic model expects
     layout_dict: dict[str, Any] = {
-        "hero": hero,
-        "secondary": secondary or [],
-        "rail": rail or [],
+        "hero": _self_heal_story(hero, topics_by_id, default_rank=1) if hero else hero,
+        "secondary": [
+            _self_heal_story(s, topics_by_id, default_rank=i + 1)
+            for i, s in enumerate(secondary or [])
+        ],
+        "rail": [
+            _self_heal_story(s, topics_by_id, default_rank=i + 1)
+            for i, s in enumerate(rail or [])
+        ],
         "editors_note": editors_note,
         "generated_at": "",  # set below
     }
@@ -97,13 +134,6 @@ def compose_briefing(
             "message": "Briefing layout failed schema validation.",
             "validation_errors": e.errors(),
         }
-
-    # Server-side enrichment — only topic stories need it; data stories pass through.
-    fs = get_fs()
-    bq = get_bq()
-    all_topics = load_topics_ranked(fs, bq, agent_id)
-    topics_by_id = {t["cluster_id"]: t for t in all_topics}
-    best_image_per_topic = load_best_image_per_topic(bq, agent_id)
 
     payload = layout.model_dump()
     payload["generated_at"] = datetime.now(timezone.utc).isoformat()
