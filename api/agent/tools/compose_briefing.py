@@ -58,6 +58,40 @@ def _self_heal_story(story: dict, topics_by_id: dict, default_rank: int) -> dict
     return healed
 
 
+def _summarize_validation_errors(errors: list[dict]) -> list[str]:
+    """Turn pydantic's raw error list into short, actionable messages the model can act on.
+
+    The default e.errors() output is structured but verbose — lots of "input_value"
+    and schema-path noise. This pulls out the minimum the LLM needs: which story
+    slot is broken, and what's missing there.
+    """
+    messages: list[str] = []
+    for err in errors:
+        loc = err.get("loc") or ()
+        etype = err.get("type", "")
+        msg = err.get("msg", "") or ""
+
+        # Translate loc tuple to a path like "hero.headline" or "secondary[0].metrics"
+        parts: list[str] = []
+        for seg in loc:
+            if isinstance(seg, int):
+                if parts:
+                    parts[-1] = f"{parts[-1]}[{seg}]"
+                else:
+                    parts.append(f"[{seg}]")
+            else:
+                parts.append(str(seg))
+        path = ".".join(parts) or "<root>"
+
+        if etype == "missing":
+            messages.append(f"{path}: missing required field")
+        elif etype == "too_short":
+            messages.append(f"{path}: list too short (need at least 1 item)")
+        else:
+            messages.append(f"{path}: {msg}")
+    return messages
+
+
 def compose_briefing(
     hero: dict,
     secondary: list[dict],
@@ -67,21 +101,52 @@ def compose_briefing(
 ) -> dict:
     """Publish the agent-composed briefing as the user-facing artifact for this run.
 
-    Each story (`hero`, `secondary[]`, `rail[]`) is a dict with a `type` field:
-      - type="topic": {type, topic_id, headline, blurb, rank, section_label?}
-                      Use for "what people are talking about" stories anchored
-                      to a cluster from list_topics.
-      - type="data":  {type, headline, blurb, rank, section_label?,
-                       metrics: [{label, value, delta?, tone?}],
-                       chart?: {chart_type, data, title?},
-                       timeframe?, citations?: [post_id]}
-                      Use for analytical findings — EMV leaders, competitive gaps,
-                      anomalies, records, momentum shifts. Metrics are required.
+    REQUIRED FIELDS (validation WILL fail if any are missing):
 
-    The hero gets the `section_label` (e.g. "TOP STORY", "IN FOCUS").
-    The server resolves topic names, stats, thumbnails, and the best cluster-wide
-    image for topic heroes. Pulse (total posts/views/topic count/sentiment) is
-    computed from ALL topics in the agent, not just the ones you selected.
+      Topic story — type="topic":
+          REQUIRED: topic_id, headline, blurb, rank
+          Optional: section_label (hero only — e.g. "TOP STORY")
+          Use for "what people are talking about" stories anchored to a cluster
+          from list_topics. The server resolves names/stats/thumbnails from topic_id.
+
+      Data story — type="data":
+          REQUIRED: headline, blurb, rank, metrics (list with AT LEAST 1 item)
+          Each metric: {label, value, delta?, tone?} — label and value required.
+          Optional: section_label, chart, timeframe, citations
+          Use for analytical findings — EMV leaders, competitive gaps, anomalies.
+          A data story WITHOUT metrics is invalid — convert it to a topic story
+          if it doesn't have numbers, or drop it.
+
+    WORKED EXAMPLE (copy this shape exactly):
+
+        compose_briefing(
+            hero={
+                "type": "topic",
+                "topic_id": "a818f065-...",
+                "headline": "Crisis coverage eclipses entertainment volume 7:1",
+                "blurb": "Japan's tsunami response drove the majority of weekly...",
+                "rank": 1,
+                "section_label": "TOP STORY",
+            },
+            secondary=[
+                {"type": "topic", "topic_id": "b...", "headline": "...", "blurb": "...", "rank": 1},
+                {"type": "data", "headline": "TikTok dominates NBA discourse",
+                 "blurb": "68% of NBA posts originated on TikTok vs 22% YouTube.",
+                 "rank": 2,
+                 "metrics": [
+                     {"label": "TIKTOK SHARE", "value": "68%", "delta": "+4pt WoW", "tone": "positive"},
+                     {"label": "POSTS", "value": "283"},
+                 ]},
+            ],
+            rail=[
+                {"type": "topic", "topic_id": "c...", "headline": "...", "blurb": "...", "rank": 1},
+            ],
+        )
+
+    The hero uses `section_label` (e.g. "TOP STORY"). The server resolves topic
+    names, stats, thumbnails, and the best cluster-wide image for topic heroes.
+    Pulse (total posts/views/topic count/sentiment) is computed from ALL topics
+    in the agent, not just the ones you selected.
 
     Args:
         hero: The single most important story (topic or data).
@@ -92,7 +157,9 @@ def compose_briefing(
         tool_context: ADK tool context (injected automatically).
 
     Returns:
-        Status dict. On success, includes hero_type and counts.
+        Status dict. On success, includes hero_type and counts. On validation
+        failure, includes ``errors`` — a list of short strings like
+        "secondary[2].metrics: missing required field" — fix those and retry.
     """
     state = tool_context.state if tool_context else {}
     agent_id = state.get("active_agent_id")
@@ -128,11 +195,20 @@ def compose_briefing(
     try:
         layout = BriefingLayout.model_validate(layout_dict)
     except ValidationError as e:
-        logger.warning("compose_briefing validation failed for agent %s: %s", agent_id, e)
+        summary = _summarize_validation_errors(e.errors())
+        logger.warning(
+            "compose_briefing validation failed for agent %s: %s",
+            agent_id, "; ".join(summary),
+        )
         return {
             "status": "error",
-            "message": "Briefing layout failed schema validation.",
-            "validation_errors": e.errors(),
+            "message": (
+                "Briefing layout failed validation. Fix the listed fields and retry. "
+                "Topic stories need: topic_id, headline, blurb, rank. "
+                "Data stories need: headline, blurb, rank, and metrics (list with >=1 "
+                "item of {label, value})."
+            ),
+            "errors": summary,
         }
 
     payload = layout.model_dump()
