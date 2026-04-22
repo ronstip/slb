@@ -2114,9 +2114,9 @@ async def scheduler_tick():
     settings = get_settings()
     fs = get_fs()
 
-    from api.scheduler import _check_due_tasks
+    from api.scheduler import _check_due_agents
     try:
-        _check_due_tasks(fs, settings)
+        _check_due_agents(fs, settings)
     except Exception:
         logger.exception("Scheduler tick: recurring agent check failed")
 
@@ -2127,27 +2127,43 @@ async def scheduler_tick():
 async def agent_continue(request: dict):
     """Continue an agent after all collections complete.
 
-    Called by Cloud Tasks in production, or directly in dev mode.
+    Blocking: the continuation is awaited in-request so the Cloud Run
+    instance stays alive for the duration. A prior implementation spawned
+    a background thread and returned 200 immediately — the autoscaler
+    then recycled the instance and silently killed the thread, leaving
+    the agent stranded.
     """
     agent_id = request.get("agent_id")
     if not agent_id:
         raise HTTPException(status_code=400, detail="agent_id required")
 
-    # Check if the frontend already picked up the continuation
-    agent = get_fs().get_agent(agent_id)
-    if agent and not (agent.get("status") == "running" and agent.get("continuation_ready")):
-        logger.info("Agent %s: skipping continuation — status is %s (frontend likely handled it)", agent_id, agent.get("status"))
+    fs = get_fs()
+    agent = fs.get_agent(agent_id)
+    if not agent:
+        return {"ok": True, "agent_id": agent_id, "skipped": True, "reason": "not_found"}
+
+    if not (agent.get("status") == "running" and agent.get("continuation_ready")):
+        logger.info(
+            "Agent %s: skipping continuation — status=%s continuation_ready=%s",
+            agent_id, agent.get("status"), agent.get("continuation_ready"),
+        )
         return {"ok": True, "agent_id": agent_id, "skipped": True}
 
-    import threading
-    from workers.agent_continuation import _run_agent_continuation
-    thread = threading.Thread(
-        target=_run_agent_continuation,
-        args=(agent_id,),
-        daemon=True,
-        name=f"agent-continue-{agent_id[:8]}",
-    )
-    thread.start()
+    # Flip the flag before running so a concurrent Cloud Task retry short-circuits.
+    fs.update_agent(agent_id, continuation_ready=False)
+
+    from workers.agent_continuation import _async_agent_continuation
+    try:
+        await _async_agent_continuation(agent_id)
+    except Exception:
+        logger.exception("Agent continuation failed for %s", agent_id)
+        fs.update_agent(
+            agent_id,
+            status="failed",
+            context_summary="Agent continuation failed after collection completion.",
+        )
+        return {"ok": False, "agent_id": agent_id, "error": "continuation_failed"}
+
     return {"ok": True, "agent_id": agent_id}
 
 
