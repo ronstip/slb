@@ -654,6 +654,15 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
             "audience": target_url,
         }
     task_config: dict = {"http_request": http_request}
+
+    # Continuation runs synchronously on sl-api and may take many minutes.
+    # Cloud Tasks' default dispatch deadline (10 min) would abort it. Bump to
+    # the 30-min maximum; the endpoint itself has its own timeout shorter than this.
+    from google.protobuf import duration_pb2
+    deadline = duration_pb2.Duration()
+    deadline.FromSeconds(1800)
+    task_config["dispatch_deadline"] = deadline
+
     if delay_seconds > 0:
         from google.protobuf import timestamp_pb2
         schedule_time = timestamp_pb2.Timestamp()
