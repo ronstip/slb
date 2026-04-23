@@ -558,8 +558,8 @@ class PipelineMonitor(App):
             return
 
         try:
-            from workers.pipeline_v2.post_state import RETRY_MAP, PostState
-            from workers.pipeline_v2.state_manager import StateManager
+            from workers.pipeline.post_state import RETRY_MAP, PostState
+            from workers.pipeline.state_manager import StateManager
 
             target = PostState(state)
             if target not in RETRY_MAP:

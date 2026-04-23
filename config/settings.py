@@ -40,8 +40,14 @@ class Settings(BaseSettings):
     enrichment_max_retries: int = 5  # Max retry attempts for 429 errors
     enrichment_retry_base_delay: float = 60.0  # Base delay in seconds for retry backoff
 
-    # Pipeline v2 (post-level DAG)
-    use_pipeline_v2: bool = True
+    # Max concurrent CDN/GCS downloads per collection (owned by PipelineRunner).
+    # Decouples media I/O from the step orchestration pool so a slow download
+    # batch can't starve enrich/embed progress.
+    media_download_concurrency: int = 16
+    # Fan adapters (BrightData, Vetric, ...) across threads during crawl.
+    # Off by default — flip after verifying per-adapter snapshot accounting in
+    # a canary agent. Only affects multi-provider collections.
+    parallel_adapters: bool = False
 
     # Clustering (brothers algorithm) thresholds
     clustering_brothers_threshold: float = 0.17

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from config.settings import Settings
-from workers.pipeline_v2.post_state import PostState
+from workers.pipeline.post_state import PostState
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,19 @@ class StepContext:
     enrichment_context: str | None
     settings: Settings
     content_types: list[str] | None = None
+    batch_counters: dict[str, int] = field(default_factory=dict)
+    # In-run idempotency cache — primed once from BQ at pipeline start and
+    # updated as steps succeed. Avoids a per-batch BQ pre-check roundtrip.
+    enriched_ids: set[str] = field(default_factory=set)
+    embedded_ids: set[str] = field(default_factory=set)
+    # Shared media-download executor, owned by PipelineRunner. None → each
+    # batch spins up its own (legacy v1 path).
+    media_executor: Any = None
+
+    def next_batch_index(self, step_name: str) -> int:
+        idx = self.batch_counters.get(step_name, 0)
+        self.batch_counters[step_name] = idx + 1
+        return idx
 
 
 # Result tuple: (post_id, "ok" | "fail", optional extra data)
@@ -118,8 +131,12 @@ def action_download(posts: list[dict], ctx: StepContext) -> list[StepResult]:
             search_keyword=bq.get("search_keyword"),
         ))
 
-    # Run download (mutates post.media_refs in place)
-    download_media_batch(ctx.gcs, post_objects, ctx.collection_id)
+    # Run download (mutates post.media_refs in place).
+    # Uses the runner's shared executor so this batch doesn't block the step
+    # pool — enrich + embed stay free to make progress on other posts.
+    download_media_batch(
+        ctx.gcs, post_objects, ctx.collection_id, executor=ctx.media_executor,
+    )
 
     # Build results — always pass through to enrichment even if media failed.
     # Enrichment reads text content from BQ independently.
@@ -163,13 +180,24 @@ def action_enrich(posts: list[dict], ctx: StepContext) -> list[StepResult]:
     if not post_ids:
         return []
 
-    # Skip already-enriched posts
-    existing = ctx.bq.query(
-        "SELECT post_id FROM social_listening.enriched_posts "
-        "WHERE post_id IN UNNEST(@post_ids)",
-        {"post_ids": post_ids},
-    )
-    already_enriched = {r["post_id"] for r in existing}
+    # Short-circuit via in-run cache before hitting BQ.
+    cache_hits = {pid for pid in post_ids if pid in ctx.enriched_ids}
+    uncached = [pid for pid in post_ids if pid not in cache_hits]
+
+    # Defense-in-depth: fall back to BQ for posts not in the cache (e.g., on
+    # first run before priming, or if the cache missed an entry for any reason).
+    if uncached:
+        existing = ctx.bq.query(
+            "SELECT post_id FROM social_listening.enriched_posts "
+            "WHERE post_id IN UNNEST(@post_ids)",
+            {"post_ids": uncached},
+        )
+        bq_hits = {r["post_id"] for r in existing}
+        ctx.enriched_ids.update(bq_hits)
+    else:
+        bq_hits = set()
+
+    already_enriched = cache_hits | bq_hits
 
     results: list[StepResult] = []
     to_enrich_ids = [pid for pid in post_ids if pid not in already_enriched]
@@ -228,18 +256,62 @@ def action_enrich(posts: list[dict], ctx: StepContext) -> list[StepResult]:
             media_refs=media_refs,
         ))
 
-    # Call existing enrichment (handles Gemini rate limiting, writes to BQ)
-    enrichment_results = run_enrichment_inline(
-        post_data_list,
-        ctx.collection_id,
-        ctx.custom_fields,
-        ctx.enrichment_context,
-        ctx.content_types,
-    )
-    enriched_ids = {pid for pid, _ in enrichment_results}
+    # Call existing enrichment (handles Gemini rate limiting, writes to BQ).
+    # Wrap in try/except so that transient Gemini failures emit a v1-schema
+    # structured log (see docs/alerts/enrichment-failures.md) instead of
+    # bubbling up as a generic step crash.
+    batch_idx = ctx.next_batch_index("enrich")
+    batch_post_ids = [pd.post_id for pd in post_data_list]
+    try:
+        enrichment_results = run_enrichment_inline(
+            post_data_list,
+            ctx.collection_id,
+            ctx.custom_fields,
+            ctx.enrichment_context,
+            ctx.content_types,
+        )
+    except Exception as exc:
+        logger.error(
+            "enrichment_batch_failed",
+            extra={
+                "json_fields": {
+                    "event": "enrichment_batch_failed",
+                    "collection_id": ctx.collection_id,
+                    "batch_index": batch_idx,
+                    "batch_size": len(post_data_list),
+                    "returned": 0,
+                    "post_ids": batch_post_ids[:50],
+                    "reason": "exception",
+                    "error": repr(exc),
+                }
+            },
+            exc_info=True,
+        )
+        for pid in batch_post_ids:
+            results.append((pid, "fail", None))
+        return results
+
+    newly_enriched_ids = {pid for pid, _ in enrichment_results}
+    ctx.enriched_ids.update(newly_enriched_ids)
+
+    if not newly_enriched_ids and post_data_list:
+        logger.error(
+            "enrichment_batch_failed",
+            extra={
+                "json_fields": {
+                    "event": "enrichment_batch_failed",
+                    "collection_id": ctx.collection_id,
+                    "batch_index": batch_idx,
+                    "batch_size": len(post_data_list),
+                    "returned": 0,
+                    "post_ids": batch_post_ids[:50],
+                    "reason": "empty_result",
+                }
+            },
+        )
 
     for pd in post_data_list:
-        if pd.post_id in enriched_ids:
+        if pd.post_id in newly_enriched_ids:
             results.append((pd.post_id, "ok", None))
         else:
             results.append((pd.post_id, "fail", None))
@@ -261,13 +333,22 @@ def action_embed(posts: list[dict], ctx: StepContext) -> list[StepResult]:
     if not post_ids:
         return []
 
-    # Skip already-embedded posts
-    existing = ctx.bq.query(
-        "SELECT post_id FROM social_listening.post_embeddings "
-        "WHERE post_id IN UNNEST(@post_ids)",
-        {"post_ids": post_ids},
-    )
-    already_embedded = {r["post_id"] for r in existing}
+    # Short-circuit via in-run cache before hitting BQ.
+    cache_hits = {pid for pid in post_ids if pid in ctx.embedded_ids}
+    uncached = [pid for pid in post_ids if pid not in cache_hits]
+
+    if uncached:
+        existing = ctx.bq.query(
+            "SELECT post_id FROM social_listening.post_embeddings "
+            "WHERE post_id IN UNNEST(@post_ids)",
+            {"post_ids": uncached},
+        )
+        bq_hits = {r["post_id"] for r in existing}
+        ctx.embedded_ids.update(bq_hits)
+    else:
+        bq_hits = set()
+
+    already_embedded = cache_hits | bq_hits
 
     results: list[StepResult] = []
     to_embed_ids = [pid for pid in post_ids if pid not in already_embedded]
@@ -283,6 +364,7 @@ def action_embed(posts: list[dict], ctx: StepContext) -> list[StepResult]:
             "collection_id": ctx.collection_id,
             "post_ids": to_embed_ids,
         })
+        ctx.embedded_ids.update(to_embed_ids)
         for pid in to_embed_ids:
             results.append((pid, "ok", None))
     except Exception:

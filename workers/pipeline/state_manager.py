@@ -5,16 +5,26 @@ Aggregate counters live on the parent collection_status doc via Increment.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from google.cloud import firestore
 from google.cloud.firestore_v1 import transforms
 
 from config.settings import Settings, get_settings
 from workers.collection.models import Post
-from workers.pipeline_v2.post_state import TERMINAL_STATES, PostState
+from workers.pipeline.post_state import (
+    FAILURE_TO_STEP,
+    RETRY_MAP,
+    TERMINAL_STATES,
+    PostState,
+)
 
 logger = logging.getLogger(__name__)
+
+# Continuation retry policy — don't re-attempt a post that failed within this
+# window and don't exceed this many total attempts per step.
+RETRY_COOLDOWN_SEC = 300
+MAX_RETRY_ATTEMPTS = 3
 
 
 class StateManager:
@@ -131,11 +141,12 @@ class StateManager:
         old_states: dict[str, str] = {}
 
         if not is_initial:
-            # Read current states to know what to decrement
-            for post_id, _ in chunk:
-                doc = self._posts_ref.document(post_id).get()
-                if doc.exists:
-                    old_states[post_id] = doc.to_dict().get("status", "")
+            # Batch-read current states in a single RPC (via BatchGet) instead of
+            # N sequential .get()s — this was the dominant per-batch latency cost.
+            doc_refs = [self._posts_ref.document(post_id) for post_id, _ in chunk]
+            for snapshot in self._db.get_all(doc_refs):
+                if snapshot.exists:
+                    old_states[snapshot.id] = snapshot.to_dict().get("status", "")
 
         for post_id, new_state in chunk:
             doc_ref = self._posts_ref.document(post_id)
@@ -143,6 +154,13 @@ class StateManager:
                 "status": new_state.value,
                 "updated_at": now,
             }
+            # Bump per-step attempt counter + stamp last_failure_at on
+            # transitions into a failure state. Used by continuation runs to
+            # decide which posts are eligible for retry (see get_retry_candidates).
+            if new_state in FAILURE_TO_STEP:
+                step_name = FAILURE_TO_STEP[new_state]
+                doc_data[f"attempts.{step_name}"] = transforms.Increment(1)
+                doc_data["last_failure_at"] = now
             if post_id in media_refs:
                 doc_data["media_refs"] = media_refs[post_id]
             if post_id in post_meta:
@@ -202,15 +220,60 @@ class StateManager:
             return 0
         return doc.to_dict().get("total_posts_in_dag", 0)
 
+    def get_retry_candidates(
+        self,
+        cooldown_sec: int = RETRY_COOLDOWN_SEC,
+        max_attempts: int = MAX_RETRY_ATTEMPTS,
+    ) -> list[tuple[str, "PostState"]]:
+        """Return (post_id, retry_target_state) for failed posts eligible for retry.
+
+        Eligibility:
+        - Currently in a FAILURE_STATES state
+        - Attempt count for that step < max_attempts
+        - last_failure_at older than cooldown_sec (or missing)
+
+        Firestore doesn't allow combining equality on `status` with an
+        inequality on `attempts.<step>`, so we filter in-memory.
+        EMBEDDING_FAILED is excluded — BQ batch embed is deterministic;
+        whatever broke will break again until the underlying issue is fixed.
+        """
+        candidates: list[tuple[str, PostState]] = []
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=cooldown_sec)
+        for failure_state, target_state in RETRY_MAP.items():
+            if failure_state == PostState.EMBEDDING_FAILED:
+                continue
+            step_name = FAILURE_TO_STEP[failure_state]
+            query = self._posts_ref.where("status", "==", failure_state.value).limit(500)
+            for doc in query.stream():
+                data = doc.to_dict()
+                attempts = (data.get("attempts") or {}).get(step_name, 0)
+                if attempts >= max_attempts:
+                    continue
+                last_failure = data.get("last_failure_at")
+                if last_failure is not None:
+                    if getattr(last_failure, "tzinfo", None) is None:
+                        last_failure = last_failure.replace(tzinfo=timezone.utc)
+                    if last_failure > cutoff:
+                        continue
+                candidates.append((doc.id, target_state))
+        return candidates
+
     def all_posts_terminal(self) -> bool:
-        """Check if all posts are in terminal states."""
-        counts = self.get_counts()
-        total = self.get_total_posts()
+        """Check if all posts are in terminal states.
+
+        Reads the status doc once to pull both counts and total_posts_in_dag
+        — this check fires every processing-loop iteration, so a single read
+        matters.
+        """
+        doc = self._status_ref.get()
+        if not doc.exists:
+            return False
+        data = doc.to_dict()
+        total = data.get("total_posts_in_dag", 0)
         if total == 0:
             return False
-        terminal_count = sum(
-            counts.get(s.value, 0) for s in TERMINAL_STATES
-        )
+        counts = data.get("counts", {})
+        terminal_count = sum(counts.get(s.value, 0) for s in TERMINAL_STATES)
         return terminal_count >= total
 
     # ------------------------------------------------------------------

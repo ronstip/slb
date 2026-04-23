@@ -24,9 +24,9 @@ from workers.collection.normalizer import (
     post_to_engagement_row,
 )
 from workers.collection.wrapper import DataProviderWrapper
-from workers.pipeline_v2.post_state import FAILURE_STATES, TERMINAL_STATES, PostState
-from workers.pipeline_v2.state_manager import StateManager
-from workers.pipeline_v2.steps import PIPELINE_STEPS, StepContext
+from workers.pipeline.post_state import FAILURE_STATES, TERMINAL_STATES, PostState
+from workers.pipeline.state_manager import StateManager
+from workers.pipeline.steps import PIPELINE_STEPS, StepContext
 from workers.shared.bq_client import BQClient
 from workers.shared.firestore_client import FirestoreClient
 from workers.shared.gcs_client import GCSClient
@@ -58,6 +58,16 @@ class PipelineRunner:
         self._content_types: list[str] | None = None
         self._total_posts_collected = 0
         self._continuation_scheduled = False
+        # Per-step timing stats, populated by _record_step_timing as the loop runs.
+        self._stage_timings: dict[str, dict] = {}
+        self._stage_timings_lock = threading.Lock()
+        # Shared media-download executor — sized for CDN/GCS I/O, not bound to
+        # the step orchestration (so a slow download batch doesn't stall
+        # enrich/embed progress).
+        self._media_executor = ThreadPoolExecutor(
+            max_workers=self.settings.media_download_concurrency,
+            thread_name_prefix=f"media-{collection_id[:8]}",
+        )
 
     def run(self) -> None:
         """Main entry point — runs the full pipeline.
@@ -78,6 +88,11 @@ class PipelineRunner:
                 self.collection_id, elapsed,
             )
             self._set_crashed_status(str(e))
+        finally:
+            # Release the media pool. wait=False because in-flight downloads
+            # that haven't propagated to BQ yet are caught by
+            # _reconcile_bq_media_refs on the next run anyway.
+            self._media_executor.shutdown(wait=False)
 
     def _get_agent_id(self) -> str | None:
         """Return the agent_id linked to this collection, if any."""
@@ -101,7 +116,10 @@ class PipelineRunner:
                         level="error",
                     )
                 except Exception:
-                    logger.debug("Failed to log continuation error for agent %s", agent_id, exc_info=True)
+                    logger.warning(
+                        "Failed to write continuation-error log for agent %s — agent may appear stuck",
+                        agent_id, exc_info=True,
+                    )
 
     def _log_task(self, message: str, level: str = "info", metadata: dict | None = None) -> None:
         """Write to the parent agent's activity log (no-op if no agent_id)."""
@@ -111,7 +129,10 @@ class PipelineRunner:
         try:
             self.fs.add_agent_log(agent_id, message, source="pipeline", level=level, metadata=metadata)
         except Exception:
-            logger.debug("Failed to write agent log for collection %s", self.collection_id, exc_info=True)
+            logger.warning(
+                "Failed to write agent log for collection %s — agent may appear stuck",
+                self.collection_id, exc_info=True,
+            )
 
     def _acquire_pipeline_lock(self) -> bool:
         """Check if this pipeline should run, preventing duplicate executions.
@@ -211,6 +232,12 @@ class PipelineRunner:
                 crawlers={},
             )
 
+        # Prime the in-run idempotency cache from BQ — avoids a per-batch
+        # BQ pre-check roundtrip inside action_enrich/action_embed. The
+        # cache is re-primed on every runner init, so continuation runs
+        # get a correct starting set.
+        enriched_ids, embedded_ids = self._prime_idempotency_cache()
+
         # Build step context
         ctx = StepContext(
             collection_id=self.collection_id,
@@ -221,6 +248,9 @@ class PipelineRunner:
             enrichment_context=self._enrichment_context,
             settings=self.settings,
             content_types=self._content_types,
+            enriched_ids=enriched_ids,
+            embedded_ids=embedded_ids,
+            media_executor=self._media_executor,
         )
 
         crawl_thread: threading.Thread | None = None
@@ -231,6 +261,21 @@ class PipelineRunner:
             # after the original run exited before seeding), seed from BQ now.
             if self.state_manager.get_total_posts() == 0:
                 self._seed_post_states_from_bq()
+            # Re-queue eligible failures (not embedding, attempts < max, past cooldown)
+            # so a transient Gemini rate-limit doesn't permanently burn a post.
+            try:
+                retry_cands = self.state_manager.get_retry_candidates()
+                if retry_cands:
+                    logger.info(
+                        "Re-queuing %d retry-eligible failure(s) for %s",
+                        len(retry_cands), self.collection_id,
+                    )
+                    self.state_manager.transition_batch(retry_cands)
+            except Exception:
+                logger.warning(
+                    "Failed to compute retry candidates for %s (continuation proceeds without retries)",
+                    self.collection_id, exc_info=True,
+                )
             self._crawl_complete.set()
             self._total_posts_collected = self.state_manager.get_total_posts()
         else:
@@ -247,6 +292,10 @@ class PipelineRunner:
         # Wait for crawl thread to finish (should already be done)
         if crawl_thread is not None:
             crawl_thread.join(timeout=10)
+
+        # Persist per-step timings (merge-additive so continuation runs
+        # accumulate with prior runs). Runs regardless of exit path below.
+        self._persist_stage_timings()
 
         # Self-rescheduled continuation — exit cleanly, leave status=running for next run
         if self._continuation_scheduled:
@@ -273,15 +322,27 @@ class PipelineRunner:
             self._check_agent_completion()
             return
 
-        # Reconcile counters (fixes drift from incremental updates)
-        self.state_manager.recount()
+        # Final sweep: re-sync any media_refs the per-batch updater missed
+        # (shorter retry backoff means a handful may still fall through).
+        self._reconcile_bq_media_refs()
 
         # Collection gates
         self._log_task("Computing analytics and generating insights...", metadata={"phase": "analytics"})
         self._run_collection_gates()
 
-        # Final status
+        # Final status — users see this immediately; drift reconciliation
+        # (recount) runs in the background below.
         self._set_final_status()
+
+        # Reconcile counters after final status — drift is typically zero, and
+        # running it async means the user's "success" indicator isn't blocked
+        # by a full subcollection stream. Still instrumented so PR-6/7 can
+        # decide whether to remove it entirely once drift data is in hand.
+        threading.Thread(
+            target=self._recount_with_drift_log,
+            daemon=True,
+            name=f"recount-{self.collection_id[:8]}",
+        ).start()
 
         # Check if this collection is part of a task — trigger continuation if all done
         self._check_agent_completion()
@@ -353,8 +414,24 @@ class PipelineRunner:
                 "http_request": http_request,
                 "dispatch_deadline": {"seconds": 1800},
             }
-            client.create_task(parent=parent, task=task)
-            logger.info("Dispatched continuation Cloud Task for %s", self.collection_id)
+            response = client.create_task(parent=parent, task=task)
+            task_name = getattr(response, "name", "") or ""
+            logger.info(
+                "Dispatched continuation Cloud Task for %s (task=%s)",
+                self.collection_id, task_name,
+            )
+            # Persist the task name so stale-pipeline recovery can distinguish
+            # "continuation never dispatched" from "continuation dispatched but
+            # worker hasn't picked up yet".
+            try:
+                self.fs.update_collection_status(
+                    self.collection_id, continuation_task_name=task_name,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to persist continuation_task_name for %s",
+                    self.collection_id, exc_info=True,
+                )
             self._log_task(
                 "Processing will continue in a follow-up run (time budget exceeded)",
                 metadata={"phase": "processing", "continuation": True},
@@ -498,7 +575,10 @@ class PipelineRunner:
             )
             return sum(1 for _ in docs)
         except Exception:
-            logger.warning("Failed to count downloaded snapshots", exc_info=True)
+            logger.error(
+                "Failed to count downloaded snapshots for %s — may trigger spurious re-crawl",
+                self.collection_id, exc_info=True,
+            )
             return 0
 
     def _do_crawl(self) -> None:
@@ -549,12 +629,21 @@ class PipelineRunner:
         seen_channel_ids: set[str] = set()
         total_posts = 0
         funnel_worker_dedup = 0
+        funnel_bq_dedup = 0  # wired up in the BQ-dedup PR; stays 0 until then
         funnel_bq_insert_failures = 0
         collection_started_at = datetime.now(timezone.utc).isoformat()
         collection_start = _time.monotonic()
 
+        # When parallel_adapters is on, fan BrightData/Vetric across threads
+        # so the slower adapter doesn't serialize the faster one. Off by
+        # default — canary one agent first.
+        if self.settings.parallel_adapters:
+            batches = wrapper.collect_all_parallel()
+        else:
+            batches = wrapper.collect_all()
+
         batch_index = 0
-        for batch in wrapper.collect_all():
+        for batch in batches:
             batch_index += 1
 
             # Check for cancellation
@@ -571,6 +660,69 @@ class PipelineRunner:
             seen_channel_ids.update(c.channel_id for c in new_channels)
 
             if not new_posts:
+                continue
+
+            # BQ-level dedup — for ongoing/re-run collections, posts already in
+            # BQ for THIS collection_id must NOT be re-inserted. Instead we
+            # append a new engagement snapshot (source="dedup_refresh") so
+            # views/likes growth is captured as a time series, and refresh the
+            # channel row so follower growth is captured too. Scope is
+            # per-collection (matches v1 behavior); the same post can appear
+            # in multiple collections.
+            try:
+                existing = self.bq.query(
+                    "SELECT DISTINCT post_id FROM social_listening.posts "
+                    "WHERE collection_id = @collection_id "
+                    "AND post_id IN UNNEST(@post_ids)",
+                    {
+                        "collection_id": self.collection_id,
+                        "post_ids": [p.post_id for p in new_posts],
+                    },
+                )
+                existing_ids = {r["post_id"] for r in existing}
+            except Exception:
+                logger.warning(
+                    "BQ dedup query failed for %s — proceeding with in-memory dedup only",
+                    self.collection_id, exc_info=True,
+                )
+                existing_ids = set()
+
+            if existing_ids:
+                dupe_posts = [p for p in new_posts if p.post_id in existing_ids]
+                new_posts = [p for p in new_posts if p.post_id not in existing_ids]
+                funnel_bq_dedup += len(existing_ids)
+
+                # Fresh engagement snapshot for dupes (time-series growth)
+                refresh_engagements = [post_to_engagement_row(p) for p in dupe_posts]
+                for row in refresh_engagements:
+                    row["source"] = "dedup_refresh"
+                if refresh_engagements:
+                    self.bq.insert_rows("post_engagements", refresh_engagements)
+
+                # Fresh channel rows for dupes' channels (follower-count growth)
+                dupe_channel_ids = {
+                    p.channel_id for p in dupe_posts if p.channel_id
+                }
+                refresh_channels = [
+                    c for c in batch.channels if c.channel_id in dupe_channel_ids
+                ]
+                if refresh_channels:
+                    self.bq.insert_rows(
+                        "channels",
+                        [
+                            channel_to_bq_row(c, self.collection_id)
+                            for c in refresh_channels
+                        ],
+                    )
+
+                logger.info(
+                    "Collection %s: BQ dedup — refreshed %d engagement(s) + %d channel(s), %d new",
+                    self.collection_id, len(existing_ids), len(refresh_channels), len(new_posts),
+                )
+
+            if not new_posts:
+                # All posts in this batch were BQ duplicates — engagement/channel
+                # refresh already happened above, nothing to insert.
                 continue
 
             # Seed media_refs from CDN URLs so posts display immediately
@@ -669,17 +821,19 @@ class PipelineRunner:
             self.state_manager.set_crawler_status("all", "success", posts=total_posts)
 
         # Store run_log
+        total_dupes_skipped = funnel_worker_dedup + funnel_bq_dedup
         run_log = {
             "collection": {
                 "started_at": collection_started_at,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
                 "duration_sec": duration,
                 "platforms": stats,
+                "total_dupes_skipped": total_dupes_skipped,
             },
             "funnel": {
                 **wrapper.get_funnel_stats(),
                 "worker_in_memory_dedup": funnel_worker_dedup,
-                "worker_bq_dedup": 0,  # v2 skips BQ dedup by design
+                "worker_bq_dedup": funnel_bq_dedup,
                 "worker_bq_insert_failures": funnel_bq_insert_failures,
                 "worker_posts_stored": total_posts,
             },
@@ -747,11 +901,15 @@ class PipelineRunner:
 
         logger.info("Step '%s': processing %d posts", step.name, len(ready))
 
+        t_action_start = _time.monotonic()
         try:
             results = step.action(ready, ctx)
         except Exception:
             logger.exception("Step '%s' crashed for %s", step.name, self.collection_id)
             results = [(p["post_id"], "fail", None) for p in ready]
+        self._record_step_timing(
+            step.name, _time.monotonic() - t_action_start, results,
+        )
 
         transitions: list[tuple[str, PostState]] = []
         media_refs: dict[str, list[dict]] = {}
@@ -805,21 +963,55 @@ class PipelineRunner:
                 metadata={"phase": "processing", "enriched": enriched, "downloading": downloading, "total": total},
             )
 
-    def _run_loop(self, ctx: StepContext) -> None:
-        """Process posts through DAG steps until all terminal or timeout.
+    def _step_worker(self, step, ctx: StepContext, stop_event: threading.Event) -> None:
+        """Run one step in a dedicated loop until stop_event is set.
 
-        Steps run concurrently per iteration via a ThreadPoolExecutor — download,
-        enrich, and embed pull from disjoint input states, so while enrich waits
-        on Gemini (the long pole), download keeps filling its queue.
+        Each step iterates independently — enrich and embed don't wait for a
+        slow download batch. When the step has no work, it backs off adaptively
+        (50ms → 500ms) instead of sleeping a fixed second.
+        """
+        idle_backoff = 0.05
+        while not stop_event.is_set():
+            try:
+                did_work = self._run_step(step, ctx)
+            except Exception:
+                logger.exception(
+                    "Step worker '%s' crashed for %s", step.name, self.collection_id,
+                )
+                did_work = False
+            if did_work:
+                idle_backoff = 0.05
+            else:
+                # Interruptible sleep — stop_event.set() wakes us immediately
+                # so shutdown isn't blocked by a 500ms tail.
+                stop_event.wait(timeout=idle_backoff)
+                idle_backoff = min(0.5, idle_backoff * 1.5)
+
+    def _run_loop(self, ctx: StepContext) -> None:
+        """Drive the processing DAG until all posts are terminal or we timeout.
+
+        Each step runs in its own thread with adaptive backoff — a slow download
+        batch no longer blocks enrich/embed, and the idle wait has no fixed 1s
+        floor. This thread only watches for timeouts, cancellation, and
+        termination.
         """
         logger.info("── Processing loop started for %s", self.collection_id)
         loop_start = _time.monotonic()
-        last_progress_log = 0.0  # monotonic timestamp of last progress log
+        last_progress_log = 0.0
 
-        with ThreadPoolExecutor(
-            max_workers=len(PIPELINE_STEPS),
-            thread_name_prefix=f"dag-{self.collection_id[:8]}",
-        ) as step_pool:
+        stop_event = threading.Event()
+        step_threads: list[threading.Thread] = []
+        for step in PIPELINE_STEPS:
+            t = threading.Thread(
+                target=self._step_worker,
+                args=(step, ctx, stop_event),
+                daemon=True,
+                name=f"step-{step.name}-{self.collection_id[:8]}",
+            )
+            t.start()
+            step_threads.append(t)
+
+        try:
             while True:
                 elapsed = _time.monotonic() - loop_start
 
@@ -827,7 +1019,8 @@ class PipelineRunner:
                 # the soft timeout self-reschedules a continuation first.
                 if elapsed > PIPELINE_LOOP_TIMEOUT:
                     logger.error(
-                        "Processing loop timed out for %s after %.0fs", self.collection_id, elapsed
+                        "Processing loop timed out for %s after %.0fs",
+                        self.collection_id, elapsed,
                     )
                     break
 
@@ -845,7 +1038,7 @@ class PipelineRunner:
                         self._continuation_scheduled = True
                         break
 
-                # Check cancellation / failure (resilient to transient Firestore errors)
+                # Cancellation check (resilient to transient Firestore errors)
                 try:
                     status = self.fs.get_collection_status(self.collection_id)
                 except Exception:
@@ -854,36 +1047,43 @@ class PipelineRunner:
                         self.collection_id, exc_info=True,
                     )
                     status = None
-
                 if status and status.get("status") == "failed":
-                    logger.info("Pipeline %s cancelled during processing", self.collection_id)
-                    return
+                    logger.info(
+                        "Pipeline %s cancelled during processing", self.collection_id,
+                    )
+                    break
 
-                # Run all steps concurrently — they pull disjoint input states
-                futures = [
-                    step_pool.submit(self._run_step, step, ctx)
-                    for step in PIPELINE_STEPS
-                ]
-                any_work = False
-                for f in futures:
-                    try:
-                        if f.result():
-                            any_work = True
-                    except Exception:
-                        logger.exception("Step future raised for %s", self.collection_id)
-
-                # Periodic progress log (once per iter)
+                # Periodic progress log
                 now = _time.monotonic()
-                if any_work and now - last_progress_log > 30:
+                if now - last_progress_log > 30:
                     last_progress_log = now
-                    self._log_progress()
+                    try:
+                        self._log_progress()
+                    except Exception:
+                        logger.warning(
+                            "Failed to log progress for %s",
+                            self.collection_id, exc_info=True,
+                        )
 
-                if not any_work:
-                    if self._crawl_complete.is_set() and self.state_manager.all_posts_terminal():
+                # Termination: crawl complete AND all posts terminal (or zero posts)
+                if self._crawl_complete.is_set():
+                    if self.state_manager.all_posts_terminal():
                         break
-                    if self._crawl_complete.is_set() and self.state_manager.get_total_posts() == 0:
+                    if self.state_manager.get_total_posts() == 0:
                         break
-                    _time.sleep(1)
+
+                # Main-thread tick — step workers iterate independently, so
+                # this only gates termination/cancellation/progress checks.
+                _time.sleep(1.0)
+        finally:
+            stop_event.set()
+            for t in step_threads:
+                t.join(timeout=30)
+                if t.is_alive():
+                    logger.warning(
+                        "Step thread %s did not exit cleanly for %s",
+                        t.name, self.collection_id,
+                    )
 
         logger.info("── Processing loop complete for %s", self.collection_id)
 
@@ -907,8 +1107,11 @@ class PipelineRunner:
             "WHERE t.post_id = s.pid"
         )
 
-        max_retries = 5
-        for attempt in range(max_retries):
+        # Short backoff — streaming-buffer conflicts normally clear in seconds,
+        # not minutes. Any misses here are swept up by _reconcile_bq_media_refs
+        # at the end of the pipeline.
+        backoffs = [5, 15, 45]
+        for attempt, wait in enumerate(backoffs + [None]):
             try:
                 self.bq.query(sql, {"post_ids": post_ids, "refs_jsons": refs_jsons})
                 logger.info(
@@ -917,22 +1120,219 @@ class PipelineRunner:
                 return
             except Exception as e:
                 err_str = str(e)
-                if "streaming buffer" in err_str.lower() and attempt < max_retries - 1:
-                    retry_wait = 60 * (attempt + 1)
+                if "streaming buffer" in err_str.lower() and wait is not None:
                     logger.info(
                         "Streaming buffer not flushed, retrying in %ds (attempt %d/%d)",
-                        retry_wait, attempt + 1, max_retries,
+                        wait, attempt + 1, len(backoffs),
                     )
-                    _time.sleep(retry_wait)
+                    _time.sleep(wait)
                 else:
                     logger.warning(
                         "media_refs BQ update failed: %s", err_str[:200]
                     )
                     return
 
+    def _prime_idempotency_cache(self) -> tuple[set[str], set[str]]:
+        """Load the set of already-enriched and already-embedded post_ids.
+
+        Primed once per PipelineRunner lifecycle so continuation runs get a
+        correct starting set. If either query fails, the step actions fall
+        back to per-batch BQ pre-checks (defense-in-depth).
+        """
+        enriched: set[str] = set()
+        embedded: set[str] = set()
+        try:
+            rows = self.bq.query(
+                "SELECT ep.post_id AS post_id "
+                "FROM social_listening.enriched_posts ep "
+                "JOIN social_listening.posts p ON p.post_id = ep.post_id "
+                "WHERE p.collection_id = @collection_id",
+                {"collection_id": self.collection_id},
+            )
+            enriched = {r["post_id"] for r in rows}
+        except Exception:
+            logger.warning(
+                "Failed to prime enriched_ids cache for %s (falling back to per-batch BQ checks)",
+                self.collection_id, exc_info=True,
+            )
+        try:
+            rows = self.bq.query(
+                "SELECT pe.post_id AS post_id "
+                "FROM social_listening.post_embeddings pe "
+                "JOIN social_listening.posts p ON p.post_id = pe.post_id "
+                "WHERE p.collection_id = @collection_id",
+                {"collection_id": self.collection_id},
+            )
+            embedded = {r["post_id"] for r in rows}
+        except Exception:
+            logger.warning(
+                "Failed to prime embedded_ids cache for %s (falling back to per-batch BQ checks)",
+                self.collection_id, exc_info=True,
+            )
+        logger.info(
+            "Primed idempotency cache for %s: %d enriched, %d embedded",
+            self.collection_id, len(enriched), len(embedded),
+        )
+        return enriched, embedded
+
+    def _record_step_timing(
+        self, step_name: str, elapsed_sec: float,
+        results: list[tuple[str, str, dict | None]],
+    ) -> None:
+        """Track per-step CPU time, active window, and per-post outcomes.
+
+        Called once per `step.action` invocation. Thread-safe (three step
+        threads may call concurrently for different steps).
+        """
+        ok = sum(1 for _, outcome, _ in results if outcome == "ok")
+        fail = sum(1 for _, outcome, _ in results if outcome == "fail")
+        now = _time.monotonic()
+        with self._stage_timings_lock:
+            stats = self._stage_timings.setdefault(step_name, {
+                "action_cpu_sec_total": 0.0,
+                "first_batch_start": None,
+                "last_batch_end": 0.0,
+                "batches_run": 0,
+                "posts_ok": 0,
+                "posts_fail": 0,
+            })
+            stats["action_cpu_sec_total"] += elapsed_sec
+            if stats["first_batch_start"] is None:
+                stats["first_batch_start"] = now - elapsed_sec
+            stats["last_batch_end"] = now
+            stats["batches_run"] += 1
+            stats["posts_ok"] += ok
+            stats["posts_fail"] += fail
+
+    def _persist_stage_timings(self) -> None:
+        """Merge in-memory stage timings into run_log.stage_timings.
+
+        Additive merge so continuation runs accumulate with prior runs.
+        Run_log is wholesale-replaced by Firestore update semantics, so
+        we read-then-merge-then-write.
+        """
+        with self._stage_timings_lock:
+            snapshot = dict(self._stage_timings)
+        if not snapshot:
+            return
+        try:
+            existing = self.fs.get_collection_status(self.collection_id) or {}
+            run_log = existing.get("run_log") or {}
+            existing_timings = run_log.get("stage_timings") or {}
+            for step_name, stats in snapshot.items():
+                active_window = 0.0
+                if stats["first_batch_start"] is not None:
+                    active_window = stats["last_batch_end"] - stats["first_batch_start"]
+                prev = existing_timings.get(step_name) or {}
+                existing_timings[step_name] = {
+                    "action_cpu_sec_total": round(
+                        prev.get("action_cpu_sec_total", 0.0) + stats["action_cpu_sec_total"], 2,
+                    ),
+                    "active_window_sec": round(
+                        prev.get("active_window_sec", 0.0) + active_window, 2,
+                    ),
+                    "batches_run": prev.get("batches_run", 0) + stats["batches_run"],
+                    "posts_ok": prev.get("posts_ok", 0) + stats["posts_ok"],
+                    "posts_fail": prev.get("posts_fail", 0) + stats["posts_fail"],
+                }
+            run_log["stage_timings"] = existing_timings
+            self.fs.update_collection_status(self.collection_id, run_log=run_log)
+        except Exception:
+            logger.warning(
+                "Failed to persist stage timings for %s",
+                self.collection_id, exc_info=True,
+            )
+
+    def _reconcile_bq_media_refs(self) -> None:
+        """Final-pass sync of media_refs into BQ for every DONE post.
+
+        The per-batch updater is fire-and-forget with a short retry budget;
+        anything that slipped through is caught here. Safe to run unconditionally
+        — the UPDATE is idempotent (same GCS URIs overwrite identically).
+        """
+        try:
+            done_posts = self.state_manager.get_posts_by_state(
+                [PostState.DONE], limit=10000,
+            )
+        except Exception:
+            logger.warning(
+                "Media-refs reconciliation: failed to list DONE posts for %s",
+                self.collection_id, exc_info=True,
+            )
+            return
+        refs = {
+            p["post_id"]: p["media_refs"]
+            for p in done_posts
+            if p.get("media_refs")
+        }
+        if not refs:
+            return
+        logger.info(
+            "Media-refs reconciliation: re-syncing %d posts for %s",
+            len(refs), self.collection_id,
+        )
+        self._update_bq_media_refs(refs)
+
+    def _recount_with_drift_log(self) -> None:
+        """Run state_manager.recount() and log any drift vs. incremental counters.
+
+        The recount is a defensive measure against Increment/post_state drift.
+        If drift is always zero in production, PR-6 can delete it from the
+        happy path.
+        """
+        try:
+            before_counts = self.state_manager.get_counts()
+        except Exception:
+            before_counts = None
+        try:
+            after_counts = self.state_manager.recount()
+        except Exception:
+            logger.warning(
+                "recount() failed for %s", self.collection_id, exc_info=True,
+            )
+            return
+        if before_counts is None:
+            return
+        drift = {
+            k: after_counts.get(k, 0) - before_counts.get(k, 0)
+            for k in set(before_counts) | set(after_counts)
+            if after_counts.get(k, 0) != before_counts.get(k, 0)
+        }
+        if drift:
+            logger.warning(
+                "recount_drift",
+                extra={
+                    "json_fields": {
+                        "event": "recount_drift",
+                        "collection_id": self.collection_id,
+                        "drift": drift,
+                    }
+                },
+            )
+
     # ------------------------------------------------------------------
     # Crash recovery
     # ------------------------------------------------------------------
+
+    def _collect_failure_sample(self) -> tuple[list[str], int]:
+        """Return (sample of up to 20 post_ids in FAILURE_STATES, total failed count).
+
+        Used to surface which posts failed in the collection's error_message so
+        the UI/agent can show users the specific posts that didn't complete,
+        matching the v1 pipeline's behavior.
+        """
+        try:
+            counts = self.state_manager.get_counts()
+        except Exception:
+            return ([], 0)
+        total = sum(counts.get(s.value, 0) for s in FAILURE_STATES)
+        if total == 0:
+            return ([], 0)
+        try:
+            posts = self.state_manager.get_posts_by_state(list(FAILURE_STATES), limit=20)
+        except Exception:
+            return ([], total)
+        return ([p["post_id"] for p in posts], total)
 
     @staticmethod
     def _friendly_error(error: str) -> str:
@@ -953,6 +1353,9 @@ class PipelineRunner:
 
         Best-effort — if even this fails, we log and give up.
         """
+        # Preserve any stage timings accumulated before the crash.
+        self._persist_stage_timings()
+
         try:
             # Reconcile counters so the UI shows accurate numbers
             self.state_manager.recount()
@@ -966,6 +1369,10 @@ class PipelineRunner:
         if self._total_posts_collected > 0:
             final_status = "success"
             friendly = f"{friendly} ({self._total_posts_collected} posts collected before the error.)"
+
+        sample, total_failed = self._collect_failure_sample()
+        if sample:
+            friendly += f" (failed_post_ids={sample}, total={total_failed})"
 
         try:
             self.fs.update_collection_status(
@@ -1076,4 +1483,12 @@ class PipelineRunner:
         if current_status == "failed":
             return
 
-        self.fs.update_collection_status(self.collection_id, status="success")
+        update_kwargs: dict = {"status": "success"}
+        sample, total_failed = self._collect_failure_sample()
+        if total_failed > 0:
+            msg = f"{total_failed} post(s) failed processing. Partial data is available."
+            if sample:
+                msg += f" (failed_post_ids={sample}, total={total_failed})"
+            update_kwargs["error_message"] = msg
+
+        self.fs.update_collection_status(self.collection_id, **update_kwargs)

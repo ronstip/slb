@@ -150,6 +150,7 @@ def download_media_batch(
     gcs_client: GCSClient,
     posts: list[Post],
     collection_id: str,
+    executor: ThreadPoolExecutor | None = None,
 ) -> None:
     """Download media for multiple posts in parallel.
 
@@ -157,6 +158,10 @@ def download_media_batch(
     - refs with gcs_uri: GCS upload succeeded (usable by Gemini for all media types)
     - refs with original_url only: image CDN fallback (usable by Gemini for images)
     - failed videos: dropped (CDN video URLs don't work with Gemini)
+
+    When `executor` is provided (e.g. by PipelineRunner), batches share a single
+    long-lived pool so concurrent batches across the pipeline don't each spin up
+    their own. When None, falls back to a per-call pool (legacy v1 behavior).
     """
     posts_with_media = [p for p in posts if p.media_urls]
     if not posts_with_media:
@@ -170,7 +175,8 @@ def download_media_batch(
     n_gcs_videos = 0
     n_cdn_images = 0
 
-    with ThreadPoolExecutor(max_workers=min(len(posts_with_media), _MAX_MEDIA_WORKERS)) as pool:
+    def _consume(pool: ThreadPoolExecutor) -> None:
+        nonlocal n_gcs_images, n_gcs_videos, n_cdn_images
         futures = {pool.submit(_download_one, p): p for p in posts_with_media}
         for future in as_completed(futures):
             post = futures[future]
@@ -187,6 +193,12 @@ def download_media_batch(
                         n_cdn_images += 1
             except Exception:
                 logger.exception("Media download failed for post %s", post.post_id)
+
+    if executor is not None:
+        _consume(executor)
+    else:
+        with ThreadPoolExecutor(max_workers=min(len(posts_with_media), _MAX_MEDIA_WORKERS)) as pool:
+            _consume(pool)
 
     logger.info(
         "Media download: %d posts — %d images→GCS, %d videos→GCS, %d images CDN-fallback",

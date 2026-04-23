@@ -48,3 +48,11 @@ RETRY_MAP: dict[PostState, PostState] = {
     PostState.ENRICHMENT_FAILED: PostState.READY_FOR_ENRICHMENT,
     PostState.EMBEDDING_FAILED: PostState.ENRICHED,
 }
+
+# Map failure stump states to the step that produced them — used to bump the
+# per-post attempt counter (attempts.<step>) on transition.
+FAILURE_TO_STEP: dict[PostState, str] = {
+    PostState.DOWNLOAD_FAILED: "download",
+    PostState.ENRICHMENT_FAILED: "enrich",
+    PostState.EMBEDDING_FAILED: "embed",
+}

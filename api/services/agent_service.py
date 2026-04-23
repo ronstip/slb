@@ -133,7 +133,7 @@ def dispatch_agent_run(
     """
     from api.schemas.requests import CreateCollectionRequest
     from api.services.collection_service import create_collection_from_request
-    from workers.pipeline_v2.schedule_utils import compute_next_run_at
+    from workers.pipeline.schedule_utils import compute_next_run_at
     from api.agent.workflow_template import build_workflow_template, progress_automated_steps
 
     fs = get_fs()

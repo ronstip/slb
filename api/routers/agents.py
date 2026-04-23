@@ -265,7 +265,7 @@ async def update_agent_endpoint(
     if "schedule" in safe_updates and effective_agent_type == "recurring":
         new_schedule = safe_updates["schedule"]
         if new_schedule and isinstance(new_schedule, dict) and new_schedule.get("frequency"):
-            from workers.pipeline_v2.schedule_utils import compute_next_run_at
+            from workers.pipeline.schedule_utils import compute_next_run_at
             now = datetime.now(timezone.utc)
             safe_updates["next_run_at"] = compute_next_run_at(new_schedule["frequency"], now)
 
@@ -297,7 +297,7 @@ async def approve_agent_protocol(
     Legacy endpoint kept for backwards compat. New flow uses start_agent tool directly.
     """
     from api.services.agent_service import create_agent, dispatch_agent_run, update_agent
-    from workers.pipeline_v2.schedule_utils import compute_next_run_at
+    from workers.pipeline.schedule_utils import compute_next_run_at
 
     title = request.get("title", "Untitled Agent")
     agent_type = request.get("agent_type", "one_shot")
