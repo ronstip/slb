@@ -1,8 +1,12 @@
 import { apiGet } from '../client.ts';
-import type { TopicCluster, TopicAnalytics, TopicPost } from '../types.ts';
+import type { TopicCluster, TopicAnalytics, TopicPost, TopicsNarrative } from '../types.ts';
 
 export async function getAgentTopics(agentId: string): Promise<TopicCluster[]> {
   return apiGet(`/agents/${agentId}/topics`);
+}
+
+export async function getAgentTopicsNarrative(agentId: string): Promise<TopicsNarrative | null> {
+  return apiGet(`/agents/${agentId}/topics/narrative`);
 }
 
 export async function getAgentTopicAnalytics(

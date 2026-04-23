@@ -6,6 +6,7 @@ export function useAgentDetail(taskId: string | undefined) {
     queryKey: ['agent-detail', taskId],
     queryFn: () => getAgent(taskId!),
     enabled: !!taskId,
+    staleTime: 5 * 60_000,
     refetchInterval: (query) => {
       const s = query.state.data?.status;
       return s === 'running' ? 20_000 : false;
@@ -16,12 +17,14 @@ export function useAgentDetail(taskId: string | undefined) {
     queryKey: ['agent-artifacts', taskId],
     queryFn: () => getAgentArtifacts(taskId!),
     enabled: !!taskId,
+    staleTime: 5 * 60_000,
   });
 
   const logsQuery = useQuery({
     queryKey: ['agent-logs', taskId],
     queryFn: () => getAgentLogs(taskId!),
     enabled: !!taskId,
+    staleTime: 5 * 60_000,
     refetchInterval: () => {
       const s = taskQuery.data?.status;
       return s === 'running' ? 15_000 : false;

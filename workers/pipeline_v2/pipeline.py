@@ -7,9 +7,14 @@ from workers.pipeline_v2.runner import PipelineRunner
 logger = logging.getLogger(__name__)
 
 
-def run_pipeline_v2(collection_id: str) -> None:
-    """Run the post-level DAG pipeline for a collection."""
-    runner = PipelineRunner(collection_id)
+def run_pipeline_v2(collection_id: str, continuation: bool = False) -> None:
+    """Run the post-level DAG pipeline for a collection.
+
+    When continuation=True, the runner skips the crawl phase and picks up
+    remaining non-terminal posts — used when the prior run hit the soft
+    timeout and self-rescheduled.
+    """
+    runner = PipelineRunner(collection_id, continuation=continuation)
     runner.run()
 
 

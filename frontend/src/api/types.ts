@@ -607,6 +607,13 @@ export interface TopicCluster {
   recency_score?: number;
 }
 
+export interface TopicsNarrative {
+  headline: string;
+  narrative: string;
+  generated_at: string;
+  topic_count: number;
+}
+
 export interface TopicAnalyticsTotals {
   post_count: number;
   positive_count: number;

@@ -76,13 +76,16 @@ function dominantSentiment(topic: TopicCluster) {
 
 function resolveThumbnail(topic: TopicCluster): string | null {
   if (topic.thumbnail_gcs_uri) return mediaUrl(topic.thumbnail_gcs_uri);
-  if (topic.thumbnail_url) return mediaUrl(undefined, topic.thumbnail_url);
+  // External CDN URLs (TikTok etc.) load fine in <img> tags — browser is exempt
+  // from CORS. Routing through /media-proxy fails because platform CDNs 403 the
+  // server IP. Match PostCard (feed) which also uses the raw URL.
+  if (topic.thumbnail_url) return topic.thumbnail_url;
   return null;
 }
 
 function resolvePostThumbnail(post: TopicPost): string | null {
   if (post.thumbnail_gcs_uri) return mediaUrl(post.thumbnail_gcs_uri);
-  if (post.thumbnail_url) return mediaUrl(undefined, post.thumbnail_url);
+  if (post.thumbnail_url) return post.thumbnail_url;
   return null;
 }
 

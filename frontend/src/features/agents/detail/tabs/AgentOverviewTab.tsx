@@ -27,7 +27,7 @@ import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
 import { listAgentRuns } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLogCompact, AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
-import { getCollectionStatus, getCollectionStats } from '../../../../api/endpoints/collections.ts';
+import { getCollectionStatus, getCollectionStats, refreshCollectionStats } from '../../../../api/endpoints/collections.ts';
 import { StatusBadge, formatDate } from '../agent-status-utils.tsx';
 import { Globe, Tag } from 'lucide-react';
 import { PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS } from '../../../../lib/constants.ts';
@@ -509,13 +509,21 @@ function SourcesSection({ task }: { task: Agent }) {
   }
   const uniquePlatforms = Object.keys(platformCounts);
 
-  // Fetch real stats from collections
+  // Fetch real stats from collections.
+  // While the agent is running, force-refresh (recomputes from BQ) on a short
+  // interval so per-platform counts track live progress. Otherwise use the
+  // cached signature for fast, cheap reads.
   const collectionIds = task.collection_ids ?? [];
+  const isRunning = task.status === 'running';
   const { data: allStats } = useQuery({
-    queryKey: ['agent-source-stats', task.agent_id, collectionIds],
-    queryFn: () => Promise.all(collectionIds.map((id) => getCollectionStats(id))),
+    queryKey: ['agent-source-stats', task.agent_id, collectionIds, isRunning],
+    queryFn: () =>
+      Promise.all(
+        collectionIds.map((id) => (isRunning ? refreshCollectionStats(id) : getCollectionStats(id))),
+      ),
     enabled: collectionIds.length > 0,
-    staleTime: 5 * 60 * 1000,
+    staleTime: isRunning ? 0 : 5 * 60 * 1000,
+    refetchInterval: isRunning ? 30_000 : false,
   });
 
   // Aggregate per-platform totals and last-3-day counts from collection stats
@@ -796,7 +804,6 @@ function SourcesSummaryView({
   platformPostTotals: Record<string, number>;
   platformPostsLast3d: Record<string, number>;
 }) {
-  const hasStats = Object.keys(platformPostTotals).length > 0;
   return (
     <div>
       {/* Table */}
@@ -819,7 +826,7 @@ function SourcesSummaryView({
                   ? search.keywords.join(', ')
                   : `${search.keywords.slice(0, 3).join(', ')}, +${search.keywords.length - 3}`
                 : '—';
-            const posts = hasStats ? (platformPostTotals[platform] ?? 0) : (search.n_posts || 0);
+            const posts = platformPostTotals[platform] ?? 0;
             const last3d = platformPostsLast3d[platform] ?? 0;
             return (
               <tr key={key} className="border-b border-border/20 last:border-b-0">
@@ -840,7 +847,7 @@ function SourcesSummaryView({
                   </span>
                 </td>
                 <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(posts)}</td>
-                <td className="py-1.5 text-right text-muted-foreground tabular-nums">{hasStats ? formatNumber(last3d) : '—'}</td>
+                <td className="py-1.5 text-right text-muted-foreground tabular-nums">{formatNumber(last3d)}</td>
               </tr>
             );
           })}

@@ -44,12 +44,16 @@ def _post_to_enrichment_data(post):
     )
 
 
-def run_pipeline(collection_id: str) -> None:
-    """Run collection + parallel enrichment + embedding pipeline."""
+def run_pipeline(collection_id: str, continuation: bool = False) -> None:
+    """Run collection + parallel enrichment + embedding pipeline.
+
+    continuation=True resumes a prior run that hit the soft timeout
+    (Pipeline V2 only — legacy pipeline doesn't support continuations).
+    """
     settings = get_settings()
     if settings.use_pipeline_v2:
         from workers.pipeline_v2.pipeline import run_pipeline_v2
-        return run_pipeline_v2(collection_id)
+        return run_pipeline_v2(collection_id, continuation=continuation)
 
     fs = FirestoreClient(settings)
     bq = BQClient(settings)

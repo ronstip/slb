@@ -14,6 +14,7 @@ export function TopicsFeed({ agentId, onViewPosts, onTopicCount }: TopicsFeedPro
     queryKey: ['topics', agentId],
     queryFn: () => getAgentTopics(agentId),
     enabled: !!agentId,
+    staleTime: 5 * 60_000,
   });
 
   // Report topic count to parent
@@ -73,7 +74,9 @@ export function TopicsFeed({ agentId, onViewPosts, onTopicCount }: TopicsFeedPro
         <div className="h-px flex-1 bg-border" />
       </div>
       {topTopics.map((topic, i) => (
-        <TopicCard key={topic.cluster_id} topic={topic} agentId={agentId} rank={i + 1} onViewPosts={onViewPosts} />
+        <div key={topic.cluster_id} id={`topic-card-${topic.cluster_id}`} className="scroll-mt-4">
+          <TopicCard topic={topic} agentId={agentId} rank={i + 1} onViewPosts={onViewPosts} />
+        </div>
       ))}
 
       {otherTopics.length > 0 && (
@@ -86,7 +89,9 @@ export function TopicsFeed({ agentId, onViewPosts, onTopicCount }: TopicsFeedPro
             <div className="h-px flex-1 bg-border" />
           </div>
           {otherTopics.map((topic, i) => (
-            <TopicCard key={topic.cluster_id} topic={topic} agentId={agentId} rank={TOP_N + i + 1} onViewPosts={onViewPosts} />
+            <div key={topic.cluster_id} id={`topic-card-${topic.cluster_id}`} className="scroll-mt-4">
+              <TopicCard topic={topic} agentId={agentId} rank={TOP_N + i + 1} onViewPosts={onViewPosts} />
+            </div>
           ))}
         </>
       )}

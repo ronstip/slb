@@ -27,17 +27,24 @@ app = FastAPI(title="SL Workers")
 
 @app.post("/collection/run")
 async def run_collection_handler(request: Request):
-    """Run the collection worker for a given collection_id."""
+    """Run the collection worker for a given collection_id.
+
+    Accepts `continuation=true` to resume a prior run that hit the soft timeout
+    (Pipeline V2 self-rescheduling).
+    """
     body = await request.json()
     collection_id = body.get("collection_id")
+    continuation = bool(body.get("continuation", False))
     if not collection_id:
         return JSONResponse(status_code=400, content={"error": "collection_id required"})
 
-    logger.info("Starting collection worker for %s", collection_id)
+    logger.info(
+        "Starting collection worker for %s (continuation=%s)", collection_id, continuation,
+    )
     try:
         from workers.pipeline import run_pipeline
 
-        run_pipeline(collection_id)
+        run_pipeline(collection_id, continuation=continuation)
         logger.info("Collection worker completed for %s", collection_id)
         return {"status": "ok", "collection_id": collection_id}
     except Exception as e:

@@ -11,6 +11,7 @@ import json
 import logging
 import threading
 import time as _time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -33,13 +34,15 @@ from workers.shared.gcs_client import GCSClient
 logger = logging.getLogger(__name__)
 
 PIPELINE_LOOP_TIMEOUT = 3500  # Just under Cloud Run timeout (3600s) to allow graceful cleanup
+PIPELINE_LOOP_SOFT_TIMEOUT = 3000  # Self-reschedule threshold (~50 min) — leaves headroom to finish in-flight batches and enqueue a continuation
 
 
 class PipelineRunner:
     """Runs the post-level DAG pipeline for a single collection."""
 
-    def __init__(self, collection_id: str):
+    def __init__(self, collection_id: str, continuation: bool = False):
         self.collection_id = collection_id
+        self.continuation = continuation
         self.settings = get_settings()
         self.bq = BQClient(self.settings)
         self.fs = FirestoreClient(self.settings)
@@ -53,6 +56,7 @@ class PipelineRunner:
         self._custom_fields = None
         self._enrichment_context: str | None = None
         self._total_posts_collected = 0
+        self._continuation_scheduled = False
 
     def run(self) -> None:
         """Main entry point — runs the full pipeline.
@@ -113,6 +117,10 @@ class PipelineRunner:
 
         Returns True if this instance should proceed, False if it should abort.
         Prevents the Cloud Tasks retry loop that caused 17x duplicate runs in production.
+
+        Continuation runs (enqueued by this runner when it approaches the Cloud
+        Run timeout) bypass the active-run guard — the previous instance has
+        already exited and cleared its run_id before dispatching the task.
         """
         TERMINAL_STATUSES = {"success", "failed"}
         ACTIVE_STATUSES = {"running"}
@@ -127,7 +135,8 @@ class PipelineRunner:
         status_doc = raw_doc.to_dict()
         current_status = status_doc.get("status", "")
 
-        # Already finished — don't re-run
+        # Already finished — don't re-run (even for continuations; a successful
+        # prior run means nothing is left to do)
         if current_status in TERMINAL_STATUSES:
             logger.info(
                 "Pipeline lock: %s already in terminal state '%s' — skipping duplicate run",
@@ -136,7 +145,7 @@ class PipelineRunner:
             return False
 
         # Another instance may be running — check if it's recent
-        if current_status in ACTIVE_STATUSES:
+        if current_status in ACTIVE_STATUSES and not self.continuation:
             updated_at = status_doc.get("updated_at")
             if updated_at:
                 if isinstance(updated_at, str):
@@ -182,16 +191,24 @@ class PipelineRunner:
         self._load_config()
         self._load_custom_fields()
 
-        self._log_task(f"Collection {self.collection_id[:8]}: starting data collection")
+        if self.continuation:
+            self._log_task(
+                f"Collection {self.collection_id[:8]}: resuming pipeline (continuation)",
+                metadata={"phase": "processing", "continuation": True},
+            )
+        else:
+            self._log_task(f"Collection {self.collection_id[:8]}: starting data collection")
 
-        # Initialize counts on the Firestore doc
-        self.fs.update_collection_status(
-            self.collection_id,
-            status="running",
-            counts={},
-            total_posts_in_dag=0,
-            crawlers={},
-        )
+        # Continuations skip re-init — posts are already in the DAG from the prior run.
+        # Fresh runs reset DAG counters on the Firestore doc.
+        if not self.continuation:
+            self.fs.update_collection_status(
+                self.collection_id,
+                status="running",
+                counts={},
+                total_posts_in_dag=0,
+                crawlers={},
+            )
 
         # Build step context
         ctx = StepContext(
@@ -204,19 +221,34 @@ class PipelineRunner:
             settings=self.settings,
         )
 
-        # Start crawl in background
-        crawl_thread = threading.Thread(
-            target=self._crawl,
-            daemon=True,
-            name=f"crawl-{self.collection_id[:8]}",
-        )
-        crawl_thread.start()
+        crawl_thread: threading.Thread | None = None
+        if self.continuation:
+            # Continuation: crawl is already done in the prior run. Mark it complete
+            # so the processing loop can exit when all posts are terminal.
+            self._crawl_complete.set()
+            self._total_posts_collected = self.state_manager.get_total_posts()
+        else:
+            crawl_thread = threading.Thread(
+                target=self._crawl,
+                daemon=True,
+                name=f"crawl-{self.collection_id[:8]}",
+            )
+            crawl_thread.start()
 
-        # Run processing loop (overlaps with crawl)
+        # Run processing loop (overlaps with crawl on fresh runs)
         self._run_loop(ctx)
 
         # Wait for crawl thread to finish (should already be done)
-        crawl_thread.join(timeout=10)
+        if crawl_thread is not None:
+            crawl_thread.join(timeout=10)
+
+        # Self-rescheduled continuation — exit cleanly, leave status=running for next run
+        if self._continuation_scheduled:
+            logger.info(
+                "Pipeline %s handed off to continuation after %.1fs",
+                self.collection_id, _time.monotonic() - pipeline_start,
+            )
+            return
 
         # Check if cancelled or failed
         status = self.fs.get_collection_status(self.collection_id)
@@ -265,6 +297,66 @@ class PipelineRunner:
             self.collection_id,
             _time.monotonic() - pipeline_start,
         )
+
+    def _schedule_continuation(self) -> bool:
+        """Enqueue a Cloud Task to resume this pipeline. Returns True on success.
+
+        Called when the processing loop approaches the Cloud Run timeout. The
+        continuation picks up remaining non-terminal posts without re-running
+        the crawl.
+        """
+        try:
+            from google.cloud import tasks_v2
+        except Exception:
+            logger.exception("Cannot import tasks_v2 — continuation not scheduled for %s", self.collection_id)
+            return False
+
+        worker_url = (self.settings.worker_service_url or "").rstrip("/")
+        if not worker_url:
+            logger.warning(
+                "worker_service_url not set — cannot schedule continuation for %s",
+                self.collection_id,
+            )
+            return False
+
+        try:
+            # Clear pipeline_run_id so the continuation can acquire the lock cleanly
+            self.fs.update_collection_status(self.collection_id, pipeline_run_id="")
+
+            client = tasks_v2.CloudTasksClient()
+            parent = client.queue_path(
+                self.settings.gcp_project_id,
+                self.settings.gcp_region,
+                self.settings.cloud_tasks_queue,
+            )
+            http_request = {
+                "http_method": tasks_v2.HttpMethod.POST,
+                "url": f"{worker_url}/collection/run",
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({
+                    "collection_id": self.collection_id,
+                    "continuation": True,
+                }).encode(),
+            }
+            if self.settings.cloud_tasks_service_account:
+                http_request["oidc_token"] = {
+                    "service_account_email": self.settings.cloud_tasks_service_account,
+                    "audience": worker_url,
+                }
+            task = {
+                "http_request": http_request,
+                "dispatch_deadline": {"seconds": 1800},
+            }
+            client.create_task(parent=parent, task=task)
+            logger.info("Dispatched continuation Cloud Task for %s", self.collection_id)
+            self._log_task(
+                "Processing will continue in a follow-up run (time budget exceeded)",
+                metadata={"phase": "processing", "continuation": True},
+            )
+            return True
+        except Exception:
+            logger.exception("Failed to schedule continuation for %s", self.collection_id)
+            return False
 
     # ------------------------------------------------------------------
     # Config loading
@@ -618,125 +710,166 @@ class PipelineRunner:
     # Processing loop
     # ------------------------------------------------------------------
 
+    def _run_step(self, step, ctx: StepContext) -> bool:
+        """Execute one step iteration. Returns True if it did any work.
+
+        Safe to run concurrently with other steps: each step reads a disjoint
+        input state and writes a disjoint output state, so no two steps pick
+        up the same post. Firestore Increment counters are atomic.
+        """
+        try:
+            ready = self.state_manager.get_posts_by_state(
+                step.input_states, limit=step.batch_size
+            )
+        except Exception:
+            logger.warning(
+                "Transient error querying state for step '%s' in %s, skipping iteration",
+                step.name, self.collection_id, exc_info=True,
+            )
+            return False
+
+        if not ready:
+            return False
+
+        logger.info("Step '%s': processing %d posts", step.name, len(ready))
+
+        try:
+            results = step.action(ready, ctx)
+        except Exception:
+            logger.exception("Step '%s' crashed for %s", step.name, self.collection_id)
+            results = [(p["post_id"], "fail", None) for p in ready]
+
+        transitions: list[tuple[str, PostState]] = []
+        media_refs: dict[str, list[dict]] = {}
+        for post_id, outcome, extra in results:
+            new_state = step.success_state if outcome == "ok" else step.failure_state
+            transitions.append((post_id, new_state))
+            if extra and "media_refs" in extra:
+                media_refs[post_id] = extra["media_refs"]
+
+        try:
+            self.state_manager.transition_batch(transitions, media_refs=media_refs)
+        except Exception:
+            logger.exception(
+                "Failed to transition %d posts for step '%s' in %s",
+                len(transitions), step.name, self.collection_id,
+            )
+            return True  # attempted work — posts will be re-picked up next iter
+
+        # After download step, persist GCS URIs back to BQ in the background
+        if step.name == "download" and media_refs:
+            refs_copy = dict(media_refs)
+            threading.Thread(
+                target=self._update_bq_media_refs,
+                args=(refs_copy,),
+                daemon=True,
+                name=f"bq-media-update-{self.collection_id[:8]}",
+            ).start()
+
+        return True
+
+    def _log_progress(self) -> None:
+        """Periodic progress log — called once per loop iter, not per step."""
+        counts = self.state_manager.get_counts()
+        done = counts.get("DONE", 0)
+        total = self.state_manager.get_total_posts()
+        enriched = counts.get("ENRICHED", 0) + done
+        downloading = counts.get("COLLECTED_WITH_MEDIA", 0)
+        if total <= 0:
+            return
+        self.fs.update_collection_status(
+            self.collection_id, posts_enriched=enriched,
+        )
+        parts = [f"{enriched}/{total} posts enriched"]
+        if downloading > 0:
+            parts.append(f"{downloading} downloading media")
+        msg = f"Processing: {', '.join(parts)}"
+        if not hasattr(self, "_last_progress_msg") or self._last_progress_msg != msg:
+            self._last_progress_msg = msg
+            self._log_task(
+                msg,
+                metadata={"phase": "processing", "enriched": enriched, "downloading": downloading, "total": total},
+            )
+
     def _run_loop(self, ctx: StepContext) -> None:
-        """Process posts through DAG steps until all terminal or timeout."""
+        """Process posts through DAG steps until all terminal or timeout.
+
+        Steps run concurrently per iteration via a ThreadPoolExecutor — download,
+        enrich, and embed pull from disjoint input states, so while enrich waits
+        on Gemini (the long pole), download keeps filling its queue.
+        """
         logger.info("── Processing loop started for %s", self.collection_id)
         loop_start = _time.monotonic()
         last_progress_log = 0.0  # monotonic timestamp of last progress log
 
-        while True:
-            # Check timeout
-            elapsed = _time.monotonic() - loop_start
-            if elapsed > PIPELINE_LOOP_TIMEOUT:
-                logger.error(
-                    "Processing loop timed out for %s after %.0fs", self.collection_id, elapsed
-                )
-                break
+        with ThreadPoolExecutor(
+            max_workers=len(PIPELINE_STEPS),
+            thread_name_prefix=f"dag-{self.collection_id[:8]}",
+        ) as step_pool:
+            while True:
+                elapsed = _time.monotonic() - loop_start
 
-            # Check cancellation / failure (with resilience to transient Firestore errors)
-            try:
-                status = self.fs.get_collection_status(self.collection_id)
-            except Exception:
-                logger.warning("Transient error reading status for %s, continuing", self.collection_id, exc_info=True)
-                status = None
-
-            if status and status.get("status") == "failed":
-                logger.info("Pipeline %s cancelled during processing", self.collection_id)
-                return
-
-            if status and status.get("status") == "failed":
-                logger.info("Pipeline %s failed during crawl, stopping loop", self.collection_id)
-                return
-
-            any_work = False
-            for step in PIPELINE_STEPS:
-                try:
-                    ready = self.state_manager.get_posts_by_state(
-                        step.input_states, limit=step.batch_size
+                # Hard timeout — should never hit this in normal runs now that
+                # the soft timeout self-reschedules a continuation first.
+                if elapsed > PIPELINE_LOOP_TIMEOUT:
+                    logger.error(
+                        "Processing loop timed out for %s after %.0fs", self.collection_id, elapsed
                     )
+                    break
+
+                # Soft timeout — self-reschedule a continuation if posts remain.
+                if (
+                    elapsed > PIPELINE_LOOP_SOFT_TIMEOUT
+                    and not self._continuation_scheduled
+                    and not self.state_manager.all_posts_terminal()
+                ):
+                    logger.info(
+                        "Soft-timeout reached for %s at %.0fs — enqueueing continuation",
+                        self.collection_id, elapsed,
+                    )
+                    if self._schedule_continuation():
+                        self._continuation_scheduled = True
+                        break
+
+                # Check cancellation / failure (resilient to transient Firestore errors)
+                try:
+                    status = self.fs.get_collection_status(self.collection_id)
                 except Exception:
                     logger.warning(
-                        "Transient error querying state for step '%s' in %s, skipping iteration",
-                        step.name, self.collection_id, exc_info=True,
+                        "Transient error reading status for %s, continuing",
+                        self.collection_id, exc_info=True,
                     )
-                    continue
+                    status = None
 
-                if not ready:
-                    continue
+                if status and status.get("status") == "failed":
+                    logger.info("Pipeline %s cancelled during processing", self.collection_id)
+                    return
 
-                any_work = True
-                logger.info(
-                    "Step '%s': processing %d posts", step.name, len(ready)
-                )
+                # Run all steps concurrently — they pull disjoint input states
+                futures = [
+                    step_pool.submit(self._run_step, step, ctx)
+                    for step in PIPELINE_STEPS
+                ]
+                any_work = False
+                for f in futures:
+                    try:
+                        if f.result():
+                            any_work = True
+                    except Exception:
+                        logger.exception("Step future raised for %s", self.collection_id)
 
-                try:
-                    results = step.action(ready, ctx)
-                except Exception:
-                    logger.exception("Step '%s' crashed for %s", step.name, self.collection_id)
-                    # Move all posts to failure state
-                    results = [(p["post_id"], "fail", None) for p in ready]
-
-                # Build transitions
-                transitions: list[tuple[str, PostState]] = []
-                media_refs: dict[str, list[dict]] = {}
-                for post_id, outcome, extra in results:
-                    new_state = step.success_state if outcome == "ok" else step.failure_state
-                    transitions.append((post_id, new_state))
-                    if extra and "media_refs" in extra:
-                        media_refs[post_id] = extra["media_refs"]
-
-                try:
-                    self.state_manager.transition_batch(transitions, media_refs=media_refs)
-                except Exception:
-                    logger.exception(
-                        "Failed to transition %d posts for step '%s' in %s",
-                        len(transitions), step.name, self.collection_id,
-                    )
-                    # Don't crash the loop — posts will be re-picked up next iteration
-                    continue
-
-                # Periodic progress log to task activity (every 30s, skip duplicates)
+                # Periodic progress log (once per iter)
                 now = _time.monotonic()
-                if now - last_progress_log > 30:
+                if any_work and now - last_progress_log > 30:
                     last_progress_log = now
-                    counts = self.state_manager.get_counts()
-                    done = counts.get("DONE", 0)
-                    total = self.state_manager.get_total_posts()
-                    enriched = counts.get("ENRICHED", 0) + done
-                    downloading = counts.get("COLLECTED_WITH_MEDIA", 0)
-                    if total > 0:
-                        # Update posts_enriched on collection_status so frontend shows progress
-                        self.fs.update_collection_status(
-                            self.collection_id, posts_enriched=enriched,
-                        )
-                        # Build informative progress message
-                        parts = [f"{enriched}/{total} posts enriched"]
-                        if downloading > 0:
-                            parts.append(f"{downloading} downloading media")
-                        msg = f"Processing: {', '.join(parts)}"
-                        if not hasattr(self, "_last_progress_msg") or self._last_progress_msg != msg:
-                            self._last_progress_msg = msg
-                            self._log_task(
-                                msg,
-                                metadata={"phase": "processing", "enriched": enriched, "downloading": downloading, "total": total},
-                            )
+                    self._log_progress()
 
-                # After download step, persist GCS URIs back to BQ (background — don't block loop)
-                if step.name == "download" and media_refs:
-                    refs_copy = dict(media_refs)
-                    threading.Thread(
-                        target=self._update_bq_media_refs,
-                        args=(refs_copy,),
-                        daemon=True,
-                        name=f"bq-media-update-{self.collection_id[:8]}",
-                    ).start()
-
-            if not any_work:
-                if self._crawl_complete.is_set() and self.state_manager.all_posts_terminal():
-                    break
-                if self._crawl_complete.is_set() and self.state_manager.get_total_posts() == 0:
-                    break
-                _time.sleep(1)
+                if not any_work:
+                    if self._crawl_complete.is_set() and self.state_manager.all_posts_terminal():
+                        break
+                    if self._crawl_complete.is_set() and self.state_manager.get_total_posts() == 0:
+                        break
+                    _time.sleep(1)
 
         logger.info("── Processing loop complete for %s", self.collection_id)
 
