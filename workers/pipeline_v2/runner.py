@@ -55,6 +55,7 @@ class PipelineRunner:
         self._status_doc: dict = {}
         self._custom_fields = None
         self._enrichment_context: str | None = None
+        self._content_types: list[str] | None = None
         self._total_posts_collected = 0
         self._continuation_scheduled = False
 
@@ -219,12 +220,17 @@ class PipelineRunner:
             custom_fields=self._custom_fields,
             enrichment_context=self._enrichment_context,
             settings=self.settings,
+            content_types=self._content_types,
         )
 
         crawl_thread: threading.Thread | None = None
         if self.continuation:
             # Continuation: crawl is already done in the prior run. Mark it complete
             # so the processing loop can exit when all posts are terminal.
+            # If the DAG is empty (e.g. continuation dispatched by snapshot recovery
+            # after the original run exited before seeding), seed from BQ now.
+            if self.state_manager.get_total_posts() == 0:
+                self._seed_post_states_from_bq()
             self._crawl_complete.set()
             self._total_posts_collected = self.state_manager.get_total_posts()
         else:
@@ -385,6 +391,9 @@ class PipelineRunner:
         if raw_cf:
             self._custom_fields = [CustomFieldDef(**f) for f in raw_cf]
         self._enrichment_context = self._config.get("enrichment_context")
+        raw_ct = self._config.get("content_types")
+        if raw_ct:
+            self._content_types = [str(t).strip() for t in raw_ct if str(t).strip()]
 
     # ------------------------------------------------------------------
     # Crawl recovery
@@ -403,7 +412,8 @@ class PipelineRunner:
             return
 
         rows = self.bq.query(
-            "SELECT post_id, platform, post_url, title, content, media_refs "
+            "SELECT post_id, platform, channel_handle, post_url, posted_at, "
+            "post_type, title, content, media_refs "
             "FROM social_listening.posts WHERE collection_id = @cid",
             {"cid": self.collection_id},
         )
@@ -433,10 +443,14 @@ class PipelineRunner:
                         if url:
                             media_urls.append(url)
 
+            posted_at = r.get("posted_at") or datetime.now(timezone.utc)
             posts.append(Post(
                 post_id=r["post_id"],
-                platform=r.get("platform", ""),
-                post_url=r.get("post_url", ""),
+                platform=r.get("platform", "") or "",
+                channel_handle=r.get("channel_handle", "") or "",
+                post_url=r.get("post_url", "") or "",
+                posted_at=posted_at,
+                post_type=r.get("post_type", "") or "",
                 title=r.get("title"),
                 content=r.get("content"),
                 media_urls=media_urls,

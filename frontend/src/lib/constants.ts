@@ -21,6 +21,7 @@ export const TOOL_CATEGORY: Record<string, ToolCategory> = {
   // Outputs — deliverables
   create_chart: 'outputs',
   generate_dashboard: 'outputs',
+  compose_dashboard: 'outputs',
   generate_presentation: 'outputs',
   export_data: 'outputs',
   compose_email: 'outputs',
@@ -41,6 +42,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   get_table_info: 'Inspecting table schema',
   list_table_ids: 'Discovering tables',
   generate_dashboard: 'Creating interactive dashboard',
+  compose_dashboard: 'Composing custom dashboard',
   generate_presentation: 'Building presentation deck',
   ask_user: 'Preparing questions',
   start_agent: 'Starting agent',

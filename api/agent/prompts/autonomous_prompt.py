@@ -8,6 +8,7 @@ dashboards, presentations) without user interaction.
 from api.agent.prompts.shared import (
     ANALYSIS_METHODOLOGY,
     BIGQUERY_ESSENTIALS,
+    DASHBOARD_AUTHORING,
     ENRICHMENT_FIELDS,
     OUTPUT_STYLE,
     POST_FIELDS,
@@ -197,6 +198,8 @@ AUTONOMOUS_STATIC_PROMPT = f"""{_IDENTITY}
 {BIGQUERY_ESSENTIALS}
 
 {ANALYSIS_METHODOLOGY}
+
+{DASHBOARD_AUTHORING}
 
 {PRESENTATIONS}
 

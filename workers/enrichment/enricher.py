@@ -13,11 +13,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
 from google.genai import types
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, create_model
+from pydantic import AfterValidator, BaseModel, create_model
 
 from config.settings import get_settings
+from workers.enrichment.normalize import normalize_labels
 from workers.enrichment.schema import CustomFieldDef, EnrichmentResult, PostData
 
 logger = logging.getLogger(__name__)
@@ -195,6 +196,8 @@ def _build_custom_fields_model(custom_fields: list[CustomFieldDef]) -> type[Base
     for f in custom_fields:
         if f.type == "literal" and f.options:
             python_type = Literal[tuple(f.options)]
+        elif f.type == "list[str]":
+            python_type = Annotated[list[str], AfterValidator(normalize_labels)]
         else:
             python_type = _CUSTOM_FIELD_TYPE_MAP.get(f.type)
             if python_type is None:
@@ -207,22 +210,38 @@ def _build_custom_fields_model(custom_fields: list[CustomFieldDef]) -> type[Base
 
 def _build_response_schema(
     custom_fields: list[CustomFieldDef] | None = None,
+    content_types: list[str] | None = None,
 ) -> type[BaseModel]:
-    """Build the response schema, optionally with typed custom fields.
+    """Build the response schema, optionally with typed custom fields and a
+    closed `content_type` vocabulary.
 
     When custom fields are defined, creates a subclass of EnrichmentResult that
     replaces the vague `dict | None` with a specific typed model. This ensures
     Gemini's structured output returns exactly the right field names and types.
+
+    When content_types is provided, overrides the free-form `content_type: str`
+    field with `Literal[tuple(content_types)]` so Gemini must pick one. The
+    list is normalized (lowercased + deduped) before being used.
     """
-    if not custom_fields:
+    overrides: dict = {}
+
+    if content_types:
+        # Lowercase + dedup (preserves agent's intent without extra cardinality)
+        normalized = list(dict.fromkeys(t.strip().lower() for t in content_types if t.strip()))
+        if normalized:
+            overrides["content_type"] = (Literal[tuple(normalized)], ...)
+
+    if custom_fields:
+        CustomFieldsModel = _build_custom_fields_model(custom_fields)
+        overrides["custom_fields"] = (CustomFieldsModel | None, None)
+
+    if not overrides:
         return EnrichmentResult
 
-    CustomFieldsModel = _build_custom_fields_model(custom_fields)
-
     return create_model(
-        "EnrichmentResultWithCustomFields",
+        "EnrichmentResultDynamic",
         __base__=EnrichmentResult,
-        custom_fields=(CustomFieldsModel | None, None),
+        **overrides,
     )
 
 
@@ -315,6 +334,7 @@ def _build_content_parts(
 
 def _build_config(
     custom_fields: list[CustomFieldDef] | None = None,
+    content_types: list[str] | None = None,
 ) -> types.GenerateContentConfig:
     """Build GenerateContentConfig from settings, with optional dynamic schema."""
     settings = get_settings()
@@ -328,7 +348,7 @@ def _build_config(
     if settings.enrichment_search:
         tools.append(types.Tool(google_search=types.GoogleSearch()))
 
-    response_schema = _build_response_schema(custom_fields)
+    response_schema = _build_response_schema(custom_fields, content_types)
 
     config = types.GenerateContentConfig(
         temperature=settings.enrichment_temperature,
@@ -472,12 +492,14 @@ def enrich_posts(
     posts: list[PostData],
     custom_fields: list[CustomFieldDef] | None = None,
     enrichment_context: str | None = None,
+    content_types: list[str] | None = None,
 ) -> list[tuple[str, EnrichmentResult]]:
     """Enrich a batch of posts via Gemini API.
 
     All configuration (model, concurrency, search, media resolution, etc.)
     is read from settings / env vars. custom_fields is per-collection runtime
-    data passed from the collection config.
+    data passed from the collection config. content_types is the per-agent
+    closed vocabulary for the content_type field.
 
     Returns list of (post_id, EnrichmentResult) for successfully enriched posts.
     Failed posts are logged and skipped.
@@ -494,7 +516,7 @@ def enrich_posts(
         http_options=types.HttpOptions(timeout=300_000),  # 300s max per call — video analysis can take >120s
     )
     model = settings.enrichment_model
-    config = _build_config(custom_fields)
+    config = _build_config(custom_fields, content_types)
 
     # Log media availability so we can verify videos reach Gemini
     n_images = sum(

@@ -9,6 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
+from workers.enrichment.normalize import normalize_label, normalize_labels
+
 
 class MediaRef(BaseModel):
     """A single media attachment — GCS URI preferred, original CDN URL as fallback."""
@@ -80,3 +82,18 @@ class EnrichmentResult(BaseModel):
     detected_brands: list[str] = []
     channel_type: Literal["official", "media", "influencer", "ugc"] = "ugc"
     custom_fields: dict | None = None
+
+    @field_validator("entities", "themes", "detected_brands")
+    @classmethod
+    def _normalize_label_lists(cls, v: list[str]) -> list[str]:
+        return normalize_labels(v)
+
+    @field_validator("content_type", mode="before")
+    @classmethod
+    def _normalize_content_type(cls, v) -> str:
+        # mode=before so this runs BEFORE Literal[...] validation when the
+        # dynamic subclass narrows content_type to a closed vocabulary —
+        # otherwise mixed-case input would get rejected before normalization.
+        if not isinstance(v, str):
+            return v
+        return normalize_label(v)

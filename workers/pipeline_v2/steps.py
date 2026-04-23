@@ -26,6 +26,7 @@ class StepContext:
     custom_fields: list | None
     enrichment_context: str | None
     settings: Settings
+    content_types: list[str] | None = None
 
 
 # Result tuple: (post_id, "ok" | "fail", optional extra data)
@@ -229,7 +230,11 @@ def action_enrich(posts: list[dict], ctx: StepContext) -> list[StepResult]:
 
     # Call existing enrichment (handles Gemini rate limiting, writes to BQ)
     enrichment_results = run_enrichment_inline(
-        post_data_list, ctx.collection_id, ctx.custom_fields, ctx.enrichment_context
+        post_data_list,
+        ctx.collection_id,
+        ctx.custom_fields,
+        ctx.enrichment_context,
+        ctx.content_types,
     )
     enriched_ids = {pid for pid, _ in enrichment_results}
 

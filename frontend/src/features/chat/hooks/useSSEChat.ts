@@ -8,6 +8,7 @@ import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
+import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isDashboardResult, isStructuredPromptResult, isStartAgentResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
 import type { DataExportRow, StructuredPromptResult } from '../../../api/types.ts';
@@ -38,6 +39,7 @@ function getToolDescription(toolName: string, args: Record<string, unknown>): st
       return (args.agent_id as string) || (args.task_id as string) || undefined;
     case 'create_chart':
     case 'generate_dashboard':
+    case 'compose_dashboard':
     case 'generate_presentation':
       return (args.title as string) || undefined;
     case 'export_data':
@@ -241,9 +243,10 @@ export function useSSEChat() {
                   type: 'dashboard',
                   data: result,
                 });
+                const dashboardId = (result._artifact_id as string) || (result.dashboard_id as string);
                 // Auto-save dashboard artifact
                 useStudioStore.getState().addArtifact({
-                  id: (result._artifact_id as string) || (result.dashboard_id as string),
+                  id: dashboardId,
                   type: 'dashboard',
                   title: result.title as string,
                   collectionIds: result.collection_ids as string[],
@@ -253,7 +256,22 @@ export function useSSEChat() {
                 // Open studio panel, switch to artifacts, expand the dashboard
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
-                useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
+                useStudioStore.getState().expandReport(dashboardId);
+                // If the agent persisted this as an explorer layout, surface it in the Explore sidebar
+                // and navigate there so the user lands on the full-screen view.
+                const dashboardAgentId = result.agent_id as string | undefined;
+                if (toolName === 'compose_dashboard' && dashboardAgentId) {
+                  const nowIso = new Date().toISOString();
+                  useExplorerLayoutStore.getState().upsertLayout({
+                    layout_id: dashboardId,
+                    agent_id: dashboardAgentId,
+                    title: result.title as string,
+                    created_at: nowIso,
+                    updated_at: nowIso,
+                  });
+                  useExplorerLayoutStore.getState().selectLayout(dashboardId);
+                  navigate(`/agents/${dashboardAgentId}?tab=explorer`, { replace: true });
+                }
               } else if (isStartAgentResult(toolName, result)) {
                 // Task started — add collections to sources and link taskId + sessionId
                 const cids = result.collection_ids as string[] | undefined;

@@ -1579,6 +1579,8 @@ async def create_from_wizard_endpoint(
         data_scope["custom_fields"] = body.custom_fields
     if body.enrichment_context:
         data_scope["enrichment_context"] = body.enrichment_context
+    if body.content_types:
+        data_scope["content_types"] = body.content_types
 
     # Build schedule object for recurring agents
     schedule = None

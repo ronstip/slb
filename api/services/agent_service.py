@@ -183,6 +183,9 @@ def dispatch_agent_run(
         enrichment_context = data_scope.get("enrichment_context")
         if enrichment_context:
             extra_config["enrichment_context"] = enrichment_context
+        content_types = data_scope.get("content_types")
+        if content_types:
+            extra_config["content_types"] = content_types
         # Pass structured context as supplementary enrichment info
         agent_constitution = agent.get("constitution")
         if agent_constitution:

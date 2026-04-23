@@ -27,6 +27,7 @@ import { SocialWidgetFrame } from './SocialWidgetFrame.tsx';
 import { DataTable } from '../../../components/DataTable/DataTable.tsx';
 import { postColumns } from '../../../components/DataTable/columns.tsx';
 import { ExpandedPostRow } from '../../../components/DataTable/ExpandedPostRow.tsx';
+import { Markdown } from '../../../components/Markdown.tsx';
 
 // ── Generic table for custom widgets ──────────────────────────────────────────
 
@@ -372,6 +373,29 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
   );
 }
 
+// ── Text (markdown) widget ────────────────────────────────────────────────────
+
+function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps) {
+  const content = widget.markdownContent ?? '';
+  return (
+    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      {content.trim() ? (
+        <Markdown
+          autoDir
+          stripComments={false}
+          className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground prose-a:text-primary overflow-y-auto h-full"
+        >
+          {content}
+        </Markdown>
+      ) : (
+        <div className="flex items-center justify-center h-full text-xs text-muted-foreground italic">
+          Empty text card — click the gear to add markdown
+        </div>
+      )}
+    </SocialWidgetFrame>
+  );
+}
+
 // ── Posts table widget ────────────────────────────────────────────────────────
 
 interface PostTableRow {
@@ -479,6 +503,9 @@ export function SocialWidgetRenderer({
 
   const frameProps = { widget, isEditMode, onConfigure, onRemove, onDuplicate };
 
+  if (widget.aggregation === 'text') {
+    return <TextWidget {...frameProps} />;
+  }
   if (widget.aggregation === 'posts') {
     return <PostsTableWidget {...frameProps} posts={widgetPosts} />;
   }

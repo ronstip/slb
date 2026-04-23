@@ -3,7 +3,9 @@
 Used by both the worker server (prod) and the API dev-mode thread.
 """
 
+import json
 import logging
+import threading
 import time as _time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -17,6 +19,52 @@ from workers.shared.firestore_client import FirestoreClient
 from workers.shared.statistical_signature import refresh_statistical_signature
 
 logger = logging.getLogger(__name__)
+
+
+def dispatch_collection_pipeline(collection_id: str, continuation: bool = False) -> None:
+    """Dispatch the pipeline for a collection (dev thread or prod Cloud Task)."""
+    settings = get_settings()
+    if settings.is_dev:
+        thread = threading.Thread(
+            target=run_pipeline,
+            args=(collection_id,),
+            kwargs={"continuation": continuation},
+            daemon=True,
+        )
+        thread.start()
+        logger.info(
+            "Dispatched pipeline thread for %s (continuation=%s)", collection_id, continuation,
+        )
+        return
+
+    from google.cloud import tasks_v2
+
+    client = tasks_v2.CloudTasksClient()
+    parent = client.queue_path(
+        settings.gcp_project_id,
+        settings.gcp_region,
+        settings.cloud_tasks_queue,
+    )
+    worker_url = settings.worker_service_url.rstrip("/")
+    http_request = {
+        "http_method": tasks_v2.HttpMethod.POST,
+        "url": f"{worker_url}/collection/run",
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({"collection_id": collection_id, "continuation": continuation}).encode(),
+    }
+    if settings.cloud_tasks_service_account:
+        http_request["oidc_token"] = {
+            "service_account_email": settings.cloud_tasks_service_account,
+            "audience": worker_url,
+        }
+    task = {
+        "http_request": http_request,
+        "dispatch_deadline": {"seconds": 1800},
+    }
+    client.create_task(parent=parent, task=task)
+    logger.info(
+        "Dispatched Cloud Task pipeline for %s (continuation=%s)", collection_id, continuation,
+    )
 
 
 def _post_to_enrichment_data(post):

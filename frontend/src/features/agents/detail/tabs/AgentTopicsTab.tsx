@@ -1,13 +1,11 @@
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Sparkles } from 'lucide-react';
+import { Markdown } from '../../../../components/Markdown.tsx';
 import type { Agent, Briefing } from '../../../../api/endpoints/agents.ts';
 import { listAgentRuns } from '../../../../api/endpoints/agents.ts';
 import { getAgentTopics } from '../../../../api/endpoints/topics.ts';
 import { TopicsFeed } from '../../../studio/TopicsFeed.tsx';
-import { TopicsQuadrant } from '../../../studio/TopicsQuadrant.tsx';
 import { AnalyticsStrip } from '../../../collections/AnalyticsStrip.tsx';
 import { useAgentAnalyticsStats } from '../useAgentAnalyticsStats.ts';
 import { StatusBadge } from '../agent-status-utils.tsx';
@@ -28,7 +26,6 @@ export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
   });
 
   const hasTopics = !!topics && topics.length > 0;
-  const showQuadrant = !!topics && topics.length >= 3;
 
   // Latest run's per-run briefing (state_of_the_world / open_threads / process_notes),
   // written by the agent's generate_briefing tool and stored on the run doc.
@@ -53,16 +50,6 @@ export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
 
   const analyticsStats = useAgentAnalyticsStats(task);
 
-  const handleTopicSelect = useCallback((clusterId: string) => {
-    const el = document.getElementById(`topic-card-${clusterId}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.classList.add('ring-2', 'ring-primary/60', 'rounded-lg');
-    window.setTimeout(() => {
-      el.classList.remove('ring-2', 'ring-primary/60', 'rounded-lg');
-    }, 1600);
-  }, []);
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex h-11 shrink-0 items-center gap-3 px-6">
@@ -77,11 +64,8 @@ export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
       <AnalyticsStrip stats={analyticsStats} />
       <div className="flex-1 overflow-y-auto bg-muted">
         {hasTopics && (
-          <div className={`mx-2.5 mt-3 grid items-start gap-2.5 ${showQuadrant ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className="mx-2.5 mt-3">
             <BriefingCard briefing={latestBriefing} isLoading={isRunsLoading} />
-            {showQuadrant && (
-              <TopicsQuadrant topics={topics!} onTopicSelect={handleTopicSelect} />
-            )}
           </div>
         )}
         <TopicsFeed agentId={agentId} />
@@ -131,9 +115,12 @@ function BriefingCard({ briefing, isLoading }: BriefingCardProps) {
           <div className="h-3 w-5/6 animate-pulse rounded bg-secondary" />
         </div>
       ) : markdown ? (
-        <div className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-h2:text-[15px] prose-h2:font-semibold prose-h2:leading-snug prose-h2:mt-0 prose-h3:text-[13px] prose-h3:font-semibold prose-p:text-muted-foreground prose-p:text-[12px] prose-p:leading-relaxed prose-li:text-muted-foreground prose-li:text-[12px] prose-strong:text-foreground prose-a:text-primary prose-blockquote:text-muted-foreground prose-blockquote:text-[12px] prose-blockquote:italic prose-blockquote:border-l-foreground/30 prose-hr:my-3">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
-        </div>
+        <Markdown
+          className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-h2:text-[15px] prose-h2:font-semibold prose-h2:leading-snug prose-h2:mt-0 prose-h3:text-[13px] prose-h3:font-semibold prose-p:text-muted-foreground prose-p:text-[12px] prose-p:leading-relaxed prose-li:text-muted-foreground prose-li:text-[12px] prose-strong:text-foreground prose-a:text-primary prose-blockquote:text-muted-foreground prose-blockquote:text-[12px] prose-blockquote:italic prose-blockquote:border-l-foreground/30 prose-hr:my-3"
+          stripComments={false}
+        >
+          {markdown}
+        </Markdown>
       ) : (
         <p className="text-[12px] text-muted-foreground">No briefing yet.</p>
       )}

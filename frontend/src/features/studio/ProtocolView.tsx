@@ -1,6 +1,5 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { ClipboardList } from 'lucide-react';
+import { Markdown } from '../../components/Markdown.tsx';
 import { useStudioStore } from '../../stores/studio-store.ts';
 
 export function ProtocolView() {
@@ -19,11 +18,12 @@ export function ProtocolView() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-5 max-w-2xl">
-        <div className="prose prose-sm dark:prose-invert prose-headings:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {protocolContent}
-          </ReactMarkdown>
-        </div>
+        <Markdown
+          className="prose prose-sm dark:prose-invert prose-headings:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground max-w-none"
+          stripComments={false}
+        >
+          {protocolContent}
+        </Markdown>
       </div>
     </div>
   );

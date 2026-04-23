@@ -15,7 +15,8 @@ export type SocialAggregation =
   | 'language'
   | 'engagement-rate'
   | 'posts'
-  | 'custom';
+  | 'custom'
+  | 'text';
 
 export type SocialChartType =
   | 'bar'
@@ -228,6 +229,8 @@ export interface SocialDashboardWidget {
   filters?: SocialWidgetFilters;
   /** Custom chart configuration — set when aggregation === 'custom' */
   customConfig?: CustomChartConfig;
+  /** Markdown body — set when aggregation === 'text' */
+  markdownContent?: string;
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────
@@ -278,6 +281,7 @@ export const VALID_CHART_TYPES: Record<SocialAggregation, SocialChartType[]> = {
   'engagement-rate': ['line'],
   'posts': ['data-table'],
   'custom': ['bar', 'pie', 'doughnut', 'line', 'number-card', 'progress-list', 'word-cloud'],
+  'text': ['table'],
 };
 
 // ─── Aggregation metadata (for UI display) ────────────────────────────────────
@@ -411,6 +415,14 @@ export const AGGREGATION_META: Record<SocialAggregation, AggregationMeta> = {
     defaultChartType: 'bar',
     defaultTitle: 'Custom Chart',
     defaultSize: { w: 6, h: 6 },
+  },
+  'text': {
+    label: 'Text Card',
+    description: 'A markdown text block — use for intros, section headers, or commentary',
+    icon: 'FileText',
+    defaultChartType: 'table',
+    defaultTitle: 'Text',
+    defaultSize: { w: 6, h: 3 },
   },
 };
 

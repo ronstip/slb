@@ -193,12 +193,14 @@ def run_enrichment_inline(
     collection_id: str = "",
     custom_fields: list[CustomFieldDef] | None = None,
     enrichment_context: str | None = None,
+    content_types: list[str] | None = None,
 ) -> list[tuple[str, EnrichmentResult]]:
     """Enrich posts from in-memory data. Used by parallel pipeline callback.
 
     No BQ read needed — post data is passed directly from collection.
     custom_fields: per-collection custom field definitions from config.
     enrichment_context: task-level context for relevance judgement.
+    content_types: optional closed vocabulary for the content_type field.
     """
     if not posts:
         return []
@@ -207,7 +209,12 @@ def run_enrichment_inline(
     bq = BQClient(settings)
 
     start = time.monotonic()
-    results = enrich_posts(posts, custom_fields=custom_fields, enrichment_context=enrichment_context)
+    results = enrich_posts(
+        posts,
+        custom_fields=custom_fields,
+        enrichment_context=enrichment_context,
+        content_types=content_types,
+    )
     _write_results_to_bq(bq, results)
     logger.info("Enrichment batch: %d/%d ok in %.1fs", len(results), len(posts), round(time.monotonic() - start, 1))
     return results
@@ -234,6 +241,18 @@ def _load_enrichment_context(fs: FirestoreClient, collection_id: str) -> str | N
     return config.get("enrichment_context")
 
 
+def _load_content_types(fs: FirestoreClient, collection_id: str) -> list[str] | None:
+    """Load per-agent content_type vocabulary from collection config in Firestore."""
+    status = fs.get_collection_status(collection_id)
+    if not status:
+        return None
+    config = status.get("config") or {}
+    raw = config.get("content_types")
+    if not raw:
+        return None
+    return [str(t).strip() for t in raw if str(t).strip()]
+
+
 def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50) -> None:
     """Enrich all qualifying posts in a collection. Reads from BQ (standalone mode).
 
@@ -247,6 +266,7 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
     # Status stays "running" — no granular enriching status anymore
     custom_fields = _load_custom_fields(fs, collection_id)
     enrichment_context = _load_enrichment_context(fs, collection_id)
+    content_types = _load_content_types(fs, collection_id)
 
     try:
         posts = _read_posts_from_bq(bq, collection_id, min_likes)
@@ -256,7 +276,12 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
         all_results = []
         for i in range(0, len(posts), batch_size):
             batch = posts[i : i + batch_size]
-            batch_results = enrich_posts(batch, custom_fields=custom_fields, enrichment_context=enrichment_context)
+            batch_results = enrich_posts(
+                batch,
+                custom_fields=custom_fields,
+                enrichment_context=enrichment_context,
+                content_types=content_types,
+            )
             _write_results_to_bq(bq, batch_results)
             all_results.extend(batch_results)
             logger.info(
@@ -320,15 +345,22 @@ def run_enrichment_for_posts(
 
     custom_fields = None
     enrichment_context = None
+    content_types = None
     if collection_id:
         fs = FirestoreClient(settings)
         custom_fields = _load_custom_fields(fs, collection_id)
         enrichment_context = _load_enrichment_context(fs, collection_id)
+        content_types = _load_content_types(fs, collection_id)
 
     posts = _read_posts_from_bq_by_ids(bq, post_ids)
     logger.info("Enriching %d posts by ID", len(posts))
 
-    results = enrich_posts(posts, custom_fields=custom_fields, enrichment_context=enrichment_context)
+    results = enrich_posts(
+        posts,
+        custom_fields=custom_fields,
+        enrichment_context=enrichment_context,
+        content_types=content_types,
+    )
     _write_results_to_bq(bq, results)
     logger.info("Enriched %d/%d posts by ID", len(results), len(posts))
 

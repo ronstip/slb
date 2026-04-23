@@ -64,6 +64,14 @@ class WizardPlan(BaseModel):
     auto_dashboard: bool = False
     custom_fields: list[CustomFieldDef] = []
     enrichment_context: str = ""
+    content_types: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Closed vocabulary of post content types for this agent's domain. "
+            "Used as a Literal[...] in enrichment so Gemini must pick one. "
+            "Always lowercase short labels; last entry should be 'other'."
+        ),
+    )
     constitution: Constitution = Field(default_factory=Constitution)
 
 

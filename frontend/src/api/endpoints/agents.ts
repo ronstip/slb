@@ -151,6 +151,7 @@ export interface CreateFromWizardPayload {
   schedule?: { frequency: string; frequency_label: string } | null;
   custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
   enrichment_context?: string;
+  content_types?: string[];
   context?: AgentContext;
   constitution?: Constitution;
   existing_agent_ids?: string[];

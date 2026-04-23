@@ -848,6 +848,7 @@ export interface WizardPlan {
   auto_dashboard: boolean;
   custom_fields: CustomFieldDef[];
   enrichment_context: string;
+  content_types: string[];
   context?: {
     mission: string;
     world_context: string;
