@@ -191,6 +191,17 @@ async def _async_agent_continuation(agent_id: str) -> None:
         session_id = session.id
         fs.add_agent_session(agent_id, session_id)
         logger.info("Agent %s: created ephemeral session %s for continuation", agent_id, session_id)
+    else:
+        session = await session_service.get_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+        if session is None:
+            session = await session_service.create_session(
+                app_name=APP_NAME, user_id=user_id
+            )
+            session_id = session.id
+            fs.add_agent_session(agent_id, session_id)
+            logger.info("Agent %s: prior session missing — created new session %s", agent_id, session_id)
 
     # Scope to the active run's collections (not all agent collections across runs)
     active_run_id = agent.get("active_run_id")
