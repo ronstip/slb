@@ -297,18 +297,6 @@ async def _async_agent_continuation(agent_id: str) -> None:
         session_service=session_service,
     )
 
-    # Get or create session
-    try:
-        session = await session_service.get_session(
-            app_name=APP_NAME, user_id=user_id, session_id=session_id
-        )
-    except Exception:
-        session = None
-
-    if session is None:
-        logger.error("Session %s not found for agent %s", session_id, agent_id)
-        return
-
     # Inject full agent context into session state so callbacks can use it
     session.state["active_agent_id"] = agent_id
     session.state["active_agent_title"] = title

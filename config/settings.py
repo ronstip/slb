@@ -37,8 +37,17 @@ class Settings(BaseSettings):
     enrichment_global_concurrency: int = 30  # Max concurrent Gemini calls across all batches
     enrichment_video_rate_limit: int = 25  # Max video enrichment calls per minute (process-wide)
     enrichment_general_rate_limit: int = 300  # Max total enrichment calls per minute (process-wide) — requires matching Gemini quota in GCP
-    enrichment_max_retries: int = 5  # Max retry attempts for 429 errors
-    enrichment_retry_base_delay: float = 60.0  # Base delay in seconds for retry backoff
+    # Retry budget is deliberately tight — the old defaults (base=60s, retries=5)
+    # with exponential backoff let a single 429-prone post hold a worker slot
+    # for up to 15 minutes (60+120+240+480+...), gridlocking the enrichment
+    # pool when several posts hit 429 in one batch. With base=10s / retries=3
+    # the worst case is ~40s (10+20+40).
+    enrichment_max_retries: int = 3
+    enrichment_retry_base_delay: float = 10.0
+    # Hard ceiling on cumulative retry sleep per post — if we'd sleep past this,
+    # give up and mark the post as failed. Stops pathological batches where
+    # every post sits in backoff instead of draining.
+    enrichment_retry_max_total_sec: float = 60.0
 
     # Max concurrent CDN/GCS downloads per collection (owned by PipelineRunner).
     # Decouples media I/O from the step orchestration pool so a slow download

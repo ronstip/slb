@@ -261,6 +261,18 @@ class PipelineRunner:
             # after the original run exited before seeding), seed from BQ now.
             if self.state_manager.get_total_posts() == 0:
                 self._seed_post_states_from_bq()
+            else:
+                # DAG already populated — reconcile any orphans (posts that made
+                # it into BQ in the prior run but never got mark_collected because
+                # the pipeline thread died between the BQ insert and the DAG
+                # update). Keeps continuation from silently losing posts.
+                try:
+                    self._reconcile_bq_orphans()
+                except Exception:
+                    logger.warning(
+                        "Orphan reconciliation failed for %s (continuation proceeds without it)",
+                        self.collection_id, exc_info=True,
+                    )
             # Re-queue eligible failures (not embedding, attempts < max, past cooldown)
             # so a transient Gemini rate-limit doesn't permanently burn a post.
             try:
@@ -544,6 +556,67 @@ class PipelineRunner:
         logger.info(
             "Seeded %d post states from BQ for %s",
             len(posts), self.collection_id,
+        )
+
+    def _reconcile_bq_orphans(self) -> None:
+        """Backfill posts that landed in BQ but never entered the DAG.
+
+        Runs on continuation when the DAG is already populated. Protects
+        against the prior-run scenario where the pipeline thread died between
+        the BQ insert and state_manager.mark_collected — those posts would
+        otherwise be silently lost (present in BQ but never enriched).
+        """
+        # Gather DAG post_ids in a single Firestore pass.
+        dag_ids: set[str] = set()
+        for doc in self._status_ref_posts_iter():
+            dag_ids.add(doc.id)
+
+        rows = self.bq.query(
+            "SELECT post_id, platform, channel_handle, post_url, posted_at, "
+            "post_type, title, content, media_refs "
+            "FROM social_listening.posts WHERE collection_id = @cid",
+            {"cid": self.collection_id},
+        )
+        orphans = [r for r in rows if r["post_id"] not in dag_ids]
+        if not orphans:
+            return
+
+        logger.warning(
+            "Reconciling %d orphan post(s) (in BQ, missing from DAG) for %s",
+            len(orphans), self.collection_id,
+        )
+        posts: list[Post] = []
+        for r in orphans:
+            media_urls = []
+            raw_refs = r.get("media_refs")
+            if raw_refs:
+                if isinstance(raw_refs, str):
+                    raw_refs = json.loads(raw_refs)
+                for ref in raw_refs or []:
+                    if isinstance(ref, dict):
+                        url = ref.get("original_url", "")
+                        if url:
+                            media_urls.append(url)
+            posts.append(Post(
+                post_id=r["post_id"],
+                platform=r.get("platform", "") or "",
+                channel_handle=r.get("channel_handle", "") or "",
+                post_url=r.get("post_url", "") or "",
+                posted_at=r.get("posted_at") or datetime.now(timezone.utc),
+                post_type=r.get("post_type", "") or "",
+                title=r.get("title"),
+                content=r.get("content"),
+                media_urls=media_urls,
+            ))
+        self.state_manager.mark_collected(posts)
+
+    def _status_ref_posts_iter(self):
+        """Iterate the collection_status/<cid>/post_states subcollection."""
+        return (
+            self.fs._db.collection("collection_status")
+            .document(self.collection_id)
+            .collection("post_states")
+            .stream()
         )
 
     # ------------------------------------------------------------------
@@ -943,10 +1016,12 @@ class PipelineRunner:
     def _log_progress(self) -> None:
         """Periodic progress log — called once per loop iter, not per step."""
         counts = self.state_manager.get_counts()
-        done = counts.get("DONE", 0)
+        # Counter keys are PostState.value (lowercase). Earlier code looked up
+        # uppercase names here and silently reported zero progress forever.
+        done = counts.get(PostState.DONE.value, 0)
         total = self.state_manager.get_total_posts()
-        enriched = counts.get("ENRICHED", 0) + done
-        downloading = counts.get("COLLECTED_WITH_MEDIA", 0)
+        enriched = counts.get(PostState.ENRICHED.value, 0) + done
+        downloading = counts.get(PostState.COLLECTED_WITH_MEDIA.value, 0)
         if total <= 0:
             return
         self.fs.update_collection_status(

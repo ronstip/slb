@@ -414,8 +414,9 @@ def _enrich_single_post(
       3. Global semaphore — caps concurrent in-flight calls
 
     Retries with jittered exponential backoff on transient errors
-    (429 RESOURCE_EXHAUSTED, 504 DEADLINE_EXCEEDED, disconnects).
-    On PERMISSION_DENIED (e.g. restricted YouTube video), retries once without video.
+    (429 RESOURCE_EXHAUSTED, 503/504, 500 INTERNAL, ReadTimeout, disconnects).
+    Permanent video errors (PERMISSION_DENIED, 400 INVALID_ARGUMENT) fail fast —
+    no text-only fallback: a post without its video is not worth enriching.
     """
     settings = get_settings()
     parts = _build_content_parts(post, custom_fields, enrichment_context=enrichment_context)
@@ -427,6 +428,8 @@ def _enrich_single_post(
 
     max_attempts = settings.enrichment_max_retries
     base_delay = settings.enrichment_retry_base_delay
+    retry_budget_sec = settings.enrichment_retry_max_total_sec
+    slept_total = 0.0
 
     for attempt in range(max_attempts):
         try:
@@ -453,36 +456,40 @@ def _enrich_single_post(
 
         except Exception as e:
             err_str = str(e)
-
-            # PERMISSION_DENIED on video: retry once without video part
-            if "PERMISSION_DENIED" in err_str and has_video:
-                logger.info(
-                    "PERMISSION_DENIED for post %s — retrying without video part",
-                    post.post_id,
-                )
-                parts_no_video = _build_content_parts(post, custom_fields, skip_video=True, enrichment_context=enrichment_context)
-                contents = types.Content(role="user", parts=parts_no_video)
-                has_video = False
-                video_limiter = None
-                continue
+            err_lower = err_str.lower()
 
             is_retryable = (
                 "429" in err_str
                 or "RESOURCE_EXHAUSTED" in err_str
                 or "DEADLINE_EXCEEDED" in err_str
                 or "504" in err_str
-                or "disconnected" in err_str.lower()
+                or "503" in err_str
+                or "UNAVAILABLE" in err_str
+                or "500 INTERNAL" in err_str
+                or "disconnected" in err_lower
+                or "readtimeout" in err_lower
+                or "read operation timed out" in err_lower
+                or "connection reset" in err_lower
             )
             if is_retryable and attempt < max_attempts - 1:
+                # Jittered exponential backoff to break thundering herd.
+                wait = base_delay * (2 ** attempt) + random.uniform(0, 5)
+                # Cap per-post cumulative sleep so a single slow post can't
+                # hold a worker slot for minutes and starve the batch.
+                if slept_total + wait > retry_budget_sec:
+                    logger.warning(
+                        "Enrichment giving up on post %s after %.0fs in retries (budget=%.0fs): %s",
+                        post.post_id, slept_total, retry_budget_sec, err_str[:120],
+                    )
+                    return (post.post_id, None)
                 # Signal all threads to back off
                 _signal_global_backoff(cooldown=5.0)
-                # Jittered exponential backoff to break thundering herd
-                wait = base_delay * (2 ** attempt) + random.uniform(0, 5)
                 logger.warning(
                     "Enrichment error for post %s — retrying in %.0fs (attempt %d/%d): %s",
                     post.post_id, wait, attempt + 1, max_attempts, err_str[:120],
                 )
                 time.sleep(wait)
+                slept_total += wait
             else:
                 logger.warning("Enrichment failed for post %s: %s: %s", post.post_id, type(e).__name__, err_str[:200])
                 return (post.post_id, None)
