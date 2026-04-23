@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import re
 import threading
 import time as _time
 from contextlib import asynccontextmanager
@@ -29,11 +28,9 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from google.adk.agents.run_config import RunConfig, StreamingMode
-from google.adk.runners import Runner
 from google.genai import types
 from sse_starlette.sse import EventSourceResponse
 
-from api.agent.agent import APP_NAME, create_runner
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs, get_gcs
 from api.rate_limiting import limiter
@@ -54,76 +51,43 @@ from api.routers import topics as topics_router
 from api.routers import briefing as briefing_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest, CreateFromWizardRequest, MultiFeedRequest, UpdateCollectionRequest
 from api.schemas.responses import (
-    BreakdownItem,
     CollectionStatsResponse,
     CollectionStatusResponse,
-    DailyVolumeItem,
-    EngagementStats,
     FeedPostResponse,
     FeedResponse,
 )
-from api.services.collection_service import (
-    create_collection_from_request,
+from api.agent.runner_factory import get_runner, resolve_model_alias
+from api.services.artifact_service import (
+    persist_tool_result_artifact,
+    write_artifact_id_to_event,
 )
+from api.services.chat_session import (
+    refresh_live_state,
+    restore_and_flush,
+    setup_chat_session,
+    window_events_for_llm,
+)
+from api.services.collection_service import (
+    can_access_collection,
+    create_collection_from_request,
+    signature_to_response,
+)
+from api.services.session_naming import name_session_background
+from api.services.startup_tasks import cleanup_stuck_collections
+from api.utils.event_parsing import extract_event_data, extract_final_text
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-
-def _cleanup_stuck_collections() -> None:
-    """Mark collections stuck in transient states as completed_with_errors.
-
-    On startup no pipeline is running, so any collection still in
-    'collecting', 'enriching', or 'processing' was orphaned by a prior crash/restart.
-    First attempts to recover any pending BrightData snapshots before marking failed.
-    """
-    from workers.shared.firestore_client import FirestoreClient
-
-    settings = get_settings()
-    fs = FirestoreClient(settings)
-    db = fs._db
-
-    # First: attempt to recover any pending BD snapshots from crashed pipelines
-    try:
-        from workers.recovery import recover_snapshots
-        recovered = recover_snapshots()
-        if recovered:
-            logger.info("Startup: recovered %d BD snapshot(s)", recovered)
-    except Exception:
-        logger.exception("Startup snapshot recovery failed (non-fatal)")
-
-    # Then: mark remaining stuck collections (skip those with pending snapshots)
-    stuck_statuses = ["collecting", "enriching", "processing"]
-    for status in stuck_statuses:
-        docs = db.collection("collection_status").where("status", "==", status).stream()
-        for doc in docs:
-            doc_id = doc.id
-            # Check if this collection still has pending snapshots — defer to scheduler
-            pending = fs.get_pending_snapshots(collection_id=doc_id)
-            if pending:
-                logger.info(
-                    "Startup cleanup: collection %s has %d pending snapshot(s) — deferring to scheduler",
-                    doc_id, len(pending),
-                )
-                continue
-
-            logger.warning(
-                "Startup cleanup: collection %s stuck in '%s' — marking completed_with_errors",
-                doc_id, status,
-            )
-            fs.update_collection_status(
-                doc_id,
-                status="completed_with_errors",
-                error_message="Collection was interrupted (server restart). Partial data may be available.",
-            )
 
 
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
     settings = get_settings()
     try:
-        _cleanup_stuck_collections()
+        cleanup_stuck_collections()
     except Exception:
+        # Non-fatal: startup must proceed even if cleanup fails. Stuck
+        # collections will remain in a transient state until the next boot.
         logger.exception("Startup cleanup of stuck collections failed (non-fatal)")
     if settings.is_dev:
         from api.scheduler import OngoingScheduler
@@ -174,221 +138,6 @@ else:
         allow_headers=["*"],
     )
     logger.info("CORS origins: %s", _cors_origins)
-
-_runners: dict[str, Runner] = {}
-_session_service = None
-
-# Model aliases for the ChatRequest.model field
-MODEL_ALIASES: dict[str, str] = {
-    "pro": "gemini-3-pro-preview",
-}
-
-
-
-def get_runner(model: str | None = None) -> Runner:
-    """Return a cached Runner for the given model (or default)."""
-    global _session_service
-    from api.auth.session_service import FirestoreSessionService
-
-    model_key = model or "default"
-    if model_key not in _runners:
-        if _session_service is None:
-            _session_service = FirestoreSessionService()
-        _runners[model_key] = create_runner(
-            mode="chat",
-            model_override=model if model != "default" else None,
-            session_service=_session_service,
-        )
-    return _runners[model_key]
-
-
-# ---------------------------------------------------------------------------
-# Artifact auto-save
-# ---------------------------------------------------------------------------
-
-_ARTIFACT_ROW_CAP = 200
-
-
-def _maybe_persist_artifact(
-    tool_name: str,
-    result: dict,
-    user_id: str,
-    org_id: str | None,
-    session_id: str,
-    agent_id: str | None = None,
-) -> str | None:
-    """If the tool result is an artifact, persist to Firestore. Returns artifact_id or None."""
-    if result.get("status") != "success":
-        return None
-
-    artifact_type = None
-    artifact_id = None
-    title = ""
-    collection_ids: list[str] = []
-    payload: dict = {}
-
-    if tool_name == "create_chart" and result.get("chart_type"):
-        artifact_type = "chart"
-        artifact_id = f"chart-{uuid4().hex[:8]}"
-        title = result.get("title", "Chart")
-        collection_ids = result.get("collection_ids") or []
-        payload = {
-            "chart_type": result.get("chart_type"),
-            "data": result.get("data", []),
-            "color_overrides": result.get("color_overrides"),
-            "filter_sql": result.get("filter_sql", ""),
-            "source_sql": result.get("source_sql", ""),
-        }
-    elif tool_name == "export_data" and isinstance(result.get("rows"), list):
-        artifact_type = "data_export"
-        artifact_id = f"export-{uuid4().hex[:8]}"
-        title = result.get("title", "Data Export")
-        rows = result.get("rows", [])
-        payload = {
-            "rows": rows[:_ARTIFACT_ROW_CAP],
-            "row_count": result.get("row_count", len(rows)),
-            "column_names": result.get("column_names", []),
-            "truncated": len(rows) > _ARTIFACT_ROW_CAP,
-        }
-        collection_ids = result.get("collection_ids") or []
-    elif tool_name == "generate_dashboard" and result.get("dashboard_id"):
-        artifact_type = "dashboard"
-        artifact_id = result.get("dashboard_id", f"dash-{uuid4().hex[:8]}")
-        title = result.get("title", "Dashboard")
-        collection_ids = result.get("collection_ids") or []
-        payload = {
-            "collection_ids": collection_ids,
-            "collection_names": result.get("collection_names", {}),
-        }
-    elif tool_name == "compose_dashboard" and result.get("dashboard_id"):
-        artifact_type = "dashboard"
-        artifact_id = result.get("dashboard_id")
-        title = result.get("title", "Dashboard")
-        collection_ids = result.get("collection_ids") or []
-        payload = {
-            "collection_ids": collection_ids,
-            "collection_names": result.get("collection_names", {}),
-        }
-    elif tool_name == "generate_presentation" and result.get("presentation_id"):
-        artifact_type = "presentation"
-        artifact_id = result.get("presentation_id")
-        title = result.get("title", "Presentation")
-        collection_ids = result.get("collection_ids") or []
-        payload = {
-            "slide_count": result.get("slide_count", 0),
-            "gcs_path": result.get("gcs_path", ""),
-        }
-    else:
-        return None
-
-    now = datetime.now(timezone.utc)
-    doc = {
-        "type": artifact_type,
-        "title": title,
-        "user_id": user_id,
-        "org_id": org_id,
-        "session_id": session_id,
-        "collection_ids": collection_ids,
-        "favorited": False,
-        "shared": False,
-        "created_at": now,
-        "updated_at": now,
-        "payload": payload,
-    }
-
-    try:
-        fs = get_fs()
-        fs.create_artifact(artifact_id, doc)
-        # Link artifact to active agent if one exists
-        if agent_id:
-            fs.add_agent_artifact(agent_id, artifact_id)
-    except Exception as e:
-        logger.warning("Failed to persist artifact %s: %s", artifact_id, e)
-        return None
-
-    return artifact_id
-
-
-# ---------------------------------------------------------------------------
-# Auth helper
-# ---------------------------------------------------------------------------
-
-
-def _build_user_context(user_id: str, org_id: str) -> dict:
-    """Build user context for agent personalization at session start."""
-    context: dict = {"display_name": "", "preferences": {}, "collections_index": [], "agents_index": [], "ppt_template": None}
-    try:
-        fs = get_fs()
-        user_doc = fs.get_user(user_id)
-        if user_doc:
-            context["display_name"] = user_doc.get("display_name", "")
-            context["preferences"] = user_doc.get("preferences") or {}
-            if user_doc.get("ppt_template"):
-                tmpl = user_doc["ppt_template"]
-                context["ppt_template"] = {
-                    "filename": tmpl.get("filename", "template.pptx"),
-                    "gcs_path": tmpl.get("gcs_path", ""),
-                    "uploaded_at": tmpl.get("uploaded_at", ""),
-                    "manifest": tmpl.get("manifest"),
-                }
-
-        # Build lightweight agents index
-        agents = fs.list_user_agents(user_id, org_id or None)
-        agents_index = []
-        for t in agents[:10]:
-            agents_index.append({
-                "agent_id": t.get("agent_id"),
-                "title": t.get("title", "untitled"),
-                "status": t.get("status", "unknown"),
-                "agent_type": t.get("agent_type", "one_shot"),
-                "created_at": t.get("created_at", ""),
-            })
-        context["agents_index"] = agents_index
-
-        # Build lightweight collections index from last 10 collections
-        from api.agent.tools.get_past_collections import fetch_user_collections
-        collections = fetch_user_collections(user_id, org_id or "", limit=10)
-        index = []
-        for c in collections:
-            config = c.get("config") or {}
-            kw = config.get("keywords", [])
-            if not isinstance(kw, list):
-                kw = []
-            platforms = config.get("platforms", [])
-            if isinstance(platforms, str):
-                platforms = [p.strip() for p in platforms.split(",")]
-            channels = config.get("channel_urls", [])
-            if not isinstance(channels, list):
-                channels = []
-            index.append({
-                "id": c.get("collection_id"),
-                "label": c.get("original_question") or (kw[0] if kw else "untitled"),
-                "status": c.get("status", "unknown"),
-                "platforms": platforms,
-                "posts": c.get("posts_collected", 0),
-                "created": (c.get("created_at") or "")[:10],
-                "own": c.get("is_own", True),
-            })
-        context["collections_index"] = index
-    except Exception:
-        logger.debug("User context loading failed for %s — non-critical", user_id)
-    return context
-
-
-def _can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
-    """Check if the user can access a collection (user-scoped + org-scoped with visibility check)."""
-    # Owner always has access
-    if collection_status.get("user_id") == user.uid:
-        return True
-    # Org members can access collections shared with the org
-    if (
-        user.org_id
-        and collection_status.get("org_id") == user.org_id
-        and collection_status.get("visibility") == "org"
-    ):
-        return True
-    return False
-
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -505,189 +254,29 @@ async def link_account(
 async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """SSE endpoint — streams agent events to the client."""
     t_start = _time.perf_counter()
-    model_override = MODEL_ALIASES.get(chat_request.model) if chat_request.model else None
-    runner = get_runner(model=model_override)
+    runner = get_runner(model=resolve_model_alias(chat_request.model))
     user_id = user.uid
     session_id = chat_request.session_id or str(uuid4())
 
-    # Get or create session
     t0 = _time.perf_counter()
-    try:
-        session = await runner.session_service.get_session(
-            app_name=APP_NAME, user_id=user_id, session_id=session_id
-        )
-    except Exception:
-        session = None
-
-    is_continuation = False  # Set in existing-session branch; used below for windowing
-    is_ask_user_response = False  # Set in existing-session branch; used below for windowing
-
-    if session is None:
-        session = await runner.session_service.create_session(
-            app_name=APP_NAME,
-            user_id=user_id,
-            session_id=session_id,
-            state={
-                "user_id": user_id,
-                "org_id": user.org_id,
-                "is_anonymous": user.is_anonymous,
-                "session_id": session_id,
-                "session_title": "New Session",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "message_count": 0,
-                "first_message": None,
-                "accent_color": chat_request.accent_color or "",
-                "theme": chat_request.theme or "light",
-            },
-        )
-    else:
-        # Always refresh identity from the current auth context so that
-        # access checks use the correct user even after account linking
-        # or session migration.
-        session.state["user_id"] = user_id
-        session.state["org_id"] = user.org_id
-        session.state["is_anonymous"] = user.is_anonymous
-        # Always update theme preferences so they stay current
-        if chat_request.accent_color:
-            session.state["accent_color"] = chat_request.accent_color
-        if chat_request.theme:
-            session.state["theme"] = chat_request.theme
-
-        # Detect whether this message is a response to an ask_user prompt or
-        # a system continuation (collection complete). Both preserve agent state.
-        is_ask_user_response = session.state.get("awaiting_user_input", False)
-        is_continuation = chat_request.is_system and "[CONTINUE]" in chat_request.message
-
-        if is_ask_user_response:
-            session.state["awaiting_user_input"] = False
-
-        if is_continuation:
-            # Strip the prefix, set continuation mode, restore todos if needed
-            chat_request.message = chat_request.message.replace("[CONTINUE]", "").strip()
-            session.state["continuation_mode"] = True
-            session.state["collection_running"] = False
-            # Restore todos from agent document if cleared from session
-            agent_id = session.state.get("active_agent_id")
-            if agent_id and not session.state.get("todos"):
-                _agent = get_fs().get_agent(agent_id)
-                if _agent and _agent.get("todos"):
-                    session.state["todos"] = _agent["todos"]
-            # Mark the agent as picked up so the offline fallback doesn't fire
-            if agent_id:
-                get_fs().update_agent(agent_id, status="analyzing")
-
-        if not is_ask_user_response and not is_continuation:
-            # Clear prior-agent state to prevent context leakage between agents.
-            # The agent re-establishes context from the user's current message.
-            for key in (
-                "active_agent_id", "active_agent_title", "active_agent_status",
-                "active_agent_protocol", "active_agent_type", "active_agent_context_summary",
-                "active_agent_context", "active_agent_constitution", "active_agent_data_scope",
-                "todos", "tool_result_history",
-                "active_collection_id", "agent_selected_sources",
-                "collection_status", "collection_running",
-                "posts_collected", "posts_enriched", "posts_embedded",
-                "autonomous_mode", "continuation_mode",
-            ):
-                session.state.pop(key, None)
-
-    # Auto-load agent context when agent_id is provided (e.g., chatting from agent page).
-    # This ensures the agent's identity, data scope, and collections are available
-    # from the very first message without requiring the LLM to call set_active_agent.
-    if chat_request.agent_id and not session.state.get("active_agent_id"):
-        _agent_doc = get_fs().get_agent(chat_request.agent_id)
-        if _agent_doc and (_agent_doc.get("user_id") == user_id or _agent_doc.get("org_id") == user.org_id):
-            _ds = _agent_doc.get("data_scope", {})
-            session.state["active_agent_id"] = chat_request.agent_id
-            session.state["active_agent_title"] = _agent_doc.get("title", "")
-            session.state["active_agent_status"] = _agent_doc.get("status", "")
-            session.state["active_agent_type"] = _agent_doc.get("agent_type", "one_shot")
-            session.state["active_agent_data_scope"] = _ds
-            session.state["active_agent_constitution"] = _agent_doc.get("constitution")
-            session.state["active_agent_context"] = _agent_doc.get("context")
-            _cids = _agent_doc.get("collection_ids", [])
-            session.state["agent_selected_sources"] = _cids
-            if _cids:
-                session.state["active_collection_id"] = _cids[0]
-            # Note: NOT loading todos from agent doc — those are from previous runs.
-            # Chat mode starts fresh; the agent creates todos as needed.
-            # Link session to agent so it appears in agent's session history
-            get_fs().add_agent_session(chat_request.agent_id, session_id)
-
-    # Window conversation history by user-message boundaries to prevent
-    # prior agent context from contaminating new requests.  Keep events from
-    # the last N user messages (each user message spawns ~5-10 tool/model
-    # events).  This isolates agent flows far better than a raw event count.
-    # Use a wider window when the agent is mid-flow (ask_user round-trips
-    # can span 3-4 user turns: original request, ask_user response(s), approval).
-    is_mid_flow = is_ask_user_response or session.state.get("active_agent_id") or is_continuation
-    MAX_USER_TURNS = 6 if is_mid_flow else 2
-    _trimmed_prefix = []  # Events trimmed for LLM context window — restored before persistence
-    if session.events:
-        user_turn_starts: list[int] = [
-            i for i, e in enumerate(session.events)
-            if e.content and e.content.role == "user"
-            and not any(getattr(p, "function_response", None) for p in (e.content.parts or []))
-        ]
-        if len(user_turn_starts) > MAX_USER_TURNS:
-            cutoff = user_turn_starts[-MAX_USER_TURNS]
-            _trimmed_prefix = session.events[:cutoff]
-            session.events = session.events[cutoff:]
-
-    # Fetch live collection status once per turn (not per ReAct step).
-    # The before_model_callback reads from state only.
-    _cid = session.state.get("active_collection_id")
-    if not _cid:
-        _eff = session.state.get("agent_selected_sources") or []
-        _cid = _eff[0] if _eff else None
-    if _cid:
-        _live = get_fs().get_collection_status(_cid)
-        if _live:
-            session.state["collection_status"] = _live.get("status", "unknown")
-            session.state["posts_collected"] = _live.get("posts_collected", 0)
-            session.state["posts_enriched"] = _live.get("posts_enriched", 0)
-            session.state["posts_embedded"] = _live.get("posts_embedded", 0)
-            if _live.get("status") in ("success", "failed"):
-                session.state["collection_running"] = False
-
-    # Refresh ppt_template in session state from user profile (once per turn,
-    # non-blocking — template may have been uploaded since session started).
-    try:
-        _user_doc = get_fs().get_user(user_id)
-        if _user_doc and _user_doc.get("ppt_template"):
-            _tmpl = _user_doc["ppt_template"]
-            session.state["ppt_template"] = {
-                "filename": _tmpl.get("filename", "template.pptx"),
-                "gcs_path": _tmpl.get("gcs_path", ""),
-                "manifest": _tmpl.get("manifest"),
-            }
-        else:
-            session.state.pop("ppt_template", None)
-    except Exception:
-        pass  # Non-critical — agent works fine without it
-
+    session, flow = await setup_chat_session(runner, user, chat_request, session_id)
+    trimmed_prefix = window_events_for_llm(session, flow)
+    refresh_live_state(session, user_id)
     logger.info("PERF session_init=%.3fs events=%d", _time.perf_counter() - t0, len(session.events))
 
     content = types.Content(
         role="user", parts=[types.Part.from_text(text=chat_request.message)]
     )
 
-    # Track first message for session naming
     if not session.state.get("first_message"):
         session.state["first_message"] = chat_request.message
     session.state["message_count"] = session.state.get("message_count", 0) + 1
 
-    # Rate limit anonymous users
     if user.is_anonymous and session.state.get("message_count", 0) > 15:
         raise HTTPException(status_code=429, detail="Sign up for a free account to continue chatting")
 
-    # NOTE: Pre-persist removed. Writing the session here raced with the
-    # post-agent flush() — the background thread could serialize stale events
-    # and overwrite the flush's correct state (including awaiting_user_input).
-    # Session is persisted once at end-of-turn via runner.session_service.flush().
-
-    # Track usage in background (3 Firestore writes).
-    # Skip while impersonating so we don't pollute the target user's metrics.
+    # Track usage in background (3 Firestore writes). Skip while impersonating
+    # so we don't pollute the target user's metrics.
     if user.impersonated_by is None:
         from api.services.usage_service import track_query
         threading.Thread(
@@ -700,8 +289,8 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         _flushed = False
         try:
             run_config = RunConfig(streaming_mode=StreamingMode.SSE)
-            streamed_text = False  # Track if text was streamed via partial events
-            streamed_thinking = False  # Track if thinking was streamed via partial events
+            streamed_text = False
+            streamed_thinking = False
             t_runner_start = _time.perf_counter()
             t_first_token = None
 
@@ -715,11 +304,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     logger.info("PERF time_to_first_token=%.3fs", t_first_token - t_runner_start)
 
                 if is_partial:
-                    # Streaming chunk — emit text parts for typewriter effect
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if part.text and getattr(part, "thought", False):
-                                # Native Gemini thought tokens → thinking panel
                                 thought_text = part.text.strip()
                                 if thought_text:
                                     streamed_thinking = True
@@ -732,7 +319,6 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                                         }),
                                     }
                             elif part.text:
-                                # Regular text → stream to frontend
                                 streamed_text = True
                                 yield {
                                     "event": "partial_text",
@@ -742,13 +328,9 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                                         "author": event.author,
                                     }),
                                 }
-                    continue  # Skip _extract_event_data for partial events
+                    continue
 
-                # Non-partial event — process normally (tool calls, results,
-                # final aggregated text with full marker extraction).
-                # If text was already streamed, suppress the text event from
-                # the aggregated final to avoid duplication.
-                for event_data in _extract_event_data(event, suppress_text=streamed_text, suppress_thinking=streamed_thinking):
+                for event_data in extract_event_data(event, suppress_text=streamed_text, suppress_thinking=streamed_thinking):
                     et = event_data["event_type"]
 
                     # Persist artifacts BEFORE yielding so the Firestore
@@ -758,42 +340,35 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         tr_result = event_data.get("metadata", {}).get("result", {})
                         if isinstance(tr_result, dict):
                             active_agent_id = session.state.get("active_agent_id") if session else None
-                            aid = _maybe_persist_artifact(
+                            aid = persist_tool_result_artifact(
                                 tr_name, tr_result, user_id, user.org_id, session_id,
                                 agent_id=active_agent_id,
                             )
                             if aid:
                                 tr_result["_artifact_id"] = aid
-                                # Write back to ADK event so it persists in _write_session()
-                                _write_artifact_id_to_event(event, tr_name, aid)
+                                write_artifact_id_to_event(event, tr_name, aid)
 
                     yield {
                         "event": et,
                         "data": json.dumps(event_data),
                     }
 
-                    # Reset streaming flags after tool results so the next
-                    # text/thinking segment (post-tool) streams fresh
                     if et == "tool_result":
                         streamed_text = False
                         streamed_thinking = False
 
                 if event.is_final_response():
-                    text = _extract_text(event)
-
-                    # Use existing title or "New Session" — naming happens in background
+                    text = extract_final_text(event)
                     session_title = session.state.get("session_title", "New Session")
-
-                    done_payload: dict = {
-                        "event_type": "done",
-                        "session_id": session_id,
-                        "session_title": session_title,
-                        "content": text,
-                    }
 
                     yield {
                         "event": "done",
-                        "data": json.dumps(done_payload),
+                        "data": json.dumps({
+                            "event_type": "done",
+                            "session_id": session_id,
+                            "session_title": session_title,
+                            "content": text,
+                        }),
                     }
                     logger.info(
                         "PERF total=%.3fs runner=%.3fs",
@@ -801,25 +376,19 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         _time.perf_counter() - t_runner_start,
                     )
 
-                    # Restore full event history before persisting — the trimming
-                    # was only for the LLM context window, not for storage.
-                    if _trimmed_prefix:
-                        session.events = _trimmed_prefix + session.events
-                    runner.session_service.flush(session)
+                    restore_and_flush(runner, session, trimmed_prefix)
                     _flushed = True
 
-                    # Fire-and-forget: name the session in background
                     asyncio.create_task(
-                        _name_session_background(runner, user_id, session_id)
+                        name_session_background(runner, user_id, session_id)
                     )
+
             # If the runner ends without emitting a final_response (e.g., when
             # the before_model_callback stops the ReAct loop after ask_user),
             # we still need to flush the session so state persists for the
             # next turn.
             if not _flushed:
-                if _trimmed_prefix:
-                    session.events = _trimmed_prefix + session.events
-                runner.session_service.flush(session)
+                restore_and_flush(runner, session, trimmed_prefix)
                 _flushed = True
 
         except Exception as e:
@@ -831,11 +400,12 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         finally:
             if not _flushed:
                 logger.warning("event_stream finalizer: flushing session %s (stream interrupted)", session_id)
-                if _trimmed_prefix:
-                    session.events = _trimmed_prefix + session.events
                 try:
-                    runner.session_service.flush(session)
+                    restore_and_flush(runner, session, trimmed_prefix)
                 except Exception:
+                    # Last-resort guard: stream was interrupted and flush
+                    # itself is failing. Log and exit — we've already done
+                    # our best to preserve state.
                     logger.exception("Failed to flush session %s in finally block", session_id)
 
     return EventSourceResponse(event_stream())
@@ -1014,7 +584,7 @@ async def get_collection_posts(
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
-    if not _can_access_collection(user, status):
+    if not can_access_collection(user, status):
         raise HTTPException(status_code=403, detail="Access denied")
 
     bq = get_bq()
@@ -1172,7 +742,7 @@ async def get_collection_status(
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
-    if not _can_access_collection(user, status):
+    if not can_access_collection(user, status):
         raise HTTPException(status_code=403, detail="Access denied")
 
     return CollectionStatusResponse(
@@ -1189,28 +759,6 @@ async def get_collection_status(
     )
 
 
-def _signature_to_response(data: dict) -> CollectionStatsResponse:
-    """Convert a raw statistical signature dict to CollectionStatsResponse."""
-    eng = data.get("engagement_summary") or {}
-    return CollectionStatsResponse(
-        computed_at=data.get("computed_at"),
-        collection_status_at_compute=data.get("collection_status_at_compute"),
-        total_posts=data.get("total_posts", 0),
-        total_unique_channels=data.get("total_unique_channels", 0),
-        date_range=data.get("date_range", {}),
-        platform_breakdown=[BreakdownItem(**x) for x in data.get("platform_breakdown", [])],
-        sentiment_breakdown=[BreakdownItem(**x) for x in data.get("sentiment_breakdown", [])],
-        top_themes=[BreakdownItem(**x) for x in data.get("top_themes", [])],
-        top_entities=[BreakdownItem(**x) for x in data.get("top_entities", [])],
-        language_breakdown=[BreakdownItem(**x) for x in data.get("language_breakdown", [])],
-        content_type_breakdown=[BreakdownItem(**x) for x in data.get("content_type_breakdown", [])],
-        negative_sentiment_pct=data.get("negative_sentiment_pct"),
-        total_posts_enriched=data.get("total_posts_enriched", 0),
-        daily_volume=[DailyVolumeItem(**x) for x in data.get("daily_volume", [])],
-        engagement_summary=EngagementStats(**eng) if eng else EngagementStats(),
-    )
-
-
 @app.get("/collection/{collection_id}/stats", response_model=CollectionStatsResponse)
 async def get_collection_stats(
     collection_id: str,
@@ -1223,18 +771,18 @@ async def get_collection_stats(
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
-    if not _can_access_collection(user, status):
+    if not can_access_collection(user, status):
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Fast path: serve cached signature from Firestore (no BQ)
     cached = fs.get_latest_statistical_signature(collection_id)
     if cached:
-        return _signature_to_response(cached)
+        return signature_to_response(cached)
 
     # Slow path: compute, persist, return
     bq = get_bq()
     data = await asyncio.to_thread(refresh_statistical_signature, collection_id, bq, fs)
-    return _signature_to_response(data)
+    return signature_to_response(data)
 
 
 @app.post("/collection/{collection_id}/stats/refresh", response_model=CollectionStatsResponse)
@@ -1249,12 +797,12 @@ async def refresh_collection_stats(
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
-    if not _can_access_collection(user, status):
+    if not can_access_collection(user, status):
         raise HTTPException(status_code=403, detail="Access denied")
 
     bq = get_bq()
     data = await asyncio.to_thread(refresh_statistical_signature, collection_id, bq, fs)
-    return _signature_to_response(data)
+    return signature_to_response(data)
 
 
 @app.get("/collection/{collection_id}/download")
@@ -1267,7 +815,7 @@ async def download_collection(
     status = fs.get_collection_status(collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
-    if not _can_access_collection(user, status):
+    if not can_access_collection(user, status):
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Derive a safe filename from keywords
@@ -1360,7 +908,7 @@ async def get_multi_collection_feed(
         status = fs.get_collection_status(cid)
         if not status:
             raise HTTPException(status_code=404, detail=f"Collection {cid} not found")
-        if not _can_access_collection(user, status):
+        if not can_access_collection(user, status):
             raise HTTPException(status_code=403, detail=f"Access denied for collection {cid}")
 
     bq = get_bq()
@@ -2407,169 +1955,3 @@ async def download_presentation(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-async def _name_session_background(runner: Runner, user_id: str, session_id: str) -> None:
-    """Fire-and-forget wrapper around _maybe_name_session."""
-    try:
-        await _maybe_name_session(runner, user_id, session_id)
-    except Exception:
-        logger.debug("Background session naming failed for %s", session_id, exc_info=True)
-
-
-async def _maybe_name_session(runner: Runner, user_id: str, session_id: str) -> str:
-    """Generate a smart session title after the first agent turn.
-
-    Returns the current session title (may be newly generated or existing).
-    """
-    try:
-        session = await runner.session_service.get_session(
-            app_name=APP_NAME, user_id=user_id, session_id=session_id
-        )
-        if not session:
-            return "New Session"
-
-        current_title = session.state.get("session_title", "New Session")
-
-        # Only name once — skip if already named
-        if current_title != "New Session":
-            return current_title
-
-        first_message = session.state.get("first_message")
-        if not first_message:
-            logger.debug("Session %s has no first_message, skipping naming", session_id)
-            return current_title
-
-        # Lightweight LLM call to generate a title
-        from google import genai
-
-        settings = get_settings()
-        client = genai.Client(
-            vertexai=True,
-            project=settings.gcp_project_id,
-            location=settings.gemini_location,
-        )
-        response = client.models.generate_content(
-            model=settings.gemini_model,
-            contents=(
-                "Generate a very short (3-6 word) descriptive title for this social "
-                "listening research session. The user asked: "
-                f"'{first_message[:300]}'. Reply with ONLY the title, nothing else."
-            ),
-        )
-        title = response.text.strip().strip('"').strip("'")
-        if title and len(title) < 80:
-            session.state["session_title"] = title
-            # Persist the updated state
-            runner.session_service._write_session(session)
-            logger.info("Named session %s: %s", session_id, title)
-            return title
-        else:
-            logger.warning("Generated invalid title for session %s: %r", session_id, title)
-
-    except Exception:
-        logger.exception("Failed to auto-name session %s", session_id)
-
-    return "New Session"
-
-
-
-
-def _write_artifact_id_to_event(event, tool_name: str, artifact_id: str) -> None:
-    """Write _artifact_id back to the ADK event's function_response so it survives session persistence."""
-    if not event.content or not event.content.parts:
-        return
-    for part in event.content.parts:
-        if (part.function_response
-                and part.function_response.name == tool_name
-                and part.function_response.response is not None):
-            part.function_response.response["_artifact_id"] = artifact_id
-            break
-
-
-def _extract_event_data(event, suppress_text: bool = False, suppress_thinking: bool = False) -> list[dict]:
-    """Extract structured data from all parts of an ADK event.
-
-    An event may contain multiple parts (e.g. a text/thinking part followed by
-    a function_call in the same model turn). Previously only the first matching
-    part was returned, so function_call parts after a text part were silently
-    dropped — meaning SQL queries were never surfaced in the thinking panel.
-    Now all parts are processed and returned as a list.
-
-    Args:
-        event: The ADK event to process.
-        suppress_text: If True, skip emitting 'text' events (used when text
-            was already streamed via partial events to avoid duplication).
-        suppress_thinking: If True, skip emitting 'thinking' events (used when
-            thinking was already streamed via partial events to avoid duplication).
-    """
-    if not event.content or not event.content.parts:
-        return []
-
-    results = []
-    for part in event.content.parts:
-        if part.text:
-            # Native Gemini thought tokens → thinking panel, not chat body.
-            if getattr(part, "thought", False):
-                if not suppress_thinking:
-                    thought_text = part.text.strip()
-                    if thought_text:
-                        results.append({
-                            "event_type": "thinking",
-                            "content": thought_text,
-                            "author": event.author,
-                        })
-            else:
-                # Strip any stray HTML comments from the visible text
-                clean = re.sub(r"<!--[\s\S]*?-->", "", part.text).strip()
-                if clean and not suppress_text:
-                    results.append({
-                        "event_type": "text",
-                        "content": clean,
-                        "author": event.author,
-                    })
-        elif part.function_call:
-            if part.function_call.name == "transfer_to_agent":
-                continue
-            results.append({
-                "event_type": "tool_call",
-                "content": part.function_call.name,
-                "metadata": {
-                    "name": part.function_call.name,
-                    "args": dict(part.function_call.args) if part.function_call.args else {},
-                },
-                "author": event.author,
-            })
-        elif part.function_response:
-            if part.function_response.name == "transfer_to_agent":
-                continue
-            response_data = {}
-            if part.function_response.response:
-                try:
-                    response_data = dict(part.function_response.response)
-                except (TypeError, ValueError):
-                    response_data = {}
-            results.append({
-                "event_type": "tool_result",
-                "content": part.function_response.name,
-                "metadata": {
-                    "name": part.function_response.name,
-                    "result": response_data,
-                },
-                "author": event.author,
-            })
-    return results
-
-
-def _extract_text(event) -> str:
-    """Extract text content from a final response event (excludes thought tokens)."""
-    if not event.content or not event.content.parts:
-        return ""
-    texts = [
-        part.text for part in event.content.parts
-        if part.text and not getattr(part, "thought", False)
-    ]
-    return "\n".join(texts)
