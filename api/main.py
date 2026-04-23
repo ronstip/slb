@@ -18,10 +18,8 @@ from api.auth.firebase_init import init_firebase
 
 init_firebase()
 
-import requests as http_requests
-
 from pydantic import BaseModel, ValidationError
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -49,6 +47,10 @@ from api.routers import artifacts as artifacts_router
 from api.routers import feed_links as feed_links_router
 from api.routers import topics as topics_router
 from api.routers import briefing as briefing_router
+from api.routers import auth as auth_router
+from api.routers import orgs as orgs_router
+from api.routers import media as media_router
+from api.routers import health as health_router
 from api.schemas.requests import ChatRequest, CreateCollectionRequest, CreateFromWizardRequest, MultiFeedRequest, UpdateCollectionRequest
 from api.schemas.responses import (
     CollectionStatsResponse,
@@ -116,6 +118,10 @@ app.include_router(artifacts_router.router)
 app.include_router(topics_router.router)
 app.include_router(briefing_router.router)
 app.include_router(feed_links_router.router)
+app.include_router(auth_router.router)
+app.include_router(orgs_router.router)
+app.include_router(media_router.router)
+app.include_router(health_router.router)
 
 # CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
 _settings = get_settings()
@@ -142,111 +148,6 @@ else:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-
-
-@app.get("/me")
-async def get_me(user: CurrentUser = Depends(get_current_user)):
-    """Return the current user's profile.
-
-    During impersonation this returns the TARGET user's profile so all
-    frontend permission gates flip. The real caller's identity is surfaced
-    in the optional `impersonation` block for the banner UI.
-    """
-    fs = get_fs()
-
-    org_name = None
-    if user.org_id:
-        org = fs.get_org(user.org_id)
-        if org:
-            org_name = org.get("name")
-
-    user_doc = fs.get_user(user.uid)
-
-    # is_super_admin reflects the TARGET user's privileges — during
-    # impersonation this is always false because admin-on-admin is blocked.
-    # The real caller's super admin status is not leaked through this field.
-    from api.auth.admin import is_super_admin_email
-    is_super_admin = is_super_admin_email(user.email)
-
-    response = {
-        "uid": user.uid,
-        "email": user.email,
-        "display_name": user_doc.get("display_name") if user_doc else user.display_name,
-        "photo_url": user_doc.get("photo_url") if user_doc else None,
-        "org_id": user.org_id,
-        "org_role": user.org_role,
-        "org_name": org_name,
-        "is_anonymous": user.is_anonymous,
-        "preferences": user_doc.get("preferences") if user_doc else None,
-        "subscription_plan": user_doc.get("subscription_plan") if user_doc else None,
-        "subscription_status": user_doc.get("subscription_status") if user_doc else None,
-        "is_super_admin": is_super_admin,
-    }
-
-    if user.impersonated_by is not None:
-        response["impersonation"] = {
-            "real_uid": user.impersonated_by,
-            "real_email": user.real_email,
-            "target_uid": user.uid,
-            "target_email": user.email,
-            "target_display_name": response["display_name"],
-        }
-
-    return response
-
-
-class LinkAccountRequest(BaseModel):
-    old_uid: str
-
-
-@app.post("/auth/link-account")
-async def link_account(
-    body: LinkAccountRequest,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Migrate anonymous user data to linked account after UID change."""
-    # Block while impersonating — mutates user docs and would corrupt the
-    # target user's data if triggered as another user.
-    if user.impersonated_by is not None:
-        raise HTTPException(
-            status_code=403,
-            detail="This action is disabled while viewing as another user",
-        )
-    from api.auth.dependencies import _user_cache
-
-    old_uid = body.old_uid
-    new_uid = user.uid
-
-    if old_uid == new_uid:
-        return {"status": "ok", "migrated": False}
-
-    fs = get_fs()
-
-    # 1. Migrate sessions: update user_id in session state
-    sessions_ref = fs._db.collection("sessions")
-    old_sessions = list(sessions_ref.where("user_id", "==", old_uid).stream())
-    for doc in old_sessions:
-        doc.reference.update({"user_id": new_uid})
-        # Also update the nested state.user_id if present
-        data = doc.to_dict()
-        if data.get("state", {}).get("user_id") == old_uid:
-            doc.reference.update({"state.user_id": new_uid, "state.is_anonymous": False})
-
-    # 2. Migrate user doc
-    old_user = fs.get_user(old_uid)
-    if old_user:
-        new_user = fs.get_user(new_uid)
-        if not new_user:
-            old_user["is_anonymous"] = False
-            fs.create_user(new_uid, old_user)
-        fs._db.collection("users").document(old_uid).delete()
-
-    # 3. Clear caches
-    _user_cache.pop(old_uid, None)
-    _user_cache.pop(new_uid, None)
-
-    logger.info("Linked account: %s -> %s (migrated %d sessions)", old_uid, new_uid, len(old_sessions))
-    return {"status": "ok", "migrated": True, "sessions_migrated": len(old_sessions)}
 
 
 @app.post("/chat")
@@ -1560,108 +1461,8 @@ async def get_agent_run(
 
 
 # ---------------------------------------------------------------------------
-# Organization endpoints
+# Internal / unauthenticated endpoints
 # ---------------------------------------------------------------------------
-
-
-@app.post("/orgs")
-async def create_org(
-    request: dict,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Create an organization. The creator becomes the owner."""
-    name = request.get("name", "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Organization name is required")
-
-    if user.org_id:
-        raise HTTPException(status_code=400, detail="You already belong to an organization")
-
-    fs = get_fs()
-
-    domain = request.get("domain", "").strip().lower() or None
-
-    # Check domain uniqueness if provided
-    if domain:
-        existing = fs.find_org_by_domain(domain)
-        if existing:
-            raise HTTPException(status_code=409, detail="An organization with this domain already exists")
-
-    slug = name.lower().replace(" ", "-")
-
-    org_id = fs.create_org({
-        "name": name,
-        "slug": slug,
-        "owner_uid": user.uid,
-        "domain": domain,
-        "created_at": datetime.now(timezone.utc),
-    })
-
-    # Update the user's org membership
-    fs.update_user(user.uid, org_id=org_id, org_role="owner")
-
-    return {"org_id": org_id, "name": name, "slug": slug, "domain": domain}
-
-
-@app.get("/orgs/me")
-async def get_my_org(user: CurrentUser = Depends(get_current_user)):
-    """Get the current user's organization details and member list."""
-    if not user.org_id:
-        raise HTTPException(status_code=404, detail="You are not in an organization")
-
-    fs = get_fs()
-
-    org = fs.get_org(user.org_id)
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    members = fs.list_org_members(user.org_id)
-    member_list = [
-        {
-            "uid": m["uid"],
-            "email": m.get("email"),
-            "display_name": m.get("display_name"),
-            "photo_url": m.get("photo_url"),
-            "role": m.get("org_role"),
-        }
-        for m in members
-    ]
-
-    return {
-        "org_id": user.org_id,
-        "name": org.get("name"),
-        "slug": org.get("slug"),
-        "domain": org.get("domain"),
-        "members": member_list,
-        "subscription_plan": org.get("subscription_plan"),
-        "subscription_status": org.get("subscription_status"),
-        "billing_cycle": org.get("billing_cycle"),
-        "current_period_end": org.get("current_period_end"),
-    }
-
-
-@app.delete("/orgs/me/leave")
-async def leave_org(user: CurrentUser = Depends(get_current_user)):
-    """Leave the current organization."""
-    if not user.org_id:
-        raise HTTPException(status_code=400, detail="You are not in an organization")
-
-    if user.org_role == "owner":
-        raise HTTPException(status_code=400, detail="Organization owner cannot leave. Transfer ownership first.")
-
-    fs = get_fs()
-    fs.update_user(user.uid, org_id=None, org_role=None)
-    return {"status": "left"}
-
-
-# ---------------------------------------------------------------------------
-# Public / unauthenticated endpoints
-# ---------------------------------------------------------------------------
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
 
 
 @app.post("/internal/scheduler/tick")
@@ -1767,191 +1568,5 @@ async def agent_continue(request: dict):
         return {"ok": False, "agent_id": agent_id, "error": "continuation_failed"}
 
     return {"ok": True, "agent_id": agent_id}
-
-
-@app.get("/media/{path:path}")
-async def serve_media(path: str):
-    """Proxy media files from GCS to avoid CORS issues with original platform URLs."""
-    settings = get_settings()
-    bucket_name = settings.gcs_media_bucket
-
-    try:
-        client = get_gcs()
-        bucket = client.bucket(bucket_name)
-        blob = bucket.blob(path)
-
-        if not blob.exists():
-            raise HTTPException(status_code=404, detail="Media not found")
-
-        # Determine content type from blob metadata or path extension
-        content_type = blob.content_type or "application/octet-stream"
-
-        def stream():
-            with blob.open("rb") as f:
-                while chunk := f.read(256 * 1024):
-                    yield chunk
-
-        return StreamingResponse(
-            stream(),
-            media_type=content_type,
-            headers={
-                "Cache-Control": "public, max-age=86400",
-                "Accept-Ranges": "bytes",
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error serving media: %s", path)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/media-proxy")
-async def proxy_media(url: str = Query(...)):
-    """Proxy external media URLs to bypass CORS restrictions on social platform CDNs."""
-    try:
-        # Run synchronous requests.get in a thread to avoid blocking the event loop
-        resp = await asyncio.to_thread(
-            http_requests.get,
-            url,
-            stream=True,
-            timeout=30,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; SocialListening/1.0)"},
-        )
-        resp.raise_for_status()
-
-        return StreamingResponse(
-            resp.iter_content(chunk_size=256 * 1024),
-            media_type=resp.headers.get("content-type", "application/octet-stream"),
-            headers={"Cache-Control": "public, max-age=86400"},
-        )
-    except http_requests.HTTPError as e:
-        status = e.response.status_code if e.response is not None else 502
-        if status in (401, 403, 404):
-            raise HTTPException(status_code=404, detail="Media not available")
-        logger.warning("Media proxy failed for %.80s...: %s", url, e)
-        raise HTTPException(status_code=502, detail="Failed to fetch media")
-    except http_requests.RequestException as e:
-        logger.warning("Media proxy failed for %.80s...: %s", url, e)
-        raise HTTPException(status_code=502, detail="Failed to fetch media")
-    except Exception as e:
-        logger.exception("Media proxy error: %.80s...", url)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/upload/ppt-template")
-async def upload_ppt_template(
-    file: UploadFile = File(...),
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Upload a .pptx file to use as a persistent presentation template.
-
-    The template is stored in GCS under the user's namespace and saved to
-    the user profile in Firestore so the agent can reference it in future
-    sessions. Max file size: 20MB.
-    """
-    if not file.filename or not file.filename.lower().endswith(".pptx"):
-        raise HTTPException(status_code=400, detail="Only .pptx files are accepted")
-
-    contents = await file.read()
-    if len(contents) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large — maximum 20MB")
-
-    settings = get_settings()
-    template_id = uuid4().hex[:12]
-    blob_name = f"ppt-templates/{user.uid}/{template_id}.pptx"
-    bucket_name = settings.gcs_presentations_bucket
-
-    try:
-        client = get_gcs()
-        bucket = client.bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-        blob.upload_from_string(
-            contents,
-            content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        )
-    except Exception as e:
-        logger.error("PPT template upload failed for user %s: %s", user.uid, e)
-        raise HTTPException(status_code=500, detail="Failed to store template")
-
-    # Extract manifest from the template
-    manifest = None
-    try:
-        from api.utils.pptx_manifest import extract_manifest
-        manifest = extract_manifest(contents)
-    except Exception as e:
-        logger.warning("Failed to extract pptx manifest for user %s: %s", user.uid, e)
-
-    # Persist template reference to user profile
-    safe_filename = (file.filename or "template.pptx")[:120]
-    template_ref = {
-        "gcs_path": blob_name,
-        "filename": safe_filename,
-        "uploaded_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if manifest:
-        template_ref["manifest"] = manifest
-    try:
-        fs = get_fs()
-        fs.update_user(user.uid, ppt_template=template_ref)
-    except Exception as e:
-        logger.warning("Failed to persist ppt_template to user profile: %s", e)
-
-    return {"gcs_path": blob_name, "filename": safe_filename}
-
-
-@app.get("/presentations/{presentation_id}")
-async def download_presentation(
-    presentation_id: str,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Download a generated PowerPoint presentation from GCS.
-
-    Ownership is verified via the artifact record in Firestore.
-    The file is streamed directly from GCS with appropriate headers.
-    """
-    fs = get_fs()
-    artifact = fs.get_artifact(presentation_id)
-    if not artifact:
-        raise HTTPException(status_code=404, detail="Presentation not found")
-    if artifact.get("user_id") != user.uid:
-        # Allow org members to download shared presentations
-        if not (user.org_id and artifact.get("org_id") == user.org_id):
-            raise HTTPException(status_code=403, detail="Access denied")
-    if artifact.get("type") != "presentation":
-        raise HTTPException(status_code=404, detail="Not a presentation artifact")
-
-    gcs_path = artifact.get("payload", {}).get("gcs_path", "")
-    if not gcs_path:
-        raise HTTPException(status_code=404, detail="Presentation file not found")
-
-    settings = get_settings()
-    bucket_name = settings.gcs_presentations_bucket
-
-    try:
-        client = get_gcs()
-        bucket = client.bucket(bucket_name)
-        blob = bucket.blob(gcs_path)
-        if not blob.exists():
-            raise HTTPException(status_code=404, detail="Presentation file not found in storage")
-
-        safe_title = artifact.get("title", "presentation").replace(" ", "_")[:60]
-        filename = f"{safe_title}.pptx"
-
-        def stream():
-            with blob.open("rb") as f:
-                while chunk := f.read(256 * 1024):
-                    yield chunk
-
-        return StreamingResponse(
-            stream(),
-            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error downloading presentation %s", presentation_id)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
