@@ -531,6 +531,7 @@ export interface DashboardPayload {
   collection_ids: string[];
   collection_names: Record<string, string>;
   message?: string;
+  agent_id?: string;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────

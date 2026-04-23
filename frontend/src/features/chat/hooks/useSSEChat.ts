@@ -28,11 +28,7 @@ function getToolDescription(toolName: string, args: Record<string, unknown>): st
       return (args.query as string) || undefined;
     case 'design_research':
       return (args.question as string) || (args.research_question as string) || undefined;
-    case 'get_progress':
-    case 'enrich_collection':
-    case 'cancel_collection':
     case 'get_collection_details':
-    case 'refresh_engagements':
       return (args.collection_id as string) || undefined;
     case 'get_agent_status':
     case 'set_active_agent':
@@ -258,7 +254,7 @@ export function useSSEChat() {
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport(dashboardId);
                 // If the agent persisted this as an explorer layout, surface it in the Explore sidebar
-                // and navigate there so the user lands on the full-screen view.
+                // (without navigating away from the chat).
                 const dashboardAgentId = result.agent_id as string | undefined;
                 if (toolName === 'compose_dashboard' && dashboardAgentId) {
                   const nowIso = new Date().toISOString();
@@ -269,8 +265,6 @@ export function useSSEChat() {
                     created_at: nowIso,
                     updated_at: nowIso,
                   });
-                  useExplorerLayoutStore.getState().selectLayout(dashboardId);
-                  navigate(`/agents/${dashboardAgentId}?tab=explorer`, { replace: true });
                 }
               } else if (isStartAgentResult(toolName, result)) {
                 // Task started — add collections to sources and link taskId + sessionId

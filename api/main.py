@@ -260,6 +260,15 @@ def _maybe_persist_artifact(
             "collection_ids": collection_ids,
             "collection_names": result.get("collection_names", {}),
         }
+    elif tool_name == "compose_dashboard" and result.get("dashboard_id"):
+        artifact_type = "dashboard"
+        artifact_id = result.get("dashboard_id")
+        title = result.get("title", "Dashboard")
+        collection_ids = result.get("collection_ids") or []
+        payload = {
+            "collection_ids": collection_ids,
+            "collection_names": result.get("collection_names", {}),
+        }
     elif tool_name == "generate_presentation" and result.get("presentation_id"):
         artifact_type = "presentation"
         artifact_id = result.get("presentation_id")
