@@ -89,10 +89,16 @@ def list_topics(
     best_image_per_topic = load_best_image_per_topic(bq, agent_id)
 
     top = topics[: max(1, int(limit))]
+    # One batched BQ call across all top clusters (collapses an N+1 loop).
+    top_cluster_ids = [t["cluster_id"] for t in top]
+    posts_per_cluster = load_topic_posts(
+        bq, agent_id, top_cluster_ids, max(0, int(sample_posts_per_topic))
+    )
+
     out_topics: list[dict] = []
     for t in top:
         cid = t["cluster_id"]
-        posts = load_topic_posts(bq, agent_id, cid, max(0, int(sample_posts_per_topic)))
+        posts = posts_per_cluster.get(cid, [])
         sentiment_counts = {
             "positive": t.get("positive_count") or 0,
             "negative": t.get("negative_count") or 0,

@@ -640,7 +640,11 @@ async def impersonate_stop(
             if target_doc:
                 target_email = target_doc.get("email") or None
         except Exception:
-            pass
+            logger.warning(
+                "impersonate_stop: target user lookup failed for uid=%s",
+                target_uid,
+                exc_info=True,
+            )
 
     _write_audit_entry("stop", real_user, target_uid, target_email, request)
     logger.info("Impersonation STOP: %s", real_user.email)

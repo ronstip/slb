@@ -124,12 +124,14 @@ def run_pipeline(collection_id: str, continuation: bool = False) -> None:
     enrichment_executor = ThreadPoolExecutor(max_workers=settings.enrichment_batch_workers)
     enrichment_futures = []
 
-    enrichment_batch_sizes = []
+    enrichment_batch_sizes: list[int] = []
+    enrichment_batch_post_ids: list[list[str]] = []
 
     def on_batch_complete(new_posts):
         """Callback from collection worker — fire enrichment for this batch."""
         post_data = [_post_to_enrichment_data(p) for p in new_posts]
         enrichment_batch_sizes.append(len(post_data))
+        enrichment_batch_post_ids.append([p.post_id for p in post_data])
         future = enrichment_executor.submit(
             run_enrichment_inline, post_data, collection_id, custom_fields_defs, enrichment_context,
         )
@@ -162,21 +164,53 @@ def run_pipeline(collection_id: str, continuation: bool = False) -> None:
     enrichment_executor.shutdown(wait=True)
     enrichment_failed = False
     failed_batches = 0
+    failed_post_ids: list[str] = []
     for i, future in enumerate(enrichment_futures):
+        batch_size = enrichment_batch_sizes[i] if i < len(enrichment_batch_sizes) else 0
+        batch_post_ids = (
+            enrichment_batch_post_ids[i] if i < len(enrichment_batch_post_ids) else []
+        )
         try:
             result = future.result()
-            batch_size = enrichment_batch_sizes[i] if i < len(enrichment_batch_sizes) else 0
             if not result and batch_size > 0:
-                logger.warning(
-                    "Enrichment batch %d returned 0/%d results for %s",
-                    i, batch_size, collection_id,
+                # Structured log for alerting — see docs/alerts/enrichment-failures.md
+                logger.error(
+                    "enrichment_batch_failed",
+                    extra={
+                        "json_fields": {
+                            "event": "enrichment_batch_failed",
+                            "collection_id": collection_id,
+                            "batch_index": i,
+                            "batch_size": batch_size,
+                            "returned": 0,
+                            "post_ids": batch_post_ids,
+                            "reason": "empty_result",
+                        }
+                    },
                 )
                 enrichment_failed = True
                 failed_batches += 1
-        except Exception:
-            logger.exception("Enrichment batch failed for %s", collection_id)
+                failed_post_ids.extend(batch_post_ids)
+        except Exception as exc:
+            logger.error(
+                "enrichment_batch_failed",
+                extra={
+                    "json_fields": {
+                        "event": "enrichment_batch_failed",
+                        "collection_id": collection_id,
+                        "batch_index": i,
+                        "batch_size": batch_size,
+                        "returned": 0,
+                        "post_ids": batch_post_ids,
+                        "reason": "exception",
+                        "error": repr(exc),
+                    }
+                },
+                exc_info=True,
+            )
             enrichment_failed = True
             failed_batches += 1
+            failed_post_ids.extend(batch_post_ids)
     logger.info(
         "── Step 2 done in %.1fs (%d/%d batches ok)",
         _time.monotonic() - t0,
@@ -191,9 +225,21 @@ def run_pipeline(collection_id: str, continuation: bool = False) -> None:
         logger.exception("Failed to update enrichment counts for %s", collection_id)
 
     if enrichment_failed:
+        # Surface up to 20 failed post_ids in error_message so the UI can show
+        # which posts were missed without changing the schema. Full list lives
+        # in the structured log.
+        sample = failed_post_ids[:20]
+        suffix = (
+            f" (failed_post_ids={sample}, total={len(failed_post_ids)})"
+            if sample
+            else ""
+        )
         fs.update_collection_status(
             collection_id, status="completed_with_errors",
-            error_message="One or more enrichment batches failed. Partial data is available.",
+            error_message=(
+                f"{failed_batches} enrichment batch(es) failed. "
+                f"Partial data is available.{suffix}"
+            ),
         )
         # Continue to stats — partial enrichment data is still useful
 

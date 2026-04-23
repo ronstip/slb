@@ -450,7 +450,9 @@ def _build_chat_context(state: dict) -> Optional[str]:
                     + manifest_to_agent_context(default_manifest)
                 )
         except Exception:
-            pass
+            logger.exception(
+                "Default PPT manifest load failed; agent will run without template context"
+            )
 
     return "\n\n".join(blocks) if blocks else None
 
@@ -554,7 +556,9 @@ def _build_autonomous_context(state: dict) -> Optional[str]:
                     + manifest_to_agent_context(default_manifest)
                 )
         except Exception:
-            pass
+            logger.exception(
+                "Default PPT manifest load failed; autonomous run continues without template context"
+            )
 
     return "\n\n".join(blocks) if blocks else None
 

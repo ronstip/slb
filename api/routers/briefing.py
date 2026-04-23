@@ -18,6 +18,7 @@ Distinct from [api/agent/tools/generate_briefing.py] which writes the per-run
 briefing (state_of_the_world / open_threads / process_notes) used as input here.
 """
 
+import asyncio
 import json
 import logging
 import math
@@ -258,9 +259,20 @@ def load_best_image_per_topic(bq, agent_id: str) -> dict[str, dict]:
     }
 
 
-def load_topic_posts(bq, agent_id: str, cluster_id: str, limit: int) -> list[dict]:
-    """Fetch top representative posts for a topic, ordered by representative flag + engagement."""
-    return bq.query(
+def load_topic_posts(
+    bq, agent_id: str, cluster_ids: list[str], limit_per_cluster: int
+) -> dict[str, list[dict]]:
+    """Fetch top representative posts for each cluster in a single batched query.
+
+    Returns a dict keyed by cluster_id. Clusters with no posts get an empty
+    list entry so callers can `.get(cid, [])` safely. Posts within each cluster
+    are ordered by (is_representative DESC, engagement DESC) and capped at
+    `limit_per_cluster`.
+    """
+    if not cluster_ids:
+        return {}
+
+    rows = bq.query(
         """
         WITH latest AS (
             SELECT MAX(clustered_at) as latest_at
@@ -268,10 +280,10 @@ def load_topic_posts(bq, agent_id: str, cluster_id: str, limit: int) -> list[dic
             WHERE agent_id = @agent_id
         ),
         members AS (
-            SELECT tcm.post_id, tcm.is_representative
+            SELECT tcm.cluster_id, tcm.post_id, tcm.is_representative
             FROM social_listening.topic_cluster_members tcm, latest
             WHERE tcm.agent_id = @agent_id
-              AND tcm.cluster_id = @cluster_id
+              AND tcm.cluster_id IN UNNEST(@cluster_ids)
               AND tcm.clustered_at = latest.latest_at
         ),
         dedup_posts AS (
@@ -286,22 +298,42 @@ def load_topic_posts(bq, agent_id: str, cluster_id: str, limit: int) -> list[dic
         dedup_enr AS (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
             FROM social_listening.enriched_posts
+        ),
+        joined AS (
+            SELECT
+                m.cluster_id,
+                m.post_id, p.platform, p.channel_handle, p.title, p.content,
+                p.post_url, p.posted_at, p.media_refs,
+                ep.ai_summary, ep.sentiment,
+                pe.views, pe.likes, pe.comments_count,
+                m.is_representative,
+                ROW_NUMBER() OVER (
+                    PARTITION BY m.cluster_id
+                    ORDER BY m.is_representative DESC,
+                             COALESCE(pe.views, 0) + COALESCE(pe.likes, 0) * 10 DESC
+                ) as rn
+            FROM members m
+            JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
+            LEFT JOIN dedup_enr ep ON ep.post_id = m.post_id AND ep._rn = 1
+            LEFT JOIN dedup_eng pe ON pe.post_id = m.post_id AND pe.rn = 1
         )
-        SELECT
-            m.post_id, p.platform, p.channel_handle, p.title, p.content,
-            p.post_url, p.posted_at, p.media_refs,
-            ep.ai_summary, ep.sentiment,
-            pe.views, pe.likes, pe.comments_count,
-            m.is_representative
-        FROM members m
-        JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
-        LEFT JOIN dedup_enr ep ON ep.post_id = m.post_id AND ep._rn = 1
-        LEFT JOIN dedup_eng pe ON pe.post_id = m.post_id AND pe.rn = 1
-        ORDER BY m.is_representative DESC, COALESCE(pe.views, 0) + COALESCE(pe.likes, 0) * 10 DESC
-        LIMIT @limit
+        SELECT * FROM joined
+        WHERE rn <= @limit_per_cluster
+        ORDER BY cluster_id, rn
         """,
-        {"agent_id": agent_id, "cluster_id": cluster_id, "limit": limit},
+        {
+            "agent_id": agent_id,
+            "cluster_ids": cluster_ids,
+            "limit_per_cluster": limit_per_cluster,
+        },
     )
+
+    out: dict[str, list[dict]] = {cid: [] for cid in cluster_ids}
+    for r in rows:
+        cid = r.get("cluster_id")
+        if cid in out:
+            out[cid].append(r)
+    return out
 
 
 # ─── Display helpers ────────────────────────────────────────────────
@@ -745,9 +777,9 @@ async def get_agent_briefing(
     the agent during its run, not on demand.
     """
     fs = get_fs()
-    check_agent_access(fs, user, agent_id)
+    await asyncio.to_thread(check_agent_access, fs, user, agent_id)
 
-    cached = read_cached_briefing(fs, agent_id)
+    cached = await asyncio.to_thread(read_cached_briefing, fs, agent_id)
     if cached is None:
         raise HTTPException(
             404, "No briefing yet — this agent's next run will produce one"
