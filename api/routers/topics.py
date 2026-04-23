@@ -3,6 +3,7 @@
 Topics are agent-scoped: they cluster posts across all of an agent's collections.
 """
 
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, timezone
@@ -177,8 +178,8 @@ async def list_agent_topics(
     """List all topics for an agent (from Firestore + BQ summary metrics)."""
     fs = get_fs()
     bq = get_bq()
-    _check_agent_access(fs, user, agent_id)
-    return _load_agent_topics(fs, bq, agent_id)
+    await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
+    return await asyncio.to_thread(_load_agent_topics, fs, bq, agent_id)
 
 
 # ---------------------------------------------------------------------------
@@ -280,13 +281,16 @@ async def get_agent_topics_narrative(
     """
     fs = get_fs()
     bq = get_bq()
-    agent = _check_agent_access(fs, user, agent_id)
+    agent = await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
     # Cheap hash check first: cluster_ids live in Firestore, no BQ needed.
-    cluster_ids = [
-        doc.id
-        for doc in fs._db.collection("agents").document(agent_id).collection("topics").stream()
-    ]
+    def _fetch_cluster_ids() -> list[str]:
+        return [
+            doc.id
+            for doc in fs._db.collection("agents").document(agent_id).collection("topics").stream()
+        ]
+
+    cluster_ids = await asyncio.to_thread(_fetch_cluster_ids)
     if not cluster_ids:
         return None
 
@@ -301,16 +305,17 @@ async def get_agent_topics_narrative(
         }
 
     # Cache miss — load full topics with BQ enrichment for the prompt.
-    topics = _load_agent_topics(fs, bq, agent_id)
+    topics = await asyncio.to_thread(_load_agent_topics, fs, bq, agent_id)
     if not topics:
         return None
 
-    result = _generate_narrative(topics)
+    result = await asyncio.to_thread(_generate_narrative, topics)
     if not result:
         raise HTTPException(502, "Narrative synthesis unavailable")
 
     generated_at = datetime.now(timezone.utc).isoformat()
-    fs.update_agent(
+    await asyncio.to_thread(
+        fs.update_agent,
         agent_id,
         topics_narrative={
             "headline": result.headline,
@@ -337,11 +342,9 @@ async def get_agent_topic_analytics(
     """On-demand analytics for a topic — sentiment, platform, engagement distributions."""
     fs = get_fs()
     bq = get_bq()
-    _check_agent_access(fs, user, agent_id)
+    await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
-    # Totals query (with dedup JOINs to prevent inflated counts)
-    totals = bq.query(
-        f"""
+    totals_sql = f"""
         {_LATEST_CTE},
         members AS (
             SELECT tcm.post_id
@@ -365,13 +368,9 @@ async def get_agent_topic_analytics(
         JOIN {_POSTS_DEDUP}
         LEFT JOIN {_ENRICHED_DEDUP}
         LEFT JOIN {_ENGAGEMENTS_DEDUP}
-        """,
-        {"agent_id": agent_id, "cluster_id": cluster_id},
-    )
+        """
 
-    # Platform breakdown (with dedup JOINs)
-    platforms = bq.query(
-        f"""
+    platforms_sql = f"""
         {_LATEST_CTE},
         members AS (
             SELECT tcm.post_id
@@ -389,8 +388,12 @@ async def get_agent_topic_analytics(
         JOIN {_POSTS_DEDUP}
         LEFT JOIN {_ENGAGEMENTS_DEDUP}
         GROUP BY p.platform
-        """,
-        {"agent_id": agent_id, "cluster_id": cluster_id},
+        """
+
+    params = {"agent_id": agent_id, "cluster_id": cluster_id}
+    totals, platforms = await asyncio.gather(
+        asyncio.to_thread(bq.query, totals_sql, params),
+        asyncio.to_thread(bq.query, platforms_sql, params),
     )
 
     return {
@@ -410,9 +413,10 @@ async def get_agent_topic_posts(
     """Paginated posts within a topic."""
     fs = get_fs()
     bq = get_bq()
-    _check_agent_access(fs, user, agent_id)
+    await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
-    posts = bq.query(
+    posts = await asyncio.to_thread(
+        bq.query,
         f"""
         {_LATEST_CTE},
         members AS (

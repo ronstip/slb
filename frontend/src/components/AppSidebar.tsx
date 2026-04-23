@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
   Building2,
@@ -100,7 +100,7 @@ interface AppSidebarProps {
   onNewLayout?: () => void;
 }
 
-export function AppSidebar({
+function AppSidebarImpl({
   activeAgent,
   activeTab,
   onTabChange,
@@ -141,6 +141,17 @@ export function AppSidebar({
 
   const isAgentsPage = location.pathname === '/agents';
   const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'running';
+
+  // Recent-agents section: filter, sort, and cap once per agents-array change.
+  // Hot path — re-running on every render adds up when the parent re-renders.
+  const recentAgents = useMemo(
+    () =>
+      [...agents]
+        .filter((a) => a.status !== 'archived')
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 8),
+    [agents],
+  );
 
   // During impersonation, profile contains the target user's data from /me,
   // while user is still the real admin's Firebase auth object — prefer profile.
@@ -574,11 +585,7 @@ export function AppSidebar({
           </button>
           {recentAgentsOpen && (
             <div className="flex flex-col gap-0.5 pb-2">
-              {[...agents]
-                .filter((a) => a.status !== 'archived')
-                .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-                .slice(0, 8)
-                .map((agent) => {
+              {recentAgents.map((agent) => {
                   const isActive = activeAgent?.agent_id === agent.agent_id;
                   const isRunning = agent.status === 'running';
                   const cfg = STATUS_CONFIG[agent.status];
@@ -639,3 +646,5 @@ export function AppSidebar({
     </>
   );
 }
+
+export const AppSidebar = memo(AppSidebarImpl);

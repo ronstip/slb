@@ -55,7 +55,7 @@ async def set_collection_visibility(
         raise HTTPException(status_code=400, detail="Visibility must be 'private' or 'org'")
 
     fs = get_fs()
-    status = fs.get_collection_status(collection_id)
+    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if status.get("user_id") != user.uid:
@@ -63,7 +63,9 @@ async def set_collection_visibility(
     if not user.org_id:
         raise HTTPException(status_code=400, detail="You must be in an organization to share collections")
 
-    fs.update_collection_status(collection_id, visibility=visibility, org_id=user.org_id)
+    await asyncio.to_thread(
+        fs.update_collection_status, collection_id, visibility=visibility, org_id=user.org_id
+    )
     return {"status": "updated", "visibility": visibility}
 
 
@@ -75,7 +77,7 @@ async def update_collection(
 ):
     """Update collection metadata (title, visibility). Only the owner can update."""
     fs = get_fs()
-    status = fs.get_collection_status(collection_id)
+    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if status.get("user_id") != user.uid:
@@ -96,7 +98,7 @@ async def update_collection(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    fs.update_collection_status(collection_id, **updates)
+    await asyncio.to_thread(fs.update_collection_status, collection_id, **updates)
     return {"status": "updated"}
 
 
@@ -107,13 +109,15 @@ async def delete_collection(
 ):
     """Delete a collection. Only the owner can delete."""
     fs = get_fs()
-    status = fs.get_collection_status(collection_id)
+    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if status.get("user_id") != user.uid:
         raise HTTPException(status_code=403, detail="Only the collection owner can delete")
 
-    fs._db.collection("collection_status").document(collection_id).delete()
+    await asyncio.to_thread(
+        fs._db.collection("collection_status").document(collection_id).delete
+    )
     return {"status": "deleted"}
 
 
@@ -123,23 +127,29 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
     fs = get_fs()
     db = fs._db
 
-    docs = (
-        db.collection("collection_status")
-        .where("user_id", "==", user.uid)
-        .stream()
-    )
+    def _fetch_own() -> list:
+        return list(
+            db.collection("collection_status")
+            .where("user_id", "==", user.uid)
+            .stream()
+        )
+
+    def _fetch_org() -> list:
+        return list(
+            db.collection("collection_status")
+            .where("org_id", "==", user.org_id)
+            .stream()
+        )
 
     seen_ids = set()
-    all_docs = list(docs)
 
     if user.org_id:
         try:
-            # Query by org_id and filter visibility in Python (avoids composite index requirement)
-            org_docs = list(
-                db.collection("collection_status")
-                .where("org_id", "==", user.org_id)
-                .stream()
+            own_docs, org_docs = await asyncio.gather(
+                asyncio.to_thread(_fetch_own),
+                asyncio.to_thread(_fetch_org),
             )
+            all_docs = list(own_docs)
             for doc in org_docs:
                 data = doc.to_dict()
                 if data.get("visibility") == "org":
@@ -148,6 +158,9 @@ async def list_collections(user: CurrentUser = Depends(get_current_user)):
             # Non-critical: show the user's own collections even if the
             # org-share query fails (e.g., missing index, transient error).
             logger.error("Org query failed: %s", e)
+            all_docs = await asyncio.to_thread(_fetch_own)
+    else:
+        all_docs = await asyncio.to_thread(_fetch_own)
 
     collections = []
     for doc in all_docs:
@@ -197,7 +210,7 @@ async def get_collection_posts(
 ):
     """Paginated enriched posts for the Feed."""
     fs = get_fs()
-    status = fs.get_collection_status(collection_id)
+    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if not can_access_collection(user, status):
@@ -349,7 +362,7 @@ async def get_collection_status(
 ):
     """Read collection status from Firestore."""
     fs = get_fs()
-    status = fs.get_collection_status(collection_id)
+    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if not can_access_collection(user, status):
@@ -378,13 +391,15 @@ async def get_collection_stats(
     from api.services.statistical_signature_service import refresh_statistical_signature
 
     fs = get_fs()
-    status = fs.get_collection_status(collection_id)
+    status, cached = await asyncio.gather(
+        asyncio.to_thread(fs.get_collection_status, collection_id),
+        asyncio.to_thread(fs.get_latest_statistical_signature, collection_id),
+    )
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if not can_access_collection(user, status):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    cached = fs.get_latest_statistical_signature(collection_id)
     if cached:
         return signature_to_response(cached)
 
@@ -402,7 +417,7 @@ async def refresh_collection_stats(
     from api.services.statistical_signature_service import refresh_statistical_signature
 
     fs = get_fs()
-    status = fs.get_collection_status(collection_id)
+    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if not can_access_collection(user, status):
@@ -420,7 +435,7 @@ async def download_collection(
 ):
     """Stream all posts for a collection as a CSV file."""
     fs = get_fs()
-    status = fs.get_collection_status(collection_id)
+    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
     if not status:
         raise HTTPException(status_code=404, detail="Collection not found")
     if not can_access_collection(user, status):
