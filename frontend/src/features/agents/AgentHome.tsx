@@ -12,6 +12,7 @@ import { GeometricMesh } from '../../components/BrandElements.tsx';
 import { AgentCreationWizard } from './wizard/AgentCreationWizard.tsx';
 import { LatestAgentsRow } from './LatestAgentsRow.tsx';
 import { ChatPanel } from '../chat/ChatPanel.tsx';
+import { ErrorBoundary } from '../../components/ErrorBoundary.tsx';
 
 const SIDEBAR_COLLAPSED_W = 48;
 const SIDEBAR_EXPANDED_W = 280;
@@ -135,7 +136,9 @@ export function AgentHome() {
           <div className="flex h-11 shrink-0 items-center border-b border-border px-6">
             <span className="font-heading text-sm font-semibold text-foreground">Creating Agent…</span>
           </div>
-          <ChatPanel hideHeader />
+          <ErrorBoundary label="ChatPanel">
+            <ChatPanel hideHeader />
+          </ErrorBoundary>
         </div>
       )}
     </div>

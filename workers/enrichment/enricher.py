@@ -9,7 +9,7 @@ import logging
 import random
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 
 from google import genai
 from google.genai import types
@@ -50,15 +50,24 @@ class _TokenBucketRateLimiter:
         self._last_refill = time.monotonic()
         self._cond = threading.Condition(threading.Lock())
 
-    def acquire(self) -> None:
+    def acquire(self, timeout: float | None = None) -> bool:
+        """Acquire one token. Returns True on success, False if `timeout` elapsed."""
+        deadline = time.monotonic() + timeout if timeout is not None else None
         with self._cond:
             while True:
                 self._refill()
                 if self._tokens > 0:
                     self._tokens -= 1
-                    return
-                # Sleep until next refill could produce a token
-                wait = self._interval / self._max_tokens
+                    return True
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    # Sleep until next refill could produce a token, bounded by
+                    # the remaining deadline.
+                    wait = min(self._interval / self._max_tokens, remaining)
+                else:
+                    wait = self._interval / self._max_tokens
                 self._cond.wait(timeout=wait)
 
     def _refill(self) -> None:
@@ -429,19 +438,31 @@ def _enrich_single_post(
     max_attempts = settings.enrichment_max_retries
     base_delay = settings.enrichment_retry_base_delay
     retry_budget_sec = settings.enrichment_retry_max_total_sec
+    post_deadline = time.monotonic() + settings.enrichment_per_post_timeout_sec
     slept_total = 0.0
+
+    def _remaining_budget() -> float:
+        return max(0.0, post_deadline - time.monotonic())
 
     for attempt in range(max_attempts):
         try:
             # Wait for global backoff if a 429 was recently detected
             _apply_global_backoff()
-            # Layer 1: rate-limit all calls (prevents multi-user quota exhaustion)
-            general_limiter.acquire()
+            # Layer 1: rate-limit all calls (prevents multi-user quota exhaustion).
+            # Acquires are bounded by the per-post wall-clock budget so a drained
+            # bucket can't hold a worker slot forever.
+            if not general_limiter.acquire(timeout=_remaining_budget()):
+                logger.warning("Enrichment timed out on general rate limiter for post %s", post.post_id)
+                return (post.post_id, None)
             # Layer 2: tighter rate-limit for video content
-            if video_limiter:
-                video_limiter.acquire()
-            # Layer 3: cap concurrent in-flight calls
-            semaphore.acquire()
+            if video_limiter and not video_limiter.acquire(timeout=_remaining_budget()):
+                logger.warning("Enrichment timed out on video rate limiter for post %s", post.post_id)
+                return (post.post_id, None)
+            # Layer 3: cap concurrent in-flight calls. Semaphore.acquire supports
+            # a float timeout natively.
+            if not semaphore.acquire(timeout=_remaining_budget()):
+                logger.warning("Enrichment timed out on semaphore for post %s", post.post_id)
+                return (post.post_id, None)
             try:
                 response = client.models.generate_content(
                     model=model,
@@ -552,12 +573,19 @@ def enrich_posts(
             for post in posts
         }
 
+        per_post_timeout = settings.enrichment_per_post_timeout_sec
         for future in as_completed(futures):
             post = futures[future]
             try:
-                post_id, result = future.result()
+                post_id, result = future.result(timeout=per_post_timeout)
                 if result is not None:
                     results.append((post_id, result))
+            except FuturesTimeoutError:
+                logger.warning(
+                    "Enrichment exceeded per-post timeout (%.0fs) for post %s — dropping",
+                    per_post_timeout, post.post_id,
+                )
+                future.cancel()
             except Exception:
                 logger.exception("Unexpected error enriching post %s", post.post_id)
 

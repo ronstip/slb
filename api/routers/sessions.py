@@ -59,8 +59,8 @@ def _extract_event_fallback(event) -> dict | None:
                         "args": dict(getattr(fc, "args", {}) or {}),
                     }
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to serialize function_call part: %s", e)
             continue
 
         # Function response part
@@ -74,8 +74,8 @@ def _extract_event_fallback(event) -> dict | None:
                         "response": json.loads(json.dumps(dict(resp), default=str)),
                     }
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to serialize function_response part: %s", e)
             continue
 
     if not parts:

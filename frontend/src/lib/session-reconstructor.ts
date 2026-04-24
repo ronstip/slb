@@ -80,6 +80,12 @@ export function reconstructSession(
     };
   }
 
+  // IMPORTANT: keep this part-shape walk in sync with the live-stream switch
+  // in `frontend/src/features/chat/hooks/useSSEChat.ts`. That file dispatches
+  // on SSE `event_type`; this file walks `part.text`, `part.function_call`,
+  // `part.function_response`, `part.thought`. Any new part handled here must
+  // also have a live-stream counterpart or replays will render state the live
+  // path never produced.
   for (const event of events) {
     if (!event.content?.parts) continue;
 

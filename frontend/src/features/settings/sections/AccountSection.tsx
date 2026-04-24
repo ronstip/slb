@@ -7,6 +7,7 @@ import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
 import { Badge } from '../../../components/ui/badge.tsx';
 import { Building2, Mail, Save } from 'lucide-react';
+import { toast } from 'sonner';
 import { updateProfile } from '../../../api/endpoints/settings.ts';
 
 export function AccountSection() {
@@ -42,8 +43,10 @@ export function AccountSection() {
       await refreshProfile();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch {
-      // TODO: toast error
+    } catch (err) {
+      toast.error('Could not update profile', {
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setSaving(false);
     }

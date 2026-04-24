@@ -80,6 +80,12 @@ export function useSSEChat() {
             chatState.setActiveAgent(messageId, event.author);
           }
 
+          // IMPORTANT: keep this switch in sync with the part-shape walk in
+          // `frontend/src/lib/session-reconstructor.ts`. The live-stream handler
+          // (this file) dispatches on `event_type`; the replay path walks
+          // `part.text`, `part.function_call`, `part.function_response`,
+          // `part.thought`. Adding or renaming an event here requires a
+          // corresponding branch in the reconstructor or replays will diverge.
           switch (event.event_type) {
             case 'partial_text': {
               chatState.appendTextBlock(messageId, event.content);

@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
@@ -81,8 +83,12 @@ class CreateDashboardShareRequest(BaseModel):
 
 class CreateFeedLinkRequest(BaseModel):
     collection_ids: list[str]
-    filters: dict = {}
+    filters: dict = Field(default_factory=dict)
     title: str
+
+
+class SetCollectionVisibilityRequest(BaseModel):
+    visibility: Literal["private", "org"]
 
 
 class CreateFromWizardRequest(BaseModel):

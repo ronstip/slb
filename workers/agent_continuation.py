@@ -146,13 +146,34 @@ def _run_agent_continuation(agent_id: str) -> None:
     import asyncio
 
     try:
-        asyncio.run(_async_agent_continuation(agent_id))
+        _run_coro_in_fresh_loop(_async_agent_continuation(agent_id))
     except Exception:
         logger.exception("Agent continuation failed for agent %s", agent_id)
         from workers.shared.firestore_client import FirestoreClient
         fs = FirestoreClient(get_settings())
         fs.update_agent(agent_id, status="failed",
                        context_summary="Agent continuation failed after collection completion.")
+
+
+def _run_coro_in_fresh_loop(coro) -> None:
+    """Run `coro` to completion in a fresh event loop.
+
+    `asyncio.run` raises if the current thread already has a running loop
+    (possible under pytest-asyncio or any framework that installs a loop
+    in a daemon thread). Fall back to a manually-managed loop in that case.
+    """
+    import asyncio
+
+    try:
+        asyncio.run(coro)
+    except RuntimeError as e:
+        if "running event loop" not in str(e).lower() and "cannot be called" not in str(e).lower():
+            raise
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
 
 async def _async_agent_continuation(agent_id: str) -> None:

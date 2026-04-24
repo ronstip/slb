@@ -13,7 +13,11 @@ from fastapi.responses import StreamingResponse
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs
 from api.rate_limiting import limiter
-from api.schemas.requests import CreateCollectionRequest, UpdateCollectionRequest
+from api.schemas.requests import (
+    CreateCollectionRequest,
+    SetCollectionVisibilityRequest,
+    UpdateCollectionRequest,
+)
 from api.schemas.responses import (
     CollectionStatsResponse,
     CollectionStatusResponse,
@@ -46,13 +50,11 @@ async def create_collection(
 @router.post("/collection/{collection_id}/visibility")
 async def set_collection_visibility(
     collection_id: str,
-    request: dict,
+    body: SetCollectionVisibilityRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
     """Toggle collection visibility between 'private' and 'org'. Only the owner can change this."""
-    visibility = request.get("visibility", "private")
-    if visibility not in ("private", "org"):
-        raise HTTPException(status_code=400, detail="Visibility must be 'private' or 'org'")
+    visibility = body.visibility
 
     fs = get_fs()
     status = await asyncio.to_thread(fs.get_collection_status, collection_id)

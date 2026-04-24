@@ -159,18 +159,15 @@ async def admin_users(
             user_posts_map[uid] = user_posts_map.get(uid, 0) + c.get("posts_collected", 0)
             user_collections_map[uid] = user_collections_map.get(uid, 0) + 1
 
-    # Fetch usage counters for query counts
-    async def _get_user_usage(uid: str) -> tuple[str, dict]:
-        try:
-            usage = await asyncio.to_thread(fs.get_usage, uid)
-            return uid, usage
-        except Exception:
-            return uid, {}
-
-    usage_results = await asyncio.gather(
-        *[_get_user_usage(u["uid"]) for u in all_users]
-    )
-    usage_map = dict(usage_results)
+    # Fetch usage counters for query counts — single batched round-trip
+    # instead of one Firestore read per user (N+1).
+    try:
+        usage_map = await asyncio.to_thread(
+            fs.get_usage_many, [u["uid"] for u in all_users]
+        )
+    except Exception:
+        logger.exception("Batch usage fetch failed — continuing with empty usage")
+        usage_map = {}
 
     # Merge usage into user records
     users = []

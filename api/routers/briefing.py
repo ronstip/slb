@@ -71,11 +71,6 @@ def _first_image_ref(post: dict) -> dict | None:
     return first
 
 
-def post_has_gcs_image(post: dict) -> bool:
-    ref = _first_image_ref(post)
-    return bool(ref and ref.get("gcs_uri"))
-
-
 def extract_first_image(media_refs_raw: Any) -> tuple[str | None, str | None]:
     """Return (gcs_uri, original_url) for the first image media ref, or (None, None)."""
     if not media_refs_raw:

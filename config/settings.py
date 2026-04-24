@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # give up and mark the post as failed. Stops pathological batches where
     # every post sits in backoff instead of draining.
     enrichment_retry_max_total_sec: float = 60.0
+    # Wall-clock ceiling for a single post across all retries, including HTTP
+    # time, retry sleeps, and blocking in the rate-limiter acquires. Acts as
+    # the ThreadPoolExecutor per-future timeout so a single hung Gemini call
+    # can't stall the whole batch.
+    enrichment_per_post_timeout_sec: float = 1200.0
 
     # Max concurrent CDN/GCS downloads per collection (owned by PipelineRunner).
     # Decouples media I/O from the step orchestration pool so a slow download

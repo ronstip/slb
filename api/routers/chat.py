@@ -125,10 +125,20 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         tr_result = event_data.get("metadata", {}).get("result", {})
                         if isinstance(tr_result, dict):
                             active_agent_id = session.state.get("active_agent_id") if session else None
-                            aid = persist_tool_result_artifact(
-                                tr_name, tr_result, user_id, user.org_id, session_id,
-                                agent_id=active_agent_id,
-                            )
+                            # Artifact persistence must not tear down the SSE
+                            # stream — log and continue without _artifact_id
+                            # so the client still receives the tool_result.
+                            try:
+                                aid = persist_tool_result_artifact(
+                                    tr_name, tr_result, user_id, user.org_id, session_id,
+                                    agent_id=active_agent_id,
+                                )
+                            except Exception:
+                                logger.exception(
+                                    "Artifact persistence failed for tool %s in session %s",
+                                    tr_name, session_id,
+                                )
+                                aid = None
                             if aid:
                                 tr_result["_artifact_id"] = aid
                                 write_artifact_id_to_event(event, tr_name, aid)
