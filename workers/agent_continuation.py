@@ -600,8 +600,8 @@ def _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_i
                 continue
 
             try:
-                from api.main import _maybe_persist_artifact
-                artifact_id = _maybe_persist_artifact(
+                from api.services.artifact_service import persist_tool_result_artifact
+                artifact_id = persist_tool_result_artifact(
                     tool_name, result, user_id, org_id, session_id,
                     agent_id=agent_id,
                 )

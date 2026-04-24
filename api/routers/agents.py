@@ -71,6 +71,14 @@ async def create_from_wizard_endpoint(
         data_scope["enrichment_context"] = body.enrichment_context
     if body.content_types:
         data_scope["content_types"] = body.content_types
+    # Persist deliverable flags on data_scope so the UI can show expected
+    # outputs for both one-shot and recurring agents.
+    data_scope["auto_report"] = body.auto_report
+    data_scope["auto_email"] = body.auto_email
+    data_scope["auto_slides"] = body.auto_slides
+    data_scope["auto_dashboard"] = body.auto_dashboard
+    if body.email_recipients:
+        data_scope["email_recipients"] = body.email_recipients
 
     schedule = None
     if body.agent_type == "recurring" and body.schedule:

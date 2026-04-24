@@ -105,9 +105,11 @@ interface ChatStore {
   sessionId: string | null;
   activePromptMessageId: string | null;
   activePromptData: StructuredPromptResult | null;
+  pendingComposerText: string | null;
 
   setActivePrompt: (id: string | null) => void;
   setActivePromptData: (data: StructuredPromptResult | null) => void;
+  setPendingComposerText: (text: string | null) => void;
   sendUserMessage: (text: string) => void;
   startAgentMessage: () => string;
   appendText: (messageId: string, text: string) => void;
@@ -155,6 +157,7 @@ export const useChatStore = create<ChatStore>()(
     sessionId: null,
     activePromptMessageId: null,
     activePromptData: null,
+    pendingComposerText: null,
 
     setActivePrompt: (id) =>
       set((s) => {
@@ -163,6 +166,10 @@ export const useChatStore = create<ChatStore>()(
     setActivePromptData: (data) =>
       set((s) => {
         s.activePromptData = data;
+      }),
+    setPendingComposerText: (text) =>
+      set((s) => {
+        s.pendingComposerText = text;
       }),
 
     sendUserMessage: (text) =>
@@ -354,6 +361,7 @@ export const useChatStore = create<ChatStore>()(
         s.sessionId = null;
         s.activePromptMessageId = null;
         s.activePromptData = null;
+        s.pendingComposerText = null;
       }),
   })),
 );

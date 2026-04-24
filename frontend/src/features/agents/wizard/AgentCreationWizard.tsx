@@ -229,8 +229,8 @@ export function AgentCreationWizard() {
       await useAgentStore.getState().fetchAgents();
       useAgentStore.getState().setActiveAgent(result.agent_id);
 
-      // Navigate to the agents list page
-      navigate('/agents', { replace: true });
+      // Navigate to the new agent's Overview page so users see live progress.
+      navigate(`/agents/${result.agent_id}`, { replace: true });
     } catch (err) {
       toast.error('Failed to create agent. Please try again.');
       setIsSubmitting(false);

@@ -78,36 +78,16 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
         logger.warning("No collection_ids for agent %s — skipping clustering", agent_id)
         return {"topics_count": 0, "error": "no collections"}
 
-    # 1. Fetch embeddings + metadata from BQ (agent-wide, filtered)
+    # 1. Fetch embeddings + metadata from BQ (agent-wide, progressive fallback).
+    #
+    # Tiers widen the net until we find ≥2 posts to cluster. Without this
+    # fallback, agents whose enrichment marked few/no posts as relevant would
+    # silently produce zero topics.
     logger.info("Fetching embeddings for agent %s (%d collections)", agent_id, len(collection_ids))
-    rows = bq.query(
-        f"""
-        {_load_underlying_data_ctes()},
-        {DEDUP_EMBEDDINGS}
-        SELECT
-            p.post_id,
-            pe.embedding,
-            p.platform,
-            p.title,
-            p.content,
-            p.collection_id,
-            p.posted_at,
-            ep.ai_summary,
-            COALESCE(eng.views, 0) + COALESCE(eng.likes, 0) * 10
-                + COALESCE(eng.comments_count, 0) * 20 AS engagement_score
-        FROM deduped_posts p
-        JOIN deduped_embeddings pe ON pe.post_id = p.post_id AND pe._rn = 1
-        JOIN deduped_enriched ep ON ep.post_id = p.post_id AND ep._rn = 1
-            AND ep.is_related_to_task = TRUE
-        LEFT JOIN deduped_engagements eng ON eng.post_id = p.post_id AND eng._rn = 1
-        WHERE p._rn = 1
-          AND p.posted_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-        """,
-        {"collection_ids": collection_ids},
-    )
+    rows = _fetch_posts_with_fallback(bq, agent_id, collection_ids)
 
     if len(rows) < 2:
-        logger.warning("Agent %s has %d eligible posts — skipping clustering", agent_id, len(rows))
+        logger.warning("Agent %s has %d eligible posts across all tiers — skipping clustering", agent_id, len(rows))
         return {"topics_count": 0, "error": "not enough posts"}
 
     logger.info("Fetched %d posts with embeddings", len(rows))
@@ -250,6 +230,72 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
     }
     logger.info("Clustering complete for agent %s: %s", agent_id, result)
     return result
+
+
+def _build_embeddings_query(
+    enriched_join: str,
+    posted_at_filter: str,
+) -> str:
+    """Build the embeddings fetch query with the given join/filter clauses."""
+    return f"""
+        {_load_underlying_data_ctes()},
+        {DEDUP_EMBEDDINGS}
+        SELECT
+            p.post_id,
+            pe.embedding,
+            p.platform,
+            p.title,
+            p.content,
+            p.collection_id,
+            p.posted_at,
+            ep.ai_summary,
+            COALESCE(eng.views, 0) + COALESCE(eng.likes, 0) * 10
+                + COALESCE(eng.comments_count, 0) * 20 AS engagement_score
+        FROM deduped_posts p
+        JOIN deduped_embeddings pe ON pe.post_id = p.post_id AND pe._rn = 1
+        {enriched_join}
+        LEFT JOIN deduped_engagements eng ON eng.post_id = p.post_id AND eng._rn = 1
+        WHERE p._rn = 1
+          {posted_at_filter}
+        """
+
+
+def _fetch_posts_with_fallback(
+    bq: BQClient, agent_id: str, collection_ids: list[str]
+) -> list[dict[str, Any]]:
+    """Try progressively looser queries until we have ≥2 posts to cluster.
+
+    Tier 1: relevant (is_related_to_task=TRUE) + last 30 days  (ideal)
+    Tier 2: relevant-or-unknown (TRUE or NULL)   + last 30 days
+    Tier 3: any enrichment state                  + last 30 days
+    Tier 4: any enrichment state                  + no time window
+    """
+    window_30d = "AND p.posted_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)"
+    join_relevant = (
+        "JOIN deduped_enriched ep ON ep.post_id = p.post_id AND ep._rn = 1 "
+        "AND ep.is_related_to_task = TRUE"
+    )
+    join_relevant_or_null = (
+        "LEFT JOIN deduped_enriched ep ON ep.post_id = p.post_id AND ep._rn = 1 "
+        "AND (ep.is_related_to_task = TRUE OR ep.is_related_to_task IS NULL)"
+    )
+    join_any = "LEFT JOIN deduped_enriched ep ON ep.post_id = p.post_id AND ep._rn = 1"
+
+    tiers = [
+        (1, join_relevant, window_30d),
+        (2, join_relevant_or_null, window_30d),
+        (3, join_any, window_30d),
+        (4, join_any, ""),
+    ]
+
+    for tier, enriched_join, posted_at_filter in tiers:
+        sql = _build_embeddings_query(enriched_join, posted_at_filter)
+        rows = bq.query(sql, {"collection_ids": collection_ids})
+        logger.info("Clustering tier=%d produced %d rows for agent %s", tier, len(rows), agent_id)
+        if len(rows) >= 2:
+            return rows
+
+    return []
 
 
 def _compute_recency_score(

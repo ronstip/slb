@@ -51,7 +51,7 @@ export function PostsDataPanel({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [platformFilter, setPlatformFilter] = useState('all');
   const [sentimentFilter, setSentimentFilter] = useState('all');
-  const [relevantFilter, setRelevantFilter] = useState('true');
+  const [relevantFilter, setRelevantFilter] = useState('all');
 
   // Compute effective collection IDs based on source filter
   const effectiveCollectionIds = useMemo(() => {
