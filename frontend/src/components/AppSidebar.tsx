@@ -450,8 +450,8 @@ function AppSidebarImpl({
                         className={cn(
                           'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
                           activeLayoutId === null
-                            ? 'bg-sidebar-accent/80 text-sidebar-foreground'
-                            : 'hover:bg-sidebar-accent/60',
+                            ? 'bg-sidebar-accent text-sidebar-foreground'
+                            : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60',
                         )}
                         onClick={() => onLayoutSelect(null)}
                       >
@@ -459,7 +459,7 @@ function AppSidebarImpl({
                           <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-sidebar-primary" />
                         )}
                         <span className={cn(
-                          'block truncate text-[13px] leading-tight pl-1',
+                          'block truncate text-sm pl-1',
                           activeLayoutId === null ? 'font-semibold' : 'font-medium',
                         )}>
                           Overview Dashboard
@@ -469,8 +469,8 @@ function AppSidebarImpl({
                         className={cn(
                           'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
                           activeLayoutId === DASHBOARD_DEFAULT_ID
-                            ? 'bg-sidebar-accent/80 text-sidebar-foreground'
-                            : 'hover:bg-sidebar-accent/60',
+                            ? 'bg-sidebar-accent text-sidebar-foreground'
+                            : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60',
                         )}
                         onClick={() => onLayoutSelect(DASHBOARD_DEFAULT_ID)}
                       >
@@ -478,7 +478,7 @@ function AppSidebarImpl({
                           <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-sidebar-primary" />
                         )}
                         <span className={cn(
-                          'block truncate text-[13px] leading-tight pl-1',
+                          'block truncate text-sm pl-1',
                           activeLayoutId === DASHBOARD_DEFAULT_ID ? 'font-semibold' : 'font-medium',
                         )}>
                           Dashboard Default

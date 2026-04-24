@@ -728,6 +728,7 @@ export interface AdminCollection {
   status: string;
   posts_collected: number;
   posts_enriched: number;
+  posts_embedded: number;
   posts_stored: number | null;
   bd_raw_records: number | null;
   platforms: string[];

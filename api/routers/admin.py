@@ -395,6 +395,7 @@ async def admin_collections(
             "status": c.get("status", "unknown"),
             "posts_collected": c.get("posts_collected", 0),
             "posts_enriched": c.get("posts_enriched", 0),
+            "posts_embedded": c.get("posts_embedded", 0),
             "posts_stored": posts_stored,
             "bd_raw_records": bd_raw_records,
             "platforms": platforms if isinstance(platforms, list) else [],
@@ -408,6 +409,39 @@ async def admin_collections(
 
     total = len(collections)
     collections = collections[offset : offset + limit]
+
+    # Overlay BQ ground truth for stored/enriched/embedded on the visible page.
+    # Firestore counters lag (worker_posts_stored is written only at crawl-complete;
+    # posts_enriched drifts across runner restarts/continuations). A single grouped
+    # query gives authoritative counts for the visible rows.
+    visible_ids = [c["collection_id"] for c in collections if c.get("collection_id")]
+    if visible_ids:
+        try:
+            bq = get_bq()
+            rows = await asyncio.to_thread(
+                bq.query,
+                "SELECT p.collection_id AS collection_id, "
+                "COUNT(DISTINCT p.post_id) AS stored, "
+                "COUNT(DISTINCT e.post_id) AS enriched, "
+                "COUNT(DISTINCT em.post_id) AS embedded "
+                "FROM social_listening.posts p "
+                "LEFT JOIN social_listening.enriched_posts e USING (post_id) "
+                "LEFT JOIN social_listening.post_embeddings em USING (post_id) "
+                "WHERE p.collection_id IN UNNEST(@ids) "
+                "GROUP BY p.collection_id",
+                {"ids": visible_ids},
+            )
+            bq_by_id = {r["collection_id"]: r for r in rows}
+            for c in collections:
+                r = bq_by_id.get(c["collection_id"])
+                if r is None:
+                    continue
+                # BQ is authoritative — overwrite even if Firestore has a value.
+                c["posts_stored"] = int(r["stored"])
+                c["posts_enriched"] = int(r["enriched"])
+                c["posts_embedded"] = int(r["embedded"])
+        except Exception:
+            logger.exception("BQ count overlay failed for admin collections list")
 
     # Compute aggregate funnel stats across all collections
     funnel_summary = {
