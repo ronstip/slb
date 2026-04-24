@@ -73,6 +73,11 @@ export interface Agent {
     searches: SearchDef[];
     custom_fields?: Array<{ name: string; type: string; description: string }> | null;
     enrichment_context?: string;
+    auto_report?: boolean;
+    auto_email?: boolean;
+    auto_slides?: boolean;
+    auto_dashboard?: boolean;
+    email_recipients?: string[];
   };
   context?: AgentContext;
   constitution?: Constitution;

@@ -13,6 +13,7 @@ import { AppSidebar } from '../../../components/AppSidebar.tsx';
 import type { DetailTab } from '../../../components/AppSidebar.tsx';
 import { ScheduleDialog } from './ScheduleDialog.tsx';
 import { AgentOverviewTab } from './tabs/AgentOverviewTab.tsx';
+import { AgentSettingsTab } from './tabs/AgentSettingsTab.tsx';
 import { AgentChatTab } from './tabs/AgentChatTab.tsx';
 import { AgentCollectionsTab } from './tabs/AgentCollectionsTab.tsx';
 import { AgentArtifactsTab } from './tabs/AgentArtifactsTab.tsx';
@@ -31,7 +32,7 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'briefing', 'chat', 'data', 'topics', 'artifacts', 'explorer'];
+const VALID_TABS: DetailTab[] = ['overview', 'briefing', 'chat', 'data', 'topics', 'artifacts', 'explorer', 'settings'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -206,6 +207,19 @@ export function AgentDetailPage() {
         <main className="flex flex-1 flex-col overflow-hidden">
           {activeTab === 'overview' && (
             <AgentOverviewTab
+              task={task}
+              artifacts={artifacts}
+              logs={logs}
+              onTabChange={setActiveTab}
+              onOpenSchedule={() => setScheduleOpen(true)}
+              onRun={handleRun}
+              onStop={handleStop}
+              canRun={canRun}
+              onOpenLayout={handleLayoutSelect}
+            />
+          )}
+          {activeTab === 'settings' && (
+            <AgentSettingsTab
               task={task}
               artifacts={artifacts}
               logs={logs}

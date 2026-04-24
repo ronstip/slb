@@ -275,10 +275,10 @@ def _persist_continuation_artifacts(events, user_id, org_id, session_id, task_id
 
             # Use the same artifact persistence as the main chat flow
             try:
-                from api.main import _maybe_persist_artifact
-                _maybe_persist_artifact(
+                from api.services.artifact_service import persist_tool_result_artifact
+                persist_tool_result_artifact(
                     tool_name, result, user_id, org_id, session_id,
-                    task_id=task_id,
+                    agent_id=task_id,
                 )
             except Exception:
                 logger.debug("Failed to persist artifact from continuation: %s", tool_name)

@@ -59,16 +59,17 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'data' | 'topics' | 'artifacts' | 'explorer' | 'briefing';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'topics' | 'artifacts' | 'explorer' | 'briefing' | 'settings';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
-  { id: 'overview', label: 'Agent Profile', icon: LayoutDashboard },
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'briefing', label: 'Briefing', icon: Newspaper },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
-  { id: 'artifacts', label: 'Artifacts', icon: FileText },
+  { id: 'artifacts', label: 'Deliverables', icon: FileText },
   { id: 'data', label: 'Data', icon: Database },
   { id: 'topics', label: 'Topics', icon: Hash },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 // ── Shared class fragments — sidebar uses the always-dark sidebar-* tokens ──
@@ -361,9 +362,7 @@ function AppSidebarImpl({
           <div className="flex flex-col gap-0.5 px-3 py-1">
             {TABS.map(({ id, label, icon: Icon }) => {
               const isTabActive = activeTab === id;
-              const disabled =
-                (id === 'explorer' && !hasCollections) ||
-                (id === 'artifacts' && !hasArtifacts);
+              const disabled = id === 'explorer' && !hasCollections;
               const isChatTab = id === 'chat';
               const isExplorerTab = id === 'explorer';
               const hasSessions = isChatTab && agentSessions && agentSessions.length > 0;

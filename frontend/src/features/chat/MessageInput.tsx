@@ -26,6 +26,21 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
+  const pendingComposerText = useChatStore((s) => s.pendingComposerText);
+
+  // Hydrate from a pending composer seed (e.g. "+ New → Dashboard" flow).
+  useEffect(() => {
+    if (!pendingComposerText) return;
+    setText(pendingComposerText);
+    useChatStore.getState().setPendingComposerText(null);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    });
+  }, [pendingComposerText]);
 
   // Cycle placeholder text in centered/welcome mode
   useEffect(() => {
