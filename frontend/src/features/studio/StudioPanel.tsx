@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PanelRightClose, PanelRightOpen, FileText, FileDown, LayoutDashboard, Sparkles, Presentation, BarChart3, Mail } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { useStudioStore, type StudioTab } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
@@ -7,6 +7,7 @@ import { FeedTab } from './FeedTab.tsx';
 import { ArtifactsTab } from './ArtifactsTab.tsx';
 import { StatsTab } from './StatsTab.tsx';
 import { ChartDialog } from './ChartDialog.tsx';
+import { STUDIO_ACTIONS } from './studio-actions.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs.tsx';
 import {
@@ -47,30 +48,19 @@ export function StudioPanel() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={() => sendMessage('Generate an insight report for the selected sources.')}>
-                  <FileText className="mr-2 h-3.5 w-3.5" />
-                  Insight Report
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => sendMessage('Create an interactive dashboard for the selected sources.')}>
-                  <LayoutDashboard className="mr-2 h-3.5 w-3.5" />
-                  Dashboard
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => sendMessage('Export the data for the selected sources as CSV.')}>
-                  <FileDown className="mr-2 h-3.5 w-3.5" />
-                  Data Export
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setChartOpen(true)}>
-                  <BarChart3 className="mr-2 h-3.5 w-3.5" />
-                  Chart
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => sendMessage('Send me an email summary of the key findings for the selected sources. Ask me for my email address first.')}>
-                  <Mail className="mr-2 h-3.5 w-3.5" />
-                  Send Email
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => sendMessage('Create a presentation deck for the selected sources. Gather the key data first, then design the slides based on what the data actually shows. If I have a saved template, ask me whether to use it.')}>
-                  <Presentation className="mr-2 h-3.5 w-3.5" />
-                  Deck Slides
-                </DropdownMenuItem>
+                {STUDIO_ACTIONS.map((action) => {
+                  const Icon = action.icon;
+                  const onClick =
+                    action.id === 'chart'
+                      ? () => setChartOpen(true)
+                      : () => action.prompt && sendMessage(action.prompt);
+                  return (
+                    <DropdownMenuItem key={action.id} onClick={onClick}>
+                      <Icon className="mr-2 h-3.5 w-3.5" />
+                      {action.label}
+                    </DropdownMenuItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           </>

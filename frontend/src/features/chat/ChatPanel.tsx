@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
@@ -12,7 +12,14 @@ import { TaskSelector } from './TaskSelector.tsx';
 import { StructuredPromptPanel } from './StructuredPromptPanel.tsx';
 import { TaskProgressPill } from './TaskProgressPill.tsx';
 
-export function ChatPanel({ hideHeader }: { hideHeader?: boolean } = {}) {
+interface ChatPanelProps {
+  hideHeader?: boolean;
+  hideWelcome?: boolean;
+  /** Rendered in place of the message list when there are no messages yet. Implies `hideWelcome`. */
+  emptyStateContent?: ReactNode;
+}
+
+export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent }: ChatPanelProps = {}) {
   const messages = useChatStore((s) => s.messages);
   const activePromptData = useChatStore((s) => s.activePromptData);
   const isRestoring = useSessionStore((s) => s.isRestoring);
@@ -88,9 +95,17 @@ export function ChatPanel({ hideHeader }: { hideHeader?: boolean } = {}) {
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : hasMessages ? (
+      ) : hasMessages || hideWelcome || emptyStateContent ? (
         <>
-          <MessageList onSendMessage={sendMessage} />
+          {hasMessages ? (
+            <MessageList onSendMessage={sendMessage} />
+          ) : emptyStateContent ? (
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="mx-auto max-w-5xl">{emptyStateContent}</div>
+            </div>
+          ) : (
+            <MessageList onSendMessage={sendMessage} />
+          )}
           <TaskProgressPill />
           {activePromptData ? (
             <StructuredPromptPanel onSubmit={sendMessage} onCancel={cancelPrompt} />

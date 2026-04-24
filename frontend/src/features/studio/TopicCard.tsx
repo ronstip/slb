@@ -27,11 +27,15 @@ import type { TopicCluster, TopicPost } from '../../api/types.ts';
 interface TopicCardProps {
   topic: TopicCluster;
   agentId: string;
-  rank?: number;
   onViewPosts?: (clusterId: string, topicName: string) => void;
 }
 
-const MAX_VISIBLE_KEYWORDS = 3;
+const ACTION_STYLES = {
+  posts: { icon: 'text-blue-600 bg-blue-500/10', hover: 'hover:bg-blue-500/10' },
+  data: { icon: 'text-emerald-600 bg-emerald-500/10', hover: 'hover:bg-emerald-500/10' },
+  analytics: { icon: 'text-amber-600 bg-amber-500/10', hover: 'hover:bg-amber-500/10' },
+  ask_ai: { icon: 'text-purple-600 bg-purple-500/10', hover: 'hover:bg-purple-500/10' },
+};
 
 function viralityScore(topic: TopicCluster): number | null {
   if (!topic.total_views || !topic.post_count) return null;
@@ -89,7 +93,7 @@ function resolvePostThumbnail(post: TopicPost): string | null {
   return null;
 }
 
-export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps) {
+export function TopicCard({ topic, agentId, onViewPosts }: TopicCardProps) {
   const [expanded, setExpanded] = useState(false);
   const thumbSrc = resolveThumbnail(topic);
   const sentiment = dominantSentiment(topic);
@@ -98,9 +102,6 @@ export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps)
   const artifacts = useStudioStore((s) => s.artifacts);
   const expandReport = useStudioStore((s) => s.expandReport);
   const setPendingTopicFilter = useStudioStore((s) => s.setPendingTopicFilter);
-
-  const visibleKeywords = topic.topic_keywords.slice(0, MAX_VISIBLE_KEYWORDS);
-  const extraCount = topic.topic_keywords.length - MAX_VISIBLE_KEYWORDS;
 
   const handleViewPosts = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -124,12 +125,20 @@ export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps)
 
   const virality = viralityScore(topic);
   const vColor = sentimentColor(topic);
+  const hasDashboard = artifacts.some((a) => a.type === 'dashboard');
 
   return (
-    <Card className="overflow-hidden rounded-lg shadow-sm transition-shadow hover:shadow-md !py-0 !gap-0">
+    <Card className="relative overflow-hidden rounded-lg shadow-sm transition-shadow hover:shadow-md !py-0 !gap-0">
+      {/* Sentiment accent stripe on the left edge */}
+      <div
+        className="absolute inset-y-0 left-0 w-[3px]"
+        style={{ backgroundColor: vColor }}
+        aria-hidden
+      />
+
       {/* Collapsed header — always visible */}
       <div
-        className="w-full text-left cursor-pointer"
+        className="w-full text-left cursor-pointer pl-[3px]"
         role="button"
         tabIndex={0}
         onClick={() => setExpanded(!expanded)}
@@ -142,7 +151,7 @@ export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps)
             <img
               src={thumbSrc}
               alt=""
-              className="h-16 w-16 shrink-0 rounded object-cover bg-secondary"
+              className="h-24 w-24 shrink-0 rounded-lg object-cover bg-secondary"
               loading="lazy"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
@@ -150,14 +159,9 @@ export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps)
 
           {/* Content */}
           <div className="flex-1 min-w-0 space-y-1.5">
-            {/* Title row: rank + title + virality badge + chevron */}
-            <div className="flex items-start gap-1.5">
-              {rank && (
-                <span className="shrink-0 text-[13px] font-bold text-foreground/40 tabular-nums leading-snug">
-                  {rank}
-                </span>
-              )}
-              <h3 className="flex-1 min-w-0 text-[13px] font-semibold text-foreground leading-snug line-clamp-2">
+            {/* Title row: title + virality badge + chevron */}
+            <div className="flex items-start gap-2">
+              <h3 className="flex-1 min-w-0 font-heading text-lg font-semibold tracking-tight text-foreground leading-snug line-clamp-2">
                 {topic.topic_name}
               </h3>
               <div className="shrink-0 flex items-center gap-1.5">
@@ -185,6 +189,13 @@ export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps)
               </div>
             </div>
 
+            {/* Subtitle — topic summary, 2-line clamp */}
+            {topic.topic_summary && (
+              <p className="text-[12px] leading-relaxed text-muted-foreground line-clamp-2">
+                {topic.topic_summary}
+              </p>
+            )}
+
             {/* Metrics row */}
             <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
               <span className="font-medium">{topic.post_count} posts</span>
@@ -203,49 +214,21 @@ export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps)
                 </span>
               )}
             </div>
-
-            {/* Keywords */}
-            {visibleKeywords.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {visibleKeywords.map((kw) => (
-                  <Badge key={kw} variant="secondary" className="text-[10px] px-1.5 py-0 font-medium">
-                    {kw}
-                  </Badge>
-                ))}
-                {extraCount > 0 && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-                    +{extraCount}
-                  </Badge>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Action buttons — pinned to bottom edge */}
-        <div className="flex items-center gap-1 border-t border-border/40 mx-3 mt-2 pt-1.5 pb-1.5" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="sm" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground" onClick={handleViewPosts}>
-            <List className="h-3 w-3" />
-            Posts
-          </Button>
-          <Button variant="ghost" size="sm" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground" onClick={handleViewPosts}>
-            <Table2 className="h-3 w-3" />
-            Data
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+        {/* Action buttons — tinted chips matching the action panel style */}
+        <div className="flex items-center gap-1.5 border-t border-border/40 mx-3 mt-2 pt-2 pb-2" onClick={(e) => e.stopPropagation()}>
+          <ActionChip label="Posts" icon={List} style={ACTION_STYLES.posts} onClick={handleViewPosts} />
+          <ActionChip label="Data" icon={Table2} style={ACTION_STYLES.data} onClick={handleViewPosts} />
+          <ActionChip
+            label="Analytics"
+            icon={BarChart3}
+            style={ACTION_STYLES.analytics}
             onClick={handleDashboard}
-            disabled={!artifacts.some((a) => a.type === 'dashboard')}
-          >
-            <BarChart3 className="h-3 w-3" />
-            Analytics
-          </Button>
-          <Button variant="ghost" size="sm" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground" onClick={handleAskAI}>
-            <Sparkles className="h-3 w-3" />
-            Ask AI
-          </Button>
+            disabled={!hasDashboard}
+          />
+          <ActionChip label="Ask AI" icon={Sparkles} style={ACTION_STYLES.ask_ai} onClick={handleAskAI} />
         </div>
       </div>
 
@@ -254,6 +237,30 @@ export function TopicCard({ topic, agentId, rank, onViewPosts }: TopicCardProps)
         <TopicDetail clusterId={topic.cluster_id} agentId={agentId} topicSummary={topic.topic_summary} />
       )}
     </Card>
+  );
+}
+
+interface ActionChipProps {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  style: { icon: string; hover: string };
+  onClick: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+}
+
+function ActionChip({ label, icon: Icon, style, onClick, disabled }: ActionChipProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`group inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[10.5px] font-medium text-foreground/70 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${disabled ? '' : style.hover} ${disabled ? '' : 'hover:text-foreground'}`}
+    >
+      <span className={`flex h-4 w-4 items-center justify-center rounded ${style.icon}`}>
+        <Icon className="h-2.5 w-2.5" />
+      </span>
+      {label}
+    </button>
   );
 }
 

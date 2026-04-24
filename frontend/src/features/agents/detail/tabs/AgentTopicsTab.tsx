@@ -1,15 +1,21 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Sparkles } from 'lucide-react';
-import { Markdown } from '../../../../components/Markdown.tsx';
 import type { Agent, Briefing } from '../../../../api/endpoints/agents.ts';
-import { listAgentRuns } from '../../../../api/endpoints/agents.ts';
 import { getAgentTopics } from '../../../../api/endpoints/topics.ts';
+import { getAgentArtifacts, listAgentRuns } from '../../../../api/endpoints/agents.ts';
+import { useSessionStore } from '../../../../stores/session-store.ts';
+import { useAgentStore } from '../../../../stores/agent-store.ts';
 import { TopicsFeed } from '../../../studio/TopicsFeed.tsx';
+import { StudioActionsPanel } from '../../../studio/StudioActionsPanel.tsx';
+import { ChatPanel } from '../../../chat/ChatPanel.tsx';
 import { AnalyticsStrip } from '../../../collections/AnalyticsStrip.tsx';
 import { useAgentAnalyticsStats } from '../useAgentAnalyticsStats.ts';
 import { StatusBadge } from '../agent-status-utils.tsx';
 import { Card } from '../../../../components/ui/card.tsx';
+import { Logo } from '../../../../components/Logo.tsx';
+import { Markdown } from '../../../../components/Markdown.tsx';
+import { AgentArtifactsSidebar } from '../AgentArtifactsSidebar.tsx';
 
 interface AgentTopicsTabProps {
   task: Agent;
@@ -17,7 +23,9 @@ interface AgentTopicsTabProps {
 
 export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
   const agentId = task.agent_id;
-  // Shared with TopicsFeed via the same query key — React Query dedupes.
+  const initRef = useRef<string | null>(null);
+  const [, setSearchParams] = useSearchParams();
+
   const { data: topics } = useQuery({
     queryKey: ['topics', agentId],
     queryFn: () => getAgentTopics(agentId),
@@ -25,11 +33,18 @@ export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
     staleTime: 5 * 60_000,
   });
 
+  // Shared queryKey with useAgentDetail — React Query dedupes.
+  const { data: artifacts = [] } = useQuery({
+    queryKey: ['agent-artifacts', agentId],
+    queryFn: () => getAgentArtifacts(agentId),
+    enabled: !!agentId,
+    staleTime: 5 * 60_000,
+  });
+
   const hasTopics = !!topics && topics.length > 0;
 
-  // Latest run's per-run briefing (state_of_the_world / open_threads / process_notes),
-  // written by the agent's generate_briefing tool and stored on the run doc.
-  const { data: runs, isLoading: isRunsLoading } = useQuery({
+  // Latest run briefing — used to seed the chat kickoff message when available.
+  const { data: runs } = useQuery({
     queryKey: ['agent-runs', agentId, 5],
     queryFn: () => listAgentRuns(agentId, 5),
     enabled: !!agentId,
@@ -48,7 +63,23 @@ export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
     return found?.briefing ?? null;
   }, [runs]);
 
+  // Initialise a fresh agent session so the embedded chat starts clean and
+  // the next send is scoped to this agent. The kickoff message below is
+  // presentational only — a session is not created until the user engages.
+  useEffect(() => {
+    if (!agentId) return;
+    if (initRef.current === agentId) return;
+    initRef.current = agentId;
+    useSessionStore.getState().startNewAgentSession(agentId);
+    useAgentStore.getState().setActiveAgent(agentId, task.collection_ids);
+  }, [agentId, task.collection_ids]);
+
   const analyticsStats = useAgentAnalyticsStats(task);
+
+  const kickoffMarkdown = useMemo(
+    () => buildKickoffMarkdown(task, latestBriefing),
+    [task, latestBriefing],
+  );
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -63,67 +94,79 @@ export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
       </div>
       <AnalyticsStrip stats={analyticsStats} />
       <div className="flex-1 overflow-y-auto bg-muted">
-        {hasTopics && (
-          <div className="mx-2.5 mt-3">
-            <BriefingCard briefing={latestBriefing} isLoading={isRunsLoading} />
+        <div className="mx-2.5 mt-3 flex h-[320px] gap-2.5">
+          <Card className="flex flex-[7] flex-col overflow-hidden bg-background p-0">
+            <ChatPanel hideHeader emptyStateContent={<KickoffMessage markdown={kickoffMarkdown} />} />
+          </Card>
+          <Card className="flex-[3] overflow-y-auto bg-background p-3">
+            <StudioActionsPanel />
+          </Card>
+        </div>
+        <div className="flex gap-2.5 pr-2.5">
+          <div className="min-w-0 flex-[7]">
+            <TopicsFeed agentId={agentId} />
           </div>
-        )}
-        <TopicsFeed agentId={agentId} />
+          <div className="min-w-0 flex-[3] pt-3">
+            <AgentArtifactsSidebar
+              artifacts={artifacts}
+              onViewAll={() => setSearchParams({ tab: 'artifacts' }, { replace: true })}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-interface BriefingCardProps {
-  briefing: Briefing | null;
-  isLoading: boolean;
+function buildKickoffMarkdown(task: Agent, briefing: Briefing | null): string {
+  // Prefer briefing's state_of_the_world when present — it's the agent's own
+  // short view of where things stand. Prepend a dated heading so the message
+  // reads as a proper briefing entry.
+  const stateOfWorld = briefing?.state_of_the_world?.trim();
+  if (stateOfWorld) {
+    const heading = briefing?.generated_at
+      ? `## Last brief · ${formatBriefingDate(briefing.generated_at)}`
+      : `## Last brief`;
+    return `${heading}\n\n${stateOfWorld}`;
+  }
+
+  // Fallbacks keyed on status / paused — no heading, already a one-liner.
+  if (task.paused) {
+    return `I'm paused right now. Resume me when you're ready, or ask me anything about **${task.title}**.`;
+  }
+  switch (task.status) {
+    case 'running':
+      return `I'm still gathering data on **${task.title}**. Ask me anything in the meantime — I'll use what I have so far.`;
+    case 'failed':
+      return `My last run hit an issue. Ask me to retry, or dig into what went wrong with **${task.title}**.`;
+    case 'archived':
+      return `This agent is archived, but I still have everything I collected. Ask me anything about **${task.title}**.`;
+    case 'success':
+    default:
+      return `Ready when you are. Ask me anything about **${task.title}** — findings, trends, or what to look at next.`;
+  }
 }
 
-function composeBriefingMarkdown(b: Briefing): string {
-  const parts: string[] = [];
-  if (b.state_of_the_world?.trim()) {
-    parts.push('## State of the world');
-    parts.push(b.state_of_the_world.trim());
-  }
-  if (b.open_threads?.trim()) {
-    parts.push('## Open threads');
-    parts.push(b.open_threads.trim());
-  }
-  if (b.process_notes?.trim()) {
-    parts.push('## Process notes');
-    parts.push(b.process_notes.trim());
-  }
-  return parts.join('\n\n');
+function formatBriefingDate(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return `${date} · ${time}`;
 }
 
-function BriefingCard({ briefing, isLoading }: BriefingCardProps) {
-  const markdown = useMemo(
-    () => (briefing ? composeBriefingMarkdown(briefing) : ''),
-    [briefing],
-  );
-
+function KickoffMessage({ markdown }: { markdown: string }) {
   return (
-    <Card className="flex h-[280px] flex-col overflow-hidden bg-background px-4 py-3.5 !gap-2">
-      <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-        <Sparkles className="h-3 w-3" />
-        Briefing
+    <div className="flex gap-3">
+      <div className="mt-0.5 shrink-0">
+        <Logo size="sm" showText={false} />
       </div>
-      {isLoading ? (
-        <div className="flex flex-col gap-2">
-          <div className="h-3 w-1/3 animate-pulse rounded bg-secondary" />
-          <div className="h-3 w-full animate-pulse rounded bg-secondary" />
-          <div className="h-3 w-5/6 animate-pulse rounded bg-secondary" />
-        </div>
-      ) : markdown ? (
-        <Markdown
-          className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-h2:text-[15px] prose-h2:font-semibold prose-h2:leading-snug prose-h2:mt-0 prose-h3:text-[13px] prose-h3:font-semibold prose-p:text-muted-foreground prose-p:text-[12px] prose-p:leading-relaxed prose-li:text-muted-foreground prose-li:text-[12px] prose-strong:text-foreground prose-a:text-primary prose-blockquote:text-muted-foreground prose-blockquote:text-[12px] prose-blockquote:italic prose-blockquote:border-l-foreground/30 prose-hr:my-3"
-          stripComments={false}
-        >
-          {markdown}
-        </Markdown>
-      ) : (
-        <p className="text-[12px] text-muted-foreground">No briefing yet.</p>
-      )}
-    </Card>
+      <Markdown
+        autoDir
+        className="agent-prose min-w-0 flex-1 break-words text-[13px] text-muted-foreground"
+        stripComments={false}
+      >
+        {markdown}
+      </Markdown>
+    </div>
   );
 }
