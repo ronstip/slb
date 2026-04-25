@@ -50,6 +50,8 @@ interface SocialWidgetConfigDialogProps {
   availableOptions: FilterOptions;
   onSave: (widget: SocialDashboardWidget) => void;
   onClose: () => void;
+  /** Distinct custom enrichment field names present on the dataset. */
+  customFieldNames?: string[];
 }
 
 export function SocialWidgetConfigDialog({
@@ -61,6 +63,7 @@ export function SocialWidgetConfigDialog({
   availableOptions,
   onSave,
   onClose,
+  customFieldNames,
 }: SocialWidgetConfigDialogProps) {
   if (!open || !widget) return null;
 
@@ -75,6 +78,7 @@ export function SocialWidgetConfigDialog({
       availableOptions={availableOptions}
       onSave={onSave}
       onClose={onClose}
+      customFieldNames={customFieldNames}
     />
   );
 }
@@ -99,6 +103,7 @@ function SocialWidgetConfigDialogInner({
   availableOptions,
   onSave,
   onClose,
+  customFieldNames,
 }: SocialWidgetConfigDialogProps & { widget: SocialDashboardWidget }) {
   const [draft, setDraft] = useState<SocialDashboardWidget>(() => toCustomDraft(widget));
 
@@ -323,6 +328,7 @@ function SocialWidgetConfigDialogInner({
                     config={draft.customConfig ?? { metric: 'post_count' }}
                     onChange={updateConfig}
                     onChartTypeChange={updateChartType}
+                    customFieldNames={customFieldNames}
                   />
                 </TabsContent>
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget } from './types-social-dashboard.ts';
 import { AGGREGATION_META } from './types-social-dashboard.ts';
@@ -79,6 +79,17 @@ export function SocialDashboardView({
   serverKpis,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
+
+  // Distinct custom enrichment field names present on the dataset — surfaced
+  // as additional Group by options in the widget config dialog.
+  const customFieldNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of allPosts) {
+      if (!p.custom_fields) continue;
+      for (const k of Object.keys(p.custom_fields)) names.add(k);
+    }
+    return [...names].sort();
+  }, [allPosts]);
 
   const [widgets, setWidgets] = useState<SocialDashboardWidget[]>([]);
   // Single config dialog for both add + edit
@@ -285,6 +296,7 @@ export function SocialDashboardView({
         availableOptions={availableOptions}
         onSave={handleSaveWidget}
         onClose={() => setConfigWidget(null)}
+        customFieldNames={customFieldNames}
       />
     </div>
   );

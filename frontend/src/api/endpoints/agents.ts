@@ -1,5 +1,6 @@
 import { apiGet, apiPost, apiPatch } from '../client.ts';
 import type { ArtifactListItem } from './artifacts.ts';
+import type { CustomFieldDef } from '../types.ts';
 
 // --- Types ---
 
@@ -71,7 +72,7 @@ export interface Agent {
   status: AgentStatus;
   data_scope: {
     searches: SearchDef[];
-    custom_fields?: Array<{ name: string; type: string; description: string }> | null;
+    custom_fields?: CustomFieldDef[] | null;
     enrichment_context?: string;
     auto_report?: boolean;
     auto_email?: boolean;

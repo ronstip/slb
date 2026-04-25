@@ -1,5 +1,6 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { CustomChartConfig, CustomDimension, WidgetData } from './types-social-dashboard.ts';
+import { isCustomFieldDimension, customFieldName } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
 
@@ -453,7 +454,16 @@ function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartConfig['
 function getDimensionKeys(p: DashboardPost, dim: CustomDimension, timeBucket: string): string[] {
   if (dim === 'themes') return p.themes?.length ? p.themes : [];
   if (dim === 'entities') return p.entities?.length ? p.entities : [];
+  if (dim === 'brands') return p.detected_brands?.length ? p.detected_brands : [];
   if (dim === 'posted_at') return [bucketDate(p.posted_at ?? '', timeBucket as NonNullable<CustomChartConfig['timeBucket']>)];
+  if (isCustomFieldDimension(dim)) {
+    const raw = p.custom_fields?.[customFieldName(dim)];
+    if (raw == null) return [];
+    if (Array.isArray(raw)) {
+      return raw.filter((v) => v != null).map((v) => String(v));
+    }
+    return [String(raw)];
+  }
   const key = (p as unknown as Record<string, unknown>)[dim] as string ?? 'unknown';
   return [key];
 }

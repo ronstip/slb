@@ -31,6 +31,11 @@ export type SocialChartType =
 
 // ─── Custom chart config (used when aggregation === 'custom') ─────────────────
 
+/**
+ * Group-by dimension for custom widgets. Standard fields map to columns on
+ * `DashboardPost`; `brands` maps to `detected_brands`; `custom:<name>` reads
+ * `post.custom_fields[name]` (scalar or array).
+ */
 export type CustomDimension =
   | 'platform'
   | 'sentiment'
@@ -40,7 +45,44 @@ export type CustomDimension =
   | 'channel_handle'
   | 'posted_at'
   | 'themes'
-  | 'entities';
+  | 'entities'
+  | 'brands'
+  | `custom:${string}`;
+
+export type StandardCustomDimension = Exclude<CustomDimension, `custom:${string}`>;
+
+/** Prefix used to namespace agent-defined enrichment fields as group-by dimensions. */
+export const CUSTOM_DIM_PREFIX = 'custom:';
+
+export function isCustomFieldDimension(dim: CustomDimension): dim is `custom:${string}` {
+  return dim.startsWith(CUSTOM_DIM_PREFIX);
+}
+
+export function customFieldName(dim: `custom:${string}`): string {
+  return dim.slice(CUSTOM_DIM_PREFIX.length);
+}
+
+function humanizeFieldName(name: string): string {
+  return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export interface DimensionMeta {
+  label: string;
+  icon: string;
+  description: string;
+}
+
+export function getDimensionMeta(dim: CustomDimension): DimensionMeta {
+  if (isCustomFieldDimension(dim)) {
+    const name = customFieldName(dim);
+    return {
+      label: humanizeFieldName(name),
+      icon: 'Sparkles',
+      description: `Group by custom enrichment field "${name}"`,
+    };
+  }
+  return DIMENSION_META[dim];
+}
 
 export type CustomMetric =
   | 'post_count'
@@ -64,7 +106,7 @@ export interface CustomChartConfig {
   breakdownDimension?: CustomDimension;
 }
 
-export const DIMENSION_META: Record<CustomDimension, { label: string; icon: string; description: string }> = {
+export const DIMENSION_META: Record<StandardCustomDimension, DimensionMeta> = {
   platform:       { label: 'Platform',      icon: 'Globe',         description: 'Group by social platform' },
   sentiment:      { label: 'Sentiment',     icon: 'Heart',         description: 'Group by sentiment label' },
   emotion:        { label: 'Emotion',       icon: 'Smile',         description: 'Group by emotional tone' },
@@ -74,6 +116,7 @@ export const DIMENSION_META: Record<CustomDimension, { label: string; icon: stri
   posted_at:      { label: 'Date',          icon: 'Calendar',      description: 'Group by date over time' },
   themes:         { label: 'Theme',         icon: 'Tag',           description: 'Group by topic / theme' },
   entities:       { label: 'Entity',        icon: 'Users',         description: 'Group by mentioned entity' },
+  brands:         { label: 'Brand',         icon: 'Sparkles',      description: 'Group by detected brand' },
 };
 
 export const METRIC_META: Record<CustomMetric, { label: string; description: string; supportsAvg: boolean }> = {

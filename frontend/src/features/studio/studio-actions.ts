@@ -1,13 +1,13 @@
 import type { LucideIcon } from 'lucide-react';
-import { FileText, LayoutDashboard, FileDown, BarChart3, Mail, Presentation } from 'lucide-react';
+import { FileText, LayoutDashboard, BarChart3, Mail, Presentation, Plus } from 'lucide-react';
 
 export type StudioActionId =
   | 'insight_report'
   | 'dashboard'
-  | 'data_export'
   | 'chart'
   | 'send_email'
-  | 'deck_slides';
+  | 'deck_slides'
+  | 'create_skill';
 
 export interface StudioAction {
   id: StudioActionId;
@@ -19,6 +19,8 @@ export interface StudioAction {
   hoverClass: string;
   // If omitted, the action is handled specially (e.g. opens a dialog).
   prompt?: string;
+  // Visual variant — 'dashed' renders the tile as a "create new" affordance.
+  variant?: 'dashed';
 }
 
 export const STUDIO_ACTIONS: StudioAction[] = [
@@ -37,14 +39,6 @@ export const STUDIO_ACTIONS: StudioAction[] = [
     iconClass: 'text-purple-600 bg-purple-500/10',
     hoverClass: 'hover:border-purple-500/40 hover:bg-purple-500/5',
     prompt: 'Create an interactive dashboard for the selected sources.',
-  },
-  {
-    id: 'data_export',
-    label: 'Data Export',
-    icon: FileDown,
-    iconClass: 'text-emerald-600 bg-emerald-500/10',
-    hoverClass: 'hover:border-emerald-500/40 hover:bg-emerald-500/5',
-    prompt: 'Export the data for the selected sources as CSV.',
   },
   {
     id: 'chart',
@@ -71,5 +65,13 @@ export const STUDIO_ACTIONS: StudioAction[] = [
     hoverClass: 'hover:border-amber-500/40 hover:bg-amber-500/5',
     prompt:
       'Create a presentation deck for the selected sources. Gather the key data first, then design the slides based on what the data actually shows. If I have a saved template, ask me whether to use it.',
+  },
+  {
+    id: 'create_skill',
+    label: 'Create skill',
+    icon: Plus,
+    iconClass: 'text-muted-foreground border border-dashed border-muted-foreground/50 bg-transparent rounded-full',
+    hoverClass: 'hover:border-foreground/40 hover:bg-muted/40',
+    variant: 'dashed',
   },
 ];

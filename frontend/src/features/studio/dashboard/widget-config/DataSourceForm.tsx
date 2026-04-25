@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Label } from '../../../../components/ui/label.tsx';
 import {
   Select,
@@ -8,9 +9,15 @@ import {
 } from '../../../../components/ui/select.tsx';
 import { cn } from '../../../../lib/utils.ts';
 import type { CustomChartConfig, CustomDimension, CustomMetric, SocialChartType } from '../types-social-dashboard.ts';
-import { DIMENSION_META, METRIC_META, getValidChartTypesForCustom } from '../types-social-dashboard.ts';
+import {
+  DIMENSION_META,
+  METRIC_META,
+  getDimensionMeta,
+  getValidChartTypesForCustom,
+  CUSTOM_DIM_PREFIX,
+} from '../types-social-dashboard.ts';
 
-const ALL_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
+const STANDARD_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
 const ALL_METRICS = Object.keys(METRIC_META) as CustomMetric[];
 
 const AGG_OPTIONS: Array<{ value: CustomChartConfig['metricAgg']; label: string }> = [
@@ -25,9 +32,21 @@ interface DataSourceFormProps {
   config: CustomChartConfig;
   onChange: (config: CustomChartConfig) => void;
   onChartTypeChange: (type: SocialChartType) => void;
+  /**
+   * Names of custom enrichment fields available on the dataset. Surfaced as
+   * `custom:<name>` group-by dimensions.
+   */
+  customFieldNames?: string[];
 }
 
-export function DataSourceForm({ config, onChange, onChartTypeChange }: DataSourceFormProps) {
+export function DataSourceForm({ config, onChange, onChartTypeChange, customFieldNames }: DataSourceFormProps) {
+  const allDimensions = useMemo<CustomDimension[]>(() => {
+    const customDims = (customFieldNames ?? []).map(
+      (n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension,
+    );
+    return [...STANDARD_DIMENSIONS, ...customDims];
+  }, [customFieldNames]);
+
   const handleMetricChange = (metric: CustomMetric) => {
     const next: CustomChartConfig = { ...config, metric };
     // Ensure chart type is still valid
@@ -114,9 +133,9 @@ export function DataSourceForm({ config, onChange, onChartTypeChange }: DataSour
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">None (single value)</SelectItem>
-            {ALL_DIMENSIONS.map((dim) => (
+            {allDimensions.map((dim) => (
               <SelectItem key={dim} value={dim}>
-                {DIMENSION_META[dim].label}
+                {getDimensionMeta(dim).label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -138,9 +157,9 @@ export function DataSourceForm({ config, onChange, onChartTypeChange }: DataSour
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">None</SelectItem>
-              {ALL_DIMENSIONS.filter((d) => d !== config.dimension && d !== 'posted_at').map((dim) => (
+              {allDimensions.filter((d) => d !== config.dimension && d !== 'posted_at').map((dim) => (
                 <SelectItem key={dim} value={dim}>
-                  {DIMENSION_META[dim].label}
+                  {getDimensionMeta(dim).label}
                 </SelectItem>
               ))}
             </SelectContent>

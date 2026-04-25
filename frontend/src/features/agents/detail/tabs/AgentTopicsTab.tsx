@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import type { Agent, Briefing } from '../../../../api/endpoints/agents.ts';
 import { getAgentTopics } from '../../../../api/endpoints/topics.ts';
 import { getAgentArtifacts, listAgentRuns } from '../../../../api/endpoints/agents.ts';
@@ -25,6 +26,7 @@ export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
   const agentId = task.agent_id;
   const initRef = useRef<string | null>(null);
   const [, setSearchParams] = useSearchParams();
+  const [chatExpanded, setChatExpanded] = useState(false);
 
   const { data: topics } = useQuery({
     queryKey: ['topics', agentId],
@@ -94,19 +96,27 @@ export function AgentTopicsTab({ task }: AgentTopicsTabProps) {
       </div>
       <AnalyticsStrip stats={analyticsStats} />
       <div className="flex-1 overflow-y-auto bg-muted">
-        <div className="mx-2.5 mt-3 flex h-[320px] gap-2.5">
-          <Card className="flex flex-[7] flex-col overflow-hidden bg-background p-0">
-            <ChatPanel hideHeader emptyStateContent={<KickoffMessage markdown={kickoffMarkdown} />} />
-          </Card>
-          <Card className="flex-[3] overflow-y-auto bg-background p-3">
-            <StudioActionsPanel />
-          </Card>
-        </div>
-        <div className="flex gap-2.5 pr-2.5">
-          <div className="min-w-0 flex-[7]">
+        <div className="flex items-start gap-2.5 pl-2.5 pr-2.5 pt-3">
+          <div className="flex min-w-0 flex-[7] flex-col gap-2.5">
+            <Card
+              className={`relative flex flex-col overflow-hidden bg-background p-0 ${chatExpanded ? 'h-[640px]' : 'h-[320px]'}`}
+            >
+              <button
+                type="button"
+                onClick={() => setChatExpanded((v) => !v)}
+                aria-label={chatExpanded ? 'Collapse chat' : 'Expand chat'}
+                className="absolute right-2 top-2 z-10 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {chatExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </button>
+              <ChatPanel hideHeader emptyStateContent={<KickoffMessage markdown={kickoffMarkdown} />} />
+            </Card>
             <TopicsFeed agentId={agentId} />
           </div>
-          <div className="min-w-0 flex-[3] pt-3">
+          <div className="flex min-w-0 flex-[3] flex-col gap-2.5">
+            <Card className="h-[320px] overflow-y-auto bg-background p-3">
+              <StudioActionsPanel customFields={task.data_scope?.custom_fields} />
+            </Card>
             <AgentArtifactsSidebar
               artifacts={artifacts}
               onViewAll={() => setSearchParams({ tab: 'artifacts' }, { replace: true })}

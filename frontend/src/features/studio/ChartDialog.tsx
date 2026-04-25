@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,8 @@ import {
 import { Textarea } from '../../components/ui/textarea.tsx';
 import { Label } from '../../components/ui/label.tsx';
 import { Button } from '../../components/ui/button.tsx';
+import type { CustomFieldDef } from '../../api/types.ts';
+import { buildGroupByOptions } from './enrichment-dimensions.ts';
 
 const CHART_STYLES = [
   { value: 'bar chart', label: 'Bar Chart' },
@@ -32,24 +34,16 @@ const METRICS = [
   { value: 'shares', label: 'Shares' },
 ] as const;
 
-const GROUP_BY = [
-  { value: 'sentiment', label: 'Sentiment' },
-  { value: 'theme', label: 'Theme / Topic' },
-  { value: 'platform', label: 'Platform' },
-  { value: 'content type', label: 'Content Type' },
-  { value: 'language', label: 'Language' },
-  { value: 'channel', label: 'Channel' },
-  { value: 'entity', label: 'Entity' },
-  { value: 'date', label: 'Date' },
-] as const;
-
 interface ChartDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (message: string) => void;
+  /** Agent-defined custom enrichment fields, surfaced as additional Group by options. */
+  customFields?: CustomFieldDef[] | null;
 }
 
-export function ChartDialog({ open, onOpenChange, onSubmit }: ChartDialogProps) {
+export function ChartDialog({ open, onOpenChange, onSubmit, customFields }: ChartDialogProps) {
+  const groupByOptions = useMemo(() => buildGroupByOptions(customFields), [customFields]);
   const [style, setStyle] = useState('');
   const [metric, setMetric] = useState('');
   const [groupBy, setGroupBy] = useState('');
@@ -131,7 +125,7 @@ export function ChartDialog({ open, onOpenChange, onSubmit }: ChartDialogProps) 
                 <SelectValue placeholder="Auto" />
               </SelectTrigger>
               <SelectContent>
-                {GROUP_BY.map((o) => (
+                {groupByOptions.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}
                   </SelectItem>

@@ -83,6 +83,13 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 user_id=user_id, session_id=session_id, new_message=content,
                 run_config=run_config,
             ):
+                # Client clicked Stop (or navigated away) → abort the runner
+                # before doing more work. Without this the agent keeps emitting
+                # events server-side even though no one is reading them.
+                if await request.is_disconnected():
+                    logger.info("client disconnected, stopping runner for session %s", session_id)
+                    break
+
                 is_partial = getattr(event, "partial", None) is True
                 if t_first_token is None and is_partial:
                     t_first_token = _time.perf_counter()
