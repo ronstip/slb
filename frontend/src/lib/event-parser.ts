@@ -30,7 +30,7 @@ export function isDashboardResult(
   toolName: string,
   result?: Record<string, unknown>,
 ): result is Record<string, unknown> & DashboardPayload {
-  return toolName === 'generate_dashboard' && result?.status === 'success' && !!result?.dashboard_id;
+  return (toolName === 'generate_dashboard' || toolName === 'compose_dashboard') && result?.status === 'success' && !!result?.dashboard_id;
 }
 
 export function isStructuredPromptResult(

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-005"
 
     # Enrichment worker config
-    enrichment_concurrency: int = 10
+    enrichment_concurrency: int = 30
     enrichment_search: bool = True
     enrichment_temperature: float = 1
     enrichment_max_output_tokens: int = 4096
@@ -34,14 +34,34 @@ class Settings(BaseSettings):
     enrichment_video_end_offset: str = "180s"
     enrichment_video_fps: float = 0.5
     enrichment_batch_workers: int = 4
-    enrichment_global_concurrency: int = 10  # Max concurrent Gemini calls across all batches
+    enrichment_global_concurrency: int = 30  # Max concurrent Gemini calls across all batches
     enrichment_video_rate_limit: int = 25  # Max video enrichment calls per minute (process-wide)
-    enrichment_general_rate_limit: int = 60  # Max total enrichment calls per minute (process-wide)
-    enrichment_max_retries: int = 5  # Max retry attempts for 429 errors
-    enrichment_retry_base_delay: float = 60.0  # Base delay in seconds for retry backoff
+    enrichment_general_rate_limit: int = 300  # Max total enrichment calls per minute (process-wide) — requires matching Gemini quota in GCP
+    # Retry budget is deliberately tight — the old defaults (base=60s, retries=5)
+    # with exponential backoff let a single 429-prone post hold a worker slot
+    # for up to 15 minutes (60+120+240+480+...), gridlocking the enrichment
+    # pool when several posts hit 429 in one batch. With base=10s / retries=3
+    # the worst case is ~40s (10+20+40).
+    enrichment_max_retries: int = 3
+    enrichment_retry_base_delay: float = 10.0
+    # Hard ceiling on cumulative retry sleep per post — if we'd sleep past this,
+    # give up and mark the post as failed. Stops pathological batches where
+    # every post sits in backoff instead of draining.
+    enrichment_retry_max_total_sec: float = 60.0
+    # Wall-clock ceiling for a single post across all retries, including HTTP
+    # time, retry sleeps, and blocking in the rate-limiter acquires. Acts as
+    # the ThreadPoolExecutor per-future timeout so a single hung Gemini call
+    # can't stall the whole batch.
+    enrichment_per_post_timeout_sec: float = 1200.0
 
-    # Pipeline v2 (post-level DAG)
-    use_pipeline_v2: bool = True
+    # Max concurrent CDN/GCS downloads per collection (owned by PipelineRunner).
+    # Decouples media I/O from the step orchestration pool so a slow download
+    # batch can't starve enrich/embed progress.
+    media_download_concurrency: int = 16
+    # Fan adapters (BrightData, Vetric, ...) across threads during crawl.
+    # Off by default — flip after verifying per-adapter snapshot accounting in
+    # a canary agent. Only affects multi-provider collections.
+    parallel_adapters: bool = False
 
     # Clustering (brothers algorithm) thresholds
     clustering_brothers_threshold: float = 0.17

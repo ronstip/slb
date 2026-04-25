@@ -3,12 +3,19 @@
 Topics are agent-scoped: they cluster posts across all of an agent's collections.
 """
 
+import asyncio
+import hashlib
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from google import genai
+from google.genai import types
+from pydantic import BaseModel
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -58,16 +65,8 @@ def _check_agent_access(fs, user: CurrentUser, agent_id: str) -> dict:
     raise HTTPException(403, "Access denied")
 
 
-@router.get("/agents/{agent_id}/topics")
-async def list_agent_topics(
-    agent_id: str,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """List all topics for an agent (from Firestore + BQ summary metrics)."""
-    fs = get_fs()
-    bq = get_bq()
-    _check_agent_access(fs, user, agent_id)
-
+def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
+    """Load all topics for an agent with BQ-enriched summary metrics. Shared by list + narrative endpoints."""
     topics_ref = (
         fs._db.collection("agents")
         .document(agent_id)
@@ -171,6 +170,169 @@ async def list_agent_topics(
     return topics
 
 
+@router.get("/agents/{agent_id}/topics")
+async def list_agent_topics(
+    agent_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """List all topics for an agent (from Firestore + BQ summary metrics)."""
+    fs = get_fs()
+    bq = get_bq()
+    await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
+    return await asyncio.to_thread(_load_agent_topics, fs, bq, agent_id)
+
+
+# ---------------------------------------------------------------------------
+# Narrative synthesis — 2–3 sentence AI summary of all topics, cached per
+# agent in Firestore and regenerated only when the topic set changes.
+# ---------------------------------------------------------------------------
+
+
+class _NarrativeResponse(BaseModel):
+    headline: str
+    narrative: str
+
+
+_NARRATIVE_PROMPT = """\
+You are briefing an analyst on what is happening across a set of social-listening topics.
+
+Write:
+1. **headline**: one short sentence (max 80 chars, no period) capturing the dominant story.
+2. **narrative**: 2-3 sentences synthesizing the conversation — which topics dominate, \
+what sentiment direction emerges, and any tension or contrast worth flagging. \
+Concrete, not generic. Do not list every topic.
+
+Topics (sorted by volume):
+
+{topics_section}
+"""
+
+
+def _topic_set_hash(topics: list[dict]) -> str:
+    """Stable hash over the set of cluster_ids — narrative regenerates on set change."""
+    ids = sorted(t["cluster_id"] for t in topics)
+    return hashlib.sha256("|".join(ids).encode()).hexdigest()[:16]
+
+
+def _build_narrative_topics_section(topics: list[dict]) -> str:
+    """Render topics as a compact bullet list for the synthesis prompt."""
+    # Prefer larger, richer topics; cap to avoid bloated prompts
+    ranked = sorted(
+        topics,
+        key=lambda t: (-(t.get("post_count") or 0), -(t.get("total_views") or 0)),
+    )[:20]
+
+    lines = []
+    for t in ranked:
+        pos = t.get("positive_count") or 0
+        neg = t.get("negative_count") or 0
+        neu = t.get("neutral_count") or 0
+        mix = t.get("mixed_count") or 0
+        total = pos + neg + neu + mix
+        if total:
+            sentiment = f"pos {pos}/{total}, neg {neg}/{total}"
+        else:
+            sentiment = "sentiment n/a"
+        views = t.get("total_views") or 0
+        lines.append(
+            f"- {t.get('topic_name', 'Unnamed')} "
+            f"({t.get('post_count', 0)} posts, {views:,} views, {sentiment}): "
+            f"{t.get('topic_summary', '')}"
+        )
+    return "\n".join(lines)
+
+
+def _generate_narrative(topics: list[dict]) -> _NarrativeResponse | None:
+    """Call Gemini to synthesize a narrative. Returns None on failure."""
+    settings = get_settings()
+    client = genai.Client(
+        vertexai=True,
+        project=settings.gcp_project_id,
+        location=settings.gemini_location,
+    )
+    prompt = _NARRATIVE_PROMPT.format(topics_section=_build_narrative_topics_section(topics))
+    try:
+        response = client.models.generate_content(
+            model=settings.enrichment_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.4,
+                max_output_tokens=512,
+                response_mime_type="application/json",
+                response_schema=_NarrativeResponse,
+            ),
+        )
+        if response.parsed:
+            return response.parsed
+    except Exception:
+        logger.exception("Narrative synthesis failed for %d topics", len(topics))
+    return None
+
+
+@router.get("/agents/{agent_id}/topics/narrative")
+async def get_agent_topics_narrative(
+    agent_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """AI-generated 2-3 sentence synthesis of the agent's topic landscape.
+
+    Cached on the agent Firestore doc under ``topics_narrative`` and regenerated
+    only when the set of cluster_ids changes.
+    """
+    fs = get_fs()
+    bq = get_bq()
+    agent = await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
+
+    # Cheap hash check first: cluster_ids live in Firestore, no BQ needed.
+    def _fetch_cluster_ids() -> list[str]:
+        return [
+            doc.id
+            for doc in fs._db.collection("agents").document(agent_id).collection("topics").stream()
+        ]
+
+    cluster_ids = await asyncio.to_thread(_fetch_cluster_ids)
+    if not cluster_ids:
+        return None
+
+    topic_hash = hashlib.sha256("|".join(sorted(cluster_ids)).encode()).hexdigest()[:16]
+    cached = agent.get("topics_narrative")
+    if cached and cached.get("topic_hash") == topic_hash:
+        return {
+            "headline": cached.get("headline", ""),
+            "narrative": cached.get("narrative", ""),
+            "generated_at": cached.get("generated_at"),
+            "topic_count": len(cluster_ids),
+        }
+
+    # Cache miss — load full topics with BQ enrichment for the prompt.
+    topics = await asyncio.to_thread(_load_agent_topics, fs, bq, agent_id)
+    if not topics:
+        return None
+
+    result = await asyncio.to_thread(_generate_narrative, topics)
+    if not result:
+        raise HTTPException(502, "Narrative synthesis unavailable")
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    await asyncio.to_thread(
+        fs.update_agent,
+        agent_id,
+        topics_narrative={
+            "headline": result.headline,
+            "narrative": result.narrative,
+            "topic_hash": topic_hash,
+            "generated_at": generated_at,
+        },
+    )
+
+    return {
+        "headline": result.headline,
+        "narrative": result.narrative,
+        "generated_at": generated_at,
+        "topic_count": len(topics),
+    }
+
+
 @router.get("/agents/{agent_id}/topics/{cluster_id}/analytics")
 async def get_agent_topic_analytics(
     agent_id: str,
@@ -180,11 +342,9 @@ async def get_agent_topic_analytics(
     """On-demand analytics for a topic — sentiment, platform, engagement distributions."""
     fs = get_fs()
     bq = get_bq()
-    _check_agent_access(fs, user, agent_id)
+    await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
-    # Totals query (with dedup JOINs to prevent inflated counts)
-    totals = bq.query(
-        f"""
+    totals_sql = f"""
         {_LATEST_CTE},
         members AS (
             SELECT tcm.post_id
@@ -208,13 +368,9 @@ async def get_agent_topic_analytics(
         JOIN {_POSTS_DEDUP}
         LEFT JOIN {_ENRICHED_DEDUP}
         LEFT JOIN {_ENGAGEMENTS_DEDUP}
-        """,
-        {"agent_id": agent_id, "cluster_id": cluster_id},
-    )
+        """
 
-    # Platform breakdown (with dedup JOINs)
-    platforms = bq.query(
-        f"""
+    platforms_sql = f"""
         {_LATEST_CTE},
         members AS (
             SELECT tcm.post_id
@@ -232,8 +388,12 @@ async def get_agent_topic_analytics(
         JOIN {_POSTS_DEDUP}
         LEFT JOIN {_ENGAGEMENTS_DEDUP}
         GROUP BY p.platform
-        """,
-        {"agent_id": agent_id, "cluster_id": cluster_id},
+        """
+
+    params = {"agent_id": agent_id, "cluster_id": cluster_id}
+    totals, platforms = await asyncio.gather(
+        asyncio.to_thread(bq.query, totals_sql, params),
+        asyncio.to_thread(bq.query, platforms_sql, params),
     )
 
     return {
@@ -253,9 +413,10 @@ async def get_agent_topic_posts(
     """Paginated posts within a topic."""
     fs = get_fs()
     bq = get_bq()
-    _check_agent_access(fs, user, agent_id)
+    await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
-    posts = bq.query(
+    posts = await asyncio.to_thread(
+        bq.query,
         f"""
         {_LATEST_CTE},
         members AS (

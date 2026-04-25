@@ -3,49 +3,21 @@ import { useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { streamChat } from '../../../api/sse-client.ts';
 import { useChatStore } from '../../../stores/chat-store.ts';
+import type { ToolStartEntry } from '../../../stores/chat-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
 import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
+import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
-import { getToolDisplayText, isDesignResearchResult, isDataExportResult, isChartResult, isDashboardResult, isStructuredPromptResult, isStartAgentResult, isTodoResult, isMetricsResult, isTopicsResult, isPresentationResult } from '../../../lib/event-parser.ts';
-import type { DataExportRow, StructuredPromptResult } from '../../../api/types.ts';
-
-// Tools that are internal plumbing — skip from activity log
-const INTERNAL_TOOLS = new Set(['update_todos']);
-
-/** Extract a short description from tool_call args for display below the header. */
-function getToolDescription(toolName: string, args: Record<string, unknown>): string | undefined {
-  switch (toolName) {
-    case 'execute_sql': {
-      const q = (args.query ?? args.sql ?? '') as string;
-      return q ? (q.length > 120 ? q.slice(0, 120) + '...' : q) : undefined;
-    }
-    case 'google_search':
-    case 'google_search_agent':
-      return (args.query as string) || undefined;
-    case 'design_research':
-      return (args.question as string) || (args.research_question as string) || undefined;
-    case 'get_progress':
-    case 'enrich_collection':
-    case 'cancel_collection':
-    case 'get_collection_details':
-    case 'refresh_engagements':
-      return (args.collection_id as string) || undefined;
-    case 'get_agent_status':
-    case 'set_active_agent':
-      return (args.agent_id as string) || (args.task_id as string) || undefined;
-    case 'create_chart':
-    case 'generate_dashboard':
-    case 'generate_presentation':
-      return (args.title as string) || undefined;
-    case 'export_data':
-      return (args.format as string) || undefined;
-    default:
-      return undefined;
-  }
-}
+import type { StructuredPromptResult } from '../../../api/types.ts';
+import {
+  INTERNAL_TOOLS,
+  mapToolCall,
+  mapToolResult,
+  type MapperContext,
+} from '../../../lib/event-mapper.ts';
 
 export function useSSEChat() {
   const abortRef = useRef<AbortController | null>(null);
@@ -64,7 +36,6 @@ export function useSSEChat() {
 
   const sendMessage = useCallback(
     async (text: string, opts?: { isSystem?: boolean }) => {
-      // Abort any existing stream
       abortRef.current?.abort();
       const abortController = new AbortController();
       abortRef.current = abortController;
@@ -73,12 +44,10 @@ export function useSSEChat() {
       // Action functions are stable references — no re-renders from store changes.
       const cs = useChatStore.getState();
 
-      // Add user message (skip for system-generated messages)
       if (!opts?.isSystem) {
         cs.sendUserMessage(text);
       }
 
-      // Start agent message
       const messageId = cs.startAgentMessage();
       activeMessageRef.current = messageId;
 
@@ -104,7 +73,6 @@ export function useSSEChat() {
         for await (const event of stream) {
           if (abortController.signal.aborted) break;
 
-          // Re-read from getState() to ensure fresh references
           const chatState = useChatStore.getState();
 
           // Track which agent is active (skip orchestrator — it's just routing)
@@ -112,6 +80,12 @@ export function useSSEChat() {
             chatState.setActiveAgent(messageId, event.author);
           }
 
+          // IMPORTANT: keep this switch in sync with the part-shape walk in
+          // `frontend/src/lib/session-reconstructor.ts`. The live-stream handler
+          // (this file) dispatches on `event_type`; the replay path walks
+          // `part.text`, `part.function_call`, `part.function_response`,
+          // `part.thought`. Adding or renaming an event here requires a
+          // corresponding branch in the reconstructor or replays will diverge.
           switch (event.event_type) {
             case 'partial_text': {
               chatState.appendTextBlock(messageId, event.content);
@@ -134,15 +108,12 @@ export function useSSEChat() {
               break;
             }
 
-            // Removed marker-based events (status, intent, suggestions).
-            // Native Gemini thinking replaces markers; tools handle the rest.
-
             case 'tool_call': {
               const toolName = event.metadata.name;
-              if (!INTERNAL_TOOLS.has(toolName)) {
-                const args = (event.metadata.args ?? {}) as Record<string, unknown>;
-                const description = getToolDescription(toolName, args);
-                const entry = { kind: 'tool_start' as const, text: getToolDisplayText(toolName), toolName, description, ts: Date.now() };
+              const args = (event.metadata.args ?? {}) as Record<string, unknown>;
+              const ctx = liveCtx();
+              const entry = mapToolCall(toolName, args, ctx);
+              if (entry) {
                 chatState.appendActivityEntry(messageId, entry);
                 chatState.appendActivityBlock(messageId, entry);
               }
@@ -152,178 +123,116 @@ export function useSSEChat() {
             case 'tool_result': {
               const toolName = event.metadata.name;
               const result = event.metadata.result;
+              if (!result) break;
 
-              // Internal tools skip activity entries but still process special results below
-              if (!INTERNAL_TOOLS.has(toolName)) {
-                // Compute duration and carry description from matching tool_start entry
-                const log = useChatStore.getState().messages.find(m => m.id === messageId)?.activityLog ?? [];
-                const startEntry = [...log].reverse().find(
-                  e => e.kind === 'tool_start' && e.toolName === toolName
-                );
-                const durationMs = startEntry ? Date.now() - startEntry.ts : 0;
-                const description = startEntry?.kind === 'tool_start' ? startEntry.description : undefined;
+              // Look up the matching tool_start to thread description + compute duration.
+              const log = chatState.messages.find((m) => m.id === messageId)?.activityLog ?? [];
+              const startEntry = [...log].reverse().find(
+                (e): e is ToolStartEntry => e.kind === 'tool_start' && e.toolName === toolName,
+              );
+              const durationMs = startEntry ? Date.now() - startEntry.ts : 0;
+              const prevDescription = startEntry?.description;
+              const msg = chatState.messages.find((m) => m.id === messageId);
+              const prevTodos = msg?.todos ?? [];
 
-                // Blocked tool calls (e.g. gate rejected) — replace start entry
-                if (result?.status === 'blocked') {
-                  const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
-                  chatState.replaceToolEntry(messageId, toolName, entry);
-                  break;
-                }
+              const patch = mapToolResult(
+                toolName,
+                result,
+                prevDescription,
+                prevTodos,
+                durationMs,
+                liveCtx(),
+              );
 
-                // Anonymous user tried to start a collection — replace start entry + open sign-up
-                if (result?.status === 'auth_required') {
-                  const entry = { kind: 'tool_blocked' as const, toolName, text: getToolDisplayText(toolName), ts: Date.now() };
-                  chatState.replaceToolEntry(messageId, toolName, entry);
-                  useUIStore.getState().openSignUpPrompt();
-                  break;
-                }
-
-                // Replace tool_start with completion or error entry
-                const errorMsg = result?.status === 'error' ? ((result?.message as string) || 'Failed') : undefined;
-                if (errorMsg) {
-                  const entry = { kind: 'tool_error' as const, toolName, text: getToolDisplayText(toolName), error: errorMsg, durationMs, ts: Date.now() };
-                  chatState.replaceToolEntry(messageId, toolName, entry);
-                } else {
-                  const entry = { kind: 'tool_complete' as const, toolName, text: getToolDisplayText(toolName), durationMs, description, ts: Date.now() };
-                  chatState.replaceToolEntry(messageId, toolName, entry);
-                }
+              // Activity entry: replace the tool_start so the UI shows one row per tool.
+              if (patch.activityEntry && !INTERNAL_TOOLS.has(toolName)) {
+                chatState.replaceToolEntry(messageId, toolName, patch.activityEntry);
               }
 
-              // Handle special tool results
-              if (!result) break;
-              if (isDesignResearchResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'research_design',
-                  data: result,
-                });
-              } else if (isDataExportResult(toolName, result)) {
-                const exportId = (result._artifact_id as string) || `artifact-${Date.now()}`;
-                chatState.addCard(messageId, {
-                  type: 'data_export',
-                  data: { ...result, _artifactId: exportId },
-                });
-                // Auto-save to artifacts
-                useStudioStore.getState().addArtifact({
-                  id: exportId,
-                  type: 'data_export',
-                  title: 'Data Export',
-                  rows: result.rows as DataExportRow[],
-                  rowCount: result.row_count as number,
-                  columnNames: result.column_names as string[],
-                  sourceIds: useAgentStore.getState().activeAgent?.collection_ids ?? [],
-                  createdAt: new Date(),
-                });
-                // Open studio panel, switch to artifacts, expand the export
+              // Cards and artifacts.
+              for (const card of patch.cards) {
+                chatState.addCard(messageId, card);
+              }
+              for (const artifact of patch.artifacts) {
+                useStudioStore.getState().addArtifact(artifact);
+              }
+
+              // Todo updates: use the store's updateTodos so it re-runs diff + pushes
+              // todo_change entries into both flat log and chronological blocks.
+              if (patch.todoUpdate) {
+                chatState.updateTodos(messageId, patch.todoUpdate.newTodos);
+              }
+
+              // ── Live-only side effects, keyed by tool name / result shape ──
+              if (result?.status === 'auth_required') {
+                useUIStore.getState().openSignUpPrompt();
+                break;
+              }
+              if (result?.status === 'blocked') break;
+
+              if (toolName === 'export_data' && patch.artifacts[0]) {
+                const exportId = patch.artifacts[0].id;
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport(exportId);
-              } else if (isChartResult(toolName, result)) {
-                const chartId = (result?._artifact_id as string) || `chart-${Date.now()}`;
-                chatState.addCard(messageId, {
-                  type: 'chart',
-                  data: { ...result, _artifactId: chartId },
-                });
-                // Save chart as artifact (no auto-open — chart renders inline)
-                useStudioStore.getState().addArtifact({
-                  id: chartId,
-                  type: 'chart',
-                  title: (result?.title as string) || 'Chart',
-                  chartType: result?.chart_type as string,
-                  data: (result?.data as Record<string, unknown>) ?? {},
-                  barOrientation: (result?.bar_orientation as string | undefined) || undefined,
-                  stacked: result?.stacked as boolean | undefined,
-                  collectionIds: (result?.collection_ids as string[] | undefined) ?? undefined,
-                  sourceSql: (result?.source_sql as string | undefined) || undefined,
-                  createdAt: new Date(),
-                });
-              } else if (isDashboardResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'dashboard',
-                  data: result,
-                });
-                // Auto-save dashboard artifact
-                useStudioStore.getState().addArtifact({
-                  id: (result._artifact_id as string) || (result.dashboard_id as string),
-                  type: 'dashboard',
-                  title: result.title as string,
-                  collectionIds: result.collection_ids as string[],
-                  collectionNames: result.collection_names as Record<string, string>,
-                  createdAt: new Date(),
-                });
-                // Open studio panel, switch to artifacts, expand the dashboard
+              } else if ((toolName === 'generate_dashboard' || toolName === 'compose_dashboard') && patch.artifacts[0]) {
+                const dashboardArtifact = patch.artifacts[0];
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
-                useStudioStore.getState().expandReport((result._artifact_id as string) || (result.dashboard_id as string));
-              } else if (isStartAgentResult(toolName, result)) {
-                // Task started — add collections to sources and link taskId + sessionId
-                const cids = result.collection_ids as string[] | undefined;
-                const taskId = (result.agent_id as string) || (result.task_id as string) || undefined;
-                const currentSessionId = useChatStore.getState().sessionId ?? undefined;
-                if (cids?.length) {
-                  for (const cid of cids) {
-                    const sourcesState = useSourcesStore.getState();
-                    const alreadyInStore = sourcesState.sources.some((s) => s.collectionId === cid);
-                    if (alreadyInStore) {
-                      sourcesState.updateSource(cid, { selected: true, active: true });
-                      if (taskId) {
-                        sourcesState.updateSource(cid, { taskId, sessionId: currentSessionId });
+                useStudioStore.getState().expandReport(dashboardArtifact.id);
+                // compose_dashboard with an agent_id means an explorer layout was persisted —
+                // surface it in the Explore sidebar without navigating away.
+                const dashboardAgentId = result.agent_id as string | undefined;
+                if (toolName === 'compose_dashboard' && dashboardAgentId) {
+                  const nowIso = new Date().toISOString();
+                  useExplorerLayoutStore.getState().upsertLayout({
+                    layout_id: dashboardArtifact.id,
+                    agent_id: dashboardAgentId,
+                    title: dashboardArtifact.title,
+                    created_at: nowIso,
+                    updated_at: nowIso,
+                  });
+                }
+              } else if (toolName === 'start_agent' || toolName === 'start_task') {
+                if (result?.status === 'success') {
+                  const cids = result.collection_ids as string[] | undefined;
+                  const taskId = (result.agent_id as string) || (result.task_id as string) || undefined;
+                  const currentSessionId = chatState.sessionId ?? undefined;
+                  if (cids?.length) {
+                    for (const cid of cids) {
+                      const sourcesState = useSourcesStore.getState();
+                      const alreadyInStore = sourcesState.sources.some((s) => s.collectionId === cid);
+                      if (alreadyInStore) {
+                        sourcesState.updateSource(cid, { selected: true, active: true });
+                        if (taskId) {
+                          sourcesState.updateSource(cid, { taskId, sessionId: currentSessionId });
+                        }
+                      } else if (taskId) {
+                        // Collection was just created — store a pending link and force a
+                        // refetch so it enters the store (and polling) immediately rather
+                        // than waiting for the 30s stale timer.
+                        sourcesState.setPendingLink(cid, taskId, currentSessionId);
+                        queryClient.invalidateQueries({ queryKey: ['collections'] });
                       }
-                    } else if (taskId) {
-                      // Collection was just created — store a pending link to be applied
-                      // when useCollectionsSync next syncs this collection into the store.
-                      // Then force an immediate refetch so the collection enters the store
-                      // (and polling) without waiting for the 30s stale timer.
-                      sourcesState.setPendingLink(cid, taskId, currentSessionId);
-                      queryClient.invalidateQueries({ queryKey: ['collections'] });
                     }
                   }
-                }
-                if (taskId) {
-                  createdTaskId = taskId;
-                  // Navigate immediately to the agent's chat tab so users don't stay
-                  // stuck on AgentHome waiting for the stream to complete.
-                  navigate(`/agents/${taskId}?tab=chat`, { replace: true });
-                }
-                // Refresh task list, then set newly created task as active context
-                import('../../../stores/agent-store.ts').then(async ({ useAgentStore }) => {
-                  await useAgentStore.getState().fetchAgents();
                   if (taskId) {
-                    useAgentStore.getState().setActiveAgent(taskId);
+                    createdTaskId = taskId;
+                    navigate(`/agents/${taskId}?tab=chat`, { replace: true });
                   }
-                });
-              } else if (isTodoResult(toolName, result)) {
-                // Update todos on the message — diff logic in updateTodos auto-appends todo_change entries
-                const todos = (result.todos as Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>) ?? [];
-                chatState.updateTodos(messageId, todos);
-              } else if (isMetricsResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'metrics_section',
-                  data: result,
-                });
-              } else if (isTopicsResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'topics_section',
-                  data: result,
-                });
-              } else if (isPresentationResult(toolName, result)) {
-                const presentationId = (result._artifact_id as string) || (result.presentation_id as string);
-                useStudioStore.getState().addArtifact({
-                  id: presentationId,
-                  type: 'presentation',
-                  title: (result.title as string) || 'Presentation',
-                  collectionIds: (result.collection_ids as string[]) || [],
-                  slideCount: (result.slide_count as number) || 0,
-                  createdAt: new Date(),
-                });
-                useUIStore.getState().expandStudioPanel();
-                useStudioStore.getState().setActiveTab('artifacts');
-              } else if (isStructuredPromptResult(toolName, result)) {
-                chatState.addCard(messageId, {
-                  type: 'structured_prompt',
-                  data: result,
-                });
+                  import('../../../stores/agent-store.ts').then(async ({ useAgentStore }) => {
+                    await useAgentStore.getState().fetchAgents();
+                    if (taskId) {
+                      useAgentStore.getState().setActiveAgent(taskId);
+                    }
+                  });
+                }
+              } else if (toolName === 'ask_user' && result?.status === 'needs_input') {
                 chatState.setActivePrompt(messageId);
                 chatState.setActivePromptData(result as unknown as StructuredPromptResult);
+              } else if (toolName === 'generate_presentation' && patch.artifacts[0]) {
+                useUIStore.getState().expandStudioPanel();
+                useStudioStore.getState().setActiveTab('artifacts');
               }
               break;
             }
@@ -332,15 +241,13 @@ export function useSSEChat() {
               chatState.setSessionId(event.session_id);
               chatState.finalizeMessage(messageId);
               const sessionStore = useSessionStore.getState();
-              const isNew = !sessionStore.sessions.some(s => s.session_id === event.session_id);
+              const isNew = !sessionStore.sessions.some((s) => s.session_id === event.session_id);
               sessionStore.setActiveSession(event.session_id);
               if (event.session_title) {
                 sessionStore.setActiveSessionTitle(event.session_title);
               }
-              // Update sorting timestamp so this session floats to the top
               sessionStore.touchSession(event.session_id);
               if (isNew) {
-                // New session created — fetch list and update URL
                 sessionStore.fetchSessions();
                 if (createdTaskId) {
                   navigate(`/agents/${createdTaskId}?tab=chat`, { replace: true });
@@ -350,7 +257,6 @@ export function useSSEChat() {
               } else if (createdTaskId) {
                 navigate(`/agents/${createdTaskId}?tab=chat`);
               }
-              // Refresh agent session list so the new/updated session appears in sidebar
               const agentId = useAgentStore.getState().activeAgentId;
               if (agentId) {
                 sessionStore.fetchAgentSessions(agentId);
@@ -380,7 +286,6 @@ export function useSSEChat() {
     [navigate],
   );
 
-  /** Send a system-generated message (no user bubble, full event processing). */
   const sendSystemMessage = useCallback(
     (text: string) => sendMessage(text, { isSystem: true }),
     [sendMessage],
@@ -394,4 +299,14 @@ export function useSSEChat() {
   }, []);
 
   return { sendMessage, sendSystemMessage, cancelStream };
+}
+
+/** Live MapperContext — wall-clock timestamps, Date.now-based fallback IDs. */
+function liveCtx(): MapperContext {
+  const now = Date.now();
+  return {
+    now,
+    fallbackId: (kind) => kind === 'data_export' ? `artifact-${now}` : `${kind}-${now}`,
+    dataExportSourceIds: useAgentStore.getState().activeAgent?.collection_ids ?? [],
+  };
 }

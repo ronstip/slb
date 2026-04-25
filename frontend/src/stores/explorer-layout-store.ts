@@ -19,6 +19,7 @@ interface ExplorerLayoutStore {
   fetchAgentLayouts: (agentId: string) => Promise<void>;
   selectLayout: (layoutId: string | null) => void;
   createLayout: (agentId: string, title: string) => Promise<string>;
+  upsertLayout: (layout: ExplorerLayoutListItem) => void;
   removeLayout: (layoutId: string) => Promise<void>;
   clearStartInEditMode: () => void;
   reset: () => void;
@@ -58,6 +59,18 @@ export const useExplorerLayoutStore = create<ExplorerLayoutStore>((set, _get) =>
       startInEditMode: true,
     }));
     return result.layout_id;
+  },
+
+  upsertLayout: (layout: ExplorerLayoutListItem) => {
+    set((s) => {
+      const existing = s.agentLayouts.findIndex((l) => l.layout_id === layout.layout_id);
+      if (existing >= 0) {
+        const next = s.agentLayouts.slice();
+        next[existing] = layout;
+        return { agentLayouts: next };
+      }
+      return { agentLayouts: [layout, ...s.agentLayouts] };
+    });
   },
 
   removeLayout: async (layoutId: string) => {

@@ -1,8 +1,6 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { remarkStripComments } from '../../lib/remark-strip-comments.ts';
 import { AlertCircle } from 'lucide-react';
 import { Logo } from '../../components/Logo.tsx';
+import { Markdown } from '../../components/Markdown.tsx';
 import type { ChatMessage } from '../../stores/chat-store.ts';
 import type { DesignResearchResult } from '../../api/types.ts';
 import { ActivityBlock } from './ActivityBar.tsx';
@@ -84,11 +82,9 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
                 const cleaned = cleanText(block.content);
                 if (!cleaned) return null;
                 return (
-                  <div key={i} dir="auto" className="agent-prose max-w-none break-words">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
-                      {cleaned}
-                    </ReactMarkdown>
-                  </div>
+                  <Markdown key={i} autoDir className="agent-prose max-w-none break-words">
+                    {cleaned}
+                  </Markdown>
                 );
               }
               if (block.type === 'activity') {
@@ -120,11 +116,9 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
               const cleaned = cleanText(rawContent);
               if (!cleaned) return null;
               return (
-                <div dir="auto" className="agent-prose max-w-none break-words">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkStripComments]}>
-                    {cleaned}
-                  </ReactMarkdown>
-                </div>
+                <Markdown autoDir className="agent-prose max-w-none break-words">
+                  {cleaned}
+                </Markdown>
               );
             })()}
           </>

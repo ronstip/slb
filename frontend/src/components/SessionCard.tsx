@@ -56,8 +56,8 @@ export function SessionCard({ session, onSelect, onDeleted }: SessionCardProps) 
         className={cn(
           'group relative flex cursor-pointer items-start rounded-lg px-2 py-2 transition-all duration-150',
           isActive
-            ? 'bg-accent/80 text-accent-foreground'
-            : 'hover:bg-muted/60',
+            ? 'bg-sidebar-accent text-sidebar-foreground'
+            : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60',
           isRestoring && !isActive && 'pointer-events-none opacity-50',
         )}
         onClick={handleClick}
@@ -70,8 +70,8 @@ export function SessionCard({ session, onSelect, onDeleted }: SessionCardProps) 
         <div className="min-w-0 flex-1 overflow-hidden pl-1">
           {/* Title or first-message preview for untitled sessions */}
           <span className={cn(
-            'block truncate text-[13px] leading-tight',
-            isActive ? 'font-semibold' : 'font-medium text-foreground',
+            'block truncate text-sm',
+            isActive ? 'font-semibold' : 'font-medium',
           )}>
             {session.title || session.preview || 'New session'}
           </span>

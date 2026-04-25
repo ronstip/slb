@@ -181,9 +181,12 @@ def refresh_briefing(agent_id: str) -> dict:
     top_topics = topics[:_MAX_TOPICS_TO_LLM]
     best_image_per_topic = load_best_image_per_topic(bq, agent_id)
 
+    top_cluster_ids = [t["cluster_id"] for t in top_topics]
+    posts_per_cluster = load_topic_posts(bq, agent_id, top_cluster_ids, _POSTS_PER_TOPIC)
+
     topics_payload: list[dict] = []
     for t in top_topics:
-        posts = load_topic_posts(bq, agent_id, t["cluster_id"], _POSTS_PER_TOPIC)
+        posts = posts_per_cluster.get(t["cluster_id"], [])
         topics_payload.append(
             _summarize_topic(t, posts, t["cluster_id"] in best_image_per_topic)
         )

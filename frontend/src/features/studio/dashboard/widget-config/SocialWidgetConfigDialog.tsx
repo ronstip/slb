@@ -11,6 +11,7 @@ import { Button } from '../../../../components/ui/button.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { Label } from '../../../../components/ui/label.tsx';
 import { Separator } from '../../../../components/ui/separator.tsx';
+import { Textarea } from '../../../../components/ui/textarea.tsx';
 import {
   BarChart3, TrendingUp, PieChart, Circle, Hash, Cloud, List, Table2,
   Database, Filter, Palette, GripHorizontal,
@@ -49,6 +50,8 @@ interface SocialWidgetConfigDialogProps {
   availableOptions: FilterOptions;
   onSave: (widget: SocialDashboardWidget) => void;
   onClose: () => void;
+  /** Distinct custom enrichment field names present on the dataset. */
+  customFieldNames?: string[];
 }
 
 export function SocialWidgetConfigDialog({
@@ -60,6 +63,7 @@ export function SocialWidgetConfigDialog({
   availableOptions,
   onSave,
   onClose,
+  customFieldNames,
 }: SocialWidgetConfigDialogProps) {
   if (!open || !widget) return null;
 
@@ -74,6 +78,7 @@ export function SocialWidgetConfigDialog({
       availableOptions={availableOptions}
       onSave={onSave}
       onClose={onClose}
+      customFieldNames={customFieldNames}
     />
   );
 }
@@ -81,6 +86,8 @@ export function SocialWidgetConfigDialog({
 // ── Preset → custom conversion ─────────────────────────────────────────────────
 
 function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
+  // Text widgets have no data/chart config — pass through untouched.
+  if (widget.aggregation === 'text') return widget;
   if (widget.aggregation === 'custom' && widget.customConfig) return widget;
   const { customConfig, chartType } = presetToCustomConfig(widget.aggregation, widget.kpiIndex);
   return { ...widget, aggregation: 'custom', customConfig, chartType, kpiIndex: undefined };
@@ -96,6 +103,7 @@ function SocialWidgetConfigDialogInner({
   availableOptions,
   onSave,
   onClose,
+  customFieldNames,
 }: SocialWidgetConfigDialogProps & { widget: SocialDashboardWidget }) {
   const [draft, setDraft] = useState<SocialDashboardWidget>(() => toCustomDraft(widget));
 
@@ -147,6 +155,8 @@ function SocialWidgetConfigDialogInner({
 
   const previewWidget: SocialDashboardWidget = { ...draft, x: 0, y: 0, w: 6, h: 6 };
 
+  const isTextMode = draft.aggregation === 'text';
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
@@ -168,7 +178,47 @@ function SocialWidgetConfigDialogInner({
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* ── Left: config (55%) ── */}
           <div className="w-[55%] border-r border-border flex flex-col min-h-0 bg-white dark:bg-zinc-950">
-            {/* Tabs: Data | Filters | Style */}
+            {isTextMode ? (
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs w-24 shrink-0">Title</Label>
+                  <Input
+                    value={draft.title}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
+                    className="h-8 text-xs"
+                    placeholder="Widget title"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs w-24 shrink-0">Description</Label>
+                  <Input
+                    value={draft.description ?? ''}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value || undefined }))}
+                    className="h-8 text-xs"
+                    placeholder="Optional subtitle"
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Markdown
+                  </Label>
+                  <Textarea
+                    value={draft.markdownContent ?? ''}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, markdownContent: e.target.value }))}
+                    placeholder={'## Heading\n\nBody text. Supports **bold**, *italic*, lists, links, and tables.'}
+                    className="min-h-[260px] font-mono text-xs leading-relaxed"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Supports GitHub-flavored Markdown. The preview on the right updates as you type.
+                  </p>
+                </div>
+              </div>
+            ) : (
+            /* Tabs: Data | Filters | Style */
             <Tabs defaultValue="data" className="flex flex-col flex-1 min-h-0">
               <TabsList className="w-full grid grid-cols-3 rounded-none border-b border-border bg-transparent h-10 shrink-0 px-4">
                 <TabsTrigger value="data" className="text-xs gap-1.5">
@@ -278,6 +328,7 @@ function SocialWidgetConfigDialogInner({
                     config={draft.customConfig ?? { metric: 'post_count' }}
                     onChange={updateConfig}
                     onChartTypeChange={updateChartType}
+                    customFieldNames={customFieldNames}
                   />
                 </TabsContent>
 
@@ -300,6 +351,7 @@ function SocialWidgetConfigDialogInner({
                 </TabsContent>
               </div>
             </Tabs>
+            )}
           </div>
 
           {/* ── Right: live preview (45%) ── */}

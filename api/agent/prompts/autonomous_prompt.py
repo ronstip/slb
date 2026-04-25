@@ -8,6 +8,7 @@ dashboards, presentations) without user interaction.
 from api.agent.prompts.shared import (
     ANALYSIS_METHODOLOGY,
     BIGQUERY_ESSENTIALS,
+    DASHBOARD_AUTHORING,
     ENRICHMENT_FIELDS,
     OUTPUT_STYLE,
     POST_FIELDS,
@@ -61,7 +62,7 @@ You are analyzing data that was collected for a specific purpose. The agent's da
 
 1. **Orient** -- Start by understanding the data landscape. Query volume, platform distribution, date range, and relevance rate. This tells you what you're working with.
 2. **Analyze** -- Follow the shared analysis methodology: decompose, query, evaluate, go deeper on surprises. Think critically -- confront findings with counterfactual explanations.
-3. **Validate** -- Cross-reference findings. Check data sanity. Ensure every claim has a number behind it.
+3. **Validate** -- Cross-reference findings. Check data sanity. Ensure every claim has a number behind it. Be critic, doubt your findings and try to disprove them and find alternative solution until you find an answer you are confident with.
 4. **Deliver** -- Generate artifacts. Start with `get_collection_stats`, then build reports/dashboards/presentations as appropriate.
 
 ### Key differences from interactive analysis:
@@ -197,6 +198,8 @@ AUTONOMOUS_STATIC_PROMPT = f"""{_IDENTITY}
 {BIGQUERY_ESSENTIALS}
 
 {ANALYSIS_METHODOLOGY}
+
+{DASHBOARD_AUTHORING}
 
 {PRESENTATIONS}
 

@@ -51,7 +51,7 @@ export function PostsDataPanel({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [platformFilter, setPlatformFilter] = useState('all');
   const [sentimentFilter, setSentimentFilter] = useState('all');
-  const [relevantFilter, setRelevantFilter] = useState('true');
+  const [relevantFilter, setRelevantFilter] = useState('all');
 
   // Compute effective collection IDs based on source filter
   const effectiveCollectionIds = useMemo(() => {
@@ -79,6 +79,28 @@ export function PostsDataPanel({
   });
 
   const allPosts = data?.posts ?? [];
+
+  // Separate query for the relevance metric — must ignore the relevant_to_task
+  // filter, otherwise the metric is circular (e.g. 100% under "Relevant only").
+  // Only fires when a relevance filter is active; otherwise we reuse allPosts.
+  const { data: relevanceData } = useQuery({
+    queryKey: ['collection-posts-relevance', effectiveCollectionIds, dedup, platformFilter, sentimentFilter],
+    queryFn: () =>
+      getMultiCollectionPosts({
+        collection_ids: effectiveCollectionIds,
+        sort: 'views',
+        limit: 5_000,
+        offset: 0,
+        dedup,
+        platform: platformFilter !== 'all' ? platformFilter : undefined,
+        sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
+        relevant_to_task: 'all',
+      }),
+    enabled: hasSelection && relevantFilter !== 'all',
+    staleTime: 30_000,
+  });
+
+  const relevancePool = relevantFilter === 'all' ? allPosts : (relevanceData?.posts ?? allPosts);
 
   // Apply column-level filters (client-side)
   const afterColumnFilters = useMemo(
@@ -141,10 +163,12 @@ export function PostsDataPanel({
     const base = computeAnalyticsStats(filteredPosts);
     if (!base) return base;
 
-    // Relevance: count posts marked as relevant + deduped unique post_ids
-    const uniquePostIds = new Set(allPosts.map((p) => p.post_id));
+    // Relevance: count posts marked as relevant + deduped unique post_ids.
+    // Uses relevancePool (unfiltered by relevant_to_task) so the ratio isn't
+    // circular when the user has "Relevant only" / "Not relevant only" applied.
+    const uniquePostIds = new Set(relevancePool.map((p) => p.post_id));
     base.dedupedCount = uniquePostIds.size;
-    base.relevantCount = allPosts.filter((p) => p.is_related_to_task === true).length;
+    base.relevantCount = relevancePool.filter((p) => p.is_related_to_task === true).length;
 
     if (!allStats) return base;
 
@@ -169,7 +193,7 @@ export function PostsDataPanel({
     base.latestDate = dates.length > 0 ? dates.sort().pop()! : null;
 
     return base;
-  }, [filteredPosts, allPosts, allStats]);
+  }, [filteredPosts, relevancePool, allStats]);
 
   // Build source options from collections prop
   const sourceOptions = useMemo(() => {

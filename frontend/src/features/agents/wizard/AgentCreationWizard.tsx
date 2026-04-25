@@ -36,6 +36,7 @@ export interface WizardCollectionSettings {
   customFields: CustomFieldDef[];
   enrichmentContext: string;
   enrichmentFromAI: boolean;
+  contentTypes: string[];
 }
 
 export interface WizardAgentSettings {
@@ -62,6 +63,7 @@ const DEFAULT_COLLECTION: WizardCollectionSettings = {
   customFields: [],
   enrichmentContext: '',
   enrichmentFromAI: false,
+  contentTypes: [],
 };
 
 const DEFAULT_AGENT: WizardAgentSettings = {
@@ -133,6 +135,7 @@ export function AgentCreationWizard() {
       customFields: plan.custom_fields ?? [],
       enrichmentContext: plan.enrichment_context ?? '',
       enrichmentFromAI: true,
+      contentTypes: plan.content_types ?? [],
     });
 
     setTaskSettings({
@@ -226,8 +229,8 @@ export function AgentCreationWizard() {
       await useAgentStore.getState().fetchAgents();
       useAgentStore.getState().setActiveAgent(result.agent_id);
 
-      // Navigate to the agents list page
-      navigate('/agents', { replace: true });
+      // Navigate to the new agent's Overview page so users see live progress.
+      navigate(`/agents/${result.agent_id}`, { replace: true });
     } catch (err) {
       toast.error('Failed to create agent. Please try again.');
       setIsSubmitting(false);

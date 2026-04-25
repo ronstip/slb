@@ -408,6 +408,7 @@ export function CollectionsSection() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Charged</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Stored</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Enriched</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Embedded</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Created</th>
                 <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Audit</th>
               </tr>
@@ -456,6 +457,7 @@ export function CollectionsSection() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">{c.posts_enriched.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">{c.posts_embedded.toLocaleString()}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{fmt(c.created_at)}</td>
                     <td className="px-3 py-2 text-center">
                       <Button
@@ -473,7 +475,7 @@ export function CollectionsSection() {
               })}
               {(data?.collections ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center text-muted-foreground text-sm">
+                  <td colSpan={10} className="px-3 py-10 text-center text-muted-foreground text-sm">
                     No collections found
                   </td>
                 </tr>

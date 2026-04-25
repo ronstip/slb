@@ -77,6 +77,22 @@ validates it strictly — stick to the schema.
     Relevant: product reviews, athlete endorsements, unboxings, training
     tips mentioning Nike gear. Irrelevant: general sports news, unrelated
     apparel, off-topic personal content."
+10b. **content_types** — 5–12 short, lowercase labels covering the kinds of
+    posts this agent will see. Used as a closed vocabulary at enrichment
+    time so the `content_type` field stops drifting (no more "Product Review"
+    vs "review" vs "product reviews"). Rules:
+    - Domain-specific. Tailor to what this agent monitors. Examples:
+      * fashion brand → ["runway", "haul", "review", "outfit", "lookbook",
+        "unboxing", "ad", "user post", "other"]
+      * politics → ["news", "opinion", "endorsement", "meme", "statement",
+        "interview", "ad", "other"]
+      * tech product → ["review", "tutorial", "announcement", "comparison",
+        "complaint", "user demo", "ad", "other"]
+    - Lowercase, 1–3 words each. No punctuation.
+    - Always include "other" as the LAST item — it's the escape hatch when
+      a post doesn't fit any specific type.
+    - Prefer 6–10 entries. Fewer is fine if the domain is narrow; more than
+      12 defeats the purpose.
 11. **constitution** — The agent's static identity document (its "DNA"). This
     defines who the agent is, what it's trying to achieve, and how it thinks.
     The constitution is immutable after creation — any edit creates a new agent

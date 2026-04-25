@@ -157,6 +157,7 @@ export function buildWizardRequestBody(
     schedule,
     custom_fields: customFields,
     enrichment_context: collection.enrichmentContext.trim() || undefined,
+    content_types: collection.contentTypes.length > 0 ? collection.contentTypes : undefined,
     constitution: constitution && Object.values(constitution).some((v) => v) ? constitution : undefined,
     existing_agent_ids: collection.existingAgentIds.length > 0
       ? collection.existingAgentIds

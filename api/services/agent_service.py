@@ -133,7 +133,7 @@ def dispatch_agent_run(
     """
     from api.schemas.requests import CreateCollectionRequest
     from api.services.collection_service import create_collection_from_request
-    from workers.pipeline_v2.schedule_utils import compute_next_run_at
+    from workers.pipeline.schedule_utils import compute_next_run_at
     from api.agent.workflow_template import build_workflow_template, progress_automated_steps
 
     fs = get_fs()
@@ -183,6 +183,9 @@ def dispatch_agent_run(
         enrichment_context = data_scope.get("enrichment_context")
         if enrichment_context:
             extra_config["enrichment_context"] = enrichment_context
+        content_types = data_scope.get("content_types")
+        if content_types:
+            extra_config["content_types"] = content_types
         # Pass structured context as supplementary enrichment info
         agent_constitution = agent.get("constitution")
         if agent_constitution:

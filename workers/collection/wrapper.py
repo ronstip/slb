@@ -1,4 +1,6 @@
 import logging
+import queue
+import threading
 from collections.abc import Iterator
 
 from config.settings import get_settings
@@ -86,22 +88,24 @@ class DataProviderWrapper:
                 return provider
         raise ValueError(f"No adapter supports platform: {platform}")
 
-    def collect_all(self) -> Iterator[Batch]:
-        """Collect from all platforms, yielding batches as they arrive from each adapter."""
-        # Group platforms by their resolved adapter
+    def _resolve_adapter_platforms(self) -> dict[int, tuple[DataProviderAdapter, list[str]]]:
+        """Group requested platforms by the adapter that handles them."""
         adapter_platforms: dict[int, tuple[DataProviderAdapter, list[str]]] = {}
-
         for platform in self.config.get("platforms", []):
             try:
                 adapter = self._get_adapter(platform)
             except ValueError as e:
                 logger.warning("Skipping platform %s: %s", platform, e)
                 continue
-
             key = id(adapter)
             if key not in adapter_platforms:
                 adapter_platforms[key] = (adapter, [])
             adapter_platforms[key][1].append(platform)
+        return adapter_platforms
+
+    def collect_all(self) -> Iterator[Batch]:
+        """Collect from all platforms, yielding batches as they arrive from each adapter."""
+        adapter_platforms = self._resolve_adapter_platforms()
 
         # Call collect() once per adapter with only its assigned platforms
         for adapter, platforms in adapter_platforms.values():
@@ -109,6 +113,59 @@ class DataProviderWrapper:
             sub_config["platforms"] = platforms
             logger.info("Collecting via %s for platforms: %s", type(adapter).__name__, platforms)
             yield from adapter.collect(sub_config)
+
+    def collect_all_parallel(self) -> Iterator[Batch]:
+        """Fan adapters across threads; yield batches in whatever order they arrive.
+
+        Cuts multi-provider crawl wall-time from sum(adapter_times) to
+        max(adapter_times). Snapshot budgets are per-adapter, so fan-out
+        introduces no cross-adapter contention.
+        """
+        adapter_platforms = self._resolve_adapter_platforms()
+        if len(adapter_platforms) <= 1:
+            # Nothing to parallelize — avoid the queue overhead.
+            yield from self.collect_all()
+            return
+
+        batch_queue: queue.Queue[Batch | object] = queue.Queue(maxsize=64)
+        SENTINEL = object()
+
+        def _run_adapter(adapter: DataProviderAdapter, platforms: list[str]) -> None:
+            sub_config = dict(self.config)
+            sub_config["platforms"] = platforms
+            logger.info(
+                "Collecting (parallel) via %s for platforms: %s",
+                type(adapter).__name__, platforms,
+            )
+            try:
+                for batch in adapter.collect(sub_config):
+                    batch_queue.put(batch)
+            except Exception:
+                logger.exception(
+                    "Adapter %s crashed during parallel collect", type(adapter).__name__,
+                )
+            finally:
+                batch_queue.put(SENTINEL)
+
+        threads: list[threading.Thread] = []
+        for adapter, platforms in adapter_platforms.values():
+            t = threading.Thread(
+                target=_run_adapter, args=(adapter, platforms),
+                daemon=True, name=f"adapter-{type(adapter).__name__}",
+            )
+            t.start()
+            threads.append(t)
+
+        remaining = len(threads)
+        while remaining > 0:
+            item = batch_queue.get()
+            if item is SENTINEL:
+                remaining -= 1
+                continue
+            yield item  # type: ignore[misc]
+
+        for t in threads:
+            t.join(timeout=5)
 
     def get_collection_errors(self) -> list[dict]:
         """Return any errors encountered during the last collect_all() call."""

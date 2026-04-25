@@ -770,6 +770,22 @@ class FirestoreClient:
             return {}
         return doc.to_dict()
 
+    def get_usage_many(self, user_ids: list[str]) -> dict[str, dict]:
+        """Batch-fetch usage docs for many users in one round-trip.
+
+        Returns a mapping `uid -> usage_dict` (missing users resolve to `{}`).
+        Collapses what would otherwise be an N+1 Firestore read pattern when
+        the admin panel renders hundreds of users.
+        """
+        if not user_ids:
+            return {}
+        refs = [self._db.collection("usage").document(uid) for uid in user_ids]
+        out: dict[str, dict] = {uid: {} for uid in user_ids}
+        for snap in self._db.get_all(refs):
+            if snap.exists:
+                out[snap.id] = snap.to_dict() or {}
+        return out
+
     def get_org_usage(self, org_id: str) -> dict:
         """Get aggregate usage counters for an organization."""
         doc = self._db.collection("org_usage").document(org_id).get()

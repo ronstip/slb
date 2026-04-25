@@ -13,6 +13,7 @@ import { AppSidebar } from '../../../components/AppSidebar.tsx';
 import type { DetailTab } from '../../../components/AppSidebar.tsx';
 import { ScheduleDialog } from './ScheduleDialog.tsx';
 import { AgentOverviewTab } from './tabs/AgentOverviewTab.tsx';
+import { AgentSettingsTab } from './tabs/AgentSettingsTab.tsx';
 import { AgentChatTab } from './tabs/AgentChatTab.tsx';
 import { AgentCollectionsTab } from './tabs/AgentCollectionsTab.tsx';
 import { AgentArtifactsTab } from './tabs/AgentArtifactsTab.tsx';
@@ -31,7 +32,7 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'briefing', 'chat', 'data', 'topics', 'artifacts', 'explorer'];
+const VALID_TABS: DetailTab[] = ['overview', 'briefing', 'chat', 'data', 'topics', 'artifacts', 'explorer', 'settings'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -214,6 +215,19 @@ export function AgentDetailPage() {
               onRun={handleRun}
               onStop={handleStop}
               canRun={canRun}
+              onOpenLayout={handleLayoutSelect}
+            />
+          )}
+          {activeTab === 'settings' && (
+            <AgentSettingsTab
+              task={task}
+              artifacts={artifacts}
+              logs={logs}
+              onTabChange={setActiveTab}
+              onOpenSchedule={() => setScheduleOpen(true)}
+              onRun={handleRun}
+              onStop={handleStop}
+              canRun={canRun}
               isEditing={editMode.isEditing}
               draft={editMode.draft}
               isDirty={editMode.isDirty}
@@ -228,7 +242,9 @@ export function AgentDetailPage() {
           {activeTab === 'chat' && <AgentChatTab task={task} />}
           {activeTab === 'data' && <AgentCollectionsTab task={task} />}
           {activeTab === 'topics' && <AgentTopicsTab task={task} />}
-          {activeTab === 'artifacts' && <AgentArtifactsTab task={task} artifacts={artifacts} />}
+          {activeTab === 'artifacts' && (
+            <AgentArtifactsTab task={task} artifacts={artifacts} />
+          )}
           {activeTab === 'explorer' && (
             <AgentExplorerTab
               task={task}

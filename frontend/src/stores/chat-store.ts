@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
 import type { StructuredPromptResult } from '../api/types.ts';
 
 export interface TodoItem {
@@ -104,9 +105,11 @@ interface ChatStore {
   sessionId: string | null;
   activePromptMessageId: string | null;
   activePromptData: StructuredPromptResult | null;
+  pendingComposerText: string | null;
 
   setActivePrompt: (id: string | null) => void;
   setActivePromptData: (data: StructuredPromptResult | null) => void;
+  setPendingComposerText: (text: string | null) => void;
   sendUserMessage: (text: string) => void;
   startAgentMessage: () => string;
   appendText: (messageId: string, text: string) => void;
@@ -133,159 +136,142 @@ function nextId(): string {
   return `msg-${Date.now()}-${++messageCounter}`;
 }
 
-export const useChatStore = create<ChatStore>((set) => ({
-  messages: [],
-  isAgentResponding: false,
-  sessionId: null,
-  activePromptMessageId: null,
-  activePromptData: null,
+function emptyMessage(role: ChatMessage['role'], text = '', cards: MessageCard[] = []): ChatMessage {
+  return {
+    id: nextId(),
+    role,
+    content: text,
+    timestamp: new Date(),
+    isStreaming: false,
+    cards,
+    todos: [],
+    activityLog: [],
+    blocks: role === 'agent' && text ? [{ type: 'text', content: text }] : [],
+  };
+}
 
-  setActivePrompt: (id) => set({ activePromptMessageId: id }),
-  setActivePromptData: (data) => set({ activePromptData: data }),
+export const useChatStore = create<ChatStore>()(
+  immer((set) => ({
+    messages: [],
+    isAgentResponding: false,
+    sessionId: null,
+    activePromptMessageId: null,
+    activePromptData: null,
+    pendingComposerText: null,
 
-  sendUserMessage: (text) =>
-    set((s) => ({
-      messages: [
-        ...s.messages,
-        {
-          id: nextId(),
-          role: 'user',
-          content: text,
-          timestamp: new Date(),
-          isStreaming: false,
-          cards: [],
-          todos: [],
-          activityLog: [],
-          blocks: [],
-        },
-      ],
-    })),
+    setActivePrompt: (id) =>
+      set((s) => {
+        s.activePromptMessageId = id;
+      }),
+    setActivePromptData: (data) =>
+      set((s) => {
+        s.activePromptData = data;
+      }),
+    setPendingComposerText: (text) =>
+      set((s) => {
+        s.pendingComposerText = text;
+      }),
 
-  startAgentMessage: () => {
-    const id = nextId();
-    set((s) => ({
-      messages: [
-        ...s.messages,
-        {
-          id,
-          role: 'agent',
-          content: '',
-          timestamp: new Date(),
-          isStreaming: true,
-          cards: [],
-          todos: [],
-          activityLog: [],
-          blocks: [],
-        },
-      ],
-      isAgentResponding: true,
-    }));
-    return id;
-  },
+    sendUserMessage: (text) =>
+      set((s) => {
+        s.messages.push(emptyMessage('user', text));
+      }),
 
-  appendText: (messageId, text) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId ? { ...m, content: m.content + text } : m,
-      ),
-    })),
+    startAgentMessage: () => {
+      const msg = emptyMessage('agent');
+      msg.isStreaming = true;
+      set((s) => {
+        s.messages.push(msg);
+        s.isAgentResponding = true;
+      });
+      return msg.id;
+    },
 
-  // Append text to the chronological block stream.
-  // If the last block is text, append to it; otherwise create a new text block.
-  appendTextBlock: (messageId, text) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
-        const blocks = [...(m.blocks || [])];
-        const last = blocks[blocks.length - 1];
+    appendText: (messageId, text) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (m) m.content += text;
+      }),
+
+    appendTextBlock: (messageId, text) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (!m) return;
+        m.content += text;
+        const last = m.blocks[m.blocks.length - 1];
         if (last && last.type === 'text') {
-          blocks[blocks.length - 1] = { ...last, content: last.content + text };
+          last.content += text;
         } else {
-          blocks.push({ type: 'text', content: text });
+          m.blocks.push({ type: 'text', content: text });
         }
-        return { ...m, content: m.content + text, blocks };
       }),
-    })),
 
-  // Append an activity entry to the chronological block stream.
-  // If the last block is activity, push into it; otherwise create a new activity block.
-  appendActivityBlock: (messageId, entry) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
-        const blocks = [...(m.blocks || [])];
-        const last = blocks[blocks.length - 1];
+    appendActivityBlock: (messageId, entry) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (!m) return;
+        m.activityLog.push(entry);
+        const last = m.blocks[m.blocks.length - 1];
         if (last && last.type === 'activity') {
-          blocks[blocks.length - 1] = { ...last, entries: [...last.entries, entry] };
+          last.entries.push(entry);
         } else {
-          blocks.push({ type: 'activity', entries: [entry] });
+          m.blocks.push({ type: 'activity', entries: [entry] });
         }
-        return { ...m, activityLog: [...m.activityLog, entry], blocks };
       }),
-    })),
 
-  setActiveAgent: (messageId, agent) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId ? { ...m, activeAgent: agent } : m,
-      ),
-    })),
+    setActiveAgent: (messageId, agent) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (m) m.activeAgent = agent;
+      }),
 
-  addCard: (messageId, card) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? { ...m, cards: [...m.cards, card] }
-          : m,
-      ),
-    })),
+    addCard: (messageId, card) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (m) m.cards.push(card);
+      }),
 
-  appendActivityEntry: (messageId, entry) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? { ...m, activityLog: [...m.activityLog, entry] }
-          : m,
-      ),
-    })),
+    appendActivityEntry: (messageId, entry) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (m) m.activityLog.push(entry);
+      }),
 
-  // Replace the last tool_start entry for a given toolName with its completion entry
-  // in both activityLog and blocks, so we get one row per tool instead of two.
-  replaceToolEntry: (messageId, toolName, entry) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
+    // Replace the last tool_start entry for a given toolName with its completion entry
+    // in both activityLog and blocks, so we get one row per tool instead of two.
+    replaceToolEntry: (messageId, toolName, entry) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (!m) return;
 
-        // Replace last matching tool_start in flat log
-        const log = [...m.activityLog];
-        for (let i = log.length - 1; i >= 0; i--) {
-          if (log[i].kind === 'tool_start' && 'toolName' in log[i] && (log[i] as { toolName: string }).toolName === toolName) {
-            log[i] = entry;
+        for (let i = m.activityLog.length - 1; i >= 0; i--) {
+          const e = m.activityLog[i];
+          if (e.kind === 'tool_start' && 'toolName' in e && (e as { toolName: string }).toolName === toolName) {
+            m.activityLog[i] = entry;
             break;
           }
         }
 
-        // Replace last matching tool_start in blocks
-        const blocks = (m.blocks || []).map((block) => {
-          if (block.type !== 'activity') return block;
-          const entries = [...block.entries];
-          for (let i = entries.length - 1; i >= 0; i--) {
-            if (entries[i].kind === 'tool_start' && 'toolName' in entries[i] && (entries[i] as { toolName: string }).toolName === toolName) {
-              entries[i] = entry;
-              return { ...block, entries };
+        for (let bi = m.blocks.length - 1; bi >= 0; bi--) {
+          const block = m.blocks[bi];
+          if (block.type !== 'activity') continue;
+          let replaced = false;
+          for (let ei = block.entries.length - 1; ei >= 0; ei--) {
+            const e = block.entries[ei];
+            if (e.kind === 'tool_start' && 'toolName' in e && (e as { toolName: string }).toolName === toolName) {
+              block.entries[ei] = entry;
+              replaced = true;
+              break;
             }
           }
-          return block;
-        });
-
-        return { ...m, activityLog: log, blocks };
+          if (replaced) break;
+        }
       }),
-    })),
 
-  updateTodos: (messageId, newTodos) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
+    updateTodos: (messageId, newTodos) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (!m) return;
         const oldMap = new Map(m.todos.map((t) => [t.id, t]));
         const changes: ActivityEntry[] = [];
         const now = Date.now();
@@ -297,96 +283,85 @@ export const useChatStore = create<ChatStore>((set) => ({
             changes.push({ kind: 'todo_change', ts: now, todoId: t.id, content: t.content, fromStatus: old.status, toStatus: t.status });
           }
         }
-        if (changes.length === 0) return { ...m, todos: newTodos };
-        // Push todo_change entries into both flat activityLog and chronological blocks
-        const blocks = [...(m.blocks || [])];
-        const lastBlock = blocks[blocks.length - 1];
-        if (lastBlock && lastBlock.type === 'activity') {
-          blocks[blocks.length - 1] = { ...lastBlock, entries: [...lastBlock.entries, ...changes] };
+        m.todos = newTodos;
+        if (changes.length === 0) return;
+        m.activityLog.push(...changes);
+        const last = m.blocks[m.blocks.length - 1];
+        if (last && last.type === 'activity') {
+          last.entries.push(...changes);
         } else {
-          blocks.push({ type: 'activity', entries: [...changes] });
+          m.blocks.push({ type: 'activity', entries: [...changes] });
         }
-        return {
-          ...m,
-          todos: newTodos,
-          activityLog: [...m.activityLog, ...changes],
-          blocks,
-        };
       }),
-    })),
 
-  finalizeMessage: (messageId) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
-        const cleanContent = m.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd();
-        // Also clean text blocks and remove empty ones
-        const blocks = (m.blocks || [])
-          .map((b) => b.type === 'text'
-            ? { ...b, content: b.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd() }
-            : b
-          )
-          .filter((b) => b.type !== 'text' || b.content.length > 0);
-        return { ...m, isStreaming: false, content: cleanContent, blocks };
+    finalizeMessage: (messageId) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (m) {
+          m.isStreaming = false;
+          m.content = m.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd();
+          // Strip HTML comments from text blocks and drop emptied ones
+          m.blocks = m.blocks
+            .map((b) =>
+              b.type === 'text'
+                ? { type: 'text' as const, content: b.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd() }
+                : b,
+            )
+            .filter((b) => b.type !== 'text' || b.content.length > 0);
+        }
+        s.isAgentResponding = false;
       }),
-      isAgentResponding: false,
-    })),
 
-  addAgentMessage: (text, cards) => {
-    const id = nextId();
-    set((s) => ({
-      messages: [
-        ...s.messages,
-        {
-          id,
-          role: 'agent' as const,
-          content: text,
-          timestamp: new Date(),
-          isStreaming: false,
-          cards: cards ?? [],
-          todos: [],
-          activityLog: [],
-          blocks: text ? [{ type: 'text' as const, content: text }] : [],
-        },
-      ],
-    }));
-    return id;
-  },
+    addAgentMessage: (text, cards) => {
+      const msg = emptyMessage('agent', text, cards ?? []);
+      set((s) => {
+        s.messages.push(msg);
+      });
+      return msg.id;
+    },
 
-  addSystemMessage: (text, cards) =>
-    set((s) => ({
-      messages: [
-        ...s.messages,
-        {
-          id: nextId(),
-          role: 'system',
-          content: text,
-          timestamp: new Date(),
-          isStreaming: false,
-          cards: cards ?? [],
-          todos: [],
-          activityLog: [],
-          blocks: [],
-        },
-      ],
-    })),
-
-  updateCard: (messageId, cardIndex, updates) =>
-    set((s) => ({
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId) return m;
-        return {
-          ...m,
-          cards: m.cards.map((c, i) =>
-            i === cardIndex ? { ...c, data: { ...c.data, ...updates } } : c,
-          ),
-        };
+    addSystemMessage: (text, cards) =>
+      set((s) => {
+        s.messages.push(emptyMessage('system', text, cards ?? []));
       }),
-    })),
 
-  setMessages: (messages) => set({ messages, isAgentResponding: false }),
-  setSessionId: (id) => set({ sessionId: id }),
-  setIsAgentResponding: (responding) => set({ isAgentResponding: responding }),
-  clearMessages: () => set({ messages: [], isAgentResponding: false, activePromptMessageId: null, activePromptData: null }),
-  reset: () => set({ messages: [], isAgentResponding: false, sessionId: null, activePromptMessageId: null, activePromptData: null }),
-}));
+    updateCard: (messageId, cardIndex, updates) =>
+      set((s) => {
+        const m = s.messages.find((x) => x.id === messageId);
+        if (!m) return;
+        const card = m.cards[cardIndex];
+        if (!card) return;
+        card.data = { ...card.data, ...updates };
+      }),
+
+    setMessages: (messages) =>
+      set((s) => {
+        s.messages = messages;
+        s.isAgentResponding = false;
+      }),
+    setSessionId: (id) =>
+      set((s) => {
+        s.sessionId = id;
+      }),
+    setIsAgentResponding: (responding) =>
+      set((s) => {
+        s.isAgentResponding = responding;
+      }),
+    clearMessages: () =>
+      set((s) => {
+        s.messages = [];
+        s.isAgentResponding = false;
+        s.activePromptMessageId = null;
+        s.activePromptData = null;
+      }),
+    reset: () =>
+      set((s) => {
+        s.messages = [];
+        s.isAgentResponding = false;
+        s.sessionId = null;
+        s.activePromptMessageId = null;
+        s.activePromptData = null;
+        s.pendingComposerText = null;
+      }),
+  })),
+);

@@ -18,10 +18,16 @@ def generate_dashboard(
     collection_ids: list[str],
     title: str = "",
 ) -> dict:
-    """Create an interactive dashboard for one or more collections.
+    """Create an interactive dashboard rendered with the default 17-widget template.
 
-    WHEN TO USE: When the user wants to "explore", "filter", or interact
-    with data. Also called automatically on collection completion.
+    WHEN TO USE: The user wants a generic "open the data" view — broad
+    exploration, no specific question yet. Also called automatically on
+    collection completion.
+
+    WHEN **NOT** TO USE: The user asked for something specific ("show me
+    negative sentiment", "what themes are trending", "build me a dashboard
+    for X"). Use ``compose_dashboard`` instead — it lets you author a
+    tailored widget list that answers their actual question.
 
     Provides interactive charts filtered client-side by sentiment, entities,
     language, collection, content_type, platform, date range, themes, channels.

@@ -4,10 +4,11 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
+from api.routers.dashboard_schema import SocialDashboardWidget, MAX_WIDGETS, GRID_COLS
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,9 @@ COLLECTION = "dashboard_layouts"
 
 
 class LayoutSaveRequest(BaseModel):
-    layout: list[dict[str, Any]]
+    model_config = ConfigDict(extra="ignore")
+
+    layout: list[SocialDashboardWidget] = Field(max_length=MAX_WIDGETS)
     filterBarFilters: list[str] | None = None
 
 
@@ -59,6 +62,14 @@ async def save_dashboard_layout(
     fs=Depends(get_fs),
 ):
     """Save (upsert) layout for a dashboard artifact."""
+    # Grid bounds — not expressible in Pydantic field validators since it's a cross-field check.
+    for idx, w in enumerate(request.layout):
+        if w.x + w.w > GRID_COLS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"layout[{idx}]: x ({w.x}) + w ({w.w}) exceeds grid width {GRID_COLS}",
+            )
+
     doc_ref = fs._db.collection(COLLECTION).document(artifact_id)
     doc = doc_ref.get()
 
@@ -68,11 +79,12 @@ async def save_dashboard_layout(
         if data.get("user_id") != user.uid:
             raise HTTPException(status_code=403, detail="Access denied")
 
+    serialized_layout = [w.model_dump(exclude_none=True, by_alias=True) for w in request.layout]
     doc_ref.set({
         "user_id": user.uid,
         "artifact_id": artifact_id,
-        "layout": request.layout,
+        "layout": serialized_layout,
         "filterBarFilters": request.filterBarFilters,
     })
 
-    return LayoutResponse(layout=request.layout, filterBarFilters=request.filterBarFilters)
+    return LayoutResponse(layout=serialized_layout, filterBarFilters=request.filterBarFilters)

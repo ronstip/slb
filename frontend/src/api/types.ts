@@ -531,6 +531,7 @@ export interface DashboardPayload {
   collection_ids: string[];
   collection_names: Record<string, string>;
   message?: string;
+  agent_id?: string;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────
@@ -605,6 +606,13 @@ export interface TopicCluster {
   thumbnail_url?: string | null;
   thumbnail_gcs_uri?: string | null;
   recency_score?: number;
+}
+
+export interface TopicsNarrative {
+  headline: string;
+  narrative: string;
+  generated_at: string;
+  topic_count: number;
 }
 
 export interface TopicAnalyticsTotals {
@@ -720,6 +728,7 @@ export interface AdminCollection {
   status: string;
   posts_collected: number;
   posts_enriched: number;
+  posts_embedded: number;
   posts_stored: number | null;
   bd_raw_records: number | null;
   platforms: string[];
@@ -841,6 +850,7 @@ export interface WizardPlan {
   auto_dashboard: boolean;
   custom_fields: CustomFieldDef[];
   enrichment_context: string;
+  content_types: string[];
   context?: {
     mission: string;
     world_context: string;

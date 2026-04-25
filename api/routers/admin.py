@@ -159,18 +159,15 @@ async def admin_users(
             user_posts_map[uid] = user_posts_map.get(uid, 0) + c.get("posts_collected", 0)
             user_collections_map[uid] = user_collections_map.get(uid, 0) + 1
 
-    # Fetch usage counters for query counts
-    async def _get_user_usage(uid: str) -> tuple[str, dict]:
-        try:
-            usage = await asyncio.to_thread(fs.get_usage, uid)
-            return uid, usage
-        except Exception:
-            return uid, {}
-
-    usage_results = await asyncio.gather(
-        *[_get_user_usage(u["uid"]) for u in all_users]
-    )
-    usage_map = dict(usage_results)
+    # Fetch usage counters for query counts — single batched round-trip
+    # instead of one Firestore read per user (N+1).
+    try:
+        usage_map = await asyncio.to_thread(
+            fs.get_usage_many, [u["uid"] for u in all_users]
+        )
+    except Exception:
+        logger.exception("Batch usage fetch failed — continuing with empty usage")
+        usage_map = {}
 
     # Merge usage into user records
     users = []
@@ -395,6 +392,7 @@ async def admin_collections(
             "status": c.get("status", "unknown"),
             "posts_collected": c.get("posts_collected", 0),
             "posts_enriched": c.get("posts_enriched", 0),
+            "posts_embedded": c.get("posts_embedded", 0),
             "posts_stored": posts_stored,
             "bd_raw_records": bd_raw_records,
             "platforms": platforms if isinstance(platforms, list) else [],
@@ -408,6 +406,39 @@ async def admin_collections(
 
     total = len(collections)
     collections = collections[offset : offset + limit]
+
+    # Overlay BQ ground truth for stored/enriched/embedded on the visible page.
+    # Firestore counters lag (worker_posts_stored is written only at crawl-complete;
+    # posts_enriched drifts across runner restarts/continuations). A single grouped
+    # query gives authoritative counts for the visible rows.
+    visible_ids = [c["collection_id"] for c in collections if c.get("collection_id")]
+    if visible_ids:
+        try:
+            bq = get_bq()
+            rows = await asyncio.to_thread(
+                bq.query,
+                "SELECT p.collection_id AS collection_id, "
+                "COUNT(DISTINCT p.post_id) AS stored, "
+                "COUNT(DISTINCT e.post_id) AS enriched, "
+                "COUNT(DISTINCT em.post_id) AS embedded "
+                "FROM social_listening.posts p "
+                "LEFT JOIN social_listening.enriched_posts e USING (post_id) "
+                "LEFT JOIN social_listening.post_embeddings em USING (post_id) "
+                "WHERE p.collection_id IN UNNEST(@ids) "
+                "GROUP BY p.collection_id",
+                {"ids": visible_ids},
+            )
+            bq_by_id = {r["collection_id"]: r for r in rows}
+            for c in collections:
+                r = bq_by_id.get(c["collection_id"])
+                if r is None:
+                    continue
+                # BQ is authoritative — overwrite even if Firestore has a value.
+                c["posts_stored"] = int(r["stored"])
+                c["posts_enriched"] = int(r["enriched"])
+                c["posts_embedded"] = int(r["embedded"])
+        except Exception:
+            logger.exception("BQ count overlay failed for admin collections list")
 
     # Compute aggregate funnel stats across all collections
     funnel_summary = {
@@ -640,7 +671,11 @@ async def impersonate_stop(
             if target_doc:
                 target_email = target_doc.get("email") or None
         except Exception:
-            pass
+            logger.warning(
+                "impersonate_stop: target user lookup failed for uid=%s",
+                target_uid,
+                exc_info=True,
+            )
 
     _write_audit_entry("stop", real_user, target_uid, target_email, request)
     logger.info("Impersonation STOP: %s", real_user.email)

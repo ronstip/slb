@@ -64,6 +64,7 @@ def recover_snapshots() -> int:
 
     logger.info("Recovery: found %d pending snapshot(s) to check", len(pending))
     recovered = 0
+    collections_to_resume: set[str] = set()
 
     for snap in pending:
         snapshot_id = snap["snapshot_id"]
@@ -175,6 +176,7 @@ def recover_snapshots() -> int:
 
         fs.mark_snapshot_downloaded(snapshot_id)
         recovered += 1
+        collections_to_resume.add(collection_id)
         logger.info(
             "Recovery: snapshot %s → %d posts recovered for collection %s",
             snapshot_id, len(posts), collection_id,
@@ -182,4 +184,23 @@ def recover_snapshots() -> int:
 
     if recovered:
         logger.info("Recovery complete: %d snapshot(s) recovered", recovered)
+
+    # Resume the pipeline for every collection whose data we just recovered.
+    # Without this, the original pipeline has already exited (it dispatched
+    # snapshots and returned before BD had data ready), so no one advances
+    # the collection from "running" → enrichment → terminal, and any owning
+    # agent stays stuck. Continuation mode bypasses the active-lock check
+    # and the new runner logic seeds post_states from BQ.
+    for cid in collections_to_resume:
+        try:
+            # Only dispatch if the collection has no pending snapshots left;
+            # otherwise let the next tick finish those first.
+            if fs.get_pending_snapshots(collection_id=cid):
+                continue
+            from workers.pipeline import dispatch_collection_pipeline
+            dispatch_collection_pipeline(cid, continuation=True)
+            logger.info("Recovery: dispatched pipeline resume for collection %s", cid)
+        except Exception:
+            logger.exception("Recovery: failed to dispatch pipeline resume for %s", cid)
+
     return recovered

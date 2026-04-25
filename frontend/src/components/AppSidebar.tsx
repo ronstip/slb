@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
   Building2,
@@ -59,16 +59,17 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'data' | 'topics' | 'artifacts' | 'explorer' | 'briefing';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'topics' | 'artifacts' | 'explorer' | 'briefing' | 'settings';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
-  { id: 'overview', label: 'Agent Profile', icon: LayoutDashboard },
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'briefing', label: 'Briefing', icon: Newspaper },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
-  { id: 'artifacts', label: 'Artifacts', icon: FileText },
+  { id: 'artifacts', label: 'Deliverables', icon: FileText },
   { id: 'data', label: 'Data', icon: Database },
   { id: 'topics', label: 'Topics', icon: Hash },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 // ── Shared class fragments — sidebar uses the always-dark sidebar-* tokens ──
@@ -100,7 +101,7 @@ interface AppSidebarProps {
   onNewLayout?: () => void;
 }
 
-export function AppSidebar({
+function AppSidebarImpl({
   activeAgent,
   activeTab,
   onTabChange,
@@ -141,6 +142,17 @@ export function AppSidebar({
 
   const isAgentsPage = location.pathname === '/agents';
   const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'running';
+
+  // Recent-agents section: filter, sort, and cap once per agents-array change.
+  // Hot path — re-running on every render adds up when the parent re-renders.
+  const recentAgents = useMemo(
+    () =>
+      [...agents]
+        .filter((a) => a.status !== 'archived')
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 8),
+    [agents],
+  );
 
   // During impersonation, profile contains the target user's data from /me,
   // while user is still the real admin's Firebase auth object — prefer profile.
@@ -350,9 +362,7 @@ export function AppSidebar({
           <div className="flex flex-col gap-0.5 px-3 py-1">
             {TABS.map(({ id, label, icon: Icon }) => {
               const isTabActive = activeTab === id;
-              const disabled =
-                (id === 'explorer' && !hasCollections) ||
-                (id === 'artifacts' && !hasArtifacts);
+              const disabled = id === 'explorer' && !hasCollections;
               const isChatTab = id === 'chat';
               const isExplorerTab = id === 'explorer';
               const hasSessions = isChatTab && agentSessions && agentSessions.length > 0;
@@ -439,8 +449,8 @@ export function AppSidebar({
                         className={cn(
                           'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
                           activeLayoutId === null
-                            ? 'bg-sidebar-accent/80 text-sidebar-foreground'
-                            : 'hover:bg-sidebar-accent/60',
+                            ? 'bg-sidebar-accent text-sidebar-foreground'
+                            : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60',
                         )}
                         onClick={() => onLayoutSelect(null)}
                       >
@@ -448,7 +458,7 @@ export function AppSidebar({
                           <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-sidebar-primary" />
                         )}
                         <span className={cn(
-                          'block truncate text-[13px] leading-tight pl-1',
+                          'block truncate text-sm pl-1',
                           activeLayoutId === null ? 'font-semibold' : 'font-medium',
                         )}>
                           Overview Dashboard
@@ -458,8 +468,8 @@ export function AppSidebar({
                         className={cn(
                           'relative flex cursor-pointer items-center rounded-lg px-2 py-2 transition-all duration-150',
                           activeLayoutId === DASHBOARD_DEFAULT_ID
-                            ? 'bg-sidebar-accent/80 text-sidebar-foreground'
-                            : 'hover:bg-sidebar-accent/60',
+                            ? 'bg-sidebar-accent text-sidebar-foreground'
+                            : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60',
                         )}
                         onClick={() => onLayoutSelect(DASHBOARD_DEFAULT_ID)}
                       >
@@ -467,7 +477,7 @@ export function AppSidebar({
                           <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-sidebar-primary" />
                         )}
                         <span className={cn(
-                          'block truncate text-[13px] leading-tight pl-1',
+                          'block truncate text-sm pl-1',
                           activeLayoutId === DASHBOARD_DEFAULT_ID ? 'font-semibold' : 'font-medium',
                         )}>
                           Dashboard Default
@@ -574,11 +584,7 @@ export function AppSidebar({
           </button>
           {recentAgentsOpen && (
             <div className="flex flex-col gap-0.5 pb-2">
-              {[...agents]
-                .filter((a) => a.status !== 'archived')
-                .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-                .slice(0, 8)
-                .map((agent) => {
+              {recentAgents.map((agent) => {
                   const isActive = activeAgent?.agent_id === agent.agent_id;
                   const isRunning = agent.status === 'running';
                   const cfg = STATUS_CONFIG[agent.status];
@@ -639,3 +645,5 @@ export function AppSidebar({
     </>
   );
 }
+
+export const AppSidebar = memo(AppSidebarImpl);

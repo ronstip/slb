@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget } from './types-social-dashboard.ts';
 import { AGGREGATION_META } from './types-social-dashboard.ts';
@@ -32,10 +32,12 @@ function migrateWidgets(widgets: SocialDashboardWidget[]): SocialDashboardWidget
   });
 }
 
+export type AddWidgetKind = 'chart' | 'text';
+
 export interface DashboardToolbarHandlers {
   onEdit: () => void;
   onDone: () => void;
-  onAddWidget: () => void;
+  onAddWidget: (kind: AddWidgetKind) => void;
   onResetToDefaults: () => void;
   isSaving: boolean;
   isEditMode: boolean;
@@ -77,6 +79,17 @@ export function SocialDashboardView({
   serverKpis,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
+
+  // Distinct custom enrichment field names present on the dataset — surfaced
+  // as additional Group by options in the widget config dialog.
+  const customFieldNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of allPosts) {
+      if (!p.custom_fields) continue;
+      for (const k of Object.keys(p.custom_fields)) names.add(k);
+    }
+    return [...names].sort();
+  }, [allPosts]);
 
   const [widgets, setWidgets] = useState<SocialDashboardWidget[]>([]);
   // Single config dialog for both add + edit
@@ -173,20 +186,32 @@ export function SocialDashboardView({
     }
   }, []);
 
-  // Open config dialog for a new widget (starts as custom with empty config)
-  const handleOpenAdd = useCallback(() => {
-    const meta = AGGREGATION_META['custom'];
-    const draft: SocialDashboardWidget = {
-      i: nanoid(),
-      x: 0,
-      y: Infinity,
-      w: meta.defaultSize.w,
-      h: meta.defaultSize.h,
-      aggregation: 'custom',
-      chartType: meta.defaultChartType,
-      title: meta.defaultTitle,
-      customConfig: { metric: 'post_count' },
-    };
+  // Open config dialog for a new widget. Chart starts as custom; text starts blank markdown.
+  const handleOpenAdd = useCallback((kind: AddWidgetKind = 'chart') => {
+    const meta = AGGREGATION_META[kind === 'text' ? 'text' : 'custom'];
+    const draft: SocialDashboardWidget = kind === 'text'
+      ? {
+          i: nanoid(),
+          x: 0,
+          y: Infinity,
+          w: meta.defaultSize.w,
+          h: meta.defaultSize.h,
+          aggregation: 'text',
+          chartType: meta.defaultChartType,
+          title: meta.defaultTitle,
+          markdownContent: '',
+        }
+      : {
+          i: nanoid(),
+          x: 0,
+          y: Infinity,
+          w: meta.defaultSize.w,
+          h: meta.defaultSize.h,
+          aggregation: 'custom',
+          chartType: meta.defaultChartType,
+          title: meta.defaultTitle,
+          customConfig: { metric: 'post_count' },
+        };
     setConfigWidget(draft);
     setConfigMode('add');
   }, []);
@@ -271,6 +296,7 @@ export function SocialDashboardView({
         availableOptions={availableOptions}
         onSave={handleSaveWidget}
         onClose={() => setConfigWidget(null)}
+        customFieldNames={customFieldNames}
       />
     </div>
   );

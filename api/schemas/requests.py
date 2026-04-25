@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
@@ -81,8 +83,12 @@ class CreateDashboardShareRequest(BaseModel):
 
 class CreateFeedLinkRequest(BaseModel):
     collection_ids: list[str]
-    filters: dict = {}
+    filters: dict = Field(default_factory=dict)
     title: str
+
+
+class SetCollectionVisibilityRequest(BaseModel):
+    visibility: Literal["private", "org"]
 
 
 class CreateFromWizardRequest(BaseModel):
@@ -93,6 +99,7 @@ class CreateFromWizardRequest(BaseModel):
     schedule: dict | None = None
     custom_fields: list[dict] | None = None
     enrichment_context: str = ""
+    content_types: list[str] = []
     context: dict | None = None  # Deprecated: old AgentContext (4 fields). Use constitution instead.
     constitution: dict | None = None  # 6-section Constitution: {identity, mission, methodology, scope_and_relevance, standards, perspective}
     existing_collection_ids: list[str] = []

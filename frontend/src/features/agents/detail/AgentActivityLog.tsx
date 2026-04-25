@@ -45,24 +45,24 @@ function bulletColor(entryType: EntryType, toolName?: string): string {
 }
 
 function textColor(entryType: EntryType, toolName?: string): string {
-  if (entryType === 'thinking') return 'text-foreground/55';
-  if (entryType === 'text') return 'text-muted-foreground/60';
+  if (entryType === 'thinking') return 'text-foreground/70';
+  if (entryType === 'text') return 'text-foreground/70';
   if (entryType === 'tool_error') return 'text-destructive';
-  if (entryType === 'todo_update') return 'text-accent-success';
+  if (entryType === 'todo_update') return 'text-emerald-600 dark:text-emerald-400 font-medium';
 
   const cat = toolName ? TOOL_CATEGORY[toolName] : undefined;
   const isComplete = entryType === 'tool_complete';
-  if (cat === 'thinking') return isComplete ? 'text-emerald-600/80' : 'text-emerald-600/60';
-  if (cat === 'tools') return isComplete ? 'text-amber-500' : 'text-amber-400';
-  if (cat === 'outputs') return isComplete ? 'text-emerald-600/80' : 'text-emerald-600/60';
-  return isComplete ? 'text-accent-success' : 'text-muted-foreground';
+  if (cat === 'thinking') return isComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-emerald-600/70 dark:text-emerald-400/70';
+  if (cat === 'tools') return isComplete ? 'text-amber-600 dark:text-amber-400' : 'text-amber-500 dark:text-amber-400';
+  if (cat === 'outputs') return isComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-emerald-600/70 dark:text-emerald-400/70';
+  return isComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground/80';
 }
 
 // ── Entry rendering ─────────────────────────────────────────────────
 
 function ToolDescription({ text }: { text: string }) {
   return (
-    <div className="text-[11px] text-muted-foreground/60 leading-relaxed pl-3 line-clamp-2 font-normal">
+    <div className="text-xs text-muted-foreground leading-relaxed pl-3 line-clamp-2 font-normal mt-0.5">
       {text}
     </div>
   );
@@ -119,7 +119,7 @@ function renderStructuredEntry(log: AgentLogEntry) {
     case 'thinking':
       return (
         <div className="flex flex-col">
-          <span className="text-[11px] text-muted-foreground/60 leading-relaxed line-clamp-3">
+          <span className="text-xs text-foreground/70 leading-relaxed line-clamp-3">
             {meta?.full_text || log.message}
           </span>
         </div>
@@ -127,7 +127,7 @@ function renderStructuredEntry(log: AgentLogEntry) {
 
     case 'text':
       return (
-        <span className="text-[11px] text-muted-foreground/60 leading-relaxed line-clamp-2">
+        <span className="text-xs text-foreground/70 leading-relaxed line-clamp-2">
           {meta?.full_text || log.message}
         </span>
       );
@@ -166,44 +166,50 @@ export function AgentActivityLog({ logs, isRunning, initialLimit = 20 }: AgentAc
 
   return (
     <>
-      <div className="space-y-0.5">
+      <div className="divide-y divide-border/30">
         {logsToShow.map((log, i) => {
           const isLatest = i === 0 && isRunning;
           const entryType = log.metadata?.entry_type;
           const isStructured = !!entryType;
           const isThinking = entryType === 'thinking';
           const toolName = log.metadata?.tool_name;
+          const isSuccessFlat = !isStructured && /complete|success|done|ready|finished/i.test(log.message);
 
           return (
-            <div key={log.id} className="flex items-start gap-2 py-1">
+            <div key={log.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
               {/* Bullet */}
               {isStructured ? (
-                <div className="mt-[5px] shrink-0 relative">
+                <div className="mt-[6px] shrink-0">
                   <div
                     className={`${isThinking ? 'h-1.5 w-1.5' : 'h-2 w-2'} rounded-full ${bulletColor(entryType, toolName)}`}
                   />
                 </div>
               ) : isLatest ? (
-                <CircleDot className="h-3 w-3 mt-0.5 shrink-0 animate-pulse text-accent-vibrant/70" />
+                <CircleDot className="h-3.5 w-3.5 mt-0.5 shrink-0 animate-pulse text-accent-vibrant/70" />
               ) : (
-                <Check className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/40" strokeWidth={2.5} />
+                <Check
+                  className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${isSuccessFlat ? 'text-emerald-500' : 'text-muted-foreground/40'}`}
+                  strokeWidth={2.5}
+                />
               )}
 
               {/* Content */}
               <div
-                className={`flex-1 min-w-0 text-xs leading-snug ${
+                className={`flex-1 min-w-0 text-sm leading-snug ${
                   isStructured
                     ? textColor(entryType, toolName)
                     : isLatest
                       ? 'text-foreground font-medium'
-                      : 'text-muted-foreground/60'
+                      : isSuccessFlat
+                        ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                        : 'text-foreground/80'
                 }`}
               >
                 {isStructured ? renderStructuredEntry(log) : log.message}
               </div>
 
               {/* Timestamp */}
-              <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/40 tabular-nums">
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground/50 tabular-nums pt-px">
                 {formatLogTime(log.timestamp)}
               </span>
             </div>
@@ -211,15 +217,17 @@ export function AgentActivityLog({ logs, isRunning, initialLimit = 20 }: AgentAc
         })}
       </div>
       {dedupedLogs.length > initialLimit && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-1 text-xs"
-          onClick={() => setShowAll((v) => !v)}
-        >
-          {showAll ? 'Show less' : `Show all ${dedupedLogs.length}`}
-          {showAll ? <ChevronUp className="ml-1 h-3 w-3" /> : <ChevronDown className="ml-1 h-3 w-3" />}
-        </Button>
+        <div className="px-4 py-3 border-t border-border/30">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs"
+            onClick={() => setShowAll((v) => !v)}
+          >
+            {showAll ? 'Show less' : `Show all ${dedupedLogs.length}`}
+            {showAll ? <ChevronUp className="ml-1 h-3 w-3" /> : <ChevronDown className="ml-1 h-3 w-3" />}
+          </Button>
+        </div>
       )}
     </>
   );

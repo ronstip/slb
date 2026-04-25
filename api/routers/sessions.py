@@ -1,5 +1,6 @@
 """Sessions router — list, retrieve, and delete chat sessions."""
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -58,8 +59,8 @@ def _extract_event_fallback(event) -> dict | None:
                         "args": dict(getattr(fc, "args", {}) or {}),
                     }
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to serialize function_call part: %s", e)
             continue
 
         # Function response part
@@ -73,8 +74,8 @@ def _extract_event_fallback(event) -> dict | None:
                         "response": json.loads(json.dumps(dict(resp), default=str)),
                     }
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to serialize function_response part: %s", e)
             continue
 
     if not parts:
@@ -110,7 +111,7 @@ async def list_sessions(
     # When filtering by agent, use the agent's session_ids as the source of truth
     allowed_session_ids: set[str] | None = None
     if agent_id:
-        agent = get_fs().get_agent(agent_id)
+        agent = await asyncio.to_thread(get_fs().get_agent, agent_id)
         if agent:
             allowed_session_ids = set(agent.get("session_ids") or [])
         else:
@@ -189,7 +190,7 @@ async def get_session(session_id: str, user: CurrentUser = Depends(get_current_u
     # Restore the permanent session→agent link from Firestore so the frontend
     # can re-select the agent in the dropdown when restoring this session.
     if not state.get("active_agent_id"):
-        fs_session = get_fs().get_session(session_id)
+        fs_session = await asyncio.to_thread(get_fs().get_session, session_id)
         if fs_session and fs_session.get("agent_id"):
             state["active_agent_id"] = fs_session["agent_id"]
 

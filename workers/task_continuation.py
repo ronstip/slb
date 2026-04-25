@@ -124,10 +124,10 @@ def _run_agent_continuation(task_id: str) -> None:
     This is a FALLBACK for when the user is not online. The primary path is
     frontend-triggered continuation in the user's session.
     """
-    import asyncio
+    from workers.agent_continuation import _run_coro_in_fresh_loop
 
     try:
-        asyncio.run(_async_agent_continuation(task_id))
+        _run_coro_in_fresh_loop(_async_agent_continuation(task_id))
     except Exception:
         logger.exception("Agent continuation failed for task %s", task_id)
         # Update task status to reflect the failure
@@ -275,10 +275,10 @@ def _persist_continuation_artifacts(events, user_id, org_id, session_id, task_id
 
             # Use the same artifact persistence as the main chat flow
             try:
-                from api.main import _maybe_persist_artifact
-                _maybe_persist_artifact(
+                from api.services.artifact_service import persist_tool_result_artifact
+                persist_tool_result_artifact(
                     tool_name, result, user_id, org_id, session_id,
-                    task_id=task_id,
+                    agent_id=task_id,
                 )
             except Exception:
                 logger.debug("Failed to persist artifact from continuation: %s", tool_name)

@@ -6,11 +6,53 @@ import threading
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from api.auth.dependencies import CurrentUser
 from api.deps import get_bq, get_fs
 from api.schemas.requests import CreateCollectionRequest
+from api.schemas.responses import (
+    BreakdownItem,
+    CollectionStatsResponse,
+    DailyVolumeItem,
+    EngagementStats,
+)
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
+    """Owner or org-member (when visibility=='org') can access the collection."""
+    if collection_status.get("user_id") == user.uid:
+        return True
+    if (
+        user.org_id
+        and collection_status.get("org_id") == user.org_id
+        and collection_status.get("visibility") == "org"
+    ):
+        return True
+    return False
+
+
+def signature_to_response(data: dict) -> CollectionStatsResponse:
+    """Convert a raw statistical signature dict to CollectionStatsResponse."""
+    eng = data.get("engagement_summary") or {}
+    return CollectionStatsResponse(
+        computed_at=data.get("computed_at"),
+        collection_status_at_compute=data.get("collection_status_at_compute"),
+        total_posts=data.get("total_posts", 0),
+        total_unique_channels=data.get("total_unique_channels", 0),
+        date_range=data.get("date_range", {}),
+        platform_breakdown=[BreakdownItem(**x) for x in data.get("platform_breakdown", [])],
+        sentiment_breakdown=[BreakdownItem(**x) for x in data.get("sentiment_breakdown", [])],
+        top_themes=[BreakdownItem(**x) for x in data.get("top_themes", [])],
+        top_entities=[BreakdownItem(**x) for x in data.get("top_entities", [])],
+        language_breakdown=[BreakdownItem(**x) for x in data.get("language_breakdown", [])],
+        content_type_breakdown=[BreakdownItem(**x) for x in data.get("content_type_breakdown", [])],
+        negative_sentiment_pct=data.get("negative_sentiment_pct"),
+        total_posts_enriched=data.get("total_posts_enriched", 0),
+        daily_volume=[DailyVolumeItem(**x) for x in data.get("daily_volume", [])],
+        engagement_summary=EngagementStats(**eng) if eng else EngagementStats(),
+    )
 
 
 def create_collection_from_request(

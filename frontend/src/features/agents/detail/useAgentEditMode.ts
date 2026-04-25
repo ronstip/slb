@@ -4,6 +4,7 @@ import type { Agent, Constitution, SearchDef, TodoItem } from '../../../api/endp
 import { updateAgent } from '../../../api/endpoints/agents.ts';
 import type { CustomFieldDef } from '../../../api/types.ts';
 import { EMPTY_CONSTITUTION } from '../wizard/AgentContextEditor.tsx';
+import { useAgentStore } from '../../../stores/agent-store.ts';
 
 export interface AgentEditDraft {
   title: string;
@@ -80,6 +81,9 @@ export function useAgentEditMode(agent: Agent | null) {
         todos: draft.todos,
       });
       await queryClient.invalidateQueries({ queryKey: ['agent-detail', agent.agent_id] });
+      // Refresh the Zustand-backed agents list so AgentsPage / home rows reflect
+      // the edit without a full page reload.
+      void useAgentStore.getState().fetchAgents();
       setIsEditing(false);
       setDraft(null);
     } finally {
