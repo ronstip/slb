@@ -185,7 +185,6 @@ export function AgentDetailPage() {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           hasCollections={(task.collection_ids?.length ?? 0) > 0}
-          hasArtifacts={(task.artifact_ids?.length ?? 0) > 0}
           onRun={handleRun}
           onStop={handleStop}
           onPauseResume={handlePauseResume}

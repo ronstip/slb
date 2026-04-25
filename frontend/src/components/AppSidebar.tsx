@@ -86,7 +86,6 @@ interface AppSidebarProps {
   activeTab?: DetailTab;
   onTabChange?: (tab: DetailTab) => void;
   hasCollections?: boolean;
-  hasArtifacts?: boolean;
   onRun?: () => void;
   onStop?: () => void;
   onPauseResume?: () => void;
@@ -106,7 +105,6 @@ function AppSidebarImpl({
   activeTab,
   onTabChange,
   hasCollections,
-  hasArtifacts,
   onRun,
   onStop,
   onPauseResume,
