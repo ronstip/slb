@@ -13,7 +13,6 @@ import {
   type ExplorerLayoutListItem,
 } from '../../../../api/endpoints/explorer-layouts.ts';
 import { useExplorerLayoutStore } from '../../../../stores/explorer-layout-store.ts';
-import type { DetailTab } from '../../../../components/AppSidebar.tsx';
 import { Button } from '../../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -64,11 +63,6 @@ interface DeliverableItem {
 interface AgentArtifactsTabProps {
   task: Agent;
   artifacts: ArtifactListItem[];
-  onTabChange: (tab: DetailTab) => void;
-  onOpenSchedule: () => void;
-  onRun?: () => void;
-  onStop?: () => void;
-  canRun?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,11 +85,6 @@ const FILTER_ORDER: ItemKind[] = ['dashboard', 'slides', 'chart', 'data_export',
 export function AgentArtifactsTab({
   task,
   artifacts,
-  onTabChange,
-  onOpenSchedule,
-  onRun,
-  onStop,
-  canRun,
 }: AgentArtifactsTabProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -232,23 +221,19 @@ export function AgentArtifactsTab({
       <AgentDetailHeader
         task={task}
         artifacts={artifacts}
-        onRun={onRun}
-        onStop={onStop}
-        onOpenSchedule={onOpenSchedule}
-        canRun={canRun}
-        onGoToSettings={() => onTabChange('settings')}
-      >
-        <DeliverablesSubNav
-          filter={filter}
-          onFilterChange={setFilter}
-          counts={counts}
-          search={search}
-          onSearchChange={setSearch}
-          menuOpen={menuOpen}
-          onMenuOpenChange={setMenuOpen}
-          onNew={handleNew}
-        />
-      </AgentDetailHeader>
+        rightControls={
+          <DeliverablesControls
+            filter={filter}
+            onFilterChange={setFilter}
+            counts={counts}
+            search={search}
+            onSearchChange={setSearch}
+            menuOpen={menuOpen}
+            onMenuOpenChange={setMenuOpen}
+            onNew={handleNew}
+          />
+        }
+      />
 
       <div className="flex-1 overflow-y-auto z-10 px-6 pb-8 pt-5">
         {items.length === 0 ? (
@@ -275,7 +260,7 @@ export function AgentArtifactsTab({
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-nav: filter chips + search + "+ New" button.
 
-interface DeliverablesSubNavProps {
+interface DeliverablesControlsProps {
   filter: FilterKind;
   onFilterChange: (f: FilterKind) => void;
   counts: Record<ItemKind, number>;
@@ -286,7 +271,7 @@ interface DeliverablesSubNavProps {
   onNew: (kind: CreationKind) => void;
 }
 
-function DeliverablesSubNav({
+function DeliverablesControls({
   filter,
   onFilterChange,
   counts,
@@ -295,14 +280,14 @@ function DeliverablesSubNav({
   menuOpen,
   onMenuOpenChange,
   onNew,
-}: DeliverablesSubNavProps) {
+}: DeliverablesControlsProps) {
   const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
   const visibleFilters = FILTER_ORDER.filter((k) => counts[k] > 0);
 
   return (
-    <div className="flex items-center gap-3 border-t border-border/40 px-6 py-2.5">
-      {/* Filter chips */}
-      <div className="flex items-center gap-1.5 overflow-x-auto">
+    <div className="flex items-center gap-2">
+      {/* Filter chips — horizontally scrollable if they overflow */}
+      <div className="flex max-w-[420px] items-center gap-1.5 overflow-x-auto pr-1">
         <FilterChip
           active={filter === 'all'}
           onClick={() => onFilterChange('all')}
@@ -320,10 +305,8 @@ function DeliverablesSubNav({
         ))}
       </div>
 
-      <div className="flex-1" />
-
       {/* Search */}
-      <div className="relative w-48">
+      <div className="relative w-44">
         <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
@@ -508,7 +491,7 @@ function CardShell({
         'animate-in fade-in zoom-in-95 duration-300',
       )}
     >
-      <div className="relative h-32 overflow-hidden">{preview}</div>
+      <div className="relative h-36 overflow-hidden">{preview}</div>
       <div className="min-w-0 border-t border-border/40 p-3.5">
         {children}
         <KindFooter kind={kind} />
@@ -581,15 +564,13 @@ function ChartCard({ item }: { item: DeliverableItem }) {
       onClick={item.onOpen}
       preview={
         canRenderMini ? (
-          <div className="relative h-full w-full bg-gradient-to-br from-violet-500/5 to-transparent p-3">
-            <div className="pointer-events-none h-full w-full">
-              <SocialChartWidget
-                chartType={chartType as SocialChartType}
-                data={toWidgetData(chartData)}
-                barOrientation={barOrientation as 'horizontal' | 'vertical'}
-                stacked={stacked}
-              />
-            </div>
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/8 to-transparent p-2">
+            <SocialChartWidget
+              chartType={chartType as SocialChartType}
+              data={toWidgetData(chartData)}
+              barOrientation={barOrientation as 'horizontal' | 'vertical'}
+              stacked={stacked}
+            />
           </div>
         ) : isLoading ? (
           <FallbackPreview kind="chart" />
@@ -755,36 +736,87 @@ function ExportCard({ item }: { item: DeliverableItem }) {
   );
 }
 
-// ─── Dashboard: faint grid pattern + sources count ──────────────────────────
+// ─── Dashboard: mini "widget grid" mockup ───────────────────────────────────
 
 function DashboardCard({ item }: { item: DeliverableItem }) {
   return (
     <CardShell
       kind="dashboard"
       onClick={item.onOpen}
-      preview={
-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent">
-          {/* Faint grid pattern evoking dashboard tiles */}
-          <div
-            className="absolute inset-0 opacity-30"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(16 185 129 / 0.15) 1px, transparent 1px), linear-gradient(to bottom, rgb(16 185 129 / 0.15) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-            }}
-          />
-          <KIND_VISUALS.dashboard.icon className="relative h-12 w-12 text-emerald-500" />
-        </div>
-      }
+      preview={<DashboardPreview />}
     >
       <CardTitle item={item} />
     </CardShell>
   );
 }
 
-// ─── Briefing: icon tile, same as before ────────────────────────────────────
+function DashboardPreview() {
+  return (
+    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/12 via-emerald-500/3 to-transparent p-2.5">
+      <div className="grid h-full grid-cols-3 grid-rows-2 gap-1.5">
+        {/* KPI tile */}
+        <div className="col-span-1 row-span-1 flex flex-col justify-center rounded-md border border-emerald-500/20 bg-card/80 px-2 py-1 shadow-sm">
+          <div className="font-heading text-base font-bold tabular-nums leading-none text-emerald-600 dark:text-emerald-400">
+            12.4k
+          </div>
+          <div className="mt-0.5 h-0.5 w-6 rounded-full bg-emerald-500/30" />
+        </div>
+        {/* Bar widget */}
+        <div className="col-span-2 row-span-1 flex items-end gap-1 rounded-md border border-emerald-500/20 bg-card/80 px-2 py-1.5 shadow-sm">
+          {[40, 65, 30, 80, 50, 70, 45].map((h, i) => (
+            <div
+              key={i}
+              className="flex-1 rounded-sm bg-emerald-500/60"
+              style={{ height: `${h}%` }}
+            />
+          ))}
+        </div>
+        {/* Line widget */}
+        <div className="col-span-2 row-span-1 relative overflow-hidden rounded-md border border-emerald-500/20 bg-card/80 shadow-sm">
+          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 40" preserveAspectRatio="none">
+            <polyline
+              points="0,30 12,22 24,26 36,14 48,18 60,8 72,12 84,4 100,10"
+              fill="none"
+              stroke="rgb(16 185 129)"
+              strokeWidth="1.5"
+              vectorEffect="non-scaling-stroke"
+            />
+            <polyline
+              points="0,40 12,22 24,26 36,14 48,18 60,8 72,12 84,4 100,10 100,40"
+              fill="rgb(16 185 129 / 0.15)"
+              stroke="none"
+            />
+          </svg>
+        </div>
+        {/* Donut/pie widget */}
+        <div className="col-span-1 row-span-1 flex items-center justify-center rounded-md border border-emerald-500/20 bg-card/80 shadow-sm">
+          <div
+            className="h-7 w-7 rounded-full"
+            style={{
+              background:
+                'conic-gradient(rgb(16 185 129) 0% 45%, rgb(16 185 129 / 0.55) 45% 75%, rgb(16 185 129 / 0.25) 75% 100%)',
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Briefing: fake newspaper layout ────────────────────────────────────────
 
 function BasicCard({ item }: { item: DeliverableItem }) {
+  if (item.kind === 'briefing') {
+    return (
+      <CardShell
+        kind="briefing"
+        onClick={item.onOpen}
+        preview={<BriefingPreview />}
+      >
+        <CardTitle item={item} />
+      </CardShell>
+    );
+  }
   return (
     <CardShell
       kind={item.kind}
@@ -793,5 +825,38 @@ function BasicCard({ item }: { item: DeliverableItem }) {
     >
       <CardTitle item={item} />
     </CardShell>
+  );
+}
+
+function BriefingPreview() {
+  return (
+    <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/12 via-indigo-500/3 to-transparent p-3">
+      <div className="flex h-full flex-col gap-1.5">
+        {/* Masthead */}
+        <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
+          <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-600/70 dark:text-indigo-400/70">
+            Briefing
+          </span>
+          <div className="h-1 w-8 rounded-full bg-indigo-500/30" />
+        </div>
+        {/* Headline */}
+        <div className="space-y-1">
+          <div className="h-1.5 w-[85%] rounded-full bg-indigo-500/45" />
+          <div className="h-1.5 w-[60%] rounded-full bg-indigo-500/45" />
+        </div>
+        {/* Body lines */}
+        <div className="mt-0.5 space-y-1">
+          <div className="h-0.5 w-full rounded-full bg-foreground/15" />
+          <div className="h-0.5 w-full rounded-full bg-foreground/15" />
+          <div className="h-0.5 w-[88%] rounded-full bg-foreground/15" />
+          <div className="h-0.5 w-[72%] rounded-full bg-foreground/15" />
+        </div>
+        {/* Pull-quote tag */}
+        <div className="mt-auto flex items-center gap-1.5">
+          <div className="h-3 w-3 rounded-sm bg-indigo-500/30" />
+          <div className="h-0.5 flex-1 rounded-full bg-foreground/15" />
+        </div>
+      </div>
+    </div>
   );
 }

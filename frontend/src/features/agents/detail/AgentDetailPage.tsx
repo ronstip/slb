@@ -242,7 +242,9 @@ export function AgentDetailPage() {
           {activeTab === 'chat' && <AgentChatTab task={task} />}
           {activeTab === 'data' && <AgentCollectionsTab task={task} />}
           {activeTab === 'topics' && <AgentTopicsTab task={task} />}
-          {activeTab === 'artifacts' && <AgentArtifactsTab task={task} artifacts={artifacts} />}
+          {activeTab === 'artifacts' && (
+            <AgentArtifactsTab task={task} artifacts={artifacts} />
+          )}
           {activeTab === 'explorer' && (
             <AgentExplorerTab
               task={task}
