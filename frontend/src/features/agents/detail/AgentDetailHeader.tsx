@@ -35,7 +35,7 @@ interface AgentDetailHeaderProps {
   artifacts: ArtifactListItem[];
   onRun?: () => void;
   onStop?: () => void;
-  onOpenSchedule: () => void;
+  onOpenSchedule?: () => void;
   canRun?: boolean;
   /** Pass when rendered on the Settings tab. Omit on Overview to render a "Settings" link instead of the Edit button. */
   editMode?: EditModeBundle;
@@ -43,6 +43,13 @@ interface AgentDetailHeaderProps {
   onGoToSettings?: () => void;
   /** Optional content rendered below the main row — used by Settings to render its sub-tab nav. */
   children?: React.ReactNode;
+  /**
+   * When provided, replaces the default action cluster (run/stop/edit/schedule)
+   * on the right side of the header. Used by tabs (e.g. Deliverables) where
+   * those agent-level controls aren't relevant and the tab needs its own
+   * controls in the same row instead.
+   */
+  rightControls?: React.ReactNode;
 }
 
 export function AgentDetailHeader({
@@ -55,6 +62,7 @@ export function AgentDetailHeader({
   editMode,
   onGoToSettings,
   children,
+  rightControls,
 }: AgentDetailHeaderProps) {
   const { data: runs } = useQuery({
     queryKey: ['agent-runs', task.agent_id],
@@ -105,7 +113,9 @@ export function AgentDetailHeader({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {isEditing && editMode ? (
+            {rightControls ? (
+              rightControls
+            ) : isEditing && editMode ? (
               <>
                 <Button
                   variant="ghost"
@@ -151,7 +161,7 @@ export function AgentDetailHeader({
                     )}
                   </button>
                 )}
-                {showScheduleBtn && (
+                {showScheduleBtn && onOpenSchedule && (
                   <button
                     onClick={onOpenSchedule}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-border/50 rounded-lg bg-card hover:bg-secondary transition-colors text-foreground shadow-sm"
