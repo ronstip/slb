@@ -48,8 +48,8 @@ export function TopicsSectionCard({ data }: TopicsSectionCardProps) {
 
   return (
     <div className="mt-3 space-y-2">
-      {visible.map((topic, i) => (
-        <TopicCard key={topic.cluster_id} topic={topic} agentId={agentId} rank={i + 1} />
+      {visible.map((topic) => (
+        <TopicCard key={topic.cluster_id} topic={topic} agentId={agentId} />
       ))}
       {hasMore && (
         <button
