@@ -108,6 +108,7 @@ class CreateFromWizardRequest(BaseModel):
     auto_email: bool = False
     auto_slides: bool = False
     auto_dashboard: bool = False
+    email_recipients: list[str] = []
 
 
 class UpdateCollectionRequest(BaseModel):
