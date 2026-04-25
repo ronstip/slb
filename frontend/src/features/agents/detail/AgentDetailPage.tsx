@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams, useBlocker } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -93,6 +93,19 @@ export function AgentDetailPage() {
   useEffect(() => {
     if (task) useAgentStore.getState().upsertAgent(task);
   }, [task]);
+
+  // Initialise a fresh agent session once per agent. Lifted to the parent so
+  // every tab that mounts a chat (Overview, Topics, Chat) shares one session
+  // and tab-switches don't reset chat state.
+  const sessionInitRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!task) return;
+    if (sessionInitRef.current === task.agent_id) return;
+    sessionInitRef.current = task.agent_id;
+    useSessionStore.getState().startNewAgentSession(task.agent_id);
+    useAgentStore.getState().setActiveAgent(task.agent_id, task.collection_ids);
+  }, [task?.agent_id, task?.collection_ids]);
+
   const editMode = useAgentEditMode(task);
 
   // Block navigation when there are unsaved edits
