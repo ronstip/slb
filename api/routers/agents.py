@@ -382,6 +382,98 @@ async def run_agent_endpoint(
     return {"agent_id": agent_id, "run_id": run_id, "collection_ids": collection_ids, "status": "running"}
 
 
+@router.post("/agents/{agent_id}/resume")
+@limiter.limit("3/minute")
+async def resume_agent_endpoint(
+    request: Request,
+    agent_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Resume an agent that was stopped mid-run after collection completed.
+
+    Resumability: collections finished (continuation_ready=True) but at least
+    one todo is still incomplete. Re-runs only the agent phase — the existing
+    collected/enriched data is preserved (no fresh BrightData calls).
+    """
+    from api.services.agent_service import get_agent
+
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the agent owner can resume")
+
+    if not agent.get("continuation_ready"):
+        raise HTTPException(
+            status_code=409,
+            detail="Agent is not in a resumable state — collections have not finished",
+        )
+
+    todos = agent.get("todos") or []
+    if todos and all(t.get("status") == "completed" for t in todos):
+        raise HTTPException(
+            status_code=409,
+            detail="Nothing to resume — all steps already completed",
+        )
+
+    # If already running, treat as a stuck state and re-kick the continuation
+    # rather than 409. Liveness gate: if updated_at is recent (< 5 min) the
+    # previous attempt is probably alive — skip to avoid duplicate runs.
+    if agent.get("status") == "running":
+        from datetime import datetime, timedelta, timezone
+        updated_at = agent.get("updated_at")
+        if isinstance(updated_at, str):
+            try:
+                updated_at = datetime.fromisoformat(updated_at)
+            except ValueError:
+                updated_at = None
+        if updated_at and updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        if updated_at and (datetime.now(timezone.utc) - updated_at) < timedelta(minutes=5):
+            return {"ok": True, "agent_id": agent_id, "status": "running", "skipped": "in_flight"}
+
+    fs = get_fs()
+    fs.update_agent(agent_id, status="running", completed_at=None)
+    fs.add_agent_log(agent_id, "Resumed by user — continuing agent phase", source="continuation")
+
+    settings = get_settings()
+    if settings.is_dev:
+        # Spawn a detached subprocess so uvicorn `--reload` (which kills daemon
+        # threads on file change) can't interrupt the long-running agent.
+        # Prefer the project venv's Python (`.venv/bin/python`) so deps resolve
+        # even when uvicorn was started outside `uv run` (sys.executable then
+        # points to the framework Python which lacks the venv's site-packages).
+        import subprocess
+        import sys
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parents[2]
+        venv_py = project_root / ".venv" / "bin" / "python"
+        python_bin = str(venv_py) if venv_py.exists() else sys.executable
+        log_path = Path("/tmp/slb-resume") / f"{agent_id}.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_file = log_path.open("ab")
+        try:
+            subprocess.Popen(
+                [python_bin, "-m", "workers.agent_continuation_cli", agent_id],
+                cwd=str(project_root),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        except Exception:
+            # Don't strand the agent in `running` if the spawn fails — flip
+            # back to success so the Resume button stays available, and
+            # surface a clean 500 to the client.
+            logger.exception("Failed to spawn continuation subprocess for agent %s", agent_id)
+            fs.update_agent(agent_id, status="success")
+            raise HTTPException(status_code=500, detail="Failed to spawn continuation worker")
+    else:
+        from workers.agent_continuation import _dispatch_continuation_task
+        _dispatch_continuation_task(settings, agent_id, delay_seconds=0)
+
+    return {"ok": True, "agent_id": agent_id, "status": "running"}
+
+
 @router.post("/agents/{agent_id}/refresh-context")
 async def refresh_agent_context(
     agent_id: str,

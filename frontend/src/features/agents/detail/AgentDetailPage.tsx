@@ -6,7 +6,7 @@ import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
 import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
-import { runAgent, updateAgent as patchAgent } from '../../../api/endpoints/agents.ts';
+import { runAgent, resumeAgent, updateAgent as patchAgent } from '../../../api/endpoints/agents.ts';
 import { useAgentDetail } from './useAgentDetail.ts';
 import { useAgentEditMode } from './useAgentEditMode.ts';
 import { AppSidebar } from '../../../components/AppSidebar.tsx';
@@ -132,6 +132,28 @@ export function AgentDetailPage() {
     }
   };
 
+  const handleResume = async () => {
+    if (!task) return;
+    try {
+      await resumeAgent(task.agent_id);
+      toast.success('Resuming agent');
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
+      fetchAgents();
+    } catch (e) {
+      // Surface server-provided `detail` so 4xx reasons are visible to the user.
+      let msg = 'Failed to resume agent';
+      if (e && typeof e === 'object' && 'body' in e && typeof (e as { body?: unknown }).body === 'string') {
+        try {
+          const parsed = JSON.parse((e as { body: string }).body);
+          if (parsed?.detail) msg = String(parsed.detail);
+        } catch {
+          // body wasn't JSON — leave default
+        }
+      }
+      toast.error(msg);
+    }
+  };
+
   const handlePauseResume = async () => {
     if (!task) return;
     const newPaused = !task.paused;
@@ -187,6 +209,7 @@ export function AgentDetailPage() {
           hasCollections={(task.collection_ids?.length ?? 0) > 0}
           onRun={handleRun}
           onStop={handleStop}
+          onResume={handleResume}
           onPauseResume={handlePauseResume}
           onOpenSchedule={() => setScheduleOpen(true)}
           agentSessions={agentSessions}

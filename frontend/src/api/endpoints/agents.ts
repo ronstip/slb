@@ -95,6 +95,8 @@ export interface Agent {
   session_ids?: string[];
   active_run_id?: string | null;
   context_summary?: string;
+  continuation_ready?: boolean;
+  continuation_ready_at?: string | null;
 }
 
 // --- Run Types ---
@@ -140,6 +142,10 @@ export function updateAgent(
 
 export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }> {
   return apiPost<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }>(`/agents/${agentId}/run`, {});
+}
+
+export function resumeAgent(agentId: string): Promise<{ ok: boolean; agent_id: string; status: string }> {
+  return apiPost<{ ok: boolean; agent_id: string; status: string }>(`/agents/${agentId}/resume`, {});
 }
 
 export interface CreateFromWizardPayload {

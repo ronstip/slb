@@ -102,7 +102,7 @@ def check_agent_completion(collection_id: str) -> None:
             )
             thread.start()
         else:
-            _dispatch_continuation_task(settings, agent_id, delay_seconds=300)
+            _dispatch_continuation_task(settings, agent_id, delay_seconds=30)
     except Exception:
         logger.exception("Failed to dispatch continuation fallback for agent %s", agent_id)
 
