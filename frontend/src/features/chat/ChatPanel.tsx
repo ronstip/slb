@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
+import { cn } from '../../lib/utils.ts';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSessionStore } from '../../stores/session-store.ts';
 import { useAgentStore } from '../../stores/agent-store.ts';
@@ -17,9 +18,11 @@ interface ChatPanelProps {
   hideWelcome?: boolean;
   /** Rendered in place of the message list when there are no messages yet. Implies `hideWelcome`. */
   emptyStateContent?: ReactNode;
+  /** Embedded variant: tighter padding, smaller input bar, smaller send button. */
+  compact?: boolean;
 }
 
-export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent }: ChatPanelProps = {}) {
+export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent, compact = false }: ChatPanelProps = {}) {
   const messages = useChatStore((s) => s.messages);
   const activePromptData = useChatStore((s) => s.activePromptData);
   const isRestoring = useSessionStore((s) => s.isRestoring);
@@ -83,7 +86,7 @@ export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent }: ChatPa
   }, []);
 
   return (
-    <main data-testid="chat-panel" className="flex min-w-[480px] flex-1 flex-col overflow-hidden bg-background">
+    <main data-testid="chat-panel" className={cn('flex flex-1 flex-col overflow-hidden bg-background', compact ? 'compact-chat' : 'min-w-[480px]')}>
       {/* Top bar — collection + task selectors */}
       {!hideHeader && (
         <div className="flex shrink-0 items-center gap-2 px-4 py-2">
@@ -98,19 +101,19 @@ export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent }: ChatPa
       ) : hasMessages || hideWelcome || emptyStateContent ? (
         <>
           {hasMessages ? (
-            <MessageList onSendMessage={sendMessage} />
+            <MessageList onSendMessage={sendMessage} compact={compact} />
           ) : emptyStateContent ? (
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className={cn('flex-1 overflow-y-auto', compact ? 'px-5 py-4' : 'px-6 py-4')}>
               <div className="mx-auto max-w-5xl">{emptyStateContent}</div>
             </div>
           ) : (
-            <MessageList onSendMessage={sendMessage} />
+            <MessageList onSendMessage={sendMessage} compact={compact} />
           )}
           <TaskProgressPill />
           {activePromptData ? (
             <StructuredPromptPanel onSubmit={sendMessage} onCancel={cancelPrompt} />
           ) : (
-            <MessageInput onSend={sendMessage} onCancel={cancelStream} />
+            <MessageInput onSend={sendMessage} onCancel={cancelStream} compact={compact} />
           )}
         </>
       ) : (

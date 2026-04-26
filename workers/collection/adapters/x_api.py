@@ -1,16 +1,17 @@
 """X (Twitter) API v2 adapter.
 
 Default vendor for the `twitter` platform. Uses OAuth 2.0 App-Only Bearer
-Token against the official X API. PAYG-tier-friendly:
-- Only the `/2/tweets/search/recent` endpoint (last 7 days) is used.
-- Pagination capped per `max_calls` to bound read costs.
-- Engagement refresh batches IDs in groups of 100 via `/2/tweets?ids=`.
+Token against the official X API. Uses `/2/tweets/search/all` for full-archive
+keyword search (back to 2006-03-21). Pagination is capped per `max_calls` to
+bound read costs. Engagement refresh batches IDs in groups of 100 via
+`/2/tweets?ids=`.
 
 Keyword search and user-timeline tasks fan out via ThreadPoolExecutor with
 per-task error isolation (mirrors VetricAdapter._collect_twitter).
 """
 
 import logging
+import math
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -18,7 +19,6 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from config.settings import get_settings
-from workers.collection.adapters._budget import derive_pagination
 from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.x_api_client import XAPIClient, XAPIError
 from workers.collection.adapters.x_api_parsers import (
@@ -32,11 +32,13 @@ from workers.collection.models import Batch, Channel, Post
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 4  # PAYG is read-priced; modest parallelism is enough.
-_RECENT_SEARCH_MAX_DAYS = 7
+_DEFAULT_FALLBACK_DAYS = 30  # used only if caller omits time_range (defensive)
 _TWEETS_LOOKUP_BATCH_SIZE = 100  # /2/tweets?ids= hard cap
-_PAGE_SIZE_MIN = 10  # X API /search/recent requires max_results >= 10
-_PAGE_SIZE_MAX = 100  # X API /search/recent max_results upper bound
+_PAGE_SIZE_MIN = 10  # X API /search/all requires max_results >= 10
+_PAGE_SIZE_MAX = 500  # X API /search/all max_results upper bound
 _VALID_SORT_ORDERS = {"recency", "relevancy"}
+_VALID_HAS_MEDIA = {"with", "without", "any"}
+_DEFAULT_HAS_MEDIA = "any"
 
 
 class XAPIAdapter(DataProviderAdapter):
@@ -95,22 +97,28 @@ class XAPIAdapter(DataProviderAdapter):
 
         keywords = config.get("keywords", []) or []
         channel_urls = config.get("channel_urls", []) or []
-        min_likes = config.get("min_likes")
+        has_media = _normalize_has_media(config.get("has_media"))
         sort_order = _normalize_sort_order(config.get("sort_order")) or self._default_sort_order
-        start_time, end_time = _clamp_to_recent_window(
-            config.get("time_range") or {}, max_days=_RECENT_SEARCH_MAX_DAYS,
+        end_lag_hours = float(
+            config.get("end_time_lag_hours")
+            or get_settings().x_api_end_time_lag_hours
+        )
+        start_time, end_time = _resolve_time_window(
+            config.get("time_range") or {},
+            end_lag_seconds=int(end_lag_hours * 3600),
         )
 
-        # Per-task post budget. collection_service derives this from
-        # n_posts / (platforms * keywords). When set, it directly drives
-        # how many requests we make — every post is a billable read on PAYG.
-        per_task_budget = config.get("max_posts_per_keyword")
-        page_size, max_calls, hard_cap = derive_pagination(
-            per_task_budget,
-            page_max=self._max_results,
-            page_min=_PAGE_SIZE_MIN,
-            fallback_calls=self._fallback_max_calls,
-        )
+        # Per-task post budget from collection_service (n_posts / platforms / keywords).
+        # Always request a full page so X's relevance ranking has density to work
+        # with; truncate to budget after parsing in `_paginate`.
+        per_task_budget = config.get("max_posts_per_keyword") or 0
+        page_size = self._max_results
+        if per_task_budget > 0:
+            max_calls = max(1, math.ceil(per_task_budget / page_size))
+            hard_cap = per_task_budget
+        else:
+            max_calls = self._fallback_max_calls
+            hard_cap = None
 
         tasks: list[tuple[str, str]] = []
         for kw in keywords:
@@ -126,9 +134,10 @@ class XAPIAdapter(DataProviderAdapter):
             return []
 
         logger.info(
-            "X API collect: %d tasks, page_size=%d, max_calls=%d, hard_cap=%s, sort=%s",
+            "X API collect: %d tasks, page_size=%d, max_calls=%d, hard_cap=%s, sort=%s, has_media=%s, end_lag_hours=%.2f",
             len(tasks), page_size, max_calls,
-            hard_cap if hard_cap is not None else "unbounded", sort_order,
+            hard_cap if hard_cap is not None else "unbounded",
+            sort_order, has_media, end_lag_hours,
         )
 
         all_batches: list[Batch] = []
@@ -137,7 +146,7 @@ class XAPIAdapter(DataProviderAdapter):
                 pool.submit(
                     self._run_task, task_type, target,
                     page_size, max_calls, hard_cap,
-                    start_time, end_time, min_likes, sort_order,
+                    start_time, end_time, has_media, sort_order,
                 ): (task_type, target)
                 for task_type, target in tasks
             }
@@ -179,14 +188,14 @@ class XAPIAdapter(DataProviderAdapter):
         hard_cap: int | None,
         start_time: str,
         end_time: str,
-        min_likes: int | None,
+        has_media: str,
         sort_order: str,
     ) -> list[Batch]:
         if task_type == "search":
             return self._search_recent(
                 keyword=target, page_size=page_size, max_calls=max_calls,
                 hard_cap=hard_cap, start_time=start_time, end_time=end_time,
-                min_likes=min_likes, sort_order=sort_order,
+                has_media=has_media, sort_order=sort_order,
             )
         return self._user_timeline(
             username=target, page_size=page_size, max_calls=max_calls,
@@ -194,7 +203,7 @@ class XAPIAdapter(DataProviderAdapter):
         )
 
     # ------------------------------------------------------------------
-    # /2/tweets/search/recent
+    # /2/tweets/search/all
     # ------------------------------------------------------------------
 
     def _search_recent(
@@ -205,10 +214,10 @@ class XAPIAdapter(DataProviderAdapter):
         hard_cap: int | None,
         start_time: str,
         end_time: str,
-        min_likes: int | None,
+        has_media: str,
         sort_order: str,
     ) -> list[Batch]:
-        query = self._build_search_query(keyword, min_likes)
+        query = self._build_search_query(keyword, has_media)
         params: dict = {
             "query": query,
             "max_results": page_size,
@@ -221,7 +230,7 @@ class XAPIAdapter(DataProviderAdapter):
             "expansions": self.DEFAULT_EXPANSIONS,
         }
         return self._paginate(
-            path="tweets/search/recent",
+            path="tweets/search/all",
             params=params,
             max_calls=max_calls,
             hard_cap=hard_cap,
@@ -229,14 +238,8 @@ class XAPIAdapter(DataProviderAdapter):
         )
 
     @staticmethod
-    def _build_search_query(keyword: str, min_likes: int | None) -> str:
-        # Default to excluding retweets so we get original posts (retweets
-        # are reachable via referenced_tweets if needed). Optional min_faves
-        # operator is supported on /search/recent for all paid tiers.
-        parts = [keyword.strip(), "-is:retweet"]
-        if isinstance(min_likes, int) and min_likes > 0:
-            parts.append(f"min_faves:{min_likes}")
-        return " ".join(parts)
+    def _build_search_query(keyword: str, has_media: str) -> str:
+        return keyword.strip()
 
     # ------------------------------------------------------------------
     # /2/users/by/username/:u + /2/users/:id/tweets
@@ -256,12 +259,12 @@ class XAPIAdapter(DataProviderAdapter):
         if not user_id:
             return []
 
-        # /users/:id/tweets requires max_results in [5, 100] (different floor
-        # than /search/recent's [10, 100]). Clamp accordingly.
+        # /users/:id/tweets requires max_results in [5, 100] (tighter ceiling
+        # than /search/all's [10, 500]). Clamp accordingly.
         timeline_page_size = max(5, min(100, page_size))
         params: dict = {
             "max_results": timeline_page_size,
-            "exclude": "retweets",
+            "exclude": "replies,retweets",
             "tweet.fields": self.DEFAULT_TWEET_FIELDS,
             "user.fields": self.DEFAULT_USER_FIELDS,
             "media.fields": self.DEFAULT_MEDIA_FIELDS,
@@ -415,29 +418,33 @@ class XAPIAdapter(DataProviderAdapter):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _clamp_to_recent_window(time_range: dict, max_days: int) -> tuple[str, str]:
+def _resolve_time_window(
+    time_range: dict,
+    end_lag_seconds: int = 10,
+) -> tuple[str, str]:
     """Convert collection_service's {start, end} dict to RFC 3339 strings.
 
-    `/tweets/search/recent` only goes back 7 days. If the requested window
-    is older or empty, snap start to (now - max_days). end defaults to now.
-    Always emits the 'Z' UTC suffix that X API expects.
+    `/tweets/search/all` accepts the full archive (back to 2006-03-21), so we
+    pass the requested window through. Defensive fallback only: if start is
+    missing, snap to (now - _DEFAULT_FALLBACK_DAYS); if end is missing, use now.
+    `end_lag_seconds` pushes end_time backward from now (default 10s to satisfy
+    X API's "end_time must be at least 10 seconds before now" rule; raise to
+    7200 for the 2h engagement-settle lag). Always emits 'Z' UTC suffix.
     """
     now = datetime.now(timezone.utc)
-    earliest = now - timedelta(days=max_days)
+    lag = max(10, int(end_lag_seconds))  # never less than X's 10s floor
 
     start = _parse_date_loose(time_range.get("start"))
     end = _parse_date_loose(time_range.get("end"))
 
-    if start is None or start < earliest:
-        start = earliest
+    if start is None:
+        start = now - timedelta(days=_DEFAULT_FALLBACK_DAYS)
     if end is None or end > now:
         end = now
     if end <= start:
         end = now
 
-    # X API requires end_time at least 10 seconds before "now". Clamp to
-    # avoid HTTP 400 "end_time must be a minimum of 10 seconds prior".
-    end = min(end, now - timedelta(seconds=10))
+    end = min(end, now - timedelta(seconds=lag))
     if end <= start:
         end = start + timedelta(seconds=1)
 
@@ -473,3 +480,11 @@ def _normalize_sort_order(value) -> str | None:
         return None
     v = str(value).strip().lower()
     return v if v in _VALID_SORT_ORDERS else None
+
+
+def _normalize_has_media(value) -> str:
+    """Coerce config has_media to {with, without, any}. Defaults to 'with'."""
+    if not value:
+        return _DEFAULT_HAS_MEDIA
+    v = str(value).strip().lower()
+    return v if v in _VALID_HAS_MEDIA else _DEFAULT_HAS_MEDIA

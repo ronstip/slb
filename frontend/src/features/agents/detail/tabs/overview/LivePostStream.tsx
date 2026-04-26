@@ -1,5 +1,6 @@
-import { useQuery, useQueries } from '@tanstack/react-query';
-import { MessageSquare } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { useInfiniteQuery, useQueries } from '@tanstack/react-query';
+import { MessageSquare, Play, Sparkles } from 'lucide-react';
 import { getMultiCollectionPosts } from '../../../../../api/endpoints/feed.ts';
 import { getCollectionStatus } from '../../../../../api/endpoints/collections.ts';
 import { mediaUrl } from '../../../../../api/client.ts';
@@ -32,25 +33,43 @@ export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: Li
   const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
   const totalPosts = statusQueries.reduce((sum, q) => sum + (q.data?.posts_collected ?? 0), 0);
 
-  const { data, isLoading } = useQuery({
+  const PAGE_SIZE = 24;
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['overview-posts', [...collectionIds].sort().join(',')],
-    queryFn: () =>
+    queryFn: ({ pageParam = 0 }) =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
-        sort: 'recent',
-        limit: 24,
+        sort: 'views',
+        limit: PAGE_SIZE,
+        offset: pageParam,
         dedup: true,
-        // Show all posts as they arrive, not just ones scored relevant —
-        // relevance scoring happens late in the pipeline so the default filter
-        // hides everything until enrichment completes.
-        relevant_to_task: 'all',
+        relevant_to_task: 'true',
       }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const loaded = lastPage.offset + lastPage.posts.length;
+      return loaded < lastPage.total ? loaded : undefined;
+    },
     enabled: collectionIds.length > 0,
     staleTime: 10_000,
     refetchInterval: isAgentRunning || anyCollecting ? 10_000 : false,
   });
 
-  const posts = data?.posts ?? [];
+  const posts = data?.pages.flatMap((p) => p.posts) ?? [];
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (collectionIds.length === 0) {
     return (
@@ -82,10 +101,16 @@ export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: Li
       action={{ label: 'View all posts', onClick: onOpenData }}
     >
       {posts.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {posts.slice(0, 12).map((post, i) => (
-            <PostCard key={post.post_id} post={post} isLatest={anyCollecting && i === 0} />
-          ))}
+        <div className="max-h-[640px] overflow-y-auto pr-1">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {posts.map((post, i) => (
+              <PostCard key={post.post_id} post={post} isLatest={anyCollecting && i === 0} />
+            ))}
+          </div>
+          <div ref={sentinelRef} className="h-8" />
+          {isFetchingNextPage && (
+            <p className="py-2 text-center text-xs text-muted-foreground">Loading more…</p>
+          )}
         </div>
       ) : isLoading || isAgentRunning || anyCollecting ? (
         <div className="space-y-3">
@@ -105,8 +130,15 @@ export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: Li
 }
 
 function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
-  const img = post.media_refs?.find((m) => m.media_type === 'image' || m.media_type === 'video');
-  const resolvedImg = img ? mediaUrl(img.gcs_uri, img.original_url) : null;
+  const media = post.media_refs?.find((m) => m.media_type === 'image' || m.media_type === 'video');
+  const isVideo = media?.media_type === 'video';
+  // Videos: prefer the X-provided preview_image_url thumbnail, since the original_url
+  // is a CDN MP4 that won't render as an <img>.
+  const resolvedImg = media
+    ? isVideo && media.preview_image_url
+      ? mediaUrl(undefined, media.preview_image_url)
+      : mediaUrl(media.gcs_uri, media.original_url)
+    : null;
   const body = post.content || post.title || post.ai_summary || '';
 
   return (
@@ -115,7 +147,7 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
       target="_blank"
       rel="noreferrer"
       className={cn(
-        'group relative flex flex-col gap-2 rounded-xl border border-border/60 bg-card p-3 transition-all hover:border-border hover:shadow-sm',
+        'group relative flex flex-col gap-2 overflow-hidden rounded-xl border border-border/60 bg-card p-3 transition-all hover:border-border hover:shadow-sm',
         isLatest && 'animate-in fade-in slide-in-from-top-2 duration-500',
       )}
     >
@@ -124,16 +156,29 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
         <span className="truncate font-medium text-foreground/90">{post.channel_handle || post.platform}</span>
         <span className="ml-auto shrink-0 text-muted-foreground/70">{timeAgo(post.posted_at)}</span>
       </div>
-      {resolvedImg && (
-        <div className="h-28 w-full overflow-hidden rounded-md bg-muted">
-          <img
-            src={resolvedImg}
-            alt=""
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-            loading="lazy"
-          />
-        </div>
-      )}
+      <div className="relative h-28 w-full overflow-hidden rounded-md bg-muted">
+        {resolvedImg ? (
+          <>
+            <img
+              src={resolvedImg}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+              loading="lazy"
+            />
+            {isVideo && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm">
+                  <Play className="h-4 w-4 fill-white text-white" />
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/40 via-muted/20 to-muted/40">
+            <PlatformIcon platform={post.platform} className="h-8 w-8 text-muted-foreground/30" />
+          </div>
+        )}
+      </div>
       {body && (
         <p className="line-clamp-3 text-xs leading-relaxed text-foreground/80">{body}</p>
       )}
@@ -143,7 +188,66 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
           {post.views != null && post.views > 0 && <span>{formatNumber(post.views)} views</span>}
         </div>
       )}
+      <EnrichmentOverlay post={post} />
     </a>
+  );
+}
+
+function EnrichmentOverlay({ post }: { post: FeedPost }) {
+  const hasEnrichment =
+    !!post.ai_summary ||
+    !!post.sentiment ||
+    !!post.emotion ||
+    (post.themes && post.themes.length > 0) ||
+    (post.entities && post.entities.length > 0);
+
+  if (!hasEnrichment) return null;
+
+  const sentimentColor =
+    post.sentiment === 'positive'
+      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+      : post.sentiment === 'negative'
+        ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+        : 'bg-slate-500/15 text-slate-300 border-slate-500/30';
+
+  const tags = [...(post.themes ?? []), ...(post.entities ?? [])].slice(0, 6);
+
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col gap-2 overflow-hidden rounded-xl bg-background/95 p-3 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <Sparkles className="h-3 w-3 text-primary" />
+        AI insights
+      </div>
+      {(post.sentiment || post.emotion) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {post.sentiment && (
+            <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize', sentimentColor)}>
+              {post.sentiment}
+            </span>
+          )}
+          {post.emotion && (
+            <span className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium capitalize text-foreground/80">
+              {post.emotion}
+            </span>
+          )}
+        </div>
+      )}
+      {post.ai_summary && (
+        <p className="line-clamp-4 text-xs leading-relaxed text-foreground/90">{post.ai_summary}</p>
+      )}
+      {tags.length > 0 && (
+        <div className="mt-auto flex flex-wrap gap-1">
+          {tags.map((t) => (
+            <span
+              key={t}
+              className="rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -190,6 +190,31 @@
   opacity: 0.85;
 }
 
+/* Compact chat (e.g. embedded overview chat box) — scale down agent prose */
+.compact-chat .agent-prose p,
+.compact-chat .agent-prose li {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.compact-chat .agent-prose p {
+  margin-bottom: 12px;
+}
+.compact-chat .agent-prose h1 {
+  font-size: 18px;
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+.compact-chat .agent-prose h2 {
+  font-size: 15px;
+  margin-top: 18px;
+  margin-bottom: 8px;
+}
+.compact-chat .agent-prose h3 {
+  font-size: 13px;
+  margin-top: 14px;
+  margin-bottom: 6px;
+}
+
 /* Paragraphs */
 .agent-prose p {
   margin-bottom: 20px;

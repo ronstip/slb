@@ -8,6 +8,7 @@ interface MessageInputProps {
   onSend: (text: string) => void;
   onCancel?: () => void;
   centered?: boolean;
+  compact?: boolean;
 }
 
 const CYCLING_PLACEHOLDERS = [
@@ -18,7 +19,7 @@ const CYCLING_PLACEHOLDERS = [
   'How do people feel about electric vehicles on Reddit?',
 ];
 
-export function MessageInput({ onSend, onCancel, centered = false }: MessageInputProps) {
+export function MessageInput({ onSend, onCancel, centered = false, compact = false }: MessageInputProps) {
   const [text, setText] = useState('');
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [attachedTemplate, setAttachedTemplate] = useState<{ filename: string } | null>(null);
@@ -89,7 +90,13 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
   };
 
   return (
-    <div className={cn(centered ? 'w-full max-w-2xl px-4' : 'mx-auto w-full max-w-2xl px-6 pb-5 pt-2')}>
+    <div className={cn(
+      centered
+        ? 'w-full max-w-2xl px-4'
+        : compact
+          ? 'mx-auto w-full max-w-lg px-3 pb-3 pt-2'
+          : 'mx-auto w-full max-w-2xl px-6 pb-5 pt-2',
+    )}>
       {/* Hidden file input for .pptx template uploads */}
       <input
         ref={fileInputRef}
@@ -127,8 +134,10 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
 
       {/* Input area */}
       <div className={cn(
-        'flex items-end gap-3 rounded-2xl border border-border bg-card shadow-sm transition-all focus-within:border-primary/50 focus-within:shadow-md',
-        centered ? 'px-4 py-3' : 'px-4 py-3',
+        'flex items-end border bg-card shadow-sm transition-all focus-within:border-primary/50 focus-within:shadow-md',
+        compact
+          ? 'gap-2 rounded-xl border-border/60 px-3 py-2'
+          : 'gap-3 rounded-2xl border-border px-4 py-3',
       )}>
         <textarea
           data-testid="chat-input"
@@ -141,32 +150,41 @@ export function MessageInput({ onSend, onCancel, centered = false }: MessageInpu
           rows={1}
           className={cn(
             'flex-1 resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50',
-            centered ? 'max-h-36 text-sm' : 'max-h-36 text-sm',
+            compact ? 'max-h-24 text-xs' : 'max-h-36 text-sm',
           )}
         />
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={isAgentResponding || isUploading}
           title="Upload PowerPoint template"
-          className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted flex items-center justify-center transition-colors disabled:opacity-30 disabled:pointer-events-none"
+          className={cn(
+            'shrink-0 rounded-full text-muted-foreground hover:bg-muted flex items-center justify-center transition-colors disabled:opacity-30 disabled:pointer-events-none',
+            compact ? 'h-6 w-6' : 'h-8 w-8',
+          )}
         >
-          <Paperclip className={cn('h-3.5 w-3.5', isUploading && 'animate-pulse')} />
+          <Paperclip className={cn(compact ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5', isUploading && 'animate-pulse')} />
         </button>
         {isAgentResponding ? (
           <button
             onClick={onCancel}
             title="Stop response"
-            className="h-8 w-8 shrink-0 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center transition-colors"
+            className={cn(
+              'shrink-0 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center transition-colors',
+              compact ? 'h-6 w-6' : 'h-8 w-8',
+            )}
           >
-            <Square className="h-3.5 w-3.5 fill-current" />
+            <Square className={cn('fill-current', compact ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
           </button>
         ) : (
           <button
             onClick={handleSend}
             disabled={!text.trim()}
-            className="h-8 w-8 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            className={cn(
+              'shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 disabled:opacity-30 disabled:pointer-events-none transition-colors',
+              compact ? 'h-6 w-6' : 'h-8 w-8',
+            )}
           >
-            <Send className="h-3.5 w-3.5" />
+            <Send className={cn(compact ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
           </button>
         )}
       </div>

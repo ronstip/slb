@@ -81,7 +81,7 @@ export function AgentOverviewTab({
                   >
                     {chatExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                   </button>
-                  <ChatPanel hideHeader emptyStateContent={<KickoffMessage markdown={kickoffMarkdown} />} />
+                  <ChatPanel hideHeader compact emptyStateContent={<KickoffMessage markdown={kickoffMarkdown} />} />
                 </div>
               </section>
               <LivePostStream

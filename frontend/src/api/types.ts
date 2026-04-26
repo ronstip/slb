@@ -204,6 +204,7 @@ export interface MediaRef {
   original_url: string;
   gcs_uri?: string;
   size_bytes?: number;
+  preview_image_url?: string;
 }
 
 export interface FeedPost {

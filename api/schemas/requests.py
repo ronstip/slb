@@ -33,6 +33,7 @@ class CreateCollectionRequest(BaseModel):
     video_params: dict | None = None
     reasoning_level: str | None = None
     min_likes: int | None = None
+    has_media: Literal["with", "without", "any"] | None = None  # X adapter; default "with"
 
 
 

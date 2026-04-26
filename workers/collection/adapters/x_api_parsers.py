@@ -38,7 +38,7 @@ def parse_x_post(tweet: dict, includes: dict | None) -> Post:
 
     media_keys = (tweet.get("attachments") or {}).get("media_keys") or []
     media_objs = [media_by_key[k] for k in media_keys if k in media_by_key]
-    media_urls = _extract_media_urls(media_objs)
+    media_urls, media_refs = _extract_media(media_objs)
 
     parent_post_id = None
     is_retweet = False
@@ -69,7 +69,7 @@ def parse_x_post(tweet: dict, includes: dict | None) -> Post:
         post_type=_infer_post_type(media_objs),
         parent_post_id=parent_post_id,
         media_urls=media_urls,
-        media_refs=[],
+        media_refs=media_refs,
         likes=metrics.get("like_count"),
         # Match Vetric Twitter parser: shares = retweet_count only.
         # quote_count goes in platform_metadata so dashboard math stays
@@ -124,25 +124,38 @@ def parse_x_channel(user: dict) -> Channel:
 # Helpers — media
 # ---------------------------------------------------------------------------
 
-def _extract_media_urls(media_objs: list[dict]) -> list[str]:
-    """Return a list of directly-downloadable URLs (jpg/png/mp4 only).
+def _extract_media(media_objs: list[dict]) -> tuple[list[str], list[dict]]:
+    """Return (downloadable_urls, rich_refs) for a tweet's media attachments.
 
-    Filters out HLS .m3u8 playlists because the pipeline's media_downloader
-    can only stream plain HTTP files. Video TTLs on video.twimg.com are
-    short (~hours) but the pipeline downloads media in the same run.
+    The URL list (jpg/png/mp4 only — HLS .m3u8 dropped) feeds the media_downloader
+    which streams plain HTTP files. The rich-refs list mirrors the URL list 1:1
+    and carries `preview_image_url` for videos so the UI can render a thumbnail
+    even when the video TTL has expired or GCS upload failed.
     """
     urls: list[str] = []
+    refs: list[dict] = []
     for m in media_objs:
         mtype = m.get("type")
         if mtype == "photo":
             url = m.get("url")
             if url:
                 urls.append(url)
+                refs.append({
+                    "original_url": url,
+                    "media_type": "image",
+                    "content_type": "",
+                })
         elif mtype in ("video", "animated_gif"):
             mp4_url = _select_video_url(m.get("variants") or [])
             if mp4_url:
                 urls.append(mp4_url)
-    return urls
+                refs.append({
+                    "original_url": mp4_url,
+                    "media_type": "video",
+                    "content_type": "",
+                    "preview_image_url": m.get("preview_image_url") or "",
+                })
+    return urls, refs
 
 
 def _select_video_url(variants: list[dict]) -> str | None:

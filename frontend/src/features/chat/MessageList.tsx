@@ -1,14 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { useChatStore } from '../../stores/chat-store.ts';
+import { cn } from '../../lib/utils.ts';
 import { UserMessage } from './UserMessage.tsx';
 import { AgentMessage } from './AgentMessage.tsx';
 import { SystemMessage } from './SystemMessage.tsx';
 
 interface MessageListProps {
   onSendMessage?: (text: string) => void;
+  compact?: boolean;
 }
 
-export function MessageList({ onSendMessage }: MessageListProps) {
+export function MessageList({ onSendMessage, compact = false }: MessageListProps) {
   const messages = useChatStore((s) => s.messages);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -39,7 +41,7 @@ export function MessageList({ onSendMessage }: MessageListProps) {
   }, []);
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
+    <div ref={scrollRef} className={cn('flex-1 overflow-y-auto', compact ? 'px-5 py-4' : 'px-6 py-4')}>
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         {messages.map((msg, index) => {
           const isLatest = index === messages.length - 1;

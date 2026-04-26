@@ -80,8 +80,8 @@ def create_collection_from_request(
         "keywords": request.keywords,
         "channel_urls": request.channel_urls or [],
         "time_range": {
-            "start": start_date.strftime("%Y-%m-%d"),
-            "end": end_date.strftime("%Y-%m-%d"),
+            "start": start_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "end": end_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
         "n_posts": request.n_posts,
         "max_posts_per_keyword": (
@@ -106,6 +106,8 @@ def create_collection_from_request(
         config.setdefault("reasoning_level", request.reasoning_level)
     if request.min_likes is not None:
         config.setdefault("min_likes", request.min_likes)
+    if request.has_media is not None:
+        config.setdefault("has_media", request.has_media)
 
     # Insert collection record into BigQuery
     bq.insert_rows(

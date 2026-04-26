@@ -76,10 +76,11 @@ class Settings(BaseSettings):
 
     # X (Twitter) API v2 — official vendor; default for the `twitter` platform
     x_api_bearer_token: str = ""
-    x_api_max_results: int = 100  # 10..100 per /tweets/search/recent page
+    x_api_max_results: int = 100  # 10..500 per /tweets/search/all page
     x_api_min_request_interval_sec: float = 1.0  # client-side throttle (PAYG-friendly)
     x_api_sort_order: str = "relevancy"  # "relevancy" | "recency"; per-collection override via config["sort_order"]
     x_api_default_max_calls: int = 2  # pagination depth fallback when n_posts/max_posts_per_keyword unset
+    x_api_end_time_lag_hours: float = 0.0  # offset end_time back from now; X's 10s floor is enforced inside the adapter
 
     # Bright Data
     brightdata_api_token: str = ""
