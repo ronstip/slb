@@ -14,8 +14,8 @@ class ChatRequest(BaseModel):
 
 
 class VendorConfig(BaseModel):
-    default: str = "brightdata"  # "brightdata" | "vetric"
-    platform_overrides: dict[str, str] | None = None  # e.g., {"tiktok": "brightdata"}
+    default: str = "brightdata"  # "brightdata" | "vetric" | "xapi"
+    platform_overrides: dict[str, str] | None = None  # e.g., {"twitter": "vetric"}
 
 
 class CreateCollectionRequest(BaseModel):

@@ -8,6 +8,7 @@ from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.brightdata import BrightDataAdapter
 from workers.collection.adapters.mock_adapter import MockAdapter
 from workers.collection.adapters.vetric import VetricAdapter
+from workers.collection.adapters.x_api import XAPIAdapter
 from workers.collection.models import Batch
 
 logger = logging.getLogger(__name__)
@@ -31,14 +32,21 @@ class DataProviderWrapper:
             self._providers = providers
         elif settings.is_dev:
             self._providers = []
-            # BrightData first — default for tiktok, youtube, reddit
+            # BrightData first — default for tiktok, youtube, reddit, facebook
             if settings.brightdata_api_token:
                 try:
                     self._providers.append(BrightDataAdapter(snapshot_tracker=snapshot_tracker, max_snapshots=max_snapshots))
                     logger.info("BrightDataAdapter initialized (dev mode)")
                 except ValueError:
                     logger.warning("BrightDataAdapter init failed, skipping")
-            # Vetric second — handles instagram, twitter, and fallback
+            # X API second — official vendor; default for twitter via fallback ordering
+            if settings.x_api_bearer_token:
+                try:
+                    self._providers.append(XAPIAdapter())
+                    logger.info("XAPIAdapter initialized (dev mode)")
+                except ValueError:
+                    logger.info("XAPIAdapter skipped (no bearer token)")
+            # Vetric third — handles instagram and acts as twitter fallback when overridden
             try:
                 self._providers.append(VetricAdapter())
                 logger.info("VetricAdapter initialized (dev mode)")
@@ -56,13 +64,19 @@ class DataProviderWrapper:
                     logger.info("BrightDataAdapter initialized (production mode)")
                 except ValueError:
                     logger.warning("BrightDataAdapter init failed, skipping")
+            if settings.x_api_bearer_token:
+                try:
+                    self._providers.append(XAPIAdapter())
+                    logger.info("XAPIAdapter initialized (production mode)")
+                except ValueError:
+                    logger.info("XAPIAdapter skipped (no bearer token)")
             try:
                 self._providers.append(VetricAdapter())
                 logger.info("VetricAdapter initialized (production mode)")
             except ValueError:
                 logger.info("VetricAdapter skipped (no API keys)")
             if not self._providers:
-                raise RuntimeError("No data providers available — configure BRIGHTDATA_API_TOKEN or VETRIC_API_KEY_*")
+                raise RuntimeError("No data providers available — configure BRIGHTDATA_API_TOKEN, X_API_BEARER_TOKEN, or VETRIC_API_KEY_*")
 
     def _get_adapter(self, platform: str) -> DataProviderAdapter:
         """Select adapter based on vendor_config, then fallback to first match."""
@@ -74,6 +88,7 @@ class DataProviderWrapper:
             vendor_class_map = {
                 "vetric": VetricAdapter,
                 "brightdata": BrightDataAdapter,
+                "xapi": XAPIAdapter,
                 "mock": MockAdapter,
             }
             target_class = vendor_class_map.get(preferred)

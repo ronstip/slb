@@ -10,6 +10,7 @@ from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
 from api.rate_limiting import limiter
 from api.schemas.requests import CreateFromWizardRequest
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
