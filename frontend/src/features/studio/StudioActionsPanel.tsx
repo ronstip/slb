@@ -58,11 +58,11 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
                 >
                   <Icon className="h-[18px] w-[18px]" />
                 </span>
-                <span className="line-clamp-1 text-[13px] font-semibold text-foreground">
+                <span className="line-clamp-1 text-[13px] font-semibold">
                   {action.label}
                 </span>
                 {!isDashed && (
-                  <ArrowUpRight className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-foreground/30 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground/80" />
+                  <ArrowUpRight className="absolute right-2.5 top-2.5 h-3.5 w-3.5 opacity-60 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:opacity-100" />
                 )}
               </button>
             );

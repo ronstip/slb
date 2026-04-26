@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { FileText, Plus } from 'lucide-react';
 import type { Agent } from '../../../../../api/endpoints/agents.ts';
@@ -6,11 +6,6 @@ import type { ArtifactListItem } from '../../../../../api/endpoints/artifacts.ts
 import { getAgentBriefing } from '../../../../../api/endpoints/briefings.ts';
 import { listExplorerLayouts } from '../../../../../api/endpoints/explorer-layouts.ts';
 import type { ExplorerLayoutListItem } from '../../../../../api/endpoints/explorer-layouts.ts';
-import { SocialChartWidget } from '../../../../studio/dashboard/SocialChartWidget.tsx';
-import type {
-  SocialChartType,
-  WidgetData,
-} from '../../../../studio/dashboard/types-social-dashboard.ts';
 import { timeAgo } from '../../../../../lib/format.ts';
 import { cn } from '../../../../../lib/utils.ts';
 import {
@@ -27,8 +22,6 @@ interface DeliverablesPanelProps {
   onOpenLayout: (layoutId: string | null) => void;
 }
 
-const KIND_META = KIND_VISUALS;
-
 function artifactKind(a: ArtifactListItem): DeliverableKind {
   switch (a.type) {
     case 'presentation':
@@ -40,18 +33,15 @@ function artifactKind(a: ArtifactListItem): DeliverableKind {
     case 'chart':
       return 'chart';
     default:
-      // Reports don't get registered as artifacts in this system — the
-      // briefing is the insight report. We keep chart as the fallback here.
       return 'chart';
   }
 }
 
-/**
- * The expected set of deliverable slots. Note: "Insight report" is covered by
- * the Briefing — `compose_briefing` is the only text-output the runtime
- * persists, so we don't render a separate Report card to avoid a perpetually
- * pending slot.
- */
+function isRecent(iso?: string | null): boolean {
+  if (!iso) return false;
+  return Date.now() - new Date(iso).getTime() < 5 * 60_000;
+}
+
 function getExpectedKinds(task: Agent): DeliverableKind[] {
   const kinds: DeliverableKind[] = ['briefing', 'dashboard'];
   const scope = task.data_scope ?? ({} as Agent['data_scope']);
@@ -85,9 +75,6 @@ export function DeliverablesPanel({
   });
   const briefingReady = briefingQuery.isSuccess && briefingQuery.data != null;
 
-  // Dashboards live in the explorer_layouts collection, NOT in
-  // agent.artifact_ids. The agent's compose_dashboard / generate_dashboard
-  // tools register layouts there and never write to the artifacts index.
   const layoutsQuery = useQuery({
     queryKey: ['explorer-layouts', task.agent_id],
     queryFn: () => listExplorerLayouts(task.agent_id),
@@ -116,9 +103,7 @@ export function DeliverablesPanel({
     return { kind, artifact: match, layout: undefined };
   });
 
-  // Extra dashboards beyond the single expected slot.
   const extraLayouts = layouts.filter((l) => !usedLayouts.has(l.layout_id));
-  // Artifacts of kinds we didn't slot (rare — mostly chart/data_export).
   const extraArtifacts = artifacts.filter((a) => !used.has(a.artifact_id));
 
   const readyCount =
@@ -173,116 +158,97 @@ export function DeliverablesPanel({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <ul className="-mx-2 divide-y divide-border/30">
           {slots.map((slot, i) => {
             if (slot.kind === 'briefing') {
               return briefingReady ? (
-                <BriefingCard
+                <DeliverableRow
                   key="briefing-ready"
-                  generatedAt={briefingQuery.data?.generated_at}
+                  kind="briefing"
+                  title={KIND_VISUALS.briefing.label}
+                  meta={
+                    briefingQuery.data?.generated_at
+                      ? timeAgo(briefingQuery.data.generated_at)
+                      : 'ready'
+                  }
+                  ready
+                  isNew={isRecent(briefingQuery.data?.generated_at)}
                   onClick={onOpenBriefing}
                 />
               ) : (
-                <NamedSkeletonCard
+                <DeliverableRow
                   key="briefing-pending"
                   kind="briefing"
-                  delay={i * 120}
+                  title={KIND_VISUALS.briefing.label}
+                  meta={KIND_VISUALS.briefing.sublabel}
+                  ready={false}
                   animate={isRunning}
+                  delay={i * 120}
                 />
               );
             }
             if (slot.kind === 'dashboard') {
               return slot.layout ? (
-                <LayoutCard
+                <DeliverableRow
                   key={slot.layout.layout_id}
-                  layout={slot.layout}
+                  kind="dashboard"
+                  title={slot.layout.title}
+                  meta={timeAgo(slot.layout.updated_at || slot.layout.created_at)}
+                  ready
+                  isNew={isRecent(slot.layout.created_at)}
                   onClick={() => onOpenLayout(slot.layout!.layout_id)}
                 />
               ) : (
-                <NamedSkeletonCard
+                <DeliverableRow
                   key="dashboard-pending"
                   kind="dashboard"
-                  delay={i * 120}
+                  title={KIND_VISUALS.dashboard.label}
+                  meta={KIND_VISUALS.dashboard.sublabel}
+                  ready={false}
                   animate={isRunning}
+                  delay={i * 120}
                 />
               );
             }
             return slot.artifact ? (
-              <ArtifactCard
+              <ArtifactRow
                 key={slot.artifact.artifact_id}
                 artifact={slot.artifact}
                 onClick={onOpenArtifacts}
               />
             ) : (
-              <NamedSkeletonCard
+              <DeliverableRow
                 key={`pending-${slot.kind}`}
                 kind={slot.kind}
-                delay={i * 120}
+                title={KIND_VISUALS[slot.kind].label}
+                meta={KIND_VISUALS[slot.kind].sublabel}
+                ready={false}
                 animate={isRunning}
+                delay={i * 120}
               />
             );
           })}
-          {extraLayouts.slice(0, 4).map((l) => (
-            <LayoutCard
+          {extraLayouts.map((l) => (
+            <DeliverableRow
               key={l.layout_id}
-              layout={l}
+              kind="dashboard"
+              title={l.title}
+              meta={timeAgo(l.updated_at || l.created_at)}
+              ready
+              isNew={isRecent(l.created_at)}
               onClick={() => onOpenLayout(l.layout_id)}
             />
           ))}
-          {extraArtifacts.slice(0, 4).map((a) => (
-            <ArtifactCard key={a.artifact_id} artifact={a} onClick={onOpenArtifacts} />
+          {extraArtifacts.map((a) => (
+            <ArtifactRow key={a.artifact_id} artifact={a} onClick={onOpenArtifacts} />
           ))}
-        </div>
+        </ul>
       )}
     </section>
   );
 }
 
-function CardShell({
-  kind,
-  onClick,
-  children,
-  ready,
-  preview,
-}: {
-  kind: DeliverableKind;
-  onClick?: () => void;
-  children: React.ReactNode;
-  ready: boolean;
-  preview?: React.ReactNode;
-}) {
-  const { icon: Icon, tileGradient, iconTint } = KIND_META[kind];
-  const Comp = onClick ? 'button' : 'div';
-  return (
-    <Comp
-      onClick={onClick}
-      className={cn(
-        'group flex flex-col overflow-hidden rounded-xl border text-left transition-all',
-        ready
-          ? 'border-border/60 bg-card hover:border-primary/40 hover:shadow-sm animate-in fade-in zoom-in-95 duration-500'
-          : 'border-dashed border-border/60 bg-card/30',
-      )}
-    >
-      {preview ? (
-        <div className="relative h-20 overflow-hidden">{preview}</div>
-      ) : (
-        <div
-          className={cn(
-            'relative flex h-20 items-center justify-center bg-gradient-to-br',
-            tileGradient,
-          )}
-        >
-          <Icon className={cn('h-8 w-8', ready ? iconTint : 'text-muted-foreground/50')} />
-        </div>
-      )}
-      <div className="min-w-0 p-3">{children}</div>
-    </Comp>
-  );
-}
-
-const CHARTJS_TYPES = new Set<string>(['bar', 'line', 'pie', 'doughnut']);
-
-function ArtifactCard({
+function ArtifactRow({
   artifact,
   onClick,
 }: {
@@ -290,170 +256,94 @@ function ArtifactCard({
   onClick: () => void;
 }) {
   const kind = artifactKind(artifact);
-  const queryClient = useQueryClient();
-  const cached = queryClient.getQueryData<{ payload: Record<string, unknown> }>([
-    'artifact',
-    artifact.artifact_id,
-  ]);
-
-  let preview: React.ReactNode | undefined;
-  if (kind === 'chart' && cached?.payload) {
-    const chartType = cached.payload.chart_type as string | undefined;
-    if (chartType && CHARTJS_TYPES.has(chartType)) {
-      const chartData = (cached.payload.data ?? {}) as Record<string, unknown>;
-      const barOrientation = (cached.payload.bar_orientation as string | undefined) ?? 'horizontal';
-      const stacked = (cached.payload.stacked as boolean | undefined) ?? true;
-      preview = (
-        <div className="pointer-events-none h-full w-full bg-gradient-to-br from-violet-500/5 to-transparent p-2">
-          <SocialChartWidget
-            chartType={chartType as SocialChartType}
-            data={miniWidgetData(chartData)}
-            barOrientation={barOrientation as 'horizontal' | 'vertical'}
-            stacked={stacked}
-          />
-        </div>
-      );
-    }
-  }
-
   return (
-    <CardShell kind={kind} onClick={onClick} ready preview={preview}>
-      <p className="truncate text-sm font-medium text-foreground">{artifact.title}</p>
-      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-        {artifact.type.replace('_', ' ')} · {timeAgo(artifact.created_at)}
-      </p>
-    </CardShell>
+    <DeliverableRow
+      kind={kind}
+      title={artifact.title}
+      meta={timeAgo(artifact.created_at)}
+      ready
+      isNew={isRecent(artifact.created_at)}
+      onClick={onClick}
+    />
   );
 }
 
-function miniWidgetData(raw: Record<string, unknown>): WidgetData {
-  return {
-    labels: raw.labels as string[] | undefined,
-    values: raw.values as number[] | undefined,
-    value: raw.value as number | undefined,
-    timeSeries: (raw.timeSeries ?? raw.time_series) as WidgetData['timeSeries'],
-    groupedTimeSeries: (raw.groupedTimeSeries ?? raw.grouped_time_series) as WidgetData['groupedTimeSeries'],
-    groupedCategorical: (raw.groupedCategorical ?? raw.grouped_categorical) as WidgetData['groupedCategorical'],
-  };
-}
-
-function MiniDashboardPreview() {
-  return (
-    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/12 via-emerald-500/3 to-transparent p-1.5">
-      <div className="grid h-full grid-cols-3 grid-rows-2 gap-1">
-        <div className="col-span-1 row-span-1 flex items-center justify-center rounded-sm border border-emerald-500/20 bg-card/80">
-          <span className="text-[10px] font-bold tabular-nums text-emerald-600 dark:text-emerald-400">12k</span>
-        </div>
-        <div className="col-span-2 row-span-1 flex items-end gap-0.5 rounded-sm border border-emerald-500/20 bg-card/80 px-1 py-0.5">
-          {[40, 70, 30, 80, 55].map((h, i) => (
-            <div key={i} className="flex-1 rounded-[1px] bg-emerald-500/60" style={{ height: `${h}%` }} />
-          ))}
-        </div>
-        <div className="col-span-2 row-span-1 relative overflow-hidden rounded-sm border border-emerald-500/20 bg-card/80">
-          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 30" preserveAspectRatio="none">
-            <polyline
-              points="0,22 20,16 40,18 60,8 80,10 100,4"
-              fill="none"
-              stroke="rgb(16 185 129)"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-        </div>
-        <div className="col-span-1 row-span-1 flex items-center justify-center rounded-sm border border-emerald-500/20 bg-card/80">
-          <div
-            className="h-4 w-4 rounded-full"
-            style={{
-              background:
-                'conic-gradient(rgb(16 185 129) 0% 45%, rgb(16 185 129 / 0.55) 45% 75%, rgb(16 185 129 / 0.25) 75% 100%)',
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniBriefingPreview() {
-  return (
-    <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/12 via-indigo-500/3 to-transparent p-2">
-      <div className="flex h-full flex-col gap-1">
-        <div className="flex items-center justify-between border-b border-indigo-500/20 pb-0.5">
-          <span className="text-[7px] font-bold uppercase tracking-widest text-indigo-600/70 dark:text-indigo-400/70">
-            Briefing
-          </span>
-        </div>
-        <div className="space-y-0.5">
-          <div className="h-1 w-[80%] rounded-full bg-indigo-500/45" />
-          <div className="h-1 w-[55%] rounded-full bg-indigo-500/45" />
-        </div>
-        <div className="mt-0.5 space-y-0.5">
-          <div className="h-px w-full rounded-full bg-foreground/15" />
-          <div className="h-px w-full rounded-full bg-foreground/15" />
-          <div className="h-px w-[80%] rounded-full bg-foreground/15" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LayoutCard({
-  layout,
-  onClick,
-}: {
-  layout: ExplorerLayoutListItem;
-  onClick: () => void;
-}) {
-  return (
-    <CardShell kind="dashboard" onClick={onClick} ready preview={<MiniDashboardPreview />}>
-      <p className="truncate text-sm font-medium text-foreground">{layout.title}</p>
-      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-        dashboard · {timeAgo(layout.updated_at || layout.created_at)}
-      </p>
-    </CardShell>
-  );
-}
-
-function BriefingCard({
-  generatedAt,
-  onClick,
-}: {
-  generatedAt?: string;
-  onClick: () => void;
-}) {
-  const { label } = KIND_META.briefing;
-  return (
-    <CardShell kind="briefing" onClick={onClick} ready preview={<MiniBriefingPreview />}>
-      <p className="truncate text-sm font-medium text-foreground">{label}</p>
-      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-        {generatedAt ? `briefing · ${timeAgo(generatedAt)}` : 'briefing · ready'}
-      </p>
-    </CardShell>
-  );
-}
-
-function NamedSkeletonCard({
+function DeliverableRow({
   kind,
-  delay,
+  title,
+  meta,
+  ready,
+  onClick,
   animate,
+  delay,
+  isNew,
 }: {
   kind: DeliverableKind;
-  delay: number;
-  animate: boolean;
+  title: string;
+  meta: string;
+  ready: boolean;
+  onClick?: () => void;
+  animate?: boolean;
+  delay?: number;
+  isNew?: boolean;
 }) {
-  const { label, sublabel } = KIND_META[kind];
+  const { icon: Icon, iconTint } = KIND_VISUALS[kind];
+  const interactive = ready && !!onClick;
   return (
-    <div className="relative">
-      <CardShell kind={kind} ready={false}>
-        <p className="truncate text-sm font-medium text-foreground/80">{label}</p>
-        <p className="mt-0.5 truncate text-[11px] italic text-muted-foreground/80">{sublabel}</p>
-      </CardShell>
-      {animate && (
-        <div
-          className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] rounded-xl bg-gradient-to-r from-transparent via-muted/40 to-transparent"
-          style={{ animationDelay: `${delay}ms` }}
+    <li>
+      <button
+        onClick={interactive ? onClick : undefined}
+        disabled={!interactive}
+        className={cn(
+          'group relative flex w-full items-center gap-3 overflow-hidden px-2 py-2 text-left transition-colors',
+          interactive ? 'hover:bg-muted/30' : 'cursor-default',
+          isNew && 'animate-in fade-in slide-in-from-left-1 duration-500',
+        )}
+      >
+        <Icon
+          className={cn(
+            'h-4 w-4 shrink-0',
+            ready ? iconTint : 'text-muted-foreground/40',
+          )}
         />
-      )}
-    </div>
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-sm',
+            ready ? 'font-medium text-foreground' : 'text-foreground/70',
+          )}
+        >
+          {title}
+        </span>
+        {isNew && (
+          <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-primary ring-1 ring-primary/20">
+            New
+          </span>
+        )}
+        <span
+          className={cn(
+            'shrink-0 text-[11px] tabular-nums',
+            ready ? 'text-muted-foreground' : 'italic text-muted-foreground/70',
+          )}
+        >
+          {meta}
+        </span>
+        {!ready && <PendingPulse />}
+        {!ready && animate && (
+          <span
+            className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-muted/30 to-transparent"
+            style={{ animationDelay: `${delay ?? 0}ms` }}
+          />
+        )}
+      </button>
+    </li>
+  );
+}
+
+function PendingPulse() {
+  return (
+    <span className="relative inline-flex h-1.5 w-1.5 shrink-0">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-70" />
+      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-500" />
+    </span>
   );
 }

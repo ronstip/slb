@@ -194,59 +194,99 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
 }
 
 function EnrichmentOverlay({ post }: { post: FeedPost }) {
+  const themes = post.themes ?? [];
+  const entities = post.entities ?? [];
   const hasEnrichment =
     !!post.ai_summary ||
     !!post.sentiment ||
     !!post.emotion ||
-    (post.themes && post.themes.length > 0) ||
-    (post.entities && post.entities.length > 0);
+    themes.length > 0 ||
+    entities.length > 0;
 
   if (!hasEnrichment) return null;
 
-  const sentimentColor =
+  const sentimentDot =
     post.sentiment === 'positive'
-      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+      ? 'bg-emerald-500'
       : post.sentiment === 'negative'
-        ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-        : 'bg-slate-500/15 text-slate-300 border-slate-500/30';
-
-  const tags = [...(post.themes ?? []), ...(post.entities ?? [])].slice(0, 6);
+        ? 'bg-rose-500'
+        : 'bg-sky-500';
 
   return (
-    <div className="pointer-events-none absolute inset-0 flex flex-col gap-2 overflow-hidden rounded-xl bg-background/95 p-3 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
-      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        <Sparkles className="h-3 w-3 text-primary" />
-        AI insights
+    <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 overflow-hidden rounded-xl bg-gradient-to-br from-background/98 via-background/95 to-background/98 p-3 opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover:opacity-100">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+          <Sparkles className="h-3 w-3 text-primary" />
+          AI insights
+        </div>
+        {(post.sentiment || post.emotion) && (
+          <div className="flex items-center gap-1.5 text-[10px] text-foreground/75">
+            {post.sentiment && (
+              <span className="flex items-center gap-1">
+                <span className={cn('inline-block h-1.5 w-1.5 rounded-full', sentimentDot)} />
+                <span className="capitalize">{post.sentiment}</span>
+              </span>
+            )}
+            {post.sentiment && post.emotion && (
+              <span className="text-muted-foreground/40">·</span>
+            )}
+            {post.emotion && <span className="capitalize">{post.emotion}</span>}
+          </div>
+        )}
       </div>
-      {(post.sentiment || post.emotion) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {post.sentiment && (
-            <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize', sentimentColor)}>
-              {post.sentiment}
-            </span>
-          )}
-          {post.emotion && (
-            <span className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium capitalize text-foreground/80">
-              {post.emotion}
-            </span>
-          )}
-        </div>
-      )}
+
       {post.ai_summary && (
-        <p className="line-clamp-4 text-xs leading-relaxed text-foreground/90">{post.ai_summary}</p>
+        <p className="line-clamp-4 text-[12px] leading-relaxed text-foreground/90">
+          {post.ai_summary}
+        </p>
       )}
-      {tags.length > 0 && (
-        <div className="mt-auto flex flex-wrap gap-1">
-          {tags.map((t) => (
-            <span
-              key={t}
-              className="rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-            >
-              {t}
+
+      <div className="mt-auto flex flex-col gap-1.5">
+        {entities.length > 0 && (
+          <div className="flex items-baseline gap-2">
+            <span className="w-14 shrink-0 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              Mentions
             </span>
-          ))}
-        </div>
-      )}
+            <div className="flex flex-wrap gap-1">
+              {entities.slice(0, 5).map((e) => (
+                <span
+                  key={`e-${e}`}
+                  className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-foreground/85"
+                >
+                  {e}
+                </span>
+              ))}
+              {entities.length > 5 && (
+                <span className="self-center text-[10px] leading-none text-muted-foreground/60">
+                  +{entities.length - 5}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        {themes.length > 0 && (
+          <div className="flex items-baseline gap-2">
+            <span className="w-14 shrink-0 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              Topics
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {themes.slice(0, 5).map((t) => (
+                <span
+                  key={`t-${t}`}
+                  className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-foreground/85"
+                >
+                  {t}
+                </span>
+              ))}
+              {themes.length > 5 && (
+                <span className="self-center text-[10px] leading-none text-muted-foreground/60">
+                  +{themes.length - 5}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
