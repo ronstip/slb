@@ -156,11 +156,15 @@ export interface VolumePoint {
   post_count: number;
 }
 
-export function aggregateVolume(posts: DashboardPost[]): VolumePoint[] {
+export function aggregateVolume(
+  posts: DashboardPost[],
+  bucket: 'day' | 'hour' = 'day',
+): VolumePoint[] {
   const map = new Map<string, number>();
+  const sliceLen = bucket === 'hour' ? 13 : 10;
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.slice(0, 10); // YYYY-MM-DD
+    const date = p.posted_at.replace(' ', 'T').slice(0, sliceLen); // YYYY-MM-DD or YYYY-MM-DDTHH
     const key = `${date}|${p.platform}`;
     map.set(key, (map.get(key) || 0) + 1);
   }
@@ -254,19 +258,23 @@ export interface SentimentTimePoint {
   mixed: number;
 }
 
-export function aggregateSentimentOverTime(posts: DashboardPost[]): SentimentTimePoint[] {
+export function aggregateSentimentOverTime(
+  posts: DashboardPost[],
+  bucket: 'day' | 'hour' = 'day',
+): SentimentTimePoint[] {
   const map = new Map<string, { positive: number; negative: number; neutral: number; mixed: number }>();
+  const sliceLen = bucket === 'hour' ? 13 : 10;
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.slice(0, 10);
-    const bucket = map.get(date) ?? { positive: 0, negative: 0, neutral: 0, mixed: 0 };
-    const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof bucket;
-    if (s in bucket) bucket[s] += 1;
-    else bucket.neutral += 1;
-    map.set(date, bucket);
+    const date = p.posted_at.replace(' ', 'T').slice(0, sliceLen);
+    const counts = map.get(date) ?? { positive: 0, negative: 0, neutral: 0, mixed: 0 };
+    const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof counts;
+    if (s in counts) counts[s] += 1;
+    else counts.neutral += 1;
+    map.set(date, counts);
   }
   return [...map.entries()]
-    .map(([date, counts]) => ({ date, ...counts }))
+    .map(([date, c]) => ({ date, ...c }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -325,11 +333,15 @@ export interface EngagementRatePoint {
   total_views: number;
 }
 
-export function aggregateEngagementRate(posts: DashboardPost[]): EngagementRatePoint[] {
+export function aggregateEngagementRate(
+  posts: DashboardPost[],
+  bucket: 'day' | 'hour' = 'day',
+): EngagementRatePoint[] {
   const map = new Map<string, { engagement: number; views: number }>();
+  const sliceLen = bucket === 'hour' ? 13 : 10;
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.slice(0, 10);
+    const date = p.posted_at.replace(' ', 'T').slice(0, sliceLen);
     const cur = map.get(date) ?? { engagement: 0, views: 0 };
     cur.engagement += p.like_count + p.comment_count + p.share_count;
     cur.views += p.view_count;

@@ -14,9 +14,16 @@ const chartConfig: ChartConfig = {
 
 interface SentimentLineChartProps {
   data: SentimentTimePoint[];
+  tickFormatter?: (d: string) => string;
 }
 
-export function SentimentLineChart({ data }: SentimentLineChartProps) {
+const defaultDayTick = (d: string) => {
+  const parts = d.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[parseInt(parts[1]) - 1]} ${parseInt(parts[2])}`;
+};
+
+export function SentimentLineChart({ data, tickFormatter }: SentimentLineChartProps) {
   if (data.length === 0) return null;
 
   return (
@@ -38,11 +45,7 @@ export function SentimentLineChart({ data }: SentimentLineChartProps) {
             axisLine={false}
             tickMargin={8}
             tick={{ fontSize: 10 }}
-            tickFormatter={(d: string) => {
-              const parts = d.split('-');
-              const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-              return `${months[parseInt(parts[1]) - 1]} ${parseInt(parts[2])}`;
-            }}
+            tickFormatter={tickFormatter ?? defaultDayTick}
           />
           <YAxis
             tickLine={false}

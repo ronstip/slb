@@ -11,6 +11,7 @@ import { DeliverablesPanel } from './overview/DeliverablesPanel.tsx';
 import { EmergingTopicsPreview } from './overview/EmergingTopicsPreview.tsx';
 import { EntitiesCard } from './overview/EntitiesCard.tsx';
 import { TopicsMosaic } from './overview/TopicsMosaic.tsx';
+import { TrendCard } from './overview/TrendCard.tsx';
 import { ChatPanel } from '../../../chat/ChatPanel.tsx';
 import { StudioActionsPanel } from '../../../studio/StudioActionsPanel.tsx';
 import { useAgentKickoff, KickoffMessage } from '../kickoff.tsx';
@@ -90,6 +91,13 @@ export function AgentOverviewTab({
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
                 onOpenData={() => onTabChange('data')}
+              />
+              <TrendCard
+                agentId={task.agent_id}
+                collectionIds={collectionIds}
+                isAgentRunning={isRunning}
+                customFields={task.data_scope?.custom_fields}
+                searches={task.data_scope?.searches}
               />
               <TopicsMosaic
                 agentId={task.agent_id}
