@@ -57,7 +57,7 @@ export function AgentBriefingTab({ task }: AgentBriefingTabProps) {
 
   const openStory = (story: Story) => {
     if (story.type === 'topic') {
-      setSearchParams({ tab: 'topics', topic: story.topic_id }, { replace: false });
+      setSearchParams({}, { replace: false });
     }
     // Data stories don't link to a topic — no-op for now.
   };

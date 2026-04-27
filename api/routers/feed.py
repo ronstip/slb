@@ -73,6 +73,10 @@ async def get_multi_collection_feed(
         where_clauses.append("p.posted_at >= TIMESTAMP(@start_date)")
         params["start_date"] = request.start_date
 
+    if request.end_date:
+        where_clauses.append("p.posted_at <= TIMESTAMP(@end_date)")
+        params["end_date"] = request.end_date
+
     if request.has_media:
         # Posts where at least one media_ref has a usable URL (GCS URI or valid original URL)
         where_clauses.append(

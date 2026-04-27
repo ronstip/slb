@@ -5,6 +5,7 @@ import type { Agent } from '../../../../api/endpoints/agents.ts';
 import { listCollections, downloadCollection } from '../../../../api/endpoints/collections.ts';
 import { mapCollectionToSource } from '../../../collections/utils.ts';
 import { PostsDataPanel } from '../../../collections/PostsDataPanel.tsx';
+import { computeWindowStart } from './overview/overview-filters.ts';
 import { Input } from '../../../../components/ui/input.tsx';
 import { Button } from '../../../../components/ui/button.tsx';
 import type { Source } from '../../../../stores/sources-store.ts';
@@ -46,6 +47,11 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
     for (const c of collections) map.set(c.collectionId, c.title);
     return map;
   }, [collections]);
+
+  const startDate = useMemo(
+    () => computeWindowStart(task.searches).startDate,
+    [task.searches],
+  );
 
   if (taskCollectionIds.size === 0) {
     return (
@@ -107,6 +113,7 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
         collections={collections}
         globalSearch={globalSearch}
         dedup={allCollectionIds.length > 1}
+        startDate={startDate ?? undefined}
       />
     </div>
   );

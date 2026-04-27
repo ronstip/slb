@@ -70,7 +70,8 @@ class MultiFeedRequest(BaseModel):
     topic_cluster_id: str | None = None
     has_media: bool = False
     dedup: bool = True
-    start_date: str | None = None  # YYYY-MM-DD; lower-bound on p.posted_at
+    start_date: str | None = None  # ISO datetime or YYYY-MM-DD; lower-bound on p.posted_at
+    end_date: str | None = None  # ISO datetime or YYYY-MM-DD; upper-bound on p.posted_at
 
 
 class DashboardDataRequest(BaseModel):

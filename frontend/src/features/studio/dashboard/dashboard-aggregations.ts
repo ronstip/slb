@@ -187,15 +187,26 @@ export interface VolumePoint {
   post_count: number;
 }
 
+function localBucketKey(rawTimestamp: string, bucket: 'day' | 'hour'): string | null {
+  const d = new Date(rawTimestamp);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  if (bucket === 'day') return `${y}-${m}-${day}`;
+  const h = String(d.getHours()).padStart(2, '0');
+  return `${y}-${m}-${day}T${h}`;
+}
+
 export function aggregateVolume(
   posts: DashboardPost[],
   bucket: 'day' | 'hour' = 'day',
 ): VolumePoint[] {
   const map = new Map<string, number>();
-  const sliceLen = bucket === 'hour' ? 13 : 10;
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.replace(' ', 'T').slice(0, sliceLen); // YYYY-MM-DD or YYYY-MM-DDTHH
+    const date = localBucketKey(p.posted_at, bucket);
+    if (!date) continue;
     const key = `${date}|${p.platform}`;
     map.set(key, (map.get(key) || 0) + 1);
   }
@@ -294,10 +305,10 @@ export function aggregateSentimentOverTime(
   bucket: 'day' | 'hour' = 'day',
 ): SentimentTimePoint[] {
   const map = new Map<string, { positive: number; negative: number; neutral: number; mixed: number }>();
-  const sliceLen = bucket === 'hour' ? 13 : 10;
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.replace(' ', 'T').slice(0, sliceLen);
+    const date = localBucketKey(p.posted_at, bucket);
+    if (!date) continue;
     const counts = map.get(date) ?? { positive: 0, negative: 0, neutral: 0, mixed: 0 };
     const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof counts;
     if (s in counts) counts[s] += 1;
@@ -369,10 +380,10 @@ export function aggregateEngagementRate(
   bucket: 'day' | 'hour' = 'day',
 ): EngagementRatePoint[] {
   const map = new Map<string, { engagement: number; views: number }>();
-  const sliceLen = bucket === 'hour' ? 13 : 10;
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.replace(' ', 'T').slice(0, sliceLen);
+    const date = localBucketKey(p.posted_at, bucket);
+    if (!date) continue;
     const cur = map.get(date) ?? { engagement: 0, views: 0 };
     cur.engagement += p.like_count + p.comment_count + p.share_count;
     cur.views += p.view_count;

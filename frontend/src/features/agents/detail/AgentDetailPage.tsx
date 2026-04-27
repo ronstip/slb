@@ -18,7 +18,6 @@ import { AgentChatTab } from './tabs/AgentChatTab.tsx';
 import { AgentCollectionsTab } from './tabs/AgentCollectionsTab.tsx';
 import { AgentArtifactsTab } from './tabs/AgentArtifactsTab.tsx';
 import { AgentExplorerTab } from './tabs/AgentExplorerTab.tsx';
-import { AgentTopicsTab } from './tabs/AgentTopicsTab.tsx';
 import { AgentBriefingTab } from './tabs/AgentBriefingTab.tsx';
 import { RUNNABLE_STATUSES } from './agent-status-utils.tsx';
 import {
@@ -32,7 +31,7 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'briefing', 'chat', 'data', 'topics', 'artifacts', 'explorer', 'settings'];
+const VALID_TABS: DetailTab[] = ['overview', 'briefing', 'chat', 'data', 'artifacts', 'explorer', 'settings'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -95,7 +94,7 @@ export function AgentDetailPage() {
   }, [task]);
 
   // Initialise a fresh agent session once per agent. Lifted to the parent so
-  // every tab that mounts a chat (Overview, Topics, Chat) shares one session
+  // every tab that mounts a chat (Overview, Chat) shares one session
   // and tab-switches don't reset chat state.
   const sessionInitRef = useRef<string | null>(null);
   useEffect(() => {
@@ -275,7 +274,6 @@ export function AgentDetailPage() {
           {activeTab === 'briefing' && <AgentBriefingTab task={task} />}
           {activeTab === 'chat' && <AgentChatTab task={task} />}
           {activeTab === 'data' && <AgentCollectionsTab task={task} />}
-          {activeTab === 'topics' && <AgentTopicsTab task={task} />}
           {activeTab === 'artifacts' && (
             <AgentArtifactsTab task={task} artifacts={artifacts} />
           )}

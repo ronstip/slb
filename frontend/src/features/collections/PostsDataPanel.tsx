@@ -28,6 +28,7 @@ import {
 } from './collectionsPostColumns.tsx';
 import { PLATFORMS, PLATFORM_LABELS, SENTIMENT_COLORS } from '../../lib/constants.ts';
 import type { Source } from '../../stores/sources-store.ts';
+import { DateTimeRangeFilter, type DateTimeRange } from './DateTimeRangeFilter.tsx';
 
 interface PostsDataPanelProps {
   selectedCollectionIds: string[];
@@ -35,6 +36,8 @@ interface PostsDataPanelProps {
   collections?: Source[];
   globalSearch: string;
   dedup?: boolean;
+  /** Default lower bound on `posted_at` (the agent's search-window start). User-picked dateRange overrides it. */
+  startDate?: string;
   /** Legacy callback props — still accepted but optional */
   onActiveFiltersChange?: (active: boolean) => void;
   onClearFiltersCallbackChange?: (cb: (() => void) | null) => void;
@@ -46,6 +49,7 @@ export function PostsDataPanel({
   collections,
   globalSearch,
   dedup,
+  startDate,
 }: PostsDataPanelProps) {
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>(createEmptyFilters);
 
@@ -57,6 +61,7 @@ export function PostsDataPanel({
   const [platformFilter, setPlatformFilter] = useState('all');
   const [sentimentFilter, setSentimentFilter] = useState('all');
   const [relevantFilter, setRelevantFilter] = useState('true');
+  const [dateRange, setDateRange] = useState<DateTimeRange>({ from: null, to: null });
 
   // Compute effective collection IDs based on source filter
   const effectiveCollectionIds = useMemo(() => {
@@ -66,8 +71,12 @@ export function PostsDataPanel({
 
   const hasSelection = effectiveCollectionIds.length > 0;
 
+  // User-picked range wins; otherwise fall back to the agent's search window so
+  // this view stays aligned with the overview's Live feed counter.
+  const effectiveStartDate = dateRange.from ?? startDate;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, relevantFilter],
+    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, relevantFilter, effectiveStartDate, dateRange.to],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: effectiveCollectionIds,
@@ -78,6 +87,8 @@ export function PostsDataPanel({
         platform: platformFilter !== 'all' ? platformFilter : undefined,
         sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
         relevant_to_task: relevantFilter,
+        start_date: effectiveStartDate ?? undefined,
+        end_date: dateRange.to ?? undefined,
       }),
     enabled: hasSelection,
     staleTime: 30_000,
@@ -89,7 +100,7 @@ export function PostsDataPanel({
   // filter, otherwise the metric is circular (e.g. 100% under "Relevant only").
   // Only fires when a relevance filter is active; otherwise we reuse allPosts.
   const { data: relevanceData } = useQuery({
-    queryKey: ['collection-posts-relevance', effectiveCollectionIds, dedup, platformFilter, sentimentFilter],
+    queryKey: ['collection-posts-relevance', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, dateRange.to],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: effectiveCollectionIds,
@@ -100,6 +111,8 @@ export function PostsDataPanel({
         platform: platformFilter !== 'all' ? platformFilter : undefined,
         sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
         relevant_to_task: 'all',
+        start_date: effectiveStartDate ?? undefined,
+        end_date: dateRange.to ?? undefined,
       }),
     enabled: hasSelection && relevantFilter !== 'all',
     staleTime: 30_000,
@@ -135,13 +148,16 @@ export function PostsDataPanel({
     setPlatformFilter('all');
     setSentimentFilter('all');
     setRelevantFilter('true');
+    setDateRange({ from: null, to: null });
   }, []);
 
   const hasAnyTopFilter =
     sourceFilter !== 'all' ||
     platformFilter !== 'all' ||
     sentimentFilter !== 'all' ||
-    relevantFilter !== 'true';
+    relevantFilter !== 'true' ||
+    dateRange.from !== null ||
+    dateRange.to !== null;
   const hasAnyFilter = hasAnyTopFilter || hasActiveFilters(columnFilters);
 
   // Build columns
@@ -264,6 +280,9 @@ export function PostsDataPanel({
           </SelectContent>
         </Select>
 
+        {/* Date range filter */}
+        <DateTimeRangeFilter value={dateRange} onChange={setDateRange} />
+
         {/* Sentiment filter */}
         <Select value={sentimentFilter} onValueChange={setSentimentFilter}>
           <SelectTrigger className="h-7 w-auto min-w-[120px] text-xs gap-1.5 bg-background">
@@ -374,6 +393,7 @@ export function PostsDataPanel({
             sentiment={sentimentFilter !== 'all' ? sentimentFilter : undefined}
             relevantToTask={relevantFilter}
             dedup={dedup}
+            startDate={effectiveStartDate ?? undefined}
             variant="wide"
           />
         </div>

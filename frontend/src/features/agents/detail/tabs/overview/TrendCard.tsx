@@ -89,7 +89,13 @@ export function TrendCard({
     if (window.days != null && window.days <= 1) return 'hour';
     const days = new Set<string>();
     for (const p of posts) {
-      if (p.posted_at) days.add(p.posted_at.slice(0, 10));
+      if (!p.posted_at) continue;
+      const d = new Date(p.posted_at);
+      if (Number.isNaN(d.getTime())) continue;
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      days.add(`${y}-${m}-${day}`);
       if (days.size > 1) break;
     }
     return days.size <= 1 ? 'hour' : 'day';
