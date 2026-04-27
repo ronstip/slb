@@ -1,29 +1,29 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Tag } from 'lucide-react';
-import { getDashboardData } from '../../../../../api/endpoints/dashboard.ts';
 import { aggregateEntities } from '../../../../studio/dashboard/dashboard-aggregations.ts';
 import { EntityTable } from '../../../../studio/charts/EntityTable.tsx';
 import type { EntitySummary } from '../../../../../api/types.ts';
+import type { SearchDef } from '../../../../../api/endpoints/agents.ts';
+import { useOverviewDashboardData } from './useOverviewDashboardData.ts';
 
 interface EntitiesCardProps {
   collectionIds: string[];
   isAgentRunning: boolean;
+  searches?: SearchDef[];
   onOpenData: () => void;
 }
 
-export function EntitiesCard({ collectionIds, isAgentRunning, onOpenData }: EntitiesCardProps) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['dashboard-data', ...collectionIds],
-    queryFn: () => getDashboardData(collectionIds),
-    enabled: collectionIds.length > 0,
-    staleTime: 60_000,
-    refetchInterval: isAgentRunning ? 30_000 : false,
-  });
+export function EntitiesCard({
+  collectionIds,
+  isAgentRunning,
+  searches,
+  onOpenData,
+}: EntitiesCardProps) {
+  const { posts, isLoading } = useOverviewDashboardData(collectionIds, searches, isAgentRunning);
 
   const entities = useMemo(
-    () => aggregateEntities(data?.posts ?? []) as unknown as EntitySummary[],
-    [data?.posts],
+    () => aggregateEntities(posts) as unknown as EntitySummary[],
+    [posts],
   );
 
   return (

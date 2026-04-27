@@ -69,6 +69,10 @@ async def get_multi_collection_feed(
     elif request.relevant_to_task == "false":
         where_clauses.append("ep.is_related_to_task = FALSE")
 
+    if request.start_date:
+        where_clauses.append("p.posted_at >= TIMESTAMP(@start_date)")
+        params["start_date"] = request.start_date
+
     if request.has_media:
         # Posts where at least one media_ref has a usable URL (GCS URI or valid original URL)
         where_clauses.append(
@@ -117,6 +121,8 @@ async def get_multi_collection_feed(
         COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
         ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields,
         ep.context, ep.is_related_to_task, ep.detected_brands, ep.channel_type,
+        SAFE_CAST(JSON_VALUE(p.platform_metadata, '$.is_retweet') AS BOOL) as is_retweet,
+        SAFE_CAST(JSON_VALUE(p.platform_metadata, '$.is_quote_status') AS BOOL) as is_quote,
         COUNT(*) OVER() as _total
     FROM {posts_subquery} p
     LEFT JOIN (
@@ -197,6 +203,8 @@ async def get_multi_collection_feed(
                 detected_brands=row.get("detected_brands") if isinstance(row.get("detected_brands"), list) else [],
                 channel_type=row.get("channel_type"),
                 collection_id=row.get("collection_id"),
+                is_retweet=row.get("is_retweet"),
+                is_quote=row.get("is_quote"),
             )
         )
 

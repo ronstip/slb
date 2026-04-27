@@ -1,24 +1,53 @@
-import { useEffect, useRef } from 'react';
-import { useInfiniteQuery, useQueries } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef } from 'react';
+import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 import { MessageSquare, Play, Sparkles } from 'lucide-react';
 import { getMultiCollectionPosts } from '../../../../../api/endpoints/feed.ts';
 import { getCollectionStatus } from '../../../../../api/endpoints/collections.ts';
 import { mediaUrl } from '../../../../../api/client.ts';
 import type { FeedPost } from '../../../../../api/types.ts';
+import type { SearchDef } from '../../../../../api/endpoints/agents.ts';
 import { PlatformIcon } from '../../../../../components/PlatformIcon.tsx';
 import { formatNumber, timeAgo } from '../../../../../lib/format.ts';
 import { cn } from '../../../../../lib/utils.ts';
+import { computeWindowStart } from './overview-filters.ts';
 
 interface LivePostStreamProps {
   collectionIds: string[];
   isAgentRunning: boolean;
+  searches?: SearchDef[];
   onOpenData: () => void;
 }
 
-export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: LivePostStreamProps) {
+export function LivePostStream({
+  collectionIds,
+  isAgentRunning,
+  searches,
+  onOpenData,
+}: LivePostStreamProps) {
   const statusQueries = useCollectionStatusQueries(collectionIds);
   const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
-  const totalPosts = statusQueries.reduce((sum, q) => sum + (q.data?.posts_collected ?? 0), 0);
+
+  const startDate = useMemo(() => computeWindowStart(searches).startDate, [searches]);
+
+  // Count must match what the grid below renders: in time-range AND task-relevant.
+  // Same params as PostsFeedGrid defaults (dedup=true, relevant_to_task='true').
+  const { data: countData } = useQuery({
+    queryKey: ['live-feed-count', [...collectionIds].sort().join(','), startDate ?? ''],
+    queryFn: () =>
+      getMultiCollectionPosts({
+        collection_ids: collectionIds,
+        sort: 'views',
+        limit: 1,
+        offset: 0,
+        dedup: true,
+        relevant_to_task: 'true',
+        start_date: startDate ?? undefined,
+      }),
+    enabled: collectionIds.length > 0,
+    staleTime: 10_000,
+    refetchInterval: isAgentRunning || anyCollecting ? 10_000 : false,
+  });
+  const totalPosts = countData?.total ?? 0;
 
   if (collectionIds.length === 0) {
     return (
@@ -42,7 +71,7 @@ export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: Li
             </span>
           )}
           <span>
-            {formatNumber(totalPosts)} post{totalPosts === 1 ? '' : 's'}
+            {formatNumber(totalPosts)} relevant post{totalPosts === 1 ? '' : 's'}
             {collectionIds.length > 1 && ` · ${collectionIds.length} sources`}
           </span>
         </span>
@@ -52,6 +81,7 @@ export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: Li
       <PostsFeedGrid
         collectionIds={collectionIds}
         isAgentRunning={isAgentRunning}
+        startDate={startDate ?? undefined}
         variant="compact"
       />
     </Section>
@@ -65,6 +95,7 @@ interface PostsFeedGridProps {
   sentiment?: string;
   relevantToTask?: string;
   dedup?: boolean;
+  startDate?: string;
   variant?: 'compact' | 'wide';
 }
 
@@ -90,6 +121,7 @@ export function PostsFeedGrid({
   sentiment,
   relevantToTask = 'true',
   dedup = true,
+  startDate,
   variant = 'compact',
 }: PostsFeedGridProps) {
   const statusQueries = useCollectionStatusQueries(collectionIds);
@@ -103,6 +135,7 @@ export function PostsFeedGrid({
     sentiment ?? 'all',
     relevantToTask,
     dedup,
+    startDate ?? '',
   ];
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
@@ -117,6 +150,7 @@ export function PostsFeedGrid({
         platform,
         sentiment,
         relevant_to_task: relevantToTask,
+        start_date: startDate,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
@@ -186,6 +220,12 @@ export function PostsFeedGrid({
   );
 }
 
+function textPostLabel(post: FeedPost): string {
+  if (post.is_retweet) return 'retweet';
+  if (post.is_quote) return 'quote';
+  return 'textual post';
+}
+
 function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
   const media = post.media_refs?.find((m) => m.media_type === 'image' || m.media_type === 'video');
   const isVideo = media?.media_type === 'video';
@@ -231,8 +271,9 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
             )}
           </>
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/40 via-muted/20 to-muted/40">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-muted/40 via-muted/20 to-muted/40">
             <PlatformIcon platform={post.platform} className="h-8 w-8 text-muted-foreground/30" />
+            <span className="text-[11px] text-muted-foreground/70">{textPostLabel(post)}</span>
           </div>
         )}
       </div>

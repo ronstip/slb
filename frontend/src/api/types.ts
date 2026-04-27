@@ -236,6 +236,8 @@ export interface FeedPost {
   detected_brands?: string[];
   channel_type?: string;
   collection_id?: string;
+  is_retweet?: boolean | null;
+  is_quote?: boolean | null;
 }
 
 export interface FeedResponse {
@@ -256,6 +258,7 @@ export interface MultiFeedParams {
   topic_cluster_id?: string;
   has_media?: boolean;
   dedup?: boolean;
+  start_date?: string;
 }
 
 export interface BreakdownItem {

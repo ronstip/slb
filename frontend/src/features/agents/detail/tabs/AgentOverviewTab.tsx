@@ -10,6 +10,7 @@ import { LivePostStream } from './overview/LivePostStream.tsx';
 import { DeliverablesPanel } from './overview/DeliverablesPanel.tsx';
 import { EmergingTopicsPreview } from './overview/EmergingTopicsPreview.tsx';
 import { EntitiesCard } from './overview/EntitiesCard.tsx';
+import { ChannelMixCard } from './overview/ChannelMixCard.tsx';
 import { TopicsMosaic } from './overview/TopicsMosaic.tsx';
 import { TrendCard } from './overview/TrendCard.tsx';
 import { ChatPanel } from '../../../chat/ChatPanel.tsx';
@@ -88,6 +89,7 @@ export function AgentOverviewTab({
               <LivePostStream
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
+                searches={task.data_scope?.searches}
                 onOpenData={() => onTabChange('data')}
               />
               <TrendCard
@@ -135,6 +137,13 @@ export function AgentOverviewTab({
               <EntitiesCard
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
+                searches={task.data_scope?.searches}
+                onOpenData={() => onTabChange('data')}
+              />
+              <ChannelMixCard
+                collectionIds={collectionIds}
+                isAgentRunning={isRunning}
+                searches={task.data_scope?.searches}
                 onOpenData={() => onTabChange('data')}
               />
             </div>

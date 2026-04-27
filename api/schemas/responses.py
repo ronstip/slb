@@ -46,6 +46,8 @@ class FeedPostResponse(BaseModel):
     detected_brands: list[str] = []
     channel_type: str | None = None
     collection_id: str | None = None
+    is_retweet: bool | None = None
+    is_quote: bool | None = None
 
 
 class FeedResponse(BaseModel):

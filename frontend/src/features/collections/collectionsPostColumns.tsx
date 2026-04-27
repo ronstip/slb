@@ -4,7 +4,6 @@ import type { FilterOption } from './ColumnFilterHeader.tsx';
 import {
   ExternalLinkCell,
   SentimentBadge,
-  ThemeChips,
   EntityChips,
   parseStringList,
 } from '../../components/DataTable/cells.tsx';
@@ -198,12 +197,12 @@ export function collectionsPostColumns(
   ];
 
   cols.push(
-    // Platform
+    // Source — platform icon + handle, filterable by platform
     {
-      key: 'platform',
+      key: 'source',
       header: (
         <MultiSelectFilterHeader
-          label="Platform"
+          label="Source"
           options={filterOptions.platforms}
           selected={filters.platform}
           onChange={(v) => setFilter('platform', v)}
@@ -215,31 +214,13 @@ export function collectionsPostColumns(
           )}
         />
       ),
-      width: 'w-[7%]',
+      width: 'w-[12%]',
       render: (row) => (
         <span className="flex items-center gap-1.5 truncate">
           <PlatformIcon platform={row.platform} className="h-3.5 w-3.5 shrink-0" />
-          <span className="text-[11px] text-muted-foreground truncate">{PLATFORM_LABELS[row.platform] || row.platform}</span>
+          <span className="text-xs font-medium text-foreground/80 truncate">@{row.channel_handle}</span>
         </span>
       ),
-    },
-
-    // Handle — now multi-select
-    {
-      key: 'handle',
-      header: (
-        <MultiSelectFilterHeader
-          label="Handle"
-          options={filterOptions.handles}
-          selected={filters.handle}
-          onChange={(v) => setFilter('handle', v)}
-          renderOption={(h) => (
-            <span className="truncate text-[11px]">@{h}</span>
-          )}
-        />
-      ),
-      width: 'w-[8%]',
-      render: (row) => <span className="truncate text-xs font-medium text-foreground/80">@{row.channel_handle}</span>,
     },
 
     // Content / AI Summary — stays as text search
@@ -247,7 +228,7 @@ export function collectionsPostColumns(
       key: 'summary',
       header: (
         <TextFilterHeader
-          label="Content"
+          label="AI Summary"
           value={filters.content}
           onChange={(v) => setFilter('content', v)}
         />
@@ -266,7 +247,7 @@ export function collectionsPostColumns(
     {
       key: 'posted_at',
       header: 'Posted',
-      width: 'w-[6%]',
+      width: 'w-[7%]',
       sortable: true,
       render: (row) => <span className="truncate text-xs text-muted-foreground">{timeAgo(row.posted_at)}</span>,
     },
@@ -275,30 +256,10 @@ export function collectionsPostColumns(
     {
       key: 'views',
       header: 'Views',
-      width: 'w-[6%]',
+      width: 'w-[7%]',
       align: 'right' as const,
       sortable: true,
       render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.views ?? 0)}</span>,
-    },
-
-    // Likes
-    {
-      key: 'likes',
-      header: 'Likes',
-      width: 'w-[6%]',
-      align: 'right' as const,
-      sortable: true,
-      render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.likes ?? 0)}</span>,
-    },
-
-    // Comments
-    {
-      key: 'comments_count',
-      header: 'Comments',
-      width: 'w-[6%]',
-      align: 'right' as const,
-      sortable: true,
-      render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.comments_count ?? 0)}</span>,
     },
 
     // Sentiment
@@ -318,106 +279,8 @@ export function collectionsPostColumns(
           )}
         />
       ),
-      width: 'w-[7%]',
-      render: (row) => <SentimentBadge sentiment={row.sentiment} />,
-    },
-
-    // Emotion
-    {
-      key: 'emotion',
-      header: (
-        <MultiSelectFilterHeader
-          label="Emotion"
-          options={filterOptions.emotions}
-          selected={filters.emotion}
-          onChange={(v) => setFilter('emotion', v)}
-        />
-      ),
-      width: 'w-[6%]',
-      render: (row) => (
-        <span className="truncate text-xs capitalize text-muted-foreground">
-          {row.emotion || '---'}
-        </span>
-      ),
-    },
-
-    // Content Type
-    {
-      key: 'content_type',
-      header: (
-        <MultiSelectFilterHeader
-          label="Type"
-          options={filterOptions.contentTypes}
-          selected={filters.contentType}
-          onChange={(v) => setFilter('contentType', v)}
-        />
-      ),
-      width: 'w-[6%]',
-      render: (row) => (
-        <span className="truncate text-xs capitalize text-muted-foreground">
-          {row.content_type || '---'}
-        </span>
-      ),
-    },
-
-    // Themes — now multi-select
-    {
-      key: 'themes',
-      header: (
-        <MultiSelectFilterHeader
-          label="Themes"
-          options={filterOptions.themes}
-          selected={filters.themes}
-          onChange={(v) => setFilter('themes', v)}
-        />
-      ),
-      width: 'w-[9%]',
-      render: (row) => <ThemeChips themes={parseStringList(row.themes)} />,
-    },
-
-    // Entities — now multi-select
-    {
-      key: 'entities',
-      header: (
-        <MultiSelectFilterHeader
-          label="Entities"
-          options={filterOptions.entities}
-          selected={filters.entities}
-          onChange={(v) => setFilter('entities', v)}
-        />
-      ),
-      width: 'w-[9%]',
-      render: (row) => <EntityChips entities={parseStringList(row.entities)} />,
-    },
-
-    // Brands — now multi-select
-    {
-      key: 'detected_brands',
-      header: (
-        <MultiSelectFilterHeader
-          label="Brands"
-          options={filterOptions.brands}
-          selected={filters.brands}
-          onChange={(v) => setFilter('brands', v)}
-        />
-      ),
       width: 'w-[8%]',
-      render: (row) => {
-        const brands = row.detected_brands ?? [];
-        if (brands.length === 0) return <span className="text-xs text-muted-foreground">---</span>;
-        return (
-          <div className="flex flex-wrap gap-0.5">
-            {brands.slice(0, 3).map((b) => (
-              <span key={b} className="inline-block rounded-full bg-violet-500/10 px-1.5 py-0 text-[10px] font-medium text-violet-600 truncate max-w-[80px]">
-                {b}
-              </span>
-            ))}
-            {brands.length > 3 && (
-              <span className="text-[9px] text-muted-foreground">+{brands.length - 3}</span>
-            )}
-          </div>
-        );
-      },
+      render: (row) => <SentimentBadge sentiment={row.sentiment} />,
     },
 
     // Channel Type
@@ -431,7 +294,7 @@ export function collectionsPostColumns(
           onChange={(v) => setFilter('channelType', v)}
         />
       ),
-      width: 'w-[5%]',
+      width: 'w-[6%]',
       render: (row) => {
         const ct = row.channel_type;
         if (!ct) return <span className="text-xs text-muted-foreground">---</span>;
@@ -446,6 +309,21 @@ export function collectionsPostColumns(
           </span>
         );
       },
+    },
+
+    // Entities — multi-select
+    {
+      key: 'entities',
+      header: (
+        <MultiSelectFilterHeader
+          label="Entities"
+          options={filterOptions.entities}
+          selected={filters.entities}
+          onChange={(v) => setFilter('entities', v)}
+        />
+      ),
+      width: 'w-[10%]',
+      render: (row) => <EntityChips entities={parseStringList(row.entities)} />,
     },
   );
 

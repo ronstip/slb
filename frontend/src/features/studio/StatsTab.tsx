@@ -13,6 +13,8 @@ import {
   aggregateEntities,
   aggregateEmotions,
   aggregateThemes,
+  aggregateChannelTypeViews,
+  SENT_KEYS,
 } from './dashboard/dashboard-aggregations.ts';
 import { SentimentBar } from './charts/SentimentBar.tsx';
 import { VolumeChart } from './charts/VolumeChart.tsx';
@@ -29,25 +31,6 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
       {children}
     </h3>
   );
-}
-
-const SENT_KEYS = ['positive', 'neutral', 'mixed', 'negative'] as const;
-
-/** Aggregate views by channel_type, broken down by sentiment. */
-function aggregateChannelTypeViews(posts: DashboardPost[]) {
-  const map = new Map<string, { total: number; positive: number; negative: number; neutral: number; mixed: number }>();
-  for (const p of posts) {
-    const ct = p.channel_type || 'unknown';
-    const cur = map.get(ct) ?? { total: 0, positive: 0, negative: 0, neutral: 0, mixed: 0 };
-    cur.total += p.view_count;
-    const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof cur;
-    if (s in cur && s !== 'total') cur[s] += p.view_count;
-    else cur.neutral += p.view_count;
-    map.set(ct, cur);
-  }
-  return [...map.entries()]
-    .map(([type, v]) => ({ type, ...v }))
-    .sort((a, b) => b.total - a.total);
 }
 
 /** Filter volume data to only the last 7 days. */

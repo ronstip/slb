@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Activity, BarChart3, ChevronDown, Heart, Settings2, TrendingUp } from 'lucide-react';
-import { getDashboardData } from '../../../../../api/endpoints/dashboard.ts';
 import {
   aggregateEngagementRate,
   aggregateSentimentOverTime,
@@ -21,26 +19,7 @@ import {
 } from '../../../../../components/ui/dropdown-menu.tsx';
 import type { CustomFieldDef } from '../../../../../api/types.ts';
 import type { SearchDef } from '../../../../../api/endpoints/agents.ts';
-
-function computeWindowStart(searches: SearchDef[] | undefined): {
-  startDate: string | null;
-  days: number | null;
-} {
-  if (!searches || searches.length === 0) return { startDate: null, days: null };
-
-  const explicit = searches
-    .map((s) => s.start_date)
-    .filter((d): d is string => !!d)
-    .sort();
-  if (explicit.length > 0) return { startDate: explicit[0], days: null };
-
-  const maxDays = Math.max(0, ...searches.map((s) => s.time_range_days || 0));
-  if (maxDays <= 0) return { startDate: null, days: null };
-
-  const d = new Date();
-  d.setDate(d.getDate() - maxDays);
-  return { startDate: d.toISOString().slice(0, 10), days: maxDays };
-}
+import { useOverviewDashboardData } from './useOverviewDashboardData.ts';
 
 type TrendMetric = 'volume' | 'sentiment' | 'engagement';
 
@@ -100,38 +79,27 @@ export function TrendCard({
     }
   }, [agentId, metric]);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['dashboard-data', ...collectionIds],
-    queryFn: () => getDashboardData(collectionIds),
-    enabled: collectionIds.length > 0,
-    staleTime: 60_000,
-    refetchInterval: isAgentRunning ? 30_000 : false,
-  });
-
-  const posts = data?.posts ?? [];
-
-  const window = useMemo(() => computeWindowStart(searches), [searches]);
-
-  const filteredPosts = useMemo(() => {
-    if (!window.startDate) return posts;
-    return posts.filter((p) => p.posted_at && p.posted_at.slice(0, 10) >= window.startDate!);
-  }, [posts, window.startDate]);
+  const { posts, window, isLoading } = useOverviewDashboardData(
+    collectionIds,
+    searches,
+    isAgentRunning,
+  );
 
   const granularity: 'day' | 'hour' = useMemo(() => {
     if (window.days != null && window.days <= 1) return 'hour';
     const days = new Set<string>();
-    for (const p of filteredPosts) {
+    for (const p of posts) {
       if (p.posted_at) days.add(p.posted_at.slice(0, 10));
       if (days.size > 1) break;
     }
     return days.size <= 1 ? 'hour' : 'day';
-  }, [window.days, filteredPosts]);
+  }, [window.days, posts]);
 
   const chartData = useMemo(() => {
-    if (metric === 'volume') return aggregateVolume(filteredPosts, granularity);
-    if (metric === 'sentiment') return aggregateSentimentOverTime(filteredPosts, granularity);
-    return aggregateEngagementRate(filteredPosts, granularity);
-  }, [metric, filteredPosts, granularity]);
+    if (metric === 'volume') return aggregateVolume(posts, granularity);
+    if (metric === 'sentiment') return aggregateSentimentOverTime(posts, granularity);
+    return aggregateEngagementRate(posts, granularity);
+  }, [metric, posts, granularity]);
 
   const hourTickFormatter = (d: string) => {
     // d = "YYYY-MM-DDTHH"
