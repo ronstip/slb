@@ -56,6 +56,7 @@ export interface Constitution {
 }
 
 export interface Briefing {
+  executive_briefing?: string;
   state_of_the_world: string;
   open_threads: string;
   process_notes: string;

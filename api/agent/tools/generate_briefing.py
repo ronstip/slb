@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_briefing(
+    executive_briefing: str,
     state_of_the_world: str,
     open_threads: str,
     process_notes: str,
@@ -23,6 +24,10 @@ def generate_briefing(
     """Generate and persist a run briefing.
 
     Args:
+        executive_briefing: User-facing front page shown on the overview tab.
+            Markdown. Headline + dek + 3-4 bullets pairing fact with implication
+            + italic closing line. 80-150 words. Audience already knows the
+            collection scope; tell them the ripple and what to act on.
         state_of_the_world: Cumulative understanding — findings backed by
             numbers and specific examples. What the data says and what it means.
         open_threads: Unresolved questions, signals to track, hypotheses
@@ -46,16 +51,24 @@ def generate_briefing(
             "message": "No active agent or run — cannot persist briefing.",
         }
 
-    # Validate all sections are present
+    # Validate required sections are present
     if not state_of_the_world.strip():
         return {
             "status": "error",
             "message": "state_of_the_world section is required and cannot be empty.",
         }
+    if not executive_briefing.strip():
+        return {
+            "status": "error",
+            "message": "executive_briefing section is required and cannot be empty.",
+        }
 
-    word_count = len(f"{state_of_the_world} {open_threads} {process_notes}".split())
+    word_count = len(
+        f"{executive_briefing} {state_of_the_world} {open_threads} {process_notes}".split()
+    )
 
     briefing = {
+        "executive_briefing": executive_briefing.strip(),
         "state_of_the_world": state_of_the_world.strip(),
         "open_threads": open_threads.strip(),
         "process_notes": process_notes.strip(),

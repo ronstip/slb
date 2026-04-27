@@ -6,9 +6,13 @@ import { Logo } from '../../../components/Logo.tsx';
 import { Markdown } from '../../../components/Markdown.tsx';
 
 export function buildKickoffMarkdown(task: Agent, briefing: Briefing | null): string {
-  // Prefer briefing's state_of_the_world when present — it's the agent's own
-  // short view of where things stand. Prepend a dated heading so the message
-  // reads as a proper briefing entry.
+  // Prefer the executive briefing — it's the user-facing front page, already
+  // self-contained with its own headline. Fall back to state_of_the_world for
+  // older runs that pre-date the executive_briefing field.
+  const executive = briefing?.executive_briefing?.trim();
+  if (executive) {
+    return executive;
+  }
   const stateOfWorld = briefing?.state_of_the_world?.trim();
   if (stateOfWorld) {
     const heading = briefing?.generated_at
@@ -73,7 +77,8 @@ export function useAgentKickoff(task: Agent): { kickoffMarkdown: string } {
     const found = runs.find(
       (r) =>
         r.briefing &&
-        (r.briefing.state_of_the_world?.trim() ||
+        (r.briefing.executive_briefing?.trim() ||
+          r.briefing.state_of_the_world?.trim() ||
           r.briefing.open_threads?.trim() ||
           r.briefing.process_notes?.trim()),
     );

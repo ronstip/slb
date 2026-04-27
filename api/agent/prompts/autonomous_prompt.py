@@ -70,17 +70,42 @@ You are analyzing data that was collected for a specific purpose. The agent's da
 - You should be thorough -- the user will review your output asynchronously, so completeness matters more than speed.
 - Generate artifacts proactively. In interactive mode, the user can ask for a report. In autonomous mode, you must decide what to produce based on the question scope."""
 
-_BRIEFING_GENERATION = """## Run Briefing (internal reflection)
+_BRIEFING_GENERATION = """## Run Briefing (internal reflection + executive front page)
 
-After your analysis and before publishing the user-facing briefing, call `generate_briefing` to persist your reflection for your future self. This is read back at the start of your NEXT run as context — it is not shown to the user.
+After your analysis and before publishing the user-facing briefing, call `generate_briefing` to persist your reflection for your future self **and** the executive front page that surfaces on the overview tab. The internal sections are read back at the start of your NEXT run as context. The executive briefing is shown to the user on the overview page.
 
-### Three sections:
+### Four sections:
 
 1. **State of the World** — Your cumulative understanding of the domain. Key findings, trends, patterns -- **backed by numbers and specific examples**. Not "sentiment is trending negative" but "sentiment dropped from 72% to 58% positive over the last two runs, driven by 340 posts about X." If you have a previous briefing, carry forward what's still valid, drop what's stale, and integrate new findings.
 
 2. **Open Threads** — Unresolved questions, signals to track, hypotheses to test. Each thread must include a trigger condition: not just "investigate X" but "investigate X when next run includes Y data" or "relevant if sentiment continues declining." Make these actionable, not aspirational.
 
 3. **Process Notes** — What you did this run, what analytical approaches worked, what didn't. What web search revealed about world changes. Scope observations. Methodology reflections.
+
+4. **Executive Briefing** — A scannable hero for the overview page. **The audience already knows the collection scope (they configured it) and what was announced (they made it).** Their question is: what's the ripple, and what should they act on?
+
+   Write this section LAST — it's the synthesis of the other three. (In the tool call, it goes in the `executive_briefing` parameter, listed first.)
+
+   Structure:
+   - **Headline** — one declarative sentence naming the move + the day's verdict.
+   - **Dek** — 1-2 sentences of grounded context (the "what happened" beat).
+   - **3-4 bullets** — each pairs a hard fact (number, quote, name) with a one-clause implication. **Bold the lead.** No bullet should be a pure stat or a pure opinion.
+   - **Closing line (italic)** — a short push to continue reading the rest of the briefing.
+
+   Length: 80-150 words. Markdown. Tone: formal, tight, news-meets-memo. Mix what happened with what it means for the operator.
+
+   Example (a political-merger agent, audience = the principal's advisors):
+
+   > **The "Together" Bloc Lands — and Day One Belongs to Bennett.**
+   >
+   > The merger went public on April 26 with Bennett as designated leader. Reception is loud, narrow, and — for now — unusually clean.
+   >
+   > - **78% merger-specific** — the announcement crowded the field; the quiet won't last.
+   > - **One line of attack:** 13% oppose, all on Bennett's *ideological shifts*. Unified means counterable.
+   > - **Bennett's post is the only anchor** (4.3k likes / 178k views). Lapid is faint — co-leader optics need work.
+   > - **Eisenkot is surfacing unprompted** in top posts. The market is pricing him in.
+   >
+   > *Read on for what to defend, what to press, and what to decide this week.*
 
 ### Guardrails:
 - Do NOT repeat the constitution (identity, mission, methodology are already in your context).
@@ -89,12 +114,13 @@ After your analysis and before publishing the user-facing briefing, call `genera
 - **Synthesize, don't summarize.** The briefing is your interpretation, not a transcript.
 - Only preserve what would be **lost** if this briefing didn't exist.
 - When referencing findings from a previous briefing, verify them against current data first. Previous claims are hypotheses, not facts.
+- **Do not duplicate the executive briefing inside state-of-the-world or vice versa.** The executive briefing is the front page; the others are the inside pages.
 
-### Size: 800-2000 words total. Enough to be substantive, short enough to fit in context.
+### Size: 880-2150 words total across all four sections (executive briefing 80-150, the other three 800-2000). Enough to be substantive, short enough to fit in context.
 
 ### First run: If there is no previous briefing, that's expected. Write based entirely on this run's findings.
 
-Call `generate_briefing` before `compose_briefing`. The run briefing is your notes; the compose briefing is the column."""
+Call `generate_briefing` before `compose_briefing`. The internal sections are your notes; the executive briefing is the front page; the compose briefing is the column."""
 
 _TOPICS_SYSTEM = """## Topics (semantic clusters)
 
