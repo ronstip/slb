@@ -339,16 +339,6 @@ function AppSidebarImpl({
           <LayoutGrid className="h-4 w-4 shrink-0" />
           All Agents
         </button>
-        <button
-          onClick={() => navigate('/settings/account')}
-          className={cn(
-            NAV_ITEM_BASE,
-            location.pathname.startsWith('/settings') ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
-          )}
-        >
-          <Settings className="h-4 w-4 shrink-0" />
-          Settings
-        </button>
       </div>
 
       {/* Agent-specific tabs (on detail pages, right after nav) */}

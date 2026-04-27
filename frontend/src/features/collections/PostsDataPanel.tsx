@@ -1,12 +1,14 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Database, X } from 'lucide-react';
+import { Database, LayoutGrid, Table2, X } from 'lucide-react';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { getCollectionStats } from '../../api/endpoints/collections.ts';
 import { DataTable } from '../../components/DataTable/DataTable.tsx';
 import { ExpandedPostRow } from '../../components/DataTable/ExpandedPostRow.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
 import { Button } from '../../components/ui/button.tsx';
+import { PostsFeedGrid } from '../agents/detail/tabs/overview/LivePostStream.tsx';
+import { cn } from '../../lib/utils.ts';
 import {
   Select,
   SelectContent,
@@ -46,6 +48,9 @@ export function PostsDataPanel({
   dedup,
 }: PostsDataPanelProps) {
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>(createEmptyFilters);
+
+  // View toggle: table (default) or feed
+  const [view, setView] = useState<'table' | 'feed'>('table');
 
   // Top filter bar state
   const [sourceFilter, setSourceFilter] = useState('all');
@@ -291,41 +296,86 @@ export function PostsDataPanel({
           </SelectContent>
         </Select>
 
-        {/* Clear all */}
-        {hasAnyFilter && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 text-xs text-primary hover:text-primary/80 ml-auto"
-            onClick={clearAllFilters}
-          >
-            Clear all
-            <X className="h-3 w-3" />
-          </Button>
-        )}
+        {/* Right-side controls: clear-all + view toggle */}
+        <div className="ml-auto flex items-center gap-2">
+          {hasAnyFilter && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-xs text-primary hover:text-primary/80"
+              onClick={clearAllFilters}
+            >
+              Clear all
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+          <div className="flex items-center rounded-md border border-border/60 bg-background overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setView('table')}
+              className={cn(
+                'flex h-7 items-center gap-1.5 px-2 text-xs transition-colors',
+                view === 'table'
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              aria-pressed={view === 'table'}
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              Table
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('feed')}
+              className={cn(
+                'flex h-7 items-center gap-1.5 px-2 text-xs transition-colors border-l border-border/60',
+                view === 'feed'
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              aria-pressed={view === 'feed'}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Feed
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Analytics metrics strip */}
       <AnalyticsStrip stats={analyticsStats} />
 
-      {/* Data table */}
-      {isLoading ? (
-        <div className="space-y-2 p-4 flex-1">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <Skeleton key={i} className="h-8 w-full" />
-          ))}
-        </div>
+      {/* View body: table or feed */}
+      {view === 'table' ? (
+        isLoading ? (
+          <div className="space-y-2 p-4 flex-1">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : (
+          <DataTable
+            data={filteredPosts}
+            columns={columns}
+            getRowKey={(p) => p.post_id}
+            defaultSortKey="views"
+            pageSize={50}
+            className="bg-white dark:bg-background"
+            striped={false}
+            renderExpandedRow={(row) => <ExpandedPostRow row={row} />}
+          />
+        )
       ) : (
-        <DataTable
-          data={filteredPosts}
-          columns={columns}
-          getRowKey={(p) => p.post_id}
-          defaultSortKey="views"
-          pageSize={50}
-          className="bg-white dark:bg-background"
-          striped={false}
-          renderExpandedRow={(row) => <ExpandedPostRow row={row} />}
-        />
+        <div className="flex flex-1 flex-col min-h-0 p-4">
+          <PostsFeedGrid
+            collectionIds={effectiveCollectionIds}
+            platform={platformFilter !== 'all' ? platformFilter : undefined}
+            sentiment={sentimentFilter !== 'all' ? sentimentFilter : undefined}
+            relevantToTask={relevantFilter}
+            dedup={dedup}
+            variant="wide"
+          />
+        </div>
       )}
     </div>
   );

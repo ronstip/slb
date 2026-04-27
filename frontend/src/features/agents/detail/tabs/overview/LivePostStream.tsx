@@ -16,60 +16,9 @@ interface LivePostStreamProps {
 }
 
 export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: LivePostStreamProps) {
-  // Per-collection status (to know whether any collection is still running — governs refetch cadence + "live" banner)
-  const statusQueries = useQueries({
-    queries: collectionIds.map((id) => ({
-      queryKey: ['collection-status', id],
-      queryFn: () => getCollectionStatus(id),
-      enabled: !!id,
-      staleTime: 10_000,
-      refetchInterval: (query: { state: { data?: { status?: string } } }) => {
-        const s = query.state.data?.status;
-        return s === 'success' || s === 'failed' ? false : 10_000;
-      },
-    })),
-  });
-
+  const statusQueries = useCollectionStatusQueries(collectionIds);
   const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
   const totalPosts = statusQueries.reduce((sum, q) => sum + (q.data?.posts_collected ?? 0), 0);
-
-  const PAGE_SIZE = 24;
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['overview-posts', [...collectionIds].sort().join(',')],
-    queryFn: ({ pageParam = 0 }) =>
-      getMultiCollectionPosts({
-        collection_ids: collectionIds,
-        sort: 'views',
-        limit: PAGE_SIZE,
-        offset: pageParam,
-        dedup: true,
-        relevant_to_task: 'true',
-      }),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => {
-      const loaded = lastPage.offset + lastPage.posts.length;
-      return loaded < lastPage.total ? loaded : undefined;
-    },
-    enabled: collectionIds.length > 0,
-    staleTime: 10_000,
-    refetchInterval: isAgentRunning || anyCollecting ? 10_000 : false,
-  });
-
-  const posts = data?.pages.flatMap((p) => p.posts) ?? [];
-
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || !hasNextPage) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage();
-      },
-      { rootMargin: '200px' },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (collectionIds.length === 0) {
     return (
@@ -100,32 +49,140 @@ export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: Li
       }
       action={{ label: 'View all posts', onClick: onOpenData }}
     >
-      {posts.length > 0 ? (
-        <div className="max-h-[640px] overflow-y-auto pr-1">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {posts.map((post, i) => (
-              <PostCard key={post.post_id} post={post} isLatest={anyCollecting && i === 0} />
-            ))}
-          </div>
-          <div ref={sentinelRef} className="h-8" />
-          {isFetchingNextPage && (
-            <p className="py-2 text-center text-xs text-muted-foreground">Loading more…</p>
-          )}
-        </div>
-      ) : isLoading || isAgentRunning || anyCollecting ? (
-        <div className="space-y-3">
-          <p className="text-center text-sm text-muted-foreground">
-            {anyCollecting ? 'Collecting posts…' : 'Waiting for posts…'}
-          </p>
-          <SkeletonGrid />
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-          <MessageSquare className="h-8 w-8 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">No posts collected yet.</p>
-        </div>
-      )}
+      <PostsFeedGrid
+        collectionIds={collectionIds}
+        isAgentRunning={isAgentRunning}
+        variant="compact"
+      />
     </Section>
+  );
+}
+
+interface PostsFeedGridProps {
+  collectionIds: string[];
+  isAgentRunning?: boolean;
+  platform?: string;
+  sentiment?: string;
+  relevantToTask?: string;
+  dedup?: boolean;
+  variant?: 'compact' | 'wide';
+}
+
+function useCollectionStatusQueries(collectionIds: string[]) {
+  return useQueries({
+    queries: collectionIds.map((id) => ({
+      queryKey: ['collection-status', id],
+      queryFn: () => getCollectionStatus(id),
+      enabled: !!id,
+      staleTime: 10_000,
+      refetchInterval: (query: { state: { data?: { status?: string } } }) => {
+        const s = query.state.data?.status;
+        return s === 'success' || s === 'failed' ? false : 10_000;
+      },
+    })),
+  });
+}
+
+export function PostsFeedGrid({
+  collectionIds,
+  isAgentRunning = false,
+  platform,
+  sentiment,
+  relevantToTask = 'true',
+  dedup = true,
+  variant = 'compact',
+}: PostsFeedGridProps) {
+  const statusQueries = useCollectionStatusQueries(collectionIds);
+  const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
+
+  const PAGE_SIZE = 24;
+  const queryKey = [
+    'feed-posts',
+    [...collectionIds].sort().join(','),
+    platform ?? 'all',
+    sentiment ?? 'all',
+    relevantToTask,
+    dedup,
+  ];
+
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam = 0 }) =>
+      getMultiCollectionPosts({
+        collection_ids: collectionIds,
+        sort: 'views',
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        dedup,
+        platform,
+        sentiment,
+        relevant_to_task: relevantToTask,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const loaded = lastPage.offset + lastPage.posts.length;
+      return loaded < lastPage.total ? loaded : undefined;
+    },
+    enabled: collectionIds.length > 0,
+    staleTime: 10_000,
+    refetchInterval: isAgentRunning || anyCollecting ? 10_000 : false,
+  });
+
+  const posts = data?.pages.flatMap((p) => p.posts) ?? [];
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const gridClasses =
+    variant === 'wide'
+      ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+      : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3';
+  const scrollerClasses =
+    variant === 'wide' ? 'flex-1 overflow-y-auto pr-1' : 'max-h-[640px] overflow-y-auto pr-1';
+
+  if (posts.length > 0) {
+    return (
+      <div className={scrollerClasses}>
+        <div className={gridClasses}>
+          {posts.map((post, i) => (
+            <PostCard key={post.post_id} post={post} isLatest={anyCollecting && i === 0} />
+          ))}
+        </div>
+        <div ref={sentinelRef} className="h-8" />
+        {isFetchingNextPage && (
+          <p className="py-2 text-center text-xs text-muted-foreground">Loading more…</p>
+        )}
+      </div>
+    );
+  }
+
+  if (isLoading || isAgentRunning || anyCollecting) {
+    return (
+      <div className="space-y-3">
+        <p className="text-center text-sm text-muted-foreground">
+          {anyCollecting ? 'Collecting posts…' : 'Waiting for posts…'}
+        </p>
+        <SkeletonGrid columns={variant === 'wide' ? 4 : 3} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+      <MessageSquare className="h-8 w-8 text-muted-foreground/30" />
+      <p className="text-sm text-muted-foreground">No posts collected yet.</p>
+    </div>
   );
 }
 
@@ -291,9 +348,13 @@ function EnrichmentOverlay({ post }: { post: FeedPost }) {
   );
 }
 
-function SkeletonGrid() {
+function SkeletonGrid({ columns = 3 }: { columns?: number }) {
+  const gridClass =
+    columns === 4
+      ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+      : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3';
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className={gridClass}>
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}

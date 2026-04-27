@@ -606,6 +606,7 @@ export interface TopicCluster {
   total_likes?: number;
   thumbnail_url?: string | null;
   thumbnail_gcs_uri?: string | null;
+  platforms?: string[];
   recency_score?: number;
 }
 

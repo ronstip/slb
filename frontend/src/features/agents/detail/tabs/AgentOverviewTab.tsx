@@ -9,6 +9,8 @@ import { LiveProgressBand } from './overview/LiveProgressBand.tsx';
 import { LivePostStream } from './overview/LivePostStream.tsx';
 import { DeliverablesPanel } from './overview/DeliverablesPanel.tsx';
 import { EmergingTopicsPreview } from './overview/EmergingTopicsPreview.tsx';
+import { EntitiesCard } from './overview/EntitiesCard.tsx';
+import { TopicsMosaic } from './overview/TopicsMosaic.tsx';
 import { ChatPanel } from '../../../chat/ChatPanel.tsx';
 import { StudioActionsPanel } from '../../../studio/StudioActionsPanel.tsx';
 import { useAgentKickoff, KickoffMessage } from '../kickoff.tsx';
@@ -89,6 +91,11 @@ export function AgentOverviewTab({
                 isAgentRunning={isRunning}
                 onOpenData={() => onTabChange('data')}
               />
+              <TopicsMosaic
+                agentId={task.agent_id}
+                isAgentRunning={isRunning}
+                onOpenTopics={() => onTabChange('topics')}
+              />
             </div>
             <div className="space-y-4 lg:col-span-4">
               <section className="flex flex-col rounded-2xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
@@ -122,6 +129,11 @@ export function AgentOverviewTab({
                 logs={logs}
                 isRunning={isRunning}
                 onOpenLogs={() => onTabChange('settings')}
+              />
+              <EntitiesCard
+                collectionIds={collectionIds}
+                isAgentRunning={isRunning}
+                onOpenData={() => onTabChange('data')}
               />
             </div>
           </div>

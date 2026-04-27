@@ -114,21 +114,26 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
     )
     summary_map = {r["cluster_id"]: r for r in summary_rows}
 
-    # Thumbnail query: best representative post image per cluster
+    # Thumbnail query: prefer representative post w/ media, fall back to ANY
+    # cluster member that has media. Twitter clusters often contain only text
+    # tweets in their representative subset, so widening to all members ensures
+    # an image appears whenever any post in the cluster has one.
     thumb_rows = bq.query(
         f"""
         {_LATEST_CTE},
-        rep_members AS (
-            SELECT tcm.cluster_id, tcm.post_id
+        members AS (
+            SELECT tcm.cluster_id, tcm.post_id, tcm.is_representative
             FROM social_listening.topic_cluster_members tcm, latest
             WHERE tcm.agent_id = @agent_id
               AND tcm.clustered_at = latest.latest_at
-              AND tcm.is_representative = TRUE
         ),
         ranked AS (
             SELECT m.cluster_id, p.media_refs,
-                   ROW_NUMBER() OVER (PARTITION BY m.cluster_id ORDER BY COALESCE(pe.views, 0) DESC) as rn
-            FROM rep_members m
+                   ROW_NUMBER() OVER (
+                     PARTITION BY m.cluster_id
+                     ORDER BY m.is_representative DESC, COALESCE(pe.views, 0) DESC
+                   ) as rn
+            FROM members m
             JOIN {_POSTS_DEDUP}
             LEFT JOIN {_ENGAGEMENTS_DEDUP}
             WHERE p.media_refs IS NOT NULL
@@ -144,6 +149,27 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
     )
     thumb_map = {r["cluster_id"]: r for r in thumb_rows}
 
+    # Platforms per cluster — used by the frontend to render a logo wall
+    # placeholder for clusters where no post has media.
+    platform_rows = bq.query(
+        f"""
+        {_LATEST_CTE},
+        members AS (
+            SELECT tcm.cluster_id, tcm.post_id
+            FROM social_listening.topic_cluster_members tcm, latest
+            WHERE tcm.agent_id = @agent_id
+              AND tcm.clustered_at = latest.latest_at
+        )
+        SELECT m.cluster_id,
+               ARRAY_AGG(DISTINCT p.platform IGNORE NULLS) as platforms
+        FROM members m
+        JOIN {_POSTS_DEDUP}
+        GROUP BY m.cluster_id
+        """,
+        {"agent_id": agent_id},
+    )
+    platform_map = {r["cluster_id"]: r for r in platform_rows}
+
     # Merge BQ data into Firestore topics
     for topic in topics:
         cid = topic["cluster_id"]
@@ -158,6 +184,8 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
         if cid in thumb_map:
             topic["thumbnail_url"] = thumb_map[cid].get("thumbnail_url")
             topic["thumbnail_gcs_uri"] = thumb_map[cid].get("thumbnail_gcs_uri")
+        if cid in platform_map:
+            topic["platforms"] = platform_map[cid].get("platforms") or []
 
     # Sort: by recency_score desc (trending first), then by post_count desc
     import re
