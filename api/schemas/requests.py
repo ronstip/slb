@@ -84,6 +84,11 @@ class CreateDashboardShareRequest(BaseModel):
     title: str
 
 
+class CreateBriefingShareRequest(BaseModel):
+    agent_id: str
+    title: str
+
+
 class CreateFeedLinkRequest(BaseModel):
     collection_ids: list[str]
     filters: dict = Field(default_factory=dict)

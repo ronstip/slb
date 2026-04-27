@@ -1,4 +1,5 @@
-import { apiGet } from '../client.ts';
+import { apiDelete, apiGet, apiPost } from '../client.ts';
+import type { BriefingMetaResponse, BriefingShareInfo } from '../types.ts';
 
 // ─── Building blocks ────────────────────────────────────────────────
 
@@ -144,6 +145,43 @@ export interface BriefingLayout {
   analytics?: BriefingAnalytics | null;
 }
 
-export function getAgentBriefing(agentId: string): Promise<BriefingLayout> {
-  return apiGet<BriefingLayout>(`/agents/${agentId}/briefing`);
+// ─── Briefing existence (auth, owner-only metadata) ─────────────────
+
+export function getBriefingMeta(agentId: string): Promise<BriefingMetaResponse> {
+  return apiGet<BriefingMetaResponse>(`/agents/${agentId}/briefing/meta`);
+}
+
+// ─── Briefing sharing ───────────────────────────────────────────────
+
+export interface SharedBriefingResponse {
+  layout: BriefingLayout;
+  meta: { title: string; created_at: string };
+}
+
+export function getBriefingShare(
+  agentId: string,
+): Promise<BriefingShareInfo | null> {
+  return apiGet<BriefingShareInfo | null>(`/briefing/shares/${agentId}`);
+}
+
+export function createBriefingShare(payload: {
+  agent_id: string;
+  title: string;
+}): Promise<BriefingShareInfo> {
+  return apiPost('/briefing/shares', payload);
+}
+
+export async function revokeBriefingShare(token: string): Promise<void> {
+  await apiDelete(`/briefing/shares/${token}`);
+}
+
+export async function getPublicBriefing(
+  token: string,
+): Promise<SharedBriefingResponse> {
+  const API_BASE = import.meta.env.VITE_API_URL || '/api';
+  const res = await fetch(`${API_BASE}/briefing/shares/public/${token}`);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  return res.json();
 }

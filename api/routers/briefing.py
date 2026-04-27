@@ -760,23 +760,21 @@ def read_cached_briefing(fs, agent_id: str) -> dict | None:
 # ─── HTTP endpoint ──────────────────────────────────────────────────
 
 
-@router.get("/agents/{agent_id}/briefing")
-async def get_agent_briefing(
+@router.get("/agents/{agent_id}/briefing/meta")
+async def get_agent_briefing_meta(
     agent_id: str,
     user: CurrentUser = Depends(get_current_user),
 ) -> dict:
-    """Return the latest agent-composed briefing.
+    """Return briefing existence + generation timestamp, no content.
 
-    Returns 404 if the agent hasn't produced one yet (brand-new agent, or
-    compose phase hasn't run). No lazy fallback — briefings are authored by
-    the agent during its run, not on demand.
+    Used by the Deliverables UI to render the ready/pending state without
+    exposing the briefing payload over an authenticated endpoint. The full
+    briefing is only served via /briefing/shares/public/{token}.
     """
     fs = get_fs()
     await asyncio.to_thread(check_agent_access, fs, user, agent_id)
 
     cached = await asyncio.to_thread(read_cached_briefing, fs, agent_id)
     if cached is None:
-        raise HTTPException(
-            404, "No briefing yet — this agent's next run will produce one"
-        )
-    return cached
+        return {"exists": False, "generated_at": None}
+    return {"exists": True, "generated_at": cached.get("generated_at")}

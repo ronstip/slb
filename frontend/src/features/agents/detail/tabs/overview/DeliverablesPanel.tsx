@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { FileText, Plus } from 'lucide-react';
+import { ChevronRight, FileText, Plus } from 'lucide-react';
 import type { Agent } from '../../../../../api/endpoints/agents.ts';
 import type { ArtifactListItem } from '../../../../../api/endpoints/artifacts.ts';
-import { getAgentBriefing } from '../../../../../api/endpoints/briefings.ts';
+import { getBriefingMeta } from '../../../../../api/endpoints/briefings.ts';
 import { timeAgo } from '../../../../../lib/format.ts';
 import { cn } from '../../../../../lib/utils.ts';
 import {
@@ -61,13 +61,13 @@ export function DeliverablesPanel({
   const expectedKinds = getExpectedKinds(task);
 
   const briefingQuery = useQuery({
-    queryKey: ['agent-briefing-exists', task.agent_id],
-    queryFn: () => getAgentBriefing(task.agent_id),
+    queryKey: ['agent-briefing-meta', task.agent_id],
+    queryFn: () => getBriefingMeta(task.agent_id),
     enabled: isDone,
     retry: false,
     staleTime: 60_000,
   });
-  const briefingReady = briefingQuery.isSuccess && briefingQuery.data != null;
+  const briefingReady = briefingQuery.isSuccess && briefingQuery.data.exists;
 
   const visibleArtifacts = artifacts.filter((a) => artifactKind(a) !== null);
   const used = new Set<string>();
@@ -241,21 +241,25 @@ function DeliverableRow({
         onClick={interactive ? onClick : undefined}
         disabled={!interactive}
         className={cn(
-          'group relative flex w-full items-center gap-3 overflow-hidden px-2 py-2 text-left transition-colors',
-          interactive ? 'hover:bg-muted/30' : 'cursor-default',
+          'group relative flex w-full items-center gap-3 overflow-hidden rounded-md px-2 py-2 text-left transition-all',
+          interactive
+            ? 'cursor-pointer hover:bg-accent hover:pl-3 hover:shadow-sm'
+            : 'cursor-default',
           isNew && 'animate-in fade-in slide-in-from-left-1 duration-500',
         )}
       >
         <Icon
           className={cn(
-            'h-4 w-4 shrink-0',
+            'h-4 w-4 shrink-0 transition-transform',
             ready ? iconTint : 'text-muted-foreground/40',
+            interactive && 'group-hover:scale-110',
           )}
         />
         <span
           className={cn(
-            'min-w-0 flex-1 truncate text-sm',
+            'min-w-0 flex-1 truncate text-sm transition-colors',
             ready ? 'font-medium text-foreground' : 'text-foreground/70',
+            interactive && 'group-hover:text-primary',
           )}
         >
           {title}
@@ -274,6 +278,11 @@ function DeliverableRow({
           {meta}
         </span>
         {!ready && <PendingPulse />}
+        {interactive && (
+          <ChevronRight
+            className="h-3.5 w-3.5 shrink-0 -ml-1 text-muted-foreground/40 opacity-0 transition-all group-hover:translate-x-0.5 group-hover:text-primary group-hover:opacity-100"
+          />
+        )}
         {!ready && animate && (
           <span
             className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-muted/30 to-transparent"

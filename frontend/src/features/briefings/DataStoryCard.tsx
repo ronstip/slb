@@ -1,5 +1,5 @@
 import { ArrowUpRight, TrendingUp, TrendingDown } from 'lucide-react';
-import type { DataStory, MetricItem, ChartSpec } from '../../../../api/endpoints/briefings.ts';
+import type { DataStory, MetricItem, ChartSpec } from '../../api/endpoints/briefings.ts';
 
 // ─── Metric tone helpers ────────────────────────────────────────────
 
@@ -21,11 +21,6 @@ function deltaIcon(delta?: string | null): React.ElementType | null {
   if (trimmed.startsWith('-') || trimmed.startsWith('−')) return TrendingDown;
   return null;
 }
-
-// ─── Mini chart (inline SVG renderer for bar/pie/table) ─────────────
-// Minimal, self-contained — no external chart dep. Handles the shapes the
-// compose_briefing prompt produces. If we need more visual fidelity later,
-// wire in the studio chart components.
 
 function MiniChart({ spec }: { spec: ChartSpec }) {
   if (spec.chart_type === 'bar' || spec.chart_type === 'line') {
@@ -135,8 +130,6 @@ function MiniTable({ spec }: { spec: ChartSpec }) {
   );
 }
 
-// ─── Shared metric strip ────────────────────────────────────────────
-
 function MetricStrip({ metrics, size = 'compact' }: { metrics: MetricItem[]; size?: 'hero' | 'compact' }) {
   if (!metrics?.length) return null;
   const trimmed = metrics.slice(0, size === 'hero' ? 4 : 3);
@@ -184,7 +177,7 @@ function MetricStrip({ metrics, size = 'compact' }: { metrics: MetricItem[]; siz
 
 // ─── Hero variant ───────────────────────────────────────────────────
 
-export function DataHero({ story, onOpen }: { story: DataStory; onOpen: () => void }) {
+export function DataHero({ story, onOpen }: { story: DataStory; onOpen?: () => void }) {
   return (
     <article className="mt-8 grid grid-cols-1 gap-7 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md border border-border bg-muted/30 p-6 md:aspect-[5/4]">
@@ -246,14 +239,16 @@ export function DataHero({ story, onOpen }: { story: DataStory; onOpen: () => vo
           {story.blurb}
         </p>
         {story.chart && <MetricStrip metrics={story.metrics} size="hero" />}
-        <button
-          type="button"
-          onClick={onOpen}
-          className="mt-5 flex w-fit items-center gap-1 text-sm font-semibold text-primary hover:underline"
-        >
-          Read more
-          <ArrowUpRight className="h-4 w-4" />
-        </button>
+        {onOpen && (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="mt-5 flex w-fit items-center gap-1 text-sm font-semibold text-primary hover:underline"
+          >
+            Read more
+            <ArrowUpRight className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </article>
   );
@@ -261,13 +256,9 @@ export function DataHero({ story, onOpen }: { story: DataStory; onOpen: () => vo
 
 // ─── Secondary / grid variant ───────────────────────────────────────
 
-export function DataStoryCard({ story, onOpen }: { story: DataStory; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group flex flex-col gap-3 text-left transition-all hover:-translate-y-0.5"
-    >
+export function DataStoryCard({ story, onOpen }: { story: DataStory; onOpen?: () => void }) {
+  const inner = (
+    <>
       <div className="aspect-[16/10] w-full overflow-hidden rounded-md border border-border bg-muted/30 p-4">
         {story.chart ? (
           <div className="flex h-full w-full flex-col">
@@ -311,6 +302,18 @@ export function DataStoryCard({ story, onOpen }: { story: DataStory; onOpen: () 
         </p>
         {story.chart && <MetricStrip metrics={story.metrics} />}
       </div>
-    </button>
+    </>
   );
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group flex flex-col gap-3 text-left transition-all hover:-translate-y-0.5"
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <div className="group flex flex-col gap-3 text-left">{inner}</div>;
 }

@@ -16,6 +16,7 @@ import { TrendCard } from './overview/TrendCard.tsx';
 import { ChatPanel } from '../../../chat/ChatPanel.tsx';
 import { StudioActionsPanel } from '../../../studio/StudioActionsPanel.tsx';
 import { useAgentKickoff, KickoffMessage } from '../kickoff.tsx';
+import { useOpenBriefingShare } from '../../../briefings/use-open-briefing-share.ts';
 
 interface AgentOverviewTabProps {
   task: Agent;
@@ -42,6 +43,7 @@ export function AgentOverviewTab({
   const collectionIds = task.collection_ids ?? [];
   const [chatExpanded, setChatExpanded] = useState(false);
   const { kickoffMarkdown } = useAgentKickoff(task);
+  const { open: openBriefing } = useOpenBriefingShare(task.agent_id, task.title);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden min-w-0 relative">
@@ -61,7 +63,7 @@ export function AgentOverviewTab({
       <LiveProgressBand
         task={task}
         onRun={onRun}
-        onGoToBriefing={() => onTabChange('briefing')}
+        onGoToBriefing={() => { void openBriefing(); }}
       />
 
       <main className="flex-1 overflow-y-auto z-10 p-6 lg:p-8">
@@ -121,7 +123,7 @@ export function AgentOverviewTab({
                 task={task}
                 artifacts={artifacts}
                 onOpenArtifacts={() => onTabChange('artifacts')}
-                onOpenBriefing={() => onTabChange('briefing')}
+                onOpenBriefing={() => { void openBriefing(); }}
                 onOpenSettings={() => onTabChange('settings')}
               />
               <EmergingTopicsPreview

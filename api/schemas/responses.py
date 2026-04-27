@@ -133,6 +133,30 @@ class SharedDashboardDataResponse(BaseModel):
     meta: SharedDashboardMetaResponse
 
 
+class BriefingShareResponse(BaseModel):
+    token: str
+    agent_id: str
+    title: str
+    created_at: str
+    share_url: str
+    active: bool = True
+
+
+class BriefingMetaResponse(BaseModel):
+    exists: bool
+    generated_at: str | None = None
+
+
+class SharedBriefingMetaResponse(BaseModel):
+    title: str
+    created_at: str
+
+
+class SharedBriefingDataResponse(BaseModel):
+    layout: dict
+    meta: SharedBriefingMetaResponse
+
+
 class BreakdownItem(BaseModel):
     value: str
     post_count: int = 0

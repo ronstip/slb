@@ -25,6 +25,7 @@ from api.routers import artifacts as artifacts_router
 from api.routers import auth as auth_router
 from api.routers import billing as billing_router
 from api.routers import briefing as briefing_router
+from api.routers import briefing_shares as briefing_shares_router
 from api.routers import chat as chat_router
 from api.routers import collections as collections_router
 from api.routers import dashboard as dashboard_router
@@ -81,6 +82,7 @@ app.include_router(explorer_layouts_router.router)
 app.include_router(artifacts_router.router)
 app.include_router(topics_router.router)
 app.include_router(briefing_router.router)
+app.include_router(briefing_shares_router.router)
 app.include_router(feed_links_router.router)
 app.include_router(auth_router.router)
 app.include_router(orgs_router.router)

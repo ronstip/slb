@@ -519,6 +519,20 @@ export interface DashboardShareInfo {
   active: boolean;
 }
 
+export interface BriefingShareInfo {
+  token: string;
+  agent_id: string;
+  title: string;
+  created_at: string;
+  share_url: string;
+  active: boolean;
+}
+
+export interface BriefingMetaResponse {
+  exists: boolean;
+  generated_at: string | null;
+}
+
 export interface SharedDashboardDataResponse {
   posts: DashboardPost[];
   collection_names: Record<string, string>;

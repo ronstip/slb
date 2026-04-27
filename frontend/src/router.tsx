@@ -5,6 +5,7 @@ import { SettingsPage } from './features/settings/SettingsPage.tsx';
 import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
 import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
+import { SharedBriefingPage } from './features/briefings/SharedBriefingPage.tsx';
 import { StandaloneArtifactPage } from './features/artifacts/StandaloneArtifactPage.tsx';
 import { AgentsPage } from './features/agents/AgentsPage.tsx';
 import { AgentHome } from './features/agents/AgentHome.tsx';
@@ -53,6 +54,10 @@ export const router = createBrowserRouter([
     // Legacy /about → redirect home (landing page now lives at /)
     path: '/about',
     element: <Navigate to="/" replace />,
+  },
+  {
+    path: '/shared/briefing/:token',
+    element: <SharedBriefingPage />,
   },
   {
     path: '/shared/:token',

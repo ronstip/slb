@@ -14,7 +14,6 @@ import {
   LogOut,
   MessageSquare,
   Moon,
-  Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
   Pause,
@@ -59,11 +58,10 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer' | 'briefing' | 'settings';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer' | 'settings';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'briefing', label: 'Briefing', icon: Newspaper },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
   { id: 'artifacts', label: 'Deliverables', icon: FileText },

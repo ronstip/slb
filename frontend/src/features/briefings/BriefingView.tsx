@@ -1,32 +1,28 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
 import {
-  Loader2,
   ArrowUpRight,
   Eye,
   MessageSquare,
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
-import type { Agent } from '../../../../api/endpoints/agents.ts';
-import {
-  getAgentBriefing,
-  type BriefingLayout,
-  type BriefingPulse,
-  type BriefingAnalytics,
-  type Story,
-  type TopicStory,
-  type DataStory,
-  type TopicStats,
-  type MetricItem,
-} from '../../../../api/endpoints/briefings.ts';
-import { mediaUrl } from '../../../../api/client.ts';
-import { formatNumber, timeAgo } from '../../../../lib/format.ts';
+import type {
+  BriefingLayout,
+  BriefingPulse,
+  BriefingAnalytics,
+  Story,
+  TopicStory,
+  TopicStats,
+  MetricItem,
+} from '../../api/endpoints/briefings.ts';
+import { mediaUrl } from '../../api/client.ts';
+import { formatNumber, timeAgo } from '../../lib/format.ts';
 import { DataStoryCard, DataHero } from './DataStoryCard.tsx';
 
-interface AgentBriefingTabProps {
-  task: Agent;
+interface BriefingViewProps {
+  title: string;
+  briefing: BriefingLayout;
+  onOpenStory?: (story: Story) => void;
 }
 
 function resolveImage(gcs: string | null | undefined, original: string | null | undefined): string | null {
@@ -45,74 +41,41 @@ function formatDateRange(earliest: string | null, latest: string | null): string
   return `${fmt(e)} → ${fmt(l)}`;
 }
 
-export function AgentBriefingTab({ task }: AgentBriefingTabProps) {
-  const agentId = task.agent_id;
-  const [, setSearchParams] = useSearchParams();
-
-  const { data: briefing, isLoading, isError } = useQuery({
-    queryKey: ['agent-briefing', agentId],
-    queryFn: () => getAgentBriefing(agentId),
-    retry: false,
-  });
-
-  const openStory = (story: Story) => {
-    if (story.type === 'topic') {
-      setSearchParams({}, { replace: false });
-    }
-    // Data stories don't link to a topic — no-op for now.
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (isError || !briefing) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="font-serif text-2xl text-foreground">No briefing yet</p>
-        <p className="max-w-md text-sm text-muted-foreground">
-          This agent's next run will produce a briefing.
-        </p>
-      </div>
-    );
-  }
+export function BriefingView({ title, briefing, onOpenStory }: BriefingViewProps) {
+  const open = onOpenStory
+    ? (story: Story) => onOpenStory(story)
+    : undefined;
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-[1200px] px-8 py-10">
-        <Masthead agentTitle={task.title} generatedAt={briefing.generated_at} />
+    <div className="mx-auto max-w-[1200px] px-8 py-10">
+      <Masthead title={title} generatedAt={briefing.generated_at} />
 
-        {briefing.pulse && <PulseBar pulse={briefing.pulse} />}
+      {briefing.pulse && <PulseBar pulse={briefing.pulse} />}
 
-        {briefing.editors_note && (
-          <p className="mt-6 border-l-2 border-foreground/30 pl-4 font-serif text-[15px] italic leading-relaxed text-foreground/75">
-            <span className="font-semibold not-italic">Editor's note —</span> {briefing.editors_note}
-          </p>
-        )}
+      {briefing.editors_note && (
+        <p className="mt-6 border-l-2 border-foreground/30 pl-4 font-serif text-[15px] italic leading-relaxed text-foreground/75">
+          <span className="font-semibold not-italic">Editor's note —</span> {briefing.editors_note}
+        </p>
+      )}
 
-        <HeroBlock hero={briefing.hero} onOpen={() => openStory(briefing.hero)} />
+      <HeroBlock hero={briefing.hero} onOpen={open ? () => open(briefing.hero) : undefined} />
 
-        {briefing.secondary.length > 0 && (
-          <SecondarySection stories={briefing.secondary} onOpen={openStory} />
-        )}
+      {briefing.secondary.length > 0 && (
+        <SecondarySection stories={briefing.secondary} onOpen={open} />
+      )}
 
-        {briefing.analytics && <AnalyticsSection analytics={briefing.analytics} />}
+      {briefing.analytics && <AnalyticsSection analytics={briefing.analytics} />}
 
-        {briefing.rail.length > 0 && (
-          <RailSection stories={briefing.rail} onOpen={openStory} />
-        )}
-      </div>
+      {briefing.rail.length > 0 && (
+        <RailSection stories={briefing.rail} onOpen={open} />
+      )}
     </div>
   );
 }
 
 // ─── Masthead ────────────────────────────────────────────────────────
 
-function Masthead({ agentTitle, generatedAt }: { agentTitle: string; generatedAt: string }) {
+function Masthead({ title, generatedAt }: { title: string; generatedAt: string }) {
   const when = generatedAt ? timeAgo(generatedAt) : '';
   return (
     <header className="border-b border-foreground/80 pb-5">
@@ -127,7 +90,7 @@ function Masthead({ agentTitle, generatedAt }: { agentTitle: string; generatedAt
         )}
       </div>
       <h1 className="mt-2 truncate font-serif text-[38px] font-bold leading-[1.1] tracking-tight text-foreground">
-        {agentTitle}
+        {title}
       </h1>
     </header>
   );
@@ -345,7 +308,7 @@ const _PLACEHOLDER_PALETTE = [
   'from-zinc-800 via-rose-900/30 to-zinc-900',
 ];
 
-export function PlaceholderTile({ seed, label }: { seed: string; label?: string | null }) {
+function PlaceholderTile({ seed, label }: { seed: string; label?: string | null }) {
   const palette = _PLACEHOLDER_PALETTE[_hashString(seed) % _PLACEHOLDER_PALETTE.length];
   return (
     <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${palette} p-5`}>
@@ -360,7 +323,7 @@ export function PlaceholderTile({ seed, label }: { seed: string; label?: string 
 
 // ─── Hero (dispatches on story.type) ────────────────────────────────
 
-function HeroBlock({ hero, onOpen }: { hero: Story; onOpen: () => void }) {
+function HeroBlock({ hero, onOpen }: { hero: Story; onOpen?: () => void }) {
   if (hero.type === 'data') {
     return <DataHero story={hero} onOpen={onOpen} />;
   }
@@ -392,7 +355,7 @@ function TopicHeroMeta({ hero }: { hero: TopicStory }) {
   );
 }
 
-function TopicHero({ hero, onOpen }: { hero: TopicStory; onOpen: () => void }) {
+function TopicHero({ hero, onOpen }: { hero: TopicStory; onOpen?: () => void }) {
   const initialSrc = resolveImage(hero.image_gcs_uri, hero.image_original_url);
   const [imgFailed, setImgFailed] = useState(false);
   const showImage = !!initialSrc && !imgFailed;
@@ -427,14 +390,16 @@ function TopicHero({ hero, onOpen }: { hero: TopicStory; onOpen: () => void }) {
           {hero.blurb}
         </p>
         {hero.stats && <HeroStatsStrip stats={hero.stats} />}
-        <button
-          type="button"
-          onClick={onOpen}
-          className="mt-5 flex w-fit items-center gap-1 text-sm font-semibold text-primary hover:underline"
-        >
-          Read topic
-          <ArrowUpRight className="h-4 w-4" />
-        </button>
+        {onOpen && (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="mt-5 flex w-fit items-center gap-1 text-sm font-semibold text-primary hover:underline"
+          >
+            Read topic
+            <ArrowUpRight className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </article>
   );
@@ -442,37 +407,43 @@ function TopicHero({ hero, onOpen }: { hero: TopicStory; onOpen: () => void }) {
 
 // ─── Secondary grid ─────────────────────────────────────────────────
 
-function SecondarySection({ stories, onOpen }: { stories: Story[]; onOpen: (s: Story) => void }) {
+function SecondarySection({
+  stories,
+  onOpen,
+}: {
+  stories: Story[];
+  onOpen?: (s: Story) => void;
+}) {
   return (
     <section className="mt-12">
       <SectionHeader label="More stories" />
       <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
         {stories.map((story, i) => (
-          <SecondaryCard key={`${story.type}-${i}`} story={story} onOpen={() => onOpen(story)} />
+          <SecondaryCard
+            key={`${story.type}-${i}`}
+            story={story}
+            onOpen={onOpen ? () => onOpen(story) : undefined}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function SecondaryCard({ story, onOpen }: { story: Story; onOpen: () => void }) {
+function SecondaryCard({ story, onOpen }: { story: Story; onOpen?: () => void }) {
   if (story.type === 'data') {
     return <DataStoryCard story={story} onOpen={onOpen} />;
   }
   return <TopicSecondaryCard story={story} onOpen={onOpen} />;
 }
 
-function TopicSecondaryCard({ story, onOpen }: { story: TopicStory; onOpen: () => void }) {
+function TopicSecondaryCard({ story, onOpen }: { story: TopicStory; onOpen?: () => void }) {
   const initialSrc = resolveImage(story.thumbnail_gcs_uri, story.thumbnail_original_url);
   const [imgFailed, setImgFailed] = useState(false);
   const showImage = !!initialSrc && !imgFailed;
 
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group flex flex-col gap-3 text-left transition-all hover:-translate-y-0.5"
-    >
+  const inner = (
+    <>
       <div className="aspect-[16/10] w-full overflow-hidden rounded-md bg-muted">
         {showImage ? (
           <img
@@ -501,8 +472,20 @@ function TopicSecondaryCard({ story, onOpen }: { story: TopicStory; onOpen: () =
         </p>
         {story.stats && <CompactStatsStrip stats={story.stats} />}
       </div>
-    </button>
+    </>
   );
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group flex flex-col gap-3 text-left transition-all hover:-translate-y-0.5"
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <div className="group flex flex-col gap-3 text-left">{inner}</div>;
 }
 
 // ─── Analytics ──────────────────────────────────────────────────────
@@ -658,7 +641,6 @@ function SentimentTrend({ series }: { series: BriefingAnalytics['sentiment_trend
   const stepX = series.length > 1 ? (w - padX * 2) / (series.length - 1) : 0;
   const yFor = (v: number) => padY + (h - padY * 2) * (1 - v / max);
 
-  // Stacked bands: positive (bottom), neutral, mixed, negative (top of stack)
   const bandKeys: Array<{ key: keyof typeof series[number]; color: string; label: string }> = [
     { key: 'positive', color: 'rgb(16 185 129)', label: 'Positive' },
     { key: 'neutral', color: 'rgb(148 163 184)', label: 'Neutral' },
@@ -666,7 +648,6 @@ function SentimentTrend({ series }: { series: BriefingAnalytics['sentiment_trend
     { key: 'negative', color: 'rgb(244 63 94)', label: 'Negative' },
   ];
 
-  // Build cumulative tops per day for stacked area paths.
   const cumulativeTops = series.map((d) => {
     let acc = 0;
     return bandKeys.map(({ key }) => {
@@ -740,7 +721,13 @@ function SentimentTrend({ series }: { series: BriefingAnalytics['sentiment_trend
 
 // ─── Rail ───────────────────────────────────────────────────────────
 
-function RailSection({ stories, onOpen }: { stories: Story[]; onOpen: (s: Story) => void }) {
+function RailSection({
+  stories,
+  onOpen,
+}: {
+  stories: Story[];
+  onOpen?: (s: Story) => void;
+}) {
   const sorted = useMemo(
     () => [...stories].sort((a, b) => a.rank - b.rank),
     [stories],
@@ -751,38 +738,52 @@ function RailSection({ stories, onOpen }: { stories: Story[]; onOpen: (s: Story)
       <ul className="mt-3 divide-y divide-border">
         {sorted.map((story, i) => (
           <li key={`${story.type}-${i}`}>
-            <button
-              type="button"
-              onClick={() => onOpen(story)}
-              className="group flex w-full items-start gap-4 py-3.5 text-left"
-            >
-              <span className="shrink-0 pt-1 font-serif text-sm font-semibold tabular-nums text-muted-foreground group-hover:text-primary">
-                {String(story.rank).padStart(2, '0')}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-serif text-[17px] font-semibold leading-snug text-foreground group-hover:text-primary">
-                  {story.headline}
-                </span>
-                <span className="mt-0.5 block text-[13px] text-muted-foreground">
-                  {story.blurb}
-                </span>
-                {story.type === 'topic' && story.stats ? (
-                  <CompactStatsStrip stats={story.stats} />
-                ) : story.type === 'data' ? (
-                  <RailDataMetrics metrics={story.metrics} timeframe={story.timeframe} />
-                ) : null}
-              </span>
-              {story.type === 'topic' && story.topic_name && (
-                <span className="hidden shrink-0 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:block">
-                  {story.topic_name}
-                </span>
-              )}
-            </button>
+            <RailRow story={story} onOpen={onOpen ? () => onOpen(story) : undefined} />
           </li>
         ))}
       </ul>
     </section>
   );
+}
+
+function RailRow({ story, onOpen }: { story: Story; onOpen?: () => void }) {
+  const inner = (
+    <>
+      <span className="shrink-0 pt-1 font-serif text-sm font-semibold tabular-nums text-muted-foreground group-hover:text-primary">
+        {String(story.rank).padStart(2, '0')}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-serif text-[17px] font-semibold leading-snug text-foreground group-hover:text-primary">
+          {story.headline}
+        </span>
+        <span className="mt-0.5 block text-[13px] text-muted-foreground">
+          {story.blurb}
+        </span>
+        {story.type === 'topic' && story.stats ? (
+          <CompactStatsStrip stats={story.stats} />
+        ) : story.type === 'data' ? (
+          <RailDataMetrics metrics={story.metrics} timeframe={story.timeframe} />
+        ) : null}
+      </span>
+      {story.type === 'topic' && story.topic_name && (
+        <span className="hidden shrink-0 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:block">
+          {story.topic_name}
+        </span>
+      )}
+    </>
+  );
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group flex w-full items-start gap-4 py-3.5 text-left"
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <div className="group flex w-full items-start gap-4 py-3.5 text-left">{inner}</div>;
 }
 
 function RailDataMetrics({ metrics, timeframe }: { metrics: MetricItem[]; timeframe?: string | null }) {
@@ -825,6 +826,3 @@ function SectionHeader({ label }: { label: string }) {
     </div>
   );
 }
-
-export { formatDateRange, resolveImage };
-export type { BriefingLayout, Story, TopicStory, DataStory };

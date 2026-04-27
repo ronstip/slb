@@ -7,7 +7,8 @@ import {
   getArtifact,
   type ArtifactListItem,
 } from '../../../../api/endpoints/artifacts.ts';
-import { getAgentBriefing } from '../../../../api/endpoints/briefings.ts';
+import { getBriefingMeta } from '../../../../api/endpoints/briefings.ts';
+import { useOpenBriefingShare } from '../../../briefings/use-open-briefing-share.ts';
 import { Button } from '../../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -98,17 +99,17 @@ export function AgentArtifactsTab({
   const isDone = task.status === 'success' || task.completed_at != null;
 
   const briefingQuery = useQuery({
-    queryKey: ['agent-briefing-exists', task.agent_id],
-    queryFn: () => getAgentBriefing(task.agent_id),
+    queryKey: ['agent-briefing-meta', task.agent_id],
+    queryFn: () => getBriefingMeta(task.agent_id),
     enabled: isDone,
     retry: false,
     staleTime: 60_000,
   });
-  const briefing = briefingQuery.isSuccess ? briefingQuery.data : null;
+  const briefing = briefingQuery.isSuccess && briefingQuery.data.exists
+    ? briefingQuery.data
+    : null;
 
-  const openBriefing = () => {
-    setSearchParams({ tab: 'briefing' }, { replace: true });
-  };
+  const { open: openBriefing } = useOpenBriefingShare(task.agent_id, task.title);
 
   const openArtifact = (artifact: ArtifactListItem) => {
     navigate(`/library?artifact=${artifact.artifact_id}`);
@@ -128,8 +129,8 @@ export function AgentArtifactsTab({
         kind: 'briefing',
         title: 'Briefing',
         subtitle: 'briefing',
-        createdAt: briefing.generated_at,
-        onOpen: openBriefing,
+        createdAt: briefing.generated_at ?? '',
+        onOpen: () => { void openBriefing(); },
       });
     }
 
@@ -725,26 +726,22 @@ function BriefingPreview() {
   return (
     <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/12 via-indigo-500/3 to-transparent p-3">
       <div className="flex h-full flex-col gap-1.5">
-        {/* Masthead */}
         <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
           <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-600/70 dark:text-indigo-400/70">
             Briefing
           </span>
           <div className="h-1 w-8 rounded-full bg-indigo-500/30" />
         </div>
-        {/* Headline */}
         <div className="space-y-1">
           <div className="h-1.5 w-[85%] rounded-full bg-indigo-500/45" />
           <div className="h-1.5 w-[60%] rounded-full bg-indigo-500/45" />
         </div>
-        {/* Body lines */}
         <div className="mt-0.5 space-y-1">
           <div className="h-0.5 w-full rounded-full bg-foreground/15" />
           <div className="h-0.5 w-full rounded-full bg-foreground/15" />
           <div className="h-0.5 w-[88%] rounded-full bg-foreground/15" />
           <div className="h-0.5 w-[72%] rounded-full bg-foreground/15" />
         </div>
-        {/* Pull-quote tag */}
         <div className="mt-auto flex items-center gap-1.5">
           <div className="h-3 w-3 rounded-sm bg-indigo-500/30" />
           <div className="h-0.5 flex-1 rounded-full bg-foreground/15" />
@@ -753,3 +750,4 @@ function BriefingPreview() {
     </div>
   );
 }
+
