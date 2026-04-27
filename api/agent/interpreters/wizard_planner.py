@@ -61,7 +61,6 @@ class WizardPlan(BaseModel):
     auto_report: bool = True
     auto_email: bool = False
     auto_slides: bool = False
-    auto_dashboard: bool = False
     custom_fields: list[CustomFieldDef] = []
     enrichment_context: str = ""
     content_types: list[str] = Field(

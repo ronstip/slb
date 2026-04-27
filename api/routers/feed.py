@@ -36,13 +36,17 @@ async def get_multi_collection_feed(
 
     bq = get_bq()
 
-    # Dedup within collection, then across collections by post_id
+    # Dedup within collection, then across collections by post_id.
+    # Time-range gate joins social_listening.collections so posts outside
+    # the agent's configured window are excluded — single source of truth.
     posts_subquery = """(
         SELECT * FROM (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
             FROM (
-                SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-                FROM social_listening.posts
+                SELECT pp.*, ROW_NUMBER() OVER (PARTITION BY pp.collection_id, pp.post_id ORDER BY pp.collected_at DESC) AS _rn
+                FROM social_listening.posts pp
+                JOIN social_listening.collections cc USING (collection_id)
+                WHERE pp.posted_at BETWEEN COALESCE(cc.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(cc.time_range_end, CURRENT_TIMESTAMP())
             ) sub
             WHERE _rn = 1
         ) deduped

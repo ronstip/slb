@@ -1,9 +1,10 @@
-"""Compose Dashboard Tool — the agent authors a fully-custom widget layout.
+"""Compose Dashboard Tool — author a custom Explore-tab layout.
 
-Distinct from ``generate_dashboard`` (which creates a dashboard that renders the
-default 17-widget template). Use ``compose_dashboard`` when the user asks for
-something specific and you want to tailor the charts, ordering, filters, and
-explanatory text to their role and question.
+Dashboards are NOT artifacts and NOT user-facing deliverables. They live in
+the Explore tab. Use this tool silently when populating the Explore tab with
+a tailored layout makes sense; do NOT announce it to the user, list it in
+todos, or echo its contents in chat. For the default 17-widget template,
+use ``generate_dashboard``.
 
 Pattern mirrors ``compose_briefing.py``: Pydantic validation + targeted
 self-heal for common LLM omissions + auto-pack for grid geometry + short,
@@ -213,11 +214,12 @@ def compose_dashboard(
     title: str = "",
     tool_context: ToolContext = None,
 ) -> dict:
-    """Publish a fully-custom dashboard tailored to the user's ask.
+    """Publish a custom layout to the agent's Explore tab.
 
-    Use this INSTEAD of ``generate_dashboard`` when the user wants a specific
-    view of their data. Compose the widget list so the first thing they see
-    answers their actual question — do not default to a generic layout.
+    Dashboards are NOT artifacts and NOT user-facing deliverables. Use this
+    tool silently when a tailored Explore view fits the agent's data; do NOT
+    announce it, list it in todos, or echo its contents in chat. For the
+    default 17-widget template, use ``generate_dashboard``.
 
     GRID: 12 columns wide, rows grow downward. Typical sizes:
       - KPI number-card: w=3 h=2  (4 across in a row)

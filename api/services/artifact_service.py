@@ -1,10 +1,12 @@
 """Artifact persistence for agent tool results.
 
-When certain tools (create_chart, export_data, generate_dashboard,
-compose_dashboard, generate_presentation) return successfully, the result
-is persisted to Firestore so the frontend can re-hydrate it later. The
-assigned artifact_id is written back into the ADK event so it survives
-session persistence.
+When certain tools (create_chart, export_data, generate_presentation)
+return successfully, the result is persisted to Firestore so the
+frontend can re-hydrate it later. The assigned artifact_id is written
+back into the ADK event so it survives session persistence.
+
+Dashboards are NOT artifacts — they live in the Explore tab and are
+managed via the explorer_layouts / dashboard_layouts collections.
 """
 
 import logging
@@ -60,24 +62,6 @@ def persist_tool_result_artifact(
             "truncated": len(rows) > ARTIFACT_ROW_CAP,
         }
         collection_ids = result.get("collection_ids") or []
-    elif tool_name == "generate_dashboard" and result.get("dashboard_id"):
-        artifact_type = "dashboard"
-        artifact_id = result.get("dashboard_id", f"dash-{uuid4().hex[:8]}")
-        title = result.get("title", "Dashboard")
-        collection_ids = result.get("collection_ids") or []
-        payload = {
-            "collection_ids": collection_ids,
-            "collection_names": result.get("collection_names", {}),
-        }
-    elif tool_name == "compose_dashboard" and result.get("dashboard_id"):
-        artifact_type = "dashboard"
-        artifact_id = result.get("dashboard_id")
-        title = result.get("title", "Dashboard")
-        collection_ids = result.get("collection_ids") or []
-        payload = {
-            "collection_ids": collection_ids,
-            "collection_names": result.get("collection_names", {}),
-        }
     elif tool_name == "generate_presentation" and result.get("presentation_id"):
         artifact_type = "presentation"
         artifact_id = result.get("presentation_id")

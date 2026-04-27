@@ -250,7 +250,6 @@ export function AgentDetailPage() {
               onRun={handleRun}
               onStop={handleStop}
               canRun={canRun}
-              onOpenLayout={handleLayoutSelect}
             />
           )}
           {activeTab === 'settings' && (

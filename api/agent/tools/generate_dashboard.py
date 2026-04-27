@@ -1,9 +1,10 @@
 """
-Generate Dashboard Tool — creates an interactive dashboard artifact.
+Generate Dashboard Tool — populates the Explore tab with the default layout.
 
-Lightweight: validates the collections exist and returns a metadata payload.
-The frontend fetches the actual data via POST /dashboard/data and does all
-filtering client-side.
+Dashboards are NOT artifacts and NOT user-facing deliverables. They live in
+the Explore tab. This tool returns a metadata payload so the frontend can
+render the default 17-widget template; the data is fetched client-side via
+POST /dashboard/data.
 """
 
 import logging
@@ -18,19 +19,12 @@ def generate_dashboard(
     collection_ids: list[str],
     title: str = "",
 ) -> dict:
-    """Create an interactive dashboard rendered with the default 17-widget template.
+    """Populate the Explore tab with the default 17-widget template.
 
-    WHEN TO USE: The user wants a generic "open the data" view — broad
-    exploration, no specific question yet. Also called automatically on
-    collection completion.
-
-    WHEN **NOT** TO USE: The user asked for something specific ("show me
-    negative sentiment", "what themes are trending", "build me a dashboard
-    for X"). Use ``compose_dashboard`` instead — it lets you author a
-    tailored widget list that answers their actual question.
-
-    Provides interactive charts filtered client-side by sentiment, entities,
-    language, collection, content_type, platform, date range, themes, channels.
+    Dashboards are NOT user-facing deliverables. Do NOT announce a dashboard
+    to the user, list it in todos, or echo its contents in chat. Use this
+    tool silently when a default Explore view fits the agent's data. For
+    tailored layouts, use ``compose_dashboard``.
 
     Args:
         collection_ids: List of collection IDs to include.
@@ -65,5 +59,5 @@ def generate_dashboard(
         "title": title,
         "collection_ids": collection_ids,
         "collection_names": collection_names,
-        "message": "Interactive dashboard created. Open it in the Studio panel to explore with filters.",
+        "message": "Explore tab populated with the default layout.",
     }

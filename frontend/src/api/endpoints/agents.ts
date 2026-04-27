@@ -78,7 +78,6 @@ export interface Agent {
     auto_report?: boolean;
     auto_email?: boolean;
     auto_slides?: boolean;
-    auto_dashboard?: boolean;
     email_recipients?: string[];
   };
   context?: AgentContext;
@@ -172,7 +171,6 @@ export interface CreateFromWizardPayload {
   auto_email?: boolean;
   email_recipients?: string[];
   auto_slides?: boolean;
-  auto_dashboard?: boolean;
 }
 
 export function createAgentFromWizard(

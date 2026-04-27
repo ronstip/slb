@@ -51,9 +51,6 @@ validates it strictly — stick to the schema.
 8c. **auto_slides** — true if the user wants a slide deck (PPTX) generated.
    Default false. Enable when user mentions "presentation", "slides",
    "deck", "pptx", "stakeholders".
-8d. **auto_dashboard** — true if the user wants a dashboard generated.
-   Default false. Enable when user mentions "dashboard", "metrics",
-   "KPIs", "visual overview".
 9. **custom_fields** — 2–6 CustomFieldDef entries that enrich each post
    with judgements the user cares about. Rules:
    - ``name``: lowercase snake_case, ≤64 chars.

@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Table2, BarChart3, FileText, LayoutDashboard, MoreHorizontal, Presentation, Download } from 'lucide-react';
+import { Table2, BarChart3, FileText, MoreHorizontal, Presentation, Download } from 'lucide-react';
 import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { shortDate } from '../../lib/format.ts';
 import { DataExportView } from './DataExportView.tsx';
 import { ChartArtifactView } from './ChartArtifactView.tsx';
-import { DashboardView } from './dashboard/DashboardView.tsx';
 import { UnderlyingDataDialog } from './UnderlyingDataDialog.tsx';
 import { cn } from '../../lib/utils.ts';
 import { Button } from '../../components/ui/button.tsx';
@@ -19,13 +18,11 @@ import {
 const ARTIFACT_STYLES: Record<string, { icon: typeof Table2; color: string; bg: string }> = {
   data_export: { icon: Table2, color: 'text-blue-500', bg: 'bg-blue-500/10' },
   chart: { icon: BarChart3, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-  dashboard: { icon: LayoutDashboard, color: 'text-amber-500', bg: 'bg-amber-500/10' },
   presentation: { icon: Presentation, color: 'text-orange-500', bg: 'bg-orange-500/10' },
 };
 
 function getArtifactCollectionIds(artifact: Artifact): string[] {
   if (artifact.type === 'data_export') return artifact.sourceIds;
-  if (artifact.type === 'dashboard') return artifact.collectionIds;
   if (artifact.type === 'chart') return artifact.collectionIds ?? [];
   if (artifact.type === 'presentation') return artifact.collectionIds;
   return [];
@@ -64,9 +61,6 @@ export function ArtifactsTab() {
     if (expandedArtifact.type === 'chart') {
       return <ChartArtifactView artifact={expandedArtifact as Extract<Artifact, { type: 'chart' }>} />;
     }
-    if (expandedArtifact.type === 'dashboard') {
-      return <DashboardView artifact={expandedArtifact as Extract<Artifact, { type: 'dashboard' }>} />;
-    }
   }
 
   if (artifacts.length === 0) {
@@ -97,11 +91,9 @@ export function ArtifactsTab() {
 
           const subtitleText = artifact.type === 'data_export'
             ? `${artifact.rowCount} posts`
-            : artifact.type === 'dashboard'
-              ? `${artifact.collectionIds.length} collection${artifact.collectionIds.length !== 1 ? 's' : ''}`
-              : artifact.type === 'presentation'
-                ? `${artifact.slideCount} slide${artifact.slideCount !== 1 ? 's' : ''}`
-                : artifact.chartType.replace(/_/g, ' ');
+            : artifact.type === 'presentation'
+              ? `${artifact.slideCount} slide${artifact.slideCount !== 1 ? 's' : ''}`
+              : artifact.chartType.replace(/_/g, ' ');
 
           return (
             <div

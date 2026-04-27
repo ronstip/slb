@@ -33,9 +33,13 @@ _LATEST_CTE = """
 # (they don't carry a collection_id). Partitioning by (collection_id, post_id) would
 # return one row per collection the post appears in, inflating topic post counts
 # when the same post_id also lives in another agent's collection.
+# The JOIN to social_listening.collections applies the time-range gate so
+# topic post lists exclude posts outside the agent's configured window.
 _POSTS_DEDUP = """(
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
-        FROM social_listening.posts
+        SELECT pp.*, ROW_NUMBER() OVER (PARTITION BY pp.post_id ORDER BY pp.collected_at DESC) AS _rn
+        FROM social_listening.posts pp
+        JOIN social_listening.collections cc USING (collection_id)
+        WHERE pp.posted_at BETWEEN COALESCE(cc.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(cc.time_range_end, CURRENT_TIMESTAMP())
     ) p ON p.post_id = m.post_id AND p._rn = 1"""
 
 _ENRICHED_DEDUP = """(

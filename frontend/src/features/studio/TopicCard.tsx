@@ -4,7 +4,6 @@ import {
   ChevronUp,
   Eye,
   List,
-  BarChart3,
   Sparkles,
   Table2,
 } from 'lucide-react';
@@ -12,7 +11,6 @@ import { Card } from '../../components/ui/card.tsx';
 import { formatNumber } from '../../lib/format.ts';
 import { SENTIMENT_COLORS } from '../../lib/constants.ts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip.tsx';
-import { useStudioStore } from '../../stores/studio-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { viralityScore, sentimentColor, dominantSentiment, resolveThumbnail } from './topic-helpers.ts';
 import { TopicDetail } from './TopicDetail.tsx';
@@ -27,7 +25,6 @@ interface TopicCardProps {
 const ACTION_STYLES = {
   posts: { icon: 'text-blue-600 bg-blue-500/10', hover: 'hover:bg-blue-500/10' },
   data: { icon: 'text-emerald-600 bg-emerald-500/10', hover: 'hover:bg-emerald-500/10' },
-  analytics: { icon: 'text-amber-600 bg-amber-500/10', hover: 'hover:bg-amber-500/10' },
   ask_ai: { icon: 'text-purple-600 bg-purple-500/10', hover: 'hover:bg-purple-500/10' },
 };
 
@@ -36,24 +33,10 @@ export function TopicCard({ topic, agentId, onViewPosts }: TopicCardProps) {
   const thumbSrc = resolveThumbnail(topic);
   const sentiment = dominantSentiment(topic);
   const { sendMessage } = useSSEChat();
-  const setActiveTab = useStudioStore((s) => s.setActiveTab);
-  const artifacts = useStudioStore((s) => s.artifacts);
-  const expandReport = useStudioStore((s) => s.expandReport);
-  const setPendingTopicFilter = useStudioStore((s) => s.setPendingTopicFilter);
 
   const handleViewPosts = (e: React.MouseEvent) => {
     e.stopPropagation();
     onViewPosts?.(topic.cluster_id, topic.topic_name);
-  };
-
-  const handleDashboard = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const dashboard = artifacts.find((a) => a.type === 'dashboard');
-    if (dashboard) {
-      setPendingTopicFilter({ themes: topic.topic_keywords, topicName: topic.topic_name });
-      setActiveTab('artifacts');
-      expandReport(dashboard.id);
-    }
   };
 
   const handleAskAI = (e: React.MouseEvent) => {
@@ -63,7 +46,6 @@ export function TopicCard({ topic, agentId, onViewPosts }: TopicCardProps) {
 
   const virality = viralityScore(topic);
   const vColor = sentimentColor(topic);
-  const hasDashboard = artifacts.some((a) => a.type === 'dashboard');
 
   return (
     <Card className="relative overflow-hidden rounded-lg shadow-sm transition-shadow hover:shadow-md !py-0 !gap-0">
@@ -159,13 +141,6 @@ export function TopicCard({ topic, agentId, onViewPosts }: TopicCardProps) {
         <div className="flex items-center gap-1.5 border-t border-border/40 mx-3 mt-2 pt-2 pb-2" onClick={(e) => e.stopPropagation()}>
           <ActionChip label="Posts" icon={List} style={ACTION_STYLES.posts} onClick={handleViewPosts} />
           <ActionChip label="Data" icon={Table2} style={ACTION_STYLES.data} onClick={handleViewPosts} />
-          <ActionChip
-            label="Analytics"
-            icon={BarChart3}
-            style={ACTION_STYLES.analytics}
-            onClick={handleDashboard}
-            disabled={!hasDashboard}
-          />
           <ActionChip label="Ask AI" icon={Sparkles} style={ACTION_STYLES.ask_ai} onClick={handleAskAI} />
         </div>
       </div>

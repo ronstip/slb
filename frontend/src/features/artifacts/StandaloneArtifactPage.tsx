@@ -8,7 +8,6 @@ import { getArtifact } from '../../api/endpoints/artifacts.ts';
 import { ARTIFACT_STYLES, convertToStudioArtifact } from './artifact-utils.ts';
 import { ChartArtifactView } from '../studio/ChartArtifactView.tsx';
 import { DataExportView } from '../studio/DataExportView.tsx';
-import { DashboardView } from '../studio/dashboard/DashboardView.tsx';
 import { cn } from '../../lib/utils.ts';
 import type { Artifact } from '../../stores/studio-store.ts';
 
@@ -25,8 +24,7 @@ export function StandaloneArtifactPage() {
   });
 
   const artifact = detail ? convertToStudioArtifact(detail) : null;
-  const style = detail ? ARTIFACT_STYLES[detail.type] ?? ARTIFACT_STYLES.chart : null;
-  const isDashboard = artifact?.type === 'dashboard';
+  const style = detail && artifact ? ARTIFACT_STYLES[detail.type] ?? ARTIFACT_STYLES.chart : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -55,8 +53,8 @@ export function StandaloneArtifactPage() {
         </div>
       )}
 
-      {/* Error */}
-      {error && (
+      {/* Error or unsupported artifact (e.g. legacy dashboard) */}
+      {(error || (!isLoading && !artifact)) && (
         <div className="flex flex-col items-center justify-center py-32 text-center px-4">
           <AlertTriangle className="h-8 w-8 text-muted-foreground" />
           <h2 className="mt-4 text-lg font-semibold">Artifact not available</h2>
@@ -71,36 +69,28 @@ export function StandaloneArtifactPage() {
 
       {/* Artifact content */}
       {!isLoading && !error && artifact && style && (
-        isDashboard ? (
-          /* Dashboard: standalone toolbar shows title + controls, no separate title bar */
-          <main className="mx-auto max-w-6xl w-full flex-1 flex flex-col min-h-0">
-            <DashboardView artifact={artifact} standalone />
-          </main>
-        ) : (
-          <>
-            {/* Title bar (non-dashboard artifacts) */}
-            <div className="border-b border-border bg-card shrink-0">
-              <div className="mx-auto max-w-6xl px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', style.bg)}>
-                    <style.icon className={cn('h-4.5 w-4.5', style.color)} />
-                  </div>
-                  <div>
-                    <h1 className="text-xl font-semibold text-foreground">
-                      {artifact.title}
-                    </h1>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {style.label}
-                    </p>
-                  </div>
+        <>
+          <div className="border-b border-border bg-card shrink-0">
+            <div className="mx-auto max-w-6xl px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', style.bg)}>
+                  <style.icon className={cn('h-4.5 w-4.5', style.color)} />
+                </div>
+                <div>
+                  <h1 className="text-xl font-semibold text-foreground">
+                    {artifact.title}
+                  </h1>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {style.label}
+                  </p>
                 </div>
               </div>
             </div>
-            <main className="mx-auto max-w-6xl">
-              <ArtifactRenderer artifact={artifact} />
-            </main>
-          </>
-        )
+          </div>
+          <main className="mx-auto max-w-6xl">
+            <ArtifactRenderer artifact={artifact} />
+          </main>
+        </>
       )}
     </div>
   );
@@ -112,7 +102,7 @@ function ArtifactRenderer({ artifact }: { artifact: Artifact }) {
       return <ChartArtifactView artifact={artifact} />;
     case 'data_export':
       return <DataExportView artifact={artifact} />;
-    case 'dashboard':
-      return <DashboardView artifact={artifact} standalone />;
+    case 'presentation':
+      return null;
   }
 }

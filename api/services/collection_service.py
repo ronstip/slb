@@ -120,6 +120,8 @@ def create_collection_from_request(
                 "session_id": session_id,
                 "original_question": request.description,
                 "config": json.dumps(config),
+                "time_range_start": start_date.isoformat(),
+                "time_range_end": end_date.isoformat(),
             }
         ],
     )

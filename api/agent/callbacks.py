@@ -32,7 +32,7 @@ PLANNING_TOOLS = {"update_todos"}
 AGENT_TOOLS = {"start_agent", "get_agent_status", "set_active_agent"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
 RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
-OUTPUT_TOOLS = {"export_data", "generate_dashboard", "generate_presentation", "compose_briefing"}
+OUTPUT_TOOLS = {"export_data", "generate_presentation", "compose_briefing"}
 
 # ─── Hard gate: tools blocked while a collection pipeline is running ────
 COLLECTION_RUNNING_BLOCKED = {

@@ -8,11 +8,6 @@ import {
   type ArtifactListItem,
 } from '../../../../api/endpoints/artifacts.ts';
 import { getAgentBriefing } from '../../../../api/endpoints/briefings.ts';
-import {
-  listExplorerLayouts,
-  type ExplorerLayoutListItem,
-} from '../../../../api/endpoints/explorer-layouts.ts';
-import { useExplorerLayoutStore } from '../../../../stores/explorer-layout-store.ts';
 import { Button } from '../../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -42,10 +37,10 @@ import {
 
 type ItemKind = Extract<
   DeliverableKind,
-  'briefing' | 'dashboard' | 'slides' | 'chart' | 'data_export'
+  'briefing' | 'slides' | 'chart' | 'data_export'
 >;
 
-type CreationKind = 'dashboard' | 'slides' | 'chart' | 'data_export';
+type CreationKind = 'slides' | 'chart' | 'data_export';
 
 type FilterKind = ItemKind | 'all';
 
@@ -57,7 +52,6 @@ interface DeliverableItem {
   createdAt: string;
   onOpen: () => void;
   artifact?: ArtifactListItem;
-  layout?: ExplorerLayoutListItem;
 }
 
 interface AgentArtifactsTabProps {
@@ -69,15 +63,14 @@ interface AgentArtifactsTabProps {
 // Seed prompts — used when the user picks "+ New → <Type>".
 
 const CREATION_SEEDS: Record<CreationKind, string> = {
-  dashboard: "Create a dashboard for this agent's collections showing ",
   slides: 'Generate a slide deck summarizing ',
   chart: 'Create a chart showing ',
   data_export: "Export data from this agent's collections filtered by ",
 };
 
-const CREATION_ORDER: CreationKind[] = ['dashboard', 'slides', 'chart', 'data_export'];
+const CREATION_ORDER: CreationKind[] = ['slides', 'chart', 'data_export'];
 
-const FILTER_ORDER: ItemKind[] = ['dashboard', 'slides', 'chart', 'data_export', 'briefing'];
+const FILTER_ORDER: ItemKind[] = ['slides', 'chart', 'data_export', 'briefing'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
@@ -113,28 +106,11 @@ export function AgentArtifactsTab({
   });
   const briefing = briefingQuery.isSuccess ? briefingQuery.data : null;
 
-  const layoutsQuery = useQuery({
-    queryKey: ['explorer-layouts', task.agent_id],
-    queryFn: () => listExplorerLayouts(task.agent_id),
-    enabled: !!task.agent_id,
-    staleTime: 60_000,
-  });
-  const layouts = layoutsQuery.data ?? [];
-
-  const openLayout = (layoutId: string) => {
-    useExplorerLayoutStore.getState().selectLayout(layoutId);
-    setSearchParams({ tab: 'explorer' }, { replace: true });
-  };
-
   const openBriefing = () => {
     setSearchParams({ tab: 'briefing' }, { replace: true });
   };
 
   const openArtifact = (artifact: ArtifactListItem) => {
-    if (artifact.type === 'dashboard') {
-      openLayout(artifact.artifact_id);
-      return;
-    }
     navigate(`/library?artifact=${artifact.artifact_id}`);
   };
 
@@ -157,23 +133,10 @@ export function AgentArtifactsTab({
       });
     }
 
-    const layoutIds = new Set<string>();
-    layouts.forEach((l) => {
-      layoutIds.add(l.layout_id);
-      out.push({
-        id: l.layout_id,
-        kind: 'dashboard',
-        title: l.title,
-        subtitle: 'dashboard',
-        createdAt: l.updated_at || l.created_at,
-        onOpen: () => openLayout(l.layout_id),
-        layout: l,
-      });
-    });
-
     artifacts.forEach((a) => {
-      if (layoutIds.has(a.artifact_id)) return;
-      const kind = artifactTypeToKind(a.type) as ItemKind;
+      if (a.type === 'dashboard') return;
+      const kind = artifactTypeToKind(a.type) as ItemKind | null;
+      if (!kind) return;
       out.push({
         id: a.artifact_id,
         kind,
@@ -188,12 +151,11 @@ export function AgentArtifactsTab({
     out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [artifacts, layouts, briefing, task.agent_id]);
+  }, [artifacts, briefing, task.agent_id]);
 
   const counts: Record<ItemKind, number> = useMemo(() => {
     const acc: Record<ItemKind, number> = {
       briefing: 0,
-      dashboard: 0,
       slides: 0,
       chart: 0,
       data_export: 0,
@@ -464,8 +426,6 @@ function DeliverableCard({ item }: { item: DeliverableItem }) {
       return <SlidesCard item={item} />;
     case 'data_export':
       return <ExportCard item={item} />;
-    case 'dashboard':
-      return <DashboardCard item={item} />;
     case 'briefing':
       return <BasicCard item={item} />;
   }
@@ -733,73 +693,6 @@ function ExportCard({ item }: { item: DeliverableItem }) {
     >
       <CardTitle item={item} />
     </CardShell>
-  );
-}
-
-// ─── Dashboard: mini "widget grid" mockup ───────────────────────────────────
-
-function DashboardCard({ item }: { item: DeliverableItem }) {
-  return (
-    <CardShell
-      kind="dashboard"
-      onClick={item.onOpen}
-      preview={<DashboardPreview />}
-    >
-      <CardTitle item={item} />
-    </CardShell>
-  );
-}
-
-function DashboardPreview() {
-  return (
-    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/12 via-emerald-500/3 to-transparent p-2.5">
-      <div className="grid h-full grid-cols-3 grid-rows-2 gap-1.5">
-        {/* KPI tile */}
-        <div className="col-span-1 row-span-1 flex flex-col justify-center rounded-md border border-emerald-500/20 bg-card/80 px-2 py-1 shadow-sm">
-          <div className="font-heading text-base font-bold tabular-nums leading-none text-emerald-600 dark:text-emerald-400">
-            12.4k
-          </div>
-          <div className="mt-0.5 h-0.5 w-6 rounded-full bg-emerald-500/30" />
-        </div>
-        {/* Bar widget */}
-        <div className="col-span-2 row-span-1 flex items-end gap-1 rounded-md border border-emerald-500/20 bg-card/80 px-2 py-1.5 shadow-sm">
-          {[40, 65, 30, 80, 50, 70, 45].map((h, i) => (
-            <div
-              key={i}
-              className="flex-1 rounded-sm bg-emerald-500/60"
-              style={{ height: `${h}%` }}
-            />
-          ))}
-        </div>
-        {/* Line widget */}
-        <div className="col-span-2 row-span-1 relative overflow-hidden rounded-md border border-emerald-500/20 bg-card/80 shadow-sm">
-          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 40" preserveAspectRatio="none">
-            <polyline
-              points="0,30 12,22 24,26 36,14 48,18 60,8 72,12 84,4 100,10"
-              fill="none"
-              stroke="rgb(16 185 129)"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-            <polyline
-              points="0,40 12,22 24,26 36,14 48,18 60,8 72,12 84,4 100,10 100,40"
-              fill="rgb(16 185 129 / 0.15)"
-              stroke="none"
-            />
-          </svg>
-        </div>
-        {/* Donut/pie widget */}
-        <div className="col-span-1 row-span-1 flex items-center justify-center rounded-md border border-emerald-500/20 bg-card/80 shadow-sm">
-          <div
-            className="h-7 w-7 rounded-full"
-            style={{
-              background:
-                'conic-gradient(rgb(16 185 129) 0% 45%, rgb(16 185 129 / 0.55) 45% 75%, rgb(16 185 129 / 0.25) 75% 100%)',
-            }}
-          />
-        </div>
-      </div>
-    </div>
   );
 }
 

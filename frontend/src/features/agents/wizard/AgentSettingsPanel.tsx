@@ -320,17 +320,6 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
               </div>
             )}
           </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm font-medium">Dashboard</Label>
-              <p className="text-[11px] text-muted-foreground">Generate a visual dashboard</p>
-            </div>
-            <Switch
-              checked={settings.autoDashboard}
-              onCheckedChange={(checked) => update({ autoDashboard: checked })}
-            />
-          </div>
         </div>
       </div>
 

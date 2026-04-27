@@ -46,7 +46,6 @@ export interface WizardAgentSettings {
   autoReport: boolean;
   autoEmail: boolean;
   autoSlides: boolean;
-  autoDashboard: boolean;
   emailRecipients: string[];
   slidesTemplateFile: File | null;
 }
@@ -73,7 +72,6 @@ const DEFAULT_AGENT: WizardAgentSettings = {
   autoReport: true,
   autoEmail: false,
   autoSlides: false,
-  autoDashboard: false,
   emailRecipients: [],
   slidesTemplateFile: null,
 };
@@ -145,7 +143,6 @@ export function AgentCreationWizard() {
       autoReport: plan.auto_report,
       autoEmail: plan.auto_email ?? false,
       autoSlides: plan.auto_slides ?? false,
-      autoDashboard: plan.auto_dashboard ?? false,
       emailRecipients: [],
       slidesTemplateFile: null,
     });

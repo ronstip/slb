@@ -525,16 +525,6 @@ export interface SharedDashboardDataResponse {
   };
 }
 
-export interface DashboardPayload {
-  status: string;
-  dashboard_id: string;
-  title: string;
-  collection_ids: string[];
-  collection_names: Record<string, string>;
-  message?: string;
-  agent_id?: string;
-}
-
 // ─── Tool result types ───────────────────────────────────────────────
 
 export interface DesignResearchResult {
@@ -672,6 +662,9 @@ export interface AdminOverview {
   total_queries: number;
   total_collections: number;
   total_posts: number;
+  total_posts_in_range?: number;
+  total_posts_related?: number;
+  avg_relevancy_pct?: number;
   total_revenue_cents: number;
   total_credits_purchased: number;
   credits_outstanding: number;
@@ -732,6 +725,9 @@ export interface AdminCollection {
   posts_enriched: number;
   posts_embedded: number;
   posts_stored: number | null;
+  posts_in_range?: number;
+  posts_related?: number;
+  relevancy_pct?: number;
   bd_raw_records: number | null;
   platforms: string[];
   created_at: string;
@@ -849,7 +845,6 @@ export interface WizardPlan {
   auto_report: boolean;
   auto_email: boolean;
   auto_slides: boolean;
-  auto_dashboard: boolean;
   custom_fields: CustomFieldDef[];
   enrichment_context: string;
   content_types: string[];

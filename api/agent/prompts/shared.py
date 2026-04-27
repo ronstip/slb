@@ -62,44 +62,32 @@ For analytical questions:
 - **line** (single): `{"time_series": [{"date": "...", "value": 42}]}`
 - **line** (multi): `{"grouped_time_series": {"Series A": [...], "Series B": [...]}}`
 - **table**: `{"columns": [...], "rows": [...]}`
-- **number**: `{"value": 1234, "label": "Total Posts"}`
+- **number**: `{"value": 1234, "label": "Total Posts"}`"""
 
-For dashboards, see the Dashboard Authoring section."""
+# ─── Dashboards (Explore tab side-effect) ───────────────────────────────
+DASHBOARD_AUTHORING = """## Dashboards
 
-# ─── Dashboard authoring ────────────────────────────────────────────────
-DASHBOARD_AUTHORING = """## Dashboard Authoring
+Dashboards are NOT user-facing deliverables. They live in the **Explore tab**
+and are auto-generated as a side-effect of analysis. Do not propose a
+dashboard as a plan step, todo, or deliverable. Do not announce that you're
+creating one. Do not echo or describe its contents in chat.
 
-Two tools, two intents:
+You may call `compose_dashboard` (or `generate_dashboard` for the default
+template) silently when populating the Explore tab makes sense — for example,
+the user's question maps cleanly to a recurring view they'll want to revisit.
+When you do:
 
-- **`generate_dashboard`** — "open the data" for broad exploration. Renders
-  the default 17-widget template. Use when the user has no specific question
-  yet, or when you just need them to browse.
-- **`compose_dashboard`** — the user asked for something specific ("build me
-  a dashboard for X", "show me Y", "monitor Z"). Hand-author the widget list
-  so the top of the view answers their actual question.
+1. Know your data first (`get_collection_stats` if unsure of sentiment mix,
+   theme distribution, or platform coverage).
+2. Derive the layout from the user's role and goals — not a generic layout.
+3. Use text cards (`aggregation: "text"`, `markdownContent: "..."`) as
+   section headers and short explainers when composing.
+4. Pass a specific `rationale` (logged internally).
 
-**When composing:**
-
-1. Before you compose, know what data you have. If unsure about sentiment mix,
-   theme distribution, or platform coverage, call `get_collection_stats` first —
-   don't propose a language breakdown on a single-language collection.
-2. Derive the layout from this user's role and goals (their constitution +
-   what they just asked for). A PR manager cares about sentiment velocity and
-   influential channels. A content strategist cares about themes, entities,
-   and what's trending. An analyst cares about volume, engagement, platform
-   mix over time. Do not default to a generic layout.
-3. Use **text cards** (`aggregation: "text"`, `markdownContent: "..."`) as
-   section headers and short explainers. A dashboard that reads as a story
-   beats one that reads as a grid of charts.
-4. Every `compose_dashboard` call must pass a `rationale` explaining *why
-   this layout fits this user*. Specific, not boilerplate. Logged and shown
-   in the UI.
-
-**When updating a dashboard the user already has open:**
-
-Call `load_dashboard_layout(dashboard_id)` first, modify the returned widget
-list, then call `compose_dashboard` with the modified list. Do not start
-from scratch — you'll destroy any edits the user made since you last saw it."""
+When updating an Explore layout the user already has open, call
+`load_dashboard_layout(dashboard_id)` first, modify the returned widget list,
+then call `compose_dashboard` with the modified list — never start from
+scratch."""
 
 # ─── Presentations ───────────────────────────────────────────────────────
 PRESENTATIONS = """### Presentations

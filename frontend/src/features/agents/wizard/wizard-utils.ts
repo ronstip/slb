@@ -81,7 +81,6 @@ export function formatWizardAsPrompt(
   if (task.autoReport) outputs.push('report');
   if (task.autoEmail) outputs.push('email');
   if (task.autoSlides) outputs.push('slides');
-  if (task.autoDashboard) outputs.push('dashboard');
   if (outputs.length > 0) {
     lines.push(`Auto-generate outputs: ${outputs.join(', ')}`);
   }
@@ -166,6 +165,5 @@ export function buildWizardRequestBody(
     auto_email: task.autoEmail,
     email_recipients: task.emailRecipients.length > 0 ? task.emailRecipients : undefined,
     auto_slides: task.autoSlides,
-    auto_dashboard: task.autoDashboard,
   };
 }

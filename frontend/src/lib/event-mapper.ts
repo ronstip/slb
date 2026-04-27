@@ -18,7 +18,6 @@ import type { DataExportRow } from '../api/types.ts';
 import {
   getToolDisplayText,
   isChartResult,
-  isDashboardResult,
   isDataExportResult,
   isDesignResearchResult,
   isMetricsResult,
@@ -32,7 +31,7 @@ import {
 /** Tools that skip the activity log (internal plumbing). Result is still processed. */
 export const INTERNAL_TOOLS: ReadonlySet<string> = new Set(['update_todos']);
 
-export type ArtifactFallbackKind = 'chart' | 'data_export' | 'dashboard' | 'presentation';
+export type ArtifactFallbackKind = 'chart' | 'data_export' | 'presentation';
 
 export interface MapperContext {
   /** Timestamp stamped on all entries produced by this call. */
@@ -188,17 +187,6 @@ export function mapToolResult(
       stacked: result.stacked as boolean | undefined,
       collectionIds: (result.collection_ids as string[] | undefined) ?? undefined,
       sourceSql: (result.source_sql as string | undefined) || undefined,
-      createdAt: new Date(ts),
-    });
-  } else if (isDashboardResult(toolName, result)) {
-    const dashboardId = (result._artifact_id as string) || (result.dashboard_id as string) || ctx.fallbackId('dashboard');
-    patch.cards.push({ type: 'dashboard', data: result });
-    patch.artifacts.push({
-      id: dashboardId,
-      type: 'dashboard',
-      title: result.title as string,
-      collectionIds: result.collection_ids as string[],
-      collectionNames: result.collection_names as Record<string, string>,
       createdAt: new Date(ts),
     });
   } else if (isStartAgentResult(toolName, result)) {

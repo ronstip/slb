@@ -1,7 +1,6 @@
 import {
   BarChart3,
   FileText,
-  LayoutDashboard,
   Mail,
   Newspaper,
   Presentation,
@@ -9,7 +8,6 @@ import {
 
 export type DeliverableKind =
   | 'briefing'
-  | 'dashboard'
   | 'slides'
   | 'email'
   | 'chart'
@@ -32,14 +30,6 @@ export const KIND_VISUALS: Record<DeliverableKind, KindVisual> = {
     icon: Newspaper,
     tileGradient: 'from-indigo-500/20 via-indigo-500/5 to-transparent',
     iconTint: 'text-indigo-500',
-  },
-  dashboard: {
-    label: 'Dashboard',
-    labelPlural: 'Dashboards',
-    sublabel: 'Dashboard is on the way',
-    icon: LayoutDashboard,
-    tileGradient: 'from-emerald-500/20 via-emerald-500/5 to-transparent',
-    iconTint: 'text-emerald-500',
   },
   slides: {
     label: 'Slide deck',
@@ -77,17 +67,17 @@ export const KIND_VISUALS: Record<DeliverableKind, KindVisual> = {
 
 export function artifactTypeToKind(
   type: 'chart' | 'data_export' | 'dashboard' | 'presentation',
-): DeliverableKind {
+): DeliverableKind | null {
   switch (type) {
     case 'presentation':
       return 'slides';
-    case 'dashboard':
-      return 'dashboard';
     case 'data_export':
       return 'data_export';
     case 'chart':
       return 'chart';
+    case 'dashboard':
+      return null;
     default:
-      return 'chart';
+      return null;
   }
 }

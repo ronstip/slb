@@ -25,7 +25,6 @@ interface AgentOverviewTabProps {
   onRun?: () => void;
   onStop?: () => void;
   canRun?: boolean;
-  onOpenLayout?: (layoutId: string | null) => void;
 }
 
 export function AgentOverviewTab({
@@ -37,7 +36,6 @@ export function AgentOverviewTab({
   onRun,
   onStop,
   canRun,
-  onOpenLayout,
 }: AgentOverviewTabProps) {
   const isRunning = task.status === 'running';
   const collectionIds = task.collection_ids ?? [];
@@ -123,10 +121,6 @@ export function AgentOverviewTab({
                 onOpenArtifacts={() => onTabChange('artifacts')}
                 onOpenBriefing={() => onTabChange('briefing')}
                 onOpenSettings={() => onTabChange('settings')}
-                onOpenLayout={(id) => {
-                  if (onOpenLayout) onOpenLayout(id);
-                  else onTabChange('explorer');
-                }}
               />
               <EmergingTopicsPreview
                 agentId={task.agent_id}

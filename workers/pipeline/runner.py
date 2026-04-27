@@ -30,6 +30,7 @@ from workers.pipeline.steps import PIPELINE_STEPS, StepContext
 from workers.shared.bq_client import BQClient
 from workers.shared.firestore_client import FirestoreClient
 from workers.shared.gcs_client import GCSClient
+from workers.shared.time_range_gate import partition_by_time_range
 
 logger = logging.getLogger(__name__)
 
@@ -704,6 +705,8 @@ class PipelineRunner:
         funnel_worker_dedup = 0
         funnel_bq_dedup = 0  # wired up in the BQ-dedup PR; stays 0 until then
         funnel_bq_insert_failures = 0
+        funnel_posts_in_range = 0
+        funnel_posts_out_of_range = 0
         collection_started_at = datetime.now(timezone.utc).isoformat()
         collection_start = _time.monotonic()
 
@@ -841,8 +844,15 @@ class PipelineRunner:
                 last_run_posts_added=total_posts,
             )
 
+            # Time-range gate: out-of-range posts skip the state machine so
+            # they don't enter enrichment+embedding. They still live in
+            # `posts`/`post_engagements`/`channels` (we paid the provider).
+            in_range, out_of_range = partition_by_time_range(new_posts, self._config)
+            funnel_posts_in_range += len(in_range)
+            funnel_posts_out_of_range += len(out_of_range)
+
             # Classify posts and set initial pipeline state
-            self.state_manager.mark_collected(new_posts)
+            self.state_manager.mark_collected(in_range)
 
             # Usage tracking (fire-and-forget)
             actual_stored = len(new_posts) - failed_posts
@@ -909,6 +919,8 @@ class PipelineRunner:
                 "worker_bq_dedup": funnel_bq_dedup,
                 "worker_bq_insert_failures": funnel_bq_insert_failures,
                 "worker_posts_stored": total_posts,
+                "posts_in_range": funnel_posts_in_range,
+                "posts_out_of_range": funnel_posts_out_of_range,
             },
         }
         if errors:

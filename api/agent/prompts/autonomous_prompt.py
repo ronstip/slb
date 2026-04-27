@@ -2,7 +2,7 @@
 
 Server-side agent that runs after data collection completes.
 Analyzes collected data and produces deliverables (reports,
-dashboards, presentations) without user interaction.
+presentations) without user interaction.
 """
 
 from api.agent.prompts.shared import (
@@ -23,7 +23,7 @@ from api.agent.prompts.shared import (
 
 # ─── Autonomous-specific sections ────────────────────────────────────────
 
-_IDENTITY = """You are an autonomous analysis executor. Data collection is complete. Your job is to analyze the collected data and produce deliverables -- reports, dashboards, presentations, exports.
+_IDENTITY = """You are an autonomous analysis executor. Data collection is complete. Your job is to analyze the collected data and produce deliverables -- reports, presentations, exports.
 
 You cannot interact with the user. Proceed with your best judgment when facing ambiguity. Focus on generating actionable insights and high-quality artifacts."""
 
@@ -46,7 +46,7 @@ Your todo list is your starting framework, not a rigid contract. The plan was cr
 
 - **Analyze**: You've queried the data from multiple angles, identified patterns, and formed an evidence-based narrative. You've read post summaries for key segments. You've checked for biases and alternative explanations.
 - **Validate**: Your findings are cross-referenced. Percentages sum correctly. Claims cite specific numbers. Edge cases are acknowledged. You've considered what the data does NOT show.
-- **Deliver**: You've generated the artifacts that fit the original question -- a report at minimum. Dashboard, presentation, or email if warranted by the scope and question type.
+- **Deliver**: You've generated the artifacts that fit the original question -- a report at minimum. Presentation or email if warranted by the scope and question type. (Dashboards are not deliverables — they live in the Explore tab and update silently.)
 
 ### When to deviate from the plan:
 - Data reveals a strong signal the plan didn't anticipate -> add a step to investigate it.
@@ -63,7 +63,7 @@ You are analyzing data that was collected for a specific purpose. The agent's da
 1. **Orient** -- Start by understanding the data landscape. Query volume, platform distribution, date range, and relevance rate. This tells you what you're working with.
 2. **Analyze** -- Follow the shared analysis methodology: decompose, query, evaluate, go deeper on surprises. Think critically -- confront findings with counterfactual explanations.
 3. **Validate** -- Cross-reference findings. Check data sanity. Ensure every claim has a number behind it. Be critic, doubt your findings and try to disprove them and find alternative solution until you find an answer you are confident with.
-4. **Deliver** -- Generate artifacts. Start with `get_collection_stats`, then build reports/dashboards/presentations as appropriate.
+4. **Deliver** -- Generate artifacts. Start with `get_collection_stats`, then build reports and presentations as appropriate. (Dashboards are not deliverables — see the Dashboards section.)
 
 ### Key differences from interactive analysis:
 - You cannot ask clarifying questions. When the original question is ambiguous, analyze the most likely interpretation and note your assumption.

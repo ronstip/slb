@@ -4,8 +4,6 @@ import { FileText, Plus } from 'lucide-react';
 import type { Agent } from '../../../../../api/endpoints/agents.ts';
 import type { ArtifactListItem } from '../../../../../api/endpoints/artifacts.ts';
 import { getAgentBriefing } from '../../../../../api/endpoints/briefings.ts';
-import { listExplorerLayouts } from '../../../../../api/endpoints/explorer-layouts.ts';
-import type { ExplorerLayoutListItem } from '../../../../../api/endpoints/explorer-layouts.ts';
 import { timeAgo } from '../../../../../lib/format.ts';
 import { cn } from '../../../../../lib/utils.ts';
 import {
@@ -19,21 +17,18 @@ interface DeliverablesPanelProps {
   onOpenArtifacts: () => void;
   onOpenBriefing: () => void;
   onOpenSettings: () => void;
-  onOpenLayout: (layoutId: string | null) => void;
 }
 
-function artifactKind(a: ArtifactListItem): DeliverableKind {
+function artifactKind(a: ArtifactListItem): DeliverableKind | null {
   switch (a.type) {
     case 'presentation':
       return 'slides';
-    case 'dashboard':
-      return 'dashboard';
     case 'data_export':
       return 'data_export';
     case 'chart':
       return 'chart';
     default:
-      return 'chart';
+      return null;
   }
 }
 
@@ -43,7 +38,7 @@ function isRecent(iso?: string | null): boolean {
 }
 
 function getExpectedKinds(task: Agent): DeliverableKind[] {
-  const kinds: DeliverableKind[] = ['briefing', 'dashboard'];
+  const kinds: DeliverableKind[] = ['briefing'];
   const scope = task.data_scope ?? ({} as Agent['data_scope']);
   if (scope.auto_slides) kinds.push('slides');
   if (scope.auto_email) kinds.push('email');
@@ -56,7 +51,6 @@ export function DeliverablesPanel({
   onOpenArtifacts,
   onOpenBriefing,
   onOpenSettings,
-  onOpenLayout,
 }: DeliverablesPanelProps) {
   const navigate = useNavigate();
   const handleNew = () => {
@@ -75,43 +69,28 @@ export function DeliverablesPanel({
   });
   const briefingReady = briefingQuery.isSuccess && briefingQuery.data != null;
 
-  const layoutsQuery = useQuery({
-    queryKey: ['explorer-layouts', task.agent_id],
-    queryFn: () => listExplorerLayouts(task.agent_id),
-    enabled: !!task.agent_id,
-    staleTime: 60_000,
-    refetchInterval: isRunning ? 20_000 : false,
-  });
-  const layouts = layoutsQuery.data ?? [];
-
+  const visibleArtifacts = artifacts.filter((a) => artifactKind(a) !== null);
   const used = new Set<string>();
-  const usedLayouts = new Set<string>();
 
   const slots = expectedKinds.map((kind) => {
     if (kind === 'briefing') {
-      return { kind, artifact: undefined, layout: undefined };
+      return { kind, artifact: undefined };
     }
-    if (kind === 'dashboard') {
-      const layout = layouts.find((l) => !usedLayouts.has(l.layout_id));
-      if (layout) usedLayouts.add(layout.layout_id);
-      return { kind, artifact: undefined, layout };
-    }
-    const match = artifacts.find(
+    const match = visibleArtifacts.find(
       (a) => !used.has(a.artifact_id) && artifactKind(a) === kind,
     );
     if (match) used.add(match.artifact_id);
-    return { kind, artifact: match, layout: undefined };
+    return { kind, artifact: match };
   });
 
-  const extraLayouts = layouts.filter((l) => !usedLayouts.has(l.layout_id));
-  const extraArtifacts = artifacts.filter((a) => !used.has(a.artifact_id));
+  const extraArtifacts = visibleArtifacts.filter((a) => !used.has(a.artifact_id));
 
   const readyCount =
-    (briefingReady ? 1 : 0) + layouts.length + extraArtifacts.length;
+    (briefingReady ? 1 : 0) + extraArtifacts.length;
   const pendingCount =
     (briefingReady ? 0 : 1) +
     slots.filter(
-      (s) => s.kind !== 'briefing' && !s.artifact && !s.layout,
+      (s) => s.kind !== 'briefing' && !s.artifact,
     ).length;
   const showMoreComing = pendingCount > 0 && (isRunning || !isDone);
 
@@ -128,7 +107,7 @@ export function DeliverablesPanel({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {(artifacts.length > 0 || layouts.length > 0) && (
+          {visibleArtifacts.length > 0 && (
             <button
               onClick={onOpenArtifacts}
               className="text-xs font-medium text-primary hover:text-primary/80"
@@ -187,29 +166,6 @@ export function DeliverablesPanel({
                 />
               );
             }
-            if (slot.kind === 'dashboard') {
-              return slot.layout ? (
-                <DeliverableRow
-                  key={slot.layout.layout_id}
-                  kind="dashboard"
-                  title={slot.layout.title}
-                  meta={timeAgo(slot.layout.updated_at || slot.layout.created_at)}
-                  ready
-                  isNew={isRecent(slot.layout.created_at)}
-                  onClick={() => onOpenLayout(slot.layout!.layout_id)}
-                />
-              ) : (
-                <DeliverableRow
-                  key="dashboard-pending"
-                  kind="dashboard"
-                  title={KIND_VISUALS.dashboard.label}
-                  meta={KIND_VISUALS.dashboard.sublabel}
-                  ready={false}
-                  animate={isRunning}
-                  delay={i * 120}
-                />
-              );
-            }
             return slot.artifact ? (
               <ArtifactRow
                 key={slot.artifact.artifact_id}
@@ -228,17 +184,6 @@ export function DeliverablesPanel({
               />
             );
           })}
-          {extraLayouts.map((l) => (
-            <DeliverableRow
-              key={l.layout_id}
-              kind="dashboard"
-              title={l.title}
-              meta={timeAgo(l.updated_at || l.created_at)}
-              ready
-              isNew={isRecent(l.created_at)}
-              onClick={() => onOpenLayout(l.layout_id)}
-            />
-          ))}
           {extraArtifacts.map((a) => (
             <ArtifactRow key={a.artifact_id} artifact={a} onClick={onOpenArtifacts} />
           ))}
@@ -256,6 +201,7 @@ function ArtifactRow({
   onClick: () => void;
 }) {
   const kind = artifactKind(artifact);
+  if (!kind) return null;
   return (
     <DeliverableRow
       kind={kind}

@@ -277,9 +277,11 @@ async def get_collection_posts(
         ep.channel_type,
         COUNT(*) OVER() as _total
     FROM (
-        SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-        FROM social_listening.posts
+        SELECT pp.*,
+               ROW_NUMBER() OVER (PARTITION BY pp.collection_id, pp.post_id ORDER BY pp.collected_at DESC) AS _rn
+        FROM social_listening.posts pp
+        JOIN social_listening.collections cc USING (collection_id)
+        WHERE pp.posted_at BETWEEN COALESCE(cc.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(cc.time_range_end, CURRENT_TIMESTAMP())
     ) p
     LEFT JOIN (
         SELECT *,
@@ -462,8 +464,10 @@ async def download_collection(
         COALESCE(pe.saves, 0) as saves,
         ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields
     FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-        FROM social_listening.posts
+        SELECT pp.*, ROW_NUMBER() OVER (PARTITION BY pp.collection_id, pp.post_id ORDER BY pp.collected_at DESC) AS _rn
+        FROM social_listening.posts pp
+        JOIN social_listening.collections cc USING (collection_id)
+        WHERE pp.posted_at BETWEEN COALESCE(cc.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(cc.time_range_end, CURRENT_TIMESTAMP())
     ) p
     LEFT JOIN (
         SELECT post_id, likes, shares, comments_count, views, saves,

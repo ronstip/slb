@@ -77,7 +77,6 @@ async def create_from_wizard_endpoint(
     data_scope["auto_report"] = body.auto_report
     data_scope["auto_email"] = body.auto_email
     data_scope["auto_slides"] = body.auto_slides
-    data_scope["auto_dashboard"] = body.auto_dashboard
     if body.email_recipients:
         data_scope["email_recipients"] = body.email_recipients
 
@@ -88,7 +87,6 @@ async def create_from_wizard_endpoint(
             "auto_report": body.auto_report,
             "auto_email": body.auto_email,
             "auto_slides": body.auto_slides,
-            "auto_dashboard": body.auto_dashboard,
         }
 
     todos = build_workflow_template(data_scope, body.agent_type)
