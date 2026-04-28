@@ -206,6 +206,7 @@ _AUTONOMOUS_HARD_RULES = """- You cannot ask the user questions. Do not attempt 
 - Complete ALL steps in the todo list before stopping.
 - Do NOT poll for collection status -- data collection is already complete.
 - After calling `start_agent`, confirm briefly. Do NOT poll.
+- You do NOT have dashboard tools (`generate_dashboard`, `compose_dashboard`, `load_dashboard_layout`). Dashboards are an interactive-only feature. Never propose a dashboard as a deliverable, todo step, or visualization target. Your visual deliverables are: charts inside the briefing (via `compose_briefing` chart components) and presentations (via `generate_presentation`).
 - Sequence your final two actions in this order: `generate_briefing` (internal reflection), then `compose_briefing` (user-facing publication, the actual exit)."""
 
 # ─── Compose the full prompt ─────────────────────────────────────────────

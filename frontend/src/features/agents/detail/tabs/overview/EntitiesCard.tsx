@@ -10,6 +10,7 @@ interface EntitiesCardProps {
   collectionIds: string[];
   isAgentRunning: boolean;
   searches?: SearchDef[];
+  agentCreatedAt: string | undefined;
   onOpenData: () => void;
 }
 
@@ -17,9 +18,15 @@ export function EntitiesCard({
   collectionIds,
   isAgentRunning,
   searches,
+  agentCreatedAt,
   onOpenData,
 }: EntitiesCardProps) {
-  const { posts, isLoading } = useOverviewDashboardData(collectionIds, searches, isAgentRunning);
+  const { posts, isLoading } = useOverviewDashboardData(
+    collectionIds,
+    searches,
+    isAgentRunning,
+    agentCreatedAt,
+  );
 
   const entities = useMemo(
     () => aggregateEntities(posts) as unknown as EntitySummary[],

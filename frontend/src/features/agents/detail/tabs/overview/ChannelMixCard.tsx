@@ -19,6 +19,7 @@ interface ChannelMixCardProps {
   collectionIds: string[];
   isAgentRunning: boolean;
   searches?: SearchDef[];
+  agentCreatedAt: string | undefined;
   onOpenData: () => void;
 }
 
@@ -26,9 +27,15 @@ export function ChannelMixCard({
   collectionIds,
   isAgentRunning,
   searches,
+  agentCreatedAt,
   onOpenData,
 }: ChannelMixCardProps) {
-  const { posts, isLoading } = useOverviewDashboardData(collectionIds, searches, isAgentRunning);
+  const { posts, isLoading } = useOverviewDashboardData(
+    collectionIds,
+    searches,
+    isAgentRunning,
+    agentCreatedAt,
+  );
 
   const channelTypes = useMemo(() => aggregateChannelTypeViews(posts), [posts]);
 

@@ -92,6 +92,7 @@ export function AgentOverviewTab({
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
                 searches={task.data_scope?.searches}
+                agentCreatedAt={task.created_at}
                 onOpenData={() => onTabChange('data')}
               />
               <TrendCard
@@ -100,6 +101,7 @@ export function AgentOverviewTab({
                 isAgentRunning={isRunning}
                 customFields={task.data_scope?.custom_fields}
                 searches={task.data_scope?.searches}
+                agentCreatedAt={task.created_at}
               />
               <TopicsMosaic
                 agentId={task.agent_id}
@@ -140,12 +142,14 @@ export function AgentOverviewTab({
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
                 searches={task.data_scope?.searches}
+                agentCreatedAt={task.created_at}
                 onOpenData={() => onTabChange('data')}
               />
               <ChannelMixCard
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
                 searches={task.data_scope?.searches}
+                agentCreatedAt={task.created_at}
                 onOpenData={() => onTabChange('data')}
               />
             </div>

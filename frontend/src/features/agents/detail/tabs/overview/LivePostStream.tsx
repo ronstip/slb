@@ -15,6 +15,7 @@ interface LivePostStreamProps {
   collectionIds: string[];
   isAgentRunning: boolean;
   searches?: SearchDef[];
+  agentCreatedAt: string | undefined;
   onOpenData: () => void;
 }
 
@@ -22,12 +23,16 @@ export function LivePostStream({
   collectionIds,
   isAgentRunning,
   searches,
+  agentCreatedAt,
   onOpenData,
 }: LivePostStreamProps) {
   const statusQueries = useCollectionStatusQueries(collectionIds);
   const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
 
-  const startDate = useMemo(() => computeWindowStart(searches).startDate, [searches]);
+  const startDate = useMemo(
+    () => computeWindowStart(searches, agentCreatedAt).startDate,
+    [searches, agentCreatedAt],
+  );
 
   // Count must match what the grid below renders: in time-range AND task-relevant.
   // Same params as PostsFeedGrid defaults (dedup=true, relevant_to_task='true').

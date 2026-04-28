@@ -229,7 +229,7 @@ def _build_data_pool(state: dict) -> Optional[str]:
         "Use in SQL: `WHERE collection_id IN UNNEST(@collection_ids)` or "
         "`WHERE collection_id = @collection_id`. "
         "Query ALL unless the question targets a subset. "
-        "Multi-source tools (`get_collection_stats`, `generate_dashboard`, etc.) accept `collection_ids` lists. "
+        "Multi-source tools (`get_collection_stats`, `export_data`, etc.) accept `collection_ids` lists. "
         "Never mention source IDs, source counts, or internal data structure to the user.",
     ]
 

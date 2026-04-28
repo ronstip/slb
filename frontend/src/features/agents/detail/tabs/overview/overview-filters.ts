@@ -6,7 +6,10 @@ export interface OverviewWindow {
   days: number | null;
 }
 
-export function computeWindowStart(searches: SearchDef[] | undefined): OverviewWindow {
+export function computeWindowStart(
+  searches: SearchDef[] | undefined,
+  referenceDate: string | undefined,
+): OverviewWindow {
   if (!searches || searches.length === 0) return { startDate: null, days: null };
 
   const explicit = searches
@@ -16,9 +19,10 @@ export function computeWindowStart(searches: SearchDef[] | undefined): OverviewW
   if (explicit.length > 0) return { startDate: explicit[0], days: null };
 
   const maxDays = Math.max(0, ...searches.map((s) => s.time_range_days || 0));
-  if (maxDays <= 0) return { startDate: null, days: null };
+  if (maxDays <= 0 || !referenceDate) return { startDate: null, days: null };
 
-  const d = new Date();
+  const d = new Date(referenceDate);
+  if (Number.isNaN(d.getTime())) return { startDate: null, days: null };
   d.setDate(d.getDate() - maxDays);
   return { startDate: d.toISOString().slice(0, 10), days: maxDays };
 }

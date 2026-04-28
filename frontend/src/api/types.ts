@@ -744,6 +744,7 @@ export interface AdminCollection {
   posts_embedded: number;
   posts_stored: number | null;
   posts_in_range?: number;
+  posts_unique?: number;
   posts_related?: number;
   relevancy_pct?: number;
   bd_raw_records: number | null;

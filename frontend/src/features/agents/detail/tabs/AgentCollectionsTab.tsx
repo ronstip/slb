@@ -49,8 +49,8 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
   }, [collections]);
 
   const startDate = useMemo(
-    () => computeWindowStart(task.searches).startDate,
-    [task.searches],
+    () => computeWindowStart(task.searches, task.created_at).startDate,
+    [task.searches, task.created_at],
   );
 
   if (taskCollectionIds.size === 0) {

@@ -425,7 +425,7 @@ PIPELINE_STEPS: list[PipelineStep] = [
         success_state=PostState.ENRICHED,
         failure_state=PostState.ENRICHMENT_FAILED,
         action=action_enrich,
-        batch_size=50,
+        batch_size=100,
     ),
     PipelineStep(
         name="embed",

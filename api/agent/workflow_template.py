@@ -79,20 +79,20 @@ def build_workflow_template(data_scope: dict, agent_type: str) -> list[dict]:
         "automated": False,
     })
 
-    # ── Phase 5: Delivery ────────────────────────────────────────
+    # ── Phase 5: Run Briefing (internal reflection) ──────────────
     steps.append({
-        "id": "deliver",
+        "id": "briefing",
         "phase": "deliver",
-        "content": "Generate report with key findings and visualizations",
+        "content": "Write run briefing: synthesize findings, flag open threads, note methodology observations",
         "status": "pending",
         "automated": False,
     })
 
-    # ── Phase 6: Run Briefing ──────────────────────────────────
+    # ── Phase 6: Compose Briefing (user-facing publication) ─────
     steps.append({
-        "id": "briefing",
+        "id": "compose",
         "phase": "deliver",
-        "content": "Generate run briefing: synthesize findings, flag open threads, note methodology observations",
+        "content": "Compose the user-facing briefing (hero + secondary + rail of stories)",
         "status": "pending",
         "automated": False,
     })

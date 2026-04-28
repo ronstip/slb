@@ -436,9 +436,21 @@ async def admin_collections(
             bq = get_bq()
             rows = await asyncio.to_thread(
                 bq.query,
+                "WITH first_seen AS ("
+                "  SELECT post_id, collection_id AS first_collection_id FROM ("
+                "    SELECT post_id, collection_id, "
+                "      ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at, collection_id) AS rn "
+                "    FROM social_listening.posts "
+                "    WHERE post_id IN ("
+                "      SELECT post_id FROM social_listening.posts "
+                "      WHERE collection_id IN UNNEST(@ids)"
+                "    )"
+                "  ) WHERE rn = 1"
+                ") "
                 "SELECT p.collection_id AS collection_id, "
                 "COUNT(DISTINCT p.post_id) AS stored, "
                 "COUNTIF(p.posted_at BETWEEN c.time_range_start AND c.time_range_end) AS in_range, "
+                "COUNT(DISTINCT IF(fs.first_collection_id = p.collection_id, p.post_id, NULL)) AS unique_posts, "
                 "COUNT(DISTINCT e.post_id) AS enriched, "
                 "COUNT(DISTINCT IF(e.is_related_to_task = TRUE, e.post_id, NULL)) AS related, "
                 "COUNT(DISTINCT em.post_id) AS embedded "
@@ -446,6 +458,7 @@ async def admin_collections(
                 "JOIN social_listening.collections c USING (collection_id) "
                 "LEFT JOIN social_listening.enriched_posts e USING (post_id) "
                 "LEFT JOIN social_listening.post_embeddings em USING (post_id) "
+                "LEFT JOIN first_seen fs ON fs.post_id = p.post_id "
                 "WHERE p.collection_id IN UNNEST(@ids) "
                 "GROUP BY p.collection_id",
                 {"ids": visible_ids},
@@ -460,6 +473,7 @@ async def admin_collections(
                 c["posts_enriched"] = int(r["enriched"])
                 c["posts_embedded"] = int(r["embedded"])
                 c["posts_in_range"] = int(r["in_range"])
+                c["posts_unique"] = int(r["unique_posts"])
                 c["posts_related"] = int(r["related"])
                 stored = int(r["stored"])
                 c["relevancy_pct"] = round(int(r["related"]) / stored * 100, 1) if stored else 0.0

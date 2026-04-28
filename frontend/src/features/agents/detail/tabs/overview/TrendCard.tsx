@@ -54,6 +54,7 @@ interface TrendCardProps {
   isAgentRunning: boolean;
   customFields?: CustomFieldDef[] | null;
   searches?: SearchDef[];
+  agentCreatedAt: string | undefined;
 }
 
 export function TrendCard({
@@ -62,6 +63,7 @@ export function TrendCard({
   isAgentRunning,
   customFields,
   searches,
+  agentCreatedAt,
 }: TrendCardProps) {
   const [metric, setMetric] = useState<TrendMetric>(() => loadMetric(agentId));
   const [chartOpen, setChartOpen] = useState(false);
@@ -83,6 +85,7 @@ export function TrendCard({
     collectionIds,
     searches,
     isAgentRunning,
+    agentCreatedAt,
   );
 
   const granularity: 'day' | 'hour' = useMemo(() => {

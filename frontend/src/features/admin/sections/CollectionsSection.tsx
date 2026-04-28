@@ -408,6 +408,7 @@ export function CollectionsSection() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Charged</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Stored</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="Posts whose posted_at is within the agent's time window">In-range</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="Posts this collection was the first to fetch (by collected_at). Frozen at fetch time — later collections re-fetching the same post don't reduce this count.">Unique</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Enriched</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="Enriched posts marked is_related_to_task=TRUE">Related</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="related / stored — % of fetched posts that were both in-window and on-task">Relevancy</th>
@@ -462,6 +463,9 @@ export function CollectionsSection() {
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
                       {c.posts_in_range != null ? c.posts_in_range.toLocaleString() : <span className="text-muted-foreground">—</span>}
                     </td>
+                    <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
+                      {c.posts_unique != null ? c.posts_unique.toLocaleString() : <span className="text-muted-foreground">—</span>}
+                    </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">{c.posts_enriched.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
                       {c.posts_related != null ? c.posts_related.toLocaleString() : <span className="text-muted-foreground">—</span>}
@@ -487,7 +491,7 @@ export function CollectionsSection() {
               })}
               {(data?.collections ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={13} className="px-3 py-10 text-center text-muted-foreground text-sm">
+                  <td colSpan={14} className="px-3 py-10 text-center text-muted-foreground text-sm">
                     No collections found
                   </td>
                 </tr>

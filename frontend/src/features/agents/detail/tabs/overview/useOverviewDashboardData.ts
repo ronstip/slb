@@ -8,8 +8,12 @@ export function useOverviewDashboardData(
   collectionIds: string[],
   searches: SearchDef[] | undefined,
   isAgentRunning: boolean,
+  agentCreatedAt: string | undefined,
 ) {
-  const window: OverviewWindow = useMemo(() => computeWindowStart(searches), [searches]);
+  const window: OverviewWindow = useMemo(
+    () => computeWindowStart(searches, agentCreatedAt),
+    [searches, agentCreatedAt],
+  );
 
   const query = useQuery({
     queryKey: ['dashboard-data', ...collectionIds],

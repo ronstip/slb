@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-005"
 
     # Enrichment worker config
-    enrichment_concurrency: int = 30
+    enrichment_concurrency: int = 50
     enrichment_search: bool = True
     enrichment_temperature: float = 1
     enrichment_max_output_tokens: int = 4096
@@ -34,9 +34,9 @@ class Settings(BaseSettings):
     enrichment_video_end_offset: str = "180s"
     enrichment_video_fps: float = 0.5
     enrichment_batch_workers: int = 4
-    enrichment_global_concurrency: int = 30  # Max concurrent Gemini calls across all batches
+    enrichment_global_concurrency: int = 50  # Max concurrent Gemini calls across all batches
     enrichment_video_rate_limit: int = 25  # Max video enrichment calls per minute (process-wide)
-    enrichment_general_rate_limit: int = 300  # Max total enrichment calls per minute (process-wide) — requires matching Gemini quota in GCP
+    enrichment_general_rate_limit: int = 600  # Max total enrichment calls per minute (process-wide) — requires matching Gemini quota in GCP
     # Retry budget is deliberately tight — the old defaults (base=60s, retries=5)
     # with exponential backoff let a single 429-prone post hold a worker slot
     # for up to 15 minutes (60+120+240+480+...), gridlocking the enrichment
