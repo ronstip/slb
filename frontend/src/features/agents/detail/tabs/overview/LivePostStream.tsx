@@ -291,20 +291,34 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
           {post.views != null && post.views > 0 && <span>{formatNumber(post.views)} views</span>}
         </div>
       )}
-      <EnrichmentOverlay post={post} />
+      <EnrichmentOverlay post={post} resolvedImg={resolvedImg} isVideo={isVideo} />
     </a>
   );
 }
 
-function EnrichmentOverlay({ post }: { post: FeedPost }) {
+function EnrichmentOverlay({
+  post,
+  resolvedImg,
+  isVideo,
+}: {
+  post: FeedPost;
+  resolvedImg: string | null;
+  isVideo: boolean;
+}) {
   const themes = post.themes ?? [];
   const entities = post.entities ?? [];
+  const customEntries = post.custom_fields
+    ? Object.entries(post.custom_fields).filter(([, v]) => v !== null && v !== undefined && v !== '')
+    : [];
+  const hasMetaChips = !!post.channel_type || !!post.content_type || !!post.language;
   const hasEnrichment =
     !!post.ai_summary ||
     !!post.sentiment ||
     !!post.emotion ||
     themes.length > 0 ||
-    entities.length > 0;
+    entities.length > 0 ||
+    hasMetaChips ||
+    customEntries.length > 0;
 
   if (!hasEnrichment) return null;
 
@@ -316,7 +330,7 @@ function EnrichmentOverlay({ post }: { post: FeedPost }) {
         : 'bg-sky-500';
 
   return (
-    <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 overflow-hidden rounded-xl bg-gradient-to-br from-background/98 via-background/95 to-background/98 p-3 opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover:opacity-100">
+    <div className="absolute inset-0 flex flex-col gap-2.5 overflow-y-auto rounded-xl bg-gradient-to-br from-background/98 via-background/95 to-background/98 p-3 opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover:opacity-100">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
           <Sparkles className="h-3 w-3 text-primary" />
@@ -338,13 +352,45 @@ function EnrichmentOverlay({ post }: { post: FeedPost }) {
         )}
       </div>
 
-      {post.ai_summary && (
-        <p className="line-clamp-4 text-[12px] leading-relaxed text-foreground/90">
-          {post.ai_summary}
-        </p>
+      {hasMetaChips && (
+        <div className="flex flex-wrap gap-1">
+          {post.channel_type && (
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none capitalize text-foreground/85">
+              {post.channel_type}
+            </span>
+          )}
+          {post.content_type && (
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none capitalize text-foreground/85">
+              {post.content_type}
+            </span>
+          )}
+          {post.language && (
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none capitalize text-foreground/85">
+              {post.language}
+            </span>
+          )}
+        </div>
       )}
 
-      <div className="mt-auto flex flex-col gap-1.5">
+      {resolvedImg ? (
+        <div className="relative h-28 w-full shrink-0 overflow-hidden rounded-md bg-muted">
+          <img src={resolvedImg} alt="" className="h-full w-full object-cover" loading="lazy" />
+          {isVideo && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm">
+                <Play className="h-4 w-4 fill-white text-white" />
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex h-28 w-full shrink-0 flex-col items-center justify-center gap-1.5 rounded-md bg-gradient-to-br from-muted/40 via-muted/20 to-muted/40">
+          <PlatformIcon platform={post.platform} className="h-8 w-8 text-muted-foreground/30" />
+          <span className="text-[11px] text-muted-foreground/70">{textPostLabel(post)}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
         {entities.length > 0 && (
           <div className="flex items-baseline gap-2">
             <span className="w-14 shrink-0 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
@@ -389,9 +435,26 @@ function EnrichmentOverlay({ post }: { post: FeedPost }) {
             </div>
           </div>
         )}
+        {customEntries.map(([key, value]) => (
+          <div key={`cf-${key}`} className="flex items-baseline gap-2">
+            <span className="w-14 shrink-0 truncate text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              {key.replace(/_/g, ' ')}
+            </span>
+            <span className="text-[10px] capitalize leading-tight text-foreground/85">
+              {formatCustomFieldValue(value)}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
+}
+
+function formatCustomFieldValue(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.join(', ');
+  return String(value);
 }
 
 function SkeletonGrid({ columns = 3 }: { columns?: number }) {

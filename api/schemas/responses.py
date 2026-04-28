@@ -40,6 +40,7 @@ class FeedPostResponse(BaseModel):
     entities: list[str] = []
     ai_summary: str | None = None
     content_type: str | None = None
+    language: str | None = None
     custom_fields: dict | None = None
     context: str | None = None
     is_related_to_task: bool | None = None

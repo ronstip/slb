@@ -230,6 +230,7 @@ export interface FeedPost {
   entities?: string[];
   ai_summary?: string;
   content_type?: string;
+  language?: string;
   custom_fields?: Record<string, unknown> | null;
   context?: string;
   is_related_to_task?: boolean;
