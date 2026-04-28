@@ -21,6 +21,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from api.rate_limiting import limiter
 from api.routers import admin as admin_router
 from api.routers import agents as agents_router
+from api.routers import artifact_shares as artifact_shares_router
 from api.routers import artifacts as artifacts_router
 from api.routers import auth as auth_router
 from api.routers import billing as billing_router
@@ -80,6 +81,7 @@ app.include_router(dashboard_shares_router.router)
 app.include_router(dashboard_layouts_router.router)
 app.include_router(explorer_layouts_router.router)
 app.include_router(artifacts_router.router)
+app.include_router(artifact_shares_router.router)
 app.include_router(topics_router.router)
 app.include_router(briefing_router.router)
 app.include_router(briefing_shares_router.router)

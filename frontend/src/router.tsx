@@ -6,6 +6,7 @@ import { AdminPage } from './features/admin/AdminPage.tsx';
 import { InviteHandler } from './features/settings/InviteHandler.tsx';
 import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
 import { SharedBriefingPage } from './features/briefings/SharedBriefingPage.tsx';
+import { SharedArtifactPage } from './features/artifacts/SharedArtifactPage.tsx';
 import { StandaloneArtifactPage } from './features/artifacts/StandaloneArtifactPage.tsx';
 import { AgentsPage } from './features/agents/AgentsPage.tsx';
 import { AgentHome } from './features/agents/AgentHome.tsx';
@@ -58,6 +59,10 @@ export const router = createBrowserRouter([
   {
     path: '/shared/briefing/:token',
     element: <SharedBriefingPage />,
+  },
+  {
+    path: '/shared/artifact/:token',
+    element: <SharedArtifactPage />,
   },
   {
     path: '/shared/:token',

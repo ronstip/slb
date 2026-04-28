@@ -529,6 +529,15 @@ export interface BriefingShareInfo {
   active: boolean;
 }
 
+export interface ArtifactShareInfo {
+  token: string;
+  artifact_id: string;
+  title: string;
+  created_at: string;
+  share_url: string;
+  active: boolean;
+}
+
 export interface BriefingMetaResponse {
   exists: boolean;
   generated_at: string | null;

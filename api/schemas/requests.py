@@ -89,6 +89,10 @@ class CreateBriefingShareRequest(BaseModel):
     title: str
 
 
+class CreateArtifactShareRequest(BaseModel):
+    artifact_id: str
+
+
 class CreateFeedLinkRequest(BaseModel):
     collection_ids: list[str]
     filters: dict = Field(default_factory=dict)

@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Download } from 'lucide-react';
 import { Logo } from '../../components/Logo.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
+import { apiGetBlob } from '../../api/client.ts';
 import { getArtifact } from '../../api/endpoints/artifacts.ts';
 import { ARTIFACT_STYLES, convertToStudioArtifact } from './artifact-utils.ts';
 import { ChartArtifactView } from '../studio/ChartArtifactView.tsx';
@@ -103,6 +105,65 @@ function ArtifactRenderer({ artifact }: { artifact: Artifact }) {
     case 'data_export':
       return <DataExportView artifact={artifact} />;
     case 'presentation':
-      return null;
+      return <PresentationDownloadView artifact={artifact} />;
   }
+}
+
+function PresentationDownloadView({
+  artifact,
+}: {
+  artifact: Extract<Artifact, { type: 'presentation' }>;
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      const blob = await apiGetBlob(`/presentations/${artifact.id}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${artifact.title.replace(/\s+/g, '_').slice(0, 60)}.pptx`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const slideCount = artifact.slideCount;
+
+  return (
+    <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-500/10">
+        <Download className="h-7 w-7 text-orange-500" />
+      </div>
+      <h2 className="mt-5 text-lg font-semibold text-foreground">
+        {slideCount > 0
+          ? `${slideCount} slide${slideCount === 1 ? '' : 's'} ready`
+          : 'Presentation ready'}
+      </h2>
+      <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+        Download the PowerPoint file to view, edit, or present this deck.
+      </p>
+      <Button
+        className="mt-6 gap-2"
+        onClick={handleDownload}
+        disabled={downloading}
+      >
+        <Download className="h-4 w-4" />
+        {downloading ? 'Preparing…' : 'Download .pptx'}
+      </Button>
+      {error && (
+        <p className="mt-3 text-xs text-destructive">{error}</p>
+      )}
+    </div>
+  );
 }

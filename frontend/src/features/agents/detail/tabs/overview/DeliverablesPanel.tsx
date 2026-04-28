@@ -1,11 +1,20 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { ChevronRight, FileText, Plus } from 'lucide-react';
+import { ChevronRight, FileText, Plus, Share2 } from 'lucide-react';
 import type { Agent } from '../../../../../api/endpoints/agents.ts';
 import type { ArtifactListItem } from '../../../../../api/endpoints/artifacts.ts';
 import { getBriefingMeta } from '../../../../../api/endpoints/briefings.ts';
 import { timeAgo } from '../../../../../lib/format.ts';
 import { cn } from '../../../../../lib/utils.ts';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../../../../../components/ui/tooltip.tsx';
+import { ShareBriefingDialog } from '../../../../briefings/ShareBriefingDialog.tsx';
+import { ShareArtifactDialog } from '../../../../artifacts/ShareArtifactDialog.tsx';
 import {
   KIND_VISUALS,
   type DeliverableKind,
@@ -53,6 +62,8 @@ export function DeliverablesPanel({
   onOpenSettings,
 }: DeliverablesPanelProps) {
   const navigate = useNavigate();
+  const [briefingShareOpen, setBriefingShareOpen] = useState(false);
+  const [shareArtifactId, setShareArtifactId] = useState<string | null>(null);
   const handleNew = () => {
     navigate(`?tab=artifacts&new=1`, { replace: false });
   };
@@ -153,6 +164,7 @@ export function DeliverablesPanel({
                   ready
                   isNew={isRecent(briefingQuery.data?.generated_at)}
                   onClick={onOpenBriefing}
+                  onShare={() => setBriefingShareOpen(true)}
                 />
               ) : (
                 <DeliverableRow
@@ -171,6 +183,7 @@ export function DeliverablesPanel({
                 key={slot.artifact.artifact_id}
                 artifact={slot.artifact}
                 onClick={onOpenArtifacts}
+                onShare={() => setShareArtifactId(slot.artifact!.artifact_id)}
               />
             ) : (
               <DeliverableRow
@@ -185,9 +198,29 @@ export function DeliverablesPanel({
             );
           })}
           {extraArtifacts.map((a) => (
-            <ArtifactRow key={a.artifact_id} artifact={a} onClick={onOpenArtifacts} />
+            <ArtifactRow
+              key={a.artifact_id}
+              artifact={a}
+              onClick={onOpenArtifacts}
+              onShare={() => setShareArtifactId(a.artifact_id)}
+            />
           ))}
         </ul>
+      )}
+      <ShareBriefingDialog
+        open={briefingShareOpen}
+        onOpenChange={setBriefingShareOpen}
+        agentId={task.agent_id}
+        title={task.title}
+      />
+      {shareArtifactId && (
+        <ShareArtifactDialog
+          open={!!shareArtifactId}
+          onOpenChange={(open) => {
+            if (!open) setShareArtifactId(null);
+          }}
+          artifactId={shareArtifactId}
+        />
       )}
     </section>
   );
@@ -196,9 +229,11 @@ export function DeliverablesPanel({
 function ArtifactRow({
   artifact,
   onClick,
+  onShare,
 }: {
   artifact: ArtifactListItem;
   onClick: () => void;
+  onShare?: () => void;
 }) {
   const kind = artifactKind(artifact);
   if (!kind) return null;
@@ -210,6 +245,7 @@ function ArtifactRow({
       ready
       isNew={isRecent(artifact.created_at)}
       onClick={onClick}
+      onShare={onShare}
     />
   );
 }
@@ -220,6 +256,7 @@ function DeliverableRow({
   meta,
   ready,
   onClick,
+  onShare,
   animate,
   delay,
   isNew,
@@ -229,21 +266,33 @@ function DeliverableRow({
   meta: string;
   ready: boolean;
   onClick?: () => void;
+  onShare?: () => void;
   animate?: boolean;
   delay?: number;
   isNew?: boolean;
 }) {
   const { icon: Icon, iconTint } = KIND_VISUALS[kind];
   const interactive = ready && !!onClick;
+  const shareable = ready && !!onShare;
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!interactive || !onClick) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
   return (
     <li>
-      <button
+      <div
+        role={interactive ? 'button' : undefined}
+        tabIndex={interactive ? 0 : -1}
         onClick={interactive ? onClick : undefined}
-        disabled={!interactive}
+        onKeyDown={interactive ? handleKeyDown : undefined}
+        aria-disabled={!interactive}
         className={cn(
-          'group relative flex w-full items-center gap-3 overflow-hidden rounded-md px-2 py-2 text-left transition-all',
+          'group relative flex w-full items-center gap-3 overflow-hidden rounded-md px-2 py-2 text-left transition-all outline-none',
           interactive
-            ? 'cursor-pointer hover:bg-accent hover:pl-3 hover:shadow-sm'
+            ? 'cursor-pointer hover:bg-accent hover:pl-3 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring'
             : 'cursor-default',
           isNew && 'animate-in fade-in slide-in-from-left-1 duration-500',
         )}
@@ -278,6 +327,26 @@ function DeliverableRow({
           {meta}
         </span>
         {!ready && <PendingPulse />}
+        {shareable && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Share"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onShare?.();
+                  }}
+                  className="shrink-0 -my-1 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-accent hover:text-primary group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Share</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         {interactive && (
           <ChevronRight
             className="h-3.5 w-3.5 shrink-0 -ml-1 text-muted-foreground/40 opacity-0 transition-all group-hover:translate-x-0.5 group-hover:text-primary group-hover:opacity-100"
@@ -289,7 +358,7 @@ function DeliverableRow({
             style={{ animationDelay: `${delay ?? 0}ms` }}
           />
         )}
-      </button>
+      </div>
     </li>
   );
 }

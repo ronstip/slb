@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../client.ts';
+import type { ArtifactShareInfo } from '../types.ts';
 
 export interface ArtifactListItem {
   artifact_id: string;
@@ -62,4 +63,40 @@ export function postUnderlyingData(
   params: InlineUnderlyingDataParams,
 ): Promise<UnderlyingDataResponse> {
   return apiPost<UnderlyingDataResponse>('/underlying-data', params);
+}
+
+// ─── Artifact sharing ───────────────────────────────────────────────
+
+export function getArtifactShare(
+  artifactId: string,
+): Promise<ArtifactShareInfo | null> {
+  return apiGet<ArtifactShareInfo | null>(
+    `/artifacts/shares/by-artifact/${artifactId}`,
+  );
+}
+
+export function createArtifactShare(payload: {
+  artifact_id: string;
+}): Promise<ArtifactShareInfo> {
+  return apiPost('/artifacts/shares', payload);
+}
+
+export async function revokeArtifactShare(token: string): Promise<void> {
+  await apiDelete(`/artifacts/shares/${token}`);
+}
+
+export interface SharedArtifactResponse {
+  payload: Record<string, unknown>;
+  meta: { title: string; type: string; created_at: string };
+}
+
+export async function getPublicArtifact(
+  token: string,
+): Promise<SharedArtifactResponse> {
+  const API_BASE = import.meta.env.VITE_API_URL || '/api';
+  const res = await fetch(`${API_BASE}/artifacts/shares/public/${token}`);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  return res.json();
 }

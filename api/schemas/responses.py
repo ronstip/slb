@@ -158,6 +158,26 @@ class SharedBriefingDataResponse(BaseModel):
     meta: SharedBriefingMetaResponse
 
 
+class ArtifactShareResponse(BaseModel):
+    token: str
+    artifact_id: str
+    title: str
+    created_at: str
+    share_url: str
+    active: bool = True
+
+
+class SharedArtifactMetaResponse(BaseModel):
+    title: str
+    type: str
+    created_at: str
+
+
+class SharedArtifactDataResponse(BaseModel):
+    payload: dict
+    meta: SharedArtifactMetaResponse
+
+
 class BreakdownItem(BaseModel):
     value: str
     post_count: int = 0

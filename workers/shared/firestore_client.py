@@ -1147,6 +1147,56 @@ class FirestoreClient:
             return data
         return None
 
+    # --- Artifact share methods ---
+
+    def create_artifact_share(self, token: str, data: dict) -> None:
+        """Store an artifact share token document (doc ID == token)."""
+        self._db.collection("artifact_shares").document(token).set(data)
+
+    def get_artifact_share(self, token: str) -> dict | None:
+        """Fetch an artifact share token document. Returns None if not found."""
+        doc = self._db.collection("artifact_shares").document(token).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["token"] = doc.id
+        for key in ("created_at", "revoked_at", "last_accessed_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def revoke_artifact_share(self, token: str) -> None:
+        """Mark an artifact share token as revoked."""
+        self._db.collection("artifact_shares").document(token).update({
+            "revoked": True,
+            "revoked_at": datetime.now(timezone.utc),
+        })
+
+    def get_artifact_share_by_artifact(
+        self, artifact_id: str, owner_uid: str
+    ) -> dict | None:
+        """Find an active (non-revoked) share for an artifact+owner pair.
+
+        NOTE: Requires a Firestore composite index on
+        (artifact_id, owner_uid, revoked) for the artifact_shares collection.
+        """
+        docs = (
+            self._db.collection("artifact_shares")
+            .where("artifact_id", "==", artifact_id)
+            .where("owner_uid", "==", owner_uid)
+            .where("revoked", "==", False)
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            data["token"] = doc.id
+            for key in ("created_at", "revoked_at", "last_accessed_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            return data
+        return None
+
     def get_credit_history(
         self, user_id: str | None = None, org_id: str | None = None
     ) -> list[dict]:

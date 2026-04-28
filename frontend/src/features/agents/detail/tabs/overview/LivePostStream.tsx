@@ -352,26 +352,6 @@ function EnrichmentOverlay({
         )}
       </div>
 
-      {hasMetaChips && (
-        <div className="flex flex-wrap gap-1">
-          {post.channel_type && (
-            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none capitalize text-foreground/85">
-              {post.channel_type}
-            </span>
-          )}
-          {post.content_type && (
-            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none capitalize text-foreground/85">
-              {post.content_type}
-            </span>
-          )}
-          {post.language && (
-            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none capitalize text-foreground/85">
-              {post.language}
-            </span>
-          )}
-        </div>
-      )}
-
       {resolvedImg ? (
         <div className="relative h-28 w-full shrink-0 overflow-hidden rounded-md bg-muted">
           <img src={resolvedImg} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -391,19 +371,28 @@ function EnrichmentOverlay({
       )}
 
       <div className="flex flex-col gap-1.5">
+        {post.channel_type && (
+          <MetricRow label="Source" tone="sky">
+            <Chip tone="sky">{post.channel_type}</Chip>
+          </MetricRow>
+        )}
+        {post.content_type && (
+          <MetricRow label="Type" tone="amber">
+            <Chip tone="amber">{post.content_type}</Chip>
+          </MetricRow>
+        )}
+        {post.language && (
+          <MetricRow label="Language" tone="emerald">
+            <Chip tone="emerald">{post.language}</Chip>
+          </MetricRow>
+        )}
         {entities.length > 0 && (
-          <div className="flex items-baseline gap-2">
-            <span className="w-14 shrink-0 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              Mentions
-            </span>
+          <MetricRow label="Mentions" tone="violet">
             <div className="flex flex-wrap gap-1">
               {entities.slice(0, 5).map((e) => (
-                <span
-                  key={`e-${e}`}
-                  className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-foreground/85"
-                >
+                <Chip key={`e-${e}`} tone="violet">
                   {e}
-                </span>
+                </Chip>
               ))}
               {entities.length > 5 && (
                 <span className="self-center text-[10px] leading-none text-muted-foreground/60">
@@ -411,21 +400,15 @@ function EnrichmentOverlay({
                 </span>
               )}
             </div>
-          </div>
+          </MetricRow>
         )}
         {themes.length > 0 && (
-          <div className="flex items-baseline gap-2">
-            <span className="w-14 shrink-0 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              Topics
-            </span>
+          <MetricRow label="Topics" tone="rose">
             <div className="flex flex-wrap gap-1">
               {themes.slice(0, 5).map((t) => (
-                <span
-                  key={`t-${t}`}
-                  className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-foreground/85"
-                >
+                <Chip key={`t-${t}`} tone="rose">
                   {t}
-                </span>
+                </Chip>
               ))}
               {themes.length > 5 && (
                 <span className="self-center text-[10px] leading-none text-muted-foreground/60">
@@ -433,21 +416,84 @@ function EnrichmentOverlay({
                 </span>
               )}
             </div>
-          </div>
+          </MetricRow>
         )}
         {customEntries.map(([key, value]) => (
-          <div key={`cf-${key}`} className="flex items-baseline gap-2">
-            <span className="w-14 shrink-0 truncate text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              {key.replace(/_/g, ' ')}
-            </span>
-            <span className="text-[10px] capitalize leading-tight text-foreground/85">
-              {formatCustomFieldValue(value)}
-            </span>
-          </div>
+          <MetricRow key={`cf-${key}`} label={key.replace(/_/g, ' ')} tone="indigo">
+            <div className="flex flex-wrap gap-1">
+              {(Array.isArray(value) ? value : [value]).map((v, i) => (
+                <Chip key={`cf-${key}-${i}`} tone={customFieldTone(v)}>
+                  {formatCustomFieldValue(v)}
+                </Chip>
+              ))}
+            </div>
+          </MetricRow>
         ))}
       </div>
     </div>
   );
+}
+
+type ChipTone = 'sky' | 'amber' | 'emerald' | 'violet' | 'rose' | 'indigo' | 'green' | 'red';
+
+const TONE_CHIP: Record<ChipTone, string> = {
+  sky: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  amber: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  emerald: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  violet: 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
+  rose: 'bg-rose-500/10 text-rose-700 dark:text-rose-300',
+  indigo: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
+  green: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  red: 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+};
+
+const TONE_DOT: Record<ChipTone, string> = {
+  sky: 'bg-sky-500',
+  amber: 'bg-amber-500',
+  emerald: 'bg-emerald-500',
+  violet: 'bg-violet-500',
+  rose: 'bg-rose-500',
+  indigo: 'bg-indigo-500',
+  green: 'bg-emerald-500',
+  red: 'bg-rose-500',
+};
+
+function MetricRow({
+  label,
+  tone,
+  children,
+}: {
+  label: string;
+  tone: ChipTone;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="flex w-14 shrink-0 items-center gap-1 truncate text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        <span className={cn('inline-block h-1 w-1 rounded-full', TONE_DOT[tone])} />
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function Chip({ tone, children }: { tone: ChipTone; children: React.ReactNode }) {
+  return (
+    <span
+      className={cn(
+        'rounded-md px-1.5 py-0.5 text-[10px] leading-none capitalize',
+        TONE_CHIP[tone],
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function customFieldTone(value: unknown): ChipTone {
+  if (typeof value === 'boolean') return value ? 'green' : 'red';
+  return 'indigo';
 }
 
 function formatCustomFieldValue(value: unknown): string {
