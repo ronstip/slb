@@ -98,9 +98,9 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
     "autonomous": {
         # Analysis & data
         "create_chart", "get_collection_stats", "get_collection_details",
-        "export_data", "list_topics", "load_dashboard_layout",
+        "export_data", "list_topics",
         # Planning & output
-        "update_todos", "generate_dashboard", "compose_dashboard",
+        "update_todos",
         "validate_deck_plan", "generate_presentation", "compose_email",
         # Briefing (sequential exit: reflection → publication)
         "generate_briefing", "compose_briefing",

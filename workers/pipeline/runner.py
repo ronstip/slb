@@ -233,13 +233,21 @@ class PipelineRunner:
                 crawlers={},
             )
 
+        # Resolve owning agent up front — the idempotency cache and the
+        # enrichment-skip query both widen to "any of the agent's collections"
+        # when the collection belongs to an agent.
+        agent_id = self._get_agent_id()
+        agent_collection_ids = (
+            self.fs.get_agent_collection_ids(agent_id) if agent_id else []
+        )
+
         # Prime the in-run idempotency cache from BQ — avoids a per-batch
         # BQ pre-check roundtrip inside action_enrich/action_embed. The
         # cache is re-primed on every runner init, so continuation runs
         # get a correct starting set.
-        enriched_ids, embedded_ids = self._prime_idempotency_cache()
-
-        # Build step context
+        enriched_ids, embedded_ids = self._prime_idempotency_cache(
+            agent_collection_ids=agent_collection_ids,
+        )
         ctx = StepContext(
             collection_id=self.collection_id,
             bq=self.bq,
@@ -252,6 +260,8 @@ class PipelineRunner:
             enriched_ids=enriched_ids,
             embedded_ids=embedded_ids,
             media_executor=self._media_executor,
+            agent_id=agent_id,
+            agent_collection_ids=agent_collection_ids,
         )
 
         crawl_thread: threading.Thread | None = None
@@ -1025,6 +1035,34 @@ class PipelineRunner:
 
         return True
 
+    def _heartbeat_worker(self, stop_event: threading.Event) -> None:
+        """Touch collection_status.updated_at only when post-state counts change.
+
+        A blind heartbeat would mask the run-3 failure mode (a wedged step
+        worker holding a hung Gemini call while the process stays alive) —
+        the watchdog would see a fresh `updated_at` forever and never recover
+        the pipeline. Tying the write to actual progress (the post-state
+        counts dict changing) means a stuck DAG starves `updated_at` and the
+        watchdog fires after `pipeline_stall_threshold_minutes`.
+
+        First tick always writes (establishes the baseline). After that, we
+        only write when the state-counts snapshot differs from last seen.
+        """
+        interval = float(self.settings.pipeline_heartbeat_seconds)
+        last_counts: dict | None = None
+        while not stop_event.is_set():
+            try:
+                current_counts = self.state_manager.get_counts()
+                if last_counts is None or current_counts != last_counts:
+                    self.fs.update_collection_status(self.collection_id)
+                    last_counts = current_counts
+            except Exception:
+                logger.warning(
+                    "Heartbeat update failed for %s",
+                    self.collection_id, exc_info=True,
+                )
+            stop_event.wait(interval)
+
     def _log_progress(self) -> None:
         """Periodic progress log — called once per loop iter, not per step."""
         counts = self.state_manager.get_counts()
@@ -1087,6 +1125,14 @@ class PipelineRunner:
         last_progress_log = 0.0
 
         stop_event = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=self._heartbeat_worker,
+            args=(stop_event,),
+            daemon=True,
+            name=f"heartbeat-{self.collection_id[:8]}",
+        )
+        heartbeat_thread.start()
+
         step_threads: list[threading.Thread] = []
         for step in PIPELINE_STEPS:
             t = threading.Thread(
@@ -1171,6 +1217,7 @@ class PipelineRunner:
                         "Step thread %s did not exit cleanly for %s",
                         t.name, self.collection_id,
                     )
+            heartbeat_thread.join(timeout=5)
 
         logger.info("── Processing loop complete for %s", self.collection_id)
 
@@ -1219,22 +1266,37 @@ class PipelineRunner:
                     )
                     return
 
-    def _prime_idempotency_cache(self) -> tuple[set[str], set[str]]:
+    def _prime_idempotency_cache(
+        self, agent_collection_ids: list[str] | None = None,
+    ) -> tuple[set[str], set[str]]:
         """Load the set of already-enriched and already-embedded post_ids.
 
         Primed once per PipelineRunner lifecycle so continuation runs get a
         correct starting set. If either query fails, the step actions fall
         back to per-batch BQ pre-checks (defense-in-depth).
+
+        When ``agent_collection_ids`` is non-empty, the cache widens to all
+        collections belonging to the same agent, so a post enriched in one
+        of the agent's prior runs short-circuits enrichment in this run.
         """
+        # Scope of "already done": agent-wide if agent_collection_ids is set,
+        # otherwise just this collection.
+        if agent_collection_ids:
+            scope_filter = "p.collection_id IN UNNEST(@collection_ids)"
+            scope_params = {"collection_ids": agent_collection_ids}
+        else:
+            scope_filter = "p.collection_id = @collection_id"
+            scope_params = {"collection_id": self.collection_id}
+
         enriched: set[str] = set()
         embedded: set[str] = set()
         try:
             rows = self.bq.query(
-                "SELECT ep.post_id AS post_id "
+                "SELECT DISTINCT ep.post_id AS post_id "
                 "FROM social_listening.enriched_posts ep "
                 "JOIN social_listening.posts p ON p.post_id = ep.post_id "
-                "WHERE p.collection_id = @collection_id",
-                {"collection_id": self.collection_id},
+                f"WHERE {scope_filter}",
+                scope_params,
             )
             enriched = {r["post_id"] for r in rows}
         except Exception:
@@ -1244,11 +1306,11 @@ class PipelineRunner:
             )
         try:
             rows = self.bq.query(
-                "SELECT pe.post_id AS post_id "
+                "SELECT DISTINCT pe.post_id AS post_id "
                 "FROM social_listening.post_embeddings pe "
                 "JOIN social_listening.posts p ON p.post_id = pe.post_id "
-                "WHERE p.collection_id = @collection_id",
-                {"collection_id": self.collection_id},
+                f"WHERE {scope_filter}",
+                scope_params,
             )
             embedded = {r["post_id"] for r in rows}
         except Exception:

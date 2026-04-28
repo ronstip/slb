@@ -104,7 +104,7 @@ class FirestoreClient:
             return data
         return None
 
-    def get_stale_pipelines(self, max_age_minutes: int = 60) -> list[dict]:
+    def get_stale_pipelines(self, max_age_minutes: int = 10) -> list[dict]:
         """Find collections stuck in 'running' past max_age_minutes.
 
         These are likely orphaned by a process crash. Returns list of dicts
@@ -124,12 +124,20 @@ class FirestoreClient:
                 for doc in docs:
                     data = doc.to_dict()
                     updated_at = data.get("updated_at")
+                    progress = {
+                        "posts_collected": data.get("posts_collected", 0) or 0,
+                        "posts_enriched": data.get("posts_enriched", 0) or 0,
+                        "posts_embedded": data.get("posts_embedded", 0) or 0,
+                        "counts": data.get("counts") or {},
+                        "task_id": data.get("task_id"),
+                    }
                     if updated_at and hasattr(updated_at, "timestamp"):
                         if updated_at.replace(tzinfo=timezone.utc) < cutoff:
                             stale.append({
                                 "collection_id": doc.id,
                                 "status": status_val,
                                 "updated_at": updated_at.isoformat(),
+                                **progress,
                             })
                     elif updated_at and isinstance(updated_at, str):
                         from datetime import datetime as dt
@@ -142,6 +150,7 @@ class FirestoreClient:
                                     "collection_id": doc.id,
                                     "status": status_val,
                                     "updated_at": updated_at,
+                                    **progress,
                                 })
                         except ValueError:
                             pass
@@ -243,6 +252,13 @@ class FirestoreClient:
             if doc.exists:
                 total += (doc.to_dict() or {}).get("snapshot_count", 0)
         return total
+
+    def get_agent_collection_ids(self, agent_id: str) -> list[str]:
+        """Return all collection_ids that have ever belonged to this agent."""
+        agent_doc = self._db.collection("agents").document(agent_id).get()
+        if not agent_doc.exists:
+            return []
+        return list((agent_doc.to_dict() or {}).get("collection_ids", []))
 
     # --- Agent methods ---
 

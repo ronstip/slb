@@ -51,8 +51,21 @@ class Settings(BaseSettings):
     # Wall-clock ceiling for a single post across all retries, including HTTP
     # time, retry sleeps, and blocking in the rate-limiter acquires. Acts as
     # the ThreadPoolExecutor per-future timeout so a single hung Gemini call
-    # can't stall the whole batch.
-    enrichment_per_post_timeout_sec: float = 1200.0
+    # can't stall the whole batch. Must be smaller than
+    # ``pipeline_stall_threshold_minutes`` (in seconds) so the per-post
+    # timeout fires before the stale-pipeline watchdog recovers a "slow but
+    # not stuck" run.
+    enrichment_per_post_timeout_sec: float = 480.0
+
+    # Pipeline liveness — a dedicated thread inside the runner touches
+    # `collection_status.updated_at` every N seconds, independent of the main
+    # loop, so the stale-pipeline watchdog can detect a wedged loop quickly
+    # without waiting for the next progress log.
+    pipeline_heartbeat_seconds: float = 60.0
+    # Watchdog: a running pipeline whose `updated_at` is older than this is
+    # considered stale and recovered. Must be comfortably larger than the
+    # heartbeat cadence to absorb transient Firestore latency.
+    pipeline_stall_threshold_minutes: int = 10
 
     # Max concurrent CDN/GCS downloads per collection (owned by PipelineRunner).
     # Decouples media I/O from the step orchestration pool so a slow download

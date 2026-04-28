@@ -39,7 +39,9 @@ class OngoingScheduler:
                     ticks_since_stale_check = 0
                     try:
                         from workers.pipeline import recover_stale_pipelines
-                        recovered = recover_stale_pipelines(max_age_minutes=60)
+                        recovered = recover_stale_pipelines(
+                            max_age_minutes=settings.pipeline_stall_threshold_minutes,
+                        )
                         if recovered:
                             logger.info("Scheduler: recovered %d stale pipeline(s)", recovered)
                     except Exception:

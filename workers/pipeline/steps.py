@@ -35,6 +35,12 @@ class StepContext:
     # Shared media-download executor, owned by PipelineRunner. None → each
     # batch spins up its own (legacy v1 path).
     media_executor: Any = None
+    # Owning agent and the full set of its collection_ids. When set, the
+    # enrichment-skip query widens to "already enriched in any of the agent's
+    # collections" instead of the per-collection default. None → standalone
+    # collection, falls back to global post_id check.
+    agent_id: str | None = None
+    agent_collection_ids: list[str] = field(default_factory=list)
 
     def next_batch_index(self, step_name: str) -> int:
         idx = self.batch_counters.get(step_name, 0)
@@ -187,11 +193,26 @@ def action_enrich(posts: list[dict], ctx: StepContext) -> list[StepResult]:
     # Defense-in-depth: fall back to BQ for posts not in the cache (e.g., on
     # first run before priming, or if the cache missed an entry for any reason).
     if uncached:
-        existing = ctx.bq.query(
-            "SELECT post_id FROM social_listening.enriched_posts "
-            "WHERE post_id IN UNNEST(@post_ids)",
-            {"post_ids": uncached},
-        )
+        if ctx.agent_id and ctx.agent_collection_ids:
+            # Agent-scoped: skip if already enriched within any collection of
+            # this agent. Joins through `posts` since `enriched_posts` has no
+            # collection_id of its own. A post enriched in another agent's
+            # collection won't short-circuit — that scope is intentionally
+            # narrow per the agent-isolation design.
+            existing = ctx.bq.query(
+                "SELECT DISTINCT ep.post_id "
+                "FROM social_listening.enriched_posts ep "
+                "JOIN social_listening.posts p USING (post_id) "
+                "WHERE ep.post_id IN UNNEST(@post_ids) "
+                "  AND p.collection_id IN UNNEST(@agent_collection_ids)",
+                {"post_ids": uncached, "agent_collection_ids": ctx.agent_collection_ids},
+            )
+        else:
+            existing = ctx.bq.query(
+                "SELECT post_id FROM social_listening.enriched_posts "
+                "WHERE post_id IN UNNEST(@post_ids)",
+                {"post_ids": uncached},
+            )
         bq_hits = {r["post_id"] for r in existing}
         ctx.enriched_ids.update(bq_hits)
     else:
@@ -338,11 +359,21 @@ def action_embed(posts: list[dict], ctx: StepContext) -> list[StepResult]:
     uncached = [pid for pid in post_ids if pid not in cache_hits]
 
     if uncached:
-        existing = ctx.bq.query(
-            "SELECT post_id FROM social_listening.post_embeddings "
-            "WHERE post_id IN UNNEST(@post_ids)",
-            {"post_ids": uncached},
-        )
+        if ctx.agent_id and ctx.agent_collection_ids:
+            existing = ctx.bq.query(
+                "SELECT DISTINCT pe.post_id "
+                "FROM social_listening.post_embeddings pe "
+                "JOIN social_listening.posts p USING (post_id) "
+                "WHERE pe.post_id IN UNNEST(@post_ids) "
+                "  AND p.collection_id IN UNNEST(@agent_collection_ids)",
+                {"post_ids": uncached, "agent_collection_ids": ctx.agent_collection_ids},
+            )
+        else:
+            existing = ctx.bq.query(
+                "SELECT post_id FROM social_listening.post_embeddings "
+                "WHERE post_id IN UNNEST(@post_ids)",
+                {"post_ids": uncached},
+            )
         bq_hits = {r["post_id"] for r in existing}
         ctx.embedded_ids.update(bq_hits)
     else:
