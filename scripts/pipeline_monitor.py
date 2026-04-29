@@ -47,8 +47,10 @@ PLATFORMS = ["tiktok", "youtube", "reddit", "instagram", "twitter", "linkedin"]
 
 # State display config: (label, color) — order matches pipeline flow
 STATE_DISPLAY = {
-    "collected_with_media": ("Download", "cyan"),
-    "ready_for_enrichment": ("Enrich", "blue"),
+    "collected_with_media": ("DL Queue", "cyan"),
+    "downloading": ("DL Now", "cyan"),
+    "ready_for_enrichment": ("Enr Queue", "blue"),
+    "enriching": ("Enr Now", "blue"),
     "enriched": ("Embed", "magenta"),
     "done": ("Done", "green"),
     "missing_media": ("No Media", "yellow"),
@@ -222,8 +224,8 @@ class DagVisual(Static):
         c = self.counts or {}
         total = self.total or 0
 
-        dl = c.get("collected_with_media", 0)
-        enr = c.get("ready_for_enrichment", 0)
+        dl = c.get("collected_with_media", 0) + c.get("downloading", 0)
+        enr = c.get("ready_for_enrichment", 0) + c.get("enriching", 0)
         emb = c.get("enriched", 0)
         done = c.get("done", 0)
 

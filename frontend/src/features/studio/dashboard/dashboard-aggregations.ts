@@ -187,6 +187,8 @@ export interface VolumePoint {
   post_count: number;
 }
 
+export type VolumeMetric = 'posts' | 'views';
+
 function localBucketKey(rawTimestamp: string, bucket: 'day' | 'hour'): string | null {
   const d = new Date(rawTimestamp);
   if (Number.isNaN(d.getTime())) return null;
@@ -201,6 +203,7 @@ function localBucketKey(rawTimestamp: string, bucket: 'day' | 'hour'): string | 
 export function aggregateVolume(
   posts: DashboardPost[],
   bucket: 'day' | 'hour' = 'day',
+  metric: VolumeMetric = 'posts',
 ): VolumePoint[] {
   const map = new Map<string, number>();
   for (const p of posts) {
@@ -208,7 +211,8 @@ export function aggregateVolume(
     const date = localBucketKey(p.posted_at, bucket);
     if (!date) continue;
     const key = `${date}|${p.platform}`;
-    map.set(key, (map.get(key) || 0) + 1);
+    const inc = metric === 'views' ? (p.view_count ?? 0) : 1;
+    map.set(key, (map.get(key) || 0) + inc);
   }
   return [...map.entries()]
     .map(([key, post_count]) => {

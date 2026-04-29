@@ -12,7 +12,9 @@ class PostState(str, Enum):
 
     # Non-terminal — actively progressing
     COLLECTED_WITH_MEDIA = "collected_with_media"
+    DOWNLOADING = "downloading"
     READY_FOR_ENRICHMENT = "ready_for_enrichment"
+    ENRICHING = "enriching"
     ENRICHED = "enriched"
 
     # Terminal — stumps
@@ -34,6 +36,20 @@ TERMINAL_STATES = frozenset({
     PostState.ENRICHMENT_FAILED,
     PostState.EMBEDDING_FAILED,
 })
+
+# Transient in-flight states held by the streaming runner between claim and
+# completion. On crash or continuation, these are reverted to their claim_state
+# entry-point by recover_stale_transient().
+TRANSIENT_STATES = frozenset({
+    PostState.DOWNLOADING,
+    PostState.ENRICHING,
+})
+
+# Map transient state → claim-state to revert to during stale recovery.
+TRANSIENT_REVERT: dict[PostState, PostState] = {
+    PostState.DOWNLOADING: PostState.COLLECTED_WITH_MEDIA,
+    PostState.ENRICHING: PostState.READY_FOR_ENRICHMENT,
+}
 
 # States that represent actual pipeline processing failures (not input stumps)
 FAILURE_STATES = frozenset({

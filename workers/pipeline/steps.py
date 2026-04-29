@@ -63,284 +63,6 @@ class PipelineStep:
 
 
 # ---------------------------------------------------------------------------
-# Step: Download media
-# ---------------------------------------------------------------------------
-
-
-def action_download(posts: list[dict], ctx: StepContext) -> list[StepResult]:
-    """Download media to GCS for posts in COLLECTED_WITH_MEDIA state.
-
-    Reads media_urls and metadata from Firestore post_state docs (stored during
-    mark_collected) to avoid BQ streaming buffer race condition.
-    Falls back to BQ only for posts missing from Firestore.
-    After download, updated media_refs are returned so the runner stores them.
-    """
-    from workers.collection.media_downloader import download_media_batch
-    from workers.collection.models import Post
-
-    post_ids = [p["post_id"] for p in posts]
-    if not post_ids:
-        return []
-
-    # Build post map from Firestore post_state docs (already in `posts`)
-    fs_map: dict[str, dict] = {p["post_id"]: p for p in posts}
-
-    # Identify posts that need BQ fallback (no media_refs in Firestore)
-    missing_ids = [
-        pid for pid in post_ids
-        if not fs_map.get(pid, {}).get("media_refs")
-    ]
-    bq_map: dict[str, dict] = {}
-    if missing_ids:
-        logger.info("Download: %d/%d posts missing media_refs in Firestore, falling back to BQ", len(missing_ids), len(post_ids))
-        rows = ctx.bq.query(
-            "SELECT post_id, platform, channel_handle, post_url, post_type, "
-            "  title, content, media_refs, search_keyword "
-            "FROM social_listening.posts "
-            "WHERE post_id IN UNNEST(@post_ids)",
-            {"post_ids": missing_ids},
-        )
-        bq_map = {r["post_id"]: r for r in rows}
-
-    # Reconstruct Post objects
-    post_objects: list[Post] = []
-    for pid in post_ids:
-        fs = fs_map.get(pid, {})
-        bq = bq_map.get(pid, {})
-
-        # media_urls: prefer Firestore media_refs, fall back to BQ
-        media_urls = []
-        raw_refs = fs.get("media_refs") or bq.get("media_refs")
-        if raw_refs:
-            if isinstance(raw_refs, str):
-                raw_refs = json.loads(raw_refs)
-            for ref in raw_refs or []:
-                if isinstance(ref, dict):
-                    url = ref.get("original_url", "")
-                    if url:
-                        media_urls.append(url)
-
-        # Metadata: prefer Firestore (stored at mark_collected), fall back to BQ
-        platform = fs.get("platform") or bq.get("platform", "")
-        post_url = fs.get("post_url") or bq.get("post_url", "")
-
-        post_objects.append(Post(
-            post_id=pid,
-            platform=platform,
-            channel_handle=bq.get("channel_handle", ""),
-            post_url=post_url,
-            posted_at=None,
-            post_type=bq.get("post_type", ""),
-            title=bq.get("title"),
-            content=bq.get("content"),
-            media_urls=media_urls,
-            search_keyword=bq.get("search_keyword"),
-        ))
-
-    # Run download (mutates post.media_refs in place).
-    # Uses the runner's shared executor so this batch doesn't block the step
-    # pool — enrich + embed stay free to make progress on other posts.
-    download_media_batch(
-        ctx.gcs, post_objects, ctx.collection_id, executor=ctx.media_executor,
-    )
-
-    # Build results — always pass through to enrichment even if media failed.
-    # Enrichment reads text content from BQ independently.
-    results: list[StepResult] = []
-    downloaded_map = {p.post_id: p for p in post_objects}
-
-    for pid in post_ids:
-        post = downloaded_map.get(pid)
-        if not post:
-            results.append((pid, "fail", None))
-            continue
-        usable_refs = [
-            r for r in (post.media_refs or [])
-            if r.get("gcs_uri") or r.get("original_url")
-        ]
-        if usable_refs:
-            results.append((pid, "ok", {"media_refs": usable_refs}))
-        else:
-            # No usable media, but still advance — text content may be enrichable
-            results.append((pid, "ok", None))
-
-    return results
-
-
-# ---------------------------------------------------------------------------
-# Step: Enrich
-# ---------------------------------------------------------------------------
-
-
-def action_enrich(posts: list[dict], ctx: StepContext) -> list[StepResult]:
-    """Enrich posts via Gemini API.
-
-    Reads post content from BQ. Reads media_refs from Firestore post_state docs
-    (populated by the download step — avoids BQ streaming buffer issue).
-    Calls existing run_enrichment_inline which handles rate limiting and BQ writes.
-    """
-    from workers.enrichment.schema import CustomFieldDef, MediaRef, PostData
-    from workers.enrichment.worker import run_enrichment_inline
-
-    post_ids = [p["post_id"] for p in posts]
-    if not post_ids:
-        return []
-
-    # Short-circuit via in-run cache before hitting BQ.
-    cache_hits = {pid for pid in post_ids if pid in ctx.enriched_ids}
-    uncached = [pid for pid in post_ids if pid not in cache_hits]
-
-    # Defense-in-depth: fall back to BQ for posts not in the cache (e.g., on
-    # first run before priming, or if the cache missed an entry for any reason).
-    if uncached:
-        if ctx.agent_id and ctx.agent_collection_ids:
-            # Agent-scoped: skip if already enriched within any collection of
-            # this agent. Joins through `posts` since `enriched_posts` has no
-            # collection_id of its own. A post enriched in another agent's
-            # collection won't short-circuit — that scope is intentionally
-            # narrow per the agent-isolation design.
-            existing = ctx.bq.query(
-                "SELECT DISTINCT ep.post_id "
-                "FROM social_listening.enriched_posts ep "
-                "JOIN social_listening.posts p USING (post_id) "
-                "WHERE ep.post_id IN UNNEST(@post_ids) "
-                "  AND p.collection_id IN UNNEST(@agent_collection_ids)",
-                {"post_ids": uncached, "agent_collection_ids": ctx.agent_collection_ids},
-            )
-        else:
-            existing = ctx.bq.query(
-                "SELECT post_id FROM social_listening.enriched_posts "
-                "WHERE post_id IN UNNEST(@post_ids)",
-                {"post_ids": uncached},
-            )
-        bq_hits = {r["post_id"] for r in existing}
-        ctx.enriched_ids.update(bq_hits)
-    else:
-        bq_hits = set()
-
-    already_enriched = cache_hits | bq_hits
-
-    results: list[StepResult] = []
-    to_enrich_ids = [pid for pid in post_ids if pid not in already_enriched]
-
-    # Posts already enriched skip straight through
-    for pid in already_enriched:
-        results.append((pid, "ok", None))
-
-    if not to_enrich_ids:
-        return results
-
-    # Read post content from BQ
-    rows = ctx.bq.query(
-        "SELECT post_id, platform, channel_handle, "
-        "  CAST(posted_at AS STRING) AS posted_at, title, content, "
-        "  post_url, search_keyword "
-        "FROM social_listening.posts "
-        "WHERE post_id IN UNNEST(@post_ids)",
-        {"post_ids": to_enrich_ids},
-    )
-    row_map = {r["post_id"]: r for r in rows}
-
-    # Build Firestore media_refs lookup
-    fs_media: dict[str, list[dict]] = {}
-    for p in posts:
-        if p.get("media_refs"):
-            fs_media[p["post_id"]] = p["media_refs"]
-
-    # Build PostData objects
-    post_data_list: list[PostData] = []
-    for pid in to_enrich_ids:
-        row = row_map.get(pid)
-        if not row:
-            results.append((pid, "fail", None))
-            continue
-
-        media_refs = []
-        for ref in fs_media.get(pid, []):
-            if isinstance(ref, dict) and (ref.get("gcs_uri") or ref.get("original_url")):
-                media_refs.append(MediaRef(
-                    gcs_uri=ref.get("gcs_uri", ""),
-                    original_url=ref.get("original_url", ""),
-                    media_type=ref.get("media_type", "image"),
-                    content_type=ref.get("content_type", ""),
-                ))
-
-        post_data_list.append(PostData(
-            post_id=pid,
-            platform=row["platform"],
-            channel_handle=row.get("channel_handle"),
-            posted_at=row.get("posted_at"),
-            title=row.get("title"),
-            content=row.get("content"),
-            post_url=row.get("post_url"),
-            search_keyword=row.get("search_keyword"),
-            media_refs=media_refs,
-        ))
-
-    # Call existing enrichment (handles Gemini rate limiting, writes to BQ).
-    # Wrap in try/except so that transient Gemini failures emit a v1-schema
-    # structured log (see docs/alerts/enrichment-failures.md) instead of
-    # bubbling up as a generic step crash.
-    batch_idx = ctx.next_batch_index("enrich")
-    batch_post_ids = [pd.post_id for pd in post_data_list]
-    try:
-        enrichment_results = run_enrichment_inline(
-            post_data_list,
-            ctx.collection_id,
-            ctx.custom_fields,
-            ctx.enrichment_context,
-            ctx.content_types,
-        )
-    except Exception as exc:
-        logger.error(
-            "enrichment_batch_failed",
-            extra={
-                "json_fields": {
-                    "event": "enrichment_batch_failed",
-                    "collection_id": ctx.collection_id,
-                    "batch_index": batch_idx,
-                    "batch_size": len(post_data_list),
-                    "returned": 0,
-                    "post_ids": batch_post_ids[:50],
-                    "reason": "exception",
-                    "error": repr(exc),
-                }
-            },
-            exc_info=True,
-        )
-        for pid in batch_post_ids:
-            results.append((pid, "fail", None))
-        return results
-
-    newly_enriched_ids = {pid for pid, _ in enrichment_results}
-    ctx.enriched_ids.update(newly_enriched_ids)
-
-    if not newly_enriched_ids and post_data_list:
-        logger.error(
-            "enrichment_batch_failed",
-            extra={
-                "json_fields": {
-                    "event": "enrichment_batch_failed",
-                    "collection_id": ctx.collection_id,
-                    "batch_index": batch_idx,
-                    "batch_size": len(post_data_list),
-                    "returned": 0,
-                    "post_ids": batch_post_ids[:50],
-                    "reason": "empty_result",
-                }
-            },
-        )
-
-    for pd in post_data_list:
-        if pd.post_id in newly_enriched_ids:
-            results.append((pd.post_id, "ok", None))
-        else:
-            results.append((pd.post_id, "fail", None))
-
-    return results
-
-
-# ---------------------------------------------------------------------------
 # Step: Embed
 # ---------------------------------------------------------------------------
 
@@ -409,24 +131,13 @@ def action_embed(posts: list[dict], ctx: StepContext) -> list[StepResult]:
 # ---------------------------------------------------------------------------
 # Step registry
 # ---------------------------------------------------------------------------
+#
+# Embed is the only step still on the batched action model — it's a single BQ
+# query per batch and was never the bottleneck. Download and enrich now run
+# through StreamingStepRunner (see workers/pipeline/streaming.py and the
+# streaming_steps section below).
 
 PIPELINE_STEPS: list[PipelineStep] = [
-    PipelineStep(
-        name="download",
-        input_states=[PostState.COLLECTED_WITH_MEDIA],
-        success_state=PostState.READY_FOR_ENRICHMENT,
-        failure_state=PostState.DOWNLOAD_FAILED,
-        action=action_download,
-        batch_size=20,
-    ),
-    PipelineStep(
-        name="enrich",
-        input_states=[PostState.READY_FOR_ENRICHMENT],
-        success_state=PostState.ENRICHED,
-        failure_state=PostState.ENRICHMENT_FAILED,
-        action=action_enrich,
-        batch_size=100,
-    ),
     PipelineStep(
         name="embed",
         input_states=[PostState.ENRICHED],
@@ -436,3 +147,197 @@ PIPELINE_STEPS: list[PipelineStep] = [
         batch_size=100,
     ),
 ]
+
+
+# ---------------------------------------------------------------------------
+# Streaming process / flush functions (download + enrich)
+# ---------------------------------------------------------------------------
+#
+# Each `process_one` function processes a single claimed post. The streaming
+# runner submits these to a persistent ThreadPoolExecutor; results are buffered
+# and flushed (with BQ side-effects) by the consumer thread.
+
+
+def download_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None]:
+    """Download media for one post. Returns (outcome, extra_with_media_refs)."""
+    from workers.collection.media_downloader import download_media
+    from workers.collection.models import Post
+
+    post_id = post["post_id"]
+    pre_refs = post.get("media_refs") or []
+    if isinstance(pre_refs, str):
+        pre_refs = json.loads(pre_refs)
+
+    media_urls: list[str] = []
+    for ref in pre_refs or []:
+        if isinstance(ref, dict):
+            url = ref.get("original_url", "")
+            if url:
+                media_urls.append(url)
+
+    # If Firestore didn't have media_urls (continuation case), fall back to BQ.
+    if not media_urls:
+        try:
+            rows = ctx.bq.query(
+                "SELECT post_id, platform, channel_handle, post_url, post_type, "
+                "  title, content, media_refs, search_keyword "
+                "FROM social_listening.posts "
+                "WHERE post_id = @post_id",
+                {"post_id": post_id},
+            )
+            if rows:
+                bq_row = rows[0]
+                raw_refs = bq_row.get("media_refs")
+                if raw_refs:
+                    if isinstance(raw_refs, str):
+                        raw_refs = json.loads(raw_refs)
+                    for ref in raw_refs or []:
+                        if isinstance(ref, dict):
+                            url = ref.get("original_url", "")
+                            if url:
+                                media_urls.append(url)
+        except Exception:
+            logger.warning(
+                "Download fallback BQ read failed for %s", post_id, exc_info=True,
+            )
+
+    if not media_urls:
+        # No media to download — let it pass through to enrichment with empty refs.
+        return "ok", None
+
+    post_obj = Post(
+        post_id=post_id,
+        platform=post.get("platform") or "",
+        channel_handle="",
+        post_url=post.get("post_url") or "",
+        posted_at=None,
+        post_type="",
+        title=None,
+        content=None,
+        media_urls=media_urls,
+    )
+
+    try:
+        refs = download_media(ctx.gcs, post_obj, ctx.collection_id)
+    except Exception:
+        logger.exception("download_media raised for %s", post_id)
+        return "fail", None
+
+    usable_refs = [
+        r for r in refs
+        if r.get("gcs_uri") or r.get("original_url")
+    ]
+    if usable_refs:
+        return "ok", {"media_refs": usable_refs}
+    # All downloads failed — but still pass through; enrichment uses text only.
+    return "ok", None
+
+
+def enrich_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None]:
+    """Enrich one post via Gemini. Returns (outcome, extra_with_enrichment_result)."""
+    from workers.enrichment.enricher import _build_config, _enrich_single_post
+    from workers.enrichment.schema import MediaRef, PostData
+    from google import genai
+    from google.genai import types
+
+    post_id = post["post_id"]
+
+    # Idempotency short-circuit: if already enriched (in BQ), skip the call.
+    if post_id in ctx.enriched_ids:
+        return "ok", None
+
+    # Read post content from BQ.
+    try:
+        rows = ctx.bq.query(
+            "SELECT post_id, platform, channel_handle, "
+            "  CAST(posted_at AS STRING) AS posted_at, title, content, "
+            "  post_url, search_keyword "
+            "FROM social_listening.posts "
+            "WHERE post_id = @post_id",
+            {"post_id": post_id},
+        )
+    except Exception:
+        logger.warning("BQ post read failed for %s", post_id, exc_info=True)
+        return "fail", None
+
+    if not rows:
+        return "fail", None
+    row = rows[0]
+
+    # Media refs are stored on the post_state doc by the download step.
+    media_refs: list[MediaRef] = []
+    for ref in (post.get("media_refs") or []):
+        if isinstance(ref, dict) and (ref.get("gcs_uri") or ref.get("original_url")):
+            media_refs.append(MediaRef(
+                gcs_uri=ref.get("gcs_uri", ""),
+                original_url=ref.get("original_url", ""),
+                media_type=ref.get("media_type", "image"),
+                content_type=ref.get("content_type", ""),
+            ))
+
+    pd = PostData(
+        post_id=post_id,
+        platform=row["platform"],
+        channel_handle=row.get("channel_handle"),
+        posted_at=row.get("posted_at"),
+        title=row.get("title"),
+        content=row.get("content"),
+        post_url=row.get("post_url"),
+        search_keyword=row.get("search_keyword"),
+        media_refs=media_refs,
+    )
+
+    # Lazy-init shared Gemini client + config on the StepContext (per-collection).
+    client = getattr(ctx, "_enrich_client", None)
+    if client is None:
+        client = genai.Client(
+            vertexai=True,
+            project=ctx.settings.gcp_project_id,
+            location=ctx.settings.gemini_location,
+            http_options=types.HttpOptions(timeout=300_000),
+        )
+        ctx._enrich_client = client  # type: ignore[attr-defined]
+    config = getattr(ctx, "_enrich_config", None)
+    if config is None:
+        config = _build_config(ctx.custom_fields, ctx.content_types)
+        ctx._enrich_config = config  # type: ignore[attr-defined]
+
+    _, result = _enrich_single_post(
+        client,
+        ctx.settings.enrichment_model,
+        config,
+        pd,
+        ctx.custom_fields,
+        ctx.enrichment_context,
+    )
+    if result is None:
+        return "fail", None
+    # Cache hit so a re-claim (e.g. retry path) skips the call.
+    ctx.enriched_ids.add(post_id)
+    return "ok", {"enrichment_result": result}
+
+
+def enrich_flush(
+    results: list[tuple[str, str, dict | None]], ctx: StepContext,
+) -> None:
+    """Batch-write successful enrichment results to BQ via MERGE."""
+    from workers.enrichment.worker import _write_results_to_bq
+
+    rows = []
+    for post_id, outcome, extra in results:
+        if outcome != "ok" or not extra:
+            continue
+        r = extra.get("enrichment_result")
+        if r is None:
+            continue
+        rows.append((post_id, r))
+    if not rows:
+        return
+    try:
+        _write_results_to_bq(ctx.bq, rows)
+    except Exception:
+        logger.exception(
+            "enrichment BQ flush failed for %d rows in %s",
+            len(rows), ctx.collection_id,
+        )
+        raise

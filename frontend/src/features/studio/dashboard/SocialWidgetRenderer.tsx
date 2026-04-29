@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField } from './types-social-dashboard.ts';
 import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS } from './types-social-dashboard.ts';
@@ -294,6 +294,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 }
 
 function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
+  const [volumeMetric, setVolumeMetric] = useState<'posts' | 'views'>('posts');
   const chartData = useMemo<WidgetData | null>(() => {
     switch (widget.aggregation) {
       case 'sentiment': {
@@ -309,7 +310,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
         return { labels: d.map((x) => x.platform), values: d.map((x) => x.post_count) };
       }
       case 'volume': {
-        const d = aggregateVolume(posts);
+        const d = aggregateVolume(posts, 'day', volumeMetric);
         const grouped: Record<string, Array<{ date: string; value: number }>> = {};
         for (const point of d) {
           if (!grouped[point.platform]) grouped[point.platform] = [];
@@ -356,18 +357,41 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
       default:
         return null;
     }
-  }, [widget.aggregation, posts]);
+  }, [widget.aggregation, posts, volumeMetric]);
+
+  const headerAction = widget.aggregation === 'volume' ? (
+    <div className="inline-flex rounded-md border border-border overflow-hidden text-[11px]">
+      <button
+        type="button"
+        onClick={() => setVolumeMetric('posts')}
+        className={`px-2 py-0.5 transition-colors ${volumeMetric === 'posts' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted text-muted-foreground'}`}
+      >
+        Posts
+      </button>
+      <button
+        type="button"
+        onClick={() => setVolumeMetric('views')}
+        className={`px-2 py-0.5 transition-colors border-l border-border ${volumeMetric === 'views' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted text-muted-foreground'}`}
+      >
+        Views
+      </button>
+    </div>
+  ) : undefined;
+
+  const frameTitle = widget.aggregation === 'volume' && volumeMetric === 'views' && widget.title === 'Volume Over Time'
+    ? 'Views Over Time'
+    : widget.title;
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialWidgetFrame title={frameTitle} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
         <SocialProgressListWidget data={chartData ?? undefined} />
       </SocialWidgetFrame>
     );
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+    <SocialWidgetFrame title={frameTitle} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
       <SocialChartWidget chartType={widget.chartType} data={chartData ?? undefined} accent={widget.accent} barOrientation={widget.customConfig?.barOrientation} />
     </SocialWidgetFrame>
   );

@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     # not stuck" run.
     enrichment_per_post_timeout_sec: float = 480.0
 
+    # Streaming enrichment — the consumer flushes pending Gemini results into
+    # BigQuery via MERGE either when `flush_size` accumulates or `flush_interval_sec`
+    # elapses. Smaller flush_size = smoother `posts_enriched` counter advancement
+    # at the cost of more BQ MERGEs.
+    enrichment_bq_flush_size: int = 25
+    enrichment_bq_flush_interval_sec: float = 3.0
+
     # Pipeline liveness — a dedicated thread inside the runner touches
     # `collection_status.updated_at` every N seconds, independent of the main
     # loop, so the stale-pipeline watchdog can detect a wedged loop quickly

@@ -15,6 +15,7 @@ interface SocialWidgetFrameProps {
   onConfigure?: () => void;
   onRemove?: () => void;
   onDuplicate?: () => void;
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -25,6 +26,7 @@ export function SocialWidgetFrame({
   onConfigure,
   onRemove,
   onDuplicate,
+  headerAction,
   children,
 }: SocialWidgetFrameProps) {
   return (
@@ -68,6 +70,11 @@ export function SocialWidgetFrame({
             <CardDescription className="text-xs mt-0.5 truncate leading-normal">{description}</CardDescription>
           )}
         </div>
+        {headerAction && (
+          <div className="shrink-0" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+            {headerAction}
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden px-3 pb-1.5 pt-1">

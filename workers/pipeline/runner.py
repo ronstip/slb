@@ -299,6 +299,23 @@ class PipelineRunner:
                     "Failed to compute retry candidates for %s (continuation proceeds without retries)",
                     self.collection_id, exc_info=True,
                 )
+            # Recover posts orphaned in transient (DOWNLOADING/ENRICHING) states
+            # by a crashed prior run. Reverts them to their claim entry-point so
+            # the new streaming runners pick them up.
+            try:
+                recovered = self.state_manager.recover_stale_transient(
+                    cooldown_sec=int(self.settings.pipeline_stall_threshold_minutes) * 60,
+                )
+                if recovered:
+                    logger.info(
+                        "Reverted %d stale transient post(s) for %s",
+                        recovered, self.collection_id,
+                    )
+            except Exception:
+                logger.warning(
+                    "Failed to recover stale transient posts for %s",
+                    self.collection_id, exc_info=True,
+                )
             self._crawl_complete.set()
             self._total_posts_collected = self.state_manager.get_total_posts()
         else:
@@ -1071,7 +1088,11 @@ class PipelineRunner:
         done = counts.get(PostState.DONE.value, 0)
         total = self.state_manager.get_total_posts()
         enriched = counts.get(PostState.ENRICHED.value, 0) + done
-        downloading = counts.get(PostState.COLLECTED_WITH_MEDIA.value, 0)
+        downloading = (
+            counts.get(PostState.COLLECTED_WITH_MEDIA.value, 0)
+            + counts.get(PostState.DOWNLOADING.value, 0)
+        )
+        enriching = counts.get(PostState.ENRICHING.value, 0)
         if total <= 0:
             return
         self.fs.update_collection_status(
@@ -1080,6 +1101,8 @@ class PipelineRunner:
         parts = [f"{enriched}/{total} posts enriched"]
         if downloading > 0:
             parts.append(f"{downloading} downloading media")
+        if enriching > 0:
+            parts.append(f"{enriching} in flight")
         msg = f"Processing: {', '.join(parts)}"
         if not hasattr(self, "_last_progress_msg") or self._last_progress_msg != msg:
             self._last_progress_msg = msg
@@ -1134,6 +1157,60 @@ class PipelineRunner:
         heartbeat_thread.start()
 
         step_threads: list[threading.Thread] = []
+
+        # Streaming runners for download + enrich. They claim posts atomically
+        # and run on persistent executors — no per-batch drain.
+        from workers.pipeline.post_state import PostState
+        from workers.pipeline.steps import (
+            download_process_one,
+            enrich_flush,
+            enrich_process_one,
+        )
+        from workers.pipeline.streaming import StreamingStepRunner
+
+        download_runner = StreamingStepRunner(
+            name="download",
+            ctx=ctx,
+            claim_state=PostState.COLLECTED_WITH_MEDIA,
+            in_flight_state=PostState.DOWNLOADING,
+            success_state=PostState.READY_FOR_ENRICHMENT,
+            failure_state=PostState.DOWNLOAD_FAILED,
+            concurrency=self.settings.media_download_concurrency,
+            process_fn=download_process_one,
+            flush_fn=None,  # state transition carries media_refs; no BQ flush here
+            flush_size=10,
+            flush_interval_sec=2.0,
+            record_step_timing=self._record_step_timing,
+        )
+        enrich_runner = StreamingStepRunner(
+            name="enrich",
+            ctx=ctx,
+            claim_state=PostState.READY_FOR_ENRICHMENT,
+            in_flight_state=PostState.ENRICHING,
+            success_state=PostState.ENRICHED,
+            failure_state=PostState.ENRICHMENT_FAILED,
+            concurrency=self.settings.enrichment_concurrency,
+            process_fn=enrich_process_one,
+            flush_fn=enrich_flush,
+            flush_size=self.settings.enrichment_bq_flush_size,
+            flush_interval_sec=self.settings.enrichment_bq_flush_interval_sec,
+            record_step_timing=self._record_step_timing,
+        )
+
+        for runner_obj, step_name in (
+            (download_runner, "download"),
+            (enrich_runner, "enrich"),
+        ):
+            t = threading.Thread(
+                target=runner_obj.run,
+                args=(stop_event,),
+                daemon=True,
+                name=f"stream-{step_name}-{self.collection_id[:8]}",
+            )
+            t.start()
+            step_threads.append(t)
+
+        # Embed remains on the batched action model (single BQ query per batch).
         for step in PIPELINE_STEPS:
             t = threading.Thread(
                 target=self._step_worker,
