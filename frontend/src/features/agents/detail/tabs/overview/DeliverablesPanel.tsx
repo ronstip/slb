@@ -210,7 +210,7 @@ export function DeliverablesPanel({
     <section className="rounded-2xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
       <header className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <h3 className="font-heading text-sm font-semibold text-foreground">Deliverables</h3>
+          <h3 className="font-heading text-sm font-semibold text-foreground">Made by agent</h3>
           <span className="text-xs text-muted-foreground">
             {readyCount} ready
             {showMoreComing && ' · more coming'}
@@ -222,12 +222,12 @@ export function DeliverablesPanel({
               onClick={onOpenArtifacts}
               className="text-xs font-medium text-primary hover:text-primary/80"
             >
-              View all →
+              View all deliverables →
             </button>
           )}
           <button
             onClick={handleNew}
-            title="Create a new deliverable"
+            title="Create new"
             className="flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
           >
             <Plus className="h-3 w-3" />
@@ -238,7 +238,7 @@ export function DeliverablesPanel({
       {!hasAnything ? (
         <div className="flex flex-col items-center gap-2 py-10 text-center">
           <FileText className="h-8 w-8 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">No deliverables configured yet.</p>
+          <p className="text-sm text-muted-foreground">Nothing made yet.</p>
           <button
             onClick={onOpenSettings}
             className="text-xs font-medium text-primary hover:text-primary/80"
@@ -247,7 +247,7 @@ export function DeliverablesPanel({
           </button>
         </div>
       ) : (
-        <ul className="-mx-2 divide-y divide-border/30">
+        <ul className="-mx-2 max-h-[11.5rem] divide-y divide-border/30 overflow-y-auto">
           {items.map((item, i) => (
             <Fragment key={item.key}>{item.render(i * 120)}</Fragment>
           ))}

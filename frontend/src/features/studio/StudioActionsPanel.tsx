@@ -33,7 +33,7 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
   if (variant === 'overview') {
     return (
       <>
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-3 gap-2">
           {STUDIO_ACTIONS.map((action) => {
             const Icon = action.icon;
             const isDashed = action.variant === 'dashed';
@@ -44,7 +44,7 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
                 disabled={isAgentResponding}
                 onClick={handlerFor(action)}
                 className={cn(
-                  'group relative flex h-[88px] flex-col items-start justify-between overflow-hidden rounded-xl border p-3 text-left transition-all duration-200 active:scale-[0.97]',
+                  'group relative flex h-[72px] flex-col items-start justify-between overflow-hidden rounded-xl border p-2.5 text-left transition-all duration-200 active:scale-[0.97]',
                   action.tileTheme,
                   !isDashed && 'hover:shadow-md',
                   'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none disabled:active:scale-100',
@@ -52,17 +52,17 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
               >
                 <span
                   className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ring-1 ring-inset ring-white/10 transition-transform duration-200 group-hover:scale-110',
+                    'flex h-7 w-7 items-center justify-center rounded-lg shadow-sm ring-1 ring-inset ring-white/10 transition-transform duration-200 group-hover:scale-110',
                     action.iconBubble,
                   )}
                 >
-                  <Icon className="h-[18px] w-[18px]" />
+                  <Icon className="h-[14px] w-[14px]" />
                 </span>
-                <span className="line-clamp-1 text-[13px] font-semibold">
+                <span className="line-clamp-1 text-[11px] font-semibold">
                   {action.label}
                 </span>
                 {!isDashed && (
-                  <ArrowUpRight className="absolute right-2.5 top-2.5 h-3.5 w-3.5 opacity-60 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:opacity-100" />
+                  <ArrowUpRight className="absolute right-1.5 top-1.5 h-3 w-3 opacity-60 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:opacity-100" />
                 )}
               </button>
             );

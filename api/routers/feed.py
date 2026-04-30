@@ -127,7 +127,9 @@ async def get_multi_collection_feed(
         ep.context, ep.is_related_to_task, ep.detected_brands, ep.channel_type,
         SAFE_CAST(JSON_VALUE(p.platform_metadata, '$.is_retweet') AS BOOL) as is_retweet,
         SAFE_CAST(JSON_VALUE(p.platform_metadata, '$.is_quote_status') AS BOOL) as is_quote,
-        COUNT(*) OVER() as _total
+        COUNT(*) OVER() as _total,
+        SUM(COALESCE(pe.views, 0)) OVER() as _total_views,
+        COUNT(DISTINCT p.platform) OVER() as _total_sources
     FROM {posts_subquery} p
     LEFT JOIN (
         SELECT *,
@@ -147,6 +149,8 @@ async def get_multi_collection_feed(
 
     rows = await asyncio.to_thread(bq.query, multi_sql, params)
     total = rows[0]["_total"] if rows else 0
+    total_views = rows[0]["_total_views"] if rows else 0
+    total_sources = rows[0]["_total_sources"] if rows else 0
 
     posts = []
     for row in rows:
@@ -213,4 +217,11 @@ async def get_multi_collection_feed(
             )
         )
 
-    return FeedResponse(posts=posts, total=int(total), offset=request.offset, limit=request.limit)
+    return FeedResponse(
+        posts=posts,
+        total=int(total),
+        total_views=int(total_views or 0),
+        total_sources=int(total_sources or 0),
+        offset=request.offset,
+        limit=request.limit,
+    )

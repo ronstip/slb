@@ -54,6 +54,8 @@ class FeedPostResponse(BaseModel):
 class FeedResponse(BaseModel):
     posts: list[FeedPostResponse]
     total: int
+    total_views: int = 0
+    total_sources: int = 0
     offset: int
     limit: int
 

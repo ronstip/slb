@@ -1,9 +1,9 @@
 import type { LucideIcon } from 'lucide-react';
-import { FileText, LayoutDashboard, BarChart3, Mail, Presentation, Plus } from 'lucide-react';
+import { FileText, Target, BarChart3, Mail, Presentation, Plus } from 'lucide-react';
 
 export type StudioActionId =
   | 'insight_report'
-  | 'dashboard'
+  | 'strategic_planning'
   | 'chart'
   | 'send_email'
   | 'deck_slides'
@@ -47,17 +47,18 @@ export const STUDIO_ACTIONS: StudioAction[] = [
     prompt: 'Generate an insight report for the selected sources.',
   },
   {
-    id: 'dashboard',
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-    iconClass: 'text-purple-600 bg-purple-500/10',
-    hoverClass: 'hover:border-purple-500/40 hover:bg-purple-500/5',
-    tileGradient: 'from-purple-500/20 via-purple-500/5 to-transparent',
-    iconTint: 'text-purple-500',
+    id: 'strategic_planning',
+    label: 'Strategic Planning',
+    icon: Target,
+    iconClass: 'text-emerald-600 bg-emerald-500/10',
+    hoverClass: 'hover:border-emerald-500/40 hover:bg-emerald-500/5',
+    tileGradient: 'from-emerald-500/20 via-emerald-500/5 to-transparent',
+    iconTint: 'text-emerald-500',
     tileTheme:
-      'border-purple-500/40 bg-gradient-to-br from-purple-500 to-purple-700 text-white hover:from-purple-400 hover:to-purple-600',
+      'border-emerald-500/40 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white hover:from-emerald-400 hover:to-emerald-600',
     iconBubble: 'bg-white/20 text-white ring-white/20',
-    prompt: 'Create an interactive dashboard for the selected sources.',
+    prompt:
+      "Let's run a strategic planning session for this agent. Before producing a plan, ask me 2–4 short clarifying questions covering: my main objective, my target audience, the time horizon, and how I'll measure success. Use the data this agent has already collected (posts, themes, entities, sentiment) as the evidence base. Once I confirm the synthesis, publish the strategic plan as the agent's briefing using the existing briefing composition tool, structured as: objective and context, key insights from the data, recommended actions with timeline, and risks to monitor.",
   },
   {
     id: 'chart',

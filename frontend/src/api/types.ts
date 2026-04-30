@@ -244,6 +244,8 @@ export interface FeedPost {
 export interface FeedResponse {
   posts: FeedPost[];
   total: number;
+  total_views: number;
+  total_sources: number;
   offset: number;
   limit: number;
 }

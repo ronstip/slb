@@ -53,6 +53,8 @@ export function LivePostStream({
     refetchInterval: isAgentRunning || anyCollecting ? 10_000 : false,
   });
   const totalPosts = countData?.total ?? 0;
+  const totalViews = countData?.total_views ?? 0;
+  const totalSources = countData?.total_sources ?? 0;
 
   if (collectionIds.length === 0) {
     return (
@@ -76,8 +78,9 @@ export function LivePostStream({
             </span>
           )}
           <span>
-            {formatNumber(totalPosts)} relevant post{totalPosts === 1 ? '' : 's'}
-            {collectionIds.length > 1 && ` · ${collectionIds.length} sources`}
+            {formatNumber(totalPosts)} post{totalPosts === 1 ? '' : 's'}
+            {` · ${formatNumber(totalViews)} view${totalViews === 1 ? '' : 's'}`}
+            {totalSources > 0 && ` · ${totalSources} source${totalSources === 1 ? '' : 's'}`}
           </span>
         </span>
       }
