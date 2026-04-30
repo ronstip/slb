@@ -132,6 +132,131 @@ function formatNumber(val: number): string {
   return val.toFixed(1);
 }
 
+// Humanize raw enum-style labels coming from SQL ("pro_bibi", "neutral",
+// "key-quote") into display labels ("Pro-Bibi", "Neutral", "Key-Quote").
+// Idempotent: already-formatted labels pass through unchanged.
+function formatLabel(raw: string): string {
+  if (!raw) return raw;
+  // Already mixed-case or contains spaces — assume curated, leave alone.
+  if (/\s/.test(raw) || /[a-z][A-Z]/.test(raw)) return raw;
+  return raw
+    .replace(/_/g, '-')
+    .split('-')
+    .map((part) => part ? part[0].toUpperCase() + part.slice(1).toLowerCase() : part)
+    .join('-');
+}
+
+// ── Datalabel plugins ─────────────────────────────────────────────────────────
+
+type ArcGetProps = (
+  p: ['x', 'y', 'startAngle', 'endAngle', 'innerRadius', 'outerRadius'],
+  a: boolean,
+) => { x: number; y: number; startAngle: number; endAngle: number; innerRadius: number; outerRadius: number };
+
+type BarGetProps = (
+  p: ['x', 'y', 'base'],
+  a: boolean,
+) => { x: number; y: number; base: number };
+
+const pieDatalabelsPlugin = {
+  id: 'pieDatalabels',
+  afterDatasetsDraw(chart: ChartJS) {
+    const { ctx } = chart;
+    const meta = chart.getDatasetMeta(0);
+    const values = chart.data.datasets[0]?.data as number[] | undefined;
+    if (!values?.length) return;
+    const total = values.reduce((a, b) => a + (b || 0), 0);
+    if (total === 0) return;
+
+    ctx.save();
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 3;
+
+    meta.data.forEach((arc, i) => {
+      const val = values[i];
+      if (!val) return;
+      const pct = (val / total) * 100;
+      if (pct < 5) return;
+      const props = (arc as unknown as { getProps: ArcGetProps }).getProps(
+        ['x', 'y', 'startAngle', 'endAngle', 'innerRadius', 'outerRadius'],
+        true,
+      );
+      const angle = (props.startAngle + props.endAngle) / 2;
+      const radius = (props.innerRadius + props.outerRadius) / 2;
+      const x = props.x + Math.cos(angle) * radius;
+      const y = props.y + Math.sin(angle) * radius;
+      ctx.fillText(`${pct.toFixed(0)}%`, x, y);
+    });
+    ctx.restore();
+  },
+};
+
+const barDatalabelsPlugin = {
+  id: 'barDatalabels',
+  afterDatasetsDraw(chart: ChartJS) {
+    const { ctx } = chart;
+    const isHorizontalBar = chart.options.indexAxis === 'y';
+    const scales = chart.options.scales as
+      | { x?: { stacked?: boolean }; y?: { stacked?: boolean } }
+      | undefined;
+    const isStacked = !!(scales?.x?.stacked || scales?.y?.stacked);
+    const multiDataset = chart.data.datasets.length > 1;
+    const fg = resolveThemeColor('--foreground');
+
+    chart.data.datasets.forEach((dataset, datasetIndex) => {
+      if (!chart.isDatasetVisible(datasetIndex)) return;
+      const meta = chart.getDatasetMeta(datasetIndex);
+      const values = dataset.data as number[];
+
+      meta.data.forEach((bar, i) => {
+        const val = values[i];
+        if (val == null || val === 0) return;
+        const props = (bar as unknown as { getProps: BarGetProps }).getProps(
+          ['x', 'y', 'base'],
+          true,
+        );
+
+        ctx.save();
+        ctx.font = '600 10px system-ui, sans-serif';
+
+        if (isStacked && multiDataset) {
+          const segSize = isHorizontalBar
+            ? Math.abs(props.x - props.base)
+            : Math.abs(props.y - props.base);
+          if (segSize < 22) {
+            ctx.restore();
+            return;
+          }
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur = 2;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const cx = isHorizontalBar ? (props.x + props.base) / 2 : props.x;
+          const cy = isHorizontalBar ? props.y : (props.y + props.base) / 2;
+          ctx.fillText(formatNumber(val), cx, cy);
+        } else {
+          ctx.fillStyle = fg;
+          if (isHorizontalBar) {
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(formatNumber(val), props.x + 4, props.y);
+          } else {
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(formatNumber(val), props.x, props.y - 4);
+          }
+        }
+        ctx.restore();
+      });
+    });
+  },
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface SocialChartWidgetProps {
@@ -352,15 +477,19 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
       datasets.map((_, i) => colors[(i * stride) % basePaletteSize]),
     );
     const chartData = {
-      labels: labels.map((l) => (l.length > 30 ? l.substring(0, 30) + '…' : l)),
+      labels: labels.map((l) => {
+        const f = formatLabel(l);
+        return f.length > 30 ? f.substring(0, 30) + '…' : f;
+      }),
       datasets: datasets.map((ds, i) => ({
-        label: ds.label,
+        label: formatLabel(ds.label),
         data: ds.values,
         backgroundColor: datasetColors[i],
         borderWidth: 0,
         borderRadius: 4,
         barPercentage: 0.75,
         categoryPercentage: 0.85,
+        minBarLength: 3,
       })),
     };
 
@@ -375,14 +504,15 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
       responsive: true,
       maintainAspectRatio: false,
       ...(isHorizontal ? { indexAxis: 'y' as const } : {}),
+      layout: { padding: { top: 12, bottom: 4 } },
       plugins: {
         legend: {
           display: true,
           position: 'bottom' as const,
           labels: {
             color: resolveThemeColor('--foreground'),
-            font: { size: 10 },
-            boxWidth: 8, boxHeight: 8, padding: 8,
+            font: { size: 11 },
+            boxWidth: 10, boxHeight: 10, padding: 14,
             borderRadius: 2, useBorderRadius: true,
           },
         },
@@ -401,7 +531,7 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
       },
     };
 
-    return <div key={`bar-grouped-${barOrientation}-${stacked}`} className="h-full w-full"><Bar ref={barRef as never} data={chartData} options={options} /></div>;
+    return <div key={`bar-grouped-${barOrientation}-${stacked}`} className="h-full w-full"><Bar ref={barRef as never} data={chartData} options={options} plugins={[barDatalabelsPlugin]} /></div>;
   }
 
   // ── Categorical charts ────────────────────────────────────────────────────
@@ -423,8 +553,9 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
       const cardBg = resolveThemeColor('--card');
       const legendPosition = labels.length <= 6 ? 'bottom' as const : 'right' as const;
 
+      const formattedLabels = labels.map(formatLabel);
       const chartData = {
-        labels,
+        labels: formattedLabels,
         datasets: [{
           data: values,
           backgroundColor: chartColors,
@@ -470,7 +601,7 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
       };
 
       if (chartType === 'pie') {
-        return <div className="h-full w-full"><Pie ref={pieRef as never} data={chartData} options={options as ChartOptions<'pie'>} /></div>;
+        return <div className="h-full w-full"><Pie ref={pieRef as never} data={chartData} options={options as ChartOptions<'pie'>} plugins={[pieDatalabelsPlugin]} /></div>;
       }
 
       return (
@@ -485,7 +616,10 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
     // Bar (horizontal or vertical)
     const isHorizontal = barOrientation !== 'horizontal';
     const chartData = {
-      labels: labels.map((l) => (l.length > 30 ? l.substring(0, 30) + '…' : l)),
+      labels: labels.map((l) => {
+        const f = formatLabel(l);
+        return f.length > 30 ? f.substring(0, 30) + '…' : f;
+      }),
       datasets: [{
         label: 'Value',
         data: values,
@@ -494,6 +628,7 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
         borderRadius: 6,
         barPercentage: 0.65,
         categoryPercentage: 0.85,
+        minBarLength: 3,
       }],
     };
 
@@ -525,7 +660,7 @@ export function SocialChartWidget({ chartType, data, accent, barOrientation = 'h
       },
     };
 
-    return <div key={`bar-${barOrientation}`} className="h-full w-full"><Bar ref={barRef as never} data={chartData} options={options} /></div>;
+    return <div key={`bar-${barOrientation}`} className="h-full w-full"><Bar ref={barRef as never} data={chartData} options={options} plugins={[barDatalabelsPlugin]} /></div>;
   }
 
   return (
@@ -545,27 +680,30 @@ interface DoughnutWithCenterProps {
 
 const DoughnutWithCenter = forwardRef<ChartJS<'doughnut'>, DoughnutWithCenterProps>(
   function DoughnutWithCenter({ data, options, total }, ref) {
-    const plugins = useMemo(() => [{
-      id: 'doughnutCenterText',
-      beforeDraw(chart: ChartJS) {
-        const { ctx, chartArea } = chart;
-        if (!chartArea) return;
-        ctx.save();
-        const fg = resolveThemeColor('--foreground');
-        const mfg = resolveThemeColor('--muted-foreground');
-        const cx = (chartArea.left + chartArea.right) / 2;
-        const cy = (chartArea.top + chartArea.bottom) / 2;
-        ctx.font = 'bold 20px system-ui, sans-serif';
-        ctx.fillStyle = fg;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(formatNumber(total), cx, cy - 8);
-        ctx.font = '400 11px system-ui, sans-serif';
-        ctx.fillStyle = mfg;
-        ctx.fillText('total', cx, cy + 10);
-        ctx.restore();
+    const plugins = useMemo(() => [
+      {
+        id: 'doughnutCenterText',
+        beforeDraw(chart: ChartJS) {
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return;
+          ctx.save();
+          const fg = resolveThemeColor('--foreground');
+          const mfg = resolveThemeColor('--muted-foreground');
+          const cx = (chartArea.left + chartArea.right) / 2;
+          const cy = (chartArea.top + chartArea.bottom) / 2;
+          ctx.font = 'bold 20px system-ui, sans-serif';
+          ctx.fillStyle = fg;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(formatNumber(total), cx, cy - 8);
+          ctx.font = '400 11px system-ui, sans-serif';
+          ctx.fillStyle = mfg;
+          ctx.fillText('total', cx, cy + 10);
+          ctx.restore();
+        },
       },
-    }], [total]);
+      pieDatalabelsPlugin,
+    ], [total]);
 
     return (
       <div className="h-full w-full">

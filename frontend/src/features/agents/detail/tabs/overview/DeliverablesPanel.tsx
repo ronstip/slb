@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { ChevronRight, FileText, Plus, Share2 } from 'lucide-react';
@@ -107,6 +107,105 @@ export function DeliverablesPanel({
 
   const hasAnything = expectedKinds.length > 0 || readyCount > 0;
 
+  type RenderItem = {
+    key: string;
+    timestamp: number;
+    render: (delay: number) => React.ReactNode;
+  };
+  const items: RenderItem[] = [];
+  for (const slot of slots) {
+    if (slot.kind === 'briefing') {
+      if (briefingReady) {
+        items.push({
+          key: 'briefing-ready',
+          timestamp: briefingQuery.data?.generated_at
+            ? new Date(briefingQuery.data.generated_at).getTime()
+            : 0,
+          render: () => (
+            <DeliverableRow
+              key="briefing-ready"
+              kind="briefing"
+              title={KIND_VISUALS.briefing.label}
+              meta={
+                briefingQuery.data?.generated_at
+                  ? timeAgo(briefingQuery.data.generated_at)
+                  : 'ready'
+              }
+              ready
+              isNew={isRecent(briefingQuery.data?.generated_at)}
+              onClick={onOpenBriefing}
+              onShare={() => setBriefingShareOpen(true)}
+            />
+          ),
+        });
+      } else {
+        items.push({
+          key: 'briefing-pending',
+          timestamp: -Infinity,
+          render: (delay) => (
+            <DeliverableRow
+              key="briefing-pending"
+              kind="briefing"
+              title={KIND_VISUALS.briefing.label}
+              meta={KIND_VISUALS.briefing.sublabel}
+              ready={false}
+              animate={isRunning}
+              delay={delay}
+            />
+          ),
+        });
+      }
+      continue;
+    }
+    if (slot.artifact) {
+      const a = slot.artifact;
+      items.push({
+        key: a.artifact_id,
+        timestamp: new Date(a.created_at).getTime(),
+        render: () => (
+          <ArtifactRow
+            key={a.artifact_id}
+            artifact={a}
+            onClick={onOpenArtifacts}
+            onShare={() => setShareArtifactId(a.artifact_id)}
+          />
+        ),
+      });
+    } else {
+      const kind = slot.kind;
+      items.push({
+        key: `pending-${kind}`,
+        timestamp: -Infinity,
+        render: (delay) => (
+          <DeliverableRow
+            key={`pending-${kind}`}
+            kind={kind}
+            title={KIND_VISUALS[kind].label}
+            meta={KIND_VISUALS[kind].sublabel}
+            ready={false}
+            animate={isRunning}
+            delay={delay}
+          />
+        ),
+      });
+    }
+  }
+  for (const a of extraArtifacts) {
+    items.push({
+      key: a.artifact_id,
+      timestamp: new Date(a.created_at).getTime(),
+      render: () => (
+        <ArtifactRow
+          key={a.artifact_id}
+          artifact={a}
+          onClick={onOpenArtifacts}
+          onShare={() => setShareArtifactId(a.artifact_id)}
+        />
+      ),
+    });
+  }
+  items.sort((a, b) => b.timestamp - a.timestamp);
+
   return (
     <section className="rounded-2xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
       <header className="mb-3 flex items-center justify-between gap-3">
@@ -149,61 +248,8 @@ export function DeliverablesPanel({
         </div>
       ) : (
         <ul className="-mx-2 divide-y divide-border/30">
-          {slots.map((slot, i) => {
-            if (slot.kind === 'briefing') {
-              return briefingReady ? (
-                <DeliverableRow
-                  key="briefing-ready"
-                  kind="briefing"
-                  title={KIND_VISUALS.briefing.label}
-                  meta={
-                    briefingQuery.data?.generated_at
-                      ? timeAgo(briefingQuery.data.generated_at)
-                      : 'ready'
-                  }
-                  ready
-                  isNew={isRecent(briefingQuery.data?.generated_at)}
-                  onClick={onOpenBriefing}
-                  onShare={() => setBriefingShareOpen(true)}
-                />
-              ) : (
-                <DeliverableRow
-                  key="briefing-pending"
-                  kind="briefing"
-                  title={KIND_VISUALS.briefing.label}
-                  meta={KIND_VISUALS.briefing.sublabel}
-                  ready={false}
-                  animate={isRunning}
-                  delay={i * 120}
-                />
-              );
-            }
-            return slot.artifact ? (
-              <ArtifactRow
-                key={slot.artifact.artifact_id}
-                artifact={slot.artifact}
-                onClick={onOpenArtifacts}
-                onShare={() => setShareArtifactId(slot.artifact!.artifact_id)}
-              />
-            ) : (
-              <DeliverableRow
-                key={`pending-${slot.kind}`}
-                kind={slot.kind}
-                title={KIND_VISUALS[slot.kind].label}
-                meta={KIND_VISUALS[slot.kind].sublabel}
-                ready={false}
-                animate={isRunning}
-                delay={i * 120}
-              />
-            );
-          })}
-          {extraArtifacts.map((a) => (
-            <ArtifactRow
-              key={a.artifact_id}
-              artifact={a}
-              onClick={onOpenArtifacts}
-              onShare={() => setShareArtifactId(a.artifact_id)}
-            />
+          {items.map((item, i) => (
+            <Fragment key={item.key}>{item.render(i * 120)}</Fragment>
           ))}
         </ul>
       )}
