@@ -34,6 +34,17 @@ async def scheduler_tick():
         # return ok so the scheduler keeps its cadence.
         logger.exception("Scheduler tick: recurring agent check failed")
 
+    # Recover agents stranded in 'running' after a continuation runtime
+    # crash. Cloud Tasks' built-in retry handles in-flight failures, but
+    # once it gives up nothing else watches — this is the safety net.
+    try:
+        from workers.agent_continuation import recover_stuck_agents
+        recovered = recover_stuck_agents()
+        if recovered:
+            logger.info("Scheduler tick: recovered %d stuck agent(s)", recovered)
+    except Exception:
+        logger.exception("Scheduler tick: stuck agent recovery failed")
+
     return {"status": "ok"}
 
 

@@ -62,6 +62,7 @@ def create_chart(
     chart_type: str,
     data: dict,
     title: str = "",
+    caption: str = "",
     collection_ids: list[str] | None = None,
     source_sql: str = "",
     bar_orientation: str = "horizontal",
@@ -128,6 +129,20 @@ def create_chart(
 
         title: Title displayed above the chart.
 
+        caption: A 1–2 sentence figure legend rendered below the chart, written
+            in the style of an academic paper figure caption. Combine BOTH the
+            methodology (sample size, time window, grouping, source) AND the
+            primary takeaway. Past tense, factual, no hedging, no marketing
+            language. Do not start with "This chart shows".
+
+            Good: "Distribution of merger reception across political stances
+            (n=110 posts, Mar–Apr 2026). Pro-Bibi accounts expressed the
+            strongest opposition, while neutral-stance posts accounted for the
+            majority of overall volume."
+
+            Bad: "This chart shows how different political groups feel about
+            the merger. As you can see, opinions vary widely!"
+
         collection_ids: Optional list of collection IDs that sourced this
             chart's data. Enables "Show underlying data" in the studio view.
 
@@ -172,6 +187,7 @@ def create_chart(
         "chart_type": chart_type,
         "data": data,
         "title": title,
+        "caption": caption,
         "collection_ids": collection_ids or [],
         "source_sql": source_sql,
         "bar_orientation": bar_orientation,

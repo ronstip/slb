@@ -56,6 +56,15 @@ class OngoingScheduler:
                     except Exception:
                         logger.exception("Scheduler: snapshot recovery failed")
 
+                    # Recover agents whose continuation died mid-flight.
+                    try:
+                        from workers.agent_continuation import recover_stuck_agents
+                        recovered_agents = recover_stuck_agents()
+                        if recovered_agents:
+                            logger.info("Scheduler: recovered %d stuck agent(s)", recovered_agents)
+                    except Exception:
+                        logger.exception("Scheduler: stuck agent recovery failed")
+
                 # Check due recurring agents (every ~60 seconds = 4 ticks)
                 ticks_since_agent_check += 1
                 if ticks_since_agent_check >= 4:

@@ -1,6 +1,9 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Database, LayoutGrid, Table2, X } from 'lucide-react';
+import { ChevronDown, Database, LayoutGrid, Search, Table2, X } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
+import { Input } from '../../components/ui/input.tsx';
+import { Checkbox } from '../../components/ui/checkbox.tsx';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { getCollectionStats } from '../../api/endpoints/collections.ts';
 import { DataTable } from '../../components/DataTable/DataTable.tsx';
@@ -61,6 +64,8 @@ export function PostsDataPanel({
   const [platformFilter, setPlatformFilter] = useState('all');
   const [sentimentFilter, setSentimentFilter] = useState('all');
   const [relevantFilter, setRelevantFilter] = useState('true');
+  const [channelFilter, setChannelFilter] = useState<Set<string>>(new Set());
+  const [channelSearch, setChannelSearch] = useState('');
   const [dateRange, setDateRange] = useState<DateTimeRange>({ from: null, to: null });
 
   // Compute effective collection IDs based on source filter
@@ -120,11 +125,13 @@ export function PostsDataPanel({
 
   const relevancePool = relevantFilter === 'all' ? allPosts : (relevanceData?.posts ?? allPosts);
 
-  // Apply column-level filters (client-side)
-  const afterColumnFilters = useMemo(
-    () => applyColumnFilters(allPosts, columnFilters),
-    [allPosts, columnFilters],
-  );
+  // Apply top-level channel filter + column-level filters (both client-side)
+  const afterColumnFilters = useMemo(() => {
+    const base = channelFilter.size === 0
+      ? allPosts
+      : allPosts.filter((p) => channelFilter.has(p.channel_handle));
+    return applyColumnFilters(base, columnFilters);
+  }, [allPosts, columnFilters, channelFilter]);
 
   // Apply global search on top
   const filteredPosts = useMemo(() => {
@@ -148,6 +155,8 @@ export function PostsDataPanel({
     setPlatformFilter('all');
     setSentimentFilter('all');
     setRelevantFilter('true');
+    setChannelFilter(new Set());
+    setChannelSearch('');
     setDateRange({ from: null, to: null });
   }, []);
 
@@ -156,6 +165,7 @@ export function PostsDataPanel({
     platformFilter !== 'all' ||
     sentimentFilter !== 'all' ||
     relevantFilter !== 'true' ||
+    channelFilter.size > 0 ||
     dateRange.from !== null ||
     dateRange.to !== null;
   const hasAnyFilter = hasAnyTopFilter || hasActiveFilters(columnFilters);
@@ -301,6 +311,115 @@ export function PostsDataPanel({
             ))}
           </SelectContent>
         </Select>
+
+        {/* Channel filter (channel_handle, multi-select with search + counts) */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'flex h-7 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs',
+                'hover:bg-accent/50 transition-colors min-w-[140px]',
+              )}
+            >
+              <span className="text-muted-foreground font-medium mr-1">Channel:</span>
+              <span className="truncate">
+                {channelFilter.size === 0
+                  ? 'All'
+                  : channelFilter.size === 1
+                    ? `@${[...channelFilter][0]}`
+                    : `${channelFilter.size} selected`}
+              </span>
+              <ChevronDown className="ml-auto h-3.5 w-3.5 opacity-50 shrink-0" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="flex w-64 max-h-80 flex-col overflow-hidden p-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {filterOptions.handles.length > 5 && (
+              <div className="shrink-0 border-b border-border/40 p-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={channelSearch}
+                    onChange={(e) => setChannelSearch(e.target.value)}
+                    placeholder="Search channels..."
+                    className="h-7 pl-7 text-xs"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="p-1.5 space-y-0.5">
+                {(() => {
+                  const q = channelSearch.trim().toLowerCase();
+                  const filtered = q
+                    ? filterOptions.handles.filter((o) => o.value.toLowerCase().includes(q))
+                    : filterOptions.handles;
+                  if (filtered.length === 0) {
+                    return <div className="py-4 text-center text-xs text-muted-foreground">No matches</div>;
+                  }
+                  return filtered.map((opt) => {
+                    const isChecked = channelFilter.has(opt.value);
+                    return (
+                      <label
+                        key={opt.value}
+                        className={cn(
+                          'flex items-center gap-2 rounded-md px-2 py-1.5 text-xs cursor-pointer transition-colors',
+                          isChecked
+                            ? 'bg-primary/8 text-foreground'
+                            : 'hover:bg-accent text-foreground/80',
+                        )}
+                      >
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={() => {
+                            const next = new Set(channelFilter);
+                            if (next.has(opt.value)) next.delete(opt.value);
+                            else next.add(opt.value);
+                            setChannelFilter(next);
+                          }}
+                          className="h-3.5 w-3.5 shrink-0"
+                        />
+                        <span className="flex-1 min-w-0 truncate">@{opt.value}</span>
+                        <span className="shrink-0 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                          {opt.count.toLocaleString()}
+                        </span>
+                      </label>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+            <div className="shrink-0 flex items-center gap-1.5 border-t border-border/40 px-2 py-1.5 bg-muted/20">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 flex-1 text-[10px] font-semibold"
+                onClick={() => {
+                  const q = channelSearch.trim().toLowerCase();
+                  const filtered = q
+                    ? filterOptions.handles.filter((o) => o.value.toLowerCase().includes(q))
+                    : filterOptions.handles;
+                  setChannelFilter(new Set(filtered.map((o) => o.value)));
+                }}
+              >
+                Select All
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 flex-1 text-[10px] font-semibold text-muted-foreground"
+                onClick={() => setChannelFilter(new Set())}
+                disabled={channelFilter.size === 0}
+              >
+                Clear
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Relevant to task filter */}
         <Select value={relevantFilter} onValueChange={setRelevantFilter}>

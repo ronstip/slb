@@ -293,6 +293,52 @@ class FirestoreClient:
         doc_ref.update(fields)
         logger.debug("Updated agent %s: %s", agent_id, list(fields.keys()))
 
+    def get_stuck_agents(self, stale_minutes: int = 10) -> list[dict]:
+        """Find agents whose continuation died mid-flight.
+
+        A stuck agent has status='running' AND has already entered the
+        continuation phase (continuation_ready_at is set) AND has not
+        updated its parent doc for stale_minutes. Agents still in the
+        collection phase are excluded — their parent doc legitimately
+        idles for long stretches while collections run.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
+        stuck: list[dict] = []
+        try:
+            docs = (
+                self._db.collection("agents")
+                .where("status", "==", "running")
+                .stream()
+            )
+        except Exception:
+            logger.warning("Failed to query stuck agents", exc_info=True)
+            return stuck
+
+        for doc in docs:
+            data = doc.to_dict()
+            # Must have entered continuation phase at least once
+            if not data.get("continuation_ready_at"):
+                continue
+            updated_at = data.get("updated_at")
+            if hasattr(updated_at, "timestamp"):
+                ts = updated_at if updated_at.tzinfo else updated_at.replace(tzinfo=timezone.utc)
+            elif isinstance(updated_at, str):
+                try:
+                    ts = datetime.fromisoformat(updated_at)
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+            else:
+                continue
+            if ts >= cutoff:
+                continue
+            data["agent_id"] = doc.id
+            stuck.append(data)
+        return stuck
+
     def list_user_agents(self, user_id: str, org_id: str | None = None) -> list[dict]:
         """List agents visible to the user: own + org-shared."""
         seen: set[str] = set()

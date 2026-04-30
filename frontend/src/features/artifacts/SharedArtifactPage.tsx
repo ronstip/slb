@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Download } from 'lucide-react';
@@ -22,6 +22,12 @@ import type { DataExportRow } from '../../api/types.ts';
 
 const CHARTJS_TYPES = new Set<string>(['bar', 'line', 'pie', 'doughnut']);
 
+function formatSharedDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function toWidgetData(raw: Record<string, unknown>): WidgetData {
   return {
     labels: raw.labels as string[] | undefined,
@@ -36,6 +42,15 @@ function toWidgetData(raw: Record<string, unknown>): WidgetData {
 export function SharedArtifactPage() {
   const { token } = useParams<{ token: string }>();
 
+  // The app shell sets a global body min-width: 1280px for desktop-only
+  // surfaces. The public share page is a viral landing surface that must
+  // render on phones — drop the constraint while mounted, restore on unmount.
+  useEffect(() => {
+    const prev = document.body.style.minWidth;
+    document.body.style.minWidth = '0';
+    return () => { document.body.style.minWidth = prev; };
+  }, []);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['shared-artifact', token],
     queryFn: () => getPublicArtifact(token!),
@@ -49,21 +64,13 @@ export function SharedArtifactPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-2.5">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5 sm:px-6">
           <Logo size="sm" />
-          {data?.meta.title && (
-            <>
-              <div className="h-4 w-px bg-border shrink-0" />
-              <h1 className="text-sm font-semibold text-foreground truncate flex-1">
-                {data.meta.title}
-              </h1>
-            </>
-          )}
-          {!data?.meta.title && <div className="flex-1" />}
+          <div className="flex-1" />
           <Button
             size="sm"
             onClick={() => window.open('/', '_blank')}
-            className="h-7 text-xs shrink-0"
+            className="shrink-0"
           >
             Create your own
           </Button>
@@ -91,23 +98,24 @@ export function SharedArtifactPage() {
       {!isLoading && !error && data && style && (
         <>
           <div className="border-b border-border bg-card shrink-0">
-            <div className="mx-auto max-w-6xl px-6 py-4">
+            <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
               <div className="flex items-center gap-3">
                 <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', style.bg)}>
                   <style.icon className={cn('h-4.5 w-4.5', style.color)} />
                 </div>
-                <div>
-                  <h1 className="text-xl font-semibold text-foreground">
+                <div className="min-w-0">
+                  <h1 className="line-clamp-2 text-xl font-semibold text-foreground">
                     {data.meta.title}
                   </h1>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {style.label}
+                    {data.meta.created_at && ` · Shared ${formatSharedDate(data.meta.created_at)}`}
                   </p>
                 </div>
               </div>
             </div>
           </div>
-          <main className="mx-auto w-full max-w-6xl flex-1">
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
             <SharedArtifactBody data={data} token={token!} />
           </main>
         </>
@@ -125,7 +133,7 @@ function SharedArtifactBody({
 }) {
   switch (data.meta.type) {
     case 'chart':
-      return <SharedChart payload={data.payload} title={data.meta.title} />;
+      return <SharedChart payload={data.payload} />;
     case 'data_export':
       return <SharedDataExport payload={data.payload} />;
     case 'presentation':
@@ -141,10 +149,8 @@ function SharedArtifactBody({
 
 function SharedChart({
   payload,
-  title,
 }: {
   payload: Record<string, unknown>;
-  title: string;
 }) {
   const chartType = (payload.chart_type as string) ?? 'bar';
   const chartData = (payload.data ?? {}) as Record<string, unknown>;
@@ -153,6 +159,7 @@ function SharedChart({
     | 'horizontal'
     | 'vertical'
     | undefined) ?? 'horizontal';
+  const caption = (payload.caption as string | undefined)?.trim();
 
   let content: React.ReactNode;
   if (CHARTJS_TYPES.has(chartType)) {
@@ -213,12 +220,15 @@ function SharedChart({
   }
 
   return (
-    <div className="px-4 pb-6 pt-4">
-      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        {title}
-      </p>
+    <figure className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
       {content}
-    </div>
+      {caption && (
+        <figcaption className="mt-6 max-w-3xl border-t border-border/60 pt-4 text-sm leading-relaxed text-muted-foreground">
+          <span className="font-semibold text-foreground">Figure.</span>{' '}
+          {caption}
+        </figcaption>
+      )}
+    </figure>
   );
 }
 

@@ -73,6 +73,13 @@ export const SENTIMENT_COLORS: Record<string, string> = {
   negative: '#C75A62',
   neutral: '#94999F',
   mixed: '#D4A054',
+  // Stance / reception variants — kept distinct in hue (not just value) so
+  // adjacent segments in a stacked bar remain readable. supportive=green,
+  // opposed=red, skeptical=amber matches the positive/negative/mixed mapping
+  // used elsewhere.
+  supportive: '#5FB88A',
+  opposed: '#C75A62',
+  skeptical: '#D4A054',
 };
 
 export const PLATFORMS = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'] as const;

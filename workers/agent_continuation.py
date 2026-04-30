@@ -359,24 +359,38 @@ async def _async_agent_continuation(agent_id: str) -> None:
         parts=[types.Part.from_text(text=continuation_message)],
     )
 
-    # Run agent — emit structured activity logs in real-time
+    # Run agent — emit structured activity logs and persist artifacts as
+    # tool results stream in. Per-event persistence (instead of a single
+    # post-loop pass) means a Cloud Run timeout / OOM mid-run no longer
+    # silently drops completed deliverables.
     from google.adk.runners import RunConfig
+    from api.services.artifact_service import persist_event_artifacts
     tool_start_times: dict[str, float] = {}
-    events = []
+    event_count = 0
     async for event in runner.run_async(
         user_id=user_id,
         session_id=session_id,
         new_message=content,
         run_config=RunConfig(),
     ):
-        events.append(event)
+        event_count += 1
         _emit_activity(fs, agent_id, event, tool_start_times)
+        try:
+            created = persist_event_artifacts(
+                event, user_id, org_id, session_id, agent_id=agent_id,
+            )
+            for aid in created:
+                logger.info(
+                    "Persisted artifact %s for agent %s during continuation",
+                    aid, agent_id,
+                )
+        except Exception:
+            logger.exception(
+                "Per-event artifact persist failed for agent %s", agent_id,
+            )
 
-    logger.info("Agent %s: continuation completed with %d events", agent_id, len(events))
+    logger.info("Agent %s: continuation completed with %d events", agent_id, event_count)
     fs.add_agent_log(agent_id, "Analysis agent completed", source="continuation")
-
-    # Persist artifacts from agent output
-    _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_id)
 
     # Mark all remaining todos as completed
     agent = fs.get_agent(agent_id)  # re-read in case agent updated during run
@@ -579,38 +593,6 @@ def _emit_activity(fs, agent_id: str, event, tool_start_times: dict[str, float])
             )
 
 
-def _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_id):
-    """Extract and persist artifacts from agent continuation events."""
-    for event in events:
-        if not hasattr(event, 'content') or not event.content:
-            continue
-        if not hasattr(event.content, 'parts') or not event.content.parts:
-            continue
-        for part in event.content.parts:
-            if not hasattr(part, 'function_response') or not part.function_response:
-                continue
-            fr = part.function_response
-            tool_name = fr.name if hasattr(fr, 'name') else ''
-            raw_response = fr.response if hasattr(fr, 'response') else {}
-
-            # ADK returns proto Struct — convert to plain dict
-            try:
-                result = dict(raw_response) if raw_response else {}
-            except (TypeError, ValueError):
-                continue
-
-            try:
-                from api.services.artifact_service import persist_tool_result_artifact
-                artifact_id = persist_tool_result_artifact(
-                    tool_name, result, user_id, org_id, session_id,
-                    agent_id=agent_id,
-                )
-                if artifact_id:
-                    logger.info("Persisted artifact %s from continuation tool %s for agent %s", artifact_id, tool_name, agent_id)
-            except Exception:
-                logger.exception("Failed to persist artifact from continuation: %s (agent %s)", tool_name, agent_id)
-
-
 def _notify_agent_completion(agent_id: str, agent: dict, user_id: str) -> None:
     """Send email notification when an agent completes."""
     try:
@@ -691,3 +673,99 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
     client.create_task(parent=parent, task=task_config)
     logger.info("Dispatched Cloud Task for agent continuation %s → %s (delay=%ds)",
                 agent_id, target_url, delay_seconds)
+
+
+# ── Stuck-agent watchdog ──────────────────────────────────────────────
+
+# Cap how many times the watchdog will re-dispatch a single agent before
+# giving up and marking it failed. Without a cap, a runtime that
+# deterministically crashes on the same input would loop forever.
+MAX_CONTINUATION_ATTEMPTS = 3
+
+
+def recover_stuck_agents(stale_minutes: int = 10) -> int:
+    """Detect agents whose continuation died mid-flight and re-dispatch.
+
+    A continuation may die without notice if the runtime process is evicted
+    (Cloud Run instance restart, OOM, deploy) or the dispatched Cloud Task
+    silently fails to fire. The endpoint at /internal/agent/continue handles
+    *Cloud Tasks retries* via a liveness check, but once Cloud Tasks gives
+    up there is no other recovery path — the agent is stranded in
+    status='running' forever. This function fills that gap.
+
+    For each stuck agent: increment continuation_attempts and re-dispatch
+    the continuation. After MAX_CONTINUATION_ATTEMPTS, mark the agent failed
+    so the UI surfaces a clean state instead of a perpetual spinner.
+
+    Returns the number of agents handled (re-dispatched + marked failed).
+    """
+    from workers.shared.firestore_client import FirestoreClient
+
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+    stuck = fs.get_stuck_agents(stale_minutes=stale_minutes)
+
+    if not stuck:
+        return 0
+
+    handled = 0
+    for agent in stuck:
+        agent_id = agent["agent_id"]
+        attempts = int(agent.get("continuation_attempts") or 0)
+
+        if attempts >= MAX_CONTINUATION_ATTEMPTS:
+            try:
+                fs.update_agent(
+                    agent_id,
+                    status="failed",
+                    completed_at=datetime.now(timezone.utc),
+                    context_summary=(
+                        f"Continuation runtime crashed {attempts}× — giving up. "
+                        "Use the Resume button to retry manually."
+                    ),
+                )
+                fs.add_agent_log(
+                    agent_id,
+                    f"Watchdog: marking failed after {attempts} continuation attempts",
+                    source="watchdog", level="error",
+                )
+                handled += 1
+            except Exception:
+                logger.exception("Watchdog: failed to mark agent %s failed", agent_id)
+            continue
+
+        try:
+            fs.update_agent(
+                agent_id,
+                continuation_ready=True,
+                continuation_attempts=attempts + 1,
+                completed_at=None,
+            )
+            fs.add_agent_log(
+                agent_id,
+                f"Watchdog: re-dispatching continuation (attempt {attempts + 1}/{MAX_CONTINUATION_ATTEMPTS})",
+                source="watchdog", level="warning",
+            )
+        except Exception:
+            logger.exception("Watchdog: failed to update agent %s before re-dispatch", agent_id)
+            continue
+
+        try:
+            if settings.is_dev:
+                threading.Thread(
+                    target=_delayed_fallback,
+                    args=(agent_id,),
+                    daemon=True,
+                    name=f"watchdog-resume-{agent_id[:8]}",
+                ).start()
+            else:
+                _dispatch_continuation_task(settings, agent_id, delay_seconds=10)
+            handled += 1
+            logger.warning(
+                "Watchdog: re-dispatched stuck agent %s (attempt %d/%d)",
+                agent_id, attempts + 1, MAX_CONTINUATION_ATTEMPTS,
+            )
+        except Exception:
+            logger.exception("Watchdog: re-dispatch failed for agent %s", agent_id)
+
+    return handled
