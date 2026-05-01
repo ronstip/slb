@@ -82,6 +82,29 @@ class KeyFindingComponent(BaseModel):
     significance: Literal["surprising", "notable"] = "notable"
 
 
+class PostRef(BaseModel):
+    post_id: str
+    collection_id: str
+
+
+class PostExamplesComponent(BaseModel):
+    component: Literal["post_examples"] = "post_examples"
+    layout: Literal["single", "grid_2", "grid_3"] = "single"
+    posts: list[PostRef] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "PostExamplesComponent":
+        n = len(self.posts)
+        if not 1 <= n <= 3:
+            raise ValueError(f"post_examples needs 1-3 posts, got {n}")
+        expected = {"single": 1, "grid_2": 2, "grid_3": 3}[self.layout]
+        if n != expected:
+            raise ValueError(
+                f"layout={self.layout!r} requires exactly {expected} posts, got {n}"
+            )
+        return self
+
+
 # Union of all component types
 ComponentSpec = Union[
     TextComponent,
@@ -89,6 +112,7 @@ ComponentSpec = Union[
     TableComponent,
     KpiGridComponent,
     KeyFindingComponent,
+    PostExamplesComponent,
 ]
 
 
@@ -101,6 +125,7 @@ def parse_component(raw: dict) -> ComponentSpec:
         "table": TableComponent,
         "kpi_grid": KpiGridComponent,
         "key_finding": KeyFindingComponent,
+        "post_examples": PostExamplesComponent,
     }
     cls = mapping.get(comp_type)
     if cls is None:

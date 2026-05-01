@@ -21,7 +21,9 @@ from api.agent.tools.presentation.components import (
     fill_text,
     render_key_finding,
     render_kpi_grid,
+    render_post_examples,
 )
+from api.agent.tools.presentation.post_lookup import fetch_posts_by_ids
 from api.agent.tools.presentation.manifest import (
     compute_free_area,
     find_blank_layout,
@@ -36,7 +38,7 @@ from config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 # Component types that are rendered as custom shapes in free area
-_CUSTOM_COMPONENTS = {"kpi_grid", "key_finding"}
+_CUSTOM_COMPONENTS = {"kpi_grid", "key_finding", "post_examples"}
 
 # Component dispatch for placeholder fills
 _PLACEHOLDER_FILLERS = {
@@ -49,6 +51,7 @@ _PLACEHOLDER_FILLERS = {
 _CUSTOM_FILLERS = {
     "kpi_grid": render_kpi_grid,
     "key_finding": render_key_finding,
+    "post_examples": render_post_examples,
 }
 
 
@@ -197,6 +200,21 @@ def generate_presentation(
             "title": {"component": "text", "text": "Key Metrics"},
             "custom": {"component": "kpi_grid", "items": [{"label": "...", "value": "..."}]}
           }
+        },
+        {
+          "layout": "Title Only",
+          "content": {
+            "title": {"component": "text", "text": "Top Reactions"},
+            "custom": {
+              "component": "post_examples",
+              "layout": "grid_3",
+              "posts": [
+                {"post_id": "p1", "collection_id": "c1"},
+                {"post_id": "p2", "collection_id": "c1"},
+                {"post_id": "p3", "collection_id": "c1"}
+              ]
+            }
+          }
         }
       ]
     }
@@ -207,6 +225,11 @@ def generate_presentation(
     - table: {component: "table", columns: [...], rows: [[...]]}
     - kpi_grid: {component: "kpi_grid", items: [{label, value}]} — custom slot only
     - key_finding: {component: "key_finding", finding: "...", significance: "surprising|notable"} — custom slot only
+    - post_examples: {component: "post_examples", layout: "single|grid_2|grid_3",
+        posts: [{post_id, collection_id}]} — custom slot only.
+        Tool fetches full post content + image from BQ at render time.
+        Use exactly 1 post for "single", 2 for "grid_2", 3 for "grid_3".
+        Pick post_ids the user has cited or that came back from a search query.
 
     LAYOUT GUIDE:
     - "Title Slide" [title, subtitle] — opening/closing
@@ -214,7 +237,7 @@ def generate_presentation(
     - "Two Content" [title, left, right] — two charts or chart + text
     - "Section Header" [title, body] — section divider
     - "Comparison" [title, body, left, body_2, right] — labeled comparison
-    - "Title Only" [title] + custom — kpi_grid, key_finding
+    - "Title Only" [title] + custom — kpi_grid, key_finding, post_examples
 
     Args:
         deck_plan: Structured deck plan (preferred).
@@ -261,6 +284,25 @@ def generate_presentation(
     slide_width = prs.slide_width
     slide_height = prs.slide_height
 
+    # Pre-fetch all post examples in a single BQ call so each post_id only
+    # hits BigQuery once across the whole deck. The per-call image cache is
+    # filled lazily inside the renderer.
+    all_post_refs: list[dict] = []
+    for slide_spec in plan.slides:
+        for raw in slide_spec.content.values():
+            if isinstance(raw, dict) and raw.get("component") == "post_examples":
+                for ref in raw.get("posts", []) or []:
+                    if isinstance(ref, dict) and ref.get("post_id"):
+                        all_post_refs.append(ref)
+
+    post_cache: dict = {}
+    if all_post_refs:
+        for row in fetch_posts_by_ids(all_post_refs):
+            pid = row.get("post_id")
+            if pid:
+                post_cache[pid] = row
+    image_cache: dict = {}
+
     # Render slides
     rendered = 0
     for slide_spec in plan.slides:
@@ -297,7 +339,12 @@ def generate_presentation(
                     # Render in free area
                     free_area = compute_free_area(layout_info, slide_width, slide_height)
                     filler = _CUSTOM_FILLERS.get(comp_type)
-                    if filler:
+                    if filler is render_post_examples:
+                        filler(
+                            slide, comp_spec, theme, free_area,
+                            post_cache=post_cache, image_cache=image_cache,
+                        )
+                    elif filler:
                         filler(slide, comp_spec, theme, free_area)
                     continue
 

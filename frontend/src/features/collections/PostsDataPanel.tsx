@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, Database, LayoutGrid, Search, Table2, X } from 'lucide-react';
+import { ChevronDown, Database, Download, LayoutGrid, Search, Table2, X } from 'lucide-react';
+import { downloadCsv, FEED_POST_CSV_COLUMNS } from '../../lib/download-csv.ts';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { Input } from '../../components/ui/input.tsx';
 import { Checkbox } from '../../components/ui/checkbox.tsx';
@@ -41,6 +42,8 @@ interface PostsDataPanelProps {
   dedup?: boolean;
   /** Default lower bound on `posted_at` (the agent's search-window start). User-picked dateRange overrides it. */
   startDate?: string;
+  /** Filename prefix for the CSV export (slugified before use). */
+  exportFilenamePrefix?: string;
   /** Legacy callback props — still accepted but optional */
   onActiveFiltersChange?: (active: boolean) => void;
   onClearFiltersCallbackChange?: (cb: (() => void) | null) => void;
@@ -53,6 +56,7 @@ export function PostsDataPanel({
   globalSearch,
   dedup,
   startDate,
+  exportFilenamePrefix,
 }: PostsDataPanelProps) {
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>(createEmptyFilters);
 
@@ -434,7 +438,7 @@ export function PostsDataPanel({
           </SelectContent>
         </Select>
 
-        {/* Right-side controls: clear-all + view toggle */}
+        {/* Right-side controls: clear-all + export + view toggle */}
         <div className="ml-auto flex items-center gap-2">
           {hasAnyFilter && (
             <Button
@@ -447,6 +451,20 @@ export function PostsDataPanel({
               <X className="h-3 w-3" />
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            disabled={filteredPosts.length === 0}
+            onClick={() => {
+              const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+              const slug = (exportFilenamePrefix ?? 'posts').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
+              downloadCsv(filteredPosts, `${slug}_${today}`, FEED_POST_CSV_COLUMNS);
+            }}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </Button>
           <div className="flex items-center rounded-md border border-border/60 bg-background overflow-hidden">
             <button
               type="button"
