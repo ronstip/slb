@@ -440,18 +440,20 @@ class FirestoreClient:
         return results
 
     def get_due_recurring_agents(self) -> list[dict]:
-        """Return recurring agents whose next_run_at is in the past and status is 'success' (not paused)."""
+        """Return recurring agents whose next_run_at is in the past (not paused, not currently running/archived/failed)."""
         now = datetime.now(timezone.utc)
         try:
             docs = (
                 self._db.collection("agents")
                 .where("agent_type", "==", "recurring")
-                .where("status", "==", "success")
                 .stream()
             )
             due = []
             for doc in docs:
                 data = doc.to_dict()
+                # Allow null (never-run) and "success"; skip running/archived/failed.
+                if data.get("status") not in (None, "success"):
+                    continue
                 next_run_at = data.get("next_run_at")
                 if next_run_at is None:
                     continue

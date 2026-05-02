@@ -2,6 +2,7 @@ import {
   AlertCircle,
   Archive,
   CheckCircle2,
+  Circle,
   Pause,
 } from 'lucide-react';
 import type { Agent, AgentStatus } from '../../../api/endpoints/agents.ts';
@@ -9,6 +10,7 @@ import { Badge } from '../../../components/ui/badge.tsx';
 import { RadarPulse } from '../../../components/BrandElements.tsx';
 
 export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
+  idle: { icon: <Circle className="h-3 w-3" />, label: 'Idle', color: 'text-muted-foreground' },
   running: { icon: <RadarPulse />, label: 'Running', color: 'text-emerald-500' },
   success: { icon: <CheckCircle2 className="h-3 w-3" />, label: 'Completed', color: 'text-green-500' },
   failed: { icon: <AlertCircle className="h-3 w-3" />, label: 'Failed', color: 'text-destructive' },
@@ -16,13 +18,14 @@ export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: strin
 };
 
 export const STATUS_ACCENT: Record<string, string> = {
+  idle: 'bg-muted-foreground/30',
   running: 'bg-emerald-500',
   success: 'bg-green-500',
   failed: 'bg-destructive',
   archived: 'bg-muted-foreground/30',
 };
 
-export function StatusBadge({ status, paused }: { status: AgentStatus; paused?: boolean }) {
+export function StatusBadge({ status, paused }: { status: AgentStatus | null; paused?: boolean }) {
   if (paused) {
     return (
       <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
@@ -39,7 +42,7 @@ export function StatusBadge({ status, paused }: { status: AgentStatus; paused?: 
       </div>
     );
   }
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.success;
+  const config = STATUS_CONFIG[status ?? 'idle'] || STATUS_CONFIG.idle;
   return (
     <Badge variant="outline" className={`gap-1 text-[10px] ${config.color}`}>
       {config.icon}
@@ -52,7 +55,7 @@ export function AgentStatusBadge({ agent }: { agent: Agent }) {
   return <StatusBadge status={agent.status} paused={agent.paused} />;
 }
 
-export const RUNNABLE_STATUSES: AgentStatus[] = ['success', 'failed'];
+export const RUNNABLE_STATUSES: (AgentStatus | null)[] = [null, 'success', 'failed'];
 
 export function formatLastRun(updatedAt: string | null | undefined): string {
   if (!updatedAt) return '\u2014';

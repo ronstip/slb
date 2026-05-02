@@ -82,3 +82,6 @@ memory-bank/active-context.md
 api/agent/evals/runs/_debug/
 api/agent/evals/runs/*.log
 api/agent/evals/runs/**/transcripts/
+
+# Ignore sandbox folder
+sandbox/

@@ -120,8 +120,16 @@ class CreateFromWizardRequest(BaseModel):
     auto_email: bool = False
     auto_slides: bool = False
     email_recipients: list[str] = []
+    start_run: bool = True
 
 
 class UpdateCollectionRequest(BaseModel):
     title: str | None = None
     visibility: str | None = None
+
+
+class RunSourcesRequest(BaseModel):
+    # If both omitted: run every source on the agent. If both set: run that
+    # specific (search_idx, platform) pair only.
+    search_idx: int | None = None
+    platform: str | None = None

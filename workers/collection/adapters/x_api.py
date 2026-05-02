@@ -199,7 +199,7 @@ class XAPIAdapter(DataProviderAdapter):
             )
         return self._user_timeline(
             username=target, page_size=page_size, max_calls=max_calls,
-            hard_cap=hard_cap,
+            hard_cap=hard_cap, start_time=start_time, end_time=end_time,
         )
 
     # ------------------------------------------------------------------
@@ -239,7 +239,7 @@ class XAPIAdapter(DataProviderAdapter):
 
     @staticmethod
     def _build_search_query(keyword: str, has_media: str) -> str:
-        return keyword.strip()
+        return f"{keyword.strip()} -is:retweet"
 
     # ------------------------------------------------------------------
     # /2/users/by/username/:u + /2/users/:id/tweets
@@ -251,6 +251,8 @@ class XAPIAdapter(DataProviderAdapter):
         page_size: int,
         max_calls: int,
         hard_cap: int | None,
+        start_time: str,
+        end_time: str,
     ) -> list[Batch]:
         user = self._resolve_user(username)
         if not user:
@@ -264,7 +266,9 @@ class XAPIAdapter(DataProviderAdapter):
         timeline_page_size = max(5, min(100, page_size))
         params: dict = {
             "max_results": timeline_page_size,
-            "exclude": "replies,retweets",
+            "start_time": start_time,
+            "end_time": end_time,
+            "exclude": "retweets",
             "tweet.fields": self.DEFAULT_TWEET_FIELDS,
             "user.fields": self.DEFAULT_USER_FIELDS,
             "media.fields": self.DEFAULT_MEDIA_FIELDS,

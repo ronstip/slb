@@ -5,12 +5,16 @@ import {
   Clock,
   FileText,
   Globe,
+  Loader2,
+  Play,
   Plus,
   Search,
   Upload,
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { Agent, SearchDef } from '../../../../api/endpoints/agents.ts';
+import { runAgentSources } from '../../../../api/endpoints/agents.ts';
 import {
   getCollectionStats,
   refreshCollectionStats,
@@ -19,20 +23,71 @@ import { PLATFORM_COLORS, PLATFORM_LABELS } from '../../../../lib/constants.ts';
 import { formatNumber } from '../../../../lib/format.ts';
 import { Badge } from '../../../../components/ui/badge.tsx';
 import { Button } from '../../../../components/ui/button.tsx';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../../components/ui/alert-dialog.tsx';
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { cn } from '../../../../lib/utils.ts';
 
 interface FlatSource {
   platform: string;
   search: SearchDef;
+  searchIdx: number;
+  effective: {
+    keywords: string[];
+    channels?: string[];
+    n_posts: number;
+    geo_scope: string;
+    time_range_days: number;
+    isOverridden: boolean;
+  };
   key: string;
 }
 
+type PendingRun =
+  | { kind: 'one'; searchIdx: number; platform: string }
+  | { kind: 'all' }
+  | null;
+
 type SourceTab = 'summary' | 'files' | string;
 
-function SourcesSectionImpl({ task }: { task: Agent }) {
+function resolveEffective(search: SearchDef, platform: string) {
+  const platformCount = Math.max(search.platforms.length, 1);
+  const defaultSplit = search.n_posts ? Math.round(search.n_posts / platformCount) : 0;
+  const src = search.per_source?.[platform];
+  if (src?.override) {
+    return {
+      keywords: src.keywords ?? search.keywords,
+      channels: src.channels ?? search.channels,
+      n_posts: src.n_posts ?? defaultSplit,
+      geo_scope: src.geo_scope ?? search.geo_scope,
+      time_range_days: src.time_range_days ?? search.time_range_days,
+      isOverridden: true,
+    };
+  }
+  return {
+    keywords: search.keywords,
+    channels: search.channels,
+    n_posts: defaultSplit,
+    geo_scope: search.geo_scope,
+    time_range_days: search.time_range_days,
+    isOverridden: false,
+  };
+}
+
+function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatforms?: () => void }) {
   const [activeTab, setActiveTab] = useState<SourceTab>('summary');
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [pendingRun, setPendingRun] = useState<PendingRun>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const queryClient = useQueryClient();
   const searches = task.data_scope?.searches ?? [];
 
   // Explode SearchDefs into per-platform rows. Reference-stable across renders
@@ -42,18 +97,59 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
     for (let i = 0; i < searches.length; i++) {
       const search = searches[i];
       for (const platform of search.platforms) {
-        out.push({ platform, search, key: `${i}-${platform}` });
+        out.push({
+          platform,
+          search,
+          searchIdx: i,
+          effective: resolveEffective(search, platform),
+          key: `${i}-${platform}`,
+        });
       }
     }
     return out;
   }, [searches]);
 
+  const handleConfirmRun = async () => {
+    if (!pendingRun) return;
+    setIsRunning(true);
+    try {
+      const result = await runAgentSources(
+        task.agent_id,
+        pendingRun.kind === 'one'
+          ? { search_idx: pendingRun.searchIdx, platform: pendingRun.platform }
+          : undefined,
+      );
+      const n = result.collection_ids.length;
+      toast.success(
+        n === 1
+          ? 'Source refresh started'
+          : `Refreshing ${n} source${n === 1 ? '' : 's'}`,
+      );
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
+      queryClient.invalidateQueries({ queryKey: ['agent-source-stats', task.agent_id] });
+    } catch (err) {
+      toast.error('Could not start source refresh. Please try again.');
+    } finally {
+      setIsRunning(false);
+      setPendingRun(null);
+    }
+  };
+
+  const pendingRunLabel = (() => {
+    if (!pendingRun) return '';
+    if (pendingRun.kind === 'all') {
+      const n = flatSources.length;
+      return `all ${n} source${n === 1 ? '' : 's'}`;
+    }
+    return PLATFORM_LABELS[pendingRun.platform] ?? pendingRun.platform;
+  })();
+
   const { platformCounts, uniquePlatforms, fallbackTotalPosts } = useMemo(() => {
     const counts: Record<string, number> = {};
     let total = 0;
-    for (const { platform, search } of flatSources) {
+    for (const { platform, effective } of flatSources) {
       counts[platform] = (counts[platform] || 0) + 1;
-      total += Math.round((search.n_posts || 0) / search.platforms.length);
+      total += effective.n_posts;
     }
     return {
       platformCounts: counts,
@@ -67,18 +163,18 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
   // interval so per-platform counts track live progress. Otherwise use the
   // cached signature for fast, cheap reads.
   const collectionIds = task.collection_ids ?? [];
-  const isRunning = task.status === 'running';
+  const taskIsRunning = task.status === 'running';
   const { data: allStats } = useQuery({
-    queryKey: ['agent-source-stats', task.agent_id, collectionIds, isRunning],
+    queryKey: ['agent-source-stats', task.agent_id, collectionIds, taskIsRunning],
     queryFn: () =>
       Promise.all(
         collectionIds.map((id) =>
-          isRunning ? refreshCollectionStats(id) : getCollectionStats(id),
+          taskIsRunning ? refreshCollectionStats(id) : getCollectionStats(id),
         ),
       ),
     enabled: collectionIds.length > 0,
-    staleTime: isRunning ? 0 : 5 * 60 * 1000,
-    refetchInterval: isRunning ? 30_000 : false,
+    staleTime: taskIsRunning ? 0 : 5 * 60 * 1000,
+    refetchInterval: taskIsRunning ? 30_000 : false,
   });
 
   const { platformPostTotals, platformPostsLast3d, totalPosts } = useMemo(() => {
@@ -127,7 +223,8 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm h-full flex flex-col">
+    <div className="space-y-3">
+      <div className="rounded-xl border border-border bg-card shadow-sm flex flex-col">
       <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl shrink-0">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
       </div>
@@ -193,25 +290,32 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
             Files
           </button>
 
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all"
-          >
-            <Plus className="h-3 w-3" />
-            Add Platforms
-          </button>
+          {onAddPlatforms && (
+            <button
+              type="button"
+              onClick={onAddPlatforms}
+              className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all"
+            >
+              <Plus className="h-3 w-3" />
+              Add Platforms
+            </button>
+          )}
         </div>
       </div>
 
       <div className="px-3 py-2 flex-1">
           {activeTab === 'summary' && (
-            <SourcesSummaryView
-              flatSources={flatSources}
-              isActive={task.status === 'running' || (task.status === 'success' && !task.paused)}
-              platformPostTotals={platformPostTotals}
-              platformPostsLast3d={platformPostsLast3d}
-              totalPosts={totalPosts}
-            />
+            <>
+              <SourcesSummaryView
+                flatSources={flatSources}
+                isActive={task.status === 'running' || (task.status === 'success' && !task.paused)}
+                platformPostTotals={platformPostTotals}
+                platformPostsLast3d={platformPostsLast3d}
+                totalPosts={totalPosts}
+                onRunSource={(searchIdx, platform) => setPendingRun({ kind: 'one', searchIdx, platform })}
+                isRunning={isRunning}
+              />
+            </>
           )}
 
           {activeTab === 'files' && (
@@ -228,20 +332,20 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
             </div>
           )}
 
-          {activeTab !== 'summary' && activeTab !== 'files' && visibleSources.map(({ platform, search, key }) => {
+          {activeTab !== 'summary' && activeTab !== 'files' && visibleSources.map(({ platform, search, effective, key }) => {
             const isExpanded = autoExpand || expandedKey === key;
-            const keywordsPreview = search.keywords?.length > 0
-              ? search.keywords.length <= 3
-                ? search.keywords.join(', ')
-                : `${search.keywords.slice(0, 3).join(', ')}, +${search.keywords.length - 3}`
+            const keywordsPreview = effective.keywords?.length > 0
+              ? effective.keywords.length <= 3
+                ? effective.keywords.join(', ')
+                : `${effective.keywords.slice(0, 3).join(', ')}, +${effective.keywords.length - 3}`
               : null;
-            const channelsPreview = search.channels?.length
-              ? search.channels.length <= 2
-                ? search.channels.join(', ')
-                : `${search.channels.slice(0, 2).join(', ')}, +${search.channels.length - 2}`
+            const channelsPreview = effective.channels?.length
+              ? effective.channels.length <= 2
+                ? effective.channels.join(', ')
+                : `${effective.channels.slice(0, 2).join(', ')}, +${effective.channels.length - 2}`
               : null;
-            const isChannelSearch = !!search.channels?.length;
-            const sharedWith = search.platforms.length > 1
+            const isChannelSearch = !!effective.channels?.length;
+            const sharedWith = !effective.isOverridden && search.platforms.length > 1
               ? search.platforms.filter((p) => p !== platform)
               : null;
 
@@ -278,7 +382,7 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
                     )}
                   </span>
                   <span className="text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
-                    {search.n_posts || 0} · {search.time_range_days}d
+                    {effective.n_posts || 0} · {effective.time_range_days}d
                   </span>
                 </button>
 
@@ -295,11 +399,11 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
                         ))}
                       </div>
                     )}
-                    {search.keywords?.length > 0 && (
+                    {effective.keywords?.length > 0 && (
                       <div>
                         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Keywords</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {search.keywords.map((kw) => (
+                          {effective.keywords.map((kw) => (
                             <Badge key={kw} variant="secondary" className="text-[10px] py-0">
                               {kw}
                             </Badge>
@@ -307,11 +411,11 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
                         </div>
                       </div>
                     )}
-                    {search.channels?.length ? (
+                    {effective.channels?.length ? (
                       <div>
                         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Channels</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {search.channels.map((ch) => (
+                          {effective.channels.map((ch) => (
                             <Badge key={ch} variant="secondary" className="text-[10px] py-0">
                               {ch}
                             </Badge>
@@ -322,15 +426,15 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Search className="h-2.5 w-2.5" />
-                        {search.n_posts || 0} posts
+                        {effective.n_posts || 0} posts
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-2.5 w-2.5" />
-                        {search.time_range_days} days
+                        {effective.time_range_days} days
                       </span>
                       <span className="flex items-center gap-1">
                         <Globe className="h-2.5 w-2.5" />
-                        {search.geo_scope || 'Global'}
+                        {effective.geo_scope || 'Global'}
                       </span>
                     </div>
                   </div>
@@ -339,6 +443,48 @@ function SourcesSectionImpl({ task }: { task: Agent }) {
             );
           })}
       </div>
+
+      </div>
+
+      {activeTab === 'summary' && flatSources.length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setPendingRun({ kind: 'all' })}
+            disabled={isRunning}
+            className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            <Play className="h-3 w-3" />
+            Run all sources
+          </button>
+        </div>
+      )}
+
+      <AlertDialog open={!!pendingRun} onOpenChange={(open) => { if (!open) setPendingRun(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading tracking-tight">
+              Refresh data for {pendingRunLabel}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will start a new collection for {pendingRunLabel} using the configured keywords and post target. The agent's analysis won't be re-run — only the underlying data is refreshed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRunning}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRun} disabled={isRunning}>
+              {isRunning ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Starting…
+                </>
+              ) : (
+                'Start refresh'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -349,6 +495,8 @@ interface SourcesSummaryViewProps {
   platformPostTotals: Record<string, number>;
   platformPostsLast3d: Record<string, number>;
   totalPosts: number;
+  onRunSource?: (searchIdx: number, platform: string) => void;
+  isRunning?: boolean;
 }
 
 function SourcesSummaryViewImpl({
@@ -356,6 +504,8 @@ function SourcesSummaryViewImpl({
   isActive,
   platformPostTotals,
   platformPostsLast3d,
+  onRunSource,
+  isRunning,
 }: SourcesSummaryViewProps) {
   return (
     <div>
@@ -365,18 +515,20 @@ function SourcesSummaryViewImpl({
             <th className="text-left py-1.5 pr-2">Source</th>
             <th className="text-left py-1.5 pr-2">Query</th>
             <th className="text-left py-1.5 pr-2">Activity</th>
+            <th className="text-right py-1.5 pr-2">Target / run</th>
             <th className="text-right py-1.5 pr-2">Posts</th>
-            <th className="text-right py-1.5">Posts last 3d</th>
+            <th className="text-right py-1.5 pr-2">Posts last 3d</th>
+            <th className="py-1.5 w-8"></th>
           </tr>
         </thead>
         <tbody>
-          {flatSources.map(({ platform, search, key }) => {
-            const query = search.channels?.length
-              ? search.channels.join(', ')
-              : search.keywords?.length
-                ? search.keywords.length <= 3
-                  ? search.keywords.join(', ')
-                  : `${search.keywords.slice(0, 3).join(', ')}, +${search.keywords.length - 3}`
+          {flatSources.map(({ platform, searchIdx, effective, key }) => {
+            const query = effective.channels?.length
+              ? effective.channels.join(', ')
+              : effective.keywords?.length
+                ? effective.keywords.length <= 3
+                  ? effective.keywords.join(', ')
+                  : `${effective.keywords.slice(0, 3).join(', ')}, +${effective.keywords.length - 3}`
                 : '—';
             const posts = platformPostTotals[platform] ?? 0;
             const last3d = platformPostsLast3d[platform] ?? 0;
@@ -398,8 +550,22 @@ function SourcesSummaryViewImpl({
                     {isActive ? 'Active' : 'Inactive'}
                   </span>
                 </td>
+                <td className="py-1.5 pr-2 text-right text-foreground/80 tabular-nums">{formatNumber(effective.n_posts)}</td>
                 <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(posts)}</td>
-                <td className="py-1.5 text-right text-muted-foreground tabular-nums">{formatNumber(last3d)}</td>
+                <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(last3d)}</td>
+                <td className="py-1.5 pl-1 text-right">
+                  {onRunSource && (
+                    <button
+                      type="button"
+                      onClick={() => onRunSource(searchIdx, platform)}
+                      disabled={isRunning}
+                      aria-label={`Run ${PLATFORM_LABELS[platform] ?? platform} source`}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-primary/5 disabled:opacity-40 disabled:hover:bg-transparent"
+                    >
+                      <Play className="h-3 w-3" />
+                    </button>
+                  )}
+                </td>
               </tr>
             );
           })}

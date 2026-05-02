@@ -9,7 +9,7 @@ from pydantic import BaseModel, ValidationError
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
 from api.rate_limiting import limiter
-from api.schemas.requests import CreateFromWizardRequest
+from api.schemas.requests import CreateFromWizardRequest, RunSourcesRequest
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -60,8 +60,9 @@ async def create_from_wizard_endpoint(
     REST call: creates the agent, attaches existing collections, and
     dispatches new collections from searches.
     """
-    from api.services.agent_service import create_agent, dispatch_agent_run
+    from api.services.agent_service import create_agent, dispatch_agent_run, update_agent
     from api.agent.workflow_template import build_workflow_template
+    from workers.pipeline.schedule_utils import compute_next_run_at
 
     fs = get_fs()
 
@@ -91,6 +92,7 @@ async def create_from_wizard_endpoint(
 
     todos = build_workflow_template(data_scope, body.agent_type)
 
+    initial_status = "running" if body.start_run else None
     agent = create_agent(
         user_id=user.uid,
         title=body.title,
@@ -99,7 +101,7 @@ async def create_from_wizard_endpoint(
         schedule=schedule,
         org_id=user.org_id,
         todos=todos,
-        status="running",
+        status=initial_status,
         context=body.context,
         constitution=body.constitution,
     )
@@ -133,19 +135,30 @@ async def create_from_wizard_endpoint(
 
     run_id: str | None = None
     dispatched_ids: list[str] = []
-    if body.searches:
+    if body.start_run and body.searches:
         fresh_agent = fs.get_agent(agent_id) or agent
         run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent)
-    elif attached_existing and body.agent_type == "one_shot":
+    elif body.start_run and attached_existing and body.agent_type == "one_shot":
         fs.update_agent(agent_id, status="success")
+    elif not body.start_run and body.agent_type == "recurring" and schedule and schedule.get("frequency"):
+        # Create-only path for recurring agents: schedule the first run.
+        now = datetime.now(timezone.utc)
+        update_agent(agent_id, next_run_at=compute_next_run_at(schedule["frequency"], now))
 
     all_ids = list(dict.fromkeys(attached_existing + dispatched_ids))
+
+    if dispatched_ids:
+        response_status: str | None = "running"
+    elif body.start_run:
+        response_status = "success" if attached_existing else "running"
+    else:
+        response_status = None
 
     return {
         "agent_id": agent_id,
         "run_id": run_id,
         "collection_ids": all_ids,
-        "status": "running" if dispatched_ids else ("success" if attached_existing else "running"),
+        "status": response_status,
     }
 
 
@@ -379,6 +392,47 @@ async def run_agent_endpoint(
 
     run_id, collection_ids = dispatch_agent_run(agent_id, agent)
     return {"agent_id": agent_id, "run_id": run_id, "collection_ids": collection_ids, "status": "running"}
+
+
+@router.post("/agents/{agent_id}/sources/run")
+@limiter.limit("10/minute")
+async def run_agent_sources_endpoint(
+    request: Request,
+    agent_id: str,
+    body: RunSourcesRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Re-collect data for one source or all sources on the agent.
+
+    This dispatches collection pipelines only — it does NOT trigger the agent's
+    analyze/briefing workflow or change agent status. Use /agents/{id}/run for
+    the full run.
+    """
+    from api.services.agent_service import get_agent, run_agent_sources
+
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    has_idx = body.search_idx is not None
+    has_platform = body.platform is not None
+    if has_idx ^ has_platform:
+        raise HTTPException(
+            status_code=400,
+            detail="search_idx and platform must be provided together (or both omitted to run all sources).",
+        )
+
+    targets: list[tuple[int, str]] | None = None
+    if has_idx and has_platform:
+        targets = [(int(body.search_idx), str(body.platform))]
+
+    collection_ids = run_agent_sources(agent_id, agent, targets=targets)
+    if not collection_ids:
+        raise HTTPException(status_code=404, detail="No matching source with collectable config")
+
+    return {"agent_id": agent_id, "collection_ids": collection_ids, "status": "running"}
 
 
 @router.post("/agents/{agent_id}/resume")

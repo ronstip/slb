@@ -275,7 +275,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[520px] sm:w-[600px] overflow-y-auto p-0">
         {/* Colored accent bar */}
-        <div className={`h-1 w-full ${STATUS_ACCENT[displayTask.status] || 'bg-muted'}`} />
+        <div className={`h-1 w-full ${STATUS_ACCENT[displayTask.status ?? 'idle'] || 'bg-muted'}`} />
 
         <div className="px-6 pt-5 pb-6">
           <SheetHeader className="space-y-1">
