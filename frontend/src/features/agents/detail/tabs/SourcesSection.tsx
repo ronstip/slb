@@ -15,10 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { Agent, SearchDef } from '../../../../api/endpoints/agents.ts';
 import { runAgentSources } from '../../../../api/endpoints/agents.ts';
-import {
-  getCollectionStats,
-  refreshCollectionStats,
-} from '../../../../api/endpoints/collections.ts';
+import { refreshCollectionStats } from '../../../../api/endpoints/collections.ts';
 import { PLATFORM_COLORS, PLATFORM_LABELS } from '../../../../lib/constants.ts';
 import { formatNumber } from '../../../../lib/format.ts';
 import { Badge } from '../../../../components/ui/badge.tsx';
@@ -158,23 +155,21 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
     };
   }, [flatSources]);
 
-  // Fetch real stats from collections.
-  // While the agent is running, force-refresh (recomputes from BQ) on a short
-  // interval so per-platform counts track live progress. Otherwise use the
-  // cached signature for fast, cheap reads.
+  // Always force-recompute. The cached Firestore signature can race with the
+  // agent's status flip — when status transitions to 'success' before the
+  // pipeline's final signature write lands, a cached read returns the old
+  // snapshot and the 5-min staleTime then locks it in. Recomputing keeps
+  // Posts / Posts last 3d in sync with what's actually in BigQuery.
   const collectionIds = task.collection_ids ?? [];
   const taskIsRunning = task.status === 'running';
   const { data: allStats } = useQuery({
-    queryKey: ['agent-source-stats', task.agent_id, collectionIds, taskIsRunning],
+    queryKey: ['agent-source-stats', task.agent_id, collectionIds],
     queryFn: () =>
-      Promise.all(
-        collectionIds.map((id) =>
-          taskIsRunning ? refreshCollectionStats(id) : getCollectionStats(id),
-        ),
-      ),
+      Promise.all(collectionIds.map((id) => refreshCollectionStats(id))),
     enabled: collectionIds.length > 0,
-    staleTime: taskIsRunning ? 0 : 5 * 60 * 1000,
+    staleTime: taskIsRunning ? 0 : 30_000,
     refetchInterval: taskIsRunning ? 30_000 : false,
+    refetchOnMount: 'always',
   });
 
   const { platformPostTotals, platformPostsLast3d, totalPosts } = useMemo(() => {

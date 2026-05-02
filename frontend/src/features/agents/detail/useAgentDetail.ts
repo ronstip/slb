@@ -1,5 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
-import { getAgent, getAgentArtifacts, getAgentLogs } from '../../../api/endpoints/agents.ts';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  getAgent,
+  getAgentArtifacts,
+  getAgentLogs,
+  updateAgent,
+  type Agent,
+  type AgentOutput,
+} from '../../../api/endpoints/agents.ts';
 
 export function useAgentDetail(taskId: string | undefined) {
   const taskQuery = useQuery({
@@ -38,4 +45,38 @@ export function useAgentDetail(taskId: string | undefined) {
     logs: logsQuery.data ?? [],
     refetchTask: taskQuery.refetch,
   };
+}
+
+/** Optimistic update for an agent's outputs.
+ *
+ * Outputs are directly editable in the Settings → Outputs sub-tab without going
+ * through the page-level edit/save flow, so they need their own mutation with
+ * optimistic cache updates. The backend rebuilds the deliver phase of the
+ * workflow plan; we invalidate the agent-detail query on settle to pick that up.
+ */
+export function useUpdateAgentOutputs(agentId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (outputs: AgentOutput[]) => {
+      if (!agentId) throw new Error('agentId required');
+      return updateAgent(agentId, { outputs });
+    },
+    onMutate: async (outputs) => {
+      if (!agentId) return { previous: undefined };
+      await qc.cancelQueries({ queryKey: ['agent-detail', agentId] });
+      const previous = qc.getQueryData<Agent>(['agent-detail', agentId]);
+      if (previous) {
+        qc.setQueryData<Agent>(['agent-detail', agentId], { ...previous, outputs });
+      }
+      return { previous };
+    },
+    onError: (_err, _outputs, context) => {
+      if (agentId && context?.previous) {
+        qc.setQueryData(['agent-detail', agentId], context.previous);
+      }
+    },
+    onSettled: () => {
+      if (agentId) qc.invalidateQueries({ queryKey: ['agent-detail', agentId] });
+    },
+  });
 }

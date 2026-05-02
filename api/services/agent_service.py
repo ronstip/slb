@@ -23,6 +23,7 @@ def create_agent(
     status: str | None = "running",
     context: dict | None = None,
     constitution: dict | None = None,
+    outputs: list[dict] | None = None,
 ) -> dict:
     """Create a new agent in Firestore and BigQuery. Returns the agent dict."""
     fs = get_fs()
@@ -38,6 +39,7 @@ def create_agent(
         "agent_type": agent_type,
         "status": status,
         "data_scope": data_scope or {},
+        "outputs": outputs or [],
         "schedule": schedule,
         "todos": todos or [],
         "version": 1,
@@ -87,7 +89,7 @@ def update_agent(agent_id: str, **fields) -> None:
     get_fs().update_agent(agent_id, **fields)
 
 
-VERSIONED_FIELDS = {"title", "data_scope", "todos", "context", "constitution"}
+VERSIONED_FIELDS = {"title", "data_scope", "todos", "context", "constitution", "outputs"}
 
 
 def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int:
@@ -114,6 +116,7 @@ def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int
             "todos": updates.get("todos", agent.get("todos")),
             "context": updates.get("context", agent.get("context")),
             "constitution": updates.get("constitution", agent.get("constitution")),
+            "outputs": updates.get("outputs", agent.get("outputs")),
         }
         fs.create_agent_version(agent_id, new_version, snapshot, edited_by=user_id)
 
@@ -360,7 +363,7 @@ def dispatch_agent_run(
 
     # Build fresh workflow template for each run.
     # Preserve custom steps from previous runs (user-added) but reset all statuses.
-    fresh_todos = build_workflow_template(data_scope, agent_type)
+    fresh_todos = build_workflow_template(data_scope, agent_type, agent=agent)
     old_todos = agent.get("todos") or []
     custom_steps = [
         {**t, "status": "pending"}

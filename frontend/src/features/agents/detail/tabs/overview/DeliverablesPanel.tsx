@@ -47,6 +47,30 @@ function isRecent(iso?: string | null): boolean {
 }
 
 function getExpectedKinds(task: Agent): DeliverableKind[] {
+  // Prefer typed outputs when available; fall back to legacy auto_* flags.
+  if (task.outputs && task.outputs.length > 0) {
+    const kinds: DeliverableKind[] = [];
+    for (const output of task.outputs) {
+      switch (output.type) {
+        case 'briefing':
+          kinds.push('briefing');
+          break;
+        case 'slides':
+          kinds.push('slides');
+          break;
+        case 'email':
+          kinds.push('email');
+          break;
+        case 'data_export':
+          kinds.push('data_export');
+          break;
+        // post_examples is rendered inside the briefing today — no separate slot
+        default:
+          break;
+      }
+    }
+    return kinds;
+  }
   const kinds: DeliverableKind[] = ['briefing'];
   const scope = task.data_scope ?? ({} as Agent['data_scope']);
   if (scope.auto_slides) kinds.push('slides');

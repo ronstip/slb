@@ -74,6 +74,36 @@ export interface Briefing {
   word_count: number;
 }
 
+export type AgentOutputType =
+  | 'briefing'
+  | 'slides'
+  | 'email'
+  | 'data_export'
+  | 'post_examples';
+
+export interface AgentOutputConfig {
+  // briefing
+  template?: 'exec' | 'analyst' | 'custom';
+  // slides
+  audience?: string;
+  template_file_id?: string;
+  // email
+  recipients?: string[];
+  format?: 'briefing' | 'summary';
+  // data_export
+  export_format?: 'csv' | 'json';
+  columns?: string[];
+  // post_examples
+  count?: number;
+  criteria?: string;
+}
+
+export interface AgentOutput {
+  id: string;
+  type: AgentOutputType;
+  config: AgentOutputConfig;
+}
+
 export interface Agent {
   agent_id: string;
   user_id: string;
@@ -85,11 +115,17 @@ export interface Agent {
     searches: SearchDef[];
     custom_fields?: CustomFieldDef[] | null;
     enrichment_context?: string;
+    /** @deprecated Use `outputs` instead. Kept for legacy agents created before
+     * the typed outputs migration. */
     auto_report?: boolean;
+    /** @deprecated Use `outputs` instead. */
     auto_email?: boolean;
+    /** @deprecated Use `outputs` instead. */
     auto_slides?: boolean;
+    /** @deprecated Use the corresponding email output's `config.recipients`. */
     email_recipients?: string[];
   };
+  outputs?: AgentOutput[];
   context?: AgentContext;
   constitution?: Constitution;
   paused?: boolean;
@@ -145,7 +181,7 @@ export function createAgent(data: {
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution'>>,
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution' | 'outputs'>>,
 ): Promise<{ ok: boolean; version?: number }> {
   return apiPatch<{ ok: boolean; version?: number }>(`/agents/${agentId}`, updates);
 }
@@ -190,9 +226,15 @@ export interface CreateFromWizardPayload {
   context?: AgentContext;
   constitution?: Constitution;
   existing_agent_ids?: string[];
+  /** Typed outputs — preferred. When set, supersedes the auto_* booleans. */
+  outputs?: AgentOutput[];
+  /** @deprecated send `outputs` instead. */
   auto_report?: boolean;
+  /** @deprecated send `outputs` instead. */
   auto_email?: boolean;
+  /** @deprecated send `outputs` instead. */
   email_recipients?: string[];
+  /** @deprecated send `outputs` instead. */
   auto_slides?: boolean;
   start_run?: boolean;
 }

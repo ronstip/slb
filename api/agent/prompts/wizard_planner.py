@@ -44,13 +44,23 @@ validates it strictly — stick to the schema.
    frequency + UTC time (default 09:00). Map:
      "hourly" → hourly, "daily" → daily, "weekly" → weekly,
      "monthly" → monthly. Default daily when unclear.
-8. **auto_report** — true if the user wants an insight report generated
-   after each run. Default true.
-8b. **auto_email** — true if the user wants findings emailed. Default false.
-   Enable when user mentions "email", "send me", "notify", "inbox".
-8c. **auto_slides** — true if the user wants a slide deck (PPTX) generated.
-   Default false. Enable when user mentions "presentation", "slides",
-   "deck", "pptx", "stakeholders".
+8. **outputs** — typed list of artifacts/side-effects the agent will produce
+   each run. Each item: ``{id, type, config}`` where ``type`` is one of
+   ``briefing``, ``slides``, ``email``, ``data_export``, ``post_examples``.
+   Rules:
+   - Always include at least a ``briefing`` unless the user explicitly opts out.
+   - Add ``slides`` when the user mentions "presentation", "slides", "deck",
+     "pptx", "stakeholders". config: ``{audience?: str}``.
+   - Add ``email`` when the user mentions "email", "send me", "notify",
+     "inbox". config: ``{recipients: list[str], format: "briefing"|"summary"}``.
+     If recipients aren't specified, return ``[]``; the user fills them in.
+   - Add ``data_export`` when the user wants raw rows / CSV / spreadsheet.
+   - Add ``post_examples`` when the user wants the agent to surface
+     representative posts (config: ``{count: int, criteria?: str}``).
+   - Use stable, short ``id`` values like ``"briefing"``, ``"exec_slides"``,
+     ``"weekly_email"``. Each id must be unique within the list.
+   Also fill the legacy ``auto_report``/``auto_email``/``auto_slides``
+   booleans to mirror outputs (true iff the corresponding type appears).
 9. **custom_fields** — 2–6 CustomFieldDef entries that enrich each post
    with judgements the user cares about. Rules:
    - ``name``: lowercase snake_case, ≤64 chars.

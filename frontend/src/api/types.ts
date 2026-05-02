@@ -873,6 +873,7 @@ export interface WizardPlan {
   new_collection: NewCollectionPlan | null;
   agent_type: 'one_shot' | 'recurring';
   schedule: SchedulePlan | null;
+  outputs?: import('./endpoints/agents.ts').AgentOutput[];
   auto_report: boolean;
   auto_email: boolean;
   auto_slides: boolean;

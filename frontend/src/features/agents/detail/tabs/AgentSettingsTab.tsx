@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   Activity,
   Check,
@@ -9,11 +9,12 @@ import {
   Loader2,
   Play,
   Plus,
+  Send,
   TerminalSquare,
   X,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Agent, SearchDef, SourceOverride, TodoItem } from '../../../../api/endpoints/agents.ts';
+import type { Agent, AgentOutput, SearchDef, SourceOverride, TodoItem } from '../../../../api/endpoints/agents.ts';
 import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
@@ -34,10 +35,33 @@ import type { DetailTab } from '../../../../components/AppSidebar.tsx';
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { EnrichmentEditor } from '../../wizard/EnrichmentEditor.tsx';
 import { ConstitutionEditor } from '../../wizard/AgentContextEditor.tsx';
+import { OutputsListEditor } from '../../wizard/OutputsListEditor.tsx';
+import { useUpdateAgentOutputs } from '../useAgentDetail.ts';
 import type { AgentEditDraft } from '../useAgentEditMode.ts';
 import { LiveCollectionProgress } from './LiveCollectionProgress.tsx';
 import { SourcesSection } from './SourcesSection.tsx';
 import { AgentDetailHeader } from '../AgentDetailHeader.tsx';
+
+// --- Helpers ---
+
+function deriveOutputsForDisplay(agent: Agent): AgentOutput[] {
+  const scope = agent.data_scope ?? ({} as Agent['data_scope']);
+  const out: AgentOutput[] = [];
+  if (scope.auto_report ?? true) {
+    out.push({ id: 'briefing', type: 'briefing', config: { template: 'exec' } });
+  }
+  if (scope.auto_slides) {
+    out.push({ id: 'slides', type: 'slides', config: {} });
+  }
+  if (scope.auto_email) {
+    out.push({
+      id: 'email',
+      type: 'email',
+      config: { recipients: [...(scope.email_recipients ?? [])], format: 'briefing' },
+    });
+  }
+  return out;
+}
 
 // --- Constants ---
 
@@ -49,10 +73,11 @@ const TIME_RANGES = [
   { label: '1y', value: 365 },
 ];
 
-type SettingsTab = 'workflow' | 'context' | 'sources' | 'logs';
+type SettingsTab = 'workflow' | 'outputs' | 'context' | 'sources' | 'logs';
 
 const SETTINGS_TABS: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: 'workflow', label: 'Workflow Plan', icon: ListChecks },
+  { id: 'outputs', label: 'Outputs', icon: Send },
   { id: 'context', label: 'Context & Prompt', icon: TerminalSquare },
   { id: 'sources', label: 'Data Sources', icon: Database },
   { id: 'logs', label: 'Live Logs', icon: Activity },
@@ -229,6 +254,24 @@ export function AgentSettingsTab({
               {task.status === 'running' && task.collection_ids?.length > 0 && (
                 <LiveCollectionProgress collectionIds={task.collection_ids} />
               )}
+            </div>
+          )}
+
+          {/* OUTPUTS TAB */}
+          {activeSettingsTab === 'outputs' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <div>
+                <h2 className="text-2xl font-heading font-bold text-foreground">Outputs</h2>
+                <p className="text-muted-foreground mt-1">
+                  Artifacts and side-effects this agent produces each run. Each output adds a step to the Workflow Plan.
+                </p>
+              </div>
+              {task.status === 'running' && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+                  Outputs are frozen while the agent is running. Edits will be available after this run completes.
+                </div>
+              )}
+              <OutputsAutoSavePanel task={task} />
             </div>
           )}
 
@@ -906,4 +949,104 @@ function EditablePlanSection({
       )}
     </div>
   );
+}
+
+// ─── Outputs auto-save panel ─────────────────────────────────────────────────
+//
+// The Outputs sub-tab edits live without going through the page-level edit/save
+// flow. Toggles save immediately; config text fields debounce by ~500ms to
+// coalesce keystrokes. Optimistic updates come from useUpdateAgentOutputs.
+
+const SAVE_DEBOUNCE_MS = 500;
+
+function OutputsAutoSavePanel({ task }: { task: Agent }) {
+  const seedFromTask = (t: Agent): AgentOutput[] =>
+    t.outputs && t.outputs.length > 0 ? t.outputs : deriveOutputsForDisplay(t);
+
+  const [localOutputs, setLocalOutputs] = useState<AgentOutput[]>(() => seedFromTask(task));
+  const lastServerSnapshotRef = useRef<string>(JSON.stringify(seedFromTask(task)));
+  const pendingSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mutation = useUpdateAgentOutputs(task.agent_id);
+
+  // Keep local state in sync with the server when there are no in-flight edits
+  // (e.g. a refetch after a run, another tab updates the agent). We use a JSON
+  // snapshot of the last value we sent/received from the server so we don't
+  // clobber the user's in-progress edits.
+  useEffect(() => {
+    const incoming = seedFromTask(task);
+    const incomingKey = JSON.stringify(incoming);
+    if (incomingKey !== lastServerSnapshotRef.current) {
+      lastServerSnapshotRef.current = incomingKey;
+      setLocalOutputs(incoming);
+    }
+  }, [task]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) clearTimeout(pendingSaveRef.current);
+    };
+  }, []);
+
+  const isRunning = task.status === 'running';
+
+  const handleChange = (next: AgentOutput[]) => {
+    setLocalOutputs(next);
+    if (pendingSaveRef.current) clearTimeout(pendingSaveRef.current);
+    pendingSaveRef.current = setTimeout(() => {
+      lastServerSnapshotRef.current = JSON.stringify(next);
+      mutation.mutate(next);
+    }, SAVE_DEBOUNCE_MS);
+  };
+
+  const status: 'idle' | 'saving' | 'saved' | 'error' = mutation.isPending
+    ? 'saving'
+    : mutation.isError
+      ? 'error'
+      : mutation.isSuccess
+        ? 'saved'
+        : 'idle';
+
+  return (
+    <div className="bg-card border border-border/50 rounded-2xl shadow-sm p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">
+          Changes save automatically.
+        </span>
+        <SaveStatusIndicator status={status} />
+      </div>
+      <OutputsListEditor
+        outputs={localOutputs}
+        onChange={handleChange}
+        readOnly={isRunning}
+      />
+    </div>
+  );
+}
+
+function SaveStatusIndicator({ status }: { status: 'idle' | 'saving' | 'saved' | 'error' }) {
+  if (status === 'saving') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+        Saving…
+      </span>
+    );
+  }
+  if (status === 'saved') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        Saved
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-destructive">
+        <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+        Save failed — retrying on next change
+      </span>
+    );
+  }
+  return null;
 }

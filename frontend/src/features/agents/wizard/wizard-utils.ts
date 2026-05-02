@@ -77,12 +77,9 @@ export function formatWizardAsPrompt(
   }
 
   // Outputs
-  const outputs: string[] = [];
-  if (task.autoReport) outputs.push('report');
-  if (task.autoEmail) outputs.push('email');
-  if (task.autoSlides) outputs.push('slides');
-  if (outputs.length > 0) {
-    lines.push(`Auto-generate outputs: ${outputs.join(', ')}`);
+  if (task.outputs.length > 0) {
+    const labels = task.outputs.map((o) => o.type);
+    lines.push(`Auto-generate outputs: ${labels.join(', ')}`);
   }
 
   // Enrichment context
@@ -169,10 +166,7 @@ export function buildWizardRequestBody(
     existing_agent_ids: collection.existingAgentIds.length > 0
       ? collection.existingAgentIds
       : undefined,
-    auto_report: task.autoReport,
-    auto_email: task.autoEmail,
-    email_recipients: task.emailRecipients.length > 0 ? task.emailRecipients : undefined,
-    auto_slides: task.autoSlides,
+    outputs: task.outputs,
     start_run: startRun,
   };
 }

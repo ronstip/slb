@@ -62,6 +62,7 @@ async def create_from_wizard_endpoint(
     """
     from api.services.agent_service import create_agent, dispatch_agent_run, update_agent
     from api.agent.workflow_template import build_workflow_template
+    from api.schemas.agent_outputs import normalize_outputs, derive_outputs
     from workers.pipeline.schedule_utils import compute_next_run_at
 
     fs = get_fs()
@@ -73,24 +74,25 @@ async def create_from_wizard_endpoint(
         data_scope["enrichment_context"] = body.enrichment_context
     if body.content_types:
         data_scope["content_types"] = body.content_types
-    # Persist deliverable flags on data_scope so the UI can show expected
-    # outputs for both one-shot and recurring agents.
-    data_scope["auto_report"] = body.auto_report
-    data_scope["auto_email"] = body.auto_email
-    data_scope["auto_slides"] = body.auto_slides
-    if body.email_recipients:
-        data_scope["email_recipients"] = body.email_recipients
+
+    # Resolve outputs: explicit list wins, otherwise derive from legacy flags.
+    if body.outputs is not None:
+        outputs = normalize_outputs(body.outputs)
+    else:
+        outputs = derive_outputs({
+            "data_scope": {
+                "auto_report": body.auto_report,
+                "auto_email": body.auto_email,
+                "auto_slides": body.auto_slides,
+                "email_recipients": body.email_recipients,
+            },
+        })
 
     schedule = None
     if body.agent_type == "recurring" and body.schedule:
-        schedule = {
-            **body.schedule,
-            "auto_report": body.auto_report,
-            "auto_email": body.auto_email,
-            "auto_slides": body.auto_slides,
-        }
+        schedule = {**body.schedule}
 
-    todos = build_workflow_template(data_scope, body.agent_type)
+    todos = build_workflow_template(data_scope, body.agent_type, outputs=outputs)
 
     initial_status = "running" if body.start_run else None
     agent = create_agent(
@@ -104,6 +106,7 @@ async def create_from_wizard_endpoint(
         status=initial_status,
         context=body.context,
         constitution=body.constitution,
+        outputs=outputs,
     )
     agent_id = agent["agent_id"]
 
@@ -276,8 +279,41 @@ async def update_agent_endpoint(
     allowed = {
         "title", "status", "protocol", "data_scope", "schedule",
         "agent_type", "context_summary", "context", "constitution", "paused", "todos",
+        "outputs",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
+
+    # Outputs are frozen during a run — reject edits while running.
+    if "outputs" in safe_updates and agent.get("status") == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="Outputs cannot be edited while the agent is running",
+        )
+
+    # Normalize outputs payload before persisting, and rebuild the workflow
+    # template so the deliver phase reflects the new outputs immediately.
+    # Custom user steps (custom=true) carry over; standard steps are rebuilt.
+    if "outputs" in safe_updates:
+        from api.schemas.agent_outputs import normalize_outputs
+        from api.agent.workflow_template import build_workflow_template
+        safe_updates["outputs"] = normalize_outputs(safe_updates["outputs"])
+        if "todos" not in safe_updates:
+            data_scope = safe_updates.get("data_scope", agent.get("data_scope") or {})
+            agent_type = safe_updates.get("agent_type", agent.get("agent_type", "one_shot"))
+            fresh_todos = build_workflow_template(
+                data_scope, agent_type, outputs=safe_updates["outputs"]
+            )
+            existing_todos = agent.get("todos") or []
+            custom_steps = [t for t in existing_todos if t.get("custom")]
+            if custom_steps:
+                deliver_idx = next(
+                    (i for i, t in enumerate(fresh_todos) if t.get("phase") == "deliver"),
+                    len(fresh_todos),
+                )
+                fresh_todos = (
+                    fresh_todos[:deliver_idx] + custom_steps + fresh_todos[deliver_idx:]
+                )
+            safe_updates["todos"] = fresh_todos
 
     # Recompute next_run_at when schedule changes on a recurring agent
     # (also handles one-shot → recurring conversion where agent_type is being set in the same update).

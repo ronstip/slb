@@ -3,8 +3,13 @@
 Creates a deterministic workflow skeleton from the agent's data_scope.
 The agent can still call update_todos() at runtime to add sub-steps or
 adapt descriptions, but the core phases are always present.
+
+The deliver phase is derived from the agent's configured outputs: one step
+per output, plus a fixed "run notes" step for the agent's internal reflection.
+Removing an output removes its step on the next run.
 """
 
+from api.schemas.agent_outputs import derive_outputs, output_step_content
 from workers.shared.workflow_steps import progress_automated_steps  # noqa: F401
 
 WORKFLOW_PHASES = ["collect", "enrich", "analyze", "validate", "deliver"]
@@ -33,12 +38,22 @@ def _effective_search_total(search_def: dict) -> int:
     return total
 
 
-def build_workflow_template(data_scope: dict, agent_type: str) -> list[dict]:
+def build_workflow_template(
+    data_scope: dict,
+    agent_type: str,
+    outputs: list[dict] | None = None,
+    agent: dict | None = None,
+) -> list[dict]:
     """Build a workflow template from agent configuration.
 
     Returns a list of todo items: {id, phase, content, status, automated}.
     Automated steps (collect, enrich) are progressed by the system.
     Agentic steps (analyze, validate, deliver) are driven by the LLM.
+
+    The deliver phase contains one step per configured output, plus a fixed
+    internal "run notes" reflection step. ``outputs`` takes precedence; if
+    omitted, falls back to deriving from ``agent`` (which handles legacy
+    auto_* flags).
     """
     searches = data_scope.get("searches", [])
     custom_fields = data_scope.get("custom_fields") or []
@@ -102,23 +117,37 @@ def build_workflow_template(data_scope: dict, agent_type: str) -> list[dict]:
         "automated": False,
     })
 
-    # ── Phase 5: Run Briefing (internal reflection) ──────────────
+    # ── Phase 5: Run Notes (always-on internal reflection) ──────
     steps.append({
-        "id": "briefing",
+        "id": "run_notes",
         "phase": "deliver",
-        "content": "Write run briefing: synthesize findings, flag open threads, note methodology observations",
+        "content": "Write run notes: synthesize findings, flag open threads, note methodology observations",
         "status": "pending",
         "automated": False,
     })
 
-    # ── Phase 6: Compose Briefing (user-facing publication) ─────
-    steps.append({
-        "id": "compose",
-        "phase": "deliver",
-        "content": "Compose the user-facing briefing (hero + secondary + rail of stories)",
-        "status": "pending",
-        "automated": False,
-    })
+    # ── Phase 6: Outputs (one step per configured output) ───────
+    resolved_outputs: list[dict]
+    if outputs is not None:
+        resolved_outputs = outputs
+    elif agent is not None:
+        resolved_outputs = derive_outputs(agent)
+    else:
+        # No outputs context provided — synthesize a minimal agent shim from
+        # data_scope so the helper can still derive from legacy auto_* flags.
+        resolved_outputs = derive_outputs({"data_scope": data_scope})
+
+    for output in resolved_outputs:
+        oid = output.get("id") or output.get("type") or "output"
+        steps.append({
+            "id": f"output:{oid}",
+            "phase": "deliver",
+            "content": output_step_content(output),
+            "status": "pending",
+            "automated": False,
+            "output_id": oid,
+            "output_type": output.get("type"),
+        })
 
     return steps
 

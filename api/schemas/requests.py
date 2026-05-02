@@ -116,6 +116,10 @@ class CreateFromWizardRequest(BaseModel):
     constitution: dict | None = None  # 6-section Constitution: {identity, mission, methodology, scope_and_relevance, standards, perspective}
     existing_collection_ids: list[str] = []
     existing_agent_ids: list[str] = []
+    # Typed outputs list — preferred. When provided, supersedes the auto_* flags.
+    outputs: list[dict] | None = None
+    # Legacy flags — kept for backward compat with older clients. New code should
+    # send `outputs` instead.
     auto_report: bool = True
     auto_email: bool = False
     auto_slides: bool = False
