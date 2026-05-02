@@ -61,7 +61,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
     <div className="flex gap-3 overflow-hidden max-w-3xl">
       {/* Avatar */}
       <div className="mt-0.5 shrink-0">
-        <Logo size="sm" showText={false} />
+        <Logo size="sm" showText={false} flat />
       </div>
 
       <div className="min-w-0 flex-1 overflow-hidden">

@@ -70,23 +70,21 @@ export function AgentOverviewTab({
         <div className="mx-auto max-w-[1400px]">
           <div className="grid gap-4 lg:grid-cols-12">
             <div className="space-y-4 lg:col-span-8">
-              <section className="rounded-2xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
-                <header className="mb-3 flex items-center justify-between gap-3">
+              <section
+                className={`relative flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card transition-[height] duration-200 ${chatExpanded ? 'h-[680px]' : 'h-[360px]'}`}
+              >
+                <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/40 px-4 py-2.5">
                   <h3 className="font-heading text-sm font-semibold text-foreground">Chat</h3>
-                </header>
-                <div
-                  className={`relative flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card ${chatExpanded ? 'h-[640px]' : 'h-[320px]'}`}
-                >
                   <button
                     type="button"
                     onClick={() => setChatExpanded((v) => !v)}
                     aria-label={chatExpanded ? 'Collapse chat' : 'Expand chat'}
-                    className="absolute right-2 top-2 z-10 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="rounded-md p-1 text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
                   >
                     {chatExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                   </button>
-                  <ChatPanel hideHeader compact emptyStateContent={<KickoffMessage markdown={kickoffMarkdown} />} />
-                </div>
+                </header>
+                <ChatPanel hideHeader compact emptyStateContent={<KickoffMessage markdown={kickoffMarkdown} />} />
               </section>
               <LivePostStream
                 collectionIds={collectionIds}
@@ -110,7 +108,7 @@ export function AgentOverviewTab({
               />
             </div>
             <div className="space-y-4 lg:col-span-4">
-              <section className="flex flex-col rounded-2xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
+              <section className="flex flex-col rounded-2xl border border-border/60 bg-card p-4">
                 <header className="mb-3 flex items-center gap-2">
                   <h3 className="font-heading text-sm font-semibold text-foreground">Actions</h3>
                 </header>
@@ -170,7 +168,7 @@ function ActivityCard({
   onOpenLogs: () => void;
 }) {
   return (
-    <section className="rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm">
+    <section className="rounded-2xl border border-border/60 bg-card">
       <header className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-2">
           <h3 className="font-heading text-sm font-semibold text-foreground">Activity</h3>

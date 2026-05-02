@@ -121,7 +121,7 @@ export function TrendCard({
   const hasData = chartData.length > 0;
 
   return (
-    <section className="rounded-2xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
+    <section className="rounded-2xl border border-border/60 bg-card p-4">
       <header className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <h3 className="font-heading text-sm font-semibold text-foreground">{active.title}</h3>

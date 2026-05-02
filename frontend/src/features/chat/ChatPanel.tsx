@@ -86,7 +86,7 @@ export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent, compact 
   }, []);
 
   return (
-    <main data-testid="chat-panel" className={cn('flex flex-1 flex-col overflow-hidden bg-background', compact ? 'compact-chat' : 'min-w-[480px]')}>
+    <main data-testid="chat-panel" className={cn('flex flex-1 flex-col overflow-hidden', compact ? 'compact-chat bg-transparent' : 'bg-background min-w-[480px]')}>
       {/* Top bar — collection + task selectors */}
       {!hideHeader && (
         <div className="flex shrink-0 items-center gap-2 px-4 py-2">

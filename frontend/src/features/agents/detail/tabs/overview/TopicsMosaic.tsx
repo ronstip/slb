@@ -53,7 +53,7 @@ export function TopicsMosaic({
   const hasOverflow = items.length > visible.length;
 
   return (
-    <section className="rounded-2xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm animate-in fade-in slide-in-from-bottom-2">
+    <section className="rounded-2xl border border-border/60 bg-card p-4 animate-in fade-in slide-in-from-bottom-2">
       <header className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <h3 className="font-heading text-sm font-semibold text-foreground">Topics</h3>
