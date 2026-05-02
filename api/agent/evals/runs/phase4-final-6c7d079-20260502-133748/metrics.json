@@ -1,0 +1,141 @@
+{
+  "totals": {
+    "output_tokens": 1009,
+    "tool_calls_total": 54,
+    "tool_calls_unique": 50,
+    "duplicate_action_count": 4,
+    "preamble_tokens": 0,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "mode": "autonomous",
+      "duration_s": 50.61,
+      "n_turns": 1,
+      "output_tokens": 259,
+      "text_events": 1,
+      "tool_calls_total": 13,
+      "tool_calls_unique": 13,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "list_topics": 1,
+        "execute_sql": 2,
+        "update_todos": 4,
+        "create_chart": 2,
+        "generate_briefing": 1,
+        "verify_briefing": 1,
+        "compose_briefing": 1
+      }
+    },
+    {
+      "scenario_id": "autonomous-narrow-scope",
+      "mode": "autonomous",
+      "duration_s": 28.89,
+      "n_turns": 1,
+      "output_tokens": 235,
+      "text_events": 1,
+      "tool_calls_total": 10,
+      "tool_calls_unique": 10,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "update_todos": 4,
+        "execute_sql": 1,
+        "list_topics": 1,
+        "get_collection_stats": 1,
+        "generate_briefing": 1,
+        "verify_briefing": 1,
+        "compose_briefing": 1
+      }
+    },
+    {
+      "scenario_id": "autonomous-recurring-trend",
+      "mode": "autonomous",
+      "duration_s": 246.47,
+      "n_turns": 1,
+      "output_tokens": 269,
+      "text_events": 1,
+      "tool_calls_total": 13,
+      "tool_calls_unique": 13,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "list_topics": 1,
+        "update_todos": 2,
+        "execute_sql": 5,
+        "search_posts": 1,
+        "generate_briefing": 1,
+        "verify_briefing": 1,
+        "compose_briefing": 1
+      }
+    },
+    {
+      "scenario_id": "autonomous-verifier-catches-bad-claim",
+      "mode": "autonomous",
+      "duration_s": 48.28,
+      "n_turns": 1,
+      "output_tokens": 246,
+      "text_events": 1,
+      "tool_calls_total": 18,
+      "tool_calls_unique": 14,
+      "duplicate_action_count": 4,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT ep.sentiment, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.sentiment ORDER BY count DESC",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT p.platform, ep.sentiment, COUNT(*) as count\nFROM `social-listening-pl.social_listening.posts` p\nJOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY p.platform, ep.sentiment"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "WITH latest_eng AS (\n  SELECT post_id, likes, views\n  FROM `social-listening-pl.social_listening.post_engagements`\n  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) = 1\n)\nSELECT ep.channel_type, COUNT(*) as posts,\n  SUM(COALESCE(le.likes, 0)) as total_likes,\n  SUM(COALESCE(le.views, 0)) as total_views\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nLEFT JOIN latest_eng le ON p.post_id = le.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.channel_type ORDER BY posts DESC"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "verify_briefing",
+          "args": {},
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "update_todos": 5,
+        "get_collection_stats": 1,
+        "list_topics": 1,
+        "execute_sql": 6,
+        "generate_briefing": 2,
+        "verify_briefing": 2,
+        "compose_briefing": 1
+      }
+    }
+  ],
+  "n_scenarios": 4
+}

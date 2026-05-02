@@ -1,0 +1,122 @@
+{
+  "totals": {
+    "output_tokens": 742,
+    "tool_calls_total": 33,
+    "tool_calls_unique": 21,
+    "duplicate_action_count": 12,
+    "preamble_tokens": 77,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "mode": "chat",
+      "duration_s": 56.67,
+      "n_turns": 1,
+      "output_tokens": 481,
+      "text_events": 3,
+      "tool_calls_total": 5,
+      "tool_calls_unique": 5,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "list_topics": 2,
+        "get_collection_stats": 1,
+        "show_metrics": 1,
+        "execute_sql": 1
+      }
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "mode": "chat",
+      "duration_s": 296.37,
+      "n_turns": 2,
+      "output_tokens": 95,
+      "text_events": 2,
+      "tool_calls_total": 25,
+      "tool_calls_unique": 13,
+      "duplicate_action_count": 12,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT collection_id, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts`\nWHERE posted_at >= '2026-03-01'\nGROUP BY 1\nORDER BY 2 DESC\nLIMIT 1"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT\n  DATE_TRUNC(DATE(p.posted_at), WEEK) as week,\n  theme,\n  COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts` p\nJOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id,\nUNNEST(ep.themes) theme\nWHERE theme IN ('product complaints', 'user tutorials', 'competitor mentions')\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY 1, 2\nORDER BY 1, 2",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT collection_id, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts`\nGROUP BY 1\nORDER BY post_count DESC\nLIMIT 1"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT collection_id, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts`\nGROUP BY 1\nORDER BY 2 DESC\nLIMIT 1",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "execute_sql": 24
+      }
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "mode": "chat",
+      "duration_s": 28.31,
+      "n_turns": 2,
+      "output_tokens": 77,
+      "text_events": 2,
+      "tool_calls_total": 0,
+      "tool_calls_unique": 0,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 77,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {}
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "mode": "chat",
+      "duration_s": 26.35,
+      "n_turns": 1,
+      "output_tokens": 89,
+      "text_events": 2,
+      "tool_calls_total": 3,
+      "tool_calls_unique": 3,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "execute_sql": 1,
+        "get_agent_status": 1,
+        "create_chart": 1
+      }
+    }
+  ],
+  "n_scenarios": 4
+}

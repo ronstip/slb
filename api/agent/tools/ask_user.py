@@ -100,8 +100,29 @@ def ask_user(
 ) -> dict:
     """Ask the user structured questions with interactive UI components.
 
-    Uses predefined prompt templates for common inputs. The frontend renders
-    rich interactive components (icon grids, pills, tag inputs, toggles).
+    WHEN TO USE: Last resort, after you've already tried to answer with the
+    information you have. The request is GENUINELY ambiguous in a way that
+    would change WHAT you do (not how you describe it), AND a 1-line
+    clarification unblocks meaningfully better work. Examples that pass:
+    "approve this collection plan?", "which of these two brands?".
+
+    WHEN NOT TO USE:
+      - You can pick a sensible default and STATE the assumption in one line —
+        prefer this over interrupting the user.
+      - The user already answered or implied the answer earlier in the session.
+      - The question is open-ended ("what do you want to know?"); make a call
+        and proceed. Asking the user to design their own analysis is a tell.
+      - You're stuck on friction (a tool failed, a query returned 0 rows) —
+        diagnose and try a fix first; only escalate to the user if you
+        genuinely can't proceed without a decision they have to make.
+
+    DISCIPLINE:
+      - Max 4 prompts per call. If you have more than 4 things to ask, you're
+        not asking — you're outsourcing the work.
+      - Each select/pill prompt: max 4 options. Pre-select the recommended
+        choice via ``preselected`` so the user can one-click approve.
+      - Plan approval goes via ``prompt_ids="approve_plan"`` as a SEPARATE call
+        from collection-setup prompts. Don't bundle them.
 
     IMPORTANT: After calling this tool, STOP. Do not call other tools or
     generate more text. Wait for the user to respond.
@@ -191,6 +212,18 @@ def ask_user(
                 "No valid prompts. Provide template IDs via prompt_ids "
                 "(available: " + ", ".join(PROMPT_TEMPLATES.keys()) + ") "
                 "or supply custom_prompts."
+            ),
+        }
+
+    # Enforce the max-4-prompts discipline. Anything more usually means the
+    # agent is outsourcing analysis instead of making decisions.
+    if len(prompts) > 4:
+        return {
+            "status": "blocked",
+            "message": (
+                f"ask_user got {len(prompts)} prompts; the cap is 4. Pick the 4 "
+                "questions that genuinely change what you'd do, and decide the "
+                "rest yourself with sensible defaults stated in your reply."
             ),
         }
 

@@ -1,0 +1,10 @@
+{
+  "label": "baseline-auto",
+  "git_sha": "6091180",
+  "timestamp": "20260427-064531",
+  "live": false,
+  "model": null,
+  "scenarios": [
+    "autonomous-full-run"
+  ]
+}

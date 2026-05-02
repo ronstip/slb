@@ -27,7 +27,8 @@ The analyst is an interactive agent embedded in the user's conversation. It live
 **When it runs:** Every time a user sends a message in the chat.
 
 **Key behaviors:**
-- Responds with text before using tools
+- Leads with the answer; skips preamble (no "Let me query…", no trailing "How would you like to proceed?")
+- Fans out independent tool calls in parallel
 - Can ask the user structured questions (`ask_user`)
 - Can create new agents (`start_agent`)
 - Shows inline visualizations (`show_metrics`, `show_topics`)

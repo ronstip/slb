@@ -1,0 +1,277 @@
+# Agent benchmark scenarios.
+#
+# Each scenario drives the agent through a fixed conversation. The harness
+# captures every event (text, tool_call, tool_response) and computes metrics
+# from the transcript.
+#
+# Fields:
+#   id           — short unique slug
+#   mode         — chat | autonomous
+#   description  — what this scenario stresses
+#   targets      — which problems this scenario probes (verbosity, dedup, ...)
+#   state        — initial session state (merged into the in-memory session)
+#   turns        — list of user messages (chat mode) or [] for autonomous
+#   judge_focus  — what the LLM judge should weigh heaviest
+
+scenarios:
+  - id: chat-bare-greeting
+    mode: chat
+    description: Bare "Hi" on a configured agent — must reply in plain text, zero tool calls.
+    targets: [persona, scope_discipline]
+    state:
+      selected_sources: ["eval-collection-1"]
+      active_agent_id: "eval-agent-greeting"
+      active_agent_title: "Donald Trump Social Media Monitor"
+      active_agent_constitution:
+        identity: "A monitor of Donald Trump's social media footprint."
+        mission: "Track posts about and by Donald Trump across platforms."
+        methodology: "Daily theme + sentiment + reach review."
+        scope_and_relevance: "Posts mentioning Trump in eval-collection-1."
+        standards: "Cite numbers; flag anomalies."
+        perspective: "Brand-intel analyst tracking the figure."
+      agent_selected_sources: ["eval-collection-1"]
+    turns:
+      - "Hi"
+    judge_focus: |
+      The user said "Hi" with no question. The agent MUST reply in plain text —
+      one or two sentences naming what it can do, then stop. ZERO tool calls
+      expected (no get_collection_stats, no list_topics, no execute_sql, no
+      compose_briefing). Bad: any tool call, any unsolicited analysis, any
+      "How would you like to proceed?" trailing question. Good: short, friendly,
+      stays in character (mentions monitoring/analysis capability), waits.
+
+  - id: simple-q-engagement
+    mode: chat
+    description: Simple Q&A — expect a short answer, no preamble, at most one tool call.
+    targets: [verbosity]
+    state:
+      selected_sources: ["eval-collection-1"]
+    turns:
+      - "What platform has the highest engagement in this collection?"
+    judge_focus: |
+      Concision and absence of preamble. A great answer is one short paragraph
+      (or 1-2 sentences) leading with the number. Bad answer: restates the
+      question, narrates the tool call, hedges before answering.
+
+  - id: repeat-dashboard
+    mode: chat
+    description: Two consecutive identical dashboard requests — second must reuse, not recreate.
+    targets: [dedup]
+    state:
+      selected_sources: ["eval-collection-1"]
+    turns:
+      - "Build me a dashboard for this collection."
+      - "Actually, build me a dashboard for this collection."
+    judge_focus: |
+      Did the agent create exactly one dashboard? On the second turn, did it
+      acknowledge the dashboard already exists (or reuse it) rather than
+      generating another? Headline metric: duplicate_action_count must be 0.
+
+  - id: ambiguous-data-overview
+    mode: chat
+    description: Ambiguous request — should ask_user OR make a reasonable assumption + state it.
+    targets: [persona, judgment]
+    state:
+      selected_sources: ["eval-collection-1"]
+    turns:
+      - "Tell me about the data."
+    judge_focus: |
+      Does the agent show judgment? Either it calls ask_user with one or two
+      crisp options, OR it picks a sensible default (e.g. high-level summary)
+      and states the assumption in one line. Bad: long preamble listing every
+      possible angle, or silently picking without saying so.
+
+  - id: chat-followup-no-restate
+    mode: chat
+    description: Follow-up question — must NOT restate prior findings.
+    targets: [repetition, verbosity]
+    state:
+      selected_sources: ["eval-collection-1"]
+    turns:
+      - "What are the top 3 themes in this collection?"
+      - "Which of those is growing fastest?"
+    judge_focus: |
+      On turn 2, did the agent skip restating the three themes from turn 1?
+      Best: jumps straight to the trend answer. Bad: re-lists the themes
+      before answering.
+
+  - id: autonomous-full-run
+    mode: autonomous
+    description: Executor runs from todos to completion, generating artifacts.
+    targets: [dedup, repetition, turns]
+    state:
+      active_agent_id: "eval-agent-1"
+      active_agent_title: "Eval test agent"
+      active_agent_status: "running"
+      active_agent_type: "one_shot"
+      # Constitution must match api/schemas/agent_constitution.py:Constitution
+      # — a dict with 6 string fields, NOT a bare string.
+      active_agent_constitution:
+        identity: "An evaluation harness test agent for benchmarking the executor."
+        mission: "Analyze the test collection and report findings."
+        methodology: "Query data, identify themes, validate, deliver dashboard + briefing."
+        scope_and_relevance: "Posts in eval-collection-1 from TikTok and Reddit."
+        standards: "Cite numbers in claims; flag failures plainly."
+        perspective: "Brand-side reader who wants the headline first."
+      active_agent_context: "Eval scenario context"
+      active_run_id: "eval-run-1"
+      active_run_number: 1
+      active_run_trigger: "manual"
+      run_history_dates: []
+      autonomous_mode: true
+      continuation_mode: true
+      active_collection_id: "eval-collection-1"
+      agent_selected_sources: ["eval-collection-1"]
+      # Schema: id (str), content (str), status (pending|in_progress|completed)
+      # — matches api/agent/tools/update_todos.py and what callbacks._build_autonomous_context reads.
+      todos:
+        - { id: "1", content: "Analyze: query patterns, identify themes", status: "pending" }
+        - { id: "2", content: "Validate: cross-reference and check biases", status: "pending" }
+        - { id: "3", content: "Generate dashboard for the user", status: "pending" }
+        - { id: "4", content: "Compose final briefing", status: "pending" }
+      active_agent_data_scope:
+        title: "Eval test agent"
+        topic: "Test analysis"
+        platforms: ["tiktok"]
+        keywords: ["test product"]
+        date_range: { start: "2026-03-01", end: "2026-04-15" }
+    turns: []
+    judge_focus: |
+      Did the executor finish in fewer turns? Did it call generate_dashboard
+      exactly once? Did it call compose_briefing exactly once? Did each todo
+      get marked completed exactly once? Bad: same artifact created twice,
+      same finding restated across turns.
+
+  - id: autonomous-recurring-trend
+    mode: autonomous
+    description: Recurring agent — must compare to prior run, not restart from scratch.
+    targets: [continuity, dedup, repetition]
+    state:
+      active_agent_id: "eval-agent-2"
+      active_agent_title: "Weekly trend tracker"
+      active_agent_status: "running"
+      active_agent_type: "recurring"
+      active_agent_constitution:
+        identity: "A weekly trend tracker for the eval test collection."
+        mission: "Track week-over-week sentiment shifts and surface meaningful deltas."
+        methodology: "Compare current week against prior run; flag changes with magnitude and direction."
+        scope_and_relevance: "Posts in eval-collection-1 from TikTok and Reddit, week of run vs prior week."
+        standards: "Cite exact deltas; do not restate findings the prior run already established."
+        perspective: "Brand-side reader who already saw last week's report."
+      active_agent_context: "Prior run dated 2026-04-20 reported TikTok engagement avg ~14k, Reddit avg ~310, top theme 'product launch'."
+      active_run_id: "eval-run-2"
+      active_run_number: 2
+      active_run_trigger: "scheduled"
+      run_history_dates: ["2026-04-20"]
+      autonomous_mode: true
+      continuation_mode: true
+      active_collection_id: "eval-collection-1"
+      agent_selected_sources: ["eval-collection-1"]
+      todos:
+        - { id: "1", content: "Compare current run metrics against 2026-04-20 baseline", status: "pending" }
+        - { id: "2", content: "Identify the largest week-over-week deltas", status: "pending" }
+        - { id: "3", content: "Generate dashboard highlighting deltas", status: "pending" }
+        - { id: "4", content: "Compose briefing focused on what changed", status: "pending" }
+      active_agent_data_scope:
+        title: "Weekly trend tracker"
+        topic: "Week-over-week shifts"
+        platforms: ["tiktok", "reddit"]
+        keywords: ["test product"]
+        date_range: { start: "2026-04-20", end: "2026-04-27" }
+    turns: []
+    judge_focus: |
+      Did the executor anchor its work in week-over-week DELTAS rather than
+      re-stating absolute numbers from scratch? Did the briefing reference
+      "since last week" / "vs prior run"? Bad: agent runs the analysis as if
+      it had never seen this collection before, restates last week's findings
+      as new, or fails to cite a single delta.
+
+  - id: autonomous-verifier-catches-bad-claim
+    mode: autonomous
+    description: Verifier seeded to FAIL on first call — agent must fix the briefing and re-verify before publishing.
+    targets: [verification, scope_discipline]
+    state:
+      active_agent_id: "eval-agent-verifier"
+      active_agent_title: "Verifier loop test agent"
+      active_agent_status: "running"
+      active_agent_type: "one_shot"
+      active_agent_constitution:
+        identity: "An eval-harness agent for the verifier fix-loop."
+        mission: "Analyze the test collection and produce a briefing whose claims reconcile with the data."
+        methodology: "Query, draft, verify, fix if needed, publish."
+        scope_and_relevance: "Posts in eval-collection-1."
+        standards: "Every quantitative claim must match ground truth. If verifier flags an error, fix and re-verify."
+        perspective: "Brand-side reader who needs accurate numbers."
+      active_agent_context: "Verifier-loop eval scenario."
+      active_run_id: "eval-run-verifier"
+      active_run_number: 1
+      active_run_trigger: "manual"
+      run_history_dates: []
+      autonomous_mode: true
+      continuation_mode: true
+      active_collection_id: "eval-collection-1"
+      agent_selected_sources: ["eval-collection-1"]
+      # Seeds the stubbed verifier to return FAIL on its first call this run.
+      # The stub clears this flag after the first use, so a second
+      # verify_briefing call (after the agent's fix) returns PASS.
+      _eval_verifier_force: "FAIL"
+      todos:
+        - { id: "1", content: "Analyze: query patterns and themes", status: "pending" }
+        - { id: "2", content: "Generate run reflection (generate_briefing)", status: "pending" }
+        - { id: "3", content: "Verify briefing claims (verify_briefing)", status: "pending" }
+        - { id: "4", content: "Compose final briefing (compose_briefing)", status: "pending" }
+      active_agent_data_scope:
+        title: "Verifier loop test agent"
+        topic: "Sentiment + themes"
+        platforms: ["tiktok", "reddit"]
+        keywords: ["test product"]
+        date_range: { start: "2026-03-01", end: "2026-04-15" }
+    turns: []
+    judge_focus: |
+      Did the agent call the sequence: generate_briefing → verify_briefing
+      (got FAIL) → generate_briefing again (the fix) → verify_briefing
+      (got PASS) → compose_briefing? Bad: skipped verify_briefing,
+      ignored the FAIL verdict, called compose_briefing immediately after
+      a FAIL, or looped verify_briefing more than 2 times.
+
+  - id: autonomous-narrow-scope
+    mode: autonomous
+    description: Narrow scope — agent must NOT expand into platforms/artifacts the constitution didn't ask for.
+    targets: [scope_discipline, dedup]
+    state:
+      active_agent_id: "eval-agent-3"
+      active_agent_title: "TikTok-only theme extractor"
+      active_agent_status: "running"
+      active_agent_type: "one_shot"
+      active_agent_constitution:
+        identity: "A focused theme extractor restricted to TikTok content."
+        mission: "Identify the top 3 themes on TikTok in the eval collection and deliver a briefing only."
+        methodology: "Query TikTok posts, cluster, pick top 3 themes by post count."
+        scope_and_relevance: "TikTok posts ONLY in eval-collection-1. No Reddit, no other platforms."
+        standards: "Three themes, briefing only — no dashboard, no presentation."
+        perspective: "Time-pressed reader who needs a one-page brief."
+      active_agent_context: "Eval scenario — narrow-scope discipline test."
+      active_run_id: "eval-run-3"
+      active_run_number: 1
+      active_run_trigger: "manual"
+      run_history_dates: []
+      autonomous_mode: true
+      continuation_mode: true
+      active_collection_id: "eval-collection-1"
+      agent_selected_sources: ["eval-collection-1"]
+      todos:
+        - { id: "1", content: "Query TikTok posts and identify top 3 themes", status: "pending" }
+        - { id: "2", content: "Generate run reflection (generate_briefing)", status: "pending" }
+        - { id: "3", content: "Compose final briefing", status: "pending" }
+      active_agent_data_scope:
+        title: "TikTok-only theme extractor"
+        topic: "Themes (TikTok)"
+        platforms: ["tiktok"]
+        keywords: ["test product"]
+        date_range: { start: "2026-03-01", end: "2026-04-15" }
+    turns: []
+    judge_focus: |
+      Did the executor stay within scope? Bad: queried Reddit, generated a
+      dashboard the constitution did not ask for, or expanded to >3 themes.
+      Good: TikTok-only queries, exactly 3 themes, briefing only (no
+      generate_dashboard / compose_dashboard / generate_presentation calls).

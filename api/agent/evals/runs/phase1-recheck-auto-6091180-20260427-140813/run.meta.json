@@ -1,0 +1,10 @@
+{
+  "label": "phase1-recheck-auto",
+  "git_sha": "6091180",
+  "timestamp": "20260427-140813",
+  "live": false,
+  "model": null,
+  "scenarios": [
+    "autonomous-full-run"
+  ]
+}

@@ -10,6 +10,9 @@ POST /dashboard/data.
 import logging
 import uuid
 
+from google.adk.tools.tool_context import ToolContext
+
+from api.agent.tools._idempotency import action_key, check_or_register
 from api.deps import get_fs
 
 logger = logging.getLogger(__name__)
@@ -18,6 +21,7 @@ logger = logging.getLogger(__name__)
 def generate_dashboard(
     collection_ids: list[str],
     title: str = "",
+    tool_context: ToolContext = None,
 ) -> dict:
     """Populate the Explore tab with the default 17-widget template.
 
@@ -31,10 +35,27 @@ def generate_dashboard(
         title: Optional custom title. Auto-generated if empty.
 
     Returns:
-        Dashboard metadata payload that the frontend renders as an artifact.
+        Dashboard metadata payload, or a `status: "duplicate"` payload
+        pointing at the existing dashboard_id if this exact request was
+        already served earlier in the session.
     """
     if not collection_ids:
         return {"status": "error", "message": "At least one collection_id is required."}
+
+    key = action_key("generate_dashboard", {
+        "collection_ids": sorted(collection_ids),
+        "title": title or "",
+    })
+    existing = check_or_register(tool_context, key, dry_run=True)
+    if existing:
+        return {
+            "status": "duplicate",
+            "dashboard_id": existing["artifact_id"],
+            "message": (
+                "A dashboard for this exact request was already created earlier "
+                "in this session — reusing it. Don't generate another."
+            ),
+        }
 
     fs = get_fs()
     collection_names: dict[str, str] = {}
@@ -52,6 +73,7 @@ def generate_dashboard(
             title = f"Dashboard: {len(collection_ids)} collections"
 
     dashboard_id = f"dashboard-{uuid.uuid4().hex[:8]}"
+    check_or_register(tool_context, key, artifact_id=dashboard_id)
 
     return {
         "status": "success",

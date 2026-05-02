@@ -1,0 +1,43 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop, repeating identical SQL queries dozens of times without ever generating the required artifacts."
+    },
+    {
+      "scenario_id": "autonomous-narrow-scope",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Perfectly followed the narrow scope, strictly focusing on TikTok data and the required three themes without any unnecessary tool calls."
+    },
+    {
+      "scenario_id": "autonomous-recurring-trend",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic infinite loop of redundant tool calls, failing to perform any analysis or generate a briefing."
+    },
+    {
+      "scenario_id": "autonomous-verifier-catches-bad-claim",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Perfect execution of the verification loop, correcting its own errors and delivering a sharp, data-driven final analysis without preamble."
+    }
+  ],
+  "averages": {
+    "conciseness": 3.0,
+    "tone": 3.0,
+    "repetition": 3.0,
+    "correctness": 3.0
+  },
+  "n_judged": 4
+}

@@ -14,6 +14,7 @@ from typing import Any, Optional
 from pptx import Presentation
 from pptx.util import Inches
 
+from api.agent.tools._idempotency import action_key, check_or_register
 from api.agent.tools.presentation.branding import add_footer
 from api.agent.tools.presentation.components import (
     fill_chart,
@@ -240,6 +241,25 @@ def generate_presentation(
     except Exception as e:
         return {"status": "error", "message": f"Invalid deck plan: {e}"}
 
+    # Idempotency: an identical deck rendered earlier this session reuses
+    # its presentation_id instead of producing a duplicate file.
+    _idempo_key = action_key("generate_presentation", {
+        "deck_plan": plan.model_dump(exclude_none=True),
+        "title": title or "",
+        "template_gcs_path": template_gcs_path or "",
+        "collection_ids": sorted(collection_ids or []),
+    })
+    _existing = check_or_register(tool_context, _idempo_key, dry_run=True)
+    if _existing:
+        return {
+            "status": "duplicate",
+            "presentation_id": _existing["artifact_id"],
+            "message": (
+                "An identical presentation was already rendered earlier in this session — "
+                "reusing it. Don't render another."
+            ),
+        }
+
     effective_title = title or plan.title or "Presentation"
     effective_collections = collection_ids or plan.collection_ids or []
     effective_template = template_gcs_path or plan.template_gcs_path or ""
@@ -341,6 +361,7 @@ def generate_presentation(
 
     # Serialize and upload
     presentation_id = f"ppt-{uuid.uuid4().hex[:10]}"
+    check_or_register(tool_context, _idempo_key, artifact_id=presentation_id)
     safe_title = (effective_title).replace(" ", "_").replace("/", "-")[:60]
     blob_name = f"presentations/{presentation_id}/{safe_title}.pptx"
 

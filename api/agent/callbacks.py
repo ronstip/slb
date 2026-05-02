@@ -13,6 +13,7 @@ Categories:
 """
 
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
@@ -152,6 +153,119 @@ def gate_expensive_tools(
 # ---------------------------------------------------------------------------
 
 
+# Maximum execute_sql calls before the callback hard-stops further probes.
+# Two-pronged guard: (1) per-session count cap, (2) per-query whitespace-
+# normalized dedup. Set generously enough that legitimate multi-angle
+# analysis still works, tight enough that runaway loops can't burn quota.
+_MAX_SQL_CALLS_PER_SESSION = 8
+
+# Serializes the read-decide-write of `_execute_sql_count` across parallel
+# tool calls fanned out within a single turn. Without this, two concurrent
+# execute_sql callbacks both read N, both pass the < cap check, and both
+# write N+1 — silently exceeding the budget. Phase 1 retrospective saw 22+
+# SQL calls slip past the 8-call cap this way.
+_sql_budget_lock = threading.Lock()
+
+
+def dedup_sql_calls(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+) -> Optional[dict]:
+    """Block duplicate or excessive `execute_sql` calls within a session.
+
+    The chat baseline showed the agent issuing 25 near-identical SQL probes
+    on the same table — same bug class as the artifact-tool dedup, but on
+    the BigQuery toolset (which we don't own and can't wrap directly). The
+    Phase 1 candidate revealed the agent bypasses naive whitespace dedup
+    by varying column aliases. This callback uses both:
+
+      1. Whitespace + lowercase canonicalization for exact-shape dedup.
+      2. A hard per-session call count cap (`_MAX_SQL_CALLS_PER_SESSION`)
+         to terminate variant-loop pathologies.
+
+    Either condition returning duplicate stops the call.
+    """
+    if tool.name != "execute_sql":
+        return None
+
+    from api.agent.tools._idempotency import action_key, check_or_register
+
+    state = tool_context.state
+    raw_query = args.get("query") or args.get("sql") or ""
+
+    with _sql_budget_lock:
+        sql_count = int(state.get("_execute_sql_count", 0))
+
+        # Budget exhausted — refuse further probes regardless of args.
+        if sql_count >= _MAX_SQL_CALLS_PER_SESSION:
+            return {
+                "status": "budget_exhausted",
+                "rows": [],
+                "row_count": 0,
+                "message": (
+                    f"You've already issued {sql_count} SQL queries this session — "
+                    "stop probing and answer the user from what you have. If you "
+                    "genuinely need more data, tell the user what's blocking you "
+                    "instead of issuing another query."
+                ),
+            }
+
+        if not raw_query:
+            # No query to dedup; still count the call against the budget so
+            # malformed-query loops can't bypass the cap.
+            state["_execute_sql_count"] = sql_count + 1
+            return None
+
+        canonical = " ".join(raw_query.split()).lower()
+        key = action_key("execute_sql", {"q": canonical})
+        existing = check_or_register(tool_context, key, dry_run=True)
+        if existing:
+            return {
+                "status": "duplicate",
+                "rows": [],
+                "row_count": 0,
+                "message": (
+                    "An identical SQL query was already executed earlier in this "
+                    "session — its results are above. Don't re-issue paraphrases. "
+                    "Either use those results or query a different dimension."
+                ),
+            }
+
+        check_or_register(tool_context, key, artifact_id="executed")
+        state["_execute_sql_count"] = sql_count + 1
+    return None
+
+
+def refund_failed_sql_budget(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+    tool_response: dict,
+) -> Optional[dict]:
+    """Refund the per-session SQL budget on a failed `execute_sql` response.
+
+    `dedup_sql_calls` increments `_execute_sql_count` before the query runs,
+    so a syntactically-broken query consumes a slot. With the cap at 8, a
+    handful of false starts can starve a real run. This callback decrements
+    the counter when BigQuery returned an error so the model gets a real
+    retry budget — duplicates and budget-exhausted short-circuits never
+    incremented in the first place, so we don't refund those.
+    """
+    if tool.name != "execute_sql":
+        return None
+    if not isinstance(tool_response, dict):
+        return None
+    if tool_response.get("status") != "ERROR":
+        return None
+    state = tool_context.state
+    with _sql_budget_lock:
+        sql_count = int(state.get("_execute_sql_count", 0))
+        if sql_count > 0:
+            state["_execute_sql_count"] = sql_count - 1
+    return None
+
+
 def enforce_collection_access(
     tool: BaseTool,
     args: dict[str, Any],
@@ -207,6 +321,74 @@ def enforce_collection_access(
             "message": str(e),
         }
 
+    return None
+
+
+# ---------------------------------------------------------------------------
+# 3b. Loop bounding — before_tool_callback
+# ---------------------------------------------------------------------------
+
+# Hard cap on total tool calls per session. Generous enough that a full
+# autonomous run (analyze → validate → dashboard → briefing typically uses
+# 16–18 calls) has headroom; tight enough that a runaway loop trips before
+# burning serious quota. The eval harness uses a stricter cap of 25 to
+# stress-test loop behavior — see api/agent/evals/runner.py.
+_MAX_TOOL_CALLS_PER_SESSION = 40
+
+# How many times the same (tool, args) signature may repeat before the
+# cycle detector blocks. 3 is the sweet spot: legitimate retries (one
+# transient failure + one retry) pass; tight loops (same call 3+ times)
+# get stopped.
+_LOOP_REPEAT_THRESHOLD = 3
+
+
+def cap_total_tool_calls(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+) -> Optional[dict]:
+    """Bound total tool calls + detect repeating-signature loops.
+
+    Two complementary defenses:
+      1. Per-session ceiling on total tool calls (`_MAX_TOOL_CALLS_PER_SESSION`).
+         Stops pathological multi-tool loops the SQL-budget cap doesn't catch.
+      2. Cycle detector: hashes (tool_name, args) and blocks once the same
+         signature has been seen `_LOOP_REPEAT_THRESHOLD` times. Catches
+         "same call, slightly different framing" loops on any tool, not just
+         execute_sql.
+
+    Wired LAST in the before_tool_callback chain so dedup_sql_calls and the
+    access-control checks run first (and therefore aren't counted twice
+    against the ceiling when they short-circuit).
+    """
+    from api.agent.tools._idempotency import action_key
+
+    state = tool_context.state
+    total = int(state.get("_total_tool_calls", 0)) + 1
+    state["_total_tool_calls"] = total
+
+    if total > _MAX_TOOL_CALLS_PER_SESSION:
+        return {
+            "status": "blocked",
+            "message": (
+                f"Hard limit reached ({_MAX_TOOL_CALLS_PER_SESSION} tool calls "
+                "this session). Stop and answer the user from what you have, "
+                "or tell them what's blocking you — don't issue more tool calls."
+            ),
+        }
+
+    key = action_key(tool.name, args)
+    counts = state.setdefault("_tool_call_counts", {})
+    counts[key] = counts.get(key, 0) + 1
+    if counts[key] >= _LOOP_REPEAT_THRESHOLD:
+        return {
+            "status": "blocked",
+            "message": (
+                f"Tool `{tool.name}` has been called {counts[key]} times with "
+                "these exact arguments — that's a loop. Take a different "
+                "approach or tell the user what's blocking you."
+            ),
+        }
     return None
 
 

@@ -1,0 +1,13 @@
+{
+  "label": "phase4-final",
+  "git_sha": "6c7d079",
+  "timestamp": "20260502-133748",
+  "live": false,
+  "model": null,
+  "scenarios": [
+    "autonomous-full-run",
+    "autonomous-recurring-trend",
+    "autonomous-verifier-catches-bad-claim",
+    "autonomous-narrow-scope"
+  ]
+}

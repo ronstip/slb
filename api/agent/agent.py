@@ -11,12 +11,16 @@ from google.adk.tools.google_search_tool import GoogleSearchTool
 from google.genai import types as genai_types
 
 from api.agent.callbacks import (
+    cap_total_tool_calls,
     collection_state_tracker,
+    dedup_sql_calls,
     enforce_collection_access,
     gate_expensive_tools,
     get_context_injector,
     log_tool_invocation,
+    refund_failed_sql_budget,
 )
+from api.agent.debug_io import make_debug_io_callbacks
 from api.agent.tools.registry import AgentMode, compose_tools
 from api.auth.session_service import FirestoreSessionService
 from config.settings import get_settings
@@ -106,17 +110,56 @@ def create_agent(
     # ─── Callbacks — mode-aware context injector ────────────────────
     before_model = get_context_injector(mode)
 
+    # ─── Debug IO logging — gated by AGENT_DEBUG_LOG env var ────────
+    # When set, captures every model request, tool call, and tool response
+    # to a per-session JSONL file. Off by default; never fires in production
+    # unless explicitly opted in. See api/agent/debug_io.py for details.
+    debug_io = make_debug_io_callbacks()
+
+    before_model_chain = (
+        [debug_io.before_model, before_model] if debug_io else before_model
+    )
+    before_tool_chain = [
+        dedup_sql_calls,
+        enforce_collection_access,
+        gate_expensive_tools,
+        cap_total_tool_calls,
+    ]
+    # `refund_failed_sql_budget` runs first so a BigQuery error on
+    # `execute_sql` releases the budget slot before downstream observers see
+    # the response. Pairs with the `before_tool` increment in `dedup_sql_calls`.
+    after_tool_chain = [
+        refund_failed_sql_budget,
+        collection_state_tracker,
+        log_tool_invocation,
+    ]
+    if debug_io:
+        # Debug callbacks bracket the production callbacks: capture the call
+        # BEFORE production callbacks short-circuit it (so a blocked call is
+        # still logged), and capture the response AFTER state tracking.
+        before_tool_chain.insert(0, debug_io.before_tool)
+        after_tool_chain.append(debug_io.after_tool)
+
+    # Both halves go into `instruction` so ADK routes them to system_instruction.
+    # If `static_instruction` is also set, ADK's instructions flow appends
+    # `instruction` as a role='user' Content to llm_request.contents on every
+    # ReAct continuation — see google/adk/flows/llm_flows/instructions.py — and
+    # the model treats the schema/date reminder as a fresh user request to
+    # acknowledge, producing "I've updated my context, what's next?" instead of
+    # answering. Caching is already disabled (see create_app below), so there
+    # is no benefit to keeping the static half separate.
+    combined_instruction = static_prompt + "\n\n" + dynamic_prompt
+
     meta_agent = LlmAgent(
         model=model_name,
         name=name,
         description=description,
-        static_instruction=static_prompt,
-        instruction=dynamic_prompt,
+        instruction=combined_instruction,
         tools=tools,
         generate_content_config=gen_config,
-        before_tool_callback=[enforce_collection_access, gate_expensive_tools],
-        before_model_callback=before_model,
-        after_tool_callback=[collection_state_tracker, log_tool_invocation],
+        before_tool_callback=before_tool_chain,
+        before_model_callback=before_model_chain,
+        after_tool_callback=after_tool_chain,
     )
 
     return meta_agent

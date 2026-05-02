@@ -1,0 +1,2 @@
+# Per-run output. Keep the small summary files; ignore raw transcripts.
+*/transcripts/

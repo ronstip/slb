@@ -1,0 +1,10 @@
+{
+  "label": "phase1d-auto",
+  "git_sha": "6091180",
+  "timestamp": "20260427-132719",
+  "live": false,
+  "model": null,
+  "scenarios": [
+    "autonomous-full-run"
+  ]
+}

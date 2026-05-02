@@ -1,0 +1,43 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "conciseness": 4,
+      "tone": 2,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Correctly identifies lack of context, but the tone is generic and it offers three options instead of one sharp direction."
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop, repeating the same tool call and filler text 25 times without ever providing an answer."
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop, repeating identical queries and filler text 25 times without ever creating the requested dashboard."
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent failed completely, entering a runaway loop of redundant preambles and tool calls without ever providing the answer present in the data."
+    }
+  ],
+  "averages": {
+    "conciseness": 1.75,
+    "tone": 1.25,
+    "repetition": 2.0,
+    "correctness": 2.0
+  },
+  "n_judged": 4
+}

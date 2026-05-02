@@ -77,3 +77,8 @@ screenshots/
 
 # Memory Bank - dev-specific context
 memory-bank/active-context.md
+
+# Agent eval harness — keep reports + per-run metadata, drop bulk
+api/agent/evals/runs/_debug/
+api/agent/evals/runs/*.log
+api/agent/evals/runs/**/transcripts/

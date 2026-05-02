@@ -20,6 +20,7 @@ from typing import Any, get_args
 from google.adk.tools import ToolContext
 from pydantic import ValidationError
 
+from api.agent.tools._idempotency import action_key, check_or_register
 from api.deps import get_fs
 from api.routers.dashboard_schema import (
     AGGREGATION_DEFAULTS,
@@ -219,7 +220,9 @@ def compose_dashboard(
     Dashboards are NOT artifacts and NOT user-facing deliverables. Use this
     tool silently when a tailored Explore view fits the agent's data; do NOT
     announce it, list it in todos, or echo its contents in chat. For the
-    default 17-widget template, use ``generate_dashboard``.
+    default 17-widget template, use ``generate_dashboard``. Identical
+    re-publishes are rejected by the dedup guard — don't compose twice for
+    the same collection in one session.
 
     GRID: 12 columns wide, rows grow downward. Typical sizes:
       - KPI number-card: w=3 h=2  (4 across in a row)
@@ -303,6 +306,24 @@ def compose_dashboard(
     if not collection_ids:
         return {"status": "error", "message": "At least one collection_id is required."}
 
+    # Idempotency: an identical compose_dashboard call earlier in the session
+    # returns the existing dashboard_id instead of minting a duplicate.
+    _idempo_key = action_key("compose_dashboard", {
+        "collection_ids": sorted(collection_ids),
+        "widgets": widgets,
+        "title": title or "",
+    })
+    _existing = check_or_register(tool_context, _idempo_key, dry_run=True)
+    if _existing:
+        return {
+            "status": "duplicate",
+            "dashboard_id": _existing["artifact_id"],
+            "message": (
+                "An identical dashboard was already composed earlier in this session — "
+                "reusing it. Don't compose another."
+            ),
+        }
+
     if not isinstance(rationale, str) or len(rationale.strip()) < 20:
         return {
             "status": "error",
@@ -362,6 +383,7 @@ def compose_dashboard(
         }
 
     dashboard_id = f"dashboard-{uuid.uuid4().hex[:8]}"
+    check_or_register(tool_context, _idempo_key, artifact_id=dashboard_id)
 
     final_title = title
     if not final_title:
