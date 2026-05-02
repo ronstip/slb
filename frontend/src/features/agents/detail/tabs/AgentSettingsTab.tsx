@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Agent, SearchDef, TodoItem } from '../../../../api/endpoints/agents.ts';
+import type { Agent, SearchDef, SourceOverride, TodoItem } from '../../../../api/endpoints/agents.ts';
 import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
@@ -257,7 +257,7 @@ export function AgentSettingsTab({
               {isEditing && draft ? (
                 <EditableSourcesSection draft={draft} onUpdateDraft={onUpdateDraft} />
               ) : (
-                <SourcesSection task={task} />
+                <SourcesSection task={task} onAddPlatforms={onEnterEdit} />
               )}
             </div>
           )}
@@ -424,6 +424,36 @@ function EditableConstitutionSection({
 
 // ─── Editable Sources Section ────────────────────────────────────────────────
 
+const REGION_OPTIONS = [
+  { value: 'global', label: 'Global' },
+  { value: 'US', label: 'US' },
+  { value: 'UK', label: 'UK' },
+  { value: 'EU', label: 'EU' },
+  { value: 'APAC', label: 'APAC' },
+];
+
+function resolveEffective(search: SearchDef, platform: string) {
+  const platformCount = Math.max(search.platforms.length, 1);
+  const defaultSplit = search.n_posts ? Math.round(search.n_posts / platformCount) : 0;
+  const src = search.per_source?.[platform];
+  if (src?.override) {
+    return {
+      keywords: src.keywords ?? search.keywords ?? [],
+      channels: src.channels ?? search.channels,
+      n_posts: src.n_posts ?? defaultSplit,
+      geo_scope: src.geo_scope ?? search.geo_scope,
+      time_range_days: src.time_range_days ?? search.time_range_days,
+    };
+  }
+  return {
+    keywords: search.keywords ?? [],
+    channels: search.channels,
+    n_posts: defaultSplit,
+    geo_scope: search.geo_scope,
+    time_range_days: search.time_range_days,
+  };
+}
+
 function EditableSourcesSection({
   draft,
   onUpdateDraft,
@@ -432,7 +462,7 @@ function EditableSourcesSection({
   onUpdateDraft: (patch: Partial<AgentEditDraft>) => void;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {draft.searches.map((search, idx) => (
         <SearchDefEditor
           key={idx}
@@ -449,26 +479,34 @@ function EditableSourcesSection({
           }
         />
       ))}
-      <button
-        type="button"
-        onClick={() =>
-          onUpdateDraft({
-            searches: [
-              ...draft.searches,
-              { platforms: [], keywords: [], time_range_days: 30, geo_scope: 'global', n_posts: 500 },
-            ],
-          })
-        }
-        className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80"
-      >
-        <Plus className="h-4 w-4" />
-        Add source
-      </button>
+      {draft.searches.length === 0 && (
+        <button
+          type="button"
+          onClick={() =>
+            onUpdateDraft({
+              searches: [
+                {
+                  platforms: [],
+                  keywords: [],
+                  time_range_days: 30,
+                  geo_scope: 'global',
+                  n_posts: 500,
+                  per_source: {},
+                },
+              ],
+            })
+          }
+          className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80"
+        >
+          <Plus className="h-4 w-4" />
+          Add a source
+        </button>
+      )}
     </div>
   );
 }
 
-// ─── Inline Search Definition Editor ─────────────────────────────────────────
+// ─── Search Definition Editor — one card per platform, fully independent ───
 
 function SearchDefEditor({
   search,
@@ -479,136 +517,285 @@ function SearchDefEditor({
   onChange: (s: SearchDef) => void;
   onRemove?: () => void;
 }) {
-  const [keywordInput, setKeywordInput] = useState('');
+  const perSource = search.per_source ?? {};
+  const unselectedPlatforms = PLATFORMS.filter((p) => !search.platforms.includes(p));
 
-  const togglePlatform = (p: string) => {
-    const next = search.platforms.includes(p)
-      ? search.platforms.filter((x) => x !== p)
-      : [...search.platforms, p];
-    onChange({ ...search, platforms: next });
+  // Materialize per_source[platform] with current effective values when the
+  // user first edits a platform — so each platform becomes independently
+  // editable without leaking changes through shared defaults.
+  const updatePlatform = (platform: string, patch: Partial<SourceOverride>) => {
+    const effective = resolveEffective(search, platform);
+    const current = perSource[platform];
+    const materialized: SourceOverride = current?.override
+      ? current
+      : {
+          override: true,
+          keywords: [...effective.keywords],
+          n_posts: effective.n_posts,
+          geo_scope: effective.geo_scope,
+          time_range_days: effective.time_range_days,
+          ...(effective.channels && effective.channels.length > 0
+            ? { channels: [...effective.channels] }
+            : {}),
+        };
+    onChange({
+      ...search,
+      per_source: { ...perSource, [platform]: { ...materialized, ...patch } },
+    });
   };
 
-  const addKeyword = () => {
-    const trimmed = keywordInput.trim();
-    if (trimmed && !search.keywords.includes(trimmed)) {
-      onChange({ ...search, keywords: [...search.keywords, trimmed] });
-      setKeywordInput('');
-    }
+  const addPlatform = (platform: string) => {
+    if (search.platforms.includes(platform)) return;
+    const platformCount = search.platforms.length + 1;
+    const seedPosts = search.n_posts
+      ? Math.round(search.n_posts / platformCount)
+      : 0;
+    onChange({
+      ...search,
+      platforms: [...search.platforms, platform],
+      per_source: {
+        ...perSource,
+        [platform]: {
+          override: true,
+          keywords: [...(search.keywords ?? [])],
+          n_posts: seedPosts,
+          geo_scope: search.geo_scope,
+          time_range_days: search.time_range_days,
+          ...(search.channels && search.channels.length > 0
+            ? { channels: [...search.channels] }
+            : {}),
+        },
+      },
+    });
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addKeyword();
-    }
+  const removePlatform = (platform: string) => {
+    const nextPerSource = { ...perSource };
+    delete nextPerSource[platform];
+    onChange({
+      ...search,
+      platforms: search.platforms.filter((p) => p !== platform),
+      per_source: nextPerSource,
+    });
   };
 
   return (
-    <div className="rounded-2xl border border-border/50 bg-card p-5 space-y-4 shadow-sm">
-      {onRemove && (
+    <div className="space-y-3">
+      {onRemove && search.platforms.length === 0 && (
         <div className="flex justify-end">
           <button
             type="button"
             onClick={onRemove}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive"
+            className="text-xs text-muted-foreground hover:text-destructive"
           >
-            <X className="h-3.5 w-3.5" />
+            Remove this source
           </button>
         </div>
       )}
 
-      <div>
-        <Label className="text-xs font-medium text-muted-foreground mb-2 block">Platforms</Label>
-        <div className="flex flex-wrap gap-2">
-          {PLATFORMS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => togglePlatform(p)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
-                search.platforms.includes(p)
-                  ? 'border-primary/40 bg-primary/10 text-primary'
-                  : 'border-border/50 text-muted-foreground hover:border-border',
-              )}
-            >
-              <PlatformIcon platform={p} className="h-3 w-3" />
-              {PLATFORM_LABELS[p]}
-            </button>
+      {search.platforms.map((platform) => (
+        <PlatformSourceCard
+          key={platform}
+          platform={platform}
+          effective={resolveEffective(search, platform)}
+          onUpdate={(patch) => updatePlatform(platform, patch)}
+          onRemove={() => removePlatform(platform)}
+        />
+      ))}
+
+      {search.platforms.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No platforms yet. Add one below to start collecting.
+        </p>
+      )}
+
+      {unselectedPlatforms.length > 0 && (
+        <AddPlatformPicker platforms={unselectedPlatforms} onAdd={addPlatform} />
+      )}
+    </div>
+  );
+}
+
+function AddPlatformPicker({
+  platforms,
+  onAdd,
+}: {
+  platforms: string[];
+  onAdd: (platform: string) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3">
+      <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-primary">
+        <Plus className="h-4 w-4" />
+        Add platform
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {platforms.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onAdd(p)}
+            className="flex items-center gap-1.5 rounded-full border border-border/50 bg-card px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all"
+          >
+            <PlatformIcon platform={p} className="h-3 w-3" />
+            {PLATFORM_LABELS[p] ?? p}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KeywordsEditor({
+  keywords,
+  onChange,
+  placeholder = 'Add keyword and press Enter',
+}: {
+  keywords: string[];
+  onChange: (kws: string[]) => void;
+  placeholder?: string;
+}) {
+  const [input, setInput] = useState('');
+
+  const add = () => {
+    const trimmed = input.trim();
+    if (trimmed && !keywords.includes(trimmed)) {
+      onChange([...keywords, trimmed]);
+      setInput('');
+    }
+  };
+
+  const remove = (kw: string) => onChange(keywords.filter((k) => k !== kw));
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      add();
+    }
+  };
+
+  return (
+    <div>
+      <Label className="text-xs font-medium text-muted-foreground mb-2 block">Keywords</Label>
+      <Input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="text-sm h-8"
+      />
+      {keywords.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {keywords.map((kw) => (
+            <Badge key={kw} variant="secondary" className="gap-1 text-xs">
+              {kw}
+              <button
+                type="button"
+                onClick={() => remove(kw)}
+                aria-label={`Remove ${kw}`}
+                className="inline-flex items-center text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function PlatformSourceCard({
+  platform,
+  effective,
+  onUpdate,
+  onRemove,
+}: {
+  platform: string;
+  effective: {
+    keywords: string[];
+    channels?: string[];
+    n_posts: number;
+    geo_scope: string;
+    time_range_days: number;
+  };
+  onUpdate: (patch: Partial<SourceOverride>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-card shadow-sm">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/40">
+        <div className="flex items-center gap-2 min-w-0">
+          <PlatformIcon platform={platform} className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-semibold text-foreground">
+            {PLATFORM_LABELS[platform] ?? platform}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${platform}`}
+          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
 
-      <div>
-        <Label className="text-xs font-medium text-muted-foreground mb-2 block">Keywords</Label>
-        <Input
-          value={keywordInput}
-          onChange={(e) => setKeywordInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Add keyword and press Enter"
-          className="text-sm h-8"
+      <div className="px-4 py-4 space-y-4">
+        <KeywordsEditor
+          keywords={effective.keywords}
+          onChange={(kws) => onUpdate({ keywords: kws })}
+          placeholder={`Keywords for ${PLATFORM_LABELS[platform] ?? platform}`}
         />
-        {search.keywords.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {search.keywords.map((kw) => (
-              <Badge key={kw} variant="secondary" className="gap-1 text-xs">
-                {kw}
-                <X
-                  className="h-3 w-3 cursor-pointer hover:text-destructive"
-                  onClick={() => onChange({ ...search, keywords: search.keywords.filter((k) => k !== kw) })}
-                />
-              </Badge>
-            ))}
-          </div>
-        )}
-      </div>
 
-      <div className="flex flex-wrap gap-4">
-        <div className="flex-1 min-w-[140px]">
-          <Label className="text-xs font-medium text-muted-foreground mb-2 block">Time Range</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {TIME_RANGES.map(({ label, value }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onChange({ ...search, time_range_days: value })}
-                className={cn(
-                  'rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
-                  search.time_range_days === value
-                    ? 'border-primary/40 bg-primary/10 text-primary'
-                    : 'border-border/50 text-muted-foreground hover:border-border',
-                )}
-              >
-                {label}
-              </button>
-            ))}
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[140px]">
+            <Label className="text-xs font-medium text-muted-foreground mb-2 block">Time Range</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {TIME_RANGES.map(({ label, value }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onUpdate({ time_range_days: value })}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                    effective.time_range_days === value
+                      ? 'border-primary/40 bg-primary/10 text-primary'
+                      : 'border-border/50 text-muted-foreground hover:border-border',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="w-28">
-          <Label className="text-xs font-medium text-muted-foreground mb-2 block">Region</Label>
-          <Select value={search.geo_scope} onValueChange={(v) => onChange({ ...search, geo_scope: v })}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="global">Global</SelectItem>
-              <SelectItem value="US">US</SelectItem>
-              <SelectItem value="UK">UK</SelectItem>
-              <SelectItem value="EU">EU</SelectItem>
-              <SelectItem value="APAC">APAC</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="w-24">
-          <Label className="text-xs font-medium text-muted-foreground mb-2 block">Posts</Label>
-          <Input
-            type="number"
-            value={search.n_posts || ''}
-            onChange={(e) => onChange({ ...search, n_posts: parseInt(e.target.value) || 0 })}
-            className="text-xs h-8"
-            min={0}
-            step={100}
-          />
+          <div className="w-28">
+            <Label className="text-xs font-medium text-muted-foreground mb-2 block">Region</Label>
+            <Select
+              value={effective.geo_scope}
+              onValueChange={(v) => onUpdate({ geo_scope: v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REGION_OPTIONS.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-28">
+            <Label className="text-xs font-medium text-muted-foreground mb-2 block">Posts</Label>
+            <Input
+              type="number"
+              value={effective.n_posts || ''}
+              onChange={(e) => onUpdate({ n_posts: parseInt(e.target.value) || 0 })}
+              className="text-xs h-8"
+              min={0}
+              step={100}
+            />
+          </div>
         </div>
       </div>
     </div>

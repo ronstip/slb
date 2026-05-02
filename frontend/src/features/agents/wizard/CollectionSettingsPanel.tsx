@@ -241,10 +241,14 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus }: Coll
               {settings.keywords.map((kw) => (
                 <Badge key={kw} variant="secondary" className="gap-1 text-xs">
                   {kw}
-                  <X
-                    className="h-3 w-3 cursor-pointer hover:text-destructive pointer-events-auto"
+                  <button
+                    type="button"
                     onClick={() => removeKeyword(kw)}
-                  />
+                    aria-label={`Remove ${kw}`}
+                    className="inline-flex items-center text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </Badge>
               ))}
             </div>

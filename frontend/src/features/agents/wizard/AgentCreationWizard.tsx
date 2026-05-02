@@ -201,12 +201,12 @@ export function AgentCreationWizard() {
     setClarificationAnswers((prev) => ({ ...prev, [id]: values }));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (startRun: boolean = true) => {
     if (!canSubmit || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle, constitution);
+      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle, constitution, startRun);
       const result = await createAgentFromWizard(body);
 
       // Add new collection IDs to sources store
@@ -308,7 +308,8 @@ export function AgentCreationWizard() {
         <AgentSettingsPanel
           settings={taskSettings}
           onChange={setTaskSettings}
-          onSubmit={handleSubmit}
+          onSubmit={() => handleSubmit(true)}
+          onCreateOnly={() => handleSubmit(false)}
           canSubmit={canSubmit}
           isSubmitting={isSubmitting}
           planStatus={planStatus}

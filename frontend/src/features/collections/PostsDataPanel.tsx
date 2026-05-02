@@ -457,9 +457,40 @@ export function PostsDataPanel({
             className="h-7 gap-1.5 text-xs"
             disabled={filteredPosts.length === 0}
             onClick={() => {
+              // Unnest custom_fields one level: each top-level key becomes its own column.
+              // Keys are agent-defined and dynamic — discover them from the rows being exported.
+              // Skip keys that would collide with built-in columns (the built-in wins; the
+              // collision is silent because exposing a custom_fields value under a built-in
+              // header would be misleading).
+              const builtInKeys = new Set(FEED_POST_CSV_COLUMNS.map((c) => c.key));
+              const customKeys = new Set<string>();
+              for (const post of filteredPosts) {
+                const cf = post.custom_fields;
+                if (cf && typeof cf === 'object' && !Array.isArray(cf)) {
+                  for (const k of Object.keys(cf)) {
+                    if (!builtInKeys.has(k)) customKeys.add(k);
+                  }
+                }
+              }
+              const customColumns = [...customKeys]
+                .sort()
+                .map((k) => ({ key: k, header: k }));
+              const cols = FEED_POST_CSV_COLUMNS
+                .filter((c) => c.key !== 'custom_fields')
+                .concat(customColumns);
+
+              const flatRows = filteredPosts.map((post) => {
+                const cf = (post.custom_fields ?? {}) as Record<string, unknown>;
+                const row: Record<string, unknown> = { ...post };
+                for (const k of customKeys) {
+                  if (k in cf) row[k] = cf[k];
+                }
+                return row;
+              });
+
               const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
               const slug = (exportFilenamePrefix ?? 'posts').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
-              downloadCsv(filteredPosts, `${slug}_${today}`, FEED_POST_CSV_COLUMNS);
+              downloadCsv(flatRows, `${slug}_${today}`, cols);
             }}
           >
             <Download className="h-3.5 w-3.5" />

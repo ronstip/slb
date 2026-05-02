@@ -593,7 +593,7 @@ function AppSidebarImpl({
               {recentAgents.map((agent) => {
                   const isActive = activeAgent?.agent_id === agent.agent_id;
                   const isRunning = agent.status === 'running';
-                  const cfg = STATUS_CONFIG[agent.status];
+                  const cfg = STATUS_CONFIG[agent.status ?? 'idle'];
                   return (
                     <button
                       key={agent.agent_id}

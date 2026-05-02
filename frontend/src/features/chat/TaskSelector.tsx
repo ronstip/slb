@@ -33,7 +33,7 @@ function AgentItem({ agent, isActive, onClick }: {
     >
       <span className="flex-1 truncate text-xs">{agent.title}</span>
       <Badge variant="outline" className="text-[9px] h-4 shrink-0">
-        {STATUS_LABELS[agent.status] || agent.status}
+        {STATUS_LABELS[agent.status ?? 'idle'] || agent.status || 'Idle'}
       </Badge>
     </button>
   );
@@ -51,9 +51,7 @@ export function TaskSelector() {
     if (agents.length === 0) fetchAgents();
   }, [agents.length, fetchAgents]);
 
-  const visibleAgents = agents.filter((t) =>
-    ['running', 'success', 'failed'].includes(t.status),
-  );
+  const visibleAgents = agents.filter((t) => t.status !== 'archived');
 
   if (visibleAgents.length === 0 && !activeAgent) return null;
 

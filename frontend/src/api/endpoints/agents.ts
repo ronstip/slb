@@ -12,6 +12,15 @@ export type AgentStatus =
 
 export type AgentType = 'one_shot' | 'recurring';
 
+export interface SourceOverride {
+  override: boolean;
+  keywords?: string[];
+  channels?: string[];
+  n_posts?: number;
+  geo_scope?: string;
+  time_range_days?: number;
+}
+
 export interface SearchDef {
   platforms: string[];
   keywords: string[];
@@ -21,6 +30,7 @@ export interface SearchDef {
   end_date?: string | null;
   geo_scope: string;
   n_posts: number;
+  per_source?: Record<string, SourceOverride>;
 }
 
 export interface AgentSchedule {
@@ -70,7 +80,7 @@ export interface Agent {
   org_id: string | null;
   title: string;
   agent_type: AgentType;
-  status: AgentStatus;
+  status: AgentStatus | null;
   data_scope: {
     searches: SearchDef[];
     custom_fields?: CustomFieldDef[] | null;
@@ -144,6 +154,18 @@ export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: s
   return apiPost<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }>(`/agents/${agentId}/run`, {});
 }
 
+/** Re-collect data for one source (omit args to refresh all sources). Does NOT
+ *  trigger the agent workflow — collection pipelines only. */
+export function runAgentSources(
+  agentId: string,
+  target?: { search_idx: number; platform: string },
+): Promise<{ agent_id: string; collection_ids: string[]; status: string }> {
+  return apiPost<{ agent_id: string; collection_ids: string[]; status: string }>(
+    `/agents/${agentId}/sources/run`,
+    target ?? {},
+  );
+}
+
 export function resumeAgent(agentId: string): Promise<{ ok: boolean; agent_id: string; status: string }> {
   return apiPost<{ ok: boolean; agent_id: string; status: string }>(`/agents/${agentId}/resume`, {});
 }
@@ -159,6 +181,7 @@ export interface CreateFromWizardPayload {
     time_range_days: number;
     geo_scope: string;
     n_posts: number;
+    per_source?: Record<string, SourceOverride>;
   }>;
   schedule?: { frequency: string; frequency_label: string } | null;
   custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
@@ -171,12 +194,13 @@ export interface CreateFromWizardPayload {
   auto_email?: boolean;
   email_recipients?: string[];
   auto_slides?: boolean;
+  start_run?: boolean;
 }
 
 export function createAgentFromWizard(
   data: CreateFromWizardPayload,
-): Promise<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string }> {
-  return apiPost<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string }>('/agents/create-from-wizard', data);
+): Promise<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string | null }> {
+  return apiPost<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string | null }>('/agents/create-from-wizard', data);
 }
 
 // --- Agent Runs ---

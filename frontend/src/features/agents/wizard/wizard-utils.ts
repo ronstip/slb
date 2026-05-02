@@ -1,6 +1,6 @@
 import { PLATFORM_LABELS, buildScheduleString, formatSchedule } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
-import type { Constitution, CreateFromWizardPayload } from '../../../api/endpoints/agents.ts';
+import type { Constitution, CreateFromWizardPayload, SourceOverride } from '../../../api/endpoints/agents.ts';
 
 function intervalHoursToSchedule(hours: number, time: string): string {
   if (hours < 24) return buildScheduleString('hour', hours, time);
@@ -114,10 +114,17 @@ export function buildWizardRequestBody(
   task: WizardAgentSettings,
   title: string,
   constitution?: Constitution,
+  startRun: boolean = true,
 ): CreateFromWizardPayload {
-  // Build searches array (one search per wizard config)
+  // Build searches array. The wizard sets shared defaults; per_source entries
+  // start with override=false so each platform inherits those defaults until
+  // the user flips it in Settings → Data Sources.
   const searches: CreateFromWizardPayload['searches'] = [];
   if (collection.newCollectionEnabled && collection.platforms.length > 0) {
+    const perSource: Record<string, SourceOverride> = {};
+    for (const platform of collection.platforms) {
+      perSource[platform] = { override: false };
+    }
     searches.push({
       platforms: collection.platforms,
       keywords: collection.keywords,
@@ -125,6 +132,7 @@ export function buildWizardRequestBody(
       time_range_days: collection.timeRangeDays,
       geo_scope: collection.geoScope,
       n_posts: collection.nPosts,
+      per_source: perSource,
     });
   }
 
@@ -165,5 +173,6 @@ export function buildWizardRequestBody(
     auto_email: task.autoEmail,
     email_recipients: task.emailRecipients.length > 0 ? task.emailRecipients : undefined,
     auto_slides: task.autoSlides,
+    start_run: startRun,
   };
 }

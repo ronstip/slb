@@ -77,3 +77,6 @@ screenshots/
 
 # Memory Bank - dev-specific context
 memory-bank/active-context.md
+
+# Ignore sandbox folder
+sandbox/

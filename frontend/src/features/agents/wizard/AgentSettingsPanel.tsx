@@ -21,6 +21,7 @@ interface AgentSettingsPanelProps {
   settings: WizardAgentSettings;
   onChange: (settings: WizardAgentSettings) => void;
   onSubmit?: () => void;
+  onCreateOnly?: () => void;
   canSubmit?: boolean;
   isSubmitting?: boolean;
   planStatus: PlanStatus;
@@ -28,7 +29,7 @@ interface AgentSettingsPanelProps {
 
 const HOUR_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 48, 168];
 
-export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, isSubmitting, planStatus }: AgentSettingsPanelProps) {
+export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly, canSubmit, isSubmitting, planStatus }: AgentSettingsPanelProps) {
   const [emailInput, setEmailInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -324,7 +325,7 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
       </div>
 
       {onSubmit && (
-        <div className="mt-6 pt-4 border-t border-border/50">
+        <div className="mt-6 pt-4 border-t border-border/50 flex flex-col gap-2">
           <Button
             className="w-full gap-2"
             disabled={!canSubmit || isSubmitting}
@@ -338,11 +339,21 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />
-                Create Agent
+                Create &amp; Run
                 <ArrowRight className="h-4 w-4" />
               </>
             )}
           </Button>
+          {onCreateOnly && (
+            <Button
+              variant="outline"
+              className="w-full gap-2"
+              disabled={!canSubmit || isSubmitting}
+              onClick={onCreateOnly}
+            >
+              Create without running
+            </Button>
+          )}
         </div>
       )}
     </div>
