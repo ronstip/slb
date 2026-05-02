@@ -2,6 +2,9 @@
 
 import logging
 
+from google.adk.tools.tool_context import ToolContext
+
+from api.agent.tools._idempotency import already_called_this_turn
 from api.deps import get_fs
 
 logger = logging.getLogger(__name__)
@@ -10,11 +13,15 @@ logger = logging.getLogger(__name__)
 def show_metrics(
     collection_id: str | None = None,
     items: list[dict] | None = None,
+    tool_context: ToolContext = None,
 ) -> dict:
     """Display key metrics inline in the chat as stat cards.
 
     WHEN TO USE: When presenting collection overviews, analysis summaries,
     or when the user asks about key stats. Use after data is ready.
+
+    WHEN **NOT** TO USE: Already called this turn. The widget renders once
+    per turn — re-calling does nothing useful and gets blocked.
 
     Args:
         collection_id: Fetch stats for this collection (uses cached signature).
@@ -23,6 +30,14 @@ def show_metrics(
 
     Provide EITHER collection_id OR items, not both.
     """
+    # Per-turn guard: same pattern show_topics already enforces.
+    if already_called_this_turn(tool_context, "show_metrics"):
+        return {
+            "status": "noop",
+            "display": "metrics",
+            "message": "show_metrics was already called this turn — the widget is rendered. Don't call again.",
+        }
+
     if items:
         return {
             "status": "success",

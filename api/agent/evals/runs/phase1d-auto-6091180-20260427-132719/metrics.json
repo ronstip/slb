@@ -1,0 +1,79 @@
+{
+  "totals": {
+    "output_tokens": 15,
+    "tool_calls_total": 26,
+    "tool_calls_unique": 15,
+    "duplicate_action_count": 11,
+    "preamble_tokens": 0,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "mode": "autonomous",
+      "duration_s": 106.94,
+      "n_turns": 1,
+      "output_tokens": 15,
+      "text_events": 1,
+      "tool_calls_total": 26,
+      "tool_calls_unique": 15,
+      "duplicate_action_count": 11,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT ep.emotion, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.emotion ORDER BY count DESC",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT DATE(p.posted_at) as post_date, p.platform, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts` p\nJOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY post_date, p.platform ORDER BY post_date"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.sentiment, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.sentiment ORDER BY count DESC"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT theme, COUNT(*) as mentions,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme ORDER BY mentions DESC LIMIT 20"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.sentiment, p.platform, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.sentiment, p.platform ORDER BY count DESC"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "update_todos": 1,
+        "get_collection_stats": 1,
+        "execute_sql": 23,
+        "list_topics": 1
+      }
+    }
+  ],
+  "n_scenarios": 1
+}

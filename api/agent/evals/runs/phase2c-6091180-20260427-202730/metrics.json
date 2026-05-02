@@ -1,0 +1,162 @@
+{
+  "totals": {
+    "output_tokens": 362,
+    "tool_calls_total": 71,
+    "tool_calls_unique": 62,
+    "duplicate_action_count": 9,
+    "preamble_tokens": 0,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "mode": "autonomous",
+      "duration_s": 230.78,
+      "n_turns": 1,
+      "output_tokens": 332,
+      "text_events": 1,
+      "tool_calls_total": 20,
+      "tool_calls_unique": 19,
+      "duplicate_action_count": 1,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.sentiment, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.sentiment ORDER BY count DESC"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "list_topics": 1,
+        "execute_sql": 11,
+        "update_todos": 4,
+        "compose_dashboard": 1,
+        "generate_briefing": 1,
+        "compose_briefing": 1
+      }
+    },
+    {
+      "scenario_id": "autonomous-narrow-scope",
+      "mode": "autonomous",
+      "duration_s": 312.75,
+      "n_turns": 1,
+      "output_tokens": 15,
+      "text_events": 1,
+      "tool_calls_total": 26,
+      "tool_calls_unique": 21,
+      "duplicate_action_count": 5,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT theme, COUNT(*) as mentions,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND p.platform = 'tiktok'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme ORDER BY mentions DESC LIMIT 3",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT theme, COUNT(*) as mentions\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND p.platform = 'tiktok'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme\nORDER BY mentions DESC\nLIMIT 3",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT theme, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND p.platform = 'tiktok'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme\nORDER BY post_count DESC\nLIMIT 3"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "list_topics",
+          "args": {
+            "limit": 20
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "get_collection_stats",
+          "args": {
+            "collection_ids": [
+              "eval-collection-1"
+            ]
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "execute_sql": 13,
+        "list_topics": 2,
+        "get_collection_stats": 2,
+        "update_todos": 5,
+        "generate_briefing": 2,
+        "compose_briefing": 2
+      }
+    },
+    {
+      "scenario_id": "autonomous-recurring-trend",
+      "mode": "autonomous",
+      "duration_s": 352.26,
+      "n_turns": 1,
+      "output_tokens": 15,
+      "text_events": 1,
+      "tool_calls_total": 25,
+      "tool_calls_unique": 22,
+      "duplicate_action_count": 3,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT\n    DATE(p.posted_at) as post_date,\n    COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts` p\nWHERE p.collection_id = 'eval-collection-1'\nGROUP BY post_date\nORDER BY post_date DESC\nLIMIT 30\n"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT\n    DATE(p.posted_at) as post_date,\n    COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts` p\nWHERE p.collection_id = 'eval-collection-1'\nGROUP BY 1\nORDER BY 1 DESC\nLIMIT 30",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT \n    MIN(DATE(posted_at)) as min_date, \n    MAX(DATE(posted_at)) as max_date, \n    COUNT(*) as total_posts \nFROM `social-listening-pl.social_listening.posts`\nWHERE collection_id = 'eval-collection-1'"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "update_todos": 2,
+        "get_collection_stats": 1,
+        "execute_sql": 21,
+        "list_topics": 1
+      }
+    }
+  ],
+  "n_scenarios": 3
+}

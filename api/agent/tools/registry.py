@@ -29,7 +29,9 @@ from api.agent.tools.start_agent import start_agent
 from api.agent.tools.generate_briefing import generate_briefing
 from api.agent.tools.compose_briefing import compose_briefing
 from api.agent.tools.list_topics import list_topics
+from api.agent.tools.search_posts import search_posts
 from api.agent.tools.update_todos import update_todos
+from api.agent.tools.verify_briefing import verify_briefing
 
 AgentMode = Literal["chat", "autonomous"]
 
@@ -47,22 +49,23 @@ REGISTRY: dict[str, ToolSpec] = {
     spec.name: spec
     for spec in (
         # Planning
-        ToolSpec("update_todos", update_todos, "planning", True, "Update session todo list"),
+        ToolSpec("update_todos", update_todos, "planning", True, "Update session todo list (exactly one item in_progress at a time)"),
         # Agent management
-        ToolSpec("start_agent", start_agent, "agent", True, "Create and dispatch a new agent"),
+        ToolSpec("start_agent", start_agent, "agent", True, "Create and dispatch a new agent — call AFTER user approval"),
         ToolSpec("get_agent_status", get_agent_status, "agent", False, "Read the status of an agent"),
         ToolSpec("set_active_agent", set_active_agent, "agent", True, "Set the active agent for the session"),
         # Research & context
         ToolSpec("get_collection_details", get_collection_details, "data", False, "Fetch full details for a data source"),
-        ToolSpec("ask_user", ask_user, "user", True, "Prompt the user for structured input"),
+        ToolSpec("ask_user", ask_user, "user", True, "Prompt the user — only when genuinely ambiguous; otherwise pick a default and state it"),
         # Data context
         ToolSpec("get_collection_stats", get_collection_stats, "data", False, "Fetch data statistics and summary"),
+        ToolSpec("search_posts", search_posts, "data", False, "Find posts by content (string or regex). Use INSTEAD of execute_sql for 'find posts that mention X' — deterministic, fast, no SQL needed"),
         # Output & visualization
         ToolSpec("create_chart", create_chart, "reporting", False, "Generate a chart spec"),
         ToolSpec("export_data", export_data, "reporting", False, "Export posts as CSV"),
         ToolSpec("compose_email", compose_email, "reporting", True, "Compose an email artifact"),
-        ToolSpec("generate_dashboard", generate_dashboard, "reporting", True, "Generate a dashboard artifact with the default 17-widget template"),
-        ToolSpec("compose_dashboard", compose_dashboard, "reporting", True, "Publish a fully-custom dashboard with an agent-authored widget layout"),
+        ToolSpec("generate_dashboard", generate_dashboard, "reporting", True, "Default 17-widget overview dashboard — use when the user wants a generic 'open the data' view"),
+        ToolSpec("compose_dashboard", compose_dashboard, "reporting", True, "Custom dashboard with agent-authored widgets — use when the user asked for SOMETHING SPECIFIC"),
         ToolSpec("load_dashboard_layout", load_dashboard_layout, "data", False, "Read the persisted widget layout of an existing dashboard"),
         ToolSpec("validate_deck_plan", validate_deck_plan, "reporting", False, "Validate a presentation deck plan"),
         ToolSpec("generate_presentation", generate_presentation, "reporting", True, "Generate a slide presentation"),
@@ -70,8 +73,9 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("show_topics", show_topics, "reporting", False, "Display topic widgets in chat"),
         # Topics + briefing (compose phase)
         ToolSpec("list_topics", list_topics, "data", False, "List semantic clusters of posts with stats"),
-        ToolSpec("generate_briefing", generate_briefing, "reporting", True, "Persist the per-run reflection (state_of_the_world / open_threads / process_notes)"),
-        ToolSpec("compose_briefing", compose_briefing, "reporting", True, "Publish the user-facing briefing (hero + secondary + rail of topic/data stories) — exit tool"),
+        ToolSpec("generate_briefing", generate_briefing, "reporting", True, "Persist the agent's INTERNAL run reflection — call ONCE before verify_briefing"),
+        ToolSpec("verify_briefing", verify_briefing, "reporting", False, "Independently verify briefing claims against ground-truth data — call AFTER generate_briefing, BEFORE compose_briefing"),
+        ToolSpec("compose_briefing", compose_briefing, "reporting", True, "Publish the USER-FACING briefing — exit tool, call ONCE at end of run"),
     )
 }
 
@@ -82,7 +86,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
     "chat": {
         # Analysis & data
         "create_chart", "get_collection_stats", "get_collection_details",
-        "export_data", "list_topics", "load_dashboard_layout",
+        "export_data", "list_topics", "load_dashboard_layout", "search_posts",
         # Agent management (interactive)
         "start_agent", "set_active_agent", "get_agent_status",
         # User interaction
@@ -98,12 +102,12 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
     "autonomous": {
         # Analysis & data
         "create_chart", "get_collection_stats", "get_collection_details",
-        "export_data", "list_topics",
+        "export_data", "list_topics", "search_posts",
         # Planning & output
         "update_todos",
         "validate_deck_plan", "generate_presentation", "compose_email",
-        # Briefing (sequential exit: reflection → publication)
-        "generate_briefing", "compose_briefing",
+        # Briefing (sequential exit: reflection → verification → publication)
+        "generate_briefing", "verify_briefing", "compose_briefing",
     },
 }
 

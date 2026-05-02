@@ -1,0 +1,43 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 2,
+      "correctness": 4,
+      "one_line_critique": "The final summary is high-judgment and sharp, but the agent performed redundant and failing tool calls before responding."
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "conciseness": 1,
+      "tone": 2,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop of duplicate SQL queries and todo updates, failing to provide any answer."
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "conciseness": 1,
+      "tone": 2,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop of duplicate SQL queries and failed to acknowledge the dashboard created in the first turn."
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "conciseness": 4,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 4,
+      "one_line_critique": "Leads directly with the answer and uses sharp, comparative language, though it adds unnecessary speculation and failed multiple tool calls."
+    }
+  ],
+  "averages": {
+    "conciseness": 2.75,
+    "tone": 3.5,
+    "repetition": 2.25,
+    "correctness": 2.5
+  },
+  "n_judged": 4
+}

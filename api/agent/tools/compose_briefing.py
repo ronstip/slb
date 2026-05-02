@@ -19,6 +19,7 @@ from typing import Any
 from google.adk.tools import ToolContext
 from pydantic import ValidationError
 
+from api.agent.tools._idempotency import action_key, check_or_register
 from api.deps import get_bq, get_fs
 from api.routers.briefing import (
     compute_pulse,
@@ -101,6 +102,16 @@ def compose_briefing(
 ) -> dict:
     """Publish the agent-composed briefing as the user-facing artifact for this run.
 
+    WHEN TO USE: ONCE per autonomous run, as the FINAL action. Call AFTER
+    ``generate_briefing`` (the internal reflection) — this is the user-facing
+    publication. Returns successfully → run is complete; stop.
+
+    WHEN NOT TO USE:
+      - For in-progress drafts or intermediate updates — there is no draft state.
+      - Before ``generate_briefing`` — generate first (reflection), then compose.
+      - In chat mode for ad-hoc summaries — only call when the user explicitly
+        asks to refresh the briefing.
+
     REQUIRED FIELDS (validation WILL fail if any are missing):
 
       Topic story — type="topic":
@@ -167,6 +178,28 @@ def compose_briefing(
         return {
             "status": "error",
             "message": "No active agent in tool context — cannot publish briefing.",
+        }
+
+    # Idempotency: compose_briefing is the autonomous exit tool. The most
+    # common failure mode is the model calling it twice in the same run
+    # (which the autonomous baseline judge already flagged). An identical
+    # payload returns the existing artifact instead of re-publishing.
+    _idempo_key = action_key("compose_briefing", {
+        "agent_id": agent_id,
+        "hero": hero,
+        "secondary": secondary or [],
+        "rail": rail or [],
+        "editors_note": editors_note or "",
+    })
+    _existing = check_or_register(tool_context, _idempo_key, dry_run=True)
+    if _existing:
+        return {
+            "status": "duplicate",
+            "briefing_id": _existing["artifact_id"],
+            "message": (
+                "An identical briefing was already composed in this session — "
+                "the run already produced its exit artifact. Stop here."
+            ),
         }
 
     # Load topics early so we can self-heal topic stories the agent under-specified.
@@ -242,6 +275,9 @@ def compose_briefing(
         len(payload["secondary"]),
         len(payload["rail"]),
     )
+    # Register the artifact id (using agent_id as a stable handle since
+    # compose_briefing publishes to agents/{id}/briefings/latest).
+    check_or_register(tool_context, _idempo_key, artifact_id=f"briefing-{agent_id}")
 
     return {
         "status": "success",

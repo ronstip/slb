@@ -1,0 +1,43 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered an infinite loop of redundant SQL queries and failed to provide any response or show judgment."
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop of repetitive tool calls and failed to provide any answer to the second question."
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop of redundant tool calls and failed to acknowledge the dashboard it had already created."
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Leads directly with the answer using strong, evaluative language without unnecessary preamble or tool narration."
+    }
+  ],
+  "averages": {
+    "conciseness": 2.0,
+    "tone": 2.0,
+    "repetition": 2.0,
+    "correctness": 2.0
+  },
+  "n_judged": 4
+}

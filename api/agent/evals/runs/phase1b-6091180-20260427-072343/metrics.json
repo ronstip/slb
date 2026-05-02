@@ -1,0 +1,218 @@
+{
+  "totals": {
+    "output_tokens": 256,
+    "tool_calls_total": 79,
+    "tool_calls_unique": 38,
+    "duplicate_action_count": 41,
+    "preamble_tokens": 0,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "mode": "chat",
+      "duration_s": 98.17,
+      "n_turns": 1,
+      "output_tokens": 15,
+      "text_events": 1,
+      "tool_calls_total": 26,
+      "tool_calls_unique": 8,
+      "duplicate_action_count": 18,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT ep.sentiment, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'col_9876543210'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.sentiment ORDER BY count DESC",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT DATE(p.posted_at) as post_date, p.platform, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts` p\nJOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id\nWHERE p.collection_id = 'col_9876543210'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY post_date, p.platform ORDER BY post_date"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT entity, COUNT(*) as mentions\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.entities) entity\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'col_9876543210'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY entity ORDER BY mentions DESC LIMIT 10"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT entity, COUNT(*) as mentions,\n  SUM(pe.likes) as total_likes, SUM(pe.views) as total_views\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.entities) entity\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nLEFT JOIN `social-listening-pl.social_listening.post_engagements` pe ON p.post_id = pe.post_id\nWHERE p.collection_id = 'col_9876543210'\n  AND ep.is_related_to_task IS NOT FALSE\nQUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1\nGROUP BY entity ORDER BY mentions DESC LIMIT 10",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT ep.sentiment, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'col_9876543210'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.sentiment ORDER BY count DESC",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "execute_sql": 25
+      }
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "mode": "chat",
+      "duration_s": 210.97,
+      "n_turns": 2,
+      "output_tokens": 98,
+      "text_events": 2,
+      "tool_calls_total": 25,
+      "tool_calls_unique": 18,
+      "duplicate_action_count": 7,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT theme, COUNT(*) as mentions,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme ORDER BY mentions DESC LIMIT 3"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT \n  theme,\n  DATE_TRUNC(DATE(p.posted_at), WEEK) as post_week,\n  COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\n  AND theme IN ('product complaints', 'user tutorials', 'competitor mentions')\nGROUP BY theme, post_week\nORDER BY post_week ASC, theme ASC",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_agent_status": 1,
+        "execute_sql": 21,
+        "get_collection_stats": 1,
+        "update_todos": 2
+      }
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "mode": "chat",
+      "duration_s": 157.4,
+      "n_turns": 2,
+      "output_tokens": 72,
+      "text_events": 2,
+      "tool_calls_total": 26,
+      "tool_calls_unique": 10,
+      "duplicate_action_count": 16,
+      "duplicate_actions": [
+        {
+          "tool": "get_collection_stats",
+          "args": {
+            "collection_ids": [
+              "col_123_nike_launch_2026"
+            ]
+          },
+          "first_turn": 0,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.emotion, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'col_123_nike_launch_2026'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.emotion ORDER BY count DESC"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.channel_type, COUNT(*) as posts,\n  ROUND(AVG(COALESCE(pe.likes, 0)), 1) as avg_likes,\n  ROUND(AVG(COALESCE(pe.views, 0)), 1) as avg_views\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nLEFT JOIN `social-listening-pl.social_listening.post_engagements` pe ON p.post_id = pe.post_id\nWHERE p.collection_id = 'col_123_nike_launch_2026'\n  AND ep.is_related_to_task IS NOT FALSE\nQUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1\nGROUP BY ep.channel_type ORDER BY posts DESC"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.emotion, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'col_123_nike_launch_2026'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.emotion ORDER BY count DESC"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.emotion, COUNT(*) as count\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'col_123_nike_launch_2026'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.emotion ORDER BY count DESC"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT DATE(p.posted_at) as post_date, p.platform, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts` p\nJOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id\nWHERE p.collection_id = 'col_123_nike_launch_2026'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY post_date, p.platform ORDER BY post_date"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT ep.channel_type, COUNT(*) as posts,\n  ROUND(AVG(COALESCE(pe.likes, 0)), 1) as avg_likes\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nLEFT JOIN `social-listening-pl.social_listening.post_engagements` pe ON p.post_id = pe.post_id\nWHERE p.collection_id = 'col_123_nike_launch_2026'\n  AND ep.is_related_to_task IS NOT FALSE\nQUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1\nGROUP BY ep.channel_type ORDER BY posts DESC",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 2,
+        "compose_dashboard": 1,
+        "execute_sql": 23
+      }
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "mode": "chat",
+      "duration_s": 21.87,
+      "n_turns": 1,
+      "output_tokens": 71,
+      "text_events": 1,
+      "tool_calls_total": 2,
+      "tool_calls_unique": 2,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_agent_status": 1,
+        "execute_sql": 1
+      }
+    }
+  ],
+  "n_scenarios": 4
+}

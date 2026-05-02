@@ -1,0 +1,35 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "conciseness": 2,
+      "tone": 5,
+      "repetition": 1,
+      "correctness": 2,
+      "one_line_critique": "Extreme redundancy in SQL queries and todo updates; used two different briefing tools for one task, showing poor tool efficiency."
+    },
+    {
+      "scenario_id": "autonomous-narrow-scope",
+      "conciseness": 1,
+      "tone": 3,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop, repeatedly executing redundant SQL queries and ignoring system errors regarding task completion status."
+    },
+    {
+      "scenario_id": "autonomous-recurring-trend",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop of redundant SQL queries, failing to identify deltas or complete the briefing."
+    }
+  ],
+  "averages": {
+    "conciseness": 1.33,
+    "tone": 3.0,
+    "repetition": 1.0,
+    "correctness": 1.33
+  },
+  "n_judged": 3
+}

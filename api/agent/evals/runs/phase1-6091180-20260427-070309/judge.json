@@ -1,0 +1,43 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 1,
+      "correctness": 2,
+      "one_line_critique": "Final response is professional and shows great judgment, but the logic is marred by thirteen redundant, identical tool calls."
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "conciseness": 1,
+      "tone": 2,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop of 25 redundant tool calls and failed to answer the follow-up question."
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop, repeating the same queries 25 times without ever creating the requested dashboard."
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "conciseness": 2,
+      "tone": 3,
+      "repetition": 1,
+      "correctness": 4,
+      "one_line_critique": "The agent provided the correct answer but executed the same SQL query three times and ended with generic filler text."
+    }
+  ],
+  "averages": {
+    "conciseness": 2.25,
+    "tone": 2.75,
+    "repetition": 1.0,
+    "correctness": 2.0
+  },
+  "n_judged": 4
+}

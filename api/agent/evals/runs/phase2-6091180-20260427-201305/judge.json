@@ -1,0 +1,35 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "conciseness": 1,
+      "tone": 3,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a severe execution loop, repeating identical tool calls and SQL queries until hitting both budget limits and the harness cap."
+    },
+    {
+      "scenario_id": "autonomous-narrow-scope",
+      "conciseness": 2,
+      "tone": 4,
+      "repetition": 1,
+      "correctness": 2,
+      "one_line_critique": "The agent repeatedly ignored duplicate SQL warnings and violated the TikTok-only scope by analyzing and reporting Reddit data."
+    },
+    {
+      "scenario_id": "autonomous-recurring-trend",
+      "conciseness": 4,
+      "tone": 5,
+      "repetition": 2,
+      "correctness": 2,
+      "one_line_critique": "Strong analytical tone and delta focus, but hallucinated specific metrics after hitting query limits with repetitive, inefficient SQL attempts."
+    }
+  ],
+  "averages": {
+    "conciseness": 2.33,
+    "tone": 4.0,
+    "repetition": 1.33,
+    "correctness": 1.67
+  },
+  "n_judged": 3
+}

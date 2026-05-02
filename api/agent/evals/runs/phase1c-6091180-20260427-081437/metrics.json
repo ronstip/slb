@@ -1,0 +1,148 @@
+{
+  "totals": {
+    "output_tokens": 993,
+    "tool_calls_total": 45,
+    "tool_calls_unique": 39,
+    "duplicate_action_count": 6,
+    "preamble_tokens": 0,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "mode": "chat",
+      "duration_s": 37.62,
+      "n_turns": 1,
+      "output_tokens": 352,
+      "text_events": 1,
+      "tool_calls_total": 4,
+      "tool_calls_unique": 3,
+      "duplicate_action_count": 1,
+      "duplicate_actions": [
+        {
+          "tool": "list_topics",
+          "args": {
+            "sample_posts_per_topic": 3,
+            "limit": 20
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "list_topics": 2,
+        "get_agent_status": 1,
+        "get_collection_stats": 1
+      }
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "mode": "chat",
+      "duration_s": 178.42,
+      "n_turns": 2,
+      "output_tokens": 158,
+      "text_events": 2,
+      "tool_calls_total": 26,
+      "tool_calls_unique": 23,
+      "duplicate_action_count": 3,
+      "duplicate_actions": [
+        {
+          "tool": "update_todos",
+          "args": {
+            "todos": "[\n    {\"id\": \"1\", \"content\": \"Query daily volume for top 3 themes\", \"status\": \"in_progress\"},\n    {\"id\": \"2\", \"content\": \"Analyze growth trends and identify the fastest growing theme\", \"status\": \"pending\"}\n]"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "update_todos",
+          "args": {
+            "todos": "[\n    {\"id\": \"1\", \"content\": \"Query volume for top 3 themes over last 14 days\", \"status\": \"in_progress\"},\n    {\"id\": \"2\", \"content\": \"Calculate growth rates (last 7 days vs previous 7)\", \"status\": \"pending\"},\n    {\"id\": \"3\", \"content\": \"Visualize trend and report fastest grower\", \"status\": \"pending\"}\n]"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "WITH theme_stats AS (\n  SELECT\n    theme,\n    CASE\n      WHEN DATE(p.posted_at) BETWEEN '2026-04-14' AND '2026-04-20' THEN 'previous'\n      WHEN DATE(p.posted_at) BETWEEN '2026-04-21' AND '2026-04-27' THEN 'current'\n    END as period,\n    COUNT(*) as post_count\n  FROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\n  JOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\n  WHERE p.collection_id = 'eval-collection-1'\n    AND theme IN ('product complaints', 'user tutorials', 'competitor mentions')\n    AND ep.is_related_to_task IS NOT FALSE\n    AND DATE(p.posted_at) BETWEEN '2026-04-14' AND '2026-04-27'\n  GROUP BY 1, 2\n)\nSELECT\n  theme,\n  MAX(CASE WHEN period = 'previous' THEN post_count ELSE 0 END) as previous_posts,\n  MAX(CASE WHEN period = 'current' THEN post_count ELSE 0 END) as current_posts,\n  CASE\n    WHEN MAX(CASE WHEN period = 'previous' THEN post_count ELSE 0 END) = 0 THEN 100.0\n    ELSE ROUND(((MAX(CASE WHEN period = 'current' THEN post_count ELSE 0 END) - MAX(CASE WHEN period = 'previous' THEN post_count ELSE 0 END)) * 100.0 / MAX(CASE WHEN period = 'previous' THEN post_count ELSE 0 END)), 1)\n  END as growth_pct\nFROM theme_stats\nGROUP BY 1\nORDER BY growth_pct DESC"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "list_topics": 1,
+        "update_todos": 10,
+        "execute_sql": 14,
+        "get_agent_status": 1
+      }
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "mode": "chat",
+      "duration_s": 280.85,
+      "n_turns": 2,
+      "output_tokens": 338,
+      "text_events": 2,
+      "tool_calls_total": 11,
+      "tool_calls_unique": 9,
+      "duplicate_action_count": 2,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT entity, COUNT(*) as mentions,\n  SUM(pe.likes) as total_likes, SUM(pe.views) as total_views\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.entities) entity\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nLEFT JOIN `social-listening-pl.social_listening.post_engagements` pe ON p.post_id = pe.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nQUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1\nGROUP BY entity ORDER BY mentions DESC LIMIT 10",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.channel_type, COUNT(*) as posts,\n  ROUND(AVG(COALESCE(pe.likes, 0)), 1) as avg_likes,\n  ROUND(AVG(COALESCE(pe.views, 0)), 1) as avg_views\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nLEFT JOIN `social-listening-pl.social_listening.post_engagements` pe ON p.post_id = pe.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nQUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1\nGROUP BY ep.channel_type ORDER BY posts DESC"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "list_topics": 1,
+        "get_agent_status": 1,
+        "get_collection_stats": 1,
+        "execute_sql": 6,
+        "compose_dashboard": 1,
+        "generate_dashboard": 1
+      }
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "mode": "chat",
+      "duration_s": 50.2,
+      "n_turns": 1,
+      "output_tokens": 145,
+      "text_events": 2,
+      "tool_calls_total": 4,
+      "tool_calls_unique": 4,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "execute_sql": 2,
+        "get_agent_status": 1,
+        "create_chart": 1
+      }
+    }
+  ],
+  "n_scenarios": 4
+}

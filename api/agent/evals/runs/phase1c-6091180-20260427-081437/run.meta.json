@@ -1,0 +1,13 @@
+{
+  "label": "phase1c",
+  "git_sha": "6091180",
+  "timestamp": "20260427-081437",
+  "live": false,
+  "model": null,
+  "scenarios": [
+    "simple-q-engagement",
+    "repeat-dashboard",
+    "ambiguous-data-overview",
+    "chat-followup-no-restate"
+  ]
+}

@@ -367,6 +367,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
     from api.services.artifact_service import persist_event_artifacts
     tool_start_times: dict[str, float] = {}
     event_count = 0
+    tool_call_counts: dict[str, int] = {}
     async for event in runner.run_async(
         user_id=user_id,
         session_id=session_id,
@@ -375,6 +376,19 @@ async def _async_agent_continuation(agent_id: str) -> None:
     ):
         event_count += 1
         _emit_activity(fs, agent_id, event, tool_start_times)
+        # Track which tools the model actually invoked. Used after the loop
+        # to detect silent termination (e.g. model returned final text without
+        # ever calling `compose_briefing`).
+        try:
+            content_obj = getattr(event, "content", None)
+            parts = getattr(content_obj, "parts", None) if content_obj else None
+            if parts:
+                for part in parts:
+                    fc = getattr(part, "function_call", None)
+                    if fc and getattr(fc, "name", None):
+                        tool_call_counts[fc.name] = tool_call_counts.get(fc.name, 0) + 1
+        except Exception:
+            logger.exception("Tool-call tracking failed for agent %s", agent_id)
         try:
             created = persist_event_artifacts(
                 event, user_id, org_id, session_id, agent_id=agent_id,
@@ -389,8 +403,40 @@ async def _async_agent_continuation(agent_id: str) -> None:
                 "Per-event artifact persist failed for agent %s", agent_id,
             )
 
-    logger.info("Agent %s: continuation completed with %d events", agent_id, event_count)
+    logger.info(
+        "Agent %s: continuation completed with %d events, tool calls: %s",
+        agent_id, event_count, tool_call_counts,
+    )
     fs.add_agent_log(agent_id, "Analysis agent completed", source="continuation")
+
+    # Detect silent termination: the executor MUST end with `compose_briefing`
+    # (the autonomous prompt's exit tool). If the loop ended without it being
+    # called, the model returned text instead of calling the publish tool —
+    # the run produced no user-facing briefing. Mark this as a failure with
+    # a clear, actionable summary so the UI shows an error and the user can
+    # resume manually rather than silently believing the run succeeded.
+    if not tool_call_counts.get("compose_briefing"):
+        called = sorted(tool_call_counts) or ["(none)"]
+        summary = (
+            "Run ended without calling `compose_briefing` — no user-facing "
+            "briefing was published. The model finished the loop with a text "
+            "response instead of completing the generate → verify → compose "
+            f"sequence. Tools called this run: {', '.join(called)}. "
+            "Use Resume to retry."
+        )
+        logger.warning("Agent %s: %s", agent_id, summary)
+        fs.add_agent_log(
+            agent_id,
+            "Run ended without compose_briefing — see context_summary",
+            source="continuation", level="error",
+        )
+        fs.update_agent(
+            agent_id,
+            status="failed",
+            completed_at=datetime.now(timezone.utc),
+            context_summary=summary,
+        )
+        return
 
     # Mark all remaining todos as completed
     agent = fs.get_agent(agent_id)  # re-read in case agent updated during run

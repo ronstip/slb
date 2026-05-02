@@ -1,0 +1,13 @@
+{
+  "label": "baseline",
+  "git_sha": "6091180",
+  "timestamp": "20260426-215903",
+  "live": false,
+  "model": null,
+  "scenarios": [
+    "simple-q-engagement",
+    "repeat-dashboard",
+    "ambiguous-data-overview",
+    "chat-followup-no-restate"
+  ]
+}

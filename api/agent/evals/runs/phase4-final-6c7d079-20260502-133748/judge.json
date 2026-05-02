@@ -1,0 +1,43 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "conciseness": 4,
+      "tone": 5,
+      "repetition": 2,
+      "correctness": 3,
+      "one_line_critique": "Highly efficient turn usage, but failed to call the specific dashboard tool and repeated data already present in the artifacts."
+    },
+    {
+      "scenario_id": "autonomous-narrow-scope",
+      "conciseness": 4,
+      "tone": 5,
+      "repetition": 4,
+      "correctness": 4,
+      "one_line_critique": "The agent followed the briefing workflow perfectly but failed the narrow-scope constraint by querying and receiving Reddit data."
+    },
+    {
+      "scenario_id": "autonomous-recurring-trend",
+      "conciseness": 4,
+      "tone": 2,
+      "repetition": 5,
+      "correctness": 2,
+      "one_line_critique": "The agent failed to report specific numeric deltas, instead providing absolute values and a generic summary that ignored the requested change-focused analysis."
+    },
+    {
+      "scenario_id": "autonomous-verifier-catches-bad-claim",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 4,
+      "correctness": 5,
+      "one_line_critique": "Excellent adherence to the verification workflow, successfully correcting claims after a FAIL verdict without external intervention."
+    }
+  ],
+  "averages": {
+    "conciseness": 4.25,
+    "tone": 4.25,
+    "repetition": 3.75,
+    "correctness": 3.5
+  },
+  "n_judged": 4
+}

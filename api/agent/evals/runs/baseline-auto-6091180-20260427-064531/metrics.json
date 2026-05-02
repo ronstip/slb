@@ -1,0 +1,36 @@
+{
+  "totals": {
+    "output_tokens": 366,
+    "tool_calls_total": 16,
+    "tool_calls_unique": 16,
+    "duplicate_action_count": 0,
+    "preamble_tokens": 0,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "mode": "autonomous",
+      "duration_s": 80.47,
+      "n_turns": 1,
+      "output_tokens": 366,
+      "text_events": 1,
+      "tool_calls_total": 16,
+      "tool_calls_unique": 16,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "update_todos": 4,
+        "get_collection_stats": 1,
+        "execute_sql": 7,
+        "list_topics": 1,
+        "compose_dashboard": 1,
+        "generate_briefing": 1,
+        "compose_briefing": 1
+      }
+    }
+  ],
+  "n_scenarios": 1
+}

@@ -1,0 +1,136 @@
+{
+  "totals": {
+    "output_tokens": 2452,
+    "tool_calls_total": 75,
+    "tool_calls_unique": 10,
+    "duplicate_action_count": 65,
+    "preamble_tokens": 199,
+    "restated_tokens_estimate": 408
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "mode": "chat",
+      "duration_s": 10.41,
+      "n_turns": 1,
+      "output_tokens": 150,
+      "text_events": 1,
+      "tool_calls_total": 0,
+      "tool_calls_unique": 0,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 150,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {}
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "mode": "chat",
+      "duration_s": 144.41,
+      "n_turns": 1,
+      "output_tokens": 451,
+      "text_events": 23,
+      "tool_calls_total": 25,
+      "tool_calls_unique": 4,
+      "duplicate_action_count": 21,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT collection_id FROM `social-listening-pl.social_listening.collections` WHERE session_id = 'session_id' ORDER BY created_at DESC LIMIT 1",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT collection_id \nFROM `social-listening-pl.social_listening.collections` \nWHERE session_id = 'session_id' \nORDER BY created_at DESC \nLIMIT 1",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT collection_id, original_question \nFROM `social-listening-pl.social_listening.collections` \nWHERE session_id = 'session_id' \nORDER BY created_at DESC \nLIMIT 1"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 90,
+      "tools_by_name": {
+        "execute_sql": 25
+      }
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "mode": "chat",
+      "duration_s": 136.17,
+      "n_turns": 1,
+      "output_tokens": 1183,
+      "text_events": 26,
+      "tool_calls_total": 25,
+      "tool_calls_unique": 2,
+      "duplicate_action_count": 23,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT collection_id, original_question \nFROM `social-listening-pl.social_listening.collections` \nWHERE session_id = 'session_id' \nORDER BY created_at DESC \nLIMIT 1"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 49,
+      "restated_tokens_estimate": 177,
+      "tools_by_name": {
+        "execute_sql": 25
+      }
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "mode": "chat",
+      "duration_s": 133.58,
+      "n_turns": 1,
+      "output_tokens": 668,
+      "text_events": 24,
+      "tool_calls_total": 25,
+      "tool_calls_unique": 4,
+      "duplicate_action_count": 21,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "query": "SELECT collection_id FROM `social-listening-pl.social_listening.collections` WHERE user_id = 'user_id' ORDER BY created_at DESC LIMIT 1",
+            "project_id": "social-listening-pl"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT collection_id, original_question \nFROM `social-listening-pl.social_listening.collections` \nWHERE user_id = 'user_id' \nORDER BY created_at DESC \nLIMIT 1"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 141,
+      "tools_by_name": {
+        "execute_sql": 25
+      }
+    }
+  ],
+  "n_scenarios": 4
+}

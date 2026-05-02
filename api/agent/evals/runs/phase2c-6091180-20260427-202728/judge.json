@@ -1,0 +1,43 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a runaway loop of redundant tool calls and failed to provide any response to the user."
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a runaway loop of 25+ redundant tool calls and failed to provide any answer to the follow-up question."
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "conciseness": 1,
+      "tone": 3,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop of redundant SQL queries after generating the dashboard, failing to provide a final response."
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "conciseness": 4,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Leads directly with the answer without preamble, though the second paragraph adds slightly more context than strictly requested."
+    }
+  ],
+  "averages": {
+    "conciseness": 1.75,
+    "tone": 2.5,
+    "repetition": 2.0,
+    "correctness": 2.0
+  },
+  "n_judged": 4
+}

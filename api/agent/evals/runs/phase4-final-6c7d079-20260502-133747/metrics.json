@@ -1,0 +1,107 @@
+{
+  "totals": {
+    "output_tokens": 513,
+    "tool_calls_total": 18,
+    "tool_calls_unique": 18,
+    "duplicate_action_count": 0,
+    "preamble_tokens": 51,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "mode": "chat",
+      "duration_s": 15.62,
+      "n_turns": 1,
+      "output_tokens": 146,
+      "text_events": 1,
+      "tool_calls_total": 2,
+      "tool_calls_unique": 2,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "list_topics": 1
+      }
+    },
+    {
+      "scenario_id": "chat-bare-greeting",
+      "mode": "chat",
+      "duration_s": 5.58,
+      "n_turns": 1,
+      "output_tokens": 51,
+      "text_events": 1,
+      "tool_calls_total": 0,
+      "tool_calls_unique": 0,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 51,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {}
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "mode": "chat",
+      "duration_s": 60.61,
+      "n_turns": 2,
+      "output_tokens": 166,
+      "text_events": 2,
+      "tool_calls_total": 8,
+      "tool_calls_unique": 8,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_agent_status": 1,
+        "get_collection_stats": 1,
+        "execute_sql": 3,
+        "list_topics": 1,
+        "search_posts": 2
+      }
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "mode": "chat",
+      "duration_s": 51.33,
+      "n_turns": 2,
+      "output_tokens": 63,
+      "text_events": 2,
+      "tool_calls_total": 5,
+      "tool_calls_unique": 5,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "list_topics": 1,
+        "execute_sql": 1,
+        "get_collection_stats": 1,
+        "compose_dashboard": 1,
+        "generate_dashboard": 1
+      }
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "mode": "chat",
+      "duration_s": 31.85,
+      "n_turns": 1,
+      "output_tokens": 87,
+      "text_events": 1,
+      "tool_calls_total": 3,
+      "tool_calls_unique": 3,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "execute_sql": 1,
+        "create_chart": 1
+      }
+    }
+  ],
+  "n_scenarios": 5
+}
