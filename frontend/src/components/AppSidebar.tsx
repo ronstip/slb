@@ -58,7 +58,7 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer' | 'settings';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer' | 'settings' | 'topics';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
