@@ -593,8 +593,8 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                 {displayTask.context?.mission
                   || displayTask.context_summary
                   || displayTask.title
-                  + (displayTask.data_scope?.searches?.length
-                    ? ` — ${displayTask.data_scope.searches.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`
+                  + (displayTask.data_scope?.sources?.length
+                    ? ` — ${displayTask.data_scope.sources.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`
                     : '')}
               </div>
             </div>

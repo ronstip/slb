@@ -5,7 +5,7 @@ import { getMultiCollectionPosts } from '../../../../../api/endpoints/feed.ts';
 import { getCollectionStatus } from '../../../../../api/endpoints/collections.ts';
 import { mediaUrl } from '../../../../../api/client.ts';
 import type { FeedPost } from '../../../../../api/types.ts';
-import type { SearchDef } from '../../../../../api/endpoints/agents.ts';
+import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { PlatformIcon } from '../../../../../components/PlatformIcon.tsx';
 import { formatNumber, timeAgo } from '../../../../../lib/format.ts';
 import { cn } from '../../../../../lib/utils.ts';
@@ -14,7 +14,7 @@ import { computeWindowStart } from './overview-filters.ts';
 interface LivePostStreamProps {
   collectionIds: string[];
   isAgentRunning: boolean;
-  searches?: SearchDef[];
+  sources?: Source[];
   agentCreatedAt: string | undefined;
   onOpenData: () => void;
 }
@@ -22,7 +22,7 @@ interface LivePostStreamProps {
 export function LivePostStream({
   collectionIds,
   isAgentRunning,
-  searches,
+  sources,
   agentCreatedAt,
   onOpenData,
 }: LivePostStreamProps) {
@@ -30,8 +30,8 @@ export function LivePostStream({
   const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
 
   const startDate = useMemo(
-    () => computeWindowStart(searches, agentCreatedAt).startDate,
-    [searches, agentCreatedAt],
+    () => computeWindowStart(sources, agentCreatedAt).startDate,
+    [sources, agentCreatedAt],
   );
 
   // Count must match what the grid below renders: in time-range AND task-relevant.

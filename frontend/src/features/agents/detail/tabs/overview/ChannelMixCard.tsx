@@ -12,13 +12,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../../../../../components/ui/tooltip.tsx';
-import type { SearchDef } from '../../../../../api/endpoints/agents.ts';
+import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { useOverviewDashboardData } from './useOverviewDashboardData.ts';
 
 interface ChannelMixCardProps {
   collectionIds: string[];
   isAgentRunning: boolean;
-  searches?: SearchDef[];
+  sources?: Source[];
   agentCreatedAt: string | undefined;
   onOpenData: () => void;
 }
@@ -26,13 +26,13 @@ interface ChannelMixCardProps {
 export function ChannelMixCard({
   collectionIds,
   isAgentRunning,
-  searches,
+  sources,
   agentCreatedAt,
   onOpenData,
 }: ChannelMixCardProps) {
   const { posts, isLoading } = useOverviewDashboardData(
     collectionIds,
-    searches,
+    sources,
     isAgentRunning,
     agentCreatedAt,
   );

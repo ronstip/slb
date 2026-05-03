@@ -3,13 +3,13 @@ import { Tag } from 'lucide-react';
 import { aggregateEntities } from '../../../../studio/dashboard/dashboard-aggregations.ts';
 import { EntityTable } from '../../../../studio/charts/EntityTable.tsx';
 import type { EntitySummary } from '../../../../../api/types.ts';
-import type { SearchDef } from '../../../../../api/endpoints/agents.ts';
+import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { useOverviewDashboardData } from './useOverviewDashboardData.ts';
 
 interface EntitiesCardProps {
   collectionIds: string[];
   isAgentRunning: boolean;
-  searches?: SearchDef[];
+  sources?: Source[];
   agentCreatedAt: string | undefined;
   onOpenData: () => void;
 }
@@ -17,13 +17,13 @@ interface EntitiesCardProps {
 export function EntitiesCard({
   collectionIds,
   isAgentRunning,
-  searches,
+  sources,
   agentCreatedAt,
   onOpenData,
 }: EntitiesCardProps) {
   const { posts, isLoading } = useOverviewDashboardData(
     collectionIds,
-    searches,
+    sources,
     isAgentRunning,
     agentCreatedAt,
   );

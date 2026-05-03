@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../../../components/ui/dropdown-menu.tsx';
 import type { CustomFieldDef } from '../../../../../api/types.ts';
-import type { SearchDef } from '../../../../../api/endpoints/agents.ts';
+import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { useOverviewDashboardData } from './useOverviewDashboardData.ts';
 
 type TrendMetric = 'volume' | 'sentiment' | 'engagement';
@@ -53,7 +53,7 @@ interface TrendCardProps {
   collectionIds: string[];
   isAgentRunning: boolean;
   customFields?: CustomFieldDef[] | null;
-  searches?: SearchDef[];
+  sources?: Source[];
   agentCreatedAt: string | undefined;
 }
 
@@ -62,7 +62,7 @@ export function TrendCard({
   collectionIds,
   isAgentRunning,
   customFields,
-  searches,
+  sources,
   agentCreatedAt,
 }: TrendCardProps) {
   const [metric, setMetric] = useState<TrendMetric>(() => loadMetric(agentId));
@@ -83,7 +83,7 @@ export function TrendCard({
 
   const { posts, window, isLoading } = useOverviewDashboardData(
     collectionIds,
-    searches,
+    sources,
     isAgentRunning,
     agentCreatedAt,
   );

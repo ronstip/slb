@@ -1,6 +1,6 @@
 import { PLATFORM_LABELS, buildScheduleString, formatSchedule } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
-import type { Constitution, CreateFromWizardPayload, SourceOverride } from '../../../api/endpoints/agents.ts';
+import type { Constitution, CreateFromWizardPayload, Source } from '../../../api/endpoints/agents.ts';
 
 function intervalHoursToSchedule(hours: number, time: string): string {
   if (hours < 24) return buildScheduleString('hour', hours, time);
@@ -113,24 +113,26 @@ export function buildWizardRequestBody(
   constitution?: Constitution,
   startRun: boolean = true,
 ): CreateFromWizardPayload {
-  // Build searches array. The wizard sets shared defaults; per_source entries
-  // start with override=false so each platform inherits those defaults until
-  // the user flips it in Settings → Data Sources.
-  const searches: CreateFromWizardPayload['searches'] = [];
+  // Wizard creates one Source per selected platform — same shared defaults
+  // baked into each. Users can later edit each source independently in
+  // Settings → Data Sources, or add additional sources for the same platform
+  // (e.g. two Twitter sources with different keywords / quotas).
+  const sources: Source[] = [];
   if (collection.newCollectionEnabled && collection.platforms.length > 0) {
-    const perSource: Record<string, SourceOverride> = {};
+    const platformCount = collection.platforms.length;
+    const perSourcePosts = collection.nPosts
+      ? Math.round(collection.nPosts / platformCount)
+      : 0;
     for (const platform of collection.platforms) {
-      perSource[platform] = { override: false };
+      sources.push({
+        platform,
+        keywords: [...collection.keywords],
+        ...(collection.channelUrls.length > 0 ? { channels: [...collection.channelUrls] } : {}),
+        time_range_days: collection.timeRangeDays,
+        geo_scope: collection.geoScope,
+        n_posts: perSourcePosts,
+      });
     }
-    searches.push({
-      platforms: collection.platforms,
-      keywords: collection.keywords,
-      ...(collection.channelUrls.length > 0 ? { channels: collection.channelUrls } : {}),
-      time_range_days: collection.timeRangeDays,
-      geo_scope: collection.geoScope,
-      n_posts: collection.nPosts,
-      per_source: perSource,
-    });
   }
 
   // Build schedule for recurring tasks
@@ -157,7 +159,7 @@ export function buildWizardRequestBody(
     title: title.trim() || 'New agent',
     description: description.trim(),
     agent_type: task.taskType === 'recurring' ? 'recurring' : 'one_shot',
-    searches,
+    sources,
     schedule,
     custom_fields: customFields,
     enrichment_context: collection.enrichmentContext.trim() || undefined,

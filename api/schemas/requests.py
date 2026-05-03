@@ -107,6 +107,11 @@ class CreateFromWizardRequest(BaseModel):
     title: str
     description: str = ""
     agent_type: str = "one_shot"
+    # New flat shape — preferred. Each source is one platform with its own
+    # keywords / n_posts / time_range / geo / channels.
+    sources: list[dict] = []
+    # Legacy shape — accepted for backward compat with old clients. Server
+    # normalizes either field into `data_scope.sources` before persisting.
     searches: list[dict] = []
     schedule: dict | None = None
     custom_fields: list[dict] | None = None
@@ -133,7 +138,7 @@ class UpdateCollectionRequest(BaseModel):
 
 
 class RunSourcesRequest(BaseModel):
-    # If both omitted: run every source on the agent. If both set: run that
-    # specific (search_idx, platform) pair only.
-    search_idx: int | None = None
+    # Targeting: pass `source_idx` for a single card, `platform` to refresh
+    # every card on that platform, or omit both to refresh all sources.
+    source_idx: int | None = None
     platform: str | None = None

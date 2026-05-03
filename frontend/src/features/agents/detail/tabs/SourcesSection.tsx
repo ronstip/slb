@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { Agent, SearchDef } from '../../../../api/endpoints/agents.ts';
+import type { Agent, Source } from '../../../../api/endpoints/agents.ts';
 import { runAgentSources } from '../../../../api/endpoints/agents.ts';
 import { refreshCollectionStats } from '../../../../api/endpoints/collections.ts';
 import { PLATFORM_COLORS, PLATFORM_LABELS } from '../../../../lib/constants.ts';
@@ -33,50 +33,34 @@ import {
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { cn } from '../../../../lib/utils.ts';
 
-interface FlatSource {
-  platform: string;
-  search: SearchDef;
-  searchIdx: number;
-  effective: {
-    keywords: string[];
-    channels?: string[];
-    n_posts: number;
-    geo_scope: string;
-    time_range_days: number;
-    isOverridden: boolean;
-  };
+interface SourceRow {
+  source: Source;
+  sourceIdx: number;
   key: string;
 }
 
+interface PlatformRollup {
+  platform: string;
+  sourceCount: number;
+  targetPosts: number;
+  combinedKeywords: string[];
+  combinedChannels: string[];
+  isAnyChannelBased: boolean;
+  maxTimeRangeDays: number;
+}
+
 type PendingRun =
-  | { kind: 'one'; searchIdx: number; platform: string }
+  | { kind: 'one'; sourceIdx: number; label: string }
+  | { kind: 'platform'; platform: string; label: string }
   | { kind: 'all' }
   | null;
 
 type SourceTab = 'summary' | 'files' | string;
 
-function resolveEffective(search: SearchDef, platform: string) {
-  const platformCount = Math.max(search.platforms.length, 1);
-  const defaultSplit = search.n_posts ? Math.round(search.n_posts / platformCount) : 0;
-  const src = search.per_source?.[platform];
-  if (src?.override) {
-    return {
-      keywords: src.keywords ?? search.keywords,
-      channels: src.channels ?? search.channels,
-      n_posts: src.n_posts ?? defaultSplit,
-      geo_scope: src.geo_scope ?? search.geo_scope,
-      time_range_days: src.time_range_days ?? search.time_range_days,
-      isOverridden: true,
-    };
-  }
-  return {
-    keywords: search.keywords,
-    channels: search.channels,
-    n_posts: defaultSplit,
-    geo_scope: search.geo_scope,
-    time_range_days: search.time_range_days,
-    isOverridden: false,
-  };
+function previewList(items: string[], cap: number): string {
+  if (items.length === 0) return '—';
+  if (items.length <= cap) return items.join(', ');
+  return `${items.slice(0, cap).join(', ')}, +${items.length - cap}`;
 }
 
 function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatforms?: () => void }) {
@@ -85,46 +69,72 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
   const [pendingRun, setPendingRun] = useState<PendingRun>(null);
   const [isRunning, setIsRunning] = useState(false);
   const queryClient = useQueryClient();
-  const searches = task.data_scope?.searches ?? [];
+  const sources = task.data_scope?.sources ?? [];
 
-  // Explode SearchDefs into per-platform rows. Reference-stable across renders
-  // so downstream memos don't invalidate just because `task` changed elsewhere.
-  const flatSources = useMemo<FlatSource[]>(() => {
-    const out: FlatSource[] = [];
-    for (let i = 0; i < searches.length; i++) {
-      const search = searches[i];
-      for (const platform of search.platforms) {
-        out.push({
-          platform,
-          search,
-          searchIdx: i,
-          effective: resolveEffective(search, platform),
-          key: `${i}-${platform}`,
+  // Stable per-source rows for the platform-tab drill-down view.
+  const sourceRows = useMemo<SourceRow[]>(
+    () =>
+      sources.map((source, idx) => ({
+        source,
+        sourceIdx: idx,
+        key: `${idx}-${source.platform}`,
+      })),
+    [sources],
+  );
+
+  // Per-platform aggregates for the summary table (sums quotas, merges keywords).
+  const platformRollups = useMemo<PlatformRollup[]>(() => {
+    const byPlatform = new Map<string, PlatformRollup>();
+    for (const { source } of sourceRows) {
+      const existing = byPlatform.get(source.platform);
+      const keywords = source.keywords ?? [];
+      const channels = source.channels ?? [];
+      if (!existing) {
+        byPlatform.set(source.platform, {
+          platform: source.platform,
+          sourceCount: 1,
+          targetPosts: source.n_posts || 0,
+          combinedKeywords: [...new Set(keywords)],
+          combinedChannels: [...new Set(channels)],
+          isAnyChannelBased: channels.length > 0,
+          maxTimeRangeDays: source.time_range_days || 0,
         });
+      } else {
+        existing.sourceCount += 1;
+        existing.targetPosts += source.n_posts || 0;
+        for (const k of keywords) {
+          if (!existing.combinedKeywords.includes(k)) existing.combinedKeywords.push(k);
+        }
+        for (const c of channels) {
+          if (!existing.combinedChannels.includes(c)) existing.combinedChannels.push(c);
+        }
+        if (channels.length > 0) existing.isAnyChannelBased = true;
+        if ((source.time_range_days || 0) > existing.maxTimeRangeDays) {
+          existing.maxTimeRangeDays = source.time_range_days || 0;
+        }
       }
     }
-    return out;
-  }, [searches]);
+    return Array.from(byPlatform.values());
+  }, [sourceRows]);
 
   const handleConfirmRun = async () => {
     if (!pendingRun) return;
     setIsRunning(true);
     try {
-      const result = await runAgentSources(
-        task.agent_id,
+      const target =
         pendingRun.kind === 'one'
-          ? { search_idx: pendingRun.searchIdx, platform: pendingRun.platform }
-          : undefined,
-      );
+          ? { source_idx: pendingRun.sourceIdx }
+          : pendingRun.kind === 'platform'
+            ? { platform: pendingRun.platform }
+            : undefined;
+      const result = await runAgentSources(task.agent_id, target);
       const n = result.collection_ids.length;
       toast.success(
-        n === 1
-          ? 'Source refresh started'
-          : `Refreshing ${n} source${n === 1 ? '' : 's'}`,
+        n === 1 ? 'Source refresh started' : `Refreshing ${n} source${n === 1 ? '' : 's'}`,
       );
       queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       queryClient.invalidateQueries({ queryKey: ['agent-source-stats', task.agent_id] });
-    } catch (err) {
+    } catch {
       toast.error('Could not start source refresh. Please try again.');
     } finally {
       setIsRunning(false);
@@ -135,25 +145,26 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
   const pendingRunLabel = (() => {
     if (!pendingRun) return '';
     if (pendingRun.kind === 'all') {
-      const n = flatSources.length;
+      const n = sourceRows.length;
       return `all ${n} source${n === 1 ? '' : 's'}`;
     }
-    return PLATFORM_LABELS[pendingRun.platform] ?? pendingRun.platform;
+    return pendingRun.label;
   })();
 
-  const { platformCounts, uniquePlatforms, fallbackTotalPosts } = useMemo(() => {
-    const counts: Record<string, number> = {};
-    let total = 0;
-    for (const { platform, effective } of flatSources) {
-      counts[platform] = (counts[platform] || 0) + 1;
-      total += effective.n_posts;
-    }
-    return {
-      platformCounts: counts,
-      uniquePlatforms: Object.keys(counts),
-      fallbackTotalPosts: total,
-    };
-  }, [flatSources]);
+  const handleRunPlatform = (platform: string) => {
+    const rollup = platformRollups.find((r) => r.platform === platform);
+    if (!rollup) return;
+    const platformLabel = PLATFORM_LABELS[platform] || platform;
+    const label = rollup.sourceCount > 1
+      ? `${platformLabel} (${rollup.sourceCount} sources)`
+      : platformLabel;
+    setPendingRun({ kind: 'platform', platform, label });
+  };
+
+  const fallbackTotalPosts = useMemo(
+    () => platformRollups.reduce((acc, r) => acc + r.targetPosts, 0),
+    [platformRollups],
+  );
 
   // Always force-recompute. The cached Firestore signature can race with the
   // agent's status flip — when status transitions to 'success' before the
@@ -164,8 +175,7 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
   const taskIsRunning = task.status === 'running';
   const { data: allStats } = useQuery({
     queryKey: ['agent-source-stats', task.agent_id, collectionIds],
-    queryFn: () =>
-      Promise.all(collectionIds.map((id) => refreshCollectionStats(id))),
+    queryFn: () => Promise.all(collectionIds.map((id) => refreshCollectionStats(id))),
     enabled: collectionIds.length > 0,
     staleTime: taskIsRunning ? 0 : 30_000,
     refetchInterval: taskIsRunning ? 30_000 : false,
@@ -196,17 +206,17 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
     return { platformPostTotals: totals, platformPostsLast3d: last3d, totalPosts: total };
   }, [allStats, fallbackTotalPosts]);
 
-  const visibleSources = useMemo(
+  const visibleRows = useMemo(
     () =>
       activeTab === 'summary'
-        ? flatSources
-        : flatSources.filter((s) => s.platform === activeTab),
-    [flatSources, activeTab],
+        ? sourceRows
+        : sourceRows.filter((r) => r.source.platform === activeTab),
+    [sourceRows, activeTab],
   );
 
-  const autoExpand = activeTab !== 'summary' && visibleSources.length === 1;
+  const autoExpand = activeTab !== 'summary' && visibleRows.length === 1;
 
-  if (flatSources.length === 0) {
+  if (sourceRows.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card shadow-sm h-full flex flex-col">
         <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl">
@@ -220,97 +230,95 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-border bg-card shadow-sm flex flex-col">
-      <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl shrink-0">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
-      </div>
+        <div className="px-3 py-2 bg-primary/[0.06] border-b border-primary/10 rounded-t-xl shrink-0">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sources</h3>
+        </div>
 
-      {/* Tab chips */}
-      <div className="px-3 pt-2 pb-1 shrink-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => { setActiveTab('summary'); setExpandedKey(null); }}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
-              activeTab === 'summary'
-                ? 'border-primary/40 bg-primary/10 text-primary'
-                : 'border-border/50 text-muted-foreground hover:border-border hover:bg-muted/30',
-            )}
-          >
-            Summary
-          </button>
-
-          {uniquePlatforms.map((platform) => {
-            const count = platformCounts[platform];
-            const isActive = activeTab === platform;
-            const color = PLATFORM_COLORS[platform] || '#6B7294';
-            return (
-              <button
-                key={platform}
-                type="button"
-                onClick={() => { setActiveTab(platform); setExpandedKey(null); }}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
-                  isActive
-                    ? 'border-current/40'
-                    : 'border-border/50 hover:border-border hover:bg-muted/30',
-                )}
-                style={isActive
-                  ? { backgroundColor: `${color}15`, color, borderColor: `${color}40` }
-                  : undefined
-                }
-              >
-                <PlatformIcon platform={platform} className="h-3.5 w-3.5" />
-                <span style={isActive ? { color } : undefined}>
-                  {PLATFORM_LABELS[platform] || platform}
-                </span>
-                {count > 1 && (
-                  <span className={isActive ? 'opacity-70' : 'text-muted-foreground'}>{count}</span>
-                )}
-              </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={() => { setActiveTab('files'); setExpandedKey(null); }}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
-              activeTab === 'files'
-                ? 'border-primary/40 bg-primary/10 text-primary'
-                : 'border-border/50 text-muted-foreground hover:border-border hover:bg-muted/30',
-            )}
-          >
-            <FileText className="h-3.5 w-3.5" />
-            Files
-          </button>
-
-          {onAddPlatforms && (
+        {/* Tab chips */}
+        <div className="px-3 pt-2 pb-1 shrink-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
-              onClick={onAddPlatforms}
-              className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all"
+              onClick={() => { setActiveTab('summary'); setExpandedKey(null); }}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
+                activeTab === 'summary'
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border/50 text-muted-foreground hover:border-border hover:bg-muted/30',
+              )}
             >
-              <Plus className="h-3 w-3" />
-              Add Platforms
+              Summary
             </button>
-          )}
-        </div>
-      </div>
 
-      <div className="px-3 py-2 flex-1">
+            {platformRollups.map(({ platform, sourceCount }) => {
+              const isActive = activeTab === platform;
+              const color = PLATFORM_COLORS[platform] || '#6B7294';
+              return (
+                <button
+                  key={platform}
+                  type="button"
+                  onClick={() => { setActiveTab(platform); setExpandedKey(null); }}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
+                    isActive
+                      ? 'border-current/40'
+                      : 'border-border/50 hover:border-border hover:bg-muted/30',
+                  )}
+                  style={isActive
+                    ? { backgroundColor: `${color}15`, color, borderColor: `${color}40` }
+                    : undefined
+                  }
+                >
+                  <PlatformIcon platform={platform} className="h-3.5 w-3.5" />
+                  <span style={isActive ? { color } : undefined}>
+                    {PLATFORM_LABELS[platform] || platform}
+                  </span>
+                  {sourceCount > 1 && (
+                    <span className={isActive ? 'opacity-70' : 'text-muted-foreground'}>{sourceCount}</span>
+                  )}
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => { setActiveTab('files'); setExpandedKey(null); }}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all',
+                activeTab === 'files'
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border/50 text-muted-foreground hover:border-border hover:bg-muted/30',
+              )}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Files
+            </button>
+
+            {onAddPlatforms && (
+              <button
+                type="button"
+                onClick={onAddPlatforms}
+                className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all"
+              >
+                <Plus className="h-3 w-3" />
+                Add Sources
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="px-3 py-2 flex-1">
           {activeTab === 'summary' && (
-            <>
-              <SourcesSummaryView
-                flatSources={flatSources}
-                isActive={task.status === 'running' || (task.status === 'success' && !task.paused)}
-                platformPostTotals={platformPostTotals}
-                platformPostsLast3d={platformPostsLast3d}
-                totalPosts={totalPosts}
-                onRunSource={(searchIdx, platform) => setPendingRun({ kind: 'one', searchIdx, platform })}
-                isRunning={isRunning}
-              />
-            </>
+            <SourcesSummaryView
+              rollups={platformRollups}
+              isActive={task.status === 'running' || (task.status === 'success' && !task.paused)}
+              platformPostTotals={platformPostTotals}
+              platformPostsLast3d={platformPostsLast3d}
+              totalPosts={totalPosts}
+              onJumpToPlatform={(platform) => { setActiveTab(platform); setExpandedKey(null); }}
+              onRunPlatform={handleRunPlatform}
+              isRunning={isRunning}
+            />
           )}
 
           {activeTab === 'files' && (
@@ -327,22 +335,16 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
             </div>
           )}
 
-          {activeTab !== 'summary' && activeTab !== 'files' && visibleSources.map(({ platform, search, effective, key }) => {
+          {activeTab !== 'summary' && activeTab !== 'files' && visibleRows.map(({ source, sourceIdx, key }) => {
             const isExpanded = autoExpand || expandedKey === key;
-            const keywordsPreview = effective.keywords?.length > 0
-              ? effective.keywords.length <= 3
-                ? effective.keywords.join(', ')
-                : `${effective.keywords.slice(0, 3).join(', ')}, +${effective.keywords.length - 3}`
+            const platformLabel = PLATFORM_LABELS[source.platform] || source.platform;
+            const keywordsPreview = source.keywords?.length
+              ? previewList(source.keywords, 3)
               : null;
-            const channelsPreview = effective.channels?.length
-              ? effective.channels.length <= 2
-                ? effective.channels.join(', ')
-                : `${effective.channels.slice(0, 2).join(', ')}, +${effective.channels.length - 2}`
+            const channelsPreview = source.channels?.length
+              ? previewList(source.channels, 2)
               : null;
-            const isChannelSearch = !!effective.channels?.length;
-            const sharedWith = !effective.isOverridden && search.platforms.length > 1
-              ? search.platforms.filter((p) => p !== platform)
-              : null;
+            const isChannelSearch = !!source.channels?.length;
 
             return (
               <div key={key} className="border-b border-border/30 last:border-b-0">
@@ -359,61 +361,54 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
                       ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/60" />
                       : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/60" />
                   )}
-                  <PlatformIcon platform={platform} className="h-3.5 w-3.5 shrink-0" />
-                  <span className="text-xs font-medium text-foreground shrink-0">
-                    {PLATFORM_LABELS[platform] || platform}
-                  </span>
+                  <PlatformIcon platform={source.platform} className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-xs font-medium text-foreground shrink-0">{platformLabel}</span>
                   <span className="text-muted-foreground/30">·</span>
                   <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">
-                    {isChannelSearch && channelsPreview && (
-                      <span>{channelsPreview}</span>
-                    )}
+                    {isChannelSearch && channelsPreview && <span>{channelsPreview}</span>}
                     {isChannelSearch && keywordsPreview && ' · '}
-                    {keywordsPreview && (
-                      <span>{keywordsPreview}</span>
-                    )}
-                    {!keywordsPreview && !channelsPreview && (
-                      <span className="italic">No keywords</span>
-                    )}
+                    {keywordsPreview && <span>{keywordsPreview}</span>}
+                    {!keywordsPreview && !channelsPreview && <span className="italic">No keywords</span>}
                   </span>
                   <span className="text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
-                    {effective.n_posts || 0} · {effective.time_range_days}d
+                    {source.n_posts || 0} · {source.time_range_days}d
                   </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPendingRun({
+                        kind: 'one',
+                        sourceIdx,
+                        label: `${platformLabel} (${keywordsPreview ?? channelsPreview ?? 'source'})`,
+                      });
+                    }}
+                    disabled={isRunning}
+                    aria-label={`Run ${platformLabel} source`}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-primary/5 disabled:opacity-40"
+                  >
+                    <Play className="h-3 w-3" />
+                  </button>
                 </button>
 
                 {isExpanded && (
                   <div className={cn('mb-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2 space-y-2', !autoExpand && 'ml-5 mr-1')}>
-                    {sharedWith && (
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                        <span className="font-medium">Shared config with:</span>
-                        {sharedWith.map((p) => (
-                          <span key={p} className="inline-flex items-center gap-0.5">
-                            <PlatformIcon platform={p} className="h-3 w-3" />
-                            <span>{PLATFORM_LABELS[p] || p}</span>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {effective.keywords?.length > 0 && (
+                    {source.keywords?.length > 0 && (
                       <div>
                         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Keywords</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {effective.keywords.map((kw) => (
-                            <Badge key={kw} variant="secondary" className="text-[10px] py-0">
-                              {kw}
-                            </Badge>
+                          {source.keywords.map((kw) => (
+                            <Badge key={kw} variant="secondary" className="text-[10px] py-0">{kw}</Badge>
                           ))}
                         </div>
                       </div>
                     )}
-                    {effective.channels?.length ? (
+                    {source.channels?.length ? (
                       <div>
                         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Channels</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {effective.channels.map((ch) => (
-                            <Badge key={ch} variant="secondary" className="text-[10px] py-0">
-                              {ch}
-                            </Badge>
+                          {source.channels.map((ch) => (
+                            <Badge key={ch} variant="secondary" className="text-[10px] py-0">{ch}</Badge>
                           ))}
                         </div>
                       </div>
@@ -421,15 +416,15 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Search className="h-2.5 w-2.5" />
-                        {effective.n_posts || 0} posts
+                        {source.n_posts || 0} posts
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-2.5 w-2.5" />
-                        {effective.time_range_days} days
+                        {source.time_range_days} days
                       </span>
                       <span className="flex items-center gap-1">
                         <Globe className="h-2.5 w-2.5" />
-                        {effective.geo_scope || 'Global'}
+                        {source.geo_scope || 'Global'}
                       </span>
                     </div>
                   </div>
@@ -437,11 +432,10 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
               </div>
             );
           })}
+        </div>
       </div>
 
-      </div>
-
-      {activeTab === 'summary' && flatSources.length > 0 && (
+      {activeTab === 'summary' && sourceRows.length > 0 && (
         <div>
           <button
             type="button"
@@ -485,21 +479,26 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
 }
 
 interface SourcesSummaryViewProps {
-  flatSources: FlatSource[];
+  rollups: PlatformRollup[];
   isActive: boolean;
   platformPostTotals: Record<string, number>;
   platformPostsLast3d: Record<string, number>;
   totalPosts: number;
-  onRunSource?: (searchIdx: number, platform: string) => void;
+  onJumpToPlatform?: (platform: string) => void;
+  onRunPlatform?: (platform: string) => void;
   isRunning?: boolean;
 }
 
+// One row per platform — aggregated across all source cards for that platform.
+// Per-source detail is one click away via the platform tab. Play refreshes
+// every source on that platform in a single backend call.
 function SourcesSummaryViewImpl({
-  flatSources,
+  rollups,
   isActive,
   platformPostTotals,
   platformPostsLast3d,
-  onRunSource,
+  onJumpToPlatform,
+  onRunPlatform,
   isRunning,
 }: SourcesSummaryViewProps) {
   return (
@@ -513,26 +512,35 @@ function SourcesSummaryViewImpl({
             <th className="text-right py-1.5 pr-2">Target / run</th>
             <th className="text-right py-1.5 pr-2">Posts</th>
             <th className="text-right py-1.5 pr-2">Posts last 3d</th>
-            <th className="py-1.5 w-8"></th>
+            <th className="py-1.5 w-16"></th>
           </tr>
         </thead>
         <tbody>
-          {flatSources.map(({ platform, searchIdx, effective, key }) => {
-            const query = effective.channels?.length
-              ? effective.channels.join(', ')
-              : effective.keywords?.length
-                ? effective.keywords.length <= 3
-                  ? effective.keywords.join(', ')
-                  : `${effective.keywords.slice(0, 3).join(', ')}, +${effective.keywords.length - 3}`
-                : '—';
-            const posts = platformPostTotals[platform] ?? 0;
-            const last3d = platformPostsLast3d[platform] ?? 0;
+          {rollups.map((r) => {
+            const query = r.isAnyChannelBased && r.combinedChannels.length > 0
+              ? previewList(r.combinedChannels, 2)
+              : previewList(r.combinedKeywords, 3);
+            const posts = platformPostTotals[r.platform] ?? 0;
+            const last3d = platformPostsLast3d[r.platform] ?? 0;
+            const platformLabel = PLATFORM_LABELS[r.platform] || r.platform;
             return (
-              <tr key={key} className="border-b border-border/20 last:border-b-0">
+              <tr key={r.platform} className="border-b border-border/20 last:border-b-0">
                 <td className="py-1.5 pr-2">
                   <span className="inline-flex items-center gap-1.5">
-                    <PlatformIcon platform={platform} className="h-3.5 w-3.5 shrink-0" />
-                    <span className="font-medium text-foreground">{PLATFORM_LABELS[platform] || platform}</span>
+                    <PlatformIcon platform={r.platform} className="h-3.5 w-3.5 shrink-0" />
+                    <span className="font-medium text-foreground">{platformLabel}</span>
+                    {r.sourceCount > 1 && onJumpToPlatform ? (
+                      <button
+                        type="button"
+                        onClick={() => onJumpToPlatform(r.platform)}
+                        aria-label={`View ${r.platform} sources`}
+                        className="text-[10px] text-muted-foreground hover:text-primary underline-offset-2 hover:underline"
+                      >
+                        ×{r.sourceCount}
+                      </button>
+                    ) : r.sourceCount > 1 ? (
+                      <span className="text-[10px] text-muted-foreground">×{r.sourceCount}</span>
+                    ) : null}
                   </span>
                 </td>
                 <td className="py-1.5 pr-2 text-muted-foreground max-w-[160px] truncate">{query}</td>
@@ -545,16 +553,25 @@ function SourcesSummaryViewImpl({
                     {isActive ? 'Active' : 'Inactive'}
                   </span>
                 </td>
-                <td className="py-1.5 pr-2 text-right text-foreground/80 tabular-nums">{formatNumber(effective.n_posts)}</td>
+                <td className="py-1.5 pr-2 text-right text-foreground/80 tabular-nums">{formatNumber(r.targetPosts)}</td>
                 <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(posts)}</td>
                 <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(last3d)}</td>
                 <td className="py-1.5 pl-1 text-right">
-                  {onRunSource && (
+                  {onRunPlatform && (
                     <button
                       type="button"
-                      onClick={() => onRunSource(searchIdx, platform)}
+                      onClick={() => onRunPlatform(r.platform)}
                       disabled={isRunning}
-                      aria-label={`Run ${PLATFORM_LABELS[platform] ?? platform} source`}
+                      aria-label={
+                        r.sourceCount > 1
+                          ? `Run all ${r.sourceCount} ${platformLabel} sources`
+                          : `Run ${platformLabel} source`
+                      }
+                      title={
+                        r.sourceCount > 1
+                          ? `Refresh all ${r.sourceCount} ${platformLabel} sources`
+                          : `Refresh ${platformLabel}`
+                      }
                       className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-primary/5 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <Play className="h-3 w-3" />

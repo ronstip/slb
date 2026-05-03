@@ -1,18 +1,18 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getDashboardData } from '../../../../../api/endpoints/dashboard.ts';
-import type { SearchDef } from '../../../../../api/endpoints/agents.ts';
+import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { applyOverviewFilters, computeWindowStart, type OverviewWindow } from './overview-filters.ts';
 
 export function useOverviewDashboardData(
   collectionIds: string[],
-  searches: SearchDef[] | undefined,
+  sources: Source[] | undefined,
   isAgentRunning: boolean,
   agentCreatedAt: string | undefined,
 ) {
   const window: OverviewWindow = useMemo(
-    () => computeWindowStart(searches, agentCreatedAt),
-    [searches, agentCreatedAt],
+    () => computeWindowStart(sources, agentCreatedAt),
+    [sources, agentCreatedAt],
   );
 
   const query = useQuery({
