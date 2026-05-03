@@ -20,9 +20,11 @@ interface ChatPanelProps {
   emptyStateContent?: ReactNode;
   /** Embedded variant: tighter padding, smaller input bar, smaller send button. */
   compact?: boolean;
+  /** When set, filters the message list to messages whose content matches. */
+  searchQuery?: string;
 }
 
-export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent, compact = false }: ChatPanelProps = {}) {
+export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent, compact = false, searchQuery }: ChatPanelProps = {}) {
   const messages = useChatStore((s) => s.messages);
   const activePromptData = useChatStore((s) => s.activePromptData);
   const isRestoring = useSessionStore((s) => s.isRestoring);
@@ -101,13 +103,13 @@ export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent, compact 
       ) : hasMessages || hideWelcome || emptyStateContent ? (
         <>
           {hasMessages ? (
-            <MessageList onSendMessage={sendMessage} compact={compact} />
+            <MessageList onSendMessage={sendMessage} compact={compact} searchQuery={searchQuery} />
           ) : emptyStateContent ? (
             <div className={cn('flex-1 overflow-y-auto', compact ? 'px-5 py-4' : 'px-6 py-4')}>
               <div className="mx-auto max-w-5xl">{emptyStateContent}</div>
             </div>
           ) : (
-            <MessageList onSendMessage={sendMessage} compact={compact} />
+            <MessageList onSendMessage={sendMessage} compact={compact} searchQuery={searchQuery} />
           )}
           <TaskProgressPill />
           {activePromptData ? (

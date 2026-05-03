@@ -109,6 +109,27 @@ class Settings(BaseSettings):
     brightdata_max_snapshots_per_collection: int = 20
     brightdata_max_snapshots_per_task: int = 50
 
+    # Apify — pay-per-result actor platform; primary vendor for Instagram, Facebook, TikTok
+    apify_api_token: str = ""
+    apify_actor_instagram: str = "apidojo/instagram-scraper"
+    apify_actor_facebook: str = "apify/facebook-posts-scraper"
+    apify_actor_tiktok: str = "apidojo/tiktok-scraper-api"
+    apify_run_timeout_sec: int = 1500
+    apify_max_runs_per_collection: int = 30
+    apify_max_parallel_runs: int = 3
+    apify_memory_mbytes: int = 2048  # account cap is 8 GB; max_parallel * memory must stay <= 8192
+    apify_account_memory_cap_mbytes: int = 8192
+    apify_build: str = ""  # optional build tag for stability
+    apify_proxy_group: str = "RESIDENTIAL"  # RESIDENTIAL | DATACENTER
+
+    # Per-platform default vendor selection. Empty string falls through to
+    # `vendor_config.default` then to the first-supporting adapter.
+    # Read in `wrapper._get_adapter` between collection-level platform_overrides
+    # and collection-level default.
+    default_vendor_instagram: str = ""
+    default_vendor_facebook: str = ""
+    default_vendor_tiktok: str = ""
+
     environment: str = "development"
     enable_search_grounding: bool = True
     agent_engine_id: str = ""  # Vertex AI Agent Engine ID for Memory Bank (prod only)

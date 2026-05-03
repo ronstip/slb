@@ -25,6 +25,7 @@ from workers.collection.normalizer import (
 )
 from workers.collection.wrapper import DataProviderWrapper
 from workers.pipeline.post_state import FAILURE_STATES, TERMINAL_STATES, PostState
+from workers.pipeline.run_logger import collection_run_log
 from workers.pipeline.state_manager import StateManager
 from workers.pipeline.steps import PIPELINE_STEPS, StepContext
 from workers.shared.bq_client import BQClient
@@ -78,22 +79,29 @@ class PipelineRunner:
         a final status update rather than leaving the collection stuck
         at 'processing' forever.
         """
-        logger.info("━━━ Pipeline V2 START %s ━━━", self.collection_id)
-        pipeline_start = _time.monotonic()
+        agent_id = None
         try:
-            self._run_pipeline(pipeline_start)
-        except Exception as e:
-            elapsed = round(_time.monotonic() - pipeline_start, 1)
-            logger.exception(
-                "━━━ Pipeline V2 CRASHED %s after %.1fs ━━━",
-                self.collection_id, elapsed,
-            )
-            self._set_crashed_status(str(e))
-        finally:
-            # Release the media pool. wait=False because in-flight downloads
-            # that haven't propagated to BQ yet are caught by
-            # _reconcile_bq_media_refs on the next run anyway.
-            self._media_executor.shutdown(wait=False)
+            agent_id = self._get_agent_id()
+        except Exception:  # noqa: BLE001
+            pass
+        with collection_run_log(self.collection_id, agent_id=agent_id) as run_log_path:
+            logger.info("━━━ Pipeline V2 START %s ━━━", self.collection_id)
+            logger.info("Per-run log: %s (also tail logs/runs/latest.log)", run_log_path)
+            pipeline_start = _time.monotonic()
+            try:
+                self._run_pipeline(pipeline_start)
+            except Exception as e:
+                elapsed = round(_time.monotonic() - pipeline_start, 1)
+                logger.exception(
+                    "━━━ Pipeline V2 CRASHED %s after %.1fs ━━━",
+                    self.collection_id, elapsed,
+                )
+                self._set_crashed_status(str(e))
+            finally:
+                # Release the media pool. wait=False because in-flight downloads
+                # that haven't propagated to BQ yet are caught by
+                # _reconcile_bq_media_refs on the next run anyway.
+                self._media_executor.shutdown(wait=False)
 
     def _get_agent_id(self) -> str | None:
         """Return the agent_id linked to this collection, if any."""

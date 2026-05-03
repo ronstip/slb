@@ -7,6 +7,7 @@ import {
   type Agent,
   type AgentOutput,
 } from '../../../api/endpoints/agents.ts';
+import { useAgentStore } from '../../../stores/agent-store.ts';
 
 export function useAgentDetail(taskId: string | undefined) {
   const taskQuery = useQuery({
@@ -14,6 +15,11 @@ export function useAgentDetail(taskId: string | undefined) {
     queryFn: () => getAgent(taskId!),
     enabled: !!taskId,
     staleTime: 5 * 60_000,
+    // Show the list-cached agent immediately while the detail call resolves —
+    // avoids a full-screen spinner when the user navigates from /agents or any
+    // surface that already populated the agent store.
+    placeholderData: () =>
+      taskId ? useAgentStore.getState().agents.find((a) => a.agent_id === taskId) : undefined,
     refetchInterval: (query) => {
       const s = query.state.data?.status;
       return s === 'running' ? 20_000 : false;

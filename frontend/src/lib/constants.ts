@@ -82,7 +82,7 @@ export const SENTIMENT_COLORS: Record<string, string> = {
   skeptical: '#D4A054',
 };
 
-export const PLATFORMS = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'] as const;
+export const PLATFORMS = ['instagram', 'tiktok', 'facebook', 'twitter', 'reddit', 'youtube'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export const SCHEDULE_UTC_TIMES = [

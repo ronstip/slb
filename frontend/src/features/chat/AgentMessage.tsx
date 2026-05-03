@@ -1,6 +1,8 @@
 import { AlertCircle } from 'lucide-react';
+import { BotAvatar } from '../../components/BrandElements.tsx';
 import { Logo } from '../../components/Logo.tsx';
 import { Markdown } from '../../components/Markdown.tsx';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import type { ChatMessage } from '../../stores/chat-store.ts';
 import type { DesignResearchResult } from '../../api/types.ts';
 import { ActivityBlock } from './ActivityBar.tsx';
@@ -34,6 +36,7 @@ interface AgentMessageProps {
 
 export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) {
   const activePromptMessageId = useChatStore((s) => s.activePromptMessageId);
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const agentLabel = message.activeAgent
     ? (message.activeAgent in AGENT_DISPLAY_NAMES ? AGENT_DISPLAY_NAMES[message.activeAgent] : formatAgentName(message.activeAgent))
     : null;
@@ -59,9 +62,13 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
 
   return (
     <div className="flex gap-3 overflow-hidden max-w-3xl">
-      {/* Avatar */}
+      {/* Avatar — agent's BotAvatar when in agent context, otherwise the brand mark. */}
       <div className="mt-0.5 shrink-0">
-        <Logo size="sm" showText={false} flat />
+        {activeAgentId ? (
+          <BotAvatar seed={activeAgentId} size={32} className="border border-border/50" />
+        ) : (
+          <Logo size="sm" showText={false} flat />
+        )}
       </div>
 
       <div className="min-w-0 flex-1 overflow-hidden">

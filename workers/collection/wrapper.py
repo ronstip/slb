@@ -4,6 +4,7 @@ import threading
 from collections.abc import Iterator
 
 from config.settings import get_settings
+from workers.collection.adapters.apify import ApifyAdapter
 from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.brightdata import BrightDataAdapter
 from workers.collection.adapters.mock_adapter import MockAdapter
@@ -30,72 +31,97 @@ class DataProviderWrapper:
 
         if providers is not None:
             self._providers = providers
-        elif settings.is_dev:
+        else:
             self._providers = []
+            mode = "dev" if settings.is_dev else "production"
             # BrightData first — default for tiktok, youtube, reddit, facebook
             if settings.brightdata_api_token:
                 try:
                     self._providers.append(BrightDataAdapter(snapshot_tracker=snapshot_tracker, max_snapshots=max_snapshots))
-                    logger.info("BrightDataAdapter initialized (dev mode)")
+                    logger.info("BrightDataAdapter initialized (%s mode)", mode)
                 except ValueError:
                     logger.warning("BrightDataAdapter init failed, skipping")
-            # X API second — official vendor; default for twitter via fallback ordering
+            # X API — official vendor; default for twitter via fallback ordering
             if settings.x_api_bearer_token:
                 try:
                     self._providers.append(XAPIAdapter())
-                    logger.info("XAPIAdapter initialized (dev mode)")
+                    logger.info("XAPIAdapter initialized (%s mode)", mode)
                 except ValueError:
                     logger.info("XAPIAdapter skipped (no bearer token)")
-            # Vetric third — handles instagram and acts as twitter fallback when overridden
+            # Vetric — handles instagram and acts as twitter fallback when overridden
             try:
                 self._providers.append(VetricAdapter())
-                logger.info("VetricAdapter initialized (dev mode)")
+                logger.info("VetricAdapter initialized (%s mode)", mode)
             except ValueError:
                 logger.info("VetricAdapter skipped (no API keys)")
-            if not self._providers:
-                self._providers = [MockAdapter()]
-                logger.info("Using MockAdapter (dev mode, no API keys)")
-        else:
-            self._providers = []
-            # BrightData first in production too
-            if settings.brightdata_api_token:
+            # Apify — ships AFTER Vetric so the natural first-supporting fallback
+            # keeps existing IG/FB/TikTok routing on Vetric/BrightData. Apify is
+            # only selected when DEFAULT_VENDOR_<PLATFORM> env or per-collection
+            # vendor_config explicitly names "apify".
+            if settings.apify_api_token:
                 try:
-                    self._providers.append(BrightDataAdapter(snapshot_tracker=snapshot_tracker, max_snapshots=max_snapshots))
-                    logger.info("BrightDataAdapter initialized (production mode)")
-                except ValueError:
-                    logger.warning("BrightDataAdapter init failed, skipping")
-            if settings.x_api_bearer_token:
-                try:
-                    self._providers.append(XAPIAdapter())
-                    logger.info("XAPIAdapter initialized (production mode)")
-                except ValueError:
-                    logger.info("XAPIAdapter skipped (no bearer token)")
-            try:
-                self._providers.append(VetricAdapter())
-                logger.info("VetricAdapter initialized (production mode)")
-            except ValueError:
-                logger.info("VetricAdapter skipped (no API keys)")
+                    self._providers.append(ApifyAdapter())
+                    logger.info("ApifyAdapter initialized (%s mode)", mode)
+                except ValueError as e:
+                    logger.warning("ApifyAdapter init failed, skipping: %s", e)
             if not self._providers:
-                raise RuntimeError("No data providers available — configure BRIGHTDATA_API_TOKEN, X_API_BEARER_TOKEN, or VETRIC_API_KEY_*")
+                if settings.is_dev:
+                    self._providers = [MockAdapter()]
+                    logger.info("Using MockAdapter (dev mode, no API keys)")
+                else:
+                    raise RuntimeError(
+                        "No data providers available — configure BRIGHTDATA_API_TOKEN, "
+                        "X_API_BEARER_TOKEN, VETRIC_API_KEY_*, or APIFY_API_TOKEN"
+                    )
+
+    _VENDOR_CLASS_MAP: dict[str, type[DataProviderAdapter]] = {
+        "vetric": VetricAdapter,
+        "brightdata": BrightDataAdapter,
+        "xapi": XAPIAdapter,
+        "apify": ApifyAdapter,
+        "mock": MockAdapter,
+    }
+
+    def _resolve_preferred_vendor(self, platform: str) -> str | None:
+        """Vendor selection precedence (highest to lowest):
+        1. Per-collection `vendor_config.platform_overrides[platform]`
+        2. Env `DEFAULT_VENDOR_<PLATFORM>` (e.g. DEFAULT_VENDOR_INSTAGRAM)
+        3. Per-collection `vendor_config.default`
+        4. None — caller falls back to first-supporting adapter
+        """
+        override = self._vendor_config.get("platform_overrides", {}).get(platform)
+        if override:
+            return override
+
+        settings = get_settings()
+        env_default = getattr(settings, f"default_vendor_{platform}", "") or ""
+        if env_default:
+            return env_default
+
+        return self._vendor_config.get("default")
 
     def _get_adapter(self, platform: str) -> DataProviderAdapter:
-        """Select adapter based on vendor_config, then fallback to first match."""
-        preferred = self._vendor_config.get("platform_overrides", {}).get(
-            platform, self._vendor_config.get("default")
-        )
+        """Select adapter using the layered precedence. If the preferred vendor
+        was requested but is not initialized (e.g. missing API token), log a
+        warning and fall through to first-supporting so the crawl still runs."""
+        preferred = self._resolve_preferred_vendor(platform)
 
         if preferred:
-            vendor_class_map = {
-                "vetric": VetricAdapter,
-                "brightdata": BrightDataAdapter,
-                "xapi": XAPIAdapter,
-                "mock": MockAdapter,
-            }
-            target_class = vendor_class_map.get(preferred)
+            target_class = self._VENDOR_CLASS_MAP.get(preferred)
             if target_class:
                 for provider in self._providers:
                     if isinstance(provider, target_class) and platform in provider.supported_platforms():
                         return provider
+                logger.warning(
+                    "Preferred vendor %r for platform %r is not initialized — "
+                    "falling back to first-supporting adapter",
+                    preferred, platform,
+                )
+            else:
+                logger.warning(
+                    "Unknown preferred vendor %r for platform %r — falling back",
+                    preferred, platform,
+                )
 
         # Fallback: first adapter that supports this platform (backward compatible)
         for provider in self._providers:
@@ -198,25 +224,27 @@ class DataProviderWrapper:
                 stats.update(provider.platform_stats)
         return stats
 
+    _FUNNEL_KEYS = (
+        # BrightData funnel
+        "bd_raw_records", "bd_error_items_filtered", "bd_cross_keyword_dedup",
+        "bd_parse_failures", "bd_empty_post_id", "bd_valid_posts",
+        # Apify funnel
+        "apify_runs_triggered", "apify_runs_succeeded", "apify_runs_failed",
+        "apify_runs_budget_exhausted", "apify_raw_records",
+        "apify_filtered_by_time_window", "apify_parse_failures", "apify_valid_posts",
+    )
+
     def get_funnel_stats(self) -> dict:
         """Return aggregated post funnel stats from all providers."""
-        combined: dict = {
-            "bd_raw_records": 0,
-            "bd_error_items_filtered": 0,
-            "bd_cross_keyword_dedup": 0,
-            "bd_parse_failures": 0,
-            "bd_empty_post_id": 0,
-            "bd_valid_posts": 0,
-            "per_platform": {},
-        }
+        combined: dict = {key: 0 for key in self._FUNNEL_KEYS}
+        combined["per_platform"] = {}
         for provider in self._providers:
             if not hasattr(provider, "funnel_stats"):
                 continue
             pf = provider.funnel_stats
-            for key in ("bd_raw_records", "bd_error_items_filtered",
-                        "bd_cross_keyword_dedup", "bd_parse_failures",
-                        "bd_empty_post_id", "bd_valid_posts"):
-                combined[key] = combined.get(key, 0) + pf.get(key, 0)
+            for key in self._FUNNEL_KEYS:
+                if key in pf:
+                    combined[key] += pf.get(key, 0)
             for platform, pstats in pf.get("per_platform", {}).items():
                 combined["per_platform"][platform] = pstats
         return combined
