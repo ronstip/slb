@@ -130,6 +130,11 @@ class CreateFromWizardRequest(BaseModel):
     auto_slides: bool = False
     email_recipients: list[str] = []
     start_run: bool = True
+    # Agent-level data window. Server fills `data_start_date` from the
+    # broadest source `time_range_days` if omitted; `data_end_date` stays
+    # NULL by default (no upper bound).
+    data_start_date: str | None = None
+    data_end_date: str | None = None
 
 
 class UpdateCollectionRequest(BaseModel):

@@ -168,9 +168,25 @@ def search_posts(
         )
         params["since_days"] = int(since_days)
 
+    # Agent-level data window — hard bounds set at agent creation, editable
+    # in Settings → Sources. Cached in tool_context.state by set_active_agent
+    # so we don't pay a Firestore read per search. End-date semantic is
+    # inclusive of the entire UTC end day (TIMESTAMP_ADD ... + 1 DAY trick).
+    state = tool_context.state if tool_context else {}
+    data_start_date = state.get("active_agent_data_start_date")
+    data_end_date = state.get("active_agent_data_end_date")
+    if data_start_date:
+        where_extra.append("p.posted_at >= TIMESTAMP(@data_start_date)")
+        params["data_start_date"] = data_start_date
+    if data_end_date:
+        where_extra.append(
+            "p.posted_at < TIMESTAMP_ADD(TIMESTAMP(@data_end_date), INTERVAL 1 DAY)"
+        )
+        params["data_end_date"] = data_end_date
+
     where_clause = (
         "p.collection_id IN UNNEST(@collection_ids)\n"
-        "  AND ep.is_related_to_task IS NOT FALSE\n"
+        "  AND ep.is_related_to_task = TRUE\n"
         "  AND REGEXP_CONTAINS(LOWER(COALESCE(p.content, p.title, '')), @pattern)"
     )
     if where_extra:

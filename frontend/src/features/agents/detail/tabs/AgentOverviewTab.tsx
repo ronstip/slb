@@ -91,6 +91,8 @@ export function AgentOverviewTab({
                 isAgentRunning={isRunning}
                 sources={task.data_scope?.sources}
                 agentCreatedAt={task.created_at}
+                dataStartDate={task.data_start_date}
+                dataEndDate={task.data_end_date}
                 onOpenData={() => onTabChange('data')}
               />
               <TrendCard
@@ -100,6 +102,8 @@ export function AgentOverviewTab({
                 customFields={task.enrichment_config?.custom_fields}
                 sources={task.data_scope?.sources}
                 agentCreatedAt={task.created_at}
+                dataStartDate={task.data_start_date}
+                dataEndDate={task.data_end_date}
               />
               <TopicsMosaic
                 agentId={task.agent_id}
@@ -141,6 +145,8 @@ export function AgentOverviewTab({
                 isAgentRunning={isRunning}
                 sources={task.data_scope?.sources}
                 agentCreatedAt={task.created_at}
+                dataStartDate={task.data_start_date}
+                dataEndDate={task.data_end_date}
                 onOpenData={() => onTabChange('data')}
               />
               <ChannelMixCard
@@ -148,6 +154,8 @@ export function AgentOverviewTab({
                 isAgentRunning={isRunning}
                 sources={task.data_scope?.sources}
                 agentCreatedAt={task.created_at}
+                dataStartDate={task.data_start_date}
+                dataEndDate={task.data_end_date}
                 onOpenData={() => onTabChange('data')}
               />
             </div>

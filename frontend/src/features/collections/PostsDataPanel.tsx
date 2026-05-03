@@ -42,6 +42,8 @@ interface PostsDataPanelProps {
   dedup?: boolean;
   /** Default lower bound on `posted_at` (the agent's search-window start). User-picked dateRange overrides it. */
   startDate?: string;
+  /** Default upper bound on `posted_at` (the agent's search-window end). User-picked dateRange overrides it. Null/undefined = no upper bound. */
+  endDate?: string | null;
   /** Filename prefix for the CSV export (slugified before use). */
   exportFilenamePrefix?: string;
   /** Legacy callback props — still accepted but optional */
@@ -56,6 +58,7 @@ export function PostsDataPanel({
   globalSearch,
   dedup,
   startDate,
+  endDate,
   exportFilenamePrefix,
 }: PostsDataPanelProps) {
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>(createEmptyFilters);
@@ -83,9 +86,10 @@ export function PostsDataPanel({
   // User-picked range wins; otherwise fall back to the agent's search window so
   // this view stays aligned with the overview's Live feed counter.
   const effectiveStartDate = dateRange.from ?? startDate;
+  const effectiveEndDate = dateRange.to ?? endDate ?? undefined;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, relevantFilter, effectiveStartDate, dateRange.to],
+    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, relevantFilter, effectiveStartDate, effectiveEndDate],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: effectiveCollectionIds,
@@ -97,7 +101,7 @@ export function PostsDataPanel({
         sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
         relevant_to_task: relevantFilter,
         start_date: effectiveStartDate ?? undefined,
-        end_date: dateRange.to ?? undefined,
+        end_date: effectiveEndDate,
       }),
     enabled: hasSelection,
     staleTime: 30_000,
@@ -109,7 +113,7 @@ export function PostsDataPanel({
   // filter, otherwise the metric is circular (e.g. 100% under "Relevant only").
   // Only fires when a relevance filter is active; otherwise we reuse allPosts.
   const { data: relevanceData } = useQuery({
-    queryKey: ['collection-posts-relevance', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, dateRange.to],
+    queryKey: ['collection-posts-relevance', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, effectiveEndDate],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: effectiveCollectionIds,
@@ -121,7 +125,7 @@ export function PostsDataPanel({
         sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
         relevant_to_task: 'all',
         start_date: effectiveStartDate ?? undefined,
-        end_date: dateRange.to ?? undefined,
+        end_date: effectiveEndDate,
       }),
     enabled: hasSelection && relevantFilter !== 'all',
     staleTime: 30_000,
@@ -562,6 +566,7 @@ export function PostsDataPanel({
             relevantToTask={relevantFilter}
             dedup={dedup}
             startDate={effectiveStartDate ?? undefined}
+            endDate={effectiveEndDate}
             variant="wide"
           />
         </div>

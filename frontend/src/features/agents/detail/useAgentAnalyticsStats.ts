@@ -33,9 +33,13 @@ export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
 
   const dedup = collectionIds.length > 1;
   const hasSelection = collectionIds.length > 0;
+  // Apply the agent's data window — keeps these stats consistent with
+  // PostsDataPanel and the Live Feed.
+  const startDate = task.data_start_date ?? undefined;
+  const endDate = task.data_end_date ?? undefined;
 
   const { data: postsData } = useQuery({
-    queryKey: ['collection-posts', collectionIds, dedup, 'all', 'all', 'true'],
+    queryKey: ['collection-posts', collectionIds, dedup, 'all', 'all', 'true', startDate ?? '', endDate ?? ''],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
@@ -44,13 +48,15 @@ export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
         offset: 0,
         dedup,
         relevant_to_task: 'true',
+        start_date: startDate,
+        end_date: endDate,
       }),
     enabled: hasSelection,
     staleTime: 30_000,
   });
 
   const { data: relevanceData } = useQuery({
-    queryKey: ['collection-posts-relevance', collectionIds, dedup, 'all', 'all'],
+    queryKey: ['collection-posts-relevance', collectionIds, dedup, 'all', 'all', startDate ?? '', endDate ?? ''],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
@@ -59,6 +65,8 @@ export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
         offset: 0,
         dedup,
         relevant_to_task: 'all',
+        start_date: startDate,
+        end_date: endDate,
       }),
     enabled: hasSelection,
     staleTime: 30_000,

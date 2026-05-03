@@ -47,10 +47,15 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
     return map;
   }, [collections]);
 
+  // Prefer the agent's stored data window; fall back to per-source computation
+  // for legacy agents whose window hasn't been backfilled yet.
   const startDate = useMemo(
-    () => computeWindowStart(task.data_scope?.sources, task.created_at).startDate,
-    [task.data_scope?.sources, task.created_at],
+    () =>
+      task.data_start_date ??
+      computeWindowStart(task.data_scope?.sources, task.created_at).startDate,
+    [task.data_start_date, task.data_scope?.sources, task.created_at],
   );
+  const endDate = task.data_end_date ?? null;
 
   if (taskCollectionIds.size === 0) {
     return (
@@ -99,6 +104,7 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
         globalSearch={globalSearch}
         dedup={allCollectionIds.length > 1}
         startDate={startDate ?? undefined}
+        endDate={endDate}
         exportFilenamePrefix={task.title}
       />
     </div>

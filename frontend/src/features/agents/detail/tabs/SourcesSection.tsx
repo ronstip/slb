@@ -436,7 +436,7 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
       </div>
 
       {activeTab === 'summary' && sourceRows.length > 0 && (
-        <div>
+        <div className="space-y-3">
           <button
             type="button"
             onClick={() => setPendingRun({ kind: 'all' })}
@@ -446,6 +446,10 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
             <Play className="h-3 w-3" />
             Run all sources
           </button>
+          <DataWindowReadOnly
+            startDate={task.data_start_date}
+            endDate={task.data_end_date}
+          />
         </div>
       )}
 
@@ -588,5 +592,42 @@ function SourcesSummaryViewImpl({
 }
 
 const SourcesSummaryView = memo(SourcesSummaryViewImpl);
+
+function formatDateLabel(value?: string | null): string {
+  if (!value) return '—';
+  // value is YYYY-MM-DD; render as a short locale label without timezone shift.
+  const [y, m, d] = value.split('-').map(Number);
+  if (!y || !m || !d) return value;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function DataWindowReadOnly({
+  startDate,
+  endDate,
+}: {
+  startDate?: string | null;
+  endDate?: string | null;
+}) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-muted/20 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        Data window
+      </div>
+      <div className="flex items-baseline gap-2 text-sm text-foreground">
+        <span>{formatDateLabel(startDate)}</span>
+        <span className="text-muted-foreground">→</span>
+        <span>{endDate ? formatDateLabel(endDate) : <span className="text-muted-foreground italic">no end</span>}</span>
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Posts outside this window are excluded from the agent's view. Edit via the pencil icon above.
+      </p>
+    </div>
+  );
+}
 
 export const SourcesSection = memo(SourcesSectionImpl);

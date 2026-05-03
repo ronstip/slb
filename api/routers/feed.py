@@ -74,7 +74,12 @@ async def get_multi_collection_feed(
         params["start_date"] = request.start_date
 
     if request.end_date:
-        where_clauses.append("p.posted_at <= TIMESTAMP(@end_date)")
+        # Inclusive of the entire end day in UTC: a YYYY-MM-DD value casts
+        # to midnight UTC, so use < next-day rather than <= midnight to avoid
+        # silently dropping every post from the end date itself.
+        where_clauses.append(
+            "p.posted_at < TIMESTAMP_ADD(TIMESTAMP(@end_date), INTERVAL 1 DAY)"
+        )
         params["end_date"] = request.end_date
 
     if request.has_media:

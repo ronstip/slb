@@ -11,6 +11,8 @@ interface EntitiesCardProps {
   isAgentRunning: boolean;
   sources?: Source[];
   agentCreatedAt: string | undefined;
+  dataStartDate?: string | null;
+  dataEndDate?: string | null;
   onOpenData: () => void;
 }
 
@@ -19,6 +21,8 @@ export function EntitiesCard({
   isAgentRunning,
   sources,
   agentCreatedAt,
+  dataStartDate,
+  dataEndDate,
   onOpenData,
 }: EntitiesCardProps) {
   const { posts, isLoading } = useOverviewDashboardData(
@@ -26,6 +30,8 @@ export function EntitiesCard({
     sources,
     isAgentRunning,
     agentCreatedAt,
+    dataStartDate,
+    dataEndDate,
   );
 
   const entities = useMemo(

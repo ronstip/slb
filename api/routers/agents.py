@@ -114,6 +114,8 @@ async def create_from_wizard_endpoint(
         context=body.context,
         constitution=body.constitution,
         outputs=outputs,
+        data_start_date=body.data_start_date,
+        data_end_date=body.data_end_date,
     )
     agent_id = agent["agent_id"]
 
@@ -287,7 +289,7 @@ async def update_agent_endpoint(
     allowed = {
         "title", "status", "protocol", "data_scope", "enrichment_config", "schedule",
         "agent_type", "context_summary", "context", "constitution", "paused", "todos",
-        "outputs",
+        "outputs", "data_start_date", "data_end_date",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
 

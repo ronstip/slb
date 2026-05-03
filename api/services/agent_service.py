@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 from google.cloud.firestore_v1 import transforms
@@ -10,6 +10,26 @@ from google.cloud.firestore_v1 import transforms
 from api.deps import get_bq, get_fs
 
 logger = logging.getLogger(__name__)
+
+
+def _max_source_time_range_days(sources: list[dict]) -> int:
+    """Broadest configured window across an agent's sources, in days.
+
+    Used to derive the agent-level `data_start_date` default. MAX rather
+    than MIN so the default window covers every source — users can narrow
+    it from the Settings UI later.
+    """
+    days = [int(s.get("time_range_days") or 0) for s in (sources or [])]
+    days = [d for d in days if d > 0]
+    return max(days) if days else 90
+
+
+def _compute_default_data_start_date(
+    sources: list[dict], anchor: date | None = None
+) -> str:
+    """Anchor − MAX(source.time_range_days), as ISO date string."""
+    anchor = anchor or datetime.now(timezone.utc).date()
+    return (anchor - timedelta(days=_max_source_time_range_days(sources))).isoformat()
 
 
 def _clean_source(s: dict) -> dict:
@@ -125,6 +145,8 @@ def create_agent(
     context: dict | None = None,
     constitution: dict | None = None,
     outputs: list[dict] | None = None,
+    data_start_date: str | None = None,
+    data_end_date: str | None = None,
 ) -> dict:
     """Create a new agent in Firestore and BigQuery. Returns the agent dict."""
     fs = get_fs()
@@ -133,6 +155,15 @@ def create_agent(
     agent_id = str(uuid4())
     data_scope = _normalize_data_scope(data_scope)
     enrichment_config = _normalize_enrichment_config(enrichment_config)
+
+    # Agent-level data window. Stored as ISO date strings (YYYY-MM-DD) so
+    # they're human-editable in the Settings UI and compare cleanly against
+    # BQ TIMESTAMP via implicit cast. Start defaults to today − MAX(source
+    # time_range_days); end defaults to NULL meaning "no upper bound".
+    if not data_start_date:
+        data_start_date = _compute_default_data_start_date(
+            data_scope.get("sources") or []
+        )
 
     agent_data = {
         "agent_id": agent_id,
@@ -149,6 +180,8 @@ def create_agent(
         "version": 1,
         "collection_ids": [],
         "artifact_ids": [],
+        "data_start_date": data_start_date,
+        "data_end_date": data_end_date,
     }
     if constitution:
         agent_data["constitution"] = constitution
@@ -178,12 +211,45 @@ def create_agent(
     return agent_data
 
 
+def _backfill_data_window(agent: dict) -> dict:
+    """Lazy-backfill `data_start_date` for agents created before the field
+    existed. Computes from the agent's `created_at` minus MAX(source
+    time_range_days) and persists back to Firestore so the value sticks.
+    `data_end_date` stays NULL by default (no upper bound).
+    """
+    if "data_start_date" in agent and agent["data_start_date"]:
+        return agent
+    sources = (agent.get("data_scope") or {}).get("sources") or []
+    created_at = agent.get("created_at")
+    anchor: date | None = None
+    if isinstance(created_at, datetime):
+        anchor = created_at.date()
+    elif isinstance(created_at, str):
+        try:
+            anchor = datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
+        except ValueError:
+            anchor = None
+    start = _compute_default_data_start_date(sources, anchor=anchor)
+    agent["data_start_date"] = start
+    agent.setdefault("data_end_date", None)
+    try:
+        get_fs().update_agent(
+            agent["agent_id"], data_start_date=start, data_end_date=None
+        )
+    except Exception:
+        # Backfill is best-effort — surface the value to the caller even
+        # if the persist failed; it'll retry on the next read.
+        logger.exception("Failed to persist data_start_date backfill for %s", agent.get("agent_id"))
+    return agent
+
+
 def get_agent(agent_id: str) -> dict | None:
     """Get an agent by ID from Firestore. data_scope.sources is normalized."""
     agent = get_fs().get_agent(agent_id)
     if agent is None:
         return None
     agent["data_scope"] = _normalize_data_scope(agent.get("data_scope"))
+    agent = _backfill_data_window(agent)
     return agent
 
 
@@ -192,6 +258,7 @@ def list_agents(user_id: str, org_id: str | None = None) -> list[dict]:
     agents = get_fs().list_user_agents(user_id, org_id)
     for agent in agents:
         agent["data_scope"] = _normalize_data_scope(agent.get("data_scope"))
+        _backfill_data_window(agent)
     return agents
 
 

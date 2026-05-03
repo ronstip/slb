@@ -603,6 +603,12 @@ function EditableSourcesSection({
 
   return (
     <div className="space-y-4">
+      <DataWindowEditor
+        startDate={draft.data_start_date}
+        endDate={draft.data_end_date}
+        onChange={(patch) => onUpdateDraft(patch)}
+      />
+
       {draft.sources.map((source, idx) => (
         <SourceCardEditor
           key={idx}
@@ -619,6 +625,54 @@ function EditableSourcesSection({
       )}
 
       <AddSourcePicker onAdd={addSource} />
+    </div>
+  );
+}
+
+function DataWindowEditor({
+  startDate,
+  endDate,
+  onChange,
+}: {
+  startDate: string;
+  endDate: string;
+  onChange: (patch: Partial<AgentEditDraft>) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-3">
+      <div className="text-sm font-medium text-foreground mb-1">Data window</div>
+      <p className="text-[11px] text-muted-foreground mb-3">
+        The agent only sees posts whose <code>posted_at</code> falls inside this range. Leave the end date empty for "no upper bound" (the default).
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Start</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => onChange({ data_start_date: e.target.value })}
+            className="rounded-md border border-border/60 bg-background px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">End (optional)</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => onChange({ data_end_date: e.target.value })}
+            className="rounded-md border border-border/60 bg-background px-2 py-1 text-sm"
+          />
+        </label>
+        {endDate && (
+          <button
+            type="button"
+            onClick={() => onChange({ data_end_date: '' })}
+            className="text-[11px] text-muted-foreground hover:text-foreground underline mb-1.5"
+          >
+            Clear end
+          </button>
+        )}
+      </div>
     </div>
   );
 }

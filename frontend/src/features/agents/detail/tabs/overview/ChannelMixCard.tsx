@@ -20,6 +20,8 @@ interface ChannelMixCardProps {
   isAgentRunning: boolean;
   sources?: Source[];
   agentCreatedAt: string | undefined;
+  dataStartDate?: string | null;
+  dataEndDate?: string | null;
   onOpenData: () => void;
 }
 
@@ -28,6 +30,8 @@ export function ChannelMixCard({
   isAgentRunning,
   sources,
   agentCreatedAt,
+  dataStartDate,
+  dataEndDate,
   onOpenData,
 }: ChannelMixCardProps) {
   const { posts, isLoading } = useOverviewDashboardData(
@@ -35,6 +39,8 @@ export function ChannelMixCard({
     sources,
     isAgentRunning,
     agentCreatedAt,
+    dataStartDate,
+    dataEndDate,
   );
 
   const channelTypes = useMemo(() => aggregateChannelTypeViews(posts), [posts]);

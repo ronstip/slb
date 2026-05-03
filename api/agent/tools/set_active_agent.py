@@ -23,9 +23,12 @@ def set_active_agent(
         A dictionary with the agent details and its collections.
     """
     from api.deps import get_fs
+    from api.services.agent_service import get_agent as get_agent_with_backfill
 
     fs = get_fs()
-    agent = fs.get_agent(agent_id)
+    # Use the service-layer getter so older agents missing the
+    # data_start_date/data_end_date fields get backfilled on first read.
+    agent = get_agent_with_backfill(agent_id)
     if not agent:
         return {"status": "error", "message": f"Agent {agent_id} not found"}
 
@@ -48,6 +51,12 @@ def set_active_agent(
         tool_context.state["active_agent_enrichment_config"] = enrichment_config
         tool_context.state["active_agent_constitution"] = agent.get("constitution")
         tool_context.state["active_agent_context"] = agent.get("context")
+        # Cache the agent-level data window so search_posts (and any other
+        # tool that filters by posted_at) can apply it without a Firestore
+        # round-trip per call. Both are ISO date strings (YYYY-MM-DD); end
+        # may be None meaning "no upper bound".
+        tool_context.state["active_agent_data_start_date"] = agent.get("data_start_date")
+        tool_context.state["active_agent_data_end_date"] = agent.get("data_end_date")
 
         # Set working collections from the agent
         collection_ids = agent.get("collection_ids", [])

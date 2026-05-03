@@ -16,6 +16,10 @@ interface LivePostStreamProps {
   isAgentRunning: boolean;
   sources?: Source[];
   agentCreatedAt: string | undefined;
+  /** Agent-level data window — wins over the per-source computation
+   *  when set. Both are ISO date strings (YYYY-MM-DD); end may be null. */
+  dataStartDate?: string | null;
+  dataEndDate?: string | null;
   onOpenData: () => void;
 }
 
@@ -24,20 +28,25 @@ export function LivePostStream({
   isAgentRunning,
   sources,
   agentCreatedAt,
+  dataStartDate,
+  dataEndDate,
   onOpenData,
 }: LivePostStreamProps) {
   const statusQueries = useCollectionStatusQueries(collectionIds);
   const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
 
+  // Prefer the agent's stored data window; fall back to per-source computation
+  // for legacy agents whose window hasn't been backfilled yet.
   const startDate = useMemo(
-    () => computeWindowStart(sources, agentCreatedAt).startDate,
-    [sources, agentCreatedAt],
+    () => dataStartDate ?? computeWindowStart(sources, agentCreatedAt).startDate,
+    [dataStartDate, sources, agentCreatedAt],
   );
+  const endDate = dataEndDate ?? undefined;
 
   // Count must match what the grid below renders: in time-range AND task-relevant.
   // Same params as PostsFeedGrid defaults (dedup=true, relevant_to_task='true').
   const { data: countData } = useQuery({
-    queryKey: ['live-feed-count', [...collectionIds].sort().join(','), startDate ?? ''],
+    queryKey: ['live-feed-count', [...collectionIds].sort().join(','), startDate ?? '', endDate ?? ''],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
@@ -47,6 +56,7 @@ export function LivePostStream({
         dedup: true,
         relevant_to_task: 'true',
         start_date: startDate ?? undefined,
+        end_date: endDate,
       }),
     enabled: collectionIds.length > 0,
     staleTime: 10_000,
@@ -90,6 +100,7 @@ export function LivePostStream({
         collectionIds={collectionIds}
         isAgentRunning={isAgentRunning}
         startDate={startDate ?? undefined}
+        endDate={endDate}
         variant="compact"
       />
     </Section>
@@ -104,6 +115,7 @@ interface PostsFeedGridProps {
   relevantToTask?: string;
   dedup?: boolean;
   startDate?: string;
+  endDate?: string;
   variant?: 'compact' | 'wide';
 }
 
@@ -130,6 +142,7 @@ export function PostsFeedGrid({
   relevantToTask = 'true',
   dedup = true,
   startDate,
+  endDate,
   variant = 'compact',
 }: PostsFeedGridProps) {
   const statusQueries = useCollectionStatusQueries(collectionIds);
@@ -144,6 +157,7 @@ export function PostsFeedGrid({
     relevantToTask,
     dedup,
     startDate ?? '',
+    endDate ?? '',
   ];
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
@@ -159,6 +173,7 @@ export function PostsFeedGrid({
         sentiment,
         relevant_to_task: relevantToTask,
         start_date: startDate,
+        end_date: endDate,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

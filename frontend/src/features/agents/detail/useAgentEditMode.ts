@@ -13,6 +13,8 @@ export interface AgentEditDraft {
   sources: Source[];
   custom_fields: CustomFieldDef[];
   todos: TodoItem[];
+  data_start_date: string;
+  data_end_date: string;
 }
 
 function draftFromAgent(agent: Agent): AgentEditDraft {
@@ -23,6 +25,8 @@ function draftFromAgent(agent: Agent): AgentEditDraft {
     sources: structuredClone(agent.data_scope?.sources ?? []),
     custom_fields: structuredClone((agent.enrichment_config?.custom_fields ?? []) as CustomFieldDef[]),
     todos: structuredClone(agent.todos ?? []),
+    data_start_date: agent.data_start_date ?? '',
+    data_end_date: agent.data_end_date ?? '',
   };
 }
 
@@ -37,6 +41,8 @@ const EMPTY_DRAFT: AgentEditDraft = {
   sources: [],
   custom_fields: [],
   todos: [],
+  data_start_date: '',
+  data_end_date: '',
 };
 
 export function useAgentEditMode(agent: Agent | null) {
@@ -81,6 +87,8 @@ export function useAgentEditMode(agent: Agent | null) {
         },
         constitution: draft.constitution,
         todos: draft.todos,
+        data_start_date: draft.data_start_date || null,
+        data_end_date: draft.data_end_date || null,
       });
       await queryClient.invalidateQueries({ queryKey: ['agent-detail', agent.agent_id] });
       // Refresh the Zustand-backed agents list so AgentsPage / home rows reflect

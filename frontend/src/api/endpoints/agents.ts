@@ -128,6 +128,11 @@ export interface Agent {
   todos: TodoItem[];
   collection_ids: string[];
   artifact_ids: string[];
+  /** Agent-level data window. ISO date strings (YYYY-MM-DD). Start is set
+   *  at creation from `today − MAX(source.time_range_days)`; end is null
+   *  by default (no upper bound). Both editable in Settings → Sources. */
+  data_start_date?: string | null;
+  data_end_date?: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -177,7 +182,7 @@ export function createAgent(data: {
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'enrichment_config' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution' | 'outputs'>>,
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'enrichment_config' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution' | 'outputs' | 'data_start_date' | 'data_end_date'>>,
 ): Promise<{ ok: boolean; version?: number }> {
   return apiPatch<{ ok: boolean; version?: number }>(`/agents/${agentId}`, updates);
 }
