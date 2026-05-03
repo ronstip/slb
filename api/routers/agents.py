@@ -39,6 +39,7 @@ async def create_agent_endpoint(
         title=request.get("title", "Untitled Agent"),
         agent_type=request.get("agent_type", "one_shot"),
         data_scope=request.get("data_scope"),
+        enrichment_config=request.get("enrichment_config"),
         schedule=request.get("schedule"),
         org_id=user.org_id,
         session_id=request.get("session_id"),
@@ -67,13 +68,16 @@ async def create_from_wizard_endpoint(
 
     fs = get_fs()
 
-    data_scope: dict = {"searches": body.searches}
+    # Wizard payload still uses `sources` (new) or `searches` (legacy clients);
+    # create_agent normalizes either shape to flat `sources` before persisting.
+    data_scope: dict = {"sources": body.sources or body.searches}
+    enrichment_config: dict = {}
     if body.custom_fields:
-        data_scope["custom_fields"] = body.custom_fields
+        enrichment_config["custom_fields"] = body.custom_fields
     if body.enrichment_context:
-        data_scope["enrichment_context"] = body.enrichment_context
+        enrichment_config["enrichment_context"] = body.enrichment_context
     if body.content_types:
-        data_scope["content_types"] = body.content_types
+        enrichment_config["content_types"] = body.content_types
 
     # Resolve outputs: explicit list wins, otherwise derive from legacy flags.
     if body.outputs is not None:
@@ -92,7 +96,9 @@ async def create_from_wizard_endpoint(
     if body.agent_type == "recurring" and body.schedule:
         schedule = {**body.schedule}
 
-    todos = build_workflow_template(data_scope, body.agent_type, outputs=outputs)
+    todos = build_workflow_template(
+        data_scope, body.agent_type, outputs=outputs, enrichment_config=enrichment_config,
+    )
 
     initial_status = "running" if body.start_run else None
     agent = create_agent(
@@ -100,6 +106,7 @@ async def create_from_wizard_endpoint(
         title=body.title,
         agent_type=body.agent_type,
         data_scope=data_scope,
+        enrichment_config=enrichment_config,
         schedule=schedule,
         org_id=user.org_id,
         todos=todos,
@@ -138,7 +145,8 @@ async def create_from_wizard_endpoint(
 
     run_id: str | None = None
     dispatched_ids: list[str] = []
-    if body.start_run and body.searches:
+    has_sources = bool(body.sources or body.searches)
+    if body.start_run and has_sources:
         fresh_agent = fs.get_agent(agent_id) or agent
         run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent)
     elif body.start_run and attached_existing and body.agent_type == "one_shot":
@@ -277,7 +285,7 @@ async def update_agent_endpoint(
         raise HTTPException(status_code=403, detail="Only the agent owner can update")
 
     allowed = {
-        "title", "status", "protocol", "data_scope", "schedule",
+        "title", "status", "protocol", "data_scope", "enrichment_config", "schedule",
         "agent_type", "context_summary", "context", "constitution", "paused", "todos",
         "outputs",
     }
@@ -299,9 +307,13 @@ async def update_agent_endpoint(
         safe_updates["outputs"] = normalize_outputs(safe_updates["outputs"])
         if "todos" not in safe_updates:
             data_scope = safe_updates.get("data_scope", agent.get("data_scope") or {})
+            enrichment_config = safe_updates.get(
+                "enrichment_config", agent.get("enrichment_config") or {}
+            )
             agent_type = safe_updates.get("agent_type", agent.get("agent_type", "one_shot"))
             fresh_todos = build_workflow_template(
-                data_scope, agent_type, outputs=safe_updates["outputs"]
+                data_scope, agent_type, outputs=safe_updates["outputs"],
+                enrichment_config=enrichment_config,
             )
             existing_todos = agent.get("todos") or []
             custom_steps = [t for t in existing_todos if t.get("custom")]
@@ -358,6 +370,7 @@ async def approve_agent_protocol(
     title = request.get("title", "Untitled Agent")
     agent_type = request.get("agent_type", "one_shot")
     data_scope = request.get("data_scope", {})
+    enrichment_config = request.get("enrichment_config")
     schedule = request.get("schedule")
     session_id = request.get("session_id")
     run_now = request.get("run_now", True)
@@ -367,6 +380,7 @@ async def approve_agent_protocol(
         title=title,
         agent_type=agent_type,
         data_scope=data_scope,
+        enrichment_config=enrichment_config,
         schedule=schedule,
         org_id=user.org_id,
         session_id=session_id,
@@ -380,7 +394,7 @@ async def approve_agent_protocol(
 
     run_id: str | None = None
     collection_ids = []
-    if run_now and data_scope.get("searches"):
+    if run_now and (data_scope.get("sources") or data_scope.get("searches")):
         run_id, collection_ids = dispatch_agent_run(agent_id, agent)
     elif not run_now and schedule and agent_type == "recurring":
         now = datetime.now(timezone.utc)
@@ -452,19 +466,9 @@ async def run_agent_sources_endpoint(
     if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    has_idx = body.search_idx is not None
-    has_platform = body.platform is not None
-    if has_idx ^ has_platform:
-        raise HTTPException(
-            status_code=400,
-            detail="search_idx and platform must be provided together (or both omitted to run all sources).",
-        )
-
-    targets: list[tuple[int, str]] | None = None
-    if has_idx and has_platform:
-        targets = [(int(body.search_idx), str(body.platform))]
-
-    collection_ids = run_agent_sources(agent_id, agent, targets=targets)
+    collection_ids = run_agent_sources(
+        agent_id, agent, source_idx=body.source_idx, platform=body.platform,
+    )
     if not collection_ids:
         raise HTTPException(status_code=404, detail="No matching source with collectable config")
 

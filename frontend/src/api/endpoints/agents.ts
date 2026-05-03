@@ -12,17 +12,10 @@ export type AgentStatus =
 
 export type AgentType = 'one_shot' | 'recurring';
 
-export interface SourceOverride {
-  override: boolean;
-  keywords?: string[];
-  channels?: string[];
-  n_posts?: number;
-  geo_scope?: string;
-  time_range_days?: number;
-}
-
-export interface SearchDef {
-  platforms: string[];
+/** A single data source — one platform, with its own keywords, post quota,
+ *  time range, and region. Each source maps 1:1 to a collection at run time. */
+export interface Source {
+  platform: string;
   keywords: string[];
   channels?: string[];
   time_range_days: number;
@@ -30,7 +23,6 @@ export interface SearchDef {
   end_date?: string | null;
   geo_scope: string;
   n_posts: number;
-  per_source?: Record<string, SourceOverride>;
 }
 
 export interface AgentSchedule {
@@ -112,9 +104,7 @@ export interface Agent {
   agent_type: AgentType;
   status: AgentStatus | null;
   data_scope: {
-    searches: SearchDef[];
-    custom_fields?: CustomFieldDef[] | null;
-    enrichment_context?: string;
+    sources: Source[];
     /** @deprecated Use `outputs` instead. Kept for legacy agents created before
      * the typed outputs migration. */
     auto_report?: boolean;
@@ -124,6 +114,11 @@ export interface Agent {
     auto_slides?: boolean;
     /** @deprecated Use the corresponding email output's `config.recipients`. */
     email_recipients?: string[];
+  };
+  enrichment_config?: {
+    custom_fields?: CustomFieldDef[] | null;
+    enrichment_context?: string;
+    content_types?: string[];
   };
   outputs?: AgentOutput[];
   context?: AgentContext;
@@ -173,6 +168,7 @@ export function createAgent(data: {
   title: string;
   agent_type?: AgentType;
   data_scope?: Record<string, unknown>;
+  enrichment_config?: Record<string, unknown>;
   schedule?: AgentSchedule;
   status?: AgentStatus;
 }): Promise<Agent> {
@@ -181,7 +177,7 @@ export function createAgent(data: {
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution' | 'outputs'>>,
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'enrichment_config' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution' | 'outputs'>>,
 ): Promise<{ ok: boolean; version?: number }> {
   return apiPatch<{ ok: boolean; version?: number }>(`/agents/${agentId}`, updates);
 }
@@ -190,11 +186,13 @@ export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: s
   return apiPost<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }>(`/agents/${agentId}/run`, {});
 }
 
-/** Re-collect data for one source (omit args to refresh all sources). Does NOT
- *  trigger the agent workflow — collection pipelines only. */
+/** Re-collect data for selected sources. Targeting: pass `source_idx` for one
+ *  card, `platform` to refresh every card on that platform, or omit both to
+ *  refresh everything. Does NOT trigger the agent workflow — collection
+ *  pipelines only. */
 export function runAgentSources(
   agentId: string,
-  target?: { search_idx: number; platform: string },
+  target?: { source_idx: number } | { platform: string },
 ): Promise<{ agent_id: string; collection_ids: string[]; status: string }> {
   return apiPost<{ agent_id: string; collection_ids: string[]; status: string }>(
     `/agents/${agentId}/sources/run`,
@@ -210,15 +208,7 @@ export interface CreateFromWizardPayload {
   title: string;
   description?: string;
   agent_type: 'one_shot' | 'recurring';
-  searches: Array<{
-    platforms: string[];
-    keywords: string[];
-    channels?: string[];
-    time_range_days: number;
-    geo_scope: string;
-    n_posts: number;
-    per_source?: Record<string, SourceOverride>;
-  }>;
+  sources: Source[];
   schedule?: { frequency: string; frequency_label: string } | null;
   custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
   enrichment_context?: string;

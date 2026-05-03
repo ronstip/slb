@@ -15,34 +15,12 @@ from workers.shared.workflow_steps import progress_automated_steps  # noqa: F401
 WORKFLOW_PHASES = ["collect", "enrich", "analyze", "validate", "deliver"]
 
 
-def _effective_search_total(search_def: dict) -> int:
-    """Sum of effective per-platform post quotas for a SearchDef.
-
-    With per_source overrides, the SearchDef-level n_posts is a display-only
-    aggregate; the real total is the sum across platforms (each pulled from
-    its per_source entry, or split evenly from the default for legacy data).
-    """
-    platforms = search_def.get("platforms", []) or []
-    per_source = search_def.get("per_source") or {}
-    default_n = search_def.get("n_posts", 0) or 0
-    if not platforms:
-        return default_n
-    platform_count = max(len(platforms), 1)
-    total = 0
-    for p in platforms:
-        src = per_source.get(p)
-        if src is not None and "n_posts" in src:
-            total += int(src.get("n_posts") or 0)
-        else:
-            total += default_n // platform_count if default_n else 0
-    return total
-
-
 def build_workflow_template(
     data_scope: dict,
     agent_type: str,
     outputs: list[dict] | None = None,
     agent: dict | None = None,
+    enrichment_config: dict | None = None,
 ) -> list[dict]:
     """Build a workflow template from agent configuration.
 
@@ -54,22 +32,28 @@ def build_workflow_template(
     internal "run notes" reflection step. ``outputs`` takes precedence; if
     omitted, falls back to deriving from ``agent`` (which handles legacy
     auto_* flags).
+
+    ``enrichment_config`` overrides ``agent.enrichment_config`` if both given;
+    falls back to the agent's stored config when only ``agent`` is provided.
     """
-    searches = data_scope.get("searches", [])
-    custom_fields = data_scope.get("custom_fields") or []
-    enrichment_context = data_scope.get("enrichment_context", "")
+    from api.services.agent_service import normalize_sources
+    sources = normalize_sources(data_scope)
+    if enrichment_config is None:
+        enrichment_config = (agent or {}).get("enrichment_config") or {}
+    custom_fields = enrichment_config.get("custom_fields") or []
+    enrichment_context = enrichment_config.get("enrichment_context", "")
 
     steps: list[dict] = []
 
     # ── Phase 1: Collection ──────────────────────────────────────
-    total_posts = sum(_effective_search_total(s) for s in searches)
-    platforms = sorted({p for s in searches for p in s.get("platforms", [])})
-    n_searches = len(searches)
+    total_posts = sum(int(s.get("n_posts") or 0) for s in sources)
+    platforms = sorted({s["platform"] for s in sources})
+    n_sources = len(sources)
 
     if platforms and total_posts:
         content = (
             f"Collect {total_posts:,} posts across {', '.join(platforms)} "
-            f"({n_searches} search{'es' if n_searches != 1 else ''})"
+            f"({n_sources} source{'s' if n_sources != 1 else ''})"
         )
     elif platforms:
         content = f"Collect posts from {', '.join(platforms)}"

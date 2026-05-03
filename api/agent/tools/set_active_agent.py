@@ -38,12 +38,14 @@ def set_active_agent(
 
     # Set agent context in session state
     data_scope = agent.get("data_scope", {})
+    enrichment_config = agent.get("enrichment_config", {})
     if tool_context:
         tool_context.state["active_agent_id"] = agent_id
         tool_context.state["active_agent_title"] = agent.get("title", "")
         tool_context.state["active_agent_status"] = agent.get("status", "")
         tool_context.state["active_agent_type"] = agent.get("agent_type", "one_shot")
         tool_context.state["active_agent_data_scope"] = data_scope
+        tool_context.state["active_agent_enrichment_config"] = enrichment_config
         tool_context.state["active_agent_constitution"] = agent.get("constitution")
         tool_context.state["active_agent_context"] = agent.get("context")
 
@@ -59,19 +61,20 @@ def set_active_agent(
         fs.add_agent_session(agent_id, session_id)
 
     # Build data_scope summary for agent awareness
+    from api.services.agent_service import normalize_sources
+    sources = normalize_sources(data_scope)
     data_scope_summary = {
-        "enrichment_context": data_scope.get("enrichment_context", ""),
-        "custom_fields": data_scope.get("custom_fields", []),
-        "searches": [
+        "enrichment_context": enrichment_config.get("enrichment_context", ""),
+        "custom_fields": enrichment_config.get("custom_fields", []),
+        "sources": [
             {
+                "platform": s.get("platform"),
                 "keywords": s.get("keywords", []),
-                "platforms": s.get("platforms", []),
                 "time_range_days": s.get("time_range_days"),
                 "start_date": s.get("start_date"),
                 "end_date": s.get("end_date"),
             }
-            for s in data_scope.get("searches", [])
-            if isinstance(s, dict)
+            for s in sources
         ],
     }
 

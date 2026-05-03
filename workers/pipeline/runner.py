@@ -100,6 +100,22 @@ class PipelineRunner:
         status = self.fs.get_collection_status(self.collection_id)
         return (status or {}).get("agent_id")
 
+    def _get_agent_version(self) -> int | None:
+        """Return the agent_version frozen on this collection at dispatch time.
+
+        Stamped by ``agent_service.dispatch_agent_run`` so the value is stable
+        across the original run + any continuation reruns. None for manual
+        collections with no owning agent.
+        """
+        status = self.fs.get_collection_status(self.collection_id)
+        v = (status or {}).get("agent_version")
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
     def _check_agent_completion(self) -> None:
         """Trigger agent continuation check if this collection belongs to an agent."""
         try:
@@ -233,10 +249,12 @@ class PipelineRunner:
                 crawlers={},
             )
 
-        # Resolve owning agent up front — the idempotency cache and the
-        # enrichment-skip query both widen to "any of the agent's collections"
-        # when the collection belongs to an agent.
+        # Resolve owning agent + frozen version up front. The enrichment skip
+        # cache keys on (agent_id, agent_version); the embedding skip cache
+        # widens to "any of the agent's collections" when the collection
+        # belongs to an agent.
         agent_id = self._get_agent_id()
+        agent_version = self._get_agent_version()
         agent_collection_ids = (
             self.fs.get_agent_collection_ids(agent_id) if agent_id else []
         )
@@ -247,6 +265,8 @@ class PipelineRunner:
         # get a correct starting set.
         enriched_ids, embedded_ids = self._prime_idempotency_cache(
             agent_collection_ids=agent_collection_ids,
+            agent_id=agent_id,
+            agent_version=agent_version,
         )
         ctx = StepContext(
             collection_id=self.collection_id,
@@ -261,6 +281,7 @@ class PipelineRunner:
             embedded_ids=embedded_ids,
             media_executor=self._media_executor,
             agent_id=agent_id,
+            agent_version=agent_version,
             agent_collection_ids=agent_collection_ids,
         )
 
@@ -1344,7 +1365,10 @@ class PipelineRunner:
                     return
 
     def _prime_idempotency_cache(
-        self, agent_collection_ids: list[str] | None = None,
+        self,
+        agent_collection_ids: list[str] | None = None,
+        agent_id: str | None = None,
+        agent_version: int | None = None,
     ) -> tuple[set[str], set[str]]:
         """Load the set of already-enriched and already-embedded post_ids.
 
@@ -1352,28 +1376,20 @@ class PipelineRunner:
         correct starting set. If either query fails, the step actions fall
         back to per-batch BQ pre-checks (defense-in-depth).
 
-        When ``agent_collection_ids`` is non-empty, the cache widens to all
-        collections belonging to the same agent, so a post enriched in one
-        of the agent's prior runs short-circuits enrichment in this run.
+        Enrichment skip is keyed on (agent_id, agent_version) — strict match,
+        NULL legacy rows DO NOT count as a hit, so a new agent re-enriches
+        them. Embedding skip widens to all of the agent's collections (one
+        embedding per post regardless of which agent triggered it).
         """
-        # Scope of "already done": agent-wide if agent_collection_ids is set,
-        # otherwise just this collection.
-        if agent_collection_ids:
-            scope_filter = "p.collection_id IN UNNEST(@collection_ids)"
-            scope_params = {"collection_ids": agent_collection_ids}
-        else:
-            scope_filter = "p.collection_id = @collection_id"
-            scope_params = {"collection_id": self.collection_id}
-
         enriched: set[str] = set()
         embedded: set[str] = set()
         try:
             rows = self.bq.query(
-                "SELECT DISTINCT ep.post_id AS post_id "
-                "FROM social_listening.enriched_posts ep "
-                "JOIN social_listening.posts p ON p.post_id = ep.post_id "
-                f"WHERE {scope_filter}",
-                scope_params,
+                "SELECT DISTINCT post_id "
+                "FROM social_listening.enriched_posts "
+                "WHERE agent_id IS NOT DISTINCT FROM @agent_id "
+                "  AND agent_version IS NOT DISTINCT FROM @agent_version",
+                {"agent_id": agent_id, "agent_version": agent_version},
             )
             enriched = {r["post_id"] for r in rows}
         except Exception:
@@ -1381,6 +1397,15 @@ class PipelineRunner:
                 "Failed to prime enriched_ids cache for %s (falling back to per-batch BQ checks)",
                 self.collection_id, exc_info=True,
             )
+
+        # Embedded scope: agent-wide if agent_collection_ids is set, else
+        # just this collection.
+        if agent_collection_ids:
+            scope_filter = "p.collection_id IN UNNEST(@collection_ids)"
+            scope_params = {"collection_ids": agent_collection_ids}
+        else:
+            scope_filter = "p.collection_id = @collection_id"
+            scope_params = {"collection_id": self.collection_id}
         try:
             rows = self.bq.query(
                 "SELECT DISTINCT pe.post_id AS post_id "

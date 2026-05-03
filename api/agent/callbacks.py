@@ -422,7 +422,8 @@ def _build_agent_profile(state: dict) -> Optional[str]:
     """Build agent identity + data scope block — shared between both modes."""
     title = state.get("active_agent_title")
     data_scope = state.get("active_agent_data_scope")
-    if not title and not data_scope:
+    enrichment_config = state.get("active_agent_enrichment_config") or {}
+    if not title and not data_scope and not enrichment_config:
         return None
 
     lines = ["## Your Identity"]
@@ -433,11 +434,11 @@ def _build_agent_profile(state: dict) -> Optional[str]:
         status_note = f" (status: {status})" if status else ""
         lines.append(f"You are **{title}**{status_note}. Adopt this mission and perspective as your own.")
 
-    if not data_scope:
+    if not data_scope and not enrichment_config:
         return "\n".join(lines)
 
     # Context paragraph — the agent's purpose
-    enrichment_ctx = data_scope.get("enrichment_context", "")
+    enrichment_ctx = enrichment_config.get("enrichment_context", "")
     if enrichment_ctx:
         lines.append(f"\n{enrichment_ctx}")
 
@@ -457,34 +458,35 @@ def _build_agent_profile(state: dict) -> Optional[str]:
             if ctx_block:
                 lines.append(f"\n{ctx_block}")
 
-    # Searches — what was searched (not config details like n_posts)
-    searches = data_scope.get("searches", [])
-    if searches:
+    # Sources — what was searched (not config details like n_posts)
+    from api.services.agent_service import normalize_sources
+    sources = normalize_sources(data_scope)
+    if sources:
         lines.append("\n**Data scope:**")
-        for i, s in enumerate(searches):
-            platforms = ", ".join(s.get("platforms", []))
+        for i, s in enumerate(sources):
+            platform = s.get("platform", "")
             keywords = ", ".join(s.get("keywords", []))
             start = s.get("start_date", "")
             end = s.get("end_date", "")
             days = s.get("time_range_days")
             geo = s.get("geo_scope", "")
             date_info = f"{start} to {end}" if start and end else f"last {days} days" if days else ""
-            label = f"Search {i+1}" if len(searches) > 1 else "Search"
+            label = f"Source {i+1}" if len(sources) > 1 else "Source"
             parts = []
             if keywords:
                 parts.append(keywords)
-            if platforms:
-                parts.append(f"on {platforms}")
+            if platform:
+                parts.append(f"on {platform}")
             if date_info:
                 parts.append(date_info)
             if geo and geo != "global":
                 parts.append(f"geo: {geo}")
             if parts:
                 lines.append(f"- {label}: {', '.join(parts)}")
-        lines.append("\nNote: these are search parameters, not actual post counts. Use `get_collection_stats` or SQL to get real numbers.")
+        lines.append("\nNote: these are source parameters, not actual post counts. Use `get_collection_stats` or SQL to get real numbers.")
 
     # Custom fields
-    custom_fields = data_scope.get("custom_fields", [])
+    custom_fields = enrichment_config.get("custom_fields", [])
     if custom_fields:
         cf_parts = []
         for cf in custom_fields:
@@ -524,10 +526,11 @@ def _build_operational_context(state: dict) -> Optional[str]:
         lines.append(f"**Agent version:** {version}")
 
     # Data window boundaries — the critical scope-awareness framing
+    from api.services.agent_service import normalize_sources
     data_scope = state.get("active_agent_data_scope") or {}
-    searches = data_scope.get("searches", [])
-    if searches:
-        for i, s in enumerate(searches):
+    sources = normalize_sources(data_scope)
+    if sources:
+        for i, s in enumerate(sources):
             start = s.get("start_date", "")
             end = s.get("end_date", "")
             days = s.get("time_range_days")
@@ -537,7 +540,7 @@ def _build_operational_context(state: dict) -> Optional[str]:
                 date_info = f"last {days} days"
             else:
                 continue
-            label = f"Search {i+1}" if len(searches) > 1 else "Data window"
+            label = f"Source {i+1}" if len(sources) > 1 else "Data window"
             lines.append(f"**{label}:** {date_info}")
         lines.append(
             "\n**Important:** Data boundaries are artifacts of collection scope, not real-world events. "

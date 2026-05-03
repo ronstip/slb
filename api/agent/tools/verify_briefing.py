@@ -178,11 +178,26 @@ def _gather_ground_truth(collection_ids: list[str]) -> dict[str, Any]:
             "note": "No posts found in scope — verifier cannot reconcile.",
         }
 
+    # CTE: dedupe enriched_posts to one row per post_id (latest agent version,
+    # then latest enriched_at). Required because the schema now allows N
+    # enrichment rows per post (per-agent, per-version).
+    dedup_cte = """
+    WITH dedup_ep AS (
+      SELECT * EXCEPT(_rn) FROM (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY post_id
+          ORDER BY agent_version DESC NULLS LAST, enriched_at DESC
+        ) AS _rn
+        FROM social_listening.enriched_posts
+      ) WHERE _rn = 1
+    )
+    """
+
     sentiment_rows = bq.query(
-        """
+        dedup_cte + """
         SELECT ep.sentiment, COUNT(*) AS cnt,
           ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
-        FROM social_listening.enriched_posts ep
+        FROM dedup_ep ep
         JOIN social_listening.posts p ON p.post_id = ep.post_id
         WHERE p.collection_id IN UNNEST(@collection_ids)
           AND ep.is_related_to_task IS NOT FALSE
@@ -193,10 +208,10 @@ def _gather_ground_truth(collection_ids: list[str]) -> dict[str, Any]:
     )
 
     platform_rows = bq.query(
-        """
+        dedup_cte + """
         SELECT p.platform, COUNT(*) AS posts
         FROM social_listening.posts p
-        JOIN social_listening.enriched_posts ep ON p.post_id = ep.post_id
+        JOIN dedup_ep ep ON p.post_id = ep.post_id
         WHERE p.collection_id IN UNNEST(@collection_ids)
           AND ep.is_related_to_task IS NOT FALSE
         GROUP BY p.platform
@@ -207,9 +222,9 @@ def _gather_ground_truth(collection_ids: list[str]) -> dict[str, Any]:
     )
 
     entity_rows = bq.query(
-        """
+        dedup_cte + """
         SELECT entity, COUNT(*) AS mentions
-        FROM social_listening.enriched_posts ep, UNNEST(ep.entities) AS entity
+        FROM dedup_ep ep, UNNEST(ep.entities) AS entity
         JOIN social_listening.posts p ON p.post_id = ep.post_id
         WHERE p.collection_id IN UNNEST(@collection_ids)
           AND ep.is_related_to_task IS NOT FALSE

@@ -12,11 +12,112 @@ from api.deps import get_bq, get_fs
 logger = logging.getLogger(__name__)
 
 
+def _clean_source(s: dict) -> dict:
+    src = {
+        "platform": s.get("platform"),
+        "keywords": list(s.get("keywords") or []),
+        "n_posts": int(s.get("n_posts") or 0),
+        "time_range_days": int(s.get("time_range_days") or 90),
+        "geo_scope": s.get("geo_scope") or "global",
+    }
+    channels = s.get("channels")
+    if channels:
+        src["channels"] = list(channels)
+    for k in ("start_date", "end_date"):
+        v = s.get(k)
+        if v:
+            src[k] = v
+    return src
+
+
+def normalize_sources(data_scope: dict | None) -> list[dict]:
+    """Return data_scope's sources as a flat list of single-platform dicts.
+
+    Each source: {platform, keywords[], n_posts, time_range_days, geo_scope,
+    channels?, start_date?, end_date?}.
+
+    Accepts the new flat `sources` field, and falls back to expanding the
+    legacy `searches` shape (multi-platform with optional `per_source`
+    overrides) into one Source per platform. Idempotent.
+    """
+    if not data_scope:
+        return []
+    raw = data_scope.get("sources")
+    if isinstance(raw, list):
+        return [_clean_source(s) for s in raw if isinstance(s, dict) and s.get("platform")]
+
+    out: list[dict] = []
+    for search in (data_scope.get("searches") or []):
+        if not isinstance(search, dict):
+            continue
+        platforms = search.get("platforms") or []
+        if not platforms:
+            continue
+        per_source = search.get("per_source") or {}
+        default_n = int(search.get("n_posts") or 0)
+        default_split = default_n // max(len(platforms), 1) if default_n else 0
+        for platform in platforms:
+            override = per_source.get(platform) or {}
+            if override.get("override"):
+                merged = {
+                    "platform": platform,
+                    "keywords": override.get("keywords", search.get("keywords", [])),
+                    "n_posts": override.get("n_posts", default_split),
+                    "time_range_days": override.get("time_range_days", search.get("time_range_days", 90)),
+                    "geo_scope": override.get("geo_scope", search.get("geo_scope", "global")),
+                    "channels": override.get("channels", search.get("channels")),
+                }
+            else:
+                merged = {
+                    "platform": platform,
+                    "keywords": search.get("keywords", []),
+                    "n_posts": default_split,
+                    "time_range_days": search.get("time_range_days", 90),
+                    "geo_scope": search.get("geo_scope", "global"),
+                    "channels": search.get("channels"),
+                }
+            for k in ("start_date", "end_date"):
+                v = search.get(k)
+                if v:
+                    merged[k] = v
+            out.append(_clean_source(merged))
+    return out
+
+
+def _normalize_data_scope(data_scope: dict | None) -> dict:
+    """Return a copy of data_scope with `sources` populated and legacy
+    `searches`/`per_source` stripped. Safe to call on already-normalized
+    payloads.
+    """
+    if not data_scope:
+        return {}
+    out = dict(data_scope)
+    out["sources"] = normalize_sources(out)
+    out.pop("searches", None)
+    return out
+
+
+_ENRICHMENT_CONFIG_KEYS = ("custom_fields", "enrichment_context", "content_types")
+
+
+def _normalize_enrichment_config(enrichment_config: dict | None) -> dict:
+    """Return a copy with only the recognized enrichment keys, dropping empties."""
+    if not enrichment_config:
+        return {}
+    out: dict = {}
+    for k in _ENRICHMENT_CONFIG_KEYS:
+        v = enrichment_config.get(k)
+        if v:
+            out[k] = v
+    return out
+
+
 def create_agent(
     user_id: str,
     title: str,
     agent_type: str = "one_shot",
     data_scope: dict | None = None,
+    enrichment_config: dict | None = None,
     schedule: dict | None = None,
     org_id: str | None = None,
     todos: list | None = None,
@@ -30,6 +131,8 @@ def create_agent(
     bq = get_bq()
 
     agent_id = str(uuid4())
+    data_scope = _normalize_data_scope(data_scope)
+    enrichment_config = _normalize_enrichment_config(enrichment_config)
 
     agent_data = {
         "agent_id": agent_id,
@@ -38,7 +141,8 @@ def create_agent(
         "title": title,
         "agent_type": agent_type,
         "status": status,
-        "data_scope": data_scope or {},
+        "data_scope": data_scope,
+        "enrichment_config": enrichment_config,
         "outputs": outputs or [],
         "schedule": schedule,
         "todos": todos or [],
@@ -75,13 +179,20 @@ def create_agent(
 
 
 def get_agent(agent_id: str) -> dict | None:
-    """Get an agent by ID from Firestore."""
-    return get_fs().get_agent(agent_id)
+    """Get an agent by ID from Firestore. data_scope.sources is normalized."""
+    agent = get_fs().get_agent(agent_id)
+    if agent is None:
+        return None
+    agent["data_scope"] = _normalize_data_scope(agent.get("data_scope"))
+    return agent
 
 
 def list_agents(user_id: str, org_id: str | None = None) -> list[dict]:
-    """List agents visible to the user."""
-    return get_fs().list_user_agents(user_id, org_id)
+    """List agents visible to the user. data_scope.sources is normalized."""
+    agents = get_fs().list_user_agents(user_id, org_id)
+    for agent in agents:
+        agent["data_scope"] = _normalize_data_scope(agent.get("data_scope"))
+    return agents
 
 
 def update_agent(agent_id: str, **fields) -> None:
@@ -89,7 +200,7 @@ def update_agent(agent_id: str, **fields) -> None:
     get_fs().update_agent(agent_id, **fields)
 
 
-VERSIONED_FIELDS = {"title", "data_scope", "todos", "context", "constitution", "outputs"}
+VERSIONED_FIELDS = {"title", "todos", "context", "constitution", "outputs", "enrichment_config"}
 
 
 def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int:
@@ -102,6 +213,11 @@ def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int
     if not agent:
         raise ValueError(f"Agent {agent_id} not found")
 
+    if "data_scope" in updates:
+        updates["data_scope"] = _normalize_data_scope(updates["data_scope"])
+    if "enrichment_config" in updates:
+        updates["enrichment_config"] = _normalize_enrichment_config(updates["enrichment_config"])
+
     needs_version = bool(VERSIONED_FIELDS & set(updates.keys()))
     current_version = agent.get("version") or 1
     new_version = current_version
@@ -113,6 +229,7 @@ def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int
         snapshot = {
             "title": updates.get("title", agent.get("title")),
             "data_scope": updates.get("data_scope", agent.get("data_scope")),
+            "enrichment_config": updates.get("enrichment_config", agent.get("enrichment_config")),
             "todos": updates.get("todos", agent.get("todos")),
             "context": updates.get("context", agent.get("context")),
             "constitution": updates.get("constitution", agent.get("constitution")),
@@ -125,65 +242,20 @@ def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int
     return new_version
 
 
-def resolve_source_config(search_def: dict, platform: str) -> dict | None:
-    """Resolve effective collection config for one (search, platform).
-
-    Returns a dict of resolved fields (keywords/channels/n_posts/geo_scope/
-    time_range_days), or None if the source has no keywords AND no channels
-    (nothing to collect).
-    """
-    platforms = search_def.get("platforms", []) or []
-    if platform not in platforms:
-        return None
-    per_source = search_def.get("per_source") or {}
-    default_keywords = search_def.get("keywords", []) or []
-    default_channels = search_def.get("channels")
-    default_time_range = search_def.get("time_range_days", 90)
-    default_geo = search_def.get("geo_scope", "global")
-    default_n_posts = search_def.get("n_posts", 0) or 0
-    platform_count = max(len(platforms), 1)
-    default_split = default_n_posts // platform_count if default_n_posts else 0
-
-    src = per_source.get(platform) or {}
-    if src.get("override"):
-        keywords = src.get("keywords", default_keywords)
-        channels = src.get("channels", default_channels)
-        time_range_days = src.get("time_range_days", default_time_range)
-        geo_scope = src.get("geo_scope", default_geo)
-        n_posts = src.get("n_posts", default_split)
-    else:
-        keywords = default_keywords
-        channels = default_channels
-        time_range_days = default_time_range
-        geo_scope = default_geo
-        n_posts = default_split
-
-    if not keywords and not channels:
-        return None
-
-    return {
-        "keywords": keywords or [],
-        "channels": channels,
-        "time_range_days": time_range_days,
-        "geo_scope": geo_scope,
-        "n_posts": n_posts or 0,
-    }
-
-
 def _build_base_extra_config(agent: dict) -> dict:
     """Collect the agent-wide enrichment/context fields that ride along with
     every collection request (custom_fields, enrichment_context, content_types,
     structured_context derived from constitution/context).
     """
-    data_scope = agent.get("data_scope") or {}
+    enrichment_config = agent.get("enrichment_config") or {}
     base_extra: dict = {}
-    custom_fields = data_scope.get("custom_fields")
+    custom_fields = enrichment_config.get("custom_fields")
     if custom_fields:
         base_extra["custom_fields"] = custom_fields
-    enrichment_context = data_scope.get("enrichment_context")
+    enrichment_context = enrichment_config.get("enrichment_context")
     if enrichment_context:
         base_extra["enrichment_context"] = enrichment_context
-    content_types = data_scope.get("content_types")
+    content_types = enrichment_config.get("content_types")
     if content_types:
         base_extra["content_types"] = content_types
     agent_constitution = agent.get("constitution")
@@ -202,85 +274,81 @@ def _build_base_extra_config(agent: dict) -> dict:
     return base_extra
 
 
+def _source_to_collection_request(source: dict, description: str):
+    from api.schemas.requests import CreateCollectionRequest
+    return CreateCollectionRequest(
+        description=description,
+        platforms=[source["platform"]],
+        keywords=source.get("keywords") or [],
+        channel_urls=source.get("channels"),
+        time_range_days=source.get("time_range_days", 90),
+        geo_scope=source.get("geo_scope", "global"),
+        n_posts=source.get("n_posts") or 0,
+        include_comments=True,
+    )
+
+
 def run_agent_sources(
     agent_id: str,
     agent: dict,
-    targets: list[tuple[int, str]] | None = None,
+    source_idx: int | None = None,
+    platform: str | None = None,
 ) -> list[str]:
-    """Re-collect data for one or more sources without triggering the agent run.
+    """Re-collect data for selected sources without triggering the agent run.
 
-    `targets` is a list of (search_idx, platform). When None, runs every source
-    in the agent. Each call creates a fresh collection per source, links it to
-    the agent, and dispatches the collection pipeline. No run record is created
-    and the agent's status / todos are not changed — this is a data refresh.
+    Targeting: ``source_idx`` selects one card; ``platform`` selects every
+    card on that platform; both omitted refreshes every source on the agent.
+    ``source_idx`` wins if both are passed.
+
+    Each selected source becomes a fresh collection linked to the agent. No
+    run record is created and the agent's status / todos are not changed —
+    this is a data refresh, not an agent run.
 
     Returns the list of new collection IDs.
     """
-    from api.schemas.requests import CreateCollectionRequest
     from api.services.collection_service import create_collection_from_request
     from google.cloud.firestore_v1 import transforms
 
     fs = get_fs()
-    data_scope = agent.get("data_scope") or {}
-    searches = data_scope.get("searches", []) or []
+    sources = normalize_sources(agent.get("data_scope"))
+    if not sources:
+        return []
+    if source_idx is not None:
+        if source_idx < 0 or source_idx >= len(sources):
+            return []
+        sources = [sources[source_idx]]
+    elif platform is not None:
+        sources = [s for s in sources if s.get("platform") == platform]
+        if not sources:
+            return []
+
     user_id = agent.get("user_id", "")
     org_id = agent.get("org_id")
     title = agent.get("title", "")
-
-    # Build the (search_idx, platform) targets if not provided.
-    if targets is None:
-        targets = [
-            (idx, platform)
-            for idx, search in enumerate(searches)
-            for platform in (search.get("platforms") or [])
-        ]
-    if not targets:
-        return []
-
     base_extra = _build_base_extra_config(agent)
     description = f"{title} (data refresh)" if title else "Data refresh"
 
+    agent_version = agent.get("version", 1)
     collection_ids: list[str] = []
-    for search_idx, platform in targets:
-        if search_idx < 0 or search_idx >= len(searches):
+    for source in sources:
+        if not source.get("keywords") and not source.get("channels"):
             continue
-        search_def = searches[search_idx]
-        resolved = resolve_source_config(search_def, platform)
-        if resolved is None:
-            continue
-
-        req = CreateCollectionRequest(
-            description=description,
-            platforms=[platform],
-            keywords=resolved["keywords"],
-            channel_urls=resolved["channels"],
-            time_range_days=resolved["time_range_days"],
-            geo_scope=resolved["geo_scope"],
-            n_posts=resolved["n_posts"],
-            include_comments=True,
-        )
-        extra_config = dict(base_extra)
-        city = search_def.get("city")
-        if city:
-            extra_config["city"] = city
-
         result = create_collection_from_request(
-            request=req,
+            request=_source_to_collection_request(source, description),
             user_id=user_id,
             org_id=org_id,
-            extra_config=extra_config,
+            extra_config=dict(base_extra),
         )
         cid = result["collection_id"]
         collection_ids.append(cid)
-
         fs.add_agent_collection(agent_id, cid)
-        fs.update_collection_status(cid, agent_id=agent_id)
+        fs.update_collection_status(cid, agent_id=agent_id, agent_version=agent_version)
 
     if collection_ids:
         fs.update_agent(agent_id, collection_ids=transforms.ArrayUnion(collection_ids))
         log_agent_activity(
             agent_id,
-            f"Source refresh — collecting from {len(collection_ids)} platform(s)",
+            f"Source refresh — collecting from {len(collection_ids)} source(s)",
             source="agent_service",
         )
     return collection_ids
@@ -295,7 +363,6 @@ def dispatch_agent_run(
 
     Returns (run_id, collection_ids).
     """
-    from api.schemas.requests import CreateCollectionRequest
     from api.services.collection_service import create_collection_from_request
     from workers.pipeline.schedule_utils import compute_next_run_at
     from api.agent.workflow_template import build_workflow_template, progress_automated_steps
@@ -303,15 +370,15 @@ def dispatch_agent_run(
     fs = get_fs()
 
     data_scope = agent.get("data_scope") or {}
-    searches = data_scope.get("searches", [])
+    sources = normalize_sources(data_scope)
     schedule = agent.get("schedule") or {}
     user_id = agent.get("user_id", "")
     org_id = agent.get("org_id")
     title = agent.get("title", "")
     agent_type = agent.get("agent_type", "one_shot")
 
-    if not searches:
-        logger.warning("Agent %s has no searches defined", agent_id)
+    if not sources:
+        logger.warning("Agent %s has no sources defined", agent_id)
         return "", []
 
     # Create a run record (stamped with current agent version)
@@ -325,41 +392,22 @@ def dispatch_agent_run(
     description = title if agent_type == "one_shot" else f"{title} (scheduled run)"
 
     collection_ids = []
-    for search_def in searches:
-        for platform in (search_def.get("platforms") or []):
-            resolved = resolve_source_config(search_def, platform)
-            if resolved is None:
-                continue
+    for source in sources:
+        if not source.get("keywords") and not source.get("channels"):
+            continue
+        result = create_collection_from_request(
+            request=_source_to_collection_request(source, description),
+            user_id=user_id,
+            org_id=org_id,
+            extra_config=dict(base_extra),
+        )
+        cid = result["collection_id"]
+        collection_ids.append(cid)
 
-            req = CreateCollectionRequest(
-                description=description,
-                platforms=[platform],
-                keywords=resolved["keywords"],
-                channel_urls=resolved["channels"],
-                time_range_days=resolved["time_range_days"],
-                geo_scope=resolved["geo_scope"],
-                n_posts=resolved["n_posts"],
-                include_comments=True,
-            )
-
-            extra_config = dict(base_extra)
-            city = search_def.get("city")
-            if city:
-                extra_config["city"] = city
-
-            result = create_collection_from_request(
-                request=req,
-                user_id=user_id,
-                org_id=org_id,
-                extra_config=extra_config,
-            )
-            cid = result["collection_id"]
-            collection_ids.append(cid)
-
-            # Link collection to agent (both directions) and to run
-            fs.add_agent_collection(agent_id, cid)
-            fs.add_run_collection(agent_id, run_id, cid)
-            fs.update_collection_status(cid, agent_id=agent_id)
+        # Link collection to agent (both directions) and to run
+        fs.add_agent_collection(agent_id, cid)
+        fs.add_run_collection(agent_id, run_id, cid)
+        fs.update_collection_status(cid, agent_id=agent_id, agent_version=agent_version)
 
     # Build fresh workflow template for each run.
     # Preserve custom steps from previous runs (user-added) but reset all statuses.

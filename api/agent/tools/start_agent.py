@@ -33,11 +33,15 @@ def start_agent(
 
     Args:
         title: A concise title for the agent (e.g., "NBA TikTok Exposure").
-        searches: JSON array of search definitions. Each search becomes a
-            NEW data collection. Format:
-            [{"platforms": ["tiktok"], "keywords": ["NBA highlights"],
+        searches: JSON array of source definitions — one per platform/query
+            combination. Each source becomes a NEW data collection. Format:
+            [{"platform": "tiktok", "keywords": ["NBA highlights"],
               "time_range_days": 1, "n_posts": 500, "geo_scope": "global"}]
-            Optional fields per search: channels, start_date, end_date.
+            Optional fields per source: channels, start_date, end_date.
+            For multiple platforms (or distinct queries on the same platform),
+            emit one entry per source. Multi-platform shape (`platforms: [...]`
+            with optional per_source overrides) is also accepted for back-compat
+            and will be expanded server-side.
             May be an empty array ("[]") if existing_collection_ids is set.
         agent_type: "one_shot" (default) or "recurring".
         schedule: JSON object for recurring agents. Format:
@@ -121,12 +125,13 @@ def start_agent(
             logger.warning("Invalid custom_fields in start_agent: %s", e)
             custom_fields_list = None
 
-    # Build data scope
+    # Build data scope (collection-relevant) and enrichment_config (versioned)
     data_scope = {"searches": searches_list}
+    enrichment_config: dict = {}
     if custom_fields_list:
-        data_scope["custom_fields"] = custom_fields_list
+        enrichment_config["custom_fields"] = custom_fields_list
     if enrichment_context:
-        data_scope["enrichment_context"] = enrichment_context
+        enrichment_config["enrichment_context"] = enrichment_context
 
     # Get identity from session state
     state = tool_context.state if tool_context else {}
@@ -137,9 +142,9 @@ def start_agent(
     if not user_id:
         return {"status": "error", "message": "No authenticated user in session"}
 
-    # Build workflow template from data_scope
+    # Build workflow template from data_scope + enrichment_config
     from api.agent.workflow_template import build_workflow_template
-    todos = build_workflow_template(data_scope, agent_type)
+    todos = build_workflow_template(data_scope, agent_type, enrichment_config=enrichment_config)
 
     # Create agent
     from api.deps import get_fs
@@ -150,6 +155,7 @@ def start_agent(
         title=title,
         agent_type=agent_type,
         data_scope=data_scope,
+        enrichment_config=enrichment_config,
         schedule=schedule_obj,
         org_id=org_id,
         todos=todos,

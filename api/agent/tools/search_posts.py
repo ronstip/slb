@@ -186,6 +186,15 @@ def search_posts(
         )
 
     sql = f"""
+    WITH dedup_ep AS (
+      SELECT * EXCEPT(_rn) FROM (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY post_id
+          ORDER BY agent_version DESC NULLS LAST, enriched_at DESC
+        ) AS _rn
+        FROM social_listening.enriched_posts
+      ) WHERE _rn = 1
+    )
     SELECT
       p.post_id,
       p.platform,
@@ -198,7 +207,7 @@ def search_posts(
       pe.views,
       p.post_url
     FROM social_listening.posts p
-    JOIN social_listening.enriched_posts ep ON p.post_id = ep.post_id
+    JOIN dedup_ep ep ON p.post_id = ep.post_id
     LEFT JOIN social_listening.post_engagements pe ON p.post_id = pe.post_id
     WHERE {where_clause}
     QUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1

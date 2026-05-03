@@ -25,26 +25,48 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# BQ write: MERGE enrichment results into enriched_posts
+# BQ write: INSERT enrichment results into enriched_posts (append-only)
 # ---------------------------------------------------------------------------
 
 def _write_results_to_bq(
     bq: BQClient,
     results: list[tuple[str, EnrichmentResult]],
+    *,
+    collection_id: str | None = None,
+    agent_id: str | None = None,
+    agent_version: int | None = None,
 ) -> None:
-    """Write enrichment results to BQ via MERGE (idempotent, supports re-enrichment)."""
+    """Append enrichment results to enriched_posts. INSERT-only: each call
+    writes new rows, even when the (post_id, agent_id, agent_version) triple
+    already exists. Readers dedupe via the DEDUP_ENRICHED CTE.
+    """
     if not results:
         return
-    _write_results_via_values(bq, results)
+    _write_results_via_values(
+        bq, results,
+        collection_id=collection_id,
+        agent_id=agent_id,
+        agent_version=agent_version,
+    )
 
 
 def _write_results_via_values(
     bq: BQClient,
     results: list[tuple[str, EnrichmentResult]],
+    *,
+    collection_id: str | None,
+    agent_id: str | None,
+    agent_version: int | None,
 ) -> None:
-    """Write results using a MERGE with inline VALUES (works around BQ param limitations)."""
+    """Write results using INSERT ... SELECT UNION ALL (works around BQ
+    parameter limits when batches contain JSON / nested arrays).
+    """
     if not results:
         return
+
+    cid_sql = f"'{_esc(collection_id)}'" if collection_id else "CAST(NULL AS STRING)"
+    aid_sql = f"'{_esc(agent_id)}'" if agent_id else "CAST(NULL AS STRING)"
+    av_sql = str(int(agent_version)) if agent_version is not None else "CAST(NULL AS INT64)"
 
     # Build a UNION ALL of SELECT statements for each row
     selects = []
@@ -58,6 +80,9 @@ def _write_results_via_values(
 
         selects.append(
             f"SELECT '{_esc(post_id)}' AS post_id, "
+            f"{cid_sql} AS collection_id, "
+            f"{aid_sql} AS agent_id, "
+            f"{av_sql} AS agent_version, "
             f"'{_esc(r.context)}' AS context, "
             f"'{_esc(r.sentiment)}' AS sentiment, "
             f"'{_esc(r.emotion)}' AS emotion, "
@@ -69,38 +94,23 @@ def _write_results_via_values(
             f"{'TRUE' if r.is_related_to_task else 'FALSE'} AS is_related_to_task, "
             f"[{brands_arr}] AS detected_brands, "
             f"'{_esc(r.channel_type)}' AS channel_type, "
-            f"{custom_sql} AS custom_fields"
+            f"{custom_sql} AS custom_fields, "
+            f"CURRENT_TIMESTAMP() AS enriched_at"
         )
 
     source_sql = " UNION ALL\n".join(selects)
 
-    merge_sql = f"""\
-MERGE social_listening.enriched_posts AS target
-USING (
-    {source_sql}
-) AS source
-ON target.post_id = source.post_id
-WHEN NOT MATCHED THEN
-    INSERT (post_id, context, sentiment, emotion, entities, themes, ai_summary, language, content_type, is_related_to_task, detected_brands, channel_type, custom_fields, enriched_at)
-    VALUES (source.post_id, source.context, source.sentiment, source.emotion, source.entities, source.themes, source.ai_summary, source.language, source.content_type, source.is_related_to_task, source.detected_brands, source.channel_type, source.custom_fields, CURRENT_TIMESTAMP())
-WHEN MATCHED THEN
-    UPDATE SET
-        context                = source.context,
-        sentiment              = source.sentiment,
-        emotion                = source.emotion,
-        entities               = source.entities,
-        themes                 = source.themes,
-        ai_summary             = source.ai_summary,
-        language               = source.language,
-        content_type           = source.content_type,
-        is_related_to_task     = source.is_related_to_task,
-        detected_brands        = source.detected_brands,
-        channel_type           = source.channel_type,
-        custom_fields          = source.custom_fields,
-        enriched_at            = CURRENT_TIMESTAMP();"""
+    insert_sql = f"""\
+INSERT INTO social_listening.enriched_posts (
+    post_id, collection_id, agent_id, agent_version,
+    context, sentiment, emotion, entities, themes, ai_summary,
+    language, content_type, is_related_to_task, detected_brands,
+    channel_type, custom_fields, enriched_at
+)
+{source_sql};"""
 
-    bq.query(merge_sql)
-    logger.info("Wrote %d enrichment results to BQ", len(results))
+    bq.query(insert_sql)
+    logger.info("Wrote %d enrichment results to BQ (agent=%s v=%s)", len(results), agent_id, agent_version)
 
 
 def _esc(s: str) -> str:
@@ -116,8 +126,15 @@ def _read_posts_from_bq(
     bq: BQClient,
     collection_id: str,
     min_likes: int = 0,
+    agent_id: str | None = None,
+    agent_version: int | None = None,
 ) -> list[PostData]:
-    """Read posts from BQ for a collection, filtered by engagement threshold."""
+    """Read posts from BQ for a collection, filtered by engagement threshold.
+
+    Skip predicate: a post is skipped iff an enriched_posts row exists with
+    matching (agent_id, agent_version). NULL legacy rows do NOT count as a
+    match — the new (agent, version) re-enriches them.
+    """
     rows = bq.query(
         "SELECT p.post_id, p.platform, p.channel_handle, "
         "  CAST(p.posted_at AS STRING) AS posted_at, p.title, p.content, "
@@ -128,11 +145,19 @@ def _read_posts_from_bq(
         "    ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn "
         "  FROM social_listening.post_engagements"
         ") eng ON eng.post_id = p.post_id AND eng.rn = 1 "
-        "LEFT JOIN social_listening.enriched_posts ep ON ep.post_id = p.post_id "
+        "LEFT JOIN social_listening.enriched_posts ep "
+        "  ON ep.post_id = p.post_id "
+        "  AND ep.agent_id IS NOT DISTINCT FROM @agent_id "
+        "  AND ep.agent_version IS NOT DISTINCT FROM @agent_version "
         "WHERE p.collection_id = @collection_id "
         "  AND COALESCE(eng.likes, 0) >= @min_likes "
-        "  AND ep.post_id IS NULL",  # skip already-enriched
-        {"collection_id": collection_id, "min_likes": min_likes},
+        "  AND ep.post_id IS NULL",  # skip if THIS (agent, version) already enriched
+        {
+            "collection_id": collection_id,
+            "min_likes": min_likes,
+            "agent_id": agent_id,
+            "agent_version": agent_version,
+        },
     )
     return [_row_to_post_data(r) for r in rows]
 
@@ -194,6 +219,8 @@ def run_enrichment_inline(
     custom_fields: list[CustomFieldDef] | None = None,
     enrichment_context: str | None = None,
     content_types: list[str] | None = None,
+    agent_id: str | None = None,
+    agent_version: int | None = None,
 ) -> list[tuple[str, EnrichmentResult]]:
     """Enrich posts from in-memory data. Used by parallel pipeline callback.
 
@@ -201,6 +228,8 @@ def run_enrichment_inline(
     custom_fields: per-collection custom field definitions from config.
     enrichment_context: task-level context for relevance judgement.
     content_types: optional closed vocabulary for the content_type field.
+    agent_id, agent_version: stamped onto each row for the re-enrichment
+    skip key. NULL when the collection has no owning agent.
     """
     if not posts:
         return []
@@ -215,7 +244,12 @@ def run_enrichment_inline(
         enrichment_context=enrichment_context,
         content_types=content_types,
     )
-    _write_results_to_bq(bq, results)
+    _write_results_to_bq(
+        bq, results,
+        collection_id=collection_id or None,
+        agent_id=agent_id,
+        agent_version=agent_version,
+    )
     logger.info("Enrichment batch: %d/%d ok in %.1fs", len(results), len(posts), round(time.monotonic() - start, 1))
     return results
 
@@ -268,8 +302,17 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
     enrichment_context = _load_enrichment_context(fs, collection_id)
     content_types = _load_content_types(fs, collection_id)
 
+    # Re-enrichment scope is keyed by (agent_id, agent_version) — read both
+    # off collection_status (frozen at dispatch time).
+    status = fs.get_collection_status(collection_id) or {}
+    agent_id = status.get("agent_id")
+    agent_version = status.get("agent_version")
+
     try:
-        posts = _read_posts_from_bq(bq, collection_id, min_likes)
+        posts = _read_posts_from_bq(
+            bq, collection_id, min_likes,
+            agent_id=agent_id, agent_version=agent_version,
+        )
         logger.info("Standalone enrichment: %d posts for collection %s", len(posts), collection_id)
 
         start = time.monotonic()
@@ -282,7 +325,12 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
                 enrichment_context=enrichment_context,
                 content_types=content_types,
             )
-            _write_results_to_bq(bq, batch_results)
+            _write_results_to_bq(
+                bq, batch_results,
+                collection_id=collection_id,
+                agent_id=agent_id,
+                agent_version=agent_version,
+            )
             all_results.extend(batch_results)
             logger.info(
                 "Standalone batch %d/%d: %d/%d ok (total %d/%d)",
@@ -338,7 +386,8 @@ def run_enrichment_for_posts(
 ) -> None:
     """Enrich specific posts by ID. Reads from BQ (standalone mode).
 
-    If collection_id is provided, loads custom field definitions from config.
+    If collection_id is provided, loads custom field definitions from config
+    and resolves the (agent_id, agent_version) skip key.
     """
     settings = get_settings()
     bq = BQClient(settings)
@@ -346,11 +395,16 @@ def run_enrichment_for_posts(
     custom_fields = None
     enrichment_context = None
     content_types = None
+    agent_id: str | None = None
+    agent_version: int | None = None
     if collection_id:
         fs = FirestoreClient(settings)
         custom_fields = _load_custom_fields(fs, collection_id)
         enrichment_context = _load_enrichment_context(fs, collection_id)
         content_types = _load_content_types(fs, collection_id)
+        status = fs.get_collection_status(collection_id) or {}
+        agent_id = status.get("agent_id")
+        agent_version = status.get("agent_version")
 
     posts = _read_posts_from_bq_by_ids(bq, post_ids)
     logger.info("Enriching %d posts by ID", len(posts))
@@ -361,7 +415,12 @@ def run_enrichment_for_posts(
         enrichment_context=enrichment_context,
         content_types=content_types,
     )
-    _write_results_to_bq(bq, results)
+    _write_results_to_bq(
+        bq, results,
+        collection_id=collection_id or None,
+        agent_id=agent_id,
+        agent_version=agent_version,
+    )
     logger.info("Enriched %d/%d posts by ID", len(results), len(posts))
 
 

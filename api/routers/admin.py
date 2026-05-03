@@ -92,9 +92,15 @@ async def admin_overview(user: CurrentUser = Depends(_admin_user)):
                         JOIN social_listening.collections c USING (collection_id)
                     ) AS total_posts_in_range,
                     (
-                        SELECT COUNT(*)
-                        FROM social_listening.enriched_posts
-                        WHERE is_related_to_task = TRUE
+                        SELECT COUNTIF(is_related_to_task = TRUE)
+                        FROM (
+                            SELECT *, ROW_NUMBER() OVER (
+                                PARTITION BY post_id
+                                ORDER BY agent_version DESC NULLS LAST, enriched_at DESC
+                            ) AS _rn
+                            FROM social_listening.enriched_posts
+                        )
+                        WHERE _rn = 1
                     ) AS total_posts_related
                 """,
             ),

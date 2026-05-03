@@ -251,9 +251,10 @@ async def _async_agent_continuation(agent_id: str) -> None:
         else:
             remaining_steps.append(f"- {t['content']}")
 
-    # Include data scope context
+    # Include data scope context + enrichment context
     data_scope = agent.get("data_scope") or {}
-    enrichment_context = data_scope.get("enrichment_context", "")
+    enrichment_config = agent.get("enrichment_config") or {}
+    enrichment_context = enrichment_config.get("enrichment_context", "")
 
     # Fetch previous run briefing for continuity
     previous_briefing = fs.get_latest_briefing(agent_id)
@@ -324,6 +325,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
     session.state["active_agent_status"] = "running"
     session.state["active_agent_type"] = agent.get("agent_type", "one_shot")
     session.state["active_agent_data_scope"] = data_scope
+    session.state["active_agent_enrichment_config"] = enrichment_config
     session.state["active_agent_constitution"] = agent.get("constitution")
     session.state["active_agent_context"] = agent.get("context")
     session.state["active_agent_created_at"] = agent.get("created_at", "")
@@ -457,9 +459,10 @@ async def _async_agent_continuation(agent_id: str) -> None:
             run_for_sig = fs.get_run(agent_id, active_run_id)
             run_collection_ids = (run_for_sig or {}).get("collection_ids", [])
             if run_collection_ids:
-                searches = ((agent or {}).get("data_scope") or {}).get("searches", [])
+                from api.services.agent_service import normalize_sources
+                sources = normalize_sources((agent or {}).get("data_scope"))
                 max_days = max(
-                    (s.get("time_range_days") or 90 for s in searches),
+                    (s.get("time_range_days") or 90 for s in sources),
                     default=90,
                 )
                 since = datetime.now(timezone.utc) - timedelta(days=max_days)

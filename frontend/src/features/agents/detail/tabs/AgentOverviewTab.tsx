@@ -89,7 +89,7 @@ export function AgentOverviewTab({
               <LivePostStream
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
-                searches={task.data_scope?.searches}
+                sources={task.data_scope?.sources}
                 agentCreatedAt={task.created_at}
                 onOpenData={() => onTabChange('data')}
               />
@@ -97,8 +97,8 @@ export function AgentOverviewTab({
                 agentId={task.agent_id}
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
-                customFields={task.data_scope?.custom_fields}
-                searches={task.data_scope?.searches}
+                customFields={task.enrichment_config?.custom_fields}
+                sources={task.data_scope?.sources}
                 agentCreatedAt={task.created_at}
               />
               <TopicsMosaic
@@ -115,7 +115,7 @@ export function AgentOverviewTab({
                 <div className="h-[160px] min-h-0">
                   <StudioActionsPanel
                     variant="overview"
-                    customFields={task.data_scope?.custom_fields}
+                    customFields={task.enrichment_config?.custom_fields}
                   />
                 </div>
               </section>
@@ -139,14 +139,14 @@ export function AgentOverviewTab({
               <EntitiesCard
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
-                searches={task.data_scope?.searches}
+                sources={task.data_scope?.sources}
                 agentCreatedAt={task.created_at}
                 onOpenData={() => onTabChange('data')}
               />
               <ChannelMixCard
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
-                searches={task.data_scope?.searches}
+                sources={task.data_scope?.sources}
                 agentCreatedAt={task.created_at}
                 onOpenData={() => onTabChange('data')}
               />

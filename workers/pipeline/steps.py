@@ -36,10 +36,10 @@ class StepContext:
     # batch spins up its own (legacy v1 path).
     media_executor: Any = None
     # Owning agent and the full set of its collection_ids. When set, the
-    # enrichment-skip query widens to "already enriched in any of the agent's
-    # collections" instead of the per-collection default. None → standalone
-    # collection, falls back to global post_id check.
+    # embedding-skip query widens to "already embedded in any of the agent's
+    # collections". For enrichment the skip key is (agent_id, agent_version).
     agent_id: str | None = None
+    agent_version: int | None = None
     agent_collection_ids: list[str] = field(default_factory=list)
 
     def next_batch_index(self, step_name: str) -> int:
@@ -320,7 +320,7 @@ def enrich_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None]:
 def enrich_flush(
     results: list[tuple[str, str, dict | None]], ctx: StepContext,
 ) -> None:
-    """Batch-write successful enrichment results to BQ via MERGE."""
+    """Batch-write successful enrichment results to BQ via INSERT (append-only)."""
     from workers.enrichment.worker import _write_results_to_bq
 
     rows = []
@@ -334,7 +334,12 @@ def enrich_flush(
     if not rows:
         return
     try:
-        _write_results_to_bq(ctx.bq, rows)
+        _write_results_to_bq(
+            ctx.bq, rows,
+            collection_id=ctx.collection_id,
+            agent_id=ctx.agent_id,
+            agent_version=ctx.agent_version,
+        )
     except Exception:
         logger.exception(
             "enrichment BQ flush failed for %d rows in %s",
