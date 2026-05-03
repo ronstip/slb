@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   Activity,
+  AlertTriangle,
   Check,
   CheckCircle2,
   Circle,
@@ -8,6 +9,7 @@ import {
   ListChecks,
   Loader2,
   Play,
+  PlayCircle,
   Plus,
   Send,
   TerminalSquare,
@@ -93,6 +95,7 @@ interface AgentSettingsTabProps {
   onOpenSchedule: () => void;
   onRun?: () => void;
   onStop?: () => void;
+  onResume?: () => void;
   canRun?: boolean;
   isEditing: boolean;
   draft: AgentEditDraft | null;
@@ -112,6 +115,7 @@ export function AgentSettingsTab({
   onOpenSchedule,
   onRun,
   onStop,
+  onResume,
   canRun,
   isEditing,
   draft,
@@ -312,6 +316,7 @@ export function AgentSettingsTab({
                 <h2 className="text-2xl font-heading font-bold text-foreground">Live Logs</h2>
                 <p className="text-muted-foreground mt-1">Real-time activity output from the agent's operations.</p>
               </div>
+              <ResumeBanner task={task} onResume={onResume} />
               <div className="bg-card border border-border/50 rounded-2xl shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 280px)' }}>
                 {logs.length > 0 ? (
                   <div className="overflow-y-auto flex-1">
@@ -329,6 +334,94 @@ export function AgentSettingsTab({
 
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Resume Banner ───────────────────────────────────────────────────────────
+//
+// Shown in the Live Logs sub-tab when the agent is recoverable:
+//   - status === 'failed' (exception during continuation)
+//   - status === 'running' but updated_at is older than the backend's 5-min
+//     liveness window (almost certainly a dead worker — host died, uvicorn
+//     reloaded mid-run, etc.)
+// Both cases are unstuck by POST /agents/{id}/resume, which preserves the
+// already-collected/enriched data and re-runs the agent phase.
+
+const STALE_RUNNING_MS = 5 * 60 * 1000;
+
+function ResumeBanner({ task, onResume }: { task: Agent; onResume?: () => void }) {
+  const [isResuming, setIsResuming] = useState(false);
+
+  const updatedAtMs = task.updated_at ? Date.parse(task.updated_at) : NaN;
+  const isStaleRunning =
+    task.status === 'running' &&
+    Number.isFinite(updatedAtMs) &&
+    Date.now() - updatedAtMs > STALE_RUNNING_MS;
+  const isFailed = task.status === 'failed';
+
+  const firstIncomplete = task.todos?.find((t) => t.status !== 'completed');
+  const canResume = !!onResume && !!task.continuation_ready && !!firstIncomplete;
+
+  if (!isFailed && !isStaleRunning) return null;
+
+  const handleClick = async () => {
+    if (!onResume || isResuming) return;
+    setIsResuming(true);
+    try {
+      await onResume();
+    } finally {
+      setIsResuming(false);
+    }
+  };
+
+  const reason = task.context_summary?.trim();
+  const headline = isFailed
+    ? 'Agent failed mid-run'
+    : 'Agent appears stuck';
+  const subline = isFailed
+    ? (reason && reason !== 'Agent continuation failed after collection completion.'
+        ? reason
+        : 'The continuation worker raised an exception (often a dead local server or a tool error).')
+    : `No progress for over ${Math.round((Date.now() - updatedAtMs) / 60000)} minutes — the worker likely died.`;
+
+  return (
+    <div className="flex items-start gap-4 rounded-2xl border border-amber-500/40 bg-amber-500/5 px-5 py-4">
+      <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-foreground">{headline}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{subline}</p>
+        {firstIncomplete && (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Will continue from: <span className="font-medium text-foreground/80">{firstIncomplete.content}</span>
+          </p>
+        )}
+        {!canResume && (
+          <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
+            {!task.continuation_ready
+              ? 'Not resumable — collections did not finish. Re-run the agent instead.'
+              : 'Nothing to resume — all steps are already complete.'}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={!canResume || isResuming}
+        className={cn(
+          'shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+          canResume && !isResuming
+            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+            : 'bg-muted text-muted-foreground cursor-not-allowed',
+        )}
+      >
+        {isResuming ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <PlayCircle className="h-4 w-4" />
+        )}
+        {isResuming ? 'Resuming…' : 'Resume agent'}
+      </button>
     </div>
   );
 }

@@ -259,6 +259,7 @@ export function AgentDetailPage() {
               onOpenSchedule={() => setScheduleOpen(true)}
               onRun={handleRun}
               onStop={handleStop}
+              onResume={handleResume}
               canRun={canRun}
               isEditing={editMode.isEditing}
               draft={editMode.draft}
