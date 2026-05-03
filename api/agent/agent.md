@@ -95,7 +95,6 @@ User sends message
 | `execute_sql` | Query BigQuery (via BQ Toolset) |
 | `update_todos` | Track plan progress |
 | `create_chart` | Generate charts (bar, line, pie, table, number) |
-| `get_collection_stats` | Pre-computed statistics for collections |
 | `get_collection_details` | Inspect collection configuration |
 | `set_working_collections` | Set which collections are in scope |
 | `export_data` | Export posts as CSV |

@@ -44,7 +44,7 @@ _ANALYSIS_WORKFLOW = """## How You Work
 
 You're analyzing data collected for a purpose. The agent's data scope tells you what was sought; the todo list tells you what to deliver.
 
-Start by orienting (volume, platform distribution, date range, relevance rate). Then follow the shared analysis methodology — decompose, query, evaluate, drill into surprises. Cross-reference findings; doubt your own claims and try to disprove them before locking in. Then deliver: `get_collection_stats` first, then artifacts, then `generate_briefing` (private), then `verify_briefing` (independent quality check), then `compose_briefing` (exit).
+Start by orienting with a small batch of `execute_sql` calls in parallel — total in-scope post count, platform distribution, posted-at range, sentiment split. Then follow the shared analysis methodology — decompose, query, evaluate, drill into surprises. Cross-reference findings; doubt your own claims and try to disprove them before locking in. Then deliver artifacts, then `generate_briefing` (private), then `verify_briefing` (independent quality check), then `compose_briefing` (exit).
 
 **Parallelize.** Independent tool calls go in a single response. Multiple `execute_sql` queries that don't depend on each other fan out in one turn, not sequentially.
 
@@ -108,7 +108,7 @@ _COMPOSE_BRIEFING = """## `compose_briefing` — the user-facing column
 
 After `generate_briefing`, decide the 5–10 most important stories given the agent's mission, then publish.
 
-Toolkit: `list_topics` (semantic clusters), `get_collection_stats` + BigQuery (numbers, rankings, anomalies), web search (framing/context only — stories come from the social data, not the web).
+Toolkit: `list_topics` (semantic clusters), `execute_sql` (numbers, rankings, anomalies), web search (framing/context only — stories come from the social data, not the web).
 
 ### Story types
 Each story is `type: "topic"` or `type: "data"`. Mix freely.

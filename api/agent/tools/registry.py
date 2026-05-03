@@ -20,7 +20,6 @@ from api.agent.tools.generate_dashboard import generate_dashboard
 from api.agent.tools.load_dashboard_layout import load_dashboard_layout
 from api.agent.tools.presentation import generate_presentation, validate_deck_plan
 from api.agent.tools.get_agent_status import get_agent_status
-from api.agent.tools.get_collection_stats import get_collection_stats
 from api.agent.tools.get_past_collections import get_collection_details
 from api.agent.tools.set_active_agent import set_active_agent
 from api.agent.tools.show_metrics import show_metrics
@@ -58,7 +57,6 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("get_collection_details", get_collection_details, "data", False, "Fetch full details for a data source"),
         ToolSpec("ask_user", ask_user, "user", True, "Prompt the user — only when genuinely ambiguous; otherwise pick a default and state it"),
         # Data context
-        ToolSpec("get_collection_stats", get_collection_stats, "data", False, "Fetch data statistics and summary"),
         ToolSpec("search_posts", search_posts, "data", False, "Find posts by content (string or regex). Use INSTEAD of execute_sql for 'find posts that mention X' — deterministic, fast, no SQL needed"),
         # Output & visualization
         ToolSpec("create_chart", create_chart, "reporting", False, "Generate a chart spec"),
@@ -85,7 +83,7 @@ REGISTRY: dict[str, ToolSpec] = {
 TOOL_PROFILES: dict[AgentMode, set[str]] = {
     "chat": {
         # Analysis & data
-        "create_chart", "get_collection_stats", "get_collection_details",
+        "create_chart", "get_collection_details",
         "export_data", "list_topics", "load_dashboard_layout", "search_posts",
         # Agent management (interactive)
         "start_agent", "set_active_agent", "get_agent_status",
@@ -101,7 +99,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
     },
     "autonomous": {
         # Analysis & data
-        "create_chart", "get_collection_stats", "get_collection_details",
+        "create_chart", "get_collection_details",
         "export_data", "list_topics", "search_posts",
         # Planning & output
         "update_todos",

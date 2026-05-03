@@ -510,7 +510,6 @@ _TOOL_DISPLAY_NAMES: dict[str, str] = {
     "generate_dashboard": "Creating interactive dashboard",
     "generate_presentation": "Building presentation deck",
     "export_data": "Preparing data export",
-    "get_collection_stats": "Loading collection stats",
     "get_collection_details": "Loading collection details",
     "set_working_collections": "Setting working collections",
     "compose_email": "Composing email",

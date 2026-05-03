@@ -924,8 +924,8 @@ def generate_presentation(
     """Render a PowerPoint presentation from a structured slide spec.
 
     WHEN TO USE: When the user wants a downloadable presentation deck based on
-    collected data. Always gather data first (get_collection_stats, execute_sql),
-    then design the slides and call this tool.
+    collected data. Always gather data first via execute_sql, then design the
+    slides and call this tool.
 
     CONTEXT-ADAPTIVE DESIGN — think like a senior analyst deciding what the
     audience needs:

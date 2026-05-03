@@ -13,6 +13,7 @@ Categories:
 """
 
 import logging
+import re
 import threading
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
@@ -37,7 +38,7 @@ OUTPUT_TOOLS = {"export_data", "generate_presentation", "compose_briefing"}
 
 # ─── Hard gate: tools blocked while a collection pipeline is running ────
 COLLECTION_RUNNING_BLOCKED = {
-    "get_agent_status", "get_collection_stats",
+    "get_agent_status",
 }
 
 
@@ -49,7 +50,7 @@ TOOLS_WITH_COLLECTION_ID = {
     "export_data", "get_collection_details",
 }
 TOOLS_WITH_COLLECTION_IDS = {
-    "get_collection_stats", "generate_dashboard",
+    "generate_dashboard",
     "export_data", "generate_presentation",
 }
 
@@ -165,6 +166,69 @@ _MAX_SQL_CALLS_PER_SESSION = 8
 # write N+1 — silently exceeding the budget. Phase 1 retrospective saw 22+
 # SQL calls slip past the 8-call cap this way.
 _sql_budget_lock = threading.Lock()
+
+
+_POSTS_TABLE_RE = re.compile(
+    r"social_listening\.posts\b|\bfrom\s+posts\b|\bjoin\s+posts\b",
+    re.IGNORECASE,
+)
+_POSTED_AT_BOUND_RE = re.compile(
+    r"posted_at\s*\)?\s*(?:>=|<=|>|<|between(?=\s))",
+    re.IGNORECASE,
+)
+
+
+def enforce_data_window_in_sql(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+) -> Optional[dict]:
+    """Reject `execute_sql` queries that touch `posts` without a `posted_at` bound.
+
+    The data window is stated 5x in the prompt as a "MUST", but the agent
+    skipped it on a "find oldest post" question and returned a 2021 row from
+    outside its 2026-04-26 scope. The `posts` table holds re-crawls and rows
+    from other workflows, so any aggregation without `posted_at >=` silently
+    pulls in out-of-scope data. Runs before `dedup_sql_calls` so a rejected
+    query doesn't consume the per-session SQL budget.
+    """
+    if tool.name != "execute_sql":
+        return None
+
+    state = tool_context.state
+    data_start_date = state.get("active_agent_data_start_date")
+    if not data_start_date:
+        return None
+
+    raw_query = args.get("query") or args.get("sql") or ""
+    if not raw_query:
+        return None
+
+    if not _POSTS_TABLE_RE.search(raw_query):
+        return None
+    if _POSTED_AT_BOUND_RE.search(raw_query):
+        return None
+
+    data_end_date = state.get("active_agent_data_end_date")
+    end_clause = (
+        f" AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('{data_end_date}'), INTERVAL 1 DAY)"
+        if data_end_date else ""
+    )
+    return {
+        "status": "missing_data_window",
+        "rows": [],
+        "row_count": 0,
+        "message": (
+            "Query rejected: it references the `posts` table but doesn't bound "
+            "`posted_at` by your data window. Add "
+            f"`AND p.posted_at >= TIMESTAMP('{data_start_date}')`{end_clause} "
+            "to the WHERE clause and re-run. The window applies to every query "
+            "that touches `posts` — including 'find the oldest/newest post' or "
+            "any coverage question — because the raw table holds re-crawls and "
+            "posts from other workflows. Without the bound, MIN(posted_at) "
+            "returns the oldest row in the raw table, not the oldest in scope."
+        ),
+    }
 
 
 def dedup_sql_calls(
@@ -411,7 +475,7 @@ def _build_data_pool(state: dict) -> Optional[str]:
         "Use in SQL: `WHERE collection_id IN UNNEST(@collection_ids)` or "
         "`WHERE collection_id = @collection_id`. "
         "Query ALL unless the question targets a subset. "
-        "Multi-source tools (`get_collection_stats`, `export_data`, etc.) accept `collection_ids` lists. "
+        "Multi-source tools (`export_data`, `generate_dashboard`, etc.) accept `collection_ids` lists. "
         "Never mention source IDs, source counts, or internal data structure to the user.",
     ]
 
@@ -483,7 +547,7 @@ def _build_agent_profile(state: dict) -> Optional[str]:
                 parts.append(f"geo: {geo}")
             if parts:
                 lines.append(f"- {label}: {', '.join(parts)}")
-        lines.append("\nNote: these are source parameters, not actual post counts. Use `get_collection_stats` or SQL to get real numbers.")
+        lines.append("\nNote: these are source parameters, not actual post counts. Use `execute_sql` to get real numbers.")
 
     # Custom fields
     custom_fields = enrichment_config.get("custom_fields", [])
@@ -525,7 +589,31 @@ def _build_operational_context(state: dict) -> Optional[str]:
     if version:
         lines.append(f"**Agent version:** {version}")
 
-    # Data window boundaries — the critical scope-awareness framing
+    # Data window — agent-level hard scope. This is the SQL-ready bound that
+    # `search_posts` already enforces; every `execute_sql` query the agent
+    # writes must apply the same `posted_at` filter or its numbers will count
+    # posts from outside scope (the bug that motivated adding this block).
+    data_start_date = state.get("active_agent_data_start_date")
+    data_end_date = state.get("active_agent_data_end_date")
+    if data_start_date or data_end_date:
+        end_label = data_end_date or "open-ended (no upper bound)"
+        lines.append(f"**Data window — start:** `{data_start_date or 'open-ended'}`")
+        lines.append(f"**Data window — end:** `{end_label}`")
+        lines.append(
+            "\n**Apply this window to every `execute_sql` query.** "
+            "Add `AND p.posted_at >= TIMESTAMP('<start>')` "
+            "and (when end is set) "
+            "`AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<end>'), INTERVAL 1 DAY)` "
+            "to the WHERE clause. Pair it with `AND ep.is_related_to_task IS NOT FALSE` — "
+            "without both, totals include irrelevant or out-of-scope posts."
+        )
+        lines.append(
+            "Data boundaries are artifacts of collection scope, not real-world events. "
+            "Do not interpret the start of your data window as a trend inflection point or anomaly."
+        )
+
+    # Per-source dates — informational only (the real SQL bound is the agent
+    # window above). Useful for understanding what each source covers.
     from api.services.agent_service import normalize_sources
     data_scope = state.get("active_agent_data_scope") or {}
     sources = normalize_sources(data_scope)
@@ -540,12 +628,8 @@ def _build_operational_context(state: dict) -> Optional[str]:
                 date_info = f"last {days} days"
             else:
                 continue
-            label = f"Source {i+1}" if len(sources) > 1 else "Data window"
+            label = f"Source {i+1} window" if len(sources) > 1 else "Source window"
             lines.append(f"**{label}:** {date_info}")
-        lines.append(
-            "\n**Important:** Data boundaries are artifacts of collection scope, not real-world events. "
-            "Do not interpret the start of your data window as a trend inflection point or anomaly."
-        )
 
     # Run history dates
     run_dates = state.get("run_history_dates", [])

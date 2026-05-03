@@ -60,8 +60,8 @@ def search_posts(
         use ``execute_sql`` for those.
       - You need a join to channels, custom_fields, or a window function →
         use ``execute_sql``.
-      - You only need an overview, not specific posts → use
-        ``get_collection_stats``.
+      - You only need an overview (totals, sentiment split, top themes) →
+        use ``execute_sql`` with the patterns in the schema reference.
       - You need to filter by an absolute date or a date range — e.g.
         "posts from before 2020", "posts in March", "posts between X
         and Y" → use ``execute_sql`` with a ``WHERE p.posted_at`` clause.

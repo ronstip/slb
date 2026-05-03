@@ -31,23 +31,6 @@ logger = logging.getLogger(__name__)
 # production, but they don't need to be richly varied — the same canned
 # responses every run is the point.
 
-_CANNED_STATS = {
-    "status": "success",
-    "total_posts": 412,
-    "platforms": {"tiktok": 287, "reddit": 125},
-    "top_engagement": {
-        "platform": "tiktok",
-        "avg_engagement": 14823,
-        "median_engagement": 2103,
-    },
-    "date_range": {"start": "2026-03-01", "end": "2026-04-15"},
-    "top_themes": [
-        {"label": "product complaints",  "post_count": 142, "avg_sentiment": -0.31},
-        {"label": "user tutorials",      "post_count": 98,  "avg_sentiment":  0.42},
-        {"label": "competitor mentions", "post_count": 67,  "avg_sentiment": -0.05},
-    ],
-}
-
 _CANNED_COLLECTION_DETAILS = {
     "status": "success",
     "collection": {
@@ -96,8 +79,6 @@ def stub_before_tool_callback(
         }
 
     # ── Read-only data tools ─────────────────────────────────────────────
-    if name == "get_collection_stats":
-        return _CANNED_STATS
     if name == "get_collection_details":
         return _CANNED_COLLECTION_DETAILS
     if name == "list_topics":
