@@ -289,7 +289,7 @@ class FirestoreClient:
 
     def update_agent(self, agent_id: str, **fields) -> None:
         doc_ref = self._db.collection("agents").document(agent_id)
-        fields["updated_at"] = datetime.now(timezone.utc)
+        fields.setdefault("updated_at", datetime.now(timezone.utc))
         doc_ref.update(fields)
         logger.debug("Updated agent %s: %s", agent_id, list(fields.keys()))
 

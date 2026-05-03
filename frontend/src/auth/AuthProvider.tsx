@@ -21,6 +21,7 @@ import { auth, googleProvider, microsoftProvider, isFirebaseConfigured, signInAn
 import { setTokenGetter } from '../api/client.ts';
 import { apiGet, apiPost } from '../api/client.ts';
 import type { UserProfile } from '../api/types.ts';
+import { useAgentStore } from '../stores/agent-store.ts';
 import { useChatStore } from '../stores/chat-store.ts';
 import { useSessionStore } from '../stores/session-store.ts';
 import { useSourcesStore } from '../stores/sources-store.ts';
@@ -48,6 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(isFirebaseConfigured);
   const anonSignInAttempted = useRef(false);
+  // Tracks the previously-observed Firebase uid so we can detect identity
+  // transitions (e.g. signed-out → signed-in, or one user → another) and
+  // wipe stale per-user state from caches/stores.
+  const prevUidRef = useRef<string | null | 'unset'>('unset');
 
   // Promise that resolves once auth state is initialized (anonymous or real user).
   // getToken() awaits this so requests never fire before auth is ready.
@@ -87,6 +92,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const unsub = onAuthStateChanged(auth, async (u) => {
+      // If the Firebase identity actually changed compared to what we last
+      // observed, drop stale per-user data. Skip on the very first emission
+      // so we don't reset empty stores at boot.
+      const newUid = u?.uid ?? null;
+      if (prevUidRef.current !== 'unset' && prevUidRef.current !== newUid) {
+        resetAllStores();
+      }
+      prevUidRef.current = newUid;
+
       if (!u) {
         setUser(null);
         // No user — sign in anonymously (once)
@@ -208,6 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetAllStores = () => {
+    useAgentStore.getState().reset();
     useChatStore.getState().reset();
     useSessionStore.getState().reset();
     useSourcesStore.getState().reset();

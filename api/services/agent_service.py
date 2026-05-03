@@ -232,10 +232,21 @@ def _backfill_data_window(agent: dict) -> dict:
     start = _compute_default_data_start_date(sources, anchor=anchor)
     agent["data_start_date"] = start
     agent.setdefault("data_end_date", None)
+    # Preserve the agent's existing updated_at — this is a system-driven
+    # backfill, not a user edit, so it must not bump the "Last Run" stamp.
+    persisted_fields: dict = {"data_start_date": start, "data_end_date": None}
+    existing_updated_at = agent.get("updated_at")
+    if isinstance(existing_updated_at, datetime):
+        persisted_fields["updated_at"] = existing_updated_at
+    elif isinstance(existing_updated_at, str):
+        try:
+            persisted_fields["updated_at"] = datetime.fromisoformat(
+                existing_updated_at.replace("Z", "+00:00")
+            )
+        except ValueError:
+            pass
     try:
-        get_fs().update_agent(
-            agent["agent_id"], data_start_date=start, data_end_date=None
-        )
+        get_fs().update_agent(agent["agent_id"], **persisted_fields)
     except Exception:
         # Backfill is best-effort — surface the value to the caller even
         # if the persist failed; it'll retry on the next read.

@@ -134,7 +134,7 @@ export function MessageInput({ onSend, onCancel, centered = false, compact = fal
 
       {/* Input area */}
       <div className={cn(
-        'flex items-end border border-border/60 bg-card transition-all focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15',
+        'flex items-center border border-border/60 bg-card transition-all focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15',
         compact
           ? 'gap-2 rounded-2xl px-3 py-2'
           : 'gap-3 rounded-3xl px-5 py-3',

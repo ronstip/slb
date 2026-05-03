@@ -53,16 +53,6 @@ async def _resolve_real_user(request: Request) -> CurrentUser:
 
     auth_header = request.headers.get("Authorization", "")
 
-    # Dev mode bypass — only when no token is provided
-    if settings.is_dev and not auth_header:
-        return CurrentUser(
-            uid="default_user",
-            email="dev@localhost",
-            display_name="Dev User",
-            org_id=None,
-            org_role=None,
-        )
-
     # Extract Bearer token
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing auth token")
