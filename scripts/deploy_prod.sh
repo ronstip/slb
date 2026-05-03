@@ -148,9 +148,9 @@ echo "==> [4/9] Building API Docker image (this takes 2-3 minutes)..."
 cd "$ROOT_DIR"
 
 gcloud builds submit . \
-    --tag "gcr.io/$PROJECT_ID/sl-api:latest" \
-    --timeout 600 \
-    --dockerfile api/Dockerfile \
+    --config=cloudbuild-api.yaml \
+    --substitutions=_TAG="gcr.io/$PROJECT_ID/sl-api:latest" \
+    --timeout=600 \
     --quiet
 
 echo "  API image built."
@@ -162,7 +162,7 @@ gcloud run deploy sl-api \
     --region "$REGION" \
     --platform managed \
     --service-account "$API_SA" \
-    --set-env-vars "ENVIRONMENT=production,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=$REGION,GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=global,ENABLE_SEARCH_GROUNDING=true,SUPER_ADMIN_EMAILS=saharmalka@gmail.com,ronneeman19@gmail.com,VETRIC_API_KEY_TWITTER=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMDA5OTU3OH0.dUu3YUzSUSQ9Zgmao0ppw4urE35_DUtdFUPN6H_oopE,VETRIC_API_KEY_INSTAGRAM=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMTE5ODcwMn0.pfAvrft_yfxwUMO0ekWFKoSXGKx6cAPYkDxT84D0iFs,VETRIC_API_KEY_TIKTOK=eyJoc0lEIjoiNTEyNDM4MjQzMjUiLCJjcmVhdGVkQXQiOjE3MzM4MzgzNTQwNzd9" \
+    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|ENABLE_SEARCH_GROUNDING=true|SUPER_ADMIN_EMAILS=saharmalka@gmail.com,ronneeman19@gmail.com|VETRIC_API_KEY_TWITTER=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMDA5OTU3OH0.dUu3YUzSUSQ9Zgmao0ppw4urE35_DUtdFUPN6H_oopE|VETRIC_API_KEY_INSTAGRAM=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMTE5ODcwMn0.pfAvrft_yfxwUMO0ekWFKoSXGKx6cAPYkDxT84D0iFs|VETRIC_API_KEY_TIKTOK=eyJoc0lEIjoiNTEyNDM4MjQzMjUiLCJjcmVhdGVkQXQiOjE3MzM4MzgzNTQwNzd9" \
     --min-instances 1 \
     --max-instances 10 \
     --memory 1Gi \
@@ -183,9 +183,9 @@ echo ""
 # ══════════════════════════════════════════════════
 echo "==> [6/9] Building Worker Docker image..."
 gcloud builds submit . \
-    --tag "gcr.io/$PROJECT_ID/sl-worker:latest" \
-    --timeout 600 \
-    --dockerfile workers/Dockerfile \
+    --config=cloudbuild-worker.yaml \
+    --substitutions=_TAG="gcr.io/$PROJECT_ID/sl-worker:latest" \
+    --timeout=600 \
     --quiet
 
 echo "  Worker image built."
@@ -195,7 +195,7 @@ gcloud run deploy sl-worker \
     --region "$REGION" \
     --platform managed \
     --service-account "$WORKER_SA" \
-    --set-env-vars "ENVIRONMENT=production,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=$REGION,GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=global,VETRIC_API_KEY_TWITTER=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMDA5OTU3OH0.dUu3YUzSUSQ9Zgmao0ppw4urE35_DUtdFUPN6H_oopE,VETRIC_API_KEY_INSTAGRAM=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMTE5ODcwMn0.pfAvrft_yfxwUMO0ekWFKoSXGKx6cAPYkDxT84D0iFs,VETRIC_API_KEY_TIKTOK=eyJoc0lEIjoiNTEyNDM4MjQzMjUiLCJjcmVhdGVkQXQiOjE3MzM4MzgzNTQwNzd9" \
+    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|VETRIC_API_KEY_TWITTER=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMDA5OTU3OH0.dUu3YUzSUSQ9Zgmao0ppw4urE35_DUtdFUPN6H_oopE|VETRIC_API_KEY_INSTAGRAM=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMTE5ODcwMn0.pfAvrft_yfxwUMO0ekWFKoSXGKx6cAPYkDxT84D0iFs|VETRIC_API_KEY_TIKTOK=eyJoc0lEIjoiNTEyNDM4MjQzMjUiLCJjcmVhdGVkQXQiOjE3MzM4MzgzNTQwNzd9" \
     --min-instances 0 \
     --max-instances 5 \
     --memory 2Gi \
