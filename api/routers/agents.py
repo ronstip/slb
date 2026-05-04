@@ -484,11 +484,16 @@ async def resume_agent_endpoint(
     agent_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Resume an agent that was stopped mid-run after collection completed.
+    """Run only the agent phase against existing collected data.
 
-    Resumability: collections finished (continuation_ready=True) but at least
-    one todo is still incomplete. Re-runs only the agent phase — the existing
-    collected/enriched data is preserved (no fresh BrightData calls).
+    Two scenarios:
+      1. Resume after failure: collections finished and continuation_ready=True
+         was set by the pipeline auto-trigger, but the agent stopped mid-run.
+      2. Run on manually-collected data: user ran collections separately
+         (e.g. via /agents/{id}/sources/run) so continuation_ready was never
+         set, but all collections are in a terminal state.
+
+    Either way, no fresh BrightData calls — only the agent phase runs.
     """
     from api.services.agent_service import get_agent
 
@@ -499,9 +504,25 @@ async def resume_agent_endpoint(
         raise HTTPException(status_code=403, detail="Only the agent owner can resume")
 
     if not agent.get("continuation_ready"):
-        raise HTTPException(
-            status_code=409,
-            detail="Agent is not in a resumable state — collections have not finished",
+        # Manual-collection case: continuation_ready was never auto-set, but
+        # the data is in fact ready. Accept iff all collections are terminal,
+        # then backfill continuation_ready so subsequent reads are consistent.
+        fs_check = get_fs()
+        collection_ids = agent.get("collection_ids") or []
+        terminal = {"success", "failed"}
+        all_done = bool(collection_ids) and all(
+            (fs_check.get_collection_status(cid) or {}).get("status") in terminal
+            for cid in collection_ids
+        )
+        if not all_done:
+            raise HTTPException(
+                status_code=409,
+                detail="Agent is not in a resumable state — collections have not finished",
+            )
+        fs_check.update_agent(
+            agent_id,
+            continuation_ready=True,
+            continuation_ready_at=datetime.now(timezone.utc).isoformat(),
         )
 
     todos = agent.get("todos") or []
@@ -528,6 +549,16 @@ async def resume_agent_endpoint(
             return {"ok": True, "agent_id": agent_id, "status": "running", "skipped": "in_flight"}
 
     fs = get_fs()
+
+    # Reconcile stale todo state: if collect/enrich automated todos were never
+    # progressed (manual-collection path, or a prior progression failure), the
+    # first incomplete todo can still be "Collect…" — misleads the UI and the
+    # agent's own decisions. Idempotent: a no-op when todos are already correct.
+    from workers.shared.workflow_steps import progress_automated_steps
+    progressed = progress_automated_steps(todos, phase="collection_complete", status="success")
+    if progressed != todos:
+        fs.update_agent(agent_id, todos=progressed)
+
     fs.update_agent(agent_id, status="running", completed_at=None)
     fs.add_agent_log(agent_id, "Resumed by user — continuing agent phase", source="continuation")
 

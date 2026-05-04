@@ -8,6 +8,12 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     agent_id: str | None = None  # Active agent — auto-loads agent context into session
     model: str | None = None  # "flash" (default) or "pro"
+    # Per-request thinking override: "off" disables, otherwise minimal|low|medium|high.
+    # None = fall back to settings.agent_thinking_level.
+    thinking_level: str | None = None
+    # Per-request Google Search grounding override. None = fall back to
+    # settings.enable_search_grounding.
+    search_grounding: bool | None = None
     is_system: bool = False  # True for system-generated messages (e.g., collection continuation)
     accent_color: str | None = None  # User's selected accent hex, e.g. "#4A7C8F"
     theme: str | None = None  # Resolved theme: "light" or "dark"

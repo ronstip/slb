@@ -307,6 +307,7 @@ export interface SentimentTimePoint {
 export function aggregateSentimentOverTime(
   posts: DashboardPost[],
   bucket: 'day' | 'hour' = 'day',
+  metric: VolumeMetric = 'posts',
 ): SentimentTimePoint[] {
   const map = new Map<string, { positive: number; negative: number; neutral: number; mixed: number }>();
   for (const p of posts) {
@@ -314,9 +315,10 @@ export function aggregateSentimentOverTime(
     const date = localBucketKey(p.posted_at, bucket);
     if (!date) continue;
     const counts = map.get(date) ?? { positive: 0, negative: 0, neutral: 0, mixed: 0 };
+    const inc = metric === 'views' ? (p.view_count ?? 0) : 1;
     const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof counts;
-    if (s in counts) counts[s] += 1;
-    else counts.neutral += 1;
+    if (s in counts) counts[s] += inc;
+    else counts.neutral += inc;
     map.set(date, counts);
   }
   return [...map.entries()]

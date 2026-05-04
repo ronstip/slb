@@ -34,6 +34,8 @@ APP_NAME = "social_listening"
 def create_agent(
     mode: AgentMode = "chat",
     model_override: str | None = None,
+    thinking_override: str | None = None,
+    search_override: bool | None = None,
 ) -> LlmAgent:
     """Create an LlmAgent configured for the given mode.
 
@@ -41,6 +43,11 @@ def create_agent(
         mode: ``"chat"`` for interactive analyst, ``"autonomous"`` for
               server-side executor.
         model_override: Override the default model from settings.
+        thinking_override: Per-request thinking level. ``None`` falls back
+            to ``settings.agent_thinking_level``; ``"off"`` (or empty)
+            disables thinking; otherwise one of ``minimal|low|medium|high``.
+        search_override: Per-request Google Search grounding toggle.
+            ``None`` falls back to ``settings.enable_search_grounding``.
     """
     settings = get_settings()
     model_name = model_override or settings.meta_agent_model
@@ -82,11 +89,23 @@ def create_agent(
     tools.append(bq_toolset)
 
     # Google Search — only in chat mode for full context awareness
-    if mode == "chat" and settings.enable_search_grounding:
+    search_enabled = (
+        search_override if search_override is not None
+        else settings.enable_search_grounding
+    )
+    if mode == "chat" and search_enabled:
         tools.insert(0, GoogleSearchTool(bypass_multi_tools_limit=True))
 
     # ─── Thinking config ────────────────────────────────────────────
-    thinking_level_str = settings.agent_thinking_level.upper() if settings.agent_thinking_level else ""
+    # Resolve the effective thinking level. Per-request override wins; an
+    # explicit "off" (or empty string) disables thinking entirely.
+    if thinking_override is None:
+        effective_thinking = settings.agent_thinking_level or ""
+    elif thinking_override.lower() == "off":
+        effective_thinking = ""
+    else:
+        effective_thinking = thinking_override
+    thinking_level_str = effective_thinking.upper() if effective_thinking else ""
     thinking_level = getattr(genai_types.ThinkingLevel, thinking_level_str, None)
     gen_config = None
     if thinking_level:
@@ -170,9 +189,11 @@ def create_agent(
 def create_app(
     mode: AgentMode = "chat",
     model_override: str | None = None,
+    thinking_override: str | None = None,
+    search_override: bool | None = None,
 ) -> App:
     """Create an App for the given mode."""
-    agent = create_agent(mode, model_override)
+    agent = create_agent(mode, model_override, thinking_override, search_override)
     # Context caching disabled: the App/Runner is a singleton shared across
     # all users. ContextCacheConfig caches the system instruction (including
     # dynamically injected per-user context from before_model_callback) and
@@ -187,9 +208,11 @@ def create_app(
 def create_runner(
     mode: AgentMode = "chat",
     model_override: str | None = None,
+    thinking_override: str | None = None,
+    search_override: bool | None = None,
     session_service=None,
 ) -> Runner:
-    app = create_app(mode, model_override)
+    app = create_app(mode, model_override, thinking_override, search_override)
     if session_service is None:
         session_service = FirestoreSessionService()
     return Runner(

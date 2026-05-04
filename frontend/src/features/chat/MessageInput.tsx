@@ -3,6 +3,7 @@ import { Send, Square, X, Paperclip } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { cn } from '../../lib/utils.ts';
 import { apiUploadFile } from '../../api/client.ts';
+import { ModelPicker } from './ModelPicker.tsx';
 
 interface MessageInputProps {
   onSend: (text: string) => void;
@@ -164,6 +165,7 @@ export function MessageInput({ onSend, onCancel, centered = false, compact = fal
         >
           <Paperclip className={cn(compact ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5', isUploading && 'animate-pulse')} />
         </button>
+        <ModelPicker compact={compact} disabled={isAgentResponding} />
         {isAgentResponding ? (
           <button
             onClick={onCancel}

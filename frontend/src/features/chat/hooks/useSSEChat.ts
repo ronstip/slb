@@ -11,6 +11,7 @@ import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
+import { useModelSettingsStore } from '../../../stores/model-settings-store.ts';
 import type { StructuredPromptResult } from '../../../api/types.ts';
 import {
   INTERNAL_TOOLS,
@@ -58,11 +59,16 @@ export function useSSEChat() {
           ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
           : theme;
 
+        const modelSettings = useModelSettingsStore.getState();
+
         const stream = streamChat(
           {
             message: text,
             session_id: cs.sessionId ?? undefined,
             agent_id: useAgentStore.getState().activeAgentId ?? undefined,
+            model: modelSettings.model,
+            thinking_level: modelSettings.thinkingLevel,
+            search_grounding: modelSettings.searchGrounding,
             is_system: opts?.isSystem,
             accent_color: accentColor,
             theme: resolvedTheme,

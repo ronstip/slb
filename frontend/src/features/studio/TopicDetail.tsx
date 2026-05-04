@@ -109,7 +109,7 @@ export function TopicDetail({ clusterId, agentId, topicSummary }: TopicDetailPro
   );
 }
 
-function SentimentBar({ totals }: { totals: { positive_count: number; negative_count: number; neutral_count: number; mixed_count: number; post_count: number } }) {
+export function SentimentBar({ totals }: { totals: { positive_count: number; negative_count: number; neutral_count: number; mixed_count: number; post_count: number } }) {
   const total = totals.post_count || 1;
   const segments = [
     { key: 'positive', count: totals.positive_count, color: SENTIMENT_COLORS.positive },
@@ -141,7 +141,7 @@ function SentimentBar({ totals }: { totals: { positive_count: number; negative_c
   );
 }
 
-function TopicPostRow({ post }: { post: TopicPost }) {
+export function TopicPostRow({ post }: { post: TopicPost }) {
   const thumbSrc = resolvePostThumbnail(post);
   const Wrapper = post.post_url ? 'a' : 'div';
   const wrapperProps = post.post_url

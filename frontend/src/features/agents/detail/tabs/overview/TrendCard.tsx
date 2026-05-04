@@ -4,6 +4,7 @@ import {
   aggregateEngagementRate,
   aggregateSentimentOverTime,
   aggregateVolume,
+  type VolumeMetric,
 } from '../../../../studio/dashboard/dashboard-aggregations.ts';
 import { VolumeChart } from '../../../../studio/charts/VolumeChart.tsx';
 import { SentimentLineChart } from '../../../../studio/charts/SentimentLineChart.tsx';
@@ -37,6 +38,7 @@ const METRICS: MetricSpec[] = [
 ];
 
 const STORAGE_KEY_PREFIX = 'overview-trend-metric:';
+const VOLUME_METRIC_KEY_PREFIX = 'overview-trend-volume-metric:';
 
 function loadMetric(agentId: string): TrendMetric {
   try {
@@ -46,6 +48,16 @@ function loadMetric(agentId: string): TrendMetric {
     /* ignore */
   }
   return 'sentiment';
+}
+
+function loadVolumeMetric(agentId: string): VolumeMetric {
+  try {
+    const raw = localStorage.getItem(VOLUME_METRIC_KEY_PREFIX + agentId);
+    if (raw === 'posts' || raw === 'views') return raw;
+  } catch {
+    /* ignore */
+  }
+  return 'posts';
 }
 
 interface TrendCardProps {
@@ -70,11 +82,13 @@ export function TrendCard({
   dataEndDate,
 }: TrendCardProps) {
   const [metric, setMetric] = useState<TrendMetric>(() => loadMetric(agentId));
+  const [volumeMetric, setVolumeMetric] = useState<VolumeMetric>(() => loadVolumeMetric(agentId));
   const [chartOpen, setChartOpen] = useState(false);
   const { sendMessage } = useSSEChat();
 
   useEffect(() => {
     setMetric(loadMetric(agentId));
+    setVolumeMetric(loadVolumeMetric(agentId));
   }, [agentId]);
 
   useEffect(() => {
@@ -84,6 +98,14 @@ export function TrendCard({
       /* ignore */
     }
   }, [agentId, metric]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VOLUME_METRIC_KEY_PREFIX + agentId, volumeMetric);
+    } catch {
+      /* ignore */
+    }
+  }, [agentId, volumeMetric]);
 
   const { posts, window, isLoading } = useOverviewDashboardData(
     collectionIds,
@@ -111,10 +133,10 @@ export function TrendCard({
   }, [window.days, posts]);
 
   const chartData = useMemo(() => {
-    if (metric === 'volume') return aggregateVolume(posts, granularity);
-    if (metric === 'sentiment') return aggregateSentimentOverTime(posts, granularity);
+    if (metric === 'volume') return aggregateVolume(posts, granularity, volumeMetric);
+    if (metric === 'sentiment') return aggregateSentimentOverTime(posts, granularity, volumeMetric);
     return aggregateEngagementRate(posts, granularity);
-  }, [metric, posts, granularity]);
+  }, [metric, posts, granularity, volumeMetric]);
 
   const hourTickFormatter = (d: string) => {
     // d = "YYYY-MM-DDTHH"
@@ -125,12 +147,19 @@ export function TrendCard({
   const active = METRICS.find((m) => m.key === metric)!;
   const ActiveIcon = active.icon;
   const hasData = chartData.length > 0;
+  const supportsVolumeToggle = metric === 'volume' || metric === 'sentiment';
+  const title =
+    metric === 'volume' && volumeMetric === 'views'
+      ? 'Views over time'
+      : metric === 'sentiment' && volumeMetric === 'views'
+        ? 'Sentiment over time (by views)'
+        : active.title;
 
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-4">
       <header className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <h3 className="font-heading text-sm font-semibold text-foreground">{active.title}</h3>
+          <h3 className="font-heading text-sm font-semibold text-foreground">{title}</h3>
           {window.days != null ? (
             <span className="text-xs text-muted-foreground">
               Last {window.days} day{window.days === 1 ? '' : 's'}
@@ -148,7 +177,26 @@ export function TrendCard({
             </span>
           ) : null}
         </div>
-        <DropdownMenu>
+        <div className="flex items-center gap-2">
+          {supportsVolumeToggle && (
+            <div className="inline-flex rounded-md border border-border/60 overflow-hidden text-[11px]">
+              <button
+                type="button"
+                onClick={() => setVolumeMetric('posts')}
+                className={`px-2 py-0.5 transition-colors ${volumeMetric === 'posts' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted text-muted-foreground'}`}
+              >
+                Posts
+              </button>
+              <button
+                type="button"
+                onClick={() => setVolumeMetric('views')}
+                className={`px-2 py-0.5 transition-colors border-l border-border/60 ${volumeMetric === 'views' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted text-muted-foreground'}`}
+              >
+                Views
+              </button>
+            </div>
+          )}
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
@@ -183,6 +231,7 @@ export function TrendCard({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </header>
 
       {isLoading && !hasData ? (
@@ -200,6 +249,7 @@ export function TrendCard({
         <VolumeChart
           data={chartData as ReturnType<typeof aggregateVolume>}
           tickFormatter={granularity === 'hour' ? hourTickFormatter : undefined}
+          valueLabel={volumeMetric === 'views' ? 'Views' : 'Posts'}
         />
       ) : metric === 'sentiment' ? (
         <SentimentLineChart

@@ -512,18 +512,20 @@ function AppSidebarImpl({
                 )}
                 {(() => {
                   const firstIncompleteTodo = activeAgent.todos?.find((t) => t.status !== 'completed');
-                  const isResumable =
+                  const hasCollections = (activeAgent.collection_ids?.length ?? 0) > 0;
+                  const canRunOnExistingData =
                     activeAgent.status !== 'running' &&
-                    !!activeAgent.continuation_ready &&
-                    !!firstIncompleteTodo;
-                  return isResumable && onResume ? (
+                    !!firstIncompleteTodo &&
+                    (!!activeAgent.continuation_ready || hasCollections);
+                  const label = activeAgent.continuation_ready ? 'Resume' : 'Run on existing data';
+                  return canRunOnExistingData && onResume ? (
                     <button
                       onClick={onResume}
                       className={cn(NAV_ITEM_BASE, 'text-primary hover:bg-primary/10')}
                       title={`Continue from "${firstIncompleteTodo!.content}"`}
                     >
                       <PlayCircle className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Resume</span>
+                      <span className="truncate">{label}</span>
                       <span className="ml-auto truncate text-[11px] text-sidebar-foreground/50">
                         {firstIncompleteTodo!.content.slice(0, 24)}{firstIncompleteTodo!.content.length > 24 ? '…' : ''}
                       </span>

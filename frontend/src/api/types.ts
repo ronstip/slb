@@ -5,10 +5,16 @@
 
 // --- Requests ---
 
+export type ChatModelKey = 'flash' | 'pro';
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high';
+
 export interface ChatRequest {
   message: string;
   session_id?: string;
   agent_id?: string;  // Active agent — auto-loads context into session
+  model?: ChatModelKey;  // omit → backend default ("flash")
+  thinking_level?: ThinkingLevel;  // omit → backend default
+  search_grounding?: boolean;  // omit → backend default
   is_system?: boolean;
   accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
   theme?: 'light' | 'dark';  // resolved theme (never "system")
@@ -665,20 +671,36 @@ export interface TopicAnalytics {
 export interface TopicPost {
   post_id: string;
   platform: string;
+  channel_handle: string;
+  channel_id?: string | null;
   channel_name: string | null;
+  channel_type?: string | null;
   title: string | null;
   content: string | null;
-  post_url: string | null;
-  posted_at: string | null;
+  post_url: string;
+  posted_at: string;
+  post_type: string;
+  media_refs?: MediaRef[];
   thumbnail_url: string | null;
   thumbnail_gcs_uri?: string | null;
-  ai_summary: string | null;
+  likes?: number;
+  shares?: number;
+  views?: number;
+  comments_count?: number;
+  saves?: number;
+  total_engagement: number;
   sentiment: string | null;
   emotion: string | null;
-  views: number | null;
-  likes: number | null;
-  comments_count: number | null;
-  shares: number | null;
+  themes?: string[];
+  entities?: string[];
+  ai_summary: string | null;
+  content_type?: string | null;
+  language?: string | null;
+  custom_fields?: Record<string, unknown> | null;
+  context?: string | null;
+  is_related_to_task?: boolean | null;
+  detected_brands?: string[];
+  collection_id?: string | null;
   distance_to_centroid: number;
   is_representative: boolean;
 }

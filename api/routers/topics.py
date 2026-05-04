@@ -5,6 +5,7 @@ Topics are agent-scoped: they cluster posts across all of an agent's collections
 
 import asyncio
 import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -442,12 +443,13 @@ async def get_agent_topic_posts(
     offset: int = Query(default=0, ge=0),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Paginated posts within a topic."""
+    """Paginated posts within a topic, returned in FeedPost shape so the same
+    PostCard component used by the feed/overview can render them."""
     fs = get_fs()
     bq = get_bq()
     await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
-    posts = await asyncio.to_thread(
+    rows = await asyncio.to_thread(
         bq.query,
         f"""
         {_LATEST_CTE},
@@ -459,12 +461,20 @@ async def get_agent_topic_posts(
               AND tcm.clustered_at = latest.latest_at
         )
         SELECT
-            p.post_id, p.platform, p.channel_handle as channel_name, p.title, p.content,
-            p.post_url, p.posted_at, p.media_refs,
+            p.post_id, p.platform, p.channel_handle, p.channel_id,
+            p.title, p.content, p.post_url, p.posted_at, p.post_type, p.media_refs,
+            p.collection_id,
             JSON_EXTRACT_SCALAR(p.media_refs, '$[0].original_url') as thumbnail_url,
             JSON_EXTRACT_SCALAR(p.media_refs, '$[0].gcs_uri') as thumbnail_gcs_uri,
-            ep.ai_summary, ep.sentiment, ep.emotion,
-            pe.views, pe.likes, pe.comments_count, pe.shares,
+            COALESCE(pe.likes, 0) as likes,
+            COALESCE(pe.shares, 0) as shares,
+            COALESCE(pe.views, 0) as views,
+            COALESCE(pe.comments_count, 0) as comments_count,
+            COALESCE(pe.saves, 0) as saves,
+            COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
+            ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary,
+            ep.content_type, ep.language, ep.custom_fields, ep.context,
+            ep.is_related_to_task, ep.detected_brands, ep.channel_type,
             m.distance_to_centroid, m.is_representative
         FROM members m
         JOIN {_POSTS_DEDUP}
@@ -480,5 +490,69 @@ async def get_agent_topic_posts(
             "offset": offset,
         },
     )
+
+    posts = []
+    for row in rows:
+        media_refs = row.get("media_refs")
+        if isinstance(media_refs, str):
+            try:
+                media_refs = json.loads(media_refs)
+            except (json.JSONDecodeError, TypeError):
+                media_refs = []
+        if not isinstance(media_refs, list):
+            media_refs = []
+
+        themes = row.get("themes")
+        if isinstance(themes, str):
+            try:
+                themes = json.loads(themes)
+            except (json.JSONDecodeError, TypeError):
+                themes = []
+
+        entities = row.get("entities")
+        if isinstance(entities, str):
+            try:
+                entities = json.loads(entities)
+            except (json.JSONDecodeError, TypeError):
+                entities = []
+
+        posted_at = row.get("posted_at")
+        post = {
+            "post_id": row.get("post_id"),
+            "platform": row.get("platform"),
+            "channel_handle": row.get("channel_handle") or "",
+            "channel_id": row.get("channel_id"),
+            "channel_name": row.get("channel_handle") or "",
+            "title": row.get("title"),
+            "content": row.get("content"),
+            "post_url": row.get("post_url") or "",
+            "posted_at": str(posted_at) if posted_at is not None else "",
+            "post_type": row.get("post_type") or "",
+            "media_refs": media_refs,
+            "thumbnail_url": row.get("thumbnail_url"),
+            "thumbnail_gcs_uri": row.get("thumbnail_gcs_uri"),
+            "likes": row.get("likes", 0),
+            "shares": row.get("shares", 0),
+            "views": row.get("views", 0),
+            "comments_count": row.get("comments_count", 0),
+            "saves": row.get("saves", 0),
+            "total_engagement": row.get("total_engagement", 0),
+            "sentiment": row.get("sentiment"),
+            "emotion": row.get("emotion"),
+            "themes": themes if isinstance(themes, list) else [],
+            "entities": entities if isinstance(entities, list) else [],
+            "ai_summary": row.get("ai_summary"),
+            "content_type": row.get("content_type"),
+            "language": row.get("language"),
+            "custom_fields": row.get("custom_fields") if isinstance(row.get("custom_fields"), dict) else None,
+            "context": row.get("context"),
+            "is_related_to_task": row.get("is_related_to_task"),
+            "detected_brands": row.get("detected_brands") if isinstance(row.get("detected_brands"), list) else [],
+            "channel_type": row.get("channel_type"),
+            "collection_id": row.get("collection_id"),
+            "distance_to_centroid": row.get("distance_to_centroid"),
+            "is_representative": row.get("is_representative"),
+        }
+        posts.append(post)
 
     return posts

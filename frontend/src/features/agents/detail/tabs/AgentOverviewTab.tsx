@@ -13,6 +13,7 @@ import { EntitiesCard } from './overview/EntitiesCard.tsx';
 import { ChannelMixCard } from './overview/ChannelMixCard.tsx';
 import { PlatformBreakdownCard } from './overview/PlatformBreakdownCard.tsx';
 import { TopicsMosaic } from './overview/TopicsMosaic.tsx';
+import { TopicDialog } from '../../../studio/topic-dialog/TopicDialog.tsx';
 import { TrendCard } from './overview/TrendCard.tsx';
 import { ChatPanel } from '../../../chat/ChatPanel.tsx';
 import { StudioActionsPanel } from '../../../studio/StudioActionsPanel.tsx';
@@ -43,6 +44,7 @@ export function AgentOverviewTab({
   const isRunning = task.status === 'running';
   const collectionIds = task.collection_ids ?? [];
   const [chatExpanded, setChatExpanded] = useState(false);
+  const [openTopicId, setOpenTopicId] = useState<string | null>(null);
   const { kickoffMarkdown } = useAgentKickoff(task);
   const { open: openBriefing } = useOpenBriefingShare(task.agent_id, task.title);
 
@@ -110,6 +112,7 @@ export function AgentOverviewTab({
                 agentId={task.agent_id}
                 isAgentRunning={isRunning}
                 onOpenTopics={() => onTabChange('topics')}
+                onOpenTopic={setOpenTopicId}
               />
             </div>
             <div className="space-y-4 lg:col-span-4">
@@ -135,6 +138,7 @@ export function AgentOverviewTab({
                 agentId={task.agent_id}
                 isAgentRunning={isRunning}
                 onOpenTopics={() => onTabChange('topics')}
+                onOpenTopic={setOpenTopicId}
               />
               <ActivityCard
                 logs={logs}
@@ -172,6 +176,13 @@ export function AgentOverviewTab({
           </div>
         </div>
       </main>
+
+      <TopicDialog
+        agentId={task.agent_id}
+        initialClusterId={openTopicId}
+        open={!!openTopicId}
+        onOpenChange={(o) => !o && setOpenTopicId(null)}
+      />
     </div>
   );
 }

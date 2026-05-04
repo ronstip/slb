@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Eye, Hash } from 'lucide-react';
 import { getAgentTopics } from '../../../../../api/endpoints/topics.ts';
@@ -12,7 +12,6 @@ import {
   dominantSentiment,
   resolveThumbnail,
 } from '../../../../studio/topic-helpers.ts';
-import { TopicDetail } from '../../../../studio/TopicDetail.tsx';
 import { PlatformIcon } from '../../../../../components/PlatformIcon.tsx';
 
 const MIN_POSTS_FOR_MOSAIC = 3;
@@ -22,6 +21,7 @@ interface TopicsMosaicProps {
   agentId: string;
   isAgentRunning: boolean;
   onOpenTopics: () => void;
+  onOpenTopic: (clusterId: string) => void;
   maxCards?: number;
 }
 
@@ -29,9 +29,9 @@ export function TopicsMosaic({
   agentId,
   isAgentRunning,
   onOpenTopics,
+  onOpenTopic,
   maxCards = DEFAULT_MAX_CARDS,
 }: TopicsMosaicProps) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const { data: topics, isLoading, isError } = useQuery({
     queryKey: ['topics', agentId],
     queryFn: () => getAgentTopics(agentId),
@@ -83,11 +83,7 @@ export function TopicsMosaic({
             <MosaicCard
               key={topic.cluster_id}
               topic={topic}
-              agentId={agentId}
-              expanded={expandedId === topic.cluster_id}
-              onToggle={() =>
-                setExpandedId((prev) => (prev === topic.cluster_id ? null : topic.cluster_id))
-              }
+              onOpen={() => onOpenTopic(topic.cluster_id)}
             />
           ))}
         </div>
@@ -98,13 +94,10 @@ export function TopicsMosaic({
 
 interface MosaicCardProps {
   topic: TopicCluster;
-  agentId: string;
-  expanded: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
 }
 
-function MosaicCard({ topic, agentId, expanded, onToggle }: MosaicCardProps) {
-  const cardRef = useRef<HTMLElement>(null);
+function MosaicCard({ topic, onOpen }: MosaicCardProps) {
   const [imgFailed, setImgFailed] = useState(false);
   const thumbSrc = resolveThumbnail(topic);
   const sentiment = dominantSentiment(topic);
@@ -114,25 +107,18 @@ function MosaicCard({ topic, agentId, expanded, onToggle }: MosaicCardProps) {
   const tintSoft = sentimentColorAlpha(topic, 0.12);
   const showImage = thumbSrc && !imgFailed;
 
-  useEffect(() => {
-    if (expanded) {
-      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [expanded]);
-
   return (
     <article
-      ref={cardRef}
       role="button"
       tabIndex={0}
-      onClick={onToggle}
+      onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onToggle();
+          onOpen();
         }
       }}
-      className={`group relative flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card transition-all hover:border-border hover:shadow-md cursor-pointer ${expanded ? 'md:col-span-2' : ''}`}
+      className="group relative flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card transition-all hover:border-border hover:shadow-md cursor-pointer"
     >
       {/* Banner image (or sentiment-tinted fallback w/ platform logos) */}
       <div className="relative h-44 w-full overflow-hidden bg-secondary">
@@ -209,18 +195,6 @@ function MosaicCard({ topic, agentId, expanded, onToggle }: MosaicCardProps) {
         </div>
       </div>
 
-      {expanded && (
-        <div
-          className="relative border-t border-border/50 bg-card/80 backdrop-blur-sm animate-in fade-in slide-in-from-top-1"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <TopicDetail
-            clusterId={topic.cluster_id}
-            agentId={agentId}
-            topicSummary={topic.topic_summary}
-          />
-        </div>
-      )}
     </article>
   );
 }

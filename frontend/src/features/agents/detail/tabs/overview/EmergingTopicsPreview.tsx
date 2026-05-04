@@ -8,12 +8,14 @@ interface EmergingTopicsPreviewProps {
   agentId: string;
   isAgentRunning: boolean;
   onOpenTopics: () => void;
+  onOpenTopic: (clusterId: string) => void;
 }
 
 export function EmergingTopicsPreview({
   agentId,
   isAgentRunning,
   onOpenTopics,
+  onOpenTopic,
 }: EmergingTopicsPreviewProps) {
   const { data: topics, isLoading } = useQuery({
     queryKey: ['topics', agentId],
@@ -59,7 +61,11 @@ export function EmergingTopicsPreview({
       ) : (
         <ul className="space-y-1.5">
           {preview.map((t) => (
-            <TopicRow key={t.cluster_id} topic={t} onClick={onOpenTopics} />
+            <TopicRow
+              key={t.cluster_id}
+              topic={t}
+              onClick={() => onOpenTopic(t.cluster_id)}
+            />
           ))}
         </ul>
       )}
