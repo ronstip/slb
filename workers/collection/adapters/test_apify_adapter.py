@@ -184,3 +184,61 @@ def test_parse_results_records_funnel():
     funnel = adapter.funnel_stats
     assert funnel["apify_valid_posts"] == 2
     assert funnel["per_platform"]["instagram"]["valid_posts"] == 2
+
+
+def test_parse_results_skips_time_gate_when_disabled():
+    adapter = _build_adapter()
+    config = {
+        "time_range": {
+            "start": "2026-04-10T00:00:00Z",
+            "end": "2026-04-20T00:00:00Z",
+        }
+    }
+    raw = [
+        _ig_item_at("2026-04-15T12:00:00Z", "in_window"),
+        _ig_item_at("2026-04-01T12:00:00Z", "before"),
+        _ig_item_at("2026-04-25T12:00:00Z", "after"),
+    ]
+    batches = adapter._parse_results("instagram", raw, config, apply_time_gate=False)
+    posts = [p for b in batches for p in b.posts]
+    assert {p.post_id for p in posts} == {"in_window", "before", "after"}
+    assert adapter.funnel_stats["apify_filtered_by_time_window"] == 0
+
+
+# ---------------------------------------------------------------------------
+# TikTok routing: relevance + no date filter (cost + relevancy fix)
+# ---------------------------------------------------------------------------
+
+def test_collect_tiktok_omits_date_params_and_skips_time_gate():
+    """TikTok must hit Top section with no server-side date params, and the
+    client-side time gate must be disabled — otherwise we pay for posts we drop."""
+    adapter = _build_adapter()
+    captured: dict = {}
+
+    def _capture(platform, run_input, config, *, apply_time_gate=True):
+        captured["platform"] = platform
+        captured["run_input"] = run_input
+        captured["apply_time_gate"] = apply_time_gate
+        return []
+
+    with patch.object(adapter, "_run_and_parse", side_effect=_capture):
+        adapter._collect_tiktok({
+            "keywords": ["alo yoga"],
+            "max_posts_per_keyword": 100,
+            "time_range": {
+                "start": "2026-04-26T00:00:00Z",
+                "end": "2026-05-03T00:00:00Z",
+            },
+        })
+
+    assert captured["platform"] == "tiktok"
+    assert captured["apply_time_gate"] is False
+    run_input = captured["run_input"]
+    assert run_input["searchQueries"] == ["alo yoga"]
+    assert run_input["resultsPerPage"] == 100
+    # No server-side date filter (clockworks ignores these for searchQueries)
+    assert "oldestPostDateUnified" not in run_input
+    assert "newestPostDate" not in run_input
+    # No section/sort overrides → defaults to Top section (relevance)
+    assert "searchSection" not in run_input
+    assert "searchSorting" not in run_input

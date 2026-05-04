@@ -10,8 +10,10 @@ registration.
 
 Time-window correctness: server-side filters are passed to the actor when
 supported (cost), and a client-side gate runs after parsing (correctness).
-TikTok's actor only accepts a coarse `dateRange` bucket, so client-side
-filtering is strictly required there.
+TikTok is an exception — we deliberately collect against TikTok's "Top"
+section without a date filter so we get engagement-ranked results across
+the brand's full history (most viral posts are not from the past 7 days).
+The client-side time gate is therefore skipped for TikTok.
 
 Concurrency: parallel actor runs are capped by `apify_max_parallel_runs`,
 which combined with `apify_memory_mbytes` must stay under the account-level
@@ -309,8 +311,12 @@ class ApifyAdapter(DataProviderAdapter):
 
     # ------------------------------------------------------------------
     # TikTok — clockworks/tiktok-scraper
-    #   Accepts arrays of `searchQueries` and/or `hashtags`, plus precise
-    #   ISO date filters via `oldestPostDateUnified` / `newestPostDate`.
+    #   Hits TikTok's default "Top" search section (engagement-ranked).
+    #   We deliberately skip date filtering: the actor's `oldest/newest`
+    #   params are silently ignored for `searchQueries` (validated against
+    #   chargedEventCounts → `filter-applied: 0`), and the Top section's
+    #   high-engagement results span the brand's full history. A client-side
+    #   date gate would just discard posts we already paid for.
     # ------------------------------------------------------------------
 
     def _collect_tiktok(self, config: dict) -> list[Batch]:
@@ -319,7 +325,6 @@ class ApifyAdapter(DataProviderAdapter):
             logger.info("[apify/tiktok] no keywords — skipping")
             return []
 
-        time_range = config.get("time_range", {}) or {}
         n_posts = config.get("max_posts_per_keyword") or 0
 
         run_input: dict = {
@@ -335,24 +340,25 @@ class ApifyAdapter(DataProviderAdapter):
         }
         if n_posts > 0:
             run_input["resultsPerPage"] = n_posts
-        oldest = _to_yyyymmdd(time_range.get("start"))
-        newest = _to_yyyymmdd(time_range.get("end"))
-        if oldest:
-            run_input["oldestPostDateUnified"] = oldest
-        if newest:
-            run_input["newestPostDate"] = newest
 
         logger.info(
-            "[apify/tiktok] keywords=%d window=%s..%s limit_per_query=%d",
-            len(keywords), oldest or "-", newest or "-", n_posts,
+            "[apify/tiktok] keywords=%d limit_per_query=%d (Top section, no date filter)",
+            len(keywords), n_posts,
         )
-        return self._run_and_parse("tiktok", run_input, config)
+        return self._run_and_parse("tiktok", run_input, config, apply_time_gate=False)
 
     # ------------------------------------------------------------------
     # Shared run + parse + gate
     # ------------------------------------------------------------------
 
-    def _run_and_parse(self, platform: str, run_input: dict, config: dict) -> list[Batch]:
+    def _run_and_parse(
+        self,
+        platform: str,
+        run_input: dict,
+        config: dict,
+        *,
+        apply_time_gate: bool = True,
+    ) -> list[Batch]:
         """Trigger one actor run, iterate the dataset, parse, time-gate, batch."""
         if not self._claim_run():
             return []
@@ -389,16 +395,23 @@ class ApifyAdapter(DataProviderAdapter):
         with self._stats_lock:
             self._funnel["apify_raw_records"] += len(raw_items)
 
-        return self._parse_results(platform, raw_items, config)
+        return self._parse_results(platform, raw_items, config, apply_time_gate=apply_time_gate)
 
-    def _parse_results(self, platform: str, raw_items: list[dict], config: dict) -> list[Batch]:
+    def _parse_results(
+        self,
+        platform: str,
+        raw_items: list[dict],
+        config: dict,
+        *,
+        apply_time_gate: bool = True,
+    ) -> list[Batch]:
         if not raw_items:
             return []
 
         parse_post, parse_channel = self._parsers[platform]
         time_range = config.get("time_range", {}) or {}
-        gate_start = self._parse_iso(time_range.get("start"))
-        gate_end = self._parse_iso(time_range.get("end"))
+        gate_start = self._parse_iso(time_range.get("start")) if apply_time_gate else None
+        gate_end = self._parse_iso(time_range.get("end")) if apply_time_gate else None
 
         posts: list[Post] = []
         channels: dict[str, Channel] = {}
