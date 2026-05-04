@@ -13,8 +13,10 @@ from google.adk.runners import Runner
 from api.agent.agent import create_runner
 
 MODEL_ALIASES: dict[str, str] = {
+    # gemini-3-pro-preview was discontinued on Vertex AI 2026-03-26 — use
+    # gemini-3.1-pro-preview as its successor. Flash 3.x is still preview-only.
     "flash": "gemini-3-flash-preview",
-    "pro": "gemini-3-pro-preview",
+    "pro": "gemini-3.1-pro-preview",
 }
 
 _runners: dict[tuple, Runner] = {}

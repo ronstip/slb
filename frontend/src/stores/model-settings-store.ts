@@ -48,7 +48,7 @@ export const MODEL_OPTIONS: {
   },
   {
     key: 'pro',
-    label: 'Gemini 3 Pro',
+    label: 'Gemini 3.1 Pro',
     description: 'Slower, deeper reasoning. Use for complex analysis.',
   },
 ];
