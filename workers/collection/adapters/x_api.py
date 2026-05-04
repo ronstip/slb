@@ -218,6 +218,9 @@ class XAPIAdapter(DataProviderAdapter):
         sort_order: str,
     ) -> list[Batch]:
         query = self._build_search_query(keyword, has_media)
+        # X API requires max_results <= 100 when context_annotations is requested.
+        if "context_annotations" in self.DEFAULT_TWEET_FIELDS:
+            page_size = min(page_size, 100)
         params: dict = {
             "query": query,
             "max_results": page_size,
