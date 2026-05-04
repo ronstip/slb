@@ -141,6 +141,32 @@ def test_instagram_post_falls_back_to_hashed_id_when_no_id():
     assert len(post.post_id) == 16  # _hash_id length
 
 
+def test_instagram_video_views_prefers_videoPlayCount():
+    item = dict(_IG_FIXTURE)
+    item["type"] = "Video"
+    item["videoPlayCount"] = 12000
+    item["videoViewCount"] = 8000  # actor sometimes ships both — playCount wins
+    post = parse_apify_instagram_post(item)
+    assert post.post_type == "video"
+    assert post.views == 12000
+
+
+def test_instagram_video_views_falls_back_when_playCount_missing():
+    item = dict(_IG_FIXTURE)
+    item["type"] = "Reel"
+    item["videoPlayCount"] = None
+    item["videoViewCount"] = 5000
+    post = parse_apify_instagram_post(item)
+    assert post.views == 5000
+
+
+def test_instagram_image_post_has_no_views():
+    # Image/Sidecar posts never carry view fields — should remain None.
+    post = parse_apify_instagram_post(_IG_FIXTURE)
+    assert post.post_type == "carousel"
+    assert post.views is None
+
+
 def test_instagram_channel_parsing():
     ch = parse_apify_instagram_channel(_IG_FIXTURE)
     assert ch.platform == "instagram"

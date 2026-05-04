@@ -138,6 +138,22 @@ def parse_apify_instagram_post(item: dict) -> Post:
     if isinstance(images, list):
         media_urls.extend(u for u in images if isinstance(u, str))
 
+    # Views: prefer videoPlayCount (more reliable for Reels per actor docs),
+    # fall back to videoViewCount, then alternate names some builds emit.
+    # Without a logged-in `cookies` input, IG often omits view counts entirely
+    # for Reels — that's an upstream constraint, not a parser bug.
+    views = _safe_int(_first(
+        item, "videoPlayCount", "videoViewCount", "playCount", "videoViews",
+    ))
+    # Temporarily INFO so the next live test shows whether Apify omits the
+    # field or returns null — flip back to logger.debug after we have a
+    # confirmed answer in production logs.
+    if post_type == "video" and views is None:
+        logger.info(
+            "[apify/instagram] video post %s missing views (item keys=%s)",
+            post_id, sorted(item.keys()),
+        )
+
     return Post(
         post_id=post_id,
         platform="instagram",
@@ -154,7 +170,7 @@ def parse_apify_instagram_post(item: dict) -> Post:
         likes=_safe_int(item.get("likesCount")),
         shares=None,
         comments_count=_safe_int(item.get("commentsCount")),
-        views=_safe_int(_first(item, "videoViewCount", "videoPlayCount")),
+        views=views,
         saves=None,
         comments=[],
         platform_metadata={

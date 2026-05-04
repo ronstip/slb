@@ -23,6 +23,7 @@ memory cap (8 GB on this account by default).
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from collections.abc import Iterator
@@ -223,11 +224,31 @@ class ApifyAdapter(DataProviderAdapter):
 
     # ------------------------------------------------------------------
     # Instagram — apify/instagram-scraper
-    #   Schema requires either `directUrls` or `search` (single string).
-    #   We map keywords → hashtag URLs and pass them as `directUrls`, which
-    #   keeps multi-keyword crawls in one run and returns posts directly
-    #   (the `search` mode discovers hashtags, then fans out separately).
+    #   Two-pass hybrid (details + posts) is needed because the actor has no
+    #   "top vs recent" sort flag for hashtag scraping:
+    #     - resultsType="details" returns hashtag-detail items with
+    #       topPosts[] + latestPosts[] arrays (~9 each) — the only path to
+    #       genuine "top" posts.
+    #     - resultsType="posts" returns chronological breadth, but Instagram
+    #       hard-caps it at ~24 raw posts per hashtag URL regardless of
+    #       resultsLimit (verified in production logs).
+    #   Both passes' raw items are merged and parsed in a single
+    #   `_parse_results` call so dedupe by post_id happens before posts are
+    #   handed to the streaming enrichment pipeline (avoids paying twice for
+    #   LLM/embedding/translation per duplicate).
     # ------------------------------------------------------------------
+
+    # Approximate top+latest posts returned by a single details call per
+    # hashtag (Instagram-side ceiling; not configurable via input).
+    _IG_DETAILS_CAP_PER_HASHTAG = 18
+
+    # Details mode (resultsType="details") returns the hashtag wrapper but
+    # IG leaves topPosts[]/latestPosts[] EMPTY for unauthenticated requests.
+    # Without session cookies this pass yields 0 incremental posts while
+    # costing one Apify run per IG collection. Disabled until the cookies /
+    # actor-swap workstream resolves IG auth — see plan
+    # `instagram-relevancy-redesign.md` for the redesign brief.
+    _IG_DETAILS_PASS_ENABLED = False
 
     def _collect_instagram(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", []) or []
@@ -239,31 +260,80 @@ class ApifyAdapter(DataProviderAdapter):
         time_range = config.get("time_range", {}) or {}
         n_posts = config.get("max_posts_per_keyword") or 0
 
-        direct_urls = [_hashtag_url(k) for k in keywords if k] + [
-            u for u in channel_urls if isinstance(u, str) and u
-        ]
+        hashtag_urls = [_hashtag_url(k) for k in keywords if k]
+        channel_only_urls = [u for u in channel_urls if isinstance(u, str) and u]
 
-        run_input: dict = {
-            "directUrls": direct_urls,
-            "resultsType": "posts",
-            "addParentData": False,
-            "proxyConfiguration": {
-                "useApifyProxy": True,
-                "apifyProxyGroups": [self._proxy_group],
-            },
+        proxy_cfg = {
+            "useApifyProxy": True,
+            "apifyProxyGroups": [self._proxy_group],
         }
-        if n_posts > 0:
-            run_input["resultsLimit"] = n_posts
-        if time_range.get("start"):
-            days = _days_since(time_range["start"])
-            if days > 0:
-                run_input["onlyPostsNewerThan"] = f"{days} days"
+
+        raw_items: list[dict] = []
+        details_count = 0
+        posts_count = 0
+
+        # Pass A — details mode for hashtags (top + recent, in one call per URL).
+        if hashtag_urls and self._IG_DETAILS_PASS_ENABLED:
+            details_input = {
+                "directUrls": hashtag_urls,
+                "resultsType": "details",
+                "addParentData": False,
+                "proxyConfiguration": proxy_cfg,
+            }
+            details_raw = self._run_actor_collect_raw("instagram", details_input)
+            # Each detail item carries topPosts[] + latestPosts[] arrays of
+            # post-shaped dicts. Flatten so the regular post parser can handle
+            # them. Top first so they "win" dedupe in _parse_results.
+            for d in details_raw:
+                if not isinstance(d, dict):
+                    continue
+                for key in ("topPosts", "latestPosts"):
+                    arr = d.get(key)
+                    if isinstance(arr, list):
+                        raw_items.extend(p for p in arr if isinstance(p, dict))
+            details_count = len(raw_items)
+
+        # Pass B — posts mode for chronological breadth. When details pass is
+        # enabled and budget fits within its cap, skip this pass to avoid
+        # duplicate work. With details disabled (current default), always run
+        # this pass when there are any URLs to scrape.
+        details_can_cover_budget = (
+            self._IG_DETAILS_PASS_ENABLED
+            and n_posts > 0
+            and n_posts <= self._IG_DETAILS_CAP_PER_HASHTAG
+        )
+        needs_posts_pass = (
+            not details_can_cover_budget
+            and (hashtag_urls or channel_only_urls)
+        )
+        if needs_posts_pass:
+            posts_input: dict = {
+                "directUrls": hashtag_urls + channel_only_urls,
+                "resultsType": "posts",
+                "addParentData": False,
+                "proxyConfiguration": proxy_cfg,
+            }
+            if n_posts > 0:
+                # 1.3x buffer to compensate for the ~24/hashtag undershoot we
+                # consistently see in production logs against this actor.
+                posts_input["resultsLimit"] = math.ceil(n_posts * 1.3)
+            if time_range.get("start"):
+                days = _days_since(time_range["start"])
+                if days > 0:
+                    posts_input["onlyPostsNewerThan"] = f"{days} days"
+            posts_raw = self._run_actor_collect_raw("instagram", posts_input)
+            raw_items.extend(posts_raw)
+            posts_count = len(posts_raw)
 
         logger.info(
-            "[apify/instagram] %d urls (%d hashtags + %d channels) limit=%d",
-            len(direct_urls), len(keywords), len(channel_urls), n_posts,
+            "[apify/instagram] requested=%d details=%d posts=%d total_raw=%d (urls=%d hashtags + %d channels)",
+            n_posts, details_count, posts_count, len(raw_items),
+            len(hashtag_urls), len(channel_only_urls),
         )
-        return self._run_and_parse("instagram", run_input, config)
+
+        # Single parse-and-dedupe pass — happens before posts reach the
+        # streaming enrichment pipeline.
+        return self._parse_results("instagram", raw_items, config)
 
     # ------------------------------------------------------------------
     # Facebook — scrapeforge/facebook-search-posts
@@ -284,6 +354,14 @@ class ApifyAdapter(DataProviderAdapter):
         start_date = _to_yyyymmdd(time_range.get("start"))
         end_date = _to_yyyymmdd(time_range.get("end"))
 
+        # `recent_posts: False` ranks by relevance (FB's algorithm already
+        # weights recency as a factor); combined with start_date/end_date this
+        # yields "most relevant within window" instead of strict recency.
+        # `max_results` is per-query and described as "Maximum unique results"
+        # — the actor dedupes server-side, so a 1.5x buffer (capped at the
+        # documented hard max of 1000) closes the under-delivery gap.
+        per_query_max = min(1000, max(1, math.ceil(n_posts * 1.5))) if n_posts > 0 else n_posts
+
         # Fan out across keywords using the shared parallelism cap. Each
         # keyword is one actor run.
         results: list[Batch] = []
@@ -293,8 +371,8 @@ class ApifyAdapter(DataProviderAdapter):
                 run_input: dict = {
                     "query": kw,
                     "search_type": "posts",
-                    "max_results": n_posts,
-                    "recent_posts": True,
+                    "max_results": per_query_max,
+                    "recent_posts": False,
                 }
                 if start_date:
                     run_input["start_date"] = start_date
@@ -307,6 +385,12 @@ class ApifyAdapter(DataProviderAdapter):
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("[apify/facebook] keyword fan-out task failed")
                     self._record_failure("facebook", exc)
+
+        total_parsed = sum(len(b.posts) for b in results)
+        logger.info(
+            "[apify/facebook] keywords=%d requested=%d parsed=%d (max_results=%d, recent_posts=False)",
+            len(keywords), n_posts * len(keywords), total_parsed, per_query_max,
+        )
         return results
 
     # ------------------------------------------------------------------
@@ -327,8 +411,14 @@ class ApifyAdapter(DataProviderAdapter):
 
         n_posts = config.get("max_posts_per_keyword") or 0
 
-        run_input: dict = {
-            "searchQueries": keywords,
+        # Fan out: one actor run per keyword. A single batched run with all
+        # searchQueries shares one pagination budget across queries, so
+        # resultsPerPage is rarely met in practice (production logs showed
+        # 9 keywords × 400 → only 516 total). Per-keyword runs each get a
+        # full pagination budget. searchSection="" (Top tab) and
+        # searchSorting=0 are explicit so future changes don't silently flip
+        # the sort.
+        base_input: dict = {
             "shouldDownloadVideos": False,
             "shouldDownloadCovers": False,
             "shouldDownloadSlideshowImages": False,
@@ -337,29 +427,48 @@ class ApifyAdapter(DataProviderAdapter):
                 "useApifyProxy": True,
                 "apifyProxyGroups": [self._proxy_group],
             },
+            "searchSection": "",
+            "searchSorting": 0,
         }
-        if n_posts > 0:
-            run_input["resultsPerPage"] = n_posts
 
+        results: list[Batch] = []
+        with ThreadPoolExecutor(max_workers=self._max_parallel) as pool:
+            futures = []
+            for kw in keywords:
+                run_input = {**base_input, "searchQueries": [kw]}
+                if n_posts > 0:
+                    run_input["resultsPerPage"] = n_posts
+                futures.append(
+                    pool.submit(
+                        self._run_and_parse, "tiktok", run_input, config,
+                        apply_time_gate=False,
+                    )
+                )
+            for fut in as_completed(futures):
+                try:
+                    results.extend(fut.result())
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("[apify/tiktok] keyword fan-out task failed")
+                    self._record_failure("tiktok", exc)
+
+        total_parsed = sum(len(b.posts) for b in results)
         logger.info(
-            "[apify/tiktok] keywords=%d limit_per_query=%d (Top section, no date filter)",
-            len(keywords), n_posts,
+            "[apify/tiktok] keywords=%d requested=%d parsed=%d (Top section, no date filter)",
+            len(keywords), n_posts * len(keywords), total_parsed,
         )
-        return self._run_and_parse("tiktok", run_input, config, apply_time_gate=False)
+        return results
 
     # ------------------------------------------------------------------
     # Shared run + parse + gate
     # ------------------------------------------------------------------
 
-    def _run_and_parse(
-        self,
-        platform: str,
-        run_input: dict,
-        config: dict,
-        *,
-        apply_time_gate: bool = True,
-    ) -> list[Batch]:
-        """Trigger one actor run, iterate the dataset, parse, time-gate, batch."""
+    def _run_actor_collect_raw(self, platform: str, run_input: dict) -> list[dict]:
+        """Trigger one actor run and return raw dataset items. Empty on failure.
+
+        Centralizes run-budget claim, error capture, timing, and raw-record
+        funnel accounting. Callers do their own parsing — IG uses this directly
+        because it merges items from two passes before parsing once.
+        """
         if not self._claim_run():
             return []
 
@@ -395,6 +504,18 @@ class ApifyAdapter(DataProviderAdapter):
         with self._stats_lock:
             self._funnel["apify_raw_records"] += len(raw_items)
 
+        return raw_items
+
+    def _run_and_parse(
+        self,
+        platform: str,
+        run_input: dict,
+        config: dict,
+        *,
+        apply_time_gate: bool = True,
+    ) -> list[Batch]:
+        """Trigger one actor run, iterate the dataset, parse, time-gate, batch."""
+        raw_items = self._run_actor_collect_raw(platform, run_input)
         return self._parse_results(platform, raw_items, config, apply_time_gate=apply_time_gate)
 
     def _parse_results(
