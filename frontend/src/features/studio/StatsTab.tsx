@@ -50,8 +50,8 @@ export function StatsTab() {
   const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['stats-tab', ...taskCollectionIds],
-    queryFn: () => getDashboardData(taskCollectionIds),
+    queryKey: ['stats-tab', activeTask?.agent_id ?? '', ...taskCollectionIds],
+    queryFn: () => getDashboardData(taskCollectionIds, activeTask?.agent_id),
     enabled: taskCollectionIds.length > 0,
     staleTime: 5 * 60_000,
   });

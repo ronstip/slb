@@ -114,6 +114,7 @@ export function TrendCard({
     agentCreatedAt,
     dataStartDate,
     dataEndDate,
+    agentId,
   );
 
   const granularity: 'day' | 'hour' = useMemo(() => {

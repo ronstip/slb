@@ -165,6 +165,10 @@ def create_agent(
             data_scope.get("sources") or []
         )
 
+    # Generate a single timestamp shared by Firestore and BigQuery so the
+    # two stores agree on when the agent was created.
+    now = datetime.now(timezone.utc)
+
     agent_data = {
         "agent_id": agent_id,
         "user_id": user_id,
@@ -182,6 +186,8 @@ def create_agent(
         "artifact_ids": [],
         "data_start_date": data_start_date,
         "data_end_date": data_end_date,
+        "created_at": now,
+        "updated_at": now,
     }
     if constitution:
         agent_data["constitution"] = constitution
@@ -191,7 +197,8 @@ def create_agent(
     # Firestore (real-time state)
     fs.create_agent(agent_id, agent_data)
 
-    # BigQuery (analytics)
+    # BigQuery (analytics) — append-only / SCD-style: scope_posts reads the
+    # row with the most recent `created_at` to bound `posted_at`.
     bq.insert_rows(
         "agents",
         [
@@ -203,6 +210,8 @@ def create_agent(
                 "data_scope": json.dumps(data_scope) if data_scope else None,
                 "status": status,
                 "agent_type": agent_type,
+                "data_start_date": data_start_date,
+                "created_at": now.isoformat(),
             }
         ],
     )

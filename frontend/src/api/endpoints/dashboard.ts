@@ -3,8 +3,9 @@ import type { DashboardDataResponse, DashboardShareInfo, SharedDashboardDataResp
 
 export async function getDashboardData(
   collectionIds: string[],
+  agentId?: string,
 ): Promise<DashboardDataResponse> {
-  return apiPost('/dashboard/data', { collection_ids: collectionIds });
+  return apiPost('/dashboard/data', { collection_ids: collectionIds, agent_id: agentId });
 }
 
 // --- Dashboard sharing ---
@@ -19,6 +20,7 @@ export async function createDashboardShare(payload: {
   dashboard_id: string;
   collection_ids: string[];
   title: string;
+  agent_id?: string;
 }): Promise<DashboardShareInfo> {
   return apiPost('/dashboard/shares', payload);
 }

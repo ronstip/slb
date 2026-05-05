@@ -85,7 +85,7 @@ function ThumbnailGrid({
   const [imageStates, setImageStates] = useState<Record<string, 'loaded' | 'error'>>({});
 
   const { data } = useQuery({
-    queryKey: ['agent-thumbnails', collectionIds.join(','), startDate ?? '', endDate ?? ''],
+    queryKey: ['agent-thumbnails', collectionIds.join(','), startDate ?? '', endDate ?? '', agentId],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
@@ -94,6 +94,7 @@ function ThumbnailGrid({
         has_media: true,
         start_date: startDate ?? undefined,
         end_date: endDate ?? undefined,
+        agent_id: agentId,
       }),
     enabled: collectionIds.length > 0,
     staleTime: 5 * 60_000,

@@ -317,7 +317,13 @@ def generate_presentation(
 
     post_cache: dict = {}
     if all_post_refs:
-        for row in fetch_posts_by_ids(all_post_refs):
+        agent_id = None
+        if tool_context is not None:
+            try:
+                agent_id = tool_context.state.get("active_agent_id")
+            except Exception:
+                agent_id = None
+        for row in fetch_posts_by_ids(all_post_refs, agent_id=agent_id):
             pid = row.get("post_id")
             if pid:
                 post_cache[pid] = row

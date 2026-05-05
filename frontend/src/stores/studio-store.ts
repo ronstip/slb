@@ -56,6 +56,10 @@ export interface DashboardArtifact {
   collectionIds: string[];
   collectionNames: Record<string, string>;
   createdAt: Date;
+  /** When the dashboard is rendered inside an agent context, the agent's id;
+   *  passed through to the dashboard endpoint so data is scoped via the
+   *  scope_posts TVF (this agent's enrichment). */
+  agentId?: string;
 }
 
 export type StudioTab = 'feed' | 'artifacts' | 'stats' | 'protocol';

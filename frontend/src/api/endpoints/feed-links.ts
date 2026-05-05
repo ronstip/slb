@@ -5,6 +5,7 @@ export async function createFeedLink(payload: {
   collection_ids: string[];
   filters: Record<string, string>;
   title: string;
+  agent_id?: string;
 }): Promise<FeedLinkInfo> {
   return apiPost('/feed-links', payload);
 }

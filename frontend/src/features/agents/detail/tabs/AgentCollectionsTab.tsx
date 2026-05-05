@@ -105,6 +105,7 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
         dedup={allCollectionIds.length > 1}
         startDate={startDate ?? undefined}
         endDate={endDate}
+        agentId={task.agent_id}
         exportFilenamePrefix={task.title}
       />
     </div>

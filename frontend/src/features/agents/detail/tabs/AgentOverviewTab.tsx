@@ -96,6 +96,7 @@ export function AgentOverviewTab({
                 agentCreatedAt={task.created_at}
                 dataStartDate={task.data_start_date}
                 dataEndDate={task.data_end_date}
+                agentId={task.agent_id}
                 onOpenData={() => onTabChange('data')}
               />
               <TrendCard
@@ -146,6 +147,7 @@ export function AgentOverviewTab({
                 onOpenLogs={() => onTabChange('settings')}
               />
               <EntitiesCard
+                agentId={task.agent_id}
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
                 sources={task.data_scope?.sources}
@@ -155,6 +157,7 @@ export function AgentOverviewTab({
                 onOpenData={() => onTabChange('data')}
               />
               <ChannelMixCard
+                agentId={task.agent_id}
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
                 sources={task.data_scope?.sources}
@@ -164,6 +167,7 @@ export function AgentOverviewTab({
                 onOpenData={() => onTabChange('data')}
               />
               <PlatformBreakdownCard
+                agentId={task.agent_id}
                 collectionIds={collectionIds}
                 isAgentRunning={isRunning}
                 sources={task.data_scope?.sources}

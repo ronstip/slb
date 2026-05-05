@@ -24,6 +24,9 @@ interface ShareDashboardDialogProps {
   dashboardId: string;
   collectionIds: string[];
   title: string;
+  /** When the dashboard belongs to an agent, persist agent_id on the share so
+   *  the public render uses the same scope_posts TVF view. */
+  agentId?: string;
 }
 
 export function ShareDashboardDialog({
@@ -32,6 +35,7 @@ export function ShareDashboardDialog({
   dashboardId,
   collectionIds,
   title,
+  agentId,
 }: ShareDashboardDialogProps) {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
@@ -49,6 +53,7 @@ export function ShareDashboardDialog({
         dashboard_id: dashboardId,
         collection_ids: collectionIds,
         title,
+        agent_id: agentId,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard-share', dashboardId] });
