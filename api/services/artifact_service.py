@@ -72,6 +72,16 @@ def persist_tool_result_artifact(
             "slide_count": result.get("slide_count", 0),
             "gcs_path": result.get("gcs_path", ""),
         }
+    elif tool_name == "create_markdown" and isinstance(result.get("content"), str):
+        artifact_type = "markdown"
+        artifact_id = f"md-{uuid4().hex[:8]}"
+        title = result.get("title", "Markdown Report")
+        collection_ids = result.get("collection_ids") or []
+        payload = {
+            "content": result.get("content", ""),
+            "summary": result.get("summary", ""),
+            "source_sql": result.get("source_sql", ""),
+        }
     else:
         return None
 

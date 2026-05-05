@@ -22,9 +22,9 @@ def _t(events_per_turn: list[list[TranscriptEvent]], scenario_id="x", mode="chat
 def test_duplicate_action_count_zero_when_args_differ():
     t = _t([[
         TranscriptEvent(type="tool_call", turn=0, author="a",
-                        tool_name="generate_dashboard", tool_args={"collection_ids": ["c1"]}),
+                        tool_name="create_chart", tool_args={"collection_ids": ["c1"]}),
         TranscriptEvent(type="tool_call", turn=0, author="a",
-                        tool_name="generate_dashboard", tool_args={"collection_ids": ["c2"]}),
+                        tool_name="create_chart", tool_args={"collection_ids": ["c2"]}),
     ]])
     m = compute_scenario_metrics(t)
     assert m.tool_calls_total == 2
@@ -36,9 +36,9 @@ def test_duplicate_action_count_detects_identical_args():
     args = {"collection_ids": ["c1"]}
     t = _t([
         [TranscriptEvent(type="tool_call", turn=0, author="a",
-                         tool_name="generate_dashboard", tool_args=args)],
+                         tool_name="create_chart", tool_args=args)],
         [TranscriptEvent(type="tool_call", turn=1, author="a",
-                         tool_name="generate_dashboard", tool_args=args)],
+                         tool_name="create_chart", tool_args=args)],
     ])
     m = compute_scenario_metrics(t)
     assert m.tool_calls_total == 2

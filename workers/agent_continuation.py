@@ -507,10 +507,8 @@ _TOOL_DISPLAY_NAMES: dict[str, str] = {
     "execute_sql": "Querying data",
     "create_chart": "Creating chart",
     "generate_report": "Generating insight report",
-    "generate_dashboard": "Creating interactive dashboard",
     "generate_presentation": "Building presentation deck",
     "export_data": "Preparing data export",
-    "get_collection_details": "Loading collection details",
     "set_working_collections": "Setting working collections",
     "compose_email": "Composing email",
     "update_todos": "Updating plan",
@@ -527,7 +525,7 @@ def _get_tool_description(tool_name: str, args: dict) -> str | None:
     if tool_name == "execute_sql":
         q = args.get("query") or args.get("sql") or ""
         return (q[:120] + "...") if len(q) > 120 else q or None
-    if tool_name in ("create_chart", "generate_report", "generate_dashboard", "generate_presentation"):
+    if tool_name in ("create_chart", "generate_report", "generate_presentation"):
         return args.get("title")
     if tool_name == "compose_email":
         return args.get("subject")
@@ -683,7 +681,10 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
     if not target_url:
         raise RuntimeError(
             "api_service_url is not set — cannot dispatch continuation Cloud Task. "
-            "Set API_SERVICE_URL env var on the sl-worker service."
+            "Set the API_SERVICE_URL env var on every Cloud Run service that may "
+            "invoke continuation dispatch (sl-api runs the watchdog via "
+            "/internal/scheduler/tick; sl-worker calls this after pipeline "
+            "completion). It must point at the sl-api base URL."
         )
 
     client = tasks_v2.CloudTasksClient()

@@ -20,18 +20,17 @@ import {
   isChartResult,
   isDataExportResult,
   isDesignResearchResult,
-  isMetricsResult,
+  isMarkdownResult,
   isPresentationResult,
   isStartAgentResult,
   isStructuredPromptResult,
   isTodoResult,
-  isTopicsResult,
 } from './event-parser.ts';
 
 /** Tools that skip the activity log (internal plumbing). Result is still processed. */
 export const INTERNAL_TOOLS: ReadonlySet<string> = new Set(['update_todos']);
 
-export type ArtifactFallbackKind = 'chart' | 'data_export' | 'presentation';
+export type ArtifactFallbackKind = 'chart' | 'data_export' | 'presentation' | 'markdown';
 
 export interface MapperContext {
   /** Timestamp stamped on all entries produced by this call. */
@@ -68,14 +67,10 @@ export function describeTool(toolName: string, args: Record<string, unknown>): s
       return (args.query as string) || undefined;
     case 'design_research':
       return (args.question as string) || (args.research_question as string) || undefined;
-    case 'get_collection_details':
-      return (args.collection_id as string) || undefined;
     case 'get_agent_status':
     case 'set_active_agent':
       return (args.agent_id as string) || (args.task_id as string) || undefined;
     case 'create_chart':
-    case 'generate_dashboard':
-    case 'compose_dashboard':
     case 'generate_presentation':
       return (args.title as string) || undefined;
     case 'export_data':
@@ -199,10 +194,6 @@ export function mapToolResult(
     const newTodos = (result.todos as TodoItem[]) ?? [];
     const changes = diffTodos(prevTodos, newTodos, ts);
     patch.todoUpdate = { newTodos, changes };
-  } else if (isMetricsResult(toolName, result)) {
-    patch.cards.push({ type: 'metrics_section', data: result });
-  } else if (isTopicsResult(toolName, result)) {
-    patch.cards.push({ type: 'topics_section', data: result });
   } else if (isPresentationResult(toolName, result)) {
     const presentationId = (result._artifact_id as string) || (result.presentation_id as string) || ctx.fallbackId('presentation');
     patch.artifacts.push({
@@ -211,6 +202,18 @@ export function mapToolResult(
       title: (result.title as string) || 'Presentation',
       collectionIds: (result.collection_ids as string[]) || [],
       slideCount: (result.slide_count as number) || 0,
+      createdAt: new Date(ts),
+    });
+  } else if (isMarkdownResult(toolName, result)) {
+    const markdownId = (result._artifact_id as string) || ctx.fallbackId('markdown');
+    patch.artifacts.push({
+      id: markdownId,
+      type: 'markdown',
+      title: (result.title as string) || 'Markdown Report',
+      content: result.content as string,
+      summary: (result.summary as string | undefined) || undefined,
+      collectionIds: (result.collection_ids as string[] | undefined) ?? undefined,
+      sourceSql: (result.source_sql as string | undefined) || undefined,
       createdAt: new Date(ts),
     });
   }

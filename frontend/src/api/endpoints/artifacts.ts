@@ -3,7 +3,7 @@ import type { ArtifactShareInfo } from '../types.ts';
 
 export interface ArtifactListItem {
   artifact_id: string;
-  type: 'chart' | 'data_export' | 'dashboard' | 'presentation';
+  type: 'chart' | 'data_export' | 'dashboard' | 'presentation' | 'markdown';
   title: string;
   user_id: string;
   org_id: string | null;

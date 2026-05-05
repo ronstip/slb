@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 from api.agent.tools._idempotency import (
     action_key,
-    already_called_this_turn,
     check_or_register,
 )
 
@@ -14,21 +13,21 @@ def _ctx(state: dict | None = None) -> SimpleNamespace:
 
 
 def test_action_key_stable_across_dict_order():
-    a = action_key("generate_dashboard", {"collection_ids": ["c1", "c2"], "title": "X"})
-    b = action_key("generate_dashboard", {"title": "X", "collection_ids": ["c1", "c2"]})
+    a = action_key("create_chart", {"collection_ids": ["c1", "c2"], "title": "X"})
+    b = action_key("create_chart", {"title": "X", "collection_ids": ["c1", "c2"]})
     assert a == b
 
 
 def test_action_key_different_for_different_args():
-    a = action_key("generate_dashboard", {"collection_ids": ["c1"]})
-    b = action_key("generate_dashboard", {"collection_ids": ["c2"]})
+    a = action_key("create_chart", {"collection_ids": ["c1"]})
+    b = action_key("create_chart", {"collection_ids": ["c2"]})
     assert a != b
 
 
 def test_action_key_different_for_different_tools():
     args = {"collection_ids": ["c1"]}
-    a = action_key("generate_dashboard", args)
-    b = action_key("compose_dashboard", args)
+    a = action_key("create_chart", args)
+    b = action_key("generate_presentation", args)
     assert a != b
 
 
@@ -73,16 +72,3 @@ def test_ledger_evicts_oldest_past_max_size():
     assert latest_key in ledger
 
 
-def test_already_called_this_turn_blocks_second_call():
-    ctx = _ctx()
-    assert already_called_this_turn(ctx, "show_metrics") is False
-    assert already_called_this_turn(ctx, "show_metrics") is True
-    # Different tool name is independent.
-    assert already_called_this_turn(ctx, "show_topics") is False
-
-
-def test_already_called_this_turn_recovers_from_list_state():
-    # If session state was JSON-roundtripped (sets become lists), recover.
-    ctx = _ctx({"_called_this_turn": ["show_metrics"]})
-    assert already_called_this_turn(ctx, "show_metrics") is True
-    assert already_called_this_turn(ctx, "show_topics") is False

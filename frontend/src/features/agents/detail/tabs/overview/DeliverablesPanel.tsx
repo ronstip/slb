@@ -36,6 +36,8 @@ function artifactKind(a: ArtifactListItem): DeliverableKind | null {
       return 'data_export';
     case 'chart':
       return 'chart';
+    case 'markdown':
+      return 'markdown';
     default:
       return null;
   }

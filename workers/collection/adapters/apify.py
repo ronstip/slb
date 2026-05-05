@@ -15,15 +15,26 @@ section without a date filter so we get engagement-ranked results across
 the brand's full history (most viral posts are not from the past 7 days).
 The client-side time gate is therefore skipped for TikTok.
 
-Concurrency: parallel actor runs are capped by `apify_max_parallel_runs`,
-which combined with `apify_memory_mbytes` must stay under the account-level
-memory cap (8 GB on this account by default).
+Concurrency: a single shared `BoundedSemaphore` caps total in-flight actor
+runs at `apify_max_parallel_runs` across ALL platforms within one collect()
+call. Without that, a multi-platform collection would multiply parallelism by
+num_platforms (each platform spawns its own keyword-fanout pool) and could
+blow past the account memory cap. `max_parallel * apify_memory_mbytes` must
+stay under the account-level cap (32 GB on the STARTER plan).
+
+Streaming: TikTok and Facebook keyword fan-outs yield batches as each
+keyword's actor run completes (via `as_completed`). This way a host crash
+or pipeline termination still preserves all completed-keyword data — the
+old behavior accumulated everything into a single list and only flushed
+after every keyword finished, so killing the process mid-flight lost
+already-scraped (and already-paid-for) posts.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import queue
 import threading
 import time
 from collections.abc import Iterator
@@ -113,6 +124,13 @@ class ApifyAdapter(DataProviderAdapter):
         self._proxy_group = s.apify_proxy_group
         self._max_parallel = max(1, s.apify_max_parallel_runs)
         self._max_runs = s.apify_max_runs_per_collection
+
+        # Cap total in-flight actor runs across all platforms in a single
+        # collect() call. Per-platform fan-outs still use their own pools
+        # (with up to max_parallel workers each) but block on this semaphore
+        # before actually launching an actor run, so peak memory stays
+        # bounded regardless of how many platforms run concurrently.
+        self._concurrent_runs = threading.BoundedSemaphore(self._max_parallel)
 
         # Per-collection state — reset at the top of collect().
         self._stats_lock = threading.Lock()
@@ -208,19 +226,43 @@ class ApifyAdapter(DataProviderAdapter):
             "tiktok": self._collect_tiktok,
         }
 
-        # Run platforms in parallel — each platform owns its own keyword fan-out.
-        # Cap concurrency at max_parallel so total in-flight actor memory stays
-        # under the account cap.
-        with ThreadPoolExecutor(max_workers=min(len(platforms), self._max_parallel)) as pool:
-            futures = {pool.submit(collectors[p], config): p for p in platforms}
-            for future in as_completed(futures):
-                platform = futures[future]
-                try:
-                    for batch in future.result():
-                        yield batch
-                except Exception as exc:  # noqa: BLE001
-                    logger.exception("Apify %s collection failed", platform)
-                    self._record_failure(platform, exc)
+        # Run platforms in parallel via dedicated threads pushing into a shared
+        # queue. A ThreadPoolExecutor would be wrong here: TikTok and Facebook
+        # collectors are now generators, so their bodies don't execute until
+        # iterated — submitting them to a pool would just return the generator
+        # objects synchronously and serialize the work in the consumer thread.
+        # The shared `_concurrent_runs` semaphore inside `_run_actor_collect_raw`
+        # keeps total in-flight actor calls bounded across all platform threads.
+        SENTINEL = object()
+        out_q: queue.Queue = queue.Queue()
+
+        def _drive(platform: str) -> None:
+            try:
+                for batch in collectors[platform](config):
+                    out_q.put(batch)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Apify %s collection failed", platform)
+                self._record_failure(platform, exc)
+            finally:
+                out_q.put(SENTINEL)
+
+        threads = [
+            threading.Thread(target=_drive, args=(p,), name=f"apify-{p}", daemon=True)
+            for p in platforms
+        ]
+        for t in threads:
+            t.start()
+
+        pending = len(platforms)
+        while pending > 0:
+            item = out_q.get()
+            if item is SENTINEL:
+                pending -= 1
+            else:
+                yield item
+
+        for t in threads:
+            t.join()
 
     # ------------------------------------------------------------------
     # Instagram — apify/instagram-scraper
@@ -342,11 +384,11 @@ class ApifyAdapter(DataProviderAdapter):
     #   takes precise `start_date` / `end_date` (YYYY-MM-DD).
     # ------------------------------------------------------------------
 
-    def _collect_facebook(self, config: dict) -> list[Batch]:
+    def _collect_facebook(self, config: dict) -> Iterator[Batch]:
         keywords = config.get("keywords", []) or []
         if not keywords:
             logger.info("[apify/facebook] no keywords — skipping")
-            return []
+            return
 
         time_range = config.get("time_range", {}) or {}
         n_posts = config.get("max_posts_per_keyword") or 5
@@ -362,9 +404,9 @@ class ApifyAdapter(DataProviderAdapter):
         # documented hard max of 1000) closes the under-delivery gap.
         per_query_max = min(1000, max(1, math.ceil(n_posts * 1.5))) if n_posts > 0 else n_posts
 
-        # Fan out across keywords using the shared parallelism cap. Each
-        # keyword is one actor run.
-        results: list[Batch] = []
+        # Fan out across keywords; yield batches as each keyword completes
+        # so a host crash mid-collection still preserves finished-keyword data.
+        total_parsed = 0
         with ThreadPoolExecutor(max_workers=self._max_parallel) as pool:
             futures = []
             for kw in keywords:
@@ -381,17 +423,17 @@ class ApifyAdapter(DataProviderAdapter):
                 futures.append(pool.submit(self._run_and_parse, "facebook", run_input, config))
             for fut in as_completed(futures):
                 try:
-                    results.extend(fut.result())
+                    for batch in fut.result():
+                        total_parsed += len(batch.posts)
+                        yield batch
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("[apify/facebook] keyword fan-out task failed")
                     self._record_failure("facebook", exc)
 
-        total_parsed = sum(len(b.posts) for b in results)
         logger.info(
             "[apify/facebook] keywords=%d requested=%d parsed=%d (max_results=%d, recent_posts=False)",
             len(keywords), n_posts * len(keywords), total_parsed, per_query_max,
         )
-        return results
 
     # ------------------------------------------------------------------
     # TikTok — clockworks/tiktok-scraper
@@ -403,11 +445,11 @@ class ApifyAdapter(DataProviderAdapter):
     #   date gate would just discard posts we already paid for.
     # ------------------------------------------------------------------
 
-    def _collect_tiktok(self, config: dict) -> list[Batch]:
+    def _collect_tiktok(self, config: dict) -> Iterator[Batch]:
         keywords = config.get("keywords", []) or []
         if not keywords:
             logger.info("[apify/tiktok] no keywords — skipping")
-            return []
+            return
 
         n_posts = config.get("max_posts_per_keyword") or 0
 
@@ -431,7 +473,10 @@ class ApifyAdapter(DataProviderAdapter):
             "searchSorting": 0,
         }
 
-        results: list[Batch] = []
+        # Yield batches as each keyword's run completes. The shared
+        # `_concurrent_runs` semaphore inside `_run_actor_collect_raw` caps
+        # in-flight actors regardless of how wide we fan out here.
+        total_parsed = 0
         with ThreadPoolExecutor(max_workers=self._max_parallel) as pool:
             futures = []
             for kw in keywords:
@@ -446,17 +491,17 @@ class ApifyAdapter(DataProviderAdapter):
                 )
             for fut in as_completed(futures):
                 try:
-                    results.extend(fut.result())
+                    for batch in fut.result():
+                        total_parsed += len(batch.posts)
+                        yield batch
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("[apify/tiktok] keyword fan-out task failed")
                     self._record_failure("tiktok", exc)
 
-        total_parsed = sum(len(b.posts) for b in results)
         logger.info(
             "[apify/tiktok] keywords=%d requested=%d parsed=%d (Top section, no date filter)",
             len(keywords), n_posts * len(keywords), total_parsed,
         )
-        return results
 
     # ------------------------------------------------------------------
     # Shared run + parse + gate
@@ -474,22 +519,24 @@ class ApifyAdapter(DataProviderAdapter):
 
         actor_id = self._actor_ids[platform]
         started = time.monotonic()
-        try:
-            run = self._client.run_actor(
-                actor_id=actor_id,
-                run_input=run_input,
-                timeout_secs=self._timeout_secs,
-                memory_mbytes=self._memory_mbytes,
-                build=self._build,
-            )
-        except ApifyAPIError as exc:
-            logger.error("Apify %s run failed: %s", platform, exc)
-            self._record_failure(platform, exc)
-            return []
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Unexpected error launching Apify %s run", platform)
-            self._record_failure(platform, exc)
-            return []
+        # Cap total in-flight actor calls across all platforms — see __init__.
+        with self._concurrent_runs:
+            try:
+                run = self._client.run_actor(
+                    actor_id=actor_id,
+                    run_input=run_input,
+                    timeout_secs=self._timeout_secs,
+                    memory_mbytes=self._memory_mbytes,
+                    build=self._build,
+                )
+            except ApifyAPIError as exc:
+                logger.error("Apify %s run failed: %s", platform, exc)
+                self._record_failure(platform, exc)
+                return []
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Unexpected error launching Apify %s run", platform)
+                self._record_failure(platform, exc)
+                return []
 
         self._record_success()
 

@@ -12,23 +12,17 @@ from dataclasses import dataclass
 from typing import Callable, Literal
 
 from api.agent.tools.ask_user import ask_user
-from api.agent.tools.compose_dashboard import compose_dashboard
 from api.agent.tools.compose_email import compose_email
 from api.agent.tools.create_chart import create_chart
+from api.agent.tools.create_markdown import create_markdown
 from api.agent.tools.export_data import export_data
-from api.agent.tools.generate_dashboard import generate_dashboard
-from api.agent.tools.load_dashboard_layout import load_dashboard_layout
 from api.agent.tools.presentation import generate_presentation, validate_deck_plan
 from api.agent.tools.get_agent_status import get_agent_status
-from api.agent.tools.get_past_collections import get_collection_details
 from api.agent.tools.set_active_agent import set_active_agent
-from api.agent.tools.show_metrics import show_metrics
-from api.agent.tools.show_topics import show_topics
 from api.agent.tools.start_agent import start_agent
 from api.agent.tools.generate_briefing import generate_briefing
 from api.agent.tools.compose_briefing import compose_briefing
 from api.agent.tools.list_topics import list_topics
-from api.agent.tools.search_posts import search_posts
 from api.agent.tools.update_todos import update_todos
 from api.agent.tools.verify_briefing import verify_briefing
 
@@ -53,22 +47,15 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("start_agent", start_agent, "agent", True, "Create and dispatch a new agent — call AFTER user approval"),
         ToolSpec("get_agent_status", get_agent_status, "agent", False, "Read the status of an agent"),
         ToolSpec("set_active_agent", set_active_agent, "agent", True, "Set the active agent for the session"),
-        # Research & context
-        ToolSpec("get_collection_details", get_collection_details, "data", False, "Fetch full details for a data source"),
+        # User interaction
         ToolSpec("ask_user", ask_user, "user", True, "Prompt the user — only when genuinely ambiguous; otherwise pick a default and state it"),
-        # Data context
-        ToolSpec("search_posts", search_posts, "data", False, "Find posts by content (string or regex). Use INSTEAD of execute_sql for 'find posts that mention X' — deterministic, fast, no SQL needed"),
         # Output & visualization
         ToolSpec("create_chart", create_chart, "reporting", False, "Generate a chart spec"),
+        ToolSpec("create_markdown", create_markdown, "reporting", False, "Write a long-form markdown report — prose, sections, takeaways. NOT the autonomous exit (use compose_briefing)"),
         ToolSpec("export_data", export_data, "reporting", False, "Export posts as CSV"),
         ToolSpec("compose_email", compose_email, "reporting", True, "Compose an email artifact"),
-        ToolSpec("generate_dashboard", generate_dashboard, "reporting", True, "Default 17-widget overview dashboard — use when the user wants a generic 'open the data' view"),
-        ToolSpec("compose_dashboard", compose_dashboard, "reporting", True, "Custom dashboard with agent-authored widgets — use when the user asked for SOMETHING SPECIFIC"),
-        ToolSpec("load_dashboard_layout", load_dashboard_layout, "data", False, "Read the persisted widget layout of an existing dashboard"),
         ToolSpec("validate_deck_plan", validate_deck_plan, "reporting", False, "Validate a presentation deck plan"),
         ToolSpec("generate_presentation", generate_presentation, "reporting", True, "Generate a slide presentation"),
-        ToolSpec("show_metrics", show_metrics, "reporting", False, "Display metric widgets in chat"),
-        ToolSpec("show_topics", show_topics, "reporting", False, "Display topic widgets in chat"),
         # Topics + briefing (compose phase)
         ToolSpec("list_topics", list_topics, "data", False, "List semantic clusters of posts with stats"),
         ToolSpec("generate_briefing", generate_briefing, "reporting", True, "Persist the agent's INTERNAL run reflection — call ONCE before verify_briefing"),
@@ -83,24 +70,22 @@ REGISTRY: dict[str, ToolSpec] = {
 TOOL_PROFILES: dict[AgentMode, set[str]] = {
     "chat": {
         # Analysis & data
-        "create_chart", "get_collection_details",
-        "export_data", "list_topics", "load_dashboard_layout", "search_posts",
+        "create_chart", "create_markdown",
+        "export_data", "list_topics",
         # Agent management (interactive)
         "start_agent", "set_active_agent", "get_agent_status",
         # User interaction
         "ask_user",
-        # Inline display
-        "show_metrics", "show_topics",
         # Planning & output (shared)
-        "update_todos", "generate_dashboard", "compose_dashboard",
+        "update_todos",
         "validate_deck_plan", "generate_presentation", "compose_email",
         # Briefing composition on explicit user request (e.g. "refresh the briefing")
         "compose_briefing",
     },
     "autonomous": {
         # Analysis & data
-        "create_chart", "get_collection_details",
-        "export_data", "list_topics", "search_posts",
+        "create_chart", "create_markdown",
+        "export_data", "list_topics",
         # Planning & output
         "update_todos",
         "validate_deck_plan", "generate_presentation", "compose_email",

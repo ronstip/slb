@@ -34,6 +34,17 @@ interface PresentationArtifact {
   createdAt: Date;
 }
 
+interface MarkdownArtifact {
+  id: string;
+  type: 'markdown';
+  title: string;
+  content: string;
+  summary?: string;
+  collectionIds?: string[];
+  sourceSql?: string;
+  createdAt: Date;
+}
+
 // Used ONLY by the Explore tab to render dashboards. Not an artifact —
 // dashboards are not part of the Artifact union, are not persisted to the
 // `artifacts` Firestore collection, and never appear in the Studio
@@ -48,7 +59,7 @@ export interface DashboardArtifact {
 }
 
 export type StudioTab = 'feed' | 'artifacts' | 'stats' | 'protocol';
-export type Artifact = DataExportArtifact | ChartArtifact | PresentationArtifact;
+export type Artifact = DataExportArtifact | ChartArtifact | PresentationArtifact | MarkdownArtifact;
 
 export interface PendingTopicFilter {
   themes: string[];

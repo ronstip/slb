@@ -31,18 +31,6 @@ logger = logging.getLogger(__name__)
 # production, but they don't need to be richly varied — the same canned
 # responses every run is the point.
 
-_CANNED_COLLECTION_DETAILS = {
-    "status": "success",
-    "collection": {
-        "id": "eval-collection-1",
-        "title": "Eval test collection",
-        "platforms": ["tiktok", "reddit"],
-        "keywords": ["test product"],
-        "post_count": 412,
-        "status": "ready",
-    },
-}
-
 _CANNED_TOPICS = [
     {"id": "t1", "label": "product complaints",  "size": 142, "avg_sentiment": -0.31},
     {"id": "t2", "label": "user tutorials",      "size":  98, "avg_sentiment":  0.42},
@@ -79,49 +67,8 @@ def stub_before_tool_callback(
         }
 
     # ── Read-only data tools ─────────────────────────────────────────────
-    if name == "get_collection_details":
-        return _CANNED_COLLECTION_DETAILS
     if name == "list_topics":
         return {"status": "success", "topics": _CANNED_TOPICS, "stubbed": True}
-    if name == "search_posts":
-        # Three canned posts that match any reasonable query — gives the
-        # agent enough material to react to without making a real BQ call.
-        return {
-            "status": "success",
-            "rows": [
-                {
-                    "post_id": "stub-post-1",
-                    "platform": "tiktok",
-                    "channel_handle": "@example_user",
-                    "posted_at": "2026-04-12T08:30:00+00:00",
-                    "content": "stubbed content matching the query — sample post for eval mode.",
-                    "sentiment": "negative",
-                    "ai_summary": "User criticises product; mentions defect.",
-                    "likes": 1240,
-                    "views": 18200,
-                    "post_url": "https://example.tiktok/post/1",
-                },
-                {
-                    "post_id": "stub-post-2",
-                    "platform": "reddit",
-                    "channel_handle": "u/another_user",
-                    "posted_at": "2026-04-10T14:00:00+00:00",
-                    "content": "stubbed content matching the query — second sample post.",
-                    "sentiment": "neutral",
-                    "ai_summary": "Discussion thread about the topic.",
-                    "likes": 87,
-                    "views": 0,
-                    "post_url": "https://example.reddit/post/2",
-                },
-            ],
-            "row_count": 2,
-            "query_pattern": str(args.get("query", "")),
-            "sort_by": args.get("sort_by", "engagement"),
-            "limit_applied": int(args.get("limit", 20)),
-            "stubbed": True,
-        }
-    if name == "load_dashboard_layout":
-        return {"status": "not_found", "stubbed": True}
     if name == "get_agent_status":
         # Mirror the real tool's payload shape (see api/agent/tools/get_agent_status.py)
         # so the model has no reason to re-poll. Thin stubs caused a runaway
@@ -146,20 +93,6 @@ def stub_before_tool_callback(
         }
 
     # ── Artifact-creating tools (the dedup problem lives here) ───────────
-    if name == "generate_dashboard":
-        return {
-            "status": "success",
-            "dashboard_id": f"stub-dash-{uuid4().hex[:8]}",
-            "message": "Dashboard created.",
-            "stubbed": True,
-        }
-    if name == "compose_dashboard":
-        return {
-            "status": "success",
-            "dashboard_id": f"stub-cdash-{uuid4().hex[:8]}",
-            "widget_count": 12,
-            "stubbed": True,
-        }
     if name == "validate_deck_plan":
         return {"status": "success", "valid": True, "stubbed": True}
     if name == "generate_presentation":
@@ -180,18 +113,6 @@ def stub_before_tool_callback(
         return {"status": "success", "email_id": f"stub-mail-{uuid4().hex[:6]}", "stubbed": True}
     if name == "export_data":
         return {"status": "success", "export_url": "https://stub/export.csv", "stubbed": True}
-
-    # ── Display tools (chat-only) ────────────────────────────────────────
-    if name == "show_metrics":
-        return {"status": "success", "display": "metrics", "stubbed": True}
-    if name == "show_topics":
-        return {
-            "status": "success",
-            "display": "topics",
-            "topics_rendered": len(_CANNED_TOPICS),
-            "message": "Topics widget rendered. Do NOT call show_topics again this turn.",
-            "stubbed": True,
-        }
 
     # ── Briefing & agent management ──────────────────────────────────────
     if name == "generate_briefing":

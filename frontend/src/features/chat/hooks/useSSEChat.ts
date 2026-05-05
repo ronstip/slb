@@ -9,7 +9,6 @@ import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
-import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { useModelSettingsStore } from '../../../stores/model-settings-store.ts';
 import type { StructuredPromptResult } from '../../../api/types.ts';
@@ -181,24 +180,6 @@ export function useSSEChat() {
                 useUIStore.getState().expandStudioPanel();
                 useStudioStore.getState().setActiveTab('artifacts');
                 useStudioStore.getState().expandReport(exportId);
-              } else if ((toolName === 'generate_dashboard' || toolName === 'compose_dashboard') && patch.artifacts[0]) {
-                const dashboardArtifact = patch.artifacts[0];
-                useUIStore.getState().expandStudioPanel();
-                useStudioStore.getState().setActiveTab('artifacts');
-                useStudioStore.getState().expandReport(dashboardArtifact.id);
-                // compose_dashboard with an agent_id means an explorer layout was persisted —
-                // surface it in the Explore sidebar without navigating away.
-                const dashboardAgentId = result.agent_id as string | undefined;
-                if (toolName === 'compose_dashboard' && dashboardAgentId) {
-                  const nowIso = new Date().toISOString();
-                  useExplorerLayoutStore.getState().upsertLayout({
-                    layout_id: dashboardArtifact.id,
-                    agent_id: dashboardAgentId,
-                    title: dashboardArtifact.title,
-                    created_at: nowIso,
-                    updated_at: nowIso,
-                  });
-                }
               } else if (toolName === 'start_agent' || toolName === 'start_task') {
                 if (result?.status === 'success') {
                   const cids = result.collection_ids as string[] | undefined;

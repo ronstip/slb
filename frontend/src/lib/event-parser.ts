@@ -47,23 +47,16 @@ export function isTodoResult(
   return toolName === 'update_todos' && result?.status === 'success' && !!result?.progress;
 }
 
-export function isMetricsResult(
-  toolName: string,
-  result?: Record<string, unknown>,
-): boolean {
-  return toolName === 'show_metrics' && result?.status === 'success' && result?.display === 'metrics';
-}
-
-export function isTopicsResult(
-  toolName: string,
-  result?: Record<string, unknown>,
-): boolean {
-  return toolName === 'show_topics' && result?.status === 'success' && result?.display === 'topics';
-}
-
 export function isPresentationResult(
   toolName: string,
   result?: Record<string, unknown>,
 ): boolean {
   return toolName === 'generate_presentation' && result?.status === 'success' && !!result?.presentation_id;
+}
+
+export function isMarkdownResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'create_markdown' && result?.status === 'success' && typeof result?.content === 'string';
 }

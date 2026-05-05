@@ -38,10 +38,10 @@ import {
 
 type ItemKind = Extract<
   DeliverableKind,
-  'briefing' | 'slides' | 'chart' | 'data_export'
+  'briefing' | 'slides' | 'chart' | 'data_export' | 'markdown'
 >;
 
-type CreationKind = 'slides' | 'chart' | 'data_export';
+type CreationKind = 'slides' | 'chart' | 'data_export' | 'markdown';
 
 type FilterKind = ItemKind | 'all';
 
@@ -71,6 +71,7 @@ function sizeForItem(item: DeliverableItem): CardSize {
   if (item.kind === 'briefing') return 'tall';
   if (item.kind === 'slides') return 'md';
   if (item.kind === 'data_export') return 'md';
+  if (item.kind === 'markdown') return 'tall';
   if (item.kind === 'chart') {
     const ct = (item.artifact?.chart_type ?? '').toLowerCase();
     if (ct === 'line' || ct === 'area') return 'wide';
@@ -124,11 +125,12 @@ const CREATION_SEEDS: Record<CreationKind, string> = {
   slides: 'Generate a slide deck summarizing ',
   chart: 'Create a chart showing ',
   data_export: "Export data from this agent's collections filtered by ",
+  markdown: 'Write a markdown report on ',
 };
 
-const CREATION_ORDER: CreationKind[] = ['slides', 'chart', 'data_export'];
+const CREATION_ORDER: CreationKind[] = ['slides', 'chart', 'data_export', 'markdown'];
 
-const FILTER_ORDER: ItemKind[] = ['slides', 'chart', 'data_export', 'briefing'];
+const FILTER_ORDER: ItemKind[] = ['slides', 'chart', 'data_export', 'markdown', 'briefing'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
@@ -217,6 +219,7 @@ export function AgentArtifactsTab({
       slides: 0,
       chart: 0,
       data_export: 0,
+      markdown: 0,
     };
     for (const it of items) acc[it.kind] += 1;
     return acc;
@@ -519,6 +522,8 @@ function DeliverableCard({ item, size }: { item: DeliverableItem; size: CardSize
       return <SlidesCard item={item} size={size} />;
     case 'data_export':
       return <ExportCard item={item} size={size} />;
+    case 'markdown':
+      return <MarkdownCard item={item} size={size} />;
     case 'briefing':
       return <BasicCard item={item} size={size} />;
   }
@@ -924,6 +929,98 @@ function BasicCard({ item, size }: { item: DeliverableItem; size: CardSize }) {
       onClick={item.onOpen}
       preview={<FallbackPreview kind={item.kind} />}
     />
+  );
+}
+
+// ─── Markdown report: lazy-load body, show prose preview ───────────────────
+
+function MarkdownCard({ item, size }: { item: DeliverableItem; size: CardSize }) {
+  const artifactId = item.artifact?.artifact_id;
+  const { data } = useQuery({
+    queryKey: ['artifact', artifactId],
+    queryFn: () => getArtifact(artifactId!),
+    enabled: !!artifactId,
+    staleTime: Infinity,
+  });
+  const content = (data?.payload.content as string | undefined) ?? '';
+  const summary = (data?.payload.summary as string | undefined) ?? '';
+  const wordCount = content
+    ? content.trim().split(/\s+/).filter(Boolean).length
+    : undefined;
+
+  return (
+    <CardShell
+      kind="markdown"
+      size={size}
+      item={item}
+      onClick={item.onOpen}
+      preview={
+        <MarkdownPreview
+          content={content}
+          summary={summary}
+          wordCount={wordCount}
+        />
+      }
+    />
+  );
+}
+
+function MarkdownPreview({
+  content,
+  summary,
+  wordCount,
+}: {
+  content: string;
+  summary: string;
+  wordCount: number | undefined;
+}) {
+  const lines = content
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  return (
+    <div className="absolute inset-0 bg-gradient-to-br from-violet-500/12 via-violet-500/3 to-transparent p-3">
+      <div className="relative flex h-full w-full flex-col rounded-md border border-violet-500/20 bg-background/80 p-4 shadow-sm">
+        {summary && (
+          <p className="mb-2 line-clamp-2 text-[10px] italic text-muted-foreground">
+            {summary}
+          </p>
+        )}
+        <div className="flex-1 min-h-0 space-y-1.5 overflow-hidden">
+          {lines.length > 0 ? (
+            lines.map((line, i) => {
+              const isHeading = /^#{1,3}\s/.test(line);
+              const isBullet = /^[-*]\s/.test(line);
+              const text = line
+                .replace(/^#{1,3}\s+/, '')
+                .replace(/^[-*]\s+/, '• ')
+                .replace(/[*_`]/g, '');
+              return (
+                <p
+                  key={i}
+                  className={cn(
+                    'truncate text-[10px]',
+                    isHeading && 'font-semibold text-foreground',
+                    !isHeading && isBullet && 'text-foreground/80',
+                    !isHeading && !isBullet && 'text-foreground/70',
+                  )}
+                >
+                  {text}
+                </p>
+              );
+            })
+          ) : (
+            <FallbackPreview kind="markdown" />
+          )}
+        </div>
+        {wordCount != null && (
+          <div className="mt-2 flex items-center justify-between border-t border-border/40 pt-2 text-[10px] text-muted-foreground tabular-nums">
+            <span>{wordCount.toLocaleString()} words</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

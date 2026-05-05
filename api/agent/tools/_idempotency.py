@@ -10,23 +10,23 @@ Usage in a tool:
 
     from api.agent.tools._idempotency import action_key, check_or_register
 
-    def generate_dashboard(collection_ids, ..., tool_context=None):
-        key = action_key("generate_dashboard", {
+    def create_chart(collection_ids, chart_type, ..., tool_context=None):
+        key = action_key("create_chart", {
             "collection_ids": sorted(collection_ids),
-            "template_version": 1,
+            "chart_type": chart_type,
         })
         existing = check_or_register(tool_context, key, dry_run=True)
         if existing:
             return {
                 "status": "duplicate",
-                "dashboard_id": existing["artifact_id"],
+                "chart_id": existing["artifact_id"],
                 "message": "Already created earlier this session — reusing.",
             }
 
-        # ... do the real work, get dashboard_id ...
+        # ... do the real work, get chart_id ...
 
-        check_or_register(tool_context, key, artifact_id=dashboard_id)
-        return {"status": "success", "dashboard_id": dashboard_id, ...}
+        check_or_register(tool_context, key, artifact_id=chart_id)
+        return {"status": "success", "chart_id": chart_id, ...}
 
 The state lives in `tool_context.state["recent_actions"]` keyed by the
 hash. Cleared automatically per session because session state itself is
@@ -119,25 +119,3 @@ def check_or_register(
     return None
 
 
-def already_called_this_turn(
-    tool_context,
-    tool_name: str,
-) -> bool:
-    """Lightweight per-turn guard: was `tool_name` called already this turn?
-
-    Used by display tools (show_metrics, show_topics) where the rule is
-    'render once per turn'. Resets when the turn boundary is crossed; we
-    detect that via the `_last_turn_marker` state key, which the harness or
-    callbacks bump.
-    """
-    if tool_context is None or not hasattr(tool_context, "state"):
-        return False
-    seen = tool_context.state.setdefault("_called_this_turn", set())
-    if not isinstance(seen, set):
-        # JSON-roundtrip turns sets into lists; recover.
-        seen = set(seen) if isinstance(seen, list) else set()
-        tool_context.state["_called_this_turn"] = seen
-    if tool_name in seen:
-        return True
-    seen.add(tool_name)
-    return False

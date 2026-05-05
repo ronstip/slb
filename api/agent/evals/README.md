@@ -86,7 +86,7 @@ deterministic — not an exact match for Gemini's tokenizer, but consistent
 enough that deltas between runs are meaningful signal.
 
 `duplicate_action_count` hashes `(tool_name, sha1(json.dumps(args, sort_keys=True)))`
-and counts non-unique pairs across the whole scenario. Two `generate_dashboard`
+and counts non-unique pairs across the whole scenario. Two `create_chart`
 calls with the same `collection_ids` register as 1 duplicate.
 
 `preamble_tokens` is the agent text emitted **before** the first tool call

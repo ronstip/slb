@@ -10,8 +10,6 @@ import { ArtifactCard } from './cards/ArtifactCard.tsx';
 import { InlineChart } from './cards/InlineChart.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
 import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
-import { TopicsSectionCard } from './cards/TopicsSectionCard.tsx';
-import { MetricsSectionCard } from './cards/MetricsSectionCard.tsx';
 import { PromptAnsweredSummary } from './StructuredPromptPanel.tsx';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
@@ -53,7 +51,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
     if (ARTIFACT_TYPES.has(card.type)) artifactCards.push(card);
     else otherCards.push(card);
   });
-  const CARD_ORDER: Record<string, number> = { metrics_section: 0, topics_section: 1, chart: 2 };
+  const CARD_ORDER: Record<string, number> = { chart: 0 };
   otherCards.sort((a, b) => (CARD_ORDER[a.type] ?? 0.5) - (CARD_ORDER[b.type] ?? 0.5));
 
   // ── Determine render mode ──
@@ -144,10 +142,6 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           switch (card.type) {
             case 'research_design':
               return <ResearchDesignCard key={`other-${i}`} data={card.data as unknown as DesignResearchResult} onCollectionStarted={onSuggestionClick} />;
-            case 'metrics_section':
-              return <MetricsSectionCard key={`other-${i}`} data={card.data} />;
-            case 'topics_section':
-              return <TopicsSectionCard key={`other-${i}`} data={card.data} />;
             case 'collection_progress':
               return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
             case 'chart':

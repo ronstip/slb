@@ -59,10 +59,9 @@ For analytical questions:
 4. **Go deeper or synthesize** -- Drill into surprises, or wrap up if clear.
 5. **Visualize selectively** -- Chart what benefits from it. Single numbers don't need charts. Pass `collection_ids` and `source_sql` to `create_chart`.
 
-### Pick the right query tool
+### Querying
 
-- `search_posts(query, collection_ids, ...)` — for "find posts that mention X". Plain string or regex. Deterministic, no SQL needed. Use this for keyword/phrase lookups instead of writing `WHERE LOWER(content) LIKE '%...%'` in `execute_sql`.
-- `execute_sql(query)` — for everything else: totals, aggregations, percentages, time series, joins, custom dimensions. Always parameterise `collection_id`, apply `is_related_to_task IS NOT FALSE`, bound `posted_at` by your data window, and dedupe engagements via the `QUALIFY ROW_NUMBER()` pattern in the schema reference.
+- `execute_sql(query)` — totals, aggregations, percentages, time series, joins, custom dimensions, and content lookups. For "find posts that mention X" use `WHERE REGEXP_CONTAINS(LOWER(COALESCE(p.content, p.title, '')), r'...')`. Always parameterise `collection_id`, apply `is_related_to_task IS NOT FALSE`, bound `posted_at` by your data window, and dedupe engagements via the `QUALIFY ROW_NUMBER()` pattern in the schema reference.
 
 **Chart types**: `bar`, `line`, `pie`, `doughnut`, `table`, `number`.
 
@@ -73,31 +72,6 @@ For analytical questions:
 - **line** (multi): `{"grouped_time_series": {"Series A": [...], "Series B": [...]}}`
 - **table**: `{"columns": [...], "rows": [...]}`
 - **number**: `{"value": 1234, "label": "Total Posts"}`"""
-
-# ─── Dashboards (Explore tab side-effect) ───────────────────────────────
-DASHBOARD_AUTHORING = """## Dashboards
-
-Dashboards are NOT user-facing deliverables. They live in the **Explore tab**
-and are auto-generated as a side-effect of analysis. Do not propose a
-dashboard as a plan step, todo, or deliverable. Do not announce that you're
-creating one. Do not echo or describe its contents in chat.
-
-You may call `compose_dashboard` (or `generate_dashboard` for the default
-template) silently when populating the Explore tab makes sense — for example,
-the user's question maps cleanly to a recurring view they'll want to revisit.
-When you do:
-
-1. Know your data first — run a quick `execute_sql` for sentiment mix, theme
-   distribution, or platform coverage if you're unsure.
-2. Derive the layout from the user's role and goals — not a generic layout.
-3. Use text cards (`aggregation: "text"`, `markdownContent: "..."`) as
-   section headers and short explainers when composing.
-4. Pass a specific `rationale` (logged internally).
-
-When updating an Explore layout the user already has open, call
-`load_dashboard_layout(dashboard_id)` first, modify the returned widget list,
-then call `compose_dashboard` with the modified list — never start from
-scratch."""
 
 # ─── Presentations ───────────────────────────────────────────────────────
 PRESENTATIONS = """### Presentations

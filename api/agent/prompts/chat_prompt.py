@@ -8,7 +8,6 @@ and set up new data gathering.
 from api.agent.prompts.shared import (
     ANALYSIS_METHODOLOGY,
     BIGQUERY_ESSENTIALS,
-    DASHBOARD_AUTHORING,
     ENRICHMENT_FIELDS,
     OUTPUT_STYLE,
     POST_FIELDS,
@@ -111,11 +110,7 @@ _DATA_COMPLETION = """## When Data Arrives
 On the system notification that data gathering finished:
 1. Resume from your todo list — pick up the next pending step.
 2. Analyze critically — confront findings with alternative explanations (data bias, platform effects, keyword skew).
-3. Deliver what fits the question. Don't auto-generate dashboards and exports on every completion — use judgment."""
-
-_DISPLAY_TOOLS = """## Inline Display
-- Topics: `show_topics(agent_id="...")`
-- Metrics: `show_metrics(collection_id="...")` or `show_metrics(items=[{"label": "...", "value": ...}])`"""
+3. Deliver what fits the question. Don't auto-generate exports on every completion — use judgment."""
 
 _BRIEFING_ON_REQUEST = """## Refreshing the Briefing
 
@@ -167,8 +162,6 @@ CHAT_STATIC_PROMPT = f"""{_IDENTITY}
 
 {ANALYSIS_METHODOLOGY}
 
-{DASHBOARD_AUTHORING}
-
 {PRESENTATIONS}
 
 {ENRICHMENT_FIELDS}
@@ -182,8 +175,6 @@ CHAT_STATIC_PROMPT = f"""{_IDENTITY}
 {OUTPUT_STYLE}
 
 {_DATA_COMPLETION}
-
-{_DISPLAY_TOOLS}
 
 {_BRIEFING_ON_REQUEST}
 

@@ -32,7 +32,8 @@ interface AgentChatTabProps {
 }
 
 const STUDIO_COLLAPSED_W = 48;
-const STUDIO_DEFAULT_W = 340;
+const STUDIO_MIN_W = 280;
+const STUDIO_MAX_W = 900;
 
 export function AgentChatTab({
   task,
@@ -52,7 +53,10 @@ export function AgentChatTab({
   const compose = searchParams.get('compose');
   const restoredRef = useRef<string | null>(null);
   const studioPanelCollapsed = useUIStore((s) => s.studioPanelCollapsed);
+  const studioPanelWidth = useUIStore((s) => s.studioPanelWidth);
+  const setStudioPanelWidth = useUIStore((s) => s.setStudioPanelWidth);
   const collapseStudioPanel = useUIStore((s) => s.collapseStudioPanel);
+  const [resizing, setResizing] = useState(false);
 
   // Search-in-chat state — local to this tab.
   const [searchOpen, setSearchOpen] = useState(false);
@@ -105,6 +109,26 @@ export function AgentChatTab({
     }
   }, [task.agent_id, urlSessionId, task.collection_ids]);
 
+  // Drag-to-resize the Workspace panel from its left edge.
+  useEffect(() => {
+    if (!resizing) return;
+    const onMove = (e: MouseEvent) => {
+      const next = window.innerWidth - e.clientX;
+      setStudioPanelWidth(Math.min(STUDIO_MAX_W, Math.max(STUDIO_MIN_W, next)));
+    };
+    const onUp = () => setResizing(false);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [resizing, setStudioPanelWidth]);
+
   const handleToggleSearch = () => {
     setSearchOpen((open) => {
       if (open) setSearchQuery('');
@@ -152,9 +176,23 @@ export function AgentChatTab({
 
       {/* Right: Workspace sidebar — collapsed by default on chat tab */}
       <aside
-        className="shrink-0 overflow-hidden border-l border-border bg-card"
-        style={{ width: studioPanelCollapsed ? STUDIO_COLLAPSED_W : STUDIO_DEFAULT_W }}
+        className="relative shrink-0 overflow-hidden border-l border-border bg-card"
+        style={{ width: studioPanelCollapsed ? STUDIO_COLLAPSED_W : studioPanelWidth }}
       >
+        {!studioPanelCollapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize workspace panel"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setResizing(true);
+            }}
+            className={`absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize hover:bg-primary/40 ${
+              resizing ? 'bg-primary/60' : ''
+            }`}
+          />
+        )}
         <ErrorBoundary label="StudioPanel">
           <StudioPanel />
         </ErrorBoundary>

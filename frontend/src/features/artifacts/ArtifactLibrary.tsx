@@ -22,7 +22,7 @@ import { Button } from '../../components/ui/button.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
 import { cn } from '../../lib/utils.ts';
 
-type TypeFilter = 'all' | 'dashboard' | 'chart' | 'data_export';
+type TypeFilter = 'all' | 'dashboard' | 'chart' | 'data_export' | 'markdown';
 type SortOption = 'recent' | 'title' | 'type';
 type ViewMode = 'grid' | 'list';
 
@@ -31,6 +31,7 @@ const TYPE_FILTERS: { label: string; value: TypeFilter }[] = [
   { label: 'Dashboards', value: 'dashboard' },
   { label: 'Charts', value: 'chart' },
   { label: 'Exports', value: 'data_export' },
+  { label: 'Reports', value: 'markdown' },
 ];
 
 const SORT_OPTIONS: { label: string; value: SortOption }[] = [

@@ -57,8 +57,7 @@ export const STUDIO_ACTIONS: StudioAction[] = [
     tileTheme:
       'border-emerald-500/40 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white hover:from-emerald-400 hover:to-emerald-600',
     iconBubble: 'bg-white/20 text-white ring-white/20',
-    prompt:
-      "Let's run a strategic planning session for this agent. Before producing a plan, ask me 2–4 short clarifying questions covering: my main objective, my target audience, the time horizon, and how I'll measure success. Use the data this agent has already collected (posts, themes, entities, sentiment) as the evidence base. Once I confirm the synthesis, publish the strategic plan as the agent's briefing using the existing briefing composition tool, structured as: objective and context, key insights from the data, recommended actions with timeline, and risks to monitor.",
+    // Special: opens StrategicPlanningDialog rather than sending a prompt directly.
   },
   {
     id: 'chart',

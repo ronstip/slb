@@ -227,14 +227,16 @@ def test_collect_tiktok_fans_out_per_keyword_with_top_section():
         return []
 
     with patch.object(adapter, "_run_and_parse", side_effect=_capture):
-        adapter._collect_tiktok({
+        # _collect_tiktok is a generator (streams batches per-keyword) — drain
+        # it so the futures actually execute.
+        list(adapter._collect_tiktok({
             "keywords": ["alo yoga", "lululemon", "athleta"],
             "max_posts_per_keyword": 100,
             "time_range": {
                 "start": "2026-04-26T00:00:00Z",
                 "end": "2026-05-03T00:00:00Z",
             },
-        })
+        }))
 
     # One run per keyword.
     assert len(captured) == 3
@@ -265,14 +267,14 @@ def test_collect_facebook_uses_relevance_sort_with_buffer():
         return []
 
     with patch.object(adapter, "_run_and_parse", side_effect=_capture):
-        adapter._collect_facebook({
+        list(adapter._collect_facebook({
             "keywords": ["alo yoga", "lululemon"],
             "max_posts_per_keyword": 25,
             "time_range": {
                 "start": "2026-04-26T00:00:00Z",
                 "end": "2026-05-03T00:00:00Z",
             },
-        })
+        }))
 
     assert len(captured) == 2
     for c in captured:
@@ -295,10 +297,10 @@ def test_collect_facebook_caps_max_results_at_1000():
         return []
 
     with patch.object(adapter, "_run_and_parse", side_effect=_capture):
-        adapter._collect_facebook({
+        list(adapter._collect_facebook({
             "keywords": ["x"],
             "max_posts_per_keyword": 800,  # 1.5x = 1200, must clamp to 1000
-        })
+        }))
 
     assert captured[0]["max_results"] == 1000
 

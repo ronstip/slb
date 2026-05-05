@@ -33,7 +33,7 @@ AgentMode = Literal["chat", "autonomous"]
 PLANNING_TOOLS = {"update_todos"}
 AGENT_TOOLS = {"start_agent", "get_agent_status", "set_active_agent"}
 CORE_TOOLS = {"execute_sql", "create_chart"}
-RESEARCH_SUPPORT_TOOLS = {"get_collection_details", "google_search_agent"}
+RESEARCH_SUPPORT_TOOLS = {"google_search_agent"}
 OUTPUT_TOOLS = {"export_data", "generate_presentation", "compose_briefing"}
 
 # ─── Hard gate: tools blocked while a collection pipeline is running ────
@@ -47,10 +47,9 @@ COLLECTION_RUNNING_BLOCKED = {
 # must be validated against the authenticated user's ownership / org access.
 
 TOOLS_WITH_COLLECTION_ID = {
-    "export_data", "get_collection_details",
+    "export_data",
 }
 TOOLS_WITH_COLLECTION_IDS = {
-    "generate_dashboard",
     "export_data", "generate_presentation",
 }
 
@@ -158,7 +157,7 @@ def gate_expensive_tools(
 # Two-pronged guard: (1) per-session count cap, (2) per-query whitespace-
 # normalized dedup. Set generously enough that legitimate multi-angle
 # analysis still works, tight enough that runaway loops can't burn quota.
-_MAX_SQL_CALLS_PER_SESSION = 8
+_MAX_SQL_CALLS_PER_SESSION = 40
 
 # Serializes the read-decide-write of `_execute_sql_count` across parallel
 # tool calls fanned out within a single turn. Without this, two concurrent
@@ -475,7 +474,7 @@ def _build_data_pool(state: dict) -> Optional[str]:
         "Use in SQL: `WHERE collection_id IN UNNEST(@collection_ids)` or "
         "`WHERE collection_id = @collection_id`. "
         "Query ALL unless the question targets a subset. "
-        "Multi-source tools (`export_data`, `generate_dashboard`, etc.) accept `collection_ids` lists. "
+        "Multi-source tools (`export_data`, `generate_presentation`, etc.) accept `collection_ids` lists. "
         "Never mention source IDs, source counts, or internal data structure to the user.",
     ]
 
@@ -589,10 +588,10 @@ def _build_operational_context(state: dict) -> Optional[str]:
     if version:
         lines.append(f"**Agent version:** {version}")
 
-    # Data window — agent-level hard scope. This is the SQL-ready bound that
-    # `search_posts` already enforces; every `execute_sql` query the agent
-    # writes must apply the same `posted_at` filter or its numbers will count
-    # posts from outside scope (the bug that motivated adding this block).
+    # Data window — agent-level hard scope. Every `execute_sql` query the
+    # agent writes must apply this `posted_at` filter or its numbers will
+    # count posts from outside scope (the bug that motivated adding this
+    # block).
     data_start_date = state.get("active_agent_data_start_date")
     data_end_date = state.get("active_agent_data_end_date")
     if data_start_date or data_end_date:

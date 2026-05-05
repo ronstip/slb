@@ -51,10 +51,9 @@ def set_active_agent(
         tool_context.state["active_agent_enrichment_config"] = enrichment_config
         tool_context.state["active_agent_constitution"] = agent.get("constitution")
         tool_context.state["active_agent_context"] = agent.get("context")
-        # Cache the agent-level data window so search_posts (and any other
-        # tool that filters by posted_at) can apply it without a Firestore
-        # round-trip per call. Both are ISO date strings (YYYY-MM-DD); end
-        # may be None meaning "no upper bound".
+        # Cache the agent-level data window so the SQL data-window callback
+        # can apply it without a Firestore round-trip per call. Both are ISO
+        # date strings (YYYY-MM-DD); end may be None meaning "no upper bound".
         tool_context.state["active_agent_data_start_date"] = agent.get("data_start_date")
         tool_context.state["active_agent_data_end_date"] = agent.get("data_end_date")
 

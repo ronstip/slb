@@ -11,7 +11,8 @@ export type DeliverableKind =
   | 'slides'
   | 'email'
   | 'chart'
-  | 'data_export';
+  | 'data_export'
+  | 'markdown';
 
 export interface KindVisual {
   label: string;
@@ -63,10 +64,18 @@ export const KIND_VISUALS: Record<DeliverableKind, KindVisual> = {
     tileGradient: 'from-slate-500/20 via-slate-500/5 to-transparent',
     iconTint: 'text-slate-500',
   },
+  markdown: {
+    label: 'Report',
+    labelPlural: 'Reports',
+    sublabel: 'Report is being written',
+    icon: FileText,
+    tileGradient: 'from-violet-500/20 via-violet-500/5 to-transparent',
+    iconTint: 'text-violet-500',
+  },
 };
 
 export function artifactTypeToKind(
-  type: 'chart' | 'data_export' | 'dashboard' | 'presentation',
+  type: 'chart' | 'data_export' | 'dashboard' | 'presentation' | 'markdown',
 ): DeliverableKind | null {
   switch (type) {
     case 'presentation':
@@ -75,6 +84,8 @@ export function artifactTypeToKind(
       return 'data_export';
     case 'chart':
       return 'chart';
+    case 'markdown':
+      return 'markdown';
     case 'dashboard':
       return null;
     default:

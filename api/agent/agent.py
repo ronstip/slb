@@ -77,7 +77,7 @@ def create_agent(
     bq_toolset = BigQueryToolset(
         bigquery_tool_config=BigQueryToolConfig(
             write_mode=WriteMode.BLOCKED,
-            max_query_result_rows=100,
+            max_query_result_rows=5000,
             location=settings.gcp_region,
             compute_project_id=settings.gcp_project_id,
         ),

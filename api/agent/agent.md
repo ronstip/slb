@@ -31,7 +31,6 @@ The analyst is an interactive agent embedded in the user's conversation. It live
 - Fans out independent tool calls in parallel
 - Can ask the user structured questions (`ask_user`)
 - Can create new agents (`start_agent`)
-- Shows inline visualizations (`show_metrics`, `show_topics`)
 - Stops and waits after calling `ask_user` or `start_agent`
 
 ### Executor (Autonomous Mode)
@@ -95,11 +94,9 @@ User sends message
 | `execute_sql` | Query BigQuery (via BQ Toolset) |
 | `update_todos` | Track plan progress |
 | `create_chart` | Generate charts (bar, line, pie, table, number) |
-| `get_collection_details` | Inspect collection configuration |
 | `set_working_collections` | Set which collections are in scope |
 | `export_data` | Export posts as CSV |
 | `generate_report` | Structured insight report with KPIs, charts, findings |
-| `generate_dashboard` | Interactive dashboard (frontend handles filtering) |
 | `generate_presentation` | PowerPoint deck from slide specs |
 | `compose_email` | Send email with markdown body |
 
@@ -111,8 +108,6 @@ User sends message
 | `start_agent` | Create and dispatch a new agent |
 | `get_agent_status` | Check agent run status |
 | `set_active_agent` | Switch to a different agent's context |
-| `show_metrics` | Display stat cards inline in chat |
-| `show_topics` | Display topic clusters inline in chat |
 
 ---
 

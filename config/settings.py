@@ -116,9 +116,9 @@ class Settings(BaseSettings):
     apify_actor_tiktok: str = "apidojo/tiktok-scraper-api"
     apify_run_timeout_sec: int = 1500
     apify_max_runs_per_collection: int = 30
-    apify_max_parallel_runs: int = 3
-    apify_memory_mbytes: int = 2048  # account cap is 8 GB; max_parallel * memory must stay <= 8192
-    apify_account_memory_cap_mbytes: int = 8192
+    apify_max_parallel_runs: int = 10
+    apify_memory_mbytes: int = 2048  # STARTER plan cap is 32 GB; max_parallel * memory must stay <= cap
+    apify_account_memory_cap_mbytes: int = 32768
     apify_build: str = ""  # optional build tag for stability
     apify_proxy_group: str = "RESIDENTIAL"  # RESIDENTIAL | DATACENTER
 

@@ -4,6 +4,7 @@ import { useStudioStore, type Artifact } from '../../stores/studio-store.ts';
 import { shortDate } from '../../lib/format.ts';
 import { DataExportView } from './DataExportView.tsx';
 import { ChartArtifactView } from './ChartArtifactView.tsx';
+import { MarkdownArtifactView } from './MarkdownArtifactView.tsx';
 import { UnderlyingDataDialog } from './UnderlyingDataDialog.tsx';
 import { cn } from '../../lib/utils.ts';
 import { Button } from '../../components/ui/button.tsx';
@@ -19,12 +20,14 @@ const ARTIFACT_STYLES: Record<string, { icon: typeof Table2; color: string; bg: 
   data_export: { icon: Table2, color: 'text-blue-500', bg: 'bg-blue-500/10' },
   chart: { icon: BarChart3, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
   presentation: { icon: Presentation, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+  markdown: { icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10' },
 };
 
 function getArtifactCollectionIds(artifact: Artifact): string[] {
   if (artifact.type === 'data_export') return artifact.sourceIds;
   if (artifact.type === 'chart') return artifact.collectionIds ?? [];
   if (artifact.type === 'presentation') return artifact.collectionIds;
+  if (artifact.type === 'markdown') return artifact.collectionIds ?? [];
   return [];
 }
 
@@ -61,6 +64,9 @@ export function ArtifactsTab() {
     if (expandedArtifact.type === 'chart') {
       return <ChartArtifactView artifact={expandedArtifact as Extract<Artifact, { type: 'chart' }>} />;
     }
+    if (expandedArtifact.type === 'markdown') {
+      return <MarkdownArtifactView artifact={expandedArtifact as Extract<Artifact, { type: 'markdown' }>} />;
+    }
   }
 
   if (artifacts.length === 0) {
@@ -93,7 +99,9 @@ export function ArtifactsTab() {
             ? `${artifact.rowCount} posts`
             : artifact.type === 'presentation'
               ? `${artifact.slideCount} slide${artifact.slideCount !== 1 ? 's' : ''}`
-              : artifact.chartType.replace(/_/g, ' ');
+              : artifact.type === 'markdown'
+                ? `${artifact.content.trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words`
+                : artifact.chartType.replace(/_/g, ' ');
 
           return (
             <div

@@ -10,6 +10,7 @@ import { getArtifact } from '../../api/endpoints/artifacts.ts';
 import { ARTIFACT_STYLES, convertToStudioArtifact } from './artifact-utils.ts';
 import { ChartArtifactView } from '../studio/ChartArtifactView.tsx';
 import { DataExportView } from '../studio/DataExportView.tsx';
+import { MarkdownArtifactView } from '../studio/MarkdownArtifactView.tsx';
 import { cn } from '../../lib/utils.ts';
 import type { Artifact } from '../../stores/studio-store.ts';
 
@@ -106,6 +107,8 @@ function ArtifactRenderer({ artifact }: { artifact: Artifact }) {
       return <DataExportView artifact={artifact} />;
     case 'presentation':
       return <PresentationDownloadView artifact={artifact} />;
+    case 'markdown':
+      return <MarkdownArtifactView artifact={artifact} />;
   }
 }
 
