@@ -63,7 +63,6 @@ export const FEED_POST_CSV_COLUMNS: CsvColumn[] = [
   { key: 'detected_brands', header: 'detected_brands' },
   { key: 'ai_summary', header: 'ai_summary' },
   { key: 'context', header: 'context' },
-  { key: 'is_related_to_task', header: 'is_related_to_task' },
   { key: 'custom_fields', header: 'custom_fields' },
   { key: 'is_retweet', header: 'is_retweet' },
   { key: 'is_quote', header: 'is_quote' },

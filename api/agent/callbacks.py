@@ -167,12 +167,12 @@ _MAX_SQL_CALLS_PER_SESSION = 40
 _sql_budget_lock = threading.Lock()
 
 
-_POSTS_TABLE_RE = re.compile(
-    r"social_listening\.posts\b|\bfrom\s+posts\b|\bjoin\s+posts\b",
-    re.IGNORECASE,
-)
-_POSTED_AT_BOUND_RE = re.compile(
-    r"posted_at\s*\)?\s*(?:>=|<=|>|<|between(?=\s))",
+# Match qualified references to the three gated tables. The TVF names
+# (`scope_posts`, `scope_post_ids`) intentionally do NOT match this regex
+# — `social_listening.posts` requires the literal `posts` token to follow
+# the dot, not `scope_posts`.
+_FORBIDDEN_RAW_TABLE_RE = re.compile(
+    r"social_listening\.(posts|enriched_posts|post_engagements)\b",
     re.IGNORECASE,
 )
 
@@ -182,50 +182,48 @@ def enforce_data_window_in_sql(
     args: dict[str, Any],
     tool_context: ToolContext,
 ) -> Optional[dict]:
-    """Reject `execute_sql` queries that touch `posts` without a `posted_at` bound.
+    """Reject `execute_sql` queries that bypass the `scope_posts` TVF.
 
-    The data window is stated 5x in the prompt as a "MUST", but the agent
-    skipped it on a "find oldest post" question and returned a 2021 row from
-    outside its 2026-04-26 scope. The `posts` table holds re-crawls and rows
-    from other workflows, so any aggregation without `posted_at >=` silently
-    pulls in out-of-scope data. Runs before `dedup_sql_calls` so a rejected
-    query doesn't consume the per-session SQL budget.
+    Posts must be read through `social_listening.scope_posts(p_agent_id)` or
+    `social_listening.scope_post_ids(p_agent_id)`. The TVFs centralize the
+    relevance gate (`is_related_to_task IS TRUE`) and dedup of
+    posts/enrichment/engagement — bypassing them lets the agent silently
+    read posts outside its scope or inflate counts via undeduped joins.
+
+    Runs before `dedup_sql_calls` so a rejected query doesn't consume the
+    per-session SQL budget. Only enforced when an agent is active; queries
+    issued in research/setup phases (no `active_agent_id`) are passed
+    through.
     """
     if tool.name != "execute_sql":
         return None
 
     state = tool_context.state
-    data_start_date = state.get("active_agent_data_start_date")
-    if not data_start_date:
+    if not state.get("active_agent_id"):
         return None
 
     raw_query = args.get("query") or args.get("sql") or ""
     if not raw_query:
         return None
 
-    if not _POSTS_TABLE_RE.search(raw_query):
-        return None
-    if _POSTED_AT_BOUND_RE.search(raw_query):
+    match = _FORBIDDEN_RAW_TABLE_RE.search(raw_query)
+    if not match:
         return None
 
-    data_end_date = state.get("active_agent_data_end_date")
-    end_clause = (
-        f" AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('{data_end_date}'), INTERVAL 1 DAY)"
-        if data_end_date else ""
-    )
+    table = match.group(1).lower()
     return {
-        "status": "missing_data_window",
+        "status": "raw_table_blocked",
         "rows": [],
         "row_count": 0,
         "message": (
-            "Query rejected: it references the `posts` table but doesn't bound "
-            "`posted_at` by your data window. Add "
-            f"`AND p.posted_at >= TIMESTAMP('{data_start_date}')`{end_clause} "
-            "to the WHERE clause and re-run. The window applies to every query "
-            "that touches `posts` — including 'find the oldest/newest post' or "
-            "any coverage question — because the raw table holds re-crawls and "
-            "posts from other workflows. Without the bound, MIN(posted_at) "
-            "returns the oldest row in the raw table, not the oldest in scope."
+            f"Query rejected: it reads `social_listening.{table}` directly. "
+            "All post reads must go through "
+            "`social_listening.scope_posts('<active_agent_id>')` (full row) "
+            "or `social_listening.scope_post_ids('<active_agent_id>')` "
+            "(post_id only, for joining tables like `post_embeddings`). The "
+            "TVFs apply the relevance gate and dedup for you — skipping them "
+            "silently pulls in out-of-scope or duplicated rows. Add date / "
+            "platform / collection filters in `WHERE`."
         ),
     }
 
@@ -583,28 +581,41 @@ def _build_operational_context(state: dict) -> Optional[str]:
         trigger_note = f" (trigger: {run_trigger})" if run_trigger else ""
         lines.append(f"**Run:** #{run_number}{trigger_note}")
 
+    # Agent identity — the agent_id is required as the first argument to
+    # `scope_posts` / `scope_post_ids`. Surface it explicitly so the agent
+    # can substitute the literal value into its SQL. This is the only id
+    # the agent is permitted to pass to the TVFs (hard rule in the prompt).
+    agent_id = state.get("active_agent_id")
+    if agent_id:
+        lines.append(f"**Your agent ID (use in TVF calls):** `{agent_id}`")
+
     # Agent version
     version = state.get("active_agent_version")
     if version:
         lines.append(f"**Agent version:** {version}")
 
-    # Data window — agent-level hard scope. Every `execute_sql` query the
-    # agent writes must apply this `posted_at` filter or its numbers will
-    # count posts from outside scope (the bug that motivated adding this
-    # block).
+    # Data window — applied via WHERE clauses on `posted_at` against the
+    # scope TVFs. The agent reads posts exclusively through
+    # `scope_posts` / `scope_post_ids`; date / platform / collection filters
+    # are normal SQL on the result.
     data_start_date = state.get("active_agent_data_start_date")
     data_end_date = state.get("active_agent_data_end_date")
     if data_start_date or data_end_date:
         end_label = data_end_date or "open-ended (no upper bound)"
         lines.append(f"**Data window — start:** `{data_start_date or 'open-ended'}`")
         lines.append(f"**Data window — end:** `{end_label}`")
+        end_predicate = (
+            f"\n  AND DATE(posted_at) < DATE '{data_end_date}'" if data_end_date else ""
+        )
         lines.append(
-            "\n**Apply this window to every `execute_sql` query.** "
-            "Add `AND p.posted_at >= TIMESTAMP('<start>')` "
-            "and (when end is set) "
-            "`AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<end>'), INTERVAL 1 DAY)` "
-            "to the WHERE clause. Pair it with `AND ep.is_related_to_task IS NOT FALSE` — "
-            "without both, totals include irrelevant or out-of-scope posts."
+            "\n**Read posts only through the scope TVFs.** Example call shape:\n"
+            "```sql\n"
+            f"SELECT ... FROM social_listening.scope_posts('{agent_id or '<active_agent_id>'}')\n"
+            f"WHERE DATE(posted_at) >= DATE '{data_start_date or '<data_start_date>'}'"
+            f"{end_predicate}\n"
+            "```\n"
+            "Direct reads of `posts`, `enriched_posts`, or `post_engagements` "
+            "are blocked."
         )
         lines.append(
             "Data boundaries are artifacts of collection scope, not real-world events. "

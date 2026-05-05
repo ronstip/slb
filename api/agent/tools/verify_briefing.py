@@ -49,6 +49,7 @@ def verify_briefing(tool_context: ToolContext) -> dict:
     agent_id = state.get("active_agent_id")
     run_id = state.get("active_run_id")
     collection_ids = state.get("agent_selected_sources") or []
+    data_start_date = state.get("active_agent_data_start_date")
 
     if not agent_id or not run_id:
         return {
@@ -93,7 +94,7 @@ def verify_briefing(tool_context: ToolContext) -> dict:
 
     # ── 2. Gather ground-truth facts via SQL ──────────────────────────
     try:
-        facts = _gather_ground_truth(collection_ids)
+        facts = _gather_ground_truth(agent_id, collection_ids, data_start_date)
     except Exception as e:
         logger.exception(
             "verify_briefing: ground-truth gather failed for agent=%s run=%s",
@@ -147,27 +148,36 @@ def verify_briefing(tool_context: ToolContext) -> dict:
 # ─── Ground-truth gathering ──────────────────────────────────────────────
 
 
-def _gather_ground_truth(collection_ids: list[str]) -> dict[str, Any]:
+def _gather_ground_truth(
+    agent_id: str,
+    collection_ids: list[str],
+    data_start_date: str | None,
+) -> dict[str, Any]:
     """Pull a small packet of sanity-check facts from BigQuery.
 
-    Five fixed queries — total post count, sentiment %, top entities, top
-    platforms by post count, and post date range. Uses fully-qualified table
-    names (the BQClient query method auto-qualifies `social_listening.*`
-    references).
+    Reads through the `scope_posts` TVF — same gate the agent uses, so
+    verification facts reflect the same scope and dedup rules. Date and
+    collection filters are applied via WHERE.
     """
     from api.deps import get_bq
 
     bq = get_bq()
 
-    # Use parameterized queries — collection_ids is agent-supplied state.
-    params = {"collection_ids": collection_ids}
+    params = {
+        "agent_id": agent_id,
+        "collection_ids": collection_ids,
+    }
+
+    where_clauses = ["collection_id IN UNNEST(@collection_ids)"]
+    if data_start_date:
+        where_clauses.append("DATE(posted_at) >= DATE(@data_start_date)")
+        params["data_start_date"] = data_start_date
+    where_sql = "WHERE " + " AND ".join(where_clauses)
+
+    scope_call = "social_listening.scope_posts(@agent_id)"
 
     total_rows = bq.query(
-        """
-        SELECT COUNT(*) AS total_posts
-        FROM social_listening.posts
-        WHERE collection_id IN UNNEST(@collection_ids)
-        """,
+        f"SELECT COUNT(*) AS total_posts FROM {scope_call} {where_sql}",
         params=params,
     )
     total_posts = int((total_rows[0] or {}).get("total_posts", 0)) if total_rows else 0
@@ -178,43 +188,24 @@ def _gather_ground_truth(collection_ids: list[str]) -> dict[str, Any]:
             "note": "No posts found in scope — verifier cannot reconcile.",
         }
 
-    # CTE: dedupe enriched_posts to one row per post_id (latest agent version,
-    # then latest enriched_at). Required because the schema now allows N
-    # enrichment rows per post (per-agent, per-version).
-    dedup_cte = """
-    WITH dedup_ep AS (
-      SELECT * EXCEPT(_rn) FROM (
-        SELECT *, ROW_NUMBER() OVER (
-          PARTITION BY post_id
-          ORDER BY agent_version DESC NULLS LAST, enriched_at DESC
-        ) AS _rn
-        FROM social_listening.enriched_posts
-      ) WHERE _rn = 1
-    )
-    """
-
     sentiment_rows = bq.query(
-        dedup_cte + """
-        SELECT ep.sentiment, COUNT(*) AS cnt,
+        f"""
+        SELECT sentiment, COUNT(*) AS cnt,
           ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
-        FROM dedup_ep ep
-        JOIN social_listening.posts p ON p.post_id = ep.post_id
-        WHERE p.collection_id IN UNNEST(@collection_ids)
-          AND ep.is_related_to_task IS NOT FALSE
-        GROUP BY ep.sentiment
+        FROM {scope_call}
+        {where_sql}
+        GROUP BY sentiment
         ORDER BY cnt DESC
         """,
         params=params,
     )
 
     platform_rows = bq.query(
-        dedup_cte + """
-        SELECT p.platform, COUNT(*) AS posts
-        FROM social_listening.posts p
-        JOIN dedup_ep ep ON p.post_id = ep.post_id
-        WHERE p.collection_id IN UNNEST(@collection_ids)
-          AND ep.is_related_to_task IS NOT FALSE
-        GROUP BY p.platform
+        f"""
+        SELECT platform, COUNT(*) AS posts
+        FROM {scope_call}
+        {where_sql}
+        GROUP BY platform
         ORDER BY posts DESC
         LIMIT 10
         """,
@@ -222,12 +213,13 @@ def _gather_ground_truth(collection_ids: list[str]) -> dict[str, Any]:
     )
 
     entity_rows = bq.query(
-        dedup_cte + """
+        f"""
+        WITH scoped AS (
+          SELECT * FROM {scope_call}
+          {where_sql}
+        )
         SELECT entity, COUNT(*) AS mentions
-        FROM dedup_ep ep, UNNEST(ep.entities) AS entity
-        JOIN social_listening.posts p ON p.post_id = ep.post_id
-        WHERE p.collection_id IN UNNEST(@collection_ids)
-          AND ep.is_related_to_task IS NOT FALSE
+        FROM scoped, UNNEST(entities) AS entity
         GROUP BY entity
         ORDER BY mentions DESC
         LIMIT 10
@@ -236,12 +228,12 @@ def _gather_ground_truth(collection_ids: list[str]) -> dict[str, Any]:
     )
 
     date_rows = bq.query(
-        """
+        f"""
         SELECT
-          MIN(DATE(p.posted_at)) AS earliest,
-          MAX(DATE(p.posted_at)) AS latest
-        FROM social_listening.posts p
-        WHERE p.collection_id IN UNNEST(@collection_ids)
+          MIN(DATE(posted_at)) AS earliest,
+          MAX(DATE(posted_at)) AS latest
+        FROM {scope_call}
+        {where_sql}
         """,
         params=params,
     )

@@ -46,6 +46,9 @@ interface PostsDataPanelProps {
   endDate?: string | null;
   /** Filename prefix for the CSV export (slugified before use). */
   exportFilenamePrefix?: string;
+  /** When provided, the feed scopes posts via the agent's scope_posts TVF — only enrichment
+   *  rows belonging to this agent are considered (no cross-agent NULL rows). */
+  agentId?: string;
   /** Legacy callback props — still accepted but optional */
   onActiveFiltersChange?: (active: boolean) => void;
   onClearFiltersCallbackChange?: (cb: (() => void) | null) => void;
@@ -60,6 +63,7 @@ export function PostsDataPanel({
   startDate,
   endDate,
   exportFilenamePrefix,
+  agentId,
 }: PostsDataPanelProps) {
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>(createEmptyFilters);
 
@@ -70,7 +74,6 @@ export function PostsDataPanel({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [platformFilter, setPlatformFilter] = useState('all');
   const [sentimentFilter, setSentimentFilter] = useState('all');
-  const [relevantFilter, setRelevantFilter] = useState('true');
   const [channelFilter, setChannelFilter] = useState<Set<string>>(new Set());
   const [channelSearch, setChannelSearch] = useState('');
   const [dateRange, setDateRange] = useState<DateTimeRange>({ from: null, to: null });
@@ -89,7 +92,7 @@ export function PostsDataPanel({
   const effectiveEndDate = dateRange.to ?? endDate ?? undefined;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, relevantFilter, effectiveStartDate, effectiveEndDate],
+    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, effectiveEndDate, agentId ?? ''],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: effectiveCollectionIds,
@@ -99,39 +102,15 @@ export function PostsDataPanel({
         dedup,
         platform: platformFilter !== 'all' ? platformFilter : undefined,
         sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
-        relevant_to_task: relevantFilter,
         start_date: effectiveStartDate ?? undefined,
         end_date: effectiveEndDate,
+        agent_id: agentId,
       }),
     enabled: hasSelection,
     staleTime: 30_000,
   });
 
   const allPosts = data?.posts ?? [];
-
-  // Separate query for the relevance metric — must ignore the relevant_to_task
-  // filter, otherwise the metric is circular (e.g. 100% under "Relevant only").
-  // Only fires when a relevance filter is active; otherwise we reuse allPosts.
-  const { data: relevanceData } = useQuery({
-    queryKey: ['collection-posts-relevance', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, effectiveEndDate],
-    queryFn: () =>
-      getMultiCollectionPosts({
-        collection_ids: effectiveCollectionIds,
-        sort: 'views',
-        limit: 5_000,
-        offset: 0,
-        dedup,
-        platform: platformFilter !== 'all' ? platformFilter : undefined,
-        sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
-        relevant_to_task: 'all',
-        start_date: effectiveStartDate ?? undefined,
-        end_date: effectiveEndDate,
-      }),
-    enabled: hasSelection && relevantFilter !== 'all',
-    staleTime: 30_000,
-  });
-
-  const relevancePool = relevantFilter === 'all' ? allPosts : (relevanceData?.posts ?? allPosts);
 
   // Apply top-level channel filter + column-level filters (both client-side)
   const afterColumnFilters = useMemo(() => {
@@ -162,7 +141,6 @@ export function PostsDataPanel({
     setSourceFilter('all');
     setPlatformFilter('all');
     setSentimentFilter('all');
-    setRelevantFilter('true');
     setChannelFilter(new Set());
     setChannelSearch('');
     setDateRange({ from: null, to: null });
@@ -172,7 +150,6 @@ export function PostsDataPanel({
     sourceFilter !== 'all' ||
     platformFilter !== 'all' ||
     sentimentFilter !== 'all' ||
-    relevantFilter !== 'true' ||
     channelFilter.size > 0 ||
     dateRange.from !== null ||
     dateRange.to !== null;
@@ -202,12 +179,9 @@ export function PostsDataPanel({
     const base = computeAnalyticsStats(filteredPosts);
     if (!base) return base;
 
-    // Relevance: count posts marked as relevant + deduped unique post_ids.
-    // Uses relevancePool (unfiltered by relevant_to_task) so the ratio isn't
-    // circular when the user has "Relevant only" / "Not relevant only" applied.
-    const uniquePostIds = new Set(relevancePool.map((p) => p.post_id));
+    // Deduped unique post_ids across collections.
+    const uniquePostIds = new Set(allPosts.map((p) => p.post_id));
     base.dedupedCount = uniquePostIds.size;
-    base.relevantCount = relevancePool.filter((p) => p.is_related_to_task === true).length;
 
     if (!allStats) return base;
 
@@ -232,7 +206,7 @@ export function PostsDataPanel({
     base.latestDate = dates.length > 0 ? dates.sort().pop()! : null;
 
     return base;
-  }, [filteredPosts, relevancePool, allStats]);
+  }, [filteredPosts, allPosts, allStats]);
 
   // Build source options from collections prop
   const sourceOptions = useMemo(() => {
@@ -429,19 +403,6 @@ export function PostsDataPanel({
           </PopoverContent>
         </Popover>
 
-        {/* Relevant to task filter */}
-        <Select value={relevantFilter} onValueChange={setRelevantFilter}>
-          <SelectTrigger className="h-7 w-auto min-w-[140px] text-xs gap-1.5 bg-background">
-            <span className="text-muted-foreground font-medium mr-1">Relevant:</span>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">Relevant only</SelectItem>
-            <SelectItem value="false">Not relevant only</SelectItem>
-            <SelectItem value="all">All</SelectItem>
-          </SelectContent>
-        </Select>
-
         {/* Right-side controls: clear-all + export + view toggle */}
         <div className="ml-auto flex items-center gap-2">
           {hasAnyFilter && (
@@ -563,10 +524,10 @@ export function PostsDataPanel({
             collectionIds={effectiveCollectionIds}
             platform={platformFilter !== 'all' ? platformFilter : undefined}
             sentiment={sentimentFilter !== 'all' ? sentimentFilter : undefined}
-            relevantToTask={relevantFilter}
             dedup={dedup}
             startDate={effectiveStartDate ?? undefined}
             endDate={effectiveEndDate}
+            agentId={agentId}
             variant="wide"
           />
         </div>

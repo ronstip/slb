@@ -28,7 +28,6 @@ export function computeWindowStart(
 }
 
 export interface OverviewFilterSpec {
-  relevantOnly: boolean;
   startDate: string | null;
   /** Inclusive of the entire end day (UTC); null/undefined = no upper bound. */
   endDate?: string | null;
@@ -38,9 +37,8 @@ export function applyOverviewFilters(
   posts: DashboardPost[],
   spec: OverviewFilterSpec,
 ): DashboardPost[] {
-  if (!spec.relevantOnly && !spec.startDate && !spec.endDate) return posts;
+  if (!spec.startDate && !spec.endDate) return posts;
   return posts.filter((p) => {
-    if (spec.relevantOnly && p.is_related_to_task !== true) return false;
     const postedDay = p.posted_at?.slice(0, 10);
     if (spec.startDate && (!postedDay || postedDay < spec.startDate)) return false;
     if (spec.endDate && (!postedDay || postedDay > spec.endDate)) return false;

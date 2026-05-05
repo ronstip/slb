@@ -239,7 +239,6 @@ export interface FeedPost {
   language?: string;
   custom_fields?: Record<string, unknown> | null;
   context?: string;
-  is_related_to_task?: boolean;
   detected_brands?: string[];
   channel_type?: string;
   collection_id?: string;
@@ -261,7 +260,6 @@ export interface MultiFeedParams {
   sort?: 'engagement' | 'recent' | 'sentiment' | 'views';
   platform?: string;
   sentiment?: string;
-  relevant_to_task?: string;
   limit?: number;
   offset?: number;
   topic_cluster_id?: string;
@@ -269,6 +267,9 @@ export interface MultiFeedParams {
   dedup?: boolean;
   start_date?: string;
   end_date?: string;
+  /** When set, the feed scopes posts via the agent's scope_posts TVF — picks
+   *  enrichment rows for this agent (not the latest cross-agent row). */
+  agent_id?: string;
 }
 
 export interface BreakdownItem {
@@ -493,7 +494,6 @@ export interface DashboardPost {
   custom_fields?: Record<string, unknown> | null;
   ai_summary?: string;
   context?: string;
-  is_related_to_task?: boolean;
   detected_brands?: string[];
   channel_type?: string;
   media_refs?: string;
@@ -698,7 +698,6 @@ export interface TopicPost {
   language?: string | null;
   custom_fields?: Record<string, unknown> | null;
   context?: string | null;
-  is_related_to_task?: boolean | null;
   detected_brands?: string[];
   collection_id?: string | null;
   distance_to_centroid: number;

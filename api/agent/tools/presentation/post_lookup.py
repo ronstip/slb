@@ -19,7 +19,25 @@ from api.deps import get_bq, get_gcs
 logger = logging.getLogger(__name__)
 
 
-_FETCH_SQL = """
+# TVF-backed lookup: pulls metadata for a specific set of post_ids that
+# already live inside the agent's scope. The TVF dedups posts/enrichment/
+# engagement and enforces the relevance gate.
+_FETCH_SQL_TVF = """
+SELECT
+    post_id, platform, channel_handle, title, content, post_url,
+    posted_at, post_type, media_refs, collection_id,
+    COALESCE(likes, 0) AS likes,
+    COALESCE(views, 0) AS views,
+    COALESCE(comments_count, 0) AS comments_count,
+    COALESCE(shares, 0) AS shares,
+    sentiment, emotion, content_type, ai_summary
+FROM social_listening.scope_posts(@agent_id)
+WHERE post_id IN UNNEST(@post_ids)
+"""
+
+# Legacy fallback for non-agent callers (orphan post refs without an
+# owning agent_id). Picks the latest enrichment regardless of agent.
+_FETCH_SQL_LEGACY = """
 WITH posts_dedup AS (
     SELECT * EXCEPT(_rn) FROM (
         SELECT pp.*, ROW_NUMBER() OVER (PARTITION BY pp.post_id ORDER BY pp.collected_at DESC) AS _rn
@@ -48,8 +66,15 @@ LEFT JOIN (
 """
 
 
-def fetch_posts_by_ids(post_refs: list[dict]) -> list[dict]:
+def fetch_posts_by_ids(
+    post_refs: list[dict],
+    agent_id: str | None = None,
+) -> list[dict]:
     """Fetch full post payloads for a list of {post_id, collection_id} refs.
+
+    When ``agent_id`` is provided, reads through the ``scope_posts`` TVF —
+    the same gate the agent uses — so dedup and enrichment selection match
+    everywhere. Falls back to legacy SQL for orphan callers.
 
     Returns rows in the same order as the input refs. Posts not found in BQ
     are dropped from the result. On query failure returns [].
@@ -61,8 +86,15 @@ def fetch_posts_by_ids(post_refs: list[dict]) -> list[dict]:
     if not post_ids:
         return []
 
+    if agent_id:
+        sql = _FETCH_SQL_TVF
+        params = {"agent_id": agent_id, "post_ids": post_ids}
+    else:
+        sql = _FETCH_SQL_LEGACY
+        params = {"post_ids": post_ids}
+
     try:
-        rows = get_bq().query(_FETCH_SQL, {"post_ids": post_ids})
+        rows = get_bq().query(sql, params)
     except Exception as e:
         logger.warning("fetch_posts_by_ids: BQ query failed: %s", e)
         return []

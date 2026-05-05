@@ -442,7 +442,6 @@ interface PostTableRow {
   custom_fields?: Record<string, unknown> | null;
   ai_summary?: string | null;
   context?: string | null;
-  is_related_to_task?: boolean | null;
   detected_brands?: string[];
   channel_type?: string | null;
   media_refs?: string;
@@ -469,7 +468,6 @@ function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
     custom_fields: p.custom_fields,
     ai_summary: p.ai_summary,
     context: p.context,
-    is_related_to_task: p.is_related_to_task,
     detected_brands: p.detected_brands,
     channel_type: p.channel_type,
     media_refs: p.media_refs,

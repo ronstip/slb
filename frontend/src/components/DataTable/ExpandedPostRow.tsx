@@ -32,7 +32,6 @@ interface ExpandableRow {
   shares?: number | null;
   comments_count?: number | null;
   sentiment?: string | null;
-  is_related_to_task?: boolean | null;
   detected_brands?: string | string[] | null;
 }
 
@@ -88,17 +87,6 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
             )}
             {row.context && (
               <Row label="Context"><p className="whitespace-pre-wrap">{row.context}</p></Row>
-            )}
-            {row.is_related_to_task != null && (
-              <Row label="Relevance">
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                  row.is_related_to_task
-                    ? 'bg-emerald-500/10 text-emerald-600'
-                    : 'bg-muted text-muted-foreground'
-                }`}>
-                  {row.is_related_to_task ? 'Related to task' : 'Not related'}
-                </span>
-              </Row>
             )}
             {row.sentiment && (
               <Row label="Sentiment"><SentimentBadge sentiment={row.sentiment} /></Row>

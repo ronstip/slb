@@ -27,24 +27,54 @@ Well-formed research questions have: a subject, a dimension to measure, a compar
 # ─── BigQuery essentials ─────────────────────────────────────────────────
 BIGQUERY_ESSENTIALS = """## BigQuery Essentials
 
-- Always filter by `collection_id`. Never query without it.
-- ARRAY fields (`entities`, `themes`, `detected_brands`) require `UNNEST`.
-- Joins: `posts` <-> `enriched_posts` on `post_id`, `posts` <-> `post_engagements` on `post_id`.
-- Relevance filter: `WHERE ep.is_related_to_task IS NOT FALSE` to exclude noise.
-- **Data window:** every query that touches posts MUST also bound `p.posted_at` by the agent's data window (start and end dates are in your operational context). Without it your numbers count posts from outside your scope.
-- Custom fields: `JSON_EXTRACT_SCALAR(ep.custom_fields, '$.field_name')`.
-- **Deduplication**: `enriched_posts` and `post_engagements` are INSERT-only — re-enrichment (new agent versions) and re-crawls leave multiple rows per `post_id`. A naive join multiplies counts. Always pre-dedupe with a CTE before joining or aggregating:
-  ```sql
-  WITH latest_ep AS (
-    SELECT * FROM social_listening.enriched_posts
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-  ),
-  latest_eng AS (
-    SELECT * FROM social_listening.post_engagements
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) = 1
-  )
-  ```
-  Then `JOIN latest_ep ep ...` / `LEFT JOIN latest_eng pe ...`. The `posts` table can also have re-crawl duplicates within a collection — if your numbers look inflated, dedupe with `QUALIFY ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) = 1`."""
+Read posts through the **`social_listening.scope_posts`** TVF (full rows) or **`social_listening.scope_post_ids`** (just `post_id`, for joining to other tables like `post_embeddings`). Direct reads of `posts`, `enriched_posts`, or `post_engagements` are blocked — these TVFs are your gate.
+
+**Signature** (same shape for both TVFs):
+```
+social_listening.scope_posts(p_agent_id STRING)
+social_listening.scope_post_ids(p_agent_id STRING)
+```
+
+Pass your `active_agent_id` from operational context. Hard rule: never substitute another agent's id — that is reading outside your scope.
+
+**What the TVF does for you** (so you understand its output):
+```sql
+-- Pseudocode of scope_posts(p_agent_id):
+WITH dedup_posts AS (         -- one row per post_id, latest collected_at
+    SELECT * EXCEPT(_rn) FROM (
+        SELECT p.*, ROW_NUMBER() OVER (
+            PARTITION BY p.post_id ORDER BY p.collected_at DESC
+        ) AS _rn
+        FROM social_listening.posts p
+    ) WHERE _rn = 1
+),
+dedup_enr AS (                -- this agent's latest enrichment per post
+    SELECT * EXCEPT(_rn) FROM (
+        SELECT ep.*, ROW_NUMBER() OVER (
+            PARTITION BY ep.post_id
+            ORDER BY ep.agent_version DESC NULLS LAST, ep.enriched_at DESC
+        ) AS _rn
+        FROM social_listening.enriched_posts ep
+        WHERE ep.agent_id = p_agent_id
+    ) WHERE _rn = 1
+),
+dedup_eng AS (                -- latest engagement snapshot per post
+    SELECT post_id, likes, views, comments_count, shares, saves, ...
+    FROM social_listening.post_engagements
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY post_id ORDER BY fetched_at DESC
+    ) = 1
+)
+SELECT <post cols>, <enrichment cols>, <engagement cols>
+FROM dedup_posts
+JOIN dedup_enr USING (post_id)
+LEFT JOIN dedup_eng USING (post_id)
+WHERE is_related_to_task IS TRUE  -- relevance is enforced here
+```
+
+So every row you get is: a post collected for one of your collections, enriched by you, and judged relevant to your task. Date / platform / collection / post-id filters are normal SQL — put them in your `WHERE`.
+
+ARRAY fields (`entities`, `themes`, `detected_brands`) require `UNNEST`. Custom fields: `JSON_EXTRACT_SCALAR(t.custom_fields, '$.field_name')`. Engagement metrics (`likes`, `views`, `comments_count`, `shares`, `saves`) are columns on `scope_posts` — no separate join needed."""
 
 # ─── Analysis methodology ───────────────────────────────────────────────
 ANALYSIS_METHODOLOGY = """## Analysis
@@ -61,7 +91,7 @@ For analytical questions:
 
 ### Querying
 
-- `execute_sql(query)` — totals, aggregations, percentages, time series, joins, custom dimensions, and content lookups. For "find posts that mention X" use `WHERE REGEXP_CONTAINS(LOWER(COALESCE(p.content, p.title, '')), r'...')`. Always parameterise `collection_id`, apply `is_related_to_task IS NOT FALSE`, bound `posted_at` by your data window, and dedupe engagements via the `QUALIFY ROW_NUMBER()` pattern in the schema reference.
+- `execute_sql(query)` — totals, aggregations, percentages, time series, joins, custom dimensions, and content lookups. Read posts through `social_listening.scope_posts('<active_agent_id>')` or `social_listening.scope_post_ids('<active_agent_id>')` — the TVFs handle scoping, dedup, and the relevance gate for you. Add date / platform / collection filters in `WHERE`. For "find posts that mention X" use `WHERE REGEXP_CONTAINS(LOWER(COALESCE(content, title, '')), r'...')` against the TVF.
 
 **Chart types**: `bar`, `line`, `pie`, `doughnut`, `table`, `number`.
 
@@ -104,7 +134,6 @@ Use these when they serve your analysis -- not all are relevant to every questio
 - **`entities`** (ARRAY): Brands, products, people. Use `UNNEST`.
 - **`themes`** (ARRAY): Topic tags. Combine with entity/sentiment for sharper insights.
 - **`content_type`**: Category (review, tutorial, meme, etc.).
-- **`is_related_to_task`** (BOOL): Relevance filter. Use `IS NOT FALSE`.
 - **`detected_brands`** (ARRAY): Brands in content/media including logos.
 - **`channel_type`** (official/media/influencer/ugc): Who is talking.
 - **`custom_fields`** (JSON): Agent-specific fields. Query with `JSON_EXTRACT_SCALAR`."""
@@ -173,183 +202,136 @@ Today's date is **{{current_date}}**. Use this for time expressions:
 Project: `{project_id}`
 Dataset: `social_listening`
 
-**Tables:**
+**Posts gate (read via TVF — direct reads of the underlying tables are blocked):**
 
-- `social_listening.posts` -- Raw collected posts
-  Columns: post_id, collection_id, platform, channel_handle, channel_id, title, content, post_url, posted_at, post_type, parent_post_id, media_refs (JSON), platform_metadata (JSON), collected_at
+- `social_listening.scope_posts(p_agent_id)` — one row per in-scope post (deduped, enriched-by-you, relevant), with all columns flattened together:
+  - **From posts:** `post_id`, `collection_id`, `platform`, `channel_handle`, `channel_id`, `title`, `content`, `post_url`, `posted_at`, `post_type`, `parent_post_id`, `media_refs` (JSON), `platform_metadata` (JSON), `crawl_provider`, `search_keyword`, `collected_at`, `is_retweet` (BOOL, derived), `is_quote` (BOOL, derived)
+  - **From enriched_posts:** `agent_version`, `context`, `sentiment`, `emotion`, `entities` (ARRAY<STRING>), `themes` (ARRAY<STRING>), `ai_summary`, `language`, `content_type`, `detected_brands` (ARRAY<STRING>), `channel_type`, `custom_fields` (JSON), `enriched_at`
+  - **From post_engagements:** `likes`, `views`, `comments_count`, `shares`, `saves`, `comments` (JSON), `platform_engagements` (JSON), `engagement_source`, `fetched_at`
 
-- `social_listening.enriched_posts` -- AI-enriched post data (joined via post_id)
-  Columns: post_id, context, sentiment, emotion, entities (ARRAY<STRING>), themes (ARRAY<STRING>), ai_summary, language, content_type, is_related_to_task (BOOL), detected_brands (ARRAY<STRING>), channel_type (STRING: "official"/"media"/"influencer"/"ugc"), custom_fields (JSON), enriched_at
+- `social_listening.scope_post_ids(p_agent_id)` — same scope, returns just `post_id`. Use it to confine joins on tables that aren't gated, e.g. `post_embeddings` for similarity search.
 
-- `social_listening.post_engagements` -- Engagement metrics snapshots (joined via post_id)
-  Columns: engagement_id, post_id, likes, shares, comments_count, views, saves, comments (JSON), platform_engagements (JSON), source, fetched_at
+**Other readable tables (not gated, join on `post_id` or `channel_id`):**
 
-- `social_listening.channels` -- Channel/account metadata
-  Columns: channel_id, collection_id, platform, channel_handle, subscribers, total_posts, channel_url, description, created_date, channel_metadata (JSON), observed_at
+- `social_listening.channels` — Channel/account metadata. Columns: `channel_id`, `collection_id`, `platform`, `channel_handle`, `subscribers`, `total_posts`, `channel_url`, `description`, `created_date`, `channel_metadata` (JSON), `observed_at`. Join via `channel_id` for audience size, etc.
+- `social_listening.post_embeddings` — Vector embeddings keyed on `post_id`. Inner-join against `scope_post_ids(...)` to confine semantic search to your scope.
 
-**Do NOT query the `collections` or `agents` tables** — your active collection IDs are injected into your context as `selected_sources`. Querying those tables to find your own session is a recipe for confusing yourself.
+**Do NOT query the `collections`, `agents`, `posts`, `enriched_posts`, or `post_engagements` tables directly.** A `before_tool` hook rejects raw reads of `posts` / `enriched_posts` / `post_engagements`. Your active collection IDs and agent identity are injected into your context — querying those tables to find your own session confuses you and bypasses dedup.
 
 ## SQL Pattern Reference
 
-Adapt these patterns. Every WHERE clause MUST include three filters: `collection_id`, `is_related_to_task IS NOT FALSE`, and the `posted_at` data window from your operational context. The patterns below show all three; copy the shape, swap the dates from the values you were given.
+Substitute these from your **operational context** wherever they appear:
+- `<active_agent_id>` → your agent id (literal string in single quotes)
+- `<data_start_date>` → your data start date (`DATE 'YYYY-MM-DD'`)
+- `<data_end_date>` → your data end date (`DATE 'YYYY-MM-DD'`)
 
-**The window applies even to "what's the oldest/newest post?" or "what's our coverage?" questions.** The data window *defines* your scope — it is not an analytical filter you can opt out of for meta-questions about the dataset. The `posts` table contains re-crawl rows and posts collected by other workflows, so `MIN(posted_at)` without the window returns the oldest row in the raw table, not the oldest post in your scope. A `before_tool` hook will reject `execute_sql` calls that reference `posts` without a `posted_at` lower bound when a window is set.
-
-Every pattern below pre-dedupes `enriched_posts` via a `latest_ep` CTE (one row per `post_id`, picking the highest `agent_version`). Skipping this step inflates counts whenever a post has been re-enriched. Aggregations that touch engagement also dedupe via `latest_eng`.
+If your operational context shows the end date as "open-ended (no upper bound)", drop the upper bound from your `WHERE` clause.
 
 **Date range / coverage (oldest, newest, span):**
 ```sql
-WITH latest_ep AS (
-  SELECT * FROM `{project_id}.social_listening.enriched_posts`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-)
-SELECT MIN(p.posted_at) AS oldest, MAX(p.posted_at) AS newest, COUNT(*) AS posts
-FROM `{project_id}.social_listening.posts` p
-JOIN latest_ep ep ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-  AND p.posted_at >= TIMESTAMP('<data_start_date>')
-  AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<data_end_date>'), INTERVAL 1 DAY)
+SELECT MIN(posted_at) AS oldest, MAX(posted_at) AS newest, COUNT(*) AS posts
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
 ```
 
 **Sentiment distribution:**
 ```sql
-WITH latest_ep AS (
-  SELECT * FROM `{project_id}.social_listening.enriched_posts`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-)
-SELECT ep.sentiment, COUNT(*) as count,
-  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct
-FROM latest_ep ep
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-  AND p.posted_at >= TIMESTAMP('<data_start_date>')
-  AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<data_end_date>'), INTERVAL 1 DAY)
-GROUP BY ep.sentiment ORDER BY count DESC
+SELECT sentiment, COUNT(*) AS count,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+GROUP BY sentiment ORDER BY count DESC
 ```
 
 **Volume over time:**
 ```sql
-WITH latest_ep AS (
-  SELECT * FROM `{project_id}.social_listening.enriched_posts`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-)
-SELECT DATE(p.posted_at) as post_date, p.platform, COUNT(*) as post_count
-FROM `{project_id}.social_listening.posts` p
-JOIN latest_ep ep ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-  AND p.posted_at >= TIMESTAMP('<data_start_date>')
-  AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<data_end_date>'), INTERVAL 1 DAY)
-GROUP BY post_date, p.platform ORDER BY post_date
+SELECT DATE(posted_at) AS post_date, platform, COUNT(*) AS post_count
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+GROUP BY post_date, platform ORDER BY post_date
 ```
 
-**Top posts by engagement:**
+**Top posts by engagement (filtered to a couple of platforms):**
 ```sql
-WITH latest_ep AS (
-  SELECT * FROM `{project_id}.social_listening.enriched_posts`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-),
-latest_eng AS (
-  SELECT * FROM `{project_id}.social_listening.post_engagements`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) = 1
-)
-SELECT p.post_id, p.platform, p.channel_handle, p.title, p.post_url,
-  pe.likes, pe.views, pe.shares, pe.comments_count,
-  (COALESCE(pe.likes,0) + COALESCE(pe.shares,0) + COALESCE(pe.views,0)) as total_engagement,
-  ep.sentiment, ep.ai_summary
-FROM `{project_id}.social_listening.posts` p
-LEFT JOIN latest_ep ep ON p.post_id = ep.post_id
-LEFT JOIN latest_eng pe ON p.post_id = pe.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-  AND p.posted_at >= TIMESTAMP('<data_start_date>')
-  AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<data_end_date>'), INTERVAL 1 DAY)
+SELECT post_id, platform, channel_handle, title, post_url,
+  likes, views, shares, comments_count,
+  (COALESCE(likes,0) + COALESCE(shares,0) + COALESCE(views,0)) AS total_engagement,
+  sentiment, ai_summary
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+  AND platform IN ('twitter', 'tiktok')
 ORDER BY total_engagement DESC LIMIT 15
 ```
 
 **Theme distribution (UNNEST):**
 ```sql
-WITH latest_ep AS (
-  SELECT * FROM `{project_id}.social_listening.enriched_posts`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-)
-SELECT theme, COUNT(*) as mentions,
-  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct
-FROM latest_ep ep, UNNEST(ep.themes) theme
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-  AND p.posted_at >= TIMESTAMP('<data_start_date>')
-  AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<data_end_date>'), INTERVAL 1 DAY)
+SELECT theme, COUNT(*) AS mentions,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>'),
+     UNNEST(themes) AS theme
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
 GROUP BY theme ORDER BY mentions DESC LIMIT 20
 ```
 
-**Entity aggregation (UNNEST):**
-Aggregating engagements requires a CTE to dedupe `post_engagements` first — never mix `QUALIFY ROW_NUMBER()` with `GROUP BY` in the same SELECT (BigQuery's clause order is `GROUP BY` → `HAVING` → `QUALIFY`, and the row-level filter is incompatible with aggregation anyway).
+**Entity aggregation with engagement (UNNEST):**
 ```sql
-WITH latest_ep AS (
-  SELECT * FROM `{project_id}.social_listening.enriched_posts`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-),
-latest_eng AS (
-  SELECT post_id, likes, views, shares, comments_count
-  FROM `{project_id}.social_listening.post_engagements`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) = 1
-)
-SELECT entity, COUNT(*) as mentions,
-  SUM(le.likes) as total_likes, SUM(le.views) as total_views
-FROM latest_ep ep, UNNEST(ep.entities) entity
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-LEFT JOIN latest_eng le ON p.post_id = le.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-  AND p.posted_at >= TIMESTAMP('<data_start_date>')
-  AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<data_end_date>'), INTERVAL 1 DAY)
+SELECT entity, COUNT(*) AS mentions,
+  SUM(COALESCE(likes, 0)) AS total_likes,
+  SUM(COALESCE(views, 0)) AS total_views
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>'),
+     UNNEST(entities) AS entity
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
 GROUP BY entity ORDER BY mentions DESC LIMIT 20
 ```
 
 **Emotion distribution:**
 ```sql
-WITH latest_ep AS (
-  SELECT * FROM `{project_id}.social_listening.enriched_posts`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-)
-SELECT ep.emotion, COUNT(*) as count,
-  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct
-FROM latest_ep ep
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-  AND p.posted_at >= TIMESTAMP('<data_start_date>')
-  AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<data_end_date>'), INTERVAL 1 DAY)
-GROUP BY ep.emotion ORDER BY count DESC
+SELECT emotion, COUNT(*) AS count,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+GROUP BY emotion ORDER BY count DESC
 ```
 
 **Channel type breakdown:**
 ```sql
-WITH latest_ep AS (
-  SELECT * FROM `{project_id}.social_listening.enriched_posts`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY agent_version DESC NULLS LAST, enriched_at DESC) = 1
-),
-latest_eng AS (
-  SELECT post_id, likes, views
-  FROM `{project_id}.social_listening.post_engagements`
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) = 1
-)
-SELECT ep.channel_type, COUNT(*) as posts,
-  ROUND(AVG(COALESCE(le.likes, 0)), 1) as avg_likes,
-  ROUND(AVG(COALESCE(le.views, 0)), 1) as avg_views
-FROM latest_ep ep
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-LEFT JOIN latest_eng le ON p.post_id = le.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-  AND p.posted_at >= TIMESTAMP('<data_start_date>')
-  AND p.posted_at < TIMESTAMP_ADD(TIMESTAMP('<data_end_date>'), INTERVAL 1 DAY)
-GROUP BY ep.channel_type ORDER BY posts DESC
+SELECT channel_type, COUNT(*) AS posts,
+  ROUND(AVG(COALESCE(likes, 0)), 1) AS avg_likes,
+  ROUND(AVG(COALESCE(views, 0)), 1) AS avg_views
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+GROUP BY channel_type ORDER BY posts DESC
 ```
 
-If your operational context shows no upper bound (`<data_end_date>` is "open-ended"), drop the `posted_at <` clause but keep the lower bound.
+**Semantic similarity within scope (embeddings):**
+```sql
+WITH ids AS (
+  SELECT post_id
+  FROM `{project_id}.social_listening.scope_post_ids`('<active_agent_id>')
+)
+SELECT pe.post_id
+FROM `{project_id}.social_listening.post_embeddings` pe
+JOIN ids USING (post_id)
+LIMIT 100
+```
+
+**Posts joined with channel audience size (subscribers):**
+```sql
+SELECT t.channel_handle, c.subscribers, COUNT(*) AS posts,
+  SUM(COALESCE(t.views, 0)) AS total_views
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>') t
+LEFT JOIN `{project_id}.social_listening.channels` c USING (channel_id)
+WHERE DATE(t.posted_at) >= DATE '<data_start_date>'
+  AND DATE(t.posted_at) < DATE '<data_end_date>'
+GROUP BY t.channel_handle, c.subscribers
+ORDER BY total_views DESC LIMIT 20
+```
 """

@@ -20,6 +20,8 @@ interface LivePostStreamProps {
    *  when set. Both are ISO date strings (YYYY-MM-DD); end may be null. */
   dataStartDate?: string | null;
   dataEndDate?: string | null;
+  /** Pins the feed to this agent's enrichment via the scope_posts TVF. */
+  agentId?: string;
   onOpenData: () => void;
 }
 
@@ -30,6 +32,7 @@ export function LivePostStream({
   agentCreatedAt,
   dataStartDate,
   dataEndDate,
+  agentId,
   onOpenData,
 }: LivePostStreamProps) {
   const statusQueries = useCollectionStatusQueries(collectionIds);
@@ -43,10 +46,10 @@ export function LivePostStream({
   );
   const endDate = dataEndDate ?? undefined;
 
-  // Count must match what the grid below renders: in time-range AND task-relevant.
-  // Same params as PostsFeedGrid defaults (dedup=true, relevant_to_task='true').
+  // Count must match what the grid below renders: in time-range AND task-relevant
+  // (relevance is enforced inside the scope_posts TVF).
   const { data: countData } = useQuery({
-    queryKey: ['live-feed-count', [...collectionIds].sort().join(','), startDate ?? '', endDate ?? ''],
+    queryKey: ['live-feed-count', [...collectionIds].sort().join(','), startDate ?? '', endDate ?? '', agentId ?? ''],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
@@ -54,9 +57,9 @@ export function LivePostStream({
         limit: 1,
         offset: 0,
         dedup: true,
-        relevant_to_task: 'true',
         start_date: startDate ?? undefined,
         end_date: endDate,
+        agent_id: agentId,
       }),
     enabled: collectionIds.length > 0,
     staleTime: 10_000,
@@ -101,6 +104,7 @@ export function LivePostStream({
         isAgentRunning={isAgentRunning}
         startDate={startDate ?? undefined}
         endDate={endDate}
+        agentId={agentId}
         variant="compact"
       />
     </Section>
@@ -112,10 +116,11 @@ interface PostsFeedGridProps {
   isAgentRunning?: boolean;
   platform?: string;
   sentiment?: string;
-  relevantToTask?: string;
   dedup?: boolean;
   startDate?: string;
   endDate?: string;
+  /** Pins the feed to this agent's enrichment via the scope_posts TVF. */
+  agentId?: string;
   variant?: 'compact' | 'wide';
 }
 
@@ -139,10 +144,10 @@ export function PostsFeedGrid({
   isAgentRunning = false,
   platform,
   sentiment,
-  relevantToTask = 'true',
   dedup = true,
   startDate,
   endDate,
+  agentId,
   variant = 'compact',
 }: PostsFeedGridProps) {
   const statusQueries = useCollectionStatusQueries(collectionIds);
@@ -154,10 +159,10 @@ export function PostsFeedGrid({
     [...collectionIds].sort().join(','),
     platform ?? 'all',
     sentiment ?? 'all',
-    relevantToTask,
     dedup,
     startDate ?? '',
     endDate ?? '',
+    agentId ?? '',
   ];
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
@@ -171,9 +176,9 @@ export function PostsFeedGrid({
         dedup,
         platform,
         sentiment,
-        relevant_to_task: relevantToTask,
         start_date: startDate,
         end_date: endDate,
+        agent_id: agentId,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

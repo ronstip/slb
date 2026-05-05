@@ -70,7 +70,6 @@ class MultiFeedRequest(BaseModel):
     sort: str = "views"
     platform: str = "all"
     sentiment: str = "all"
-    relevant_to_task: str = "true"  # "all" | "true" | "false"
     limit: int = 12
     offset: int = 0
     topic_cluster_id: str | None = None
@@ -78,16 +77,19 @@ class MultiFeedRequest(BaseModel):
     dedup: bool = True
     start_date: str | None = None  # ISO datetime or YYYY-MM-DD; lower-bound on p.posted_at
     end_date: str | None = None  # ISO datetime or YYYY-MM-DD; upper-bound on p.posted_at
+    agent_id: str | None = None  # When set, posts are scoped via the scope_posts TVF
 
 
 class DashboardDataRequest(BaseModel):
     collection_ids: list[str]
+    agent_id: str | None = None  # When set, dashboard data is scoped via scope_posts TVF
 
 
 class CreateDashboardShareRequest(BaseModel):
     dashboard_id: str
     collection_ids: list[str]
     title: str
+    agent_id: str | None = None  # Stored on the share so public renders use the same agent scope
 
 
 class CreateBriefingShareRequest(BaseModel):
@@ -103,6 +105,7 @@ class CreateFeedLinkRequest(BaseModel):
     collection_ids: list[str]
     filters: dict = Field(default_factory=dict)
     title: str
+    agent_id: str | None = None  # Stored on the link so public renders use the same agent scope
 
 
 class SetCollectionVisibilityRequest(BaseModel):

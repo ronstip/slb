@@ -219,84 +219,129 @@ async def get_collection_posts(
         raise HTTPException(status_code=403, detail="Access denied")
 
     bq = get_bq()
+    agent_id = status.get("agent_id")
 
-    where_clauses = ["p.collection_id = @collection_id", "p._rn = 1"]
-    params: dict = {"collection_id": collection_id}
+    if agent_id:
+        # Agent-scoped path: route through the scope_posts TVF (single source of
+        # truth shared with /feed and the data tab).
+        params: dict = {
+            "agent_id": agent_id,
+            "collection_id": collection_id,
+            "limit": limit,
+            "offset": offset,
+        }
+        where_clauses = ["t.collection_id = @collection_id"]
+        if platform != "all":
+            where_clauses.append("t.platform = @platform")
+            params["platform"] = platform
+        if sentiment != "all":
+            where_clauses.append("t.sentiment = @sentiment")
+            params["sentiment"] = sentiment
+        where_sql = "WHERE " + " AND ".join(where_clauses)
 
-    if platform != "all":
-        where_clauses.append("p.platform = @platform")
-        params["platform"] = platform
+        sort_map_tvf = {
+            "engagement": "COALESCE(t.likes, 0) + COALESCE(t.comments_count, 0) + COALESCE(t.views, 0) DESC",
+            "recent": "t.posted_at DESC",
+            "sentiment": "t.sentiment ASC, t.posted_at DESC",
+            "views": "COALESCE(t.views, 0) DESC, t.posted_at DESC",
+        }
+        order_sql = sort_map_tvf.get(sort, sort_map_tvf["engagement"])
 
-    if sentiment != "all":
-        where_clauses.append("ep.sentiment = @sentiment")
-        params["sentiment"] = sentiment
+        main_sql = f"""
+        SELECT
+            t.post_id, t.platform, t.channel_handle, t.channel_id,
+            t.title, t.content, t.post_url, t.posted_at, t.post_type, t.media_refs,
+            COALESCE(t.likes, 0) as likes,
+            COALESCE(t.shares, 0) as shares,
+            COALESCE(t.views, 0) as views,
+            COALESCE(t.comments_count, 0) as comments_count,
+            COALESCE(t.saves, 0) as saves,
+            COALESCE(t.likes, 0) + COALESCE(t.comments_count, 0) + COALESCE(t.views, 0) as total_engagement,
+            t.sentiment, t.emotion, t.themes, t.entities, t.ai_summary,
+            t.content_type, t.custom_fields, t.context,
+            t.detected_brands, t.channel_type,
+            COUNT(*) OVER() as _total
+        FROM social_listening.scope_posts(@agent_id) t
+        {where_sql}
+        ORDER BY {order_sql}
+        LIMIT @limit OFFSET @offset
+        """
+    else:
+        # Legacy path: collection only, latest enrichment regardless of agent.
+        where_clauses = ["p.collection_id = @collection_id", "p._rn = 1"]
+        params: dict = {"collection_id": collection_id}
 
-    where_sql = " AND ".join(where_clauses)
+        if platform != "all":
+            where_clauses.append("p.platform = @platform")
+            params["platform"] = platform
 
-    sort_map = {
-        "engagement": "COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) DESC",
-        "recent": "p.posted_at DESC",
-        "sentiment": "ep.sentiment ASC, p.posted_at DESC",
-        "views": "COALESCE(pe.views, 0) DESC, p.posted_at DESC",
-    }
-    order_sql = sort_map.get(sort, sort_map["engagement"])
+        if sentiment != "all":
+            where_clauses.append("ep.sentiment = @sentiment")
+            params["sentiment"] = sentiment
 
-    # Single query with COUNT(*) OVER() to get total alongside results,
-    # avoiding a second BigQuery job.
-    params["limit"] = limit
-    params["offset"] = offset
+        where_sql = " AND ".join(where_clauses)
 
-    main_sql = f"""
-    SELECT
-        p.post_id,
-        p.platform,
-        p.channel_handle,
-        p.channel_id,
-        p.title,
-        p.content,
-        p.post_url,
-        p.posted_at,
-        p.post_type,
-        p.media_refs,
-        COALESCE(pe.likes, 0) as likes,
-        COALESCE(pe.shares, 0) as shares,
-        COALESCE(pe.views, 0) as views,
-        COALESCE(pe.comments_count, 0) as comments_count,
-        COALESCE(pe.saves, 0) as saves,
-        COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
-        ep.sentiment,
-        ep.emotion,
-        ep.themes,
-        ep.entities,
-        ep.ai_summary,
-        ep.content_type,
-        ep.custom_fields,
-        ep.context,
-        ep.is_related_to_task,
-        ep.detected_brands,
-        ep.channel_type,
-        COUNT(*) OVER() as _total
-    FROM (
-        SELECT pp.*,
-               ROW_NUMBER() OVER (PARTITION BY pp.collection_id, pp.post_id ORDER BY pp.collected_at DESC) AS _rn
-        FROM social_listening.posts pp
-        JOIN social_listening.collections cc USING (collection_id)
-        WHERE pp.posted_at BETWEEN COALESCE(cc.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(cc.time_range_end, CURRENT_TIMESTAMP())
-    ) p
-    LEFT JOIN (
-        SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-        FROM social_listening.enriched_posts
-    ) ep ON p.post_id = ep.post_id AND ep._rn = 1
-    LEFT JOIN (
-        SELECT post_id, likes, shares, comments_count, views, saves,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-        FROM social_listening.post_engagements
-    ) pe ON p.post_id = pe.post_id AND pe.rn = 1
-    WHERE {where_sql}
-    ORDER BY {order_sql}
-    LIMIT @limit OFFSET @offset
-    """
+        sort_map = {
+            "engagement": "COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) DESC",
+            "recent": "p.posted_at DESC",
+            "sentiment": "ep.sentiment ASC, p.posted_at DESC",
+            "views": "COALESCE(pe.views, 0) DESC, p.posted_at DESC",
+        }
+        order_sql = sort_map.get(sort, sort_map["engagement"])
+
+        params["limit"] = limit
+        params["offset"] = offset
+
+        main_sql = f"""
+        SELECT
+            p.post_id,
+            p.platform,
+            p.channel_handle,
+            p.channel_id,
+            p.title,
+            p.content,
+            p.post_url,
+            p.posted_at,
+            p.post_type,
+            p.media_refs,
+            COALESCE(pe.likes, 0) as likes,
+            COALESCE(pe.shares, 0) as shares,
+            COALESCE(pe.views, 0) as views,
+            COALESCE(pe.comments_count, 0) as comments_count,
+            COALESCE(pe.saves, 0) as saves,
+            COALESCE(pe.likes, 0) + COALESCE(pe.comments_count, 0) + COALESCE(pe.views, 0) as total_engagement,
+            ep.sentiment,
+            ep.emotion,
+            ep.themes,
+            ep.entities,
+            ep.ai_summary,
+            ep.content_type,
+            ep.custom_fields,
+            ep.context,
+            ep.detected_brands,
+            ep.channel_type,
+            COUNT(*) OVER() as _total
+        FROM (
+            SELECT pp.*,
+                   ROW_NUMBER() OVER (PARTITION BY pp.collection_id, pp.post_id ORDER BY pp.collected_at DESC) AS _rn
+            FROM social_listening.posts pp
+            JOIN social_listening.collections cc USING (collection_id)
+            WHERE pp.posted_at BETWEEN COALESCE(cc.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(cc.time_range_end, CURRENT_TIMESTAMP())
+        ) p
+        LEFT JOIN (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+            FROM social_listening.enriched_posts
+        ) ep ON p.post_id = ep.post_id AND ep._rn = 1
+        LEFT JOIN (
+            SELECT post_id, likes, shares, comments_count, views, saves,
+                   ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
+            FROM social_listening.post_engagements
+        ) pe ON p.post_id = pe.post_id AND pe.rn = 1
+        WHERE {where_sql}
+        ORDER BY {order_sql}
+        LIMIT @limit OFFSET @offset
+        """
 
     rows = await asyncio.to_thread(bq.query, main_sql, params)
     total = rows[0]["_total"] if rows else 0
@@ -350,7 +395,6 @@ async def get_collection_posts(
                 content_type=row.get("content_type"),
                 custom_fields=row.get("custom_fields") if isinstance(row.get("custom_fields"), dict) else None,
                 context=row.get("context"),
-                is_related_to_task=row.get("is_related_to_task"),
                 detected_brands=row.get("detected_brands") if isinstance(row.get("detected_brands"), list) else [],
                 channel_type=row.get("channel_type"),
             )
@@ -452,38 +496,59 @@ async def download_collection(
     filename = f"{title_slug}_{today}.csv"
 
     bq = get_bq()
+    agent_id = status.get("agent_id")
 
-    export_sql = """
-    SELECT
-        p.post_id, p.platform, p.channel_handle, p.channel_id,
-        p.title, p.content, p.post_url, p.posted_at, p.post_type,
-        COALESCE(pe.likes, 0) as likes,
-        COALESCE(pe.shares, 0) as shares,
-        COALESCE(pe.views, 0) as views,
-        COALESCE(pe.comments_count, 0) as comments_count,
-        COALESCE(pe.saves, 0) as saves,
-        ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields
-    FROM (
-        SELECT pp.*, ROW_NUMBER() OVER (PARTITION BY pp.collection_id, pp.post_id ORDER BY pp.collected_at DESC) AS _rn
-        FROM social_listening.posts pp
-        JOIN social_listening.collections cc USING (collection_id)
-        WHERE pp.posted_at BETWEEN COALESCE(cc.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(cc.time_range_end, CURRENT_TIMESTAMP())
-    ) p
-    LEFT JOIN (
-        SELECT post_id, likes, shares, comments_count, views, saves,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-        FROM social_listening.post_engagements
-    ) pe ON p.post_id = pe.post_id AND pe.rn = 1
-    LEFT JOIN (
-        SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-        FROM social_listening.enriched_posts
-    ) ep ON p.post_id = ep.post_id AND ep._rn = 1
-    WHERE p.collection_id = @collection_id AND p._rn = 1
-    ORDER BY COALESCE(pe.views, 0) DESC
-    """
+    if agent_id:
+        # Agent-scoped: route through scope_posts TVF for unified dedup + enrichment.
+        export_sql = """
+        SELECT
+            t.post_id, t.platform, t.channel_handle, t.channel_id,
+            t.title, t.content, t.post_url, t.posted_at, t.post_type,
+            COALESCE(t.likes, 0) as likes,
+            COALESCE(t.shares, 0) as shares,
+            COALESCE(t.views, 0) as views,
+            COALESCE(t.comments_count, 0) as comments_count,
+            COALESCE(t.saves, 0) as saves,
+            t.sentiment, t.emotion, t.themes, t.entities, t.ai_summary, t.content_type, t.custom_fields
+        FROM social_listening.scope_posts(@agent_id) t
+        WHERE t.collection_id = @collection_id
+        ORDER BY COALESCE(t.views, 0) DESC
+        """
+        params = {"agent_id": agent_id, "collection_id": collection_id}
+    else:
+        # Legacy path: collection only, latest enrichment regardless of agent.
+        export_sql = """
+        SELECT
+            p.post_id, p.platform, p.channel_handle, p.channel_id,
+            p.title, p.content, p.post_url, p.posted_at, p.post_type,
+            COALESCE(pe.likes, 0) as likes,
+            COALESCE(pe.shares, 0) as shares,
+            COALESCE(pe.views, 0) as views,
+            COALESCE(pe.comments_count, 0) as comments_count,
+            COALESCE(pe.saves, 0) as saves,
+            ep.sentiment, ep.emotion, ep.themes, ep.entities, ep.ai_summary, ep.content_type, ep.custom_fields
+        FROM (
+            SELECT pp.*, ROW_NUMBER() OVER (PARTITION BY pp.collection_id, pp.post_id ORDER BY pp.collected_at DESC) AS _rn
+            FROM social_listening.posts pp
+            JOIN social_listening.collections cc USING (collection_id)
+            WHERE pp.posted_at BETWEEN COALESCE(cc.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(cc.time_range_end, CURRENT_TIMESTAMP())
+        ) p
+        LEFT JOIN (
+            SELECT post_id, likes, shares, comments_count, views, saves,
+                   ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
+            FROM social_listening.post_engagements
+        ) pe ON p.post_id = pe.post_id AND pe.rn = 1
+        LEFT JOIN (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+            FROM social_listening.enriched_posts
+        ) ep ON p.post_id = ep.post_id AND ep._rn = 1
+        WHERE p.collection_id = @collection_id AND p._rn = 1
+        ORDER BY COALESCE(pe.views, 0) DESC
+        """
+        params = {"collection_id": collection_id}
 
-    rows = await asyncio.to_thread(bq.query, export_sql, {"collection_id": collection_id})
+    rows = await asyncio.to_thread(bq.query, export_sql, params)
 
     csv_columns = [
         "post_id", "platform", "channel_handle", "channel_id",

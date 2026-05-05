@@ -11,6 +11,7 @@ export function useOverviewDashboardData(
   agentCreatedAt: string | undefined,
   dataStartDate?: string | null,
   dataEndDate?: string | null,
+  agentId?: string,
 ) {
   // Prefer the agent's stored data window; fall back to per-source computation
   // for legacy agents whose window hasn't been backfilled yet.
@@ -20,8 +21,8 @@ export function useOverviewDashboardData(
   }, [dataStartDate, sources, agentCreatedAt]);
 
   const query = useQuery({
-    queryKey: ['dashboard-data', ...collectionIds],
-    queryFn: () => getDashboardData(collectionIds),
+    queryKey: ['dashboard-data', agentId ?? '', ...collectionIds],
+    queryFn: () => getDashboardData(collectionIds, agentId),
     enabled: collectionIds.length > 0,
     staleTime: 60_000,
     refetchInterval: isAgentRunning ? 30_000 : false,
@@ -30,7 +31,6 @@ export function useOverviewDashboardData(
   const posts = useMemo(
     () =>
       applyOverviewFilters(query.data?.posts ?? [], {
-        relevantOnly: true,
         startDate: window.startDate,
         endDate: dataEndDate ?? null,
       }),

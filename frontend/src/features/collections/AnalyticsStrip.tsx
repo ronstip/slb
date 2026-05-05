@@ -37,8 +37,6 @@ export interface AnalyticsStats {
   latestDate?: string | null;
   /** Daily post volume for time-windowed metrics */
   dailyVolume?: { date: string; count: number }[];
-  /** Relevance: posts marked relevant to the task */
-  relevantCount?: number;
   /** Deduped post count (unique post_ids across collections) */
   dedupedCount?: number;
 }
@@ -214,13 +212,6 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
   const enrichPct = stats.totalPosts > 0 ? Math.round((enrichedCount / stats.totalPosts) * 100) : 0;
   const enrichSignal: Signal = enrichPct >= 95 ? 'green' : enrichPct >= 70 ? 'yellow' : 'red';
 
-  // Status: relevance rate
-  const relevantCount = stats.relevantCount ?? 0;
-  const dedupedCount = stats.dedupedCount ?? stats.totalPosts;
-  const relevancePct = dedupedCount > 0 ? Math.round((relevantCount / dedupedCount) * 100) : 0;
-  const relevanceSignal: Signal = relevancePct >= 70 ? 'green' : relevancePct >= 40 ? 'yellow' : 'red';
-  const relevanceTooltip = `${relevantCount} relevant of ${dedupedCount} unique posts (${stats.totalPosts} total across sources)`;
-
   return (
     <div className="border-b border-border/40 bg-gradient-to-r from-card via-card to-primary/[0.02] shrink-0 overflow-hidden">
       {/* Main strip: KPI grid | Platforms | Sentiment | Status (TBD) | expand toggle */}
@@ -304,15 +295,11 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
             <span className="text-[11px] font-bold tabular-nums text-foreground">{freshLabel}</span>
           </div>
 
-          {/* Enrichment + Relevance on one row */}
+          {/* Enrichment */}
           <div className="flex items-center gap-2 min-w-0">
             <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', SIGNAL_COLORS[enrichSignal])} />
             <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground w-[52px] shrink-0">Enriched</span>
             <span className="text-[11px] font-bold tabular-nums text-foreground">{enrichPct}%</span>
-            <span className="text-muted-foreground/30 mx-1">|</span>
-            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', SIGNAL_COLORS[relevanceSignal])} />
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">Relevant</span>
-            <span className="text-[11px] font-bold tabular-nums text-foreground cursor-default" title={relevanceTooltip}>{relevancePct}%</span>
           </div>
         </div>
 
