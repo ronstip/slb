@@ -59,8 +59,8 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   };
 
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['dashboard-data', ...artifact.collectionIds],
-    queryFn: () => getDashboardData(artifact.collectionIds),
+    queryKey: ['dashboard-data', artifact.agentId ?? '', ...artifact.collectionIds],
+    queryFn: () => getDashboardData(artifact.collectionIds, artifact.agentId),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -213,6 +213,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
         dashboardId={artifact.id}
         collectionIds={artifact.collectionIds}
         title={artifact.title}
+        agentId={artifact.agentId}
       />
 
       {/* Filter bar */}

@@ -18,9 +18,10 @@ from api.schemas.responses import (
 )
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
-    DASHBOARD_SQL,
     MAX_ROWS,
+    build_dashboard_sql,
     build_post_response,
+    derive_agent_id_for_collections,
 )
 from config.settings import get_settings
 
@@ -81,6 +82,7 @@ async def create_share(
         "owner_uid": user.uid,
         "dashboard_id": request.dashboard_id,
         "collection_ids": request.collection_ids,
+        "agent_id": request.agent_id,
         "title": request.title,
         "created_at": now,
         "revoked": False,
@@ -142,23 +144,53 @@ async def get_shared_dashboard(
 
     bq = get_bq()
     collection_ids = share["collection_ids"]
-    params = {"collection_ids": collection_ids}
+    agent_id = share.get("agent_id")
 
-    sql = DASHBOARD_SQL.format(max_rows=MAX_ROWS + 1)
+    # Backfill agent_id on shares created before agent-scoping landed: derive
+    # it from the collections, persist on the share doc so subsequent renders
+    # skip the lookup, then use it.
+    if not agent_id:
+        agent_id = await asyncio.to_thread(
+            derive_agent_id_for_collections, fs, collection_ids
+        )
+        if agent_id:
+            try:
+                await asyncio.to_thread(
+                    fs._db.collection("dashboard_shares").document(token).update,
+                    {"agent_id": agent_id},
+                )
+            except Exception:  # noqa: BLE001 — best-effort backfill
+                logger.exception("Failed to backfill agent_id on share %s", token)
 
-    rows, name_rows = await asyncio.gather(
-        asyncio.to_thread(bq.query, sql, params),
-        asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, params),
+    name_rows = await asyncio.to_thread(
+        bq.query, COLLECTION_NAMES_SQL, {"collection_ids": collection_ids}
     )
-
-    truncated = len(rows) > MAX_ROWS
-    if truncated:
-        rows = rows[:MAX_ROWS]
-
     collection_names = {
         r["collection_id"]: r.get("original_question", r["collection_id"])
         for r in name_rows
     }
+
+    if not agent_id:
+        # Orphan share — collections were never linked to an agent. Return
+        # empty rather than running cross-agent SQL that conflicts with the
+        # rest of the agent-scoped surfaces.
+        asyncio.create_task(_record_access(fs, token))
+        return SharedDashboardDataResponse(
+            posts=[],
+            collection_names=collection_names,
+            truncated=False,
+            meta=SharedDashboardMetaResponse(
+                title=share["title"],
+                created_at=share["created_at"],
+            ),
+        )
+
+    posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
+    rows = await asyncio.to_thread(bq.query, posts_sql, posts_params)
+
+    truncated = len(rows) > MAX_ROWS
+    if truncated:
+        rows = rows[:MAX_ROWS]
 
     posts = [build_post_response(row) for row in rows]
 

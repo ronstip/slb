@@ -21,10 +21,10 @@ from api.rate_limiting import limiter
 from api.schemas.requests import CreateFeedLinkRequest
 from api.schemas.responses import FeedLinkResponse
 from api.services.dashboard_service import (
-    COLLECTION_NAMES_SQL,
-    DASHBOARD_SQL,
     MAX_ROWS,
+    build_dashboard_sql,
     build_post_response,
+    derive_agent_id_for_collections,
 )
 from config.settings import get_settings
 
@@ -78,6 +78,7 @@ async def create_feed_link(
     data = {
         "owner_uid": user.uid,
         "collection_ids": request.collection_ids,
+        "agent_id": request.agent_id,
         "filters": request.filters,
         "title": request.title,
         "created_at": now,
@@ -139,10 +140,35 @@ async def get_feed_link_data(
 
     bq = get_bq()
     collection_ids = link["collection_ids"]
-    params = {"collection_ids": collection_ids}
+    agent_id = link.get("agent_id")
+
+    # Backfill agent_id on links created before agent-scoping landed: derive it
+    # from the collections, persist on the link doc, then use it. Subsequent
+    # renders go straight to the TVF path.
+    if not agent_id:
+        agent_id = await asyncio.to_thread(
+            derive_agent_id_for_collections, fs, collection_ids
+        )
+        if agent_id:
+            try:
+                await asyncio.to_thread(
+                    fs._db.collection("feed_links").document(token).update,
+                    {"agent_id": agent_id},
+                )
+            except Exception:  # noqa: BLE001 — best-effort backfill
+                logger.exception("Failed to backfill agent_id on feed link %s", token)
+
+    if not agent_id:
+        # Orphan link — collections never linked to an agent. The legacy
+        # cross-agent SQL has been retired; return an empty result instead
+        # of mixing data sources.
+        asyncio.create_task(_record_access(fs, token))
+        if format == "csv":
+            return _build_csv_response([], link.get("title", "feed"))
+        return []
 
     effective_limit = min(limit, MAX_ROWS)
-    sql = DASHBOARD_SQL.format(max_rows=effective_limit)
+    sql, params = build_dashboard_sql(collection_ids, agent_id, effective_limit)
 
     rows = await asyncio.to_thread(bq.query, sql, params)
     posts = [build_post_response(row) for row in rows]

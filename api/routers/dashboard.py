@@ -11,10 +11,11 @@ from api.schemas.requests import DashboardDataRequest
 from api.schemas.responses import DashboardDataResponse, DashboardKpis
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
-    DASHBOARD_KPIS_SQL,
-    DASHBOARD_SQL,
     MAX_ROWS,
+    build_dashboard_kpis_sql,
+    build_dashboard_sql,
     build_post_response,
+    derive_agent_id_for_collections,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,15 +55,45 @@ async def get_dashboard_data(
             raise HTTPException(status_code=403, detail=f"Access denied for collection {cid}")
 
     bq = get_bq()
-    params = {"collection_ids": request.collection_ids}
 
-    # Fetch posts, KPIs, and collection names in parallel
-    sql = DASHBOARD_SQL.format(max_rows=MAX_ROWS + 1)  # +1 to detect truncation
+    # Resolve agent context: explicit > derived from collections.
+    agent_id = request.agent_id or derive_agent_id_for_collections(
+        fs, request.collection_ids
+    )
+
+    # No agent context = collections never linked to an agent. We return an
+    # empty dataset with collection names, since there's no agent-scoped view
+    # to render. (Manual / pre-agent collections are not queryable here.)
+    if not agent_id:
+        name_rows = await asyncio.to_thread(
+            bq.query, COLLECTION_NAMES_SQL, {"collection_ids": request.collection_ids}
+        )
+        collection_names = {
+            r["collection_id"]: r.get("original_question", r["collection_id"])
+            for r in name_rows
+        }
+        return DashboardDataResponse(
+            posts=[],
+            collection_names=collection_names,
+            truncated=False,
+            kpis=DashboardKpis(
+                total_posts=0, total_views=0, total_likes=0,
+                total_comments=0, total_shares=0,
+            ),
+        )
+
+    # +1 to detect truncation
+    posts_sql, posts_params = build_dashboard_sql(
+        request.collection_ids, agent_id, MAX_ROWS + 1
+    )
+    kpis_sql, kpis_params = build_dashboard_kpis_sql(
+        request.collection_ids, agent_id
+    )
 
     rows, kpi_rows, name_rows = await asyncio.gather(
-        asyncio.to_thread(bq.query, sql, params),
-        asyncio.to_thread(bq.query, DASHBOARD_KPIS_SQL, params),
-        asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, params),
+        asyncio.to_thread(bq.query, posts_sql, posts_params),
+        asyncio.to_thread(bq.query, kpis_sql, kpis_params),
+        asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, {"collection_ids": request.collection_ids}),
     )
 
     truncated = len(rows) > MAX_ROWS

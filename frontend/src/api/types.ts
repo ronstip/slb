@@ -217,7 +217,7 @@ export interface FeedPost {
   post_id: string;
   platform: string;
   channel_handle: string;
-  channel_id?: string;
+  channel_id?: string | null;
   title?: string;
   content?: string;
   post_url: string;

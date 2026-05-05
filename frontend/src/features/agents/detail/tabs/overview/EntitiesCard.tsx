@@ -7,6 +7,7 @@ import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { useOverviewDashboardData } from './useOverviewDashboardData.ts';
 
 interface EntitiesCardProps {
+  agentId: string;
   collectionIds: string[];
   isAgentRunning: boolean;
   sources?: Source[];
@@ -17,6 +18,7 @@ interface EntitiesCardProps {
 }
 
 export function EntitiesCard({
+  agentId,
   collectionIds,
   isAgentRunning,
   sources,
@@ -32,6 +34,7 @@ export function EntitiesCard({
     agentCreatedAt,
     dataStartDate,
     dataEndDate,
+    agentId,
   );
 
   const entities = useMemo(

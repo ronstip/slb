@@ -30,6 +30,7 @@ _AGENT_SCOPED_STATE_KEYS = (
     "active_agent_id", "active_agent_title", "active_agent_status",
     "active_agent_protocol", "active_agent_type", "active_agent_context_summary",
     "active_agent_context", "active_agent_constitution", "active_agent_data_scope",
+    "active_agent_data_start_date", "active_agent_data_end_date",
     "active_agent_enrichment_config",
     "todos", "tool_result_history",
     "active_collection_id", "agent_selected_sources",
@@ -144,7 +145,8 @@ def _maybe_load_agent_context(session, chat_request: ChatRequest, user: CurrentU
     """
     if not chat_request.agent_id or session.state.get("active_agent_id"):
         return
-    _agent_doc = get_fs().get_agent(chat_request.agent_id)
+    from api.services.agent_service import get_agent as _get_agent_with_backfill
+    _agent_doc = _get_agent_with_backfill(chat_request.agent_id)
     if not _agent_doc:
         return
     if _agent_doc.get("user_id") != user.uid and _agent_doc.get("org_id") != user.org_id:
@@ -156,6 +158,8 @@ def _maybe_load_agent_context(session, chat_request: ChatRequest, user: CurrentU
     session.state["active_agent_status"] = _agent_doc.get("status", "")
     session.state["active_agent_type"] = _agent_doc.get("agent_type", "one_shot")
     session.state["active_agent_data_scope"] = _ds
+    session.state["active_agent_data_start_date"] = _agent_doc.get("data_start_date")
+    session.state["active_agent_data_end_date"] = _agent_doc.get("data_end_date")
     session.state["active_agent_enrichment_config"] = _agent_doc.get("enrichment_config", {})
     session.state["active_agent_constitution"] = _agent_doc.get("constitution")
     session.state["active_agent_context"] = _agent_doc.get("context")
@@ -202,6 +206,23 @@ def refresh_live_state(session, user_id: str) -> None:
     reads from session state only.
     """
     fs = get_fs()
+
+    # Re-sync agent-doc fields that may have been written after the session
+    # was first activated (e.g. lazy backfill of data_start_date for agents
+    # created before the field existed) or edited by the user. Without this,
+    # the data-window block in the system prompt is silently dropped and the
+    # agent guesses dates from `time_range_days`.
+    _agent_id = session.state.get("active_agent_id")
+    if _agent_id:
+        try:
+            from api.services.agent_service import get_agent as _get_agent_with_backfill
+            _agent_doc = _get_agent_with_backfill(_agent_id)
+            if _agent_doc:
+                session.state["active_agent_data_start_date"] = _agent_doc.get("data_start_date")
+                session.state["active_agent_data_end_date"] = _agent_doc.get("data_end_date")
+                session.state["active_agent_data_scope"] = _agent_doc.get("data_scope", {})
+        except Exception:
+            logger.exception("Failed to refresh agent-doc state for session %s", session.id)
 
     _cid = session.state.get("active_collection_id")
     if not _cid:

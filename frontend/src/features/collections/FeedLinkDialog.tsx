@@ -31,6 +31,8 @@ interface FeedLinkDialogProps {
   selectedCollectionIds: string[];
   collectionNames: Map<string, string>;
   filters: Record<string, string>;
+  /** Stored on the link so public renders use the same scope_posts TVF view. */
+  agentId?: string;
 }
 
 export function FeedLinkDialog({
@@ -39,6 +41,7 @@ export function FeedLinkDialog({
   selectedCollectionIds,
   collectionNames,
   filters,
+  agentId,
 }: FeedLinkDialogProps) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
@@ -81,6 +84,7 @@ export function FeedLinkDialog({
       collection_ids: selectedCollectionIds,
       filters,
       title: title.trim(),
+      agent_id: agentId,
     });
   };
 
