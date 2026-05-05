@@ -6,14 +6,25 @@
 --   * is deduped to the latest collection record (latest collected_at),
 --     latest enrichment (latest agent_version, then enriched_at),
 --     and latest engagement snapshot (latest fetched_at)
+--   * has `posted_at` >= the agent's currently-active `data_start_date`
+--     (the most recent row in `agents` for this agent_id, by `created_at`).
+--     Agents with no `data_start_date` row (legacy) get no lower bound.
 --
--- Anything else (date range, platforms, collection_ids, exclude lists,
+-- Anything else (end date, platforms, collection_ids, exclude lists,
 -- specific agent_version) belongs in the caller's WHERE clause.
 
 CREATE OR REPLACE TABLE FUNCTION social_listening.scope_post_ids(
     p_agent_id STRING
 ) AS (
-    WITH dedup_posts AS (
+    WITH agent_window AS (
+        SELECT data_start_date
+        FROM social_listening.agents
+        WHERE agent_id = p_agent_id
+          AND data_start_date IS NOT NULL
+        ORDER BY created_at DESC NULLS LAST
+        LIMIT 1
+    ),
+    dedup_posts AS (
         SELECT * EXCEPT(_rn) FROM (
             SELECT p.*,
                    ROW_NUMBER() OVER (
@@ -41,13 +52,25 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.scope_post_ids(
     FROM dedup_posts p
     JOIN dedup_enr ep USING (post_id)
     WHERE ep.is_related_to_task IS TRUE
+      AND p.posted_at >= COALESCE(
+          TIMESTAMP((SELECT data_start_date FROM agent_window)),
+          TIMESTAMP('1970-01-01')
+      )
 );
 
 
 CREATE OR REPLACE TABLE FUNCTION social_listening.scope_posts(
     p_agent_id STRING
 ) AS (
-    WITH dedup_posts AS (
+    WITH agent_window AS (
+        SELECT data_start_date
+        FROM social_listening.agents
+        WHERE agent_id = p_agent_id
+          AND data_start_date IS NOT NULL
+        ORDER BY created_at DESC NULLS LAST
+        LIMIT 1
+    ),
+    dedup_posts AS (
         SELECT * EXCEPT(_rn) FROM (
             SELECT p.*,
                    ROW_NUMBER() OVER (
@@ -98,4 +121,8 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.scope_posts(
     JOIN dedup_enr ep USING (post_id)
     LEFT JOIN dedup_eng eng USING (post_id)
     WHERE ep.is_related_to_task IS TRUE
+      AND p.posted_at >= COALESCE(
+          TIMESTAMP((SELECT data_start_date FROM agent_window)),
+          TIMESTAMP('1970-01-01')
+      )
 );
