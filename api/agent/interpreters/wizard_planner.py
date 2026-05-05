@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from api.agent.prompts.wizard_planner import WIZARD_PLANNER_PROMPT
 from api.schemas.agent_constitution import Constitution
+from api.schemas.agent_outputs import AgentOutput, derive_outputs
 from config.settings import get_settings
 from workers.enrichment.schema import CustomFieldDef
 
@@ -58,10 +59,13 @@ class WizardPlan(BaseModel):
     new_collection: NewCollectionPlan | None = None
     task_type: TaskType = "one_shot"
     schedule: SchedulePlan | None = None
+    # Typed outputs the agent will produce. The planner SHOULD return this.
+    # The legacy auto_* booleans are kept for backward compatibility with older
+    # frontends and are derived from `outputs` if the planner forgets them.
+    outputs: list[AgentOutput] = Field(default_factory=list)
     auto_report: bool = True
     auto_email: bool = False
     auto_slides: bool = False
-    auto_dashboard: bool = False
     custom_fields: list[CustomFieldDef] = []
     enrichment_context: str = ""
     content_types: list[str] = Field(
@@ -217,5 +221,17 @@ def plan_wizard(
         # Consistency: schedule only meaningful when recurring.
         if plan.task_type == "one_shot":
             plan.schedule = None
+
+        # If the planner didn't populate outputs, derive from the auto_* flags
+        # so older prompts still produce a usable typed list.
+        if not plan.outputs:
+            derived = derive_outputs({
+                "data_scope": {
+                    "auto_report": plan.auto_report,
+                    "auto_email": plan.auto_email,
+                    "auto_slides": plan.auto_slides,
+                },
+            })
+            plan.outputs = [AgentOutput.model_validate(o) for o in derived]
 
     return result

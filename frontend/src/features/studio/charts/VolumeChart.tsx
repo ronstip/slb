@@ -8,14 +8,21 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 interface VolumeChartProps {
   data: VolumeOverTime[];
+  tickFormatter?: (d: string) => string;
+  valueLabel?: string;
 }
 
-export function VolumeChart({ data }: VolumeChartProps) {
+const defaultDayTick = (d: string) => {
+  const parts = d.split('-');
+  return `${MONTHS[parseInt(parts[1]) - 1]} ${parseInt(parts[2])}`;
+};
+
+export function VolumeChart({ data, tickFormatter, valueLabel = 'Posts' }: VolumeChartProps) {
   const chartColors = useChartColors();
   const color = chartColors[0];
 
   const chartConfig: ChartConfig = {
-    count: { label: 'Posts', color },
+    count: { label: valueLabel, color },
   };
 
   const byDate = data.reduce<Record<string, number>>((acc, item) => {
@@ -45,10 +52,7 @@ export function VolumeChart({ data }: VolumeChartProps) {
           axisLine={false}
           tickMargin={8}
           tick={{ fontSize: 10 }}
-          tickFormatter={(d: string) => {
-            const parts = d.split('-');
-            return `${MONTHS[parseInt(parts[1]) - 1]} ${parseInt(parts[2])}`;
-          }}
+          tickFormatter={tickFormatter ?? defaultDayTick}
         />
         <YAxis
           tickLine={false}

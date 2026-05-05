@@ -1,7 +1,6 @@
 import {
   BarChart3,
   FileText,
-  LayoutDashboard,
   Mail,
   Newspaper,
   Presentation,
@@ -9,11 +8,11 @@ import {
 
 export type DeliverableKind =
   | 'briefing'
-  | 'dashboard'
   | 'slides'
   | 'email'
   | 'chart'
-  | 'data_export';
+  | 'data_export'
+  | 'markdown';
 
 export interface KindVisual {
   label: string;
@@ -32,14 +31,6 @@ export const KIND_VISUALS: Record<DeliverableKind, KindVisual> = {
     icon: Newspaper,
     tileGradient: 'from-indigo-500/20 via-indigo-500/5 to-transparent',
     iconTint: 'text-indigo-500',
-  },
-  dashboard: {
-    label: 'Dashboard',
-    labelPlural: 'Dashboards',
-    sublabel: 'Dashboard is on the way',
-    icon: LayoutDashboard,
-    tileGradient: 'from-emerald-500/20 via-emerald-500/5 to-transparent',
-    iconTint: 'text-emerald-500',
   },
   slides: {
     label: 'Slide deck',
@@ -73,21 +64,31 @@ export const KIND_VISUALS: Record<DeliverableKind, KindVisual> = {
     tileGradient: 'from-slate-500/20 via-slate-500/5 to-transparent',
     iconTint: 'text-slate-500',
   },
+  markdown: {
+    label: 'Report',
+    labelPlural: 'Reports',
+    sublabel: 'Report is being written',
+    icon: FileText,
+    tileGradient: 'from-violet-500/20 via-violet-500/5 to-transparent',
+    iconTint: 'text-violet-500',
+  },
 };
 
 export function artifactTypeToKind(
-  type: 'chart' | 'data_export' | 'dashboard' | 'presentation',
-): DeliverableKind {
+  type: 'chart' | 'data_export' | 'dashboard' | 'presentation' | 'markdown',
+): DeliverableKind | null {
   switch (type) {
     case 'presentation':
       return 'slides';
-    case 'dashboard':
-      return 'dashboard';
     case 'data_export':
       return 'data_export';
     case 'chart':
       return 'chart';
+    case 'markdown':
+      return 'markdown';
+    case 'dashboard':
+      return null;
     default:
-      return 'chart';
+      return null;
   }
 }

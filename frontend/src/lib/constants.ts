@@ -5,7 +5,6 @@ export const TOOL_CATEGORY: Record<string, ToolCategory> = {
   google_search: 'thinking',
   google_search_agent: 'thinking',
   design_research: 'thinking',
-  get_collection_details: 'thinking',
   get_table_info: 'thinking',
   list_table_ids: 'thinking',
   get_agent_status: 'thinking',
@@ -16,8 +15,6 @@ export const TOOL_CATEGORY: Record<string, ToolCategory> = {
   start_agent: 'tools',
   // Outputs — deliverables
   create_chart: 'outputs',
-  generate_dashboard: 'outputs',
-  compose_dashboard: 'outputs',
   generate_presentation: 'outputs',
   export_data: 'outputs',
   compose_email: 'outputs',
@@ -27,14 +24,11 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   google_search: 'Searching the web',
   google_search_agent: 'Searching the web',
   design_research: 'Designing research plan',
-  get_collection_details: 'Loading collection details',
   export_data: 'Preparing data export',
   execute_sql: 'Querying data',
   create_chart: 'Creating chart',
   get_table_info: 'Inspecting table schema',
   list_table_ids: 'Discovering tables',
-  generate_dashboard: 'Creating interactive dashboard',
-  compose_dashboard: 'Composing custom dashboard',
   generate_presentation: 'Building presentation deck',
   ask_user: 'Preparing questions',
   start_agent: 'Starting agent',
@@ -73,9 +67,16 @@ export const SENTIMENT_COLORS: Record<string, string> = {
   negative: '#C75A62',
   neutral: '#94999F',
   mixed: '#D4A054',
+  // Stance / reception variants — kept distinct in hue (not just value) so
+  // adjacent segments in a stacked bar remain readable. supportive=green,
+  // opposed=red, skeptical=amber matches the positive/negative/mixed mapping
+  // used elsewhere.
+  supportive: '#5FB88A',
+  opposed: '#C75A62',
+  skeptical: '#D4A054',
 };
 
-export const PLATFORMS = ['instagram', 'tiktok', 'twitter', 'reddit', 'youtube'] as const;
+export const PLATFORMS = ['instagram', 'tiktok', 'facebook', 'twitter', 'reddit', 'youtube'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export const SCHEDULE_UTC_TIMES = [

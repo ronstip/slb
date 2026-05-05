@@ -222,22 +222,35 @@ async def _async_agent_continuation(task_id: str) -> None:
         parts=[types.Part.from_text(text=continuation_message)],
     )
 
-    # Run agent (non-streaming, collect all events)
+    # Run agent (non-streaming) and persist artifacts as tool results stream
+    # in. Per-event persistence avoids losing completed deliverables when the
+    # worker is killed mid-run by a Cloud Run timeout / OOM.
     from google.adk.runners import RunConfig
-    events = []
+    from api.services.artifact_service import persist_event_artifacts
+    event_count = 0
     async for event in runner.run_async(
         user_id=user_id,
         session_id=session_id,
         new_message=content,
         run_config=RunConfig(),
     ):
-        events.append(event)
+        event_count += 1
+        try:
+            created = persist_event_artifacts(
+                event, user_id, org_id, session_id, agent_id=task_id,
+            )
+            for aid in created:
+                logger.info(
+                    "Persisted artifact %s for task %s during continuation",
+                    aid, task_id,
+                )
+        except Exception:
+            logger.exception(
+                "Per-event artifact persist failed for task %s", task_id,
+            )
 
-    logger.info("Task %s: agent continuation completed with %d events", task_id, len(events))
+    logger.info("Task %s: agent continuation completed with %d events", task_id, event_count)
     fs.add_task_log(task_id, "Analysis agent completed", source="continuation")
-
-    # Persist artifacts from agent output
-    _persist_continuation_artifacts(events, user_id, org_id, session_id, task_id)
 
     # Update task status
     task_type = task.get("task_type", "one_shot")
@@ -253,35 +266,6 @@ async def _async_agent_continuation(task_id: str) -> None:
 
     # Send notification email
     _notify_task_completion(task_id, task, user_id)
-
-
-def _persist_continuation_artifacts(events, user_id, org_id, session_id, task_id):
-    """Extract and persist artifacts from agent continuation events."""
-    from api.deps import get_fs
-
-    for event in events:
-        if not hasattr(event, 'content') or not event.content:
-            continue
-        if not hasattr(event.content, 'parts') or not event.content.parts:
-            continue
-        for part in event.content.parts:
-            if not hasattr(part, 'function_response') or not part.function_response:
-                continue
-            fr = part.function_response
-            tool_name = fr.name if hasattr(fr, 'name') else ''
-            result = fr.response if hasattr(fr, 'response') else {}
-            if not isinstance(result, dict):
-                continue
-
-            # Use the same artifact persistence as the main chat flow
-            try:
-                from api.services.artifact_service import persist_tool_result_artifact
-                persist_tool_result_artifact(
-                    tool_name, result, user_id, org_id, session_id,
-                    agent_id=task_id,
-                )
-            except Exception:
-                logger.debug("Failed to persist artifact from continuation: %s", tool_name)
 
 
 def _notify_task_completion(task_id: str, task: dict, user_id: str) -> None:

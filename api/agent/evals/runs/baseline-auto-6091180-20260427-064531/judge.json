@@ -1,0 +1,19 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 4,
+      "correctness": 5,
+      "one_line_critique": "Highly efficient execution in a single turn with sharp analysis, though calling two distinct briefing tools was redundant."
+    }
+  ],
+  "averages": {
+    "conciseness": 5.0,
+    "tone": 5.0,
+    "repetition": 4.0,
+    "correctness": 5.0
+  },
+  "n_judged": 1
+}

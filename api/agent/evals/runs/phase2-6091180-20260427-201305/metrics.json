@@ -1,0 +1,146 @@
+{
+  "totals": {
+    "output_tokens": 656,
+    "tool_calls_total": 62,
+    "tool_calls_unique": 51,
+    "duplicate_action_count": 11,
+    "preamble_tokens": 0,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "mode": "autonomous",
+      "duration_s": 119.87,
+      "n_turns": 1,
+      "output_tokens": 15,
+      "text_events": 1,
+      "tool_calls_total": 25,
+      "tool_calls_unique": 19,
+      "duplicate_action_count": 6,
+      "duplicate_actions": [
+        {
+          "tool": "update_todos",
+          "args": {
+            "todos": "[\n    {\"id\": \"1\", \"content\": \"Analyze: query patterns, identify themes\", \"status\": \"in_progress\"},\n    {\"id\": \"2\", \"content\": \"Validate: cross-reference and check biases\", \"status\": \"pending\"},\n    {\"id\": \"3\", \"content\": \"Generate dashboard for the user\", \"status\": \"pending\"},\n    {\"id\": \"4\", \"content\": \"Compose final briefing\", \"status\": \"pending\"}\n]"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.sentiment, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.sentiment ORDER BY count DESC"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT DATE(p.posted_at) as post_date, p.platform, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts` p\nJOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY post_date, p.platform ORDER BY post_date"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT theme, COUNT(*) as mentions,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme ORDER BY mentions DESC LIMIT 10"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "update_todos": 6,
+        "get_collection_stats": 1,
+        "list_topics": 1,
+        "execute_sql": 14,
+        "generate_dashboard": 1,
+        "generate_briefing": 1,
+        "compose_briefing": 1
+      }
+    },
+    {
+      "scenario_id": "autonomous-narrow-scope",
+      "mode": "autonomous",
+      "duration_s": 123.56,
+      "n_turns": 1,
+      "output_tokens": 371,
+      "text_events": 1,
+      "tool_calls_total": 17,
+      "tool_calls_unique": 13,
+      "duplicate_action_count": 4,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT theme, COUNT(*) as mentions,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND p.platform = 'tiktok'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme ORDER BY mentions DESC LIMIT 3"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT theme, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND p.platform = 'tiktok'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme\nORDER BY post_count DESC\nLIMIT 3"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "execute_sql": 9,
+        "list_topics": 1,
+        "update_todos": 4,
+        "get_collection_stats": 1,
+        "generate_briefing": 1,
+        "compose_briefing": 1
+      }
+    },
+    {
+      "scenario_id": "autonomous-recurring-trend",
+      "mode": "autonomous",
+      "duration_s": 161.13,
+      "n_turns": 1,
+      "output_tokens": 270,
+      "text_events": 1,
+      "tool_calls_total": 20,
+      "tool_calls_unique": 19,
+      "duplicate_action_count": 1,
+      "duplicate_actions": [
+        {
+          "tool": "update_todos",
+          "args": {
+            "todos": "[\n    {\"id\": \"1\", \"content\": \"Compare current run metrics (Apr 21-27) against 2026-04-20 baseline (Apr 14-20)\", \"status\": \"completed\"},\n    {\"id\": \"2\", \"content\": \"Identify the largest week-over-week deltas in sentiment, themes, and engagement\", \"status\": \"completed\"},\n    {\"id\": \"3\", \"content\": \"Generate dashboard highlighting deltas\", \"status\": \"in_progress\"},\n    {\"id\": \"4\", \"content\": \"Compose briefing focused on what changed\", \"status\": \"pending\"}\n]"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "update_todos": 5,
+        "get_collection_details": 1,
+        "execute_sql": 9,
+        "list_topics": 1,
+        "get_collection_stats": 1,
+        "compose_dashboard": 1,
+        "generate_briefing": 1,
+        "compose_briefing": 1
+      }
+    }
+  ],
+  "n_scenarios": 3
+}

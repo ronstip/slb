@@ -1,0 +1,170 @@
+{
+  "totals": {
+    "output_tokens": 637,
+    "tool_calls_total": 73,
+    "tool_calls_unique": 40,
+    "duplicate_action_count": 33,
+    "preamble_tokens": 0,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "mode": "autonomous",
+      "duration_s": 60.81,
+      "n_turns": 1,
+      "output_tokens": 15,
+      "text_events": 1,
+      "tool_calls_total": 27,
+      "tool_calls_unique": 7,
+      "duplicate_action_count": 20,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT ep.sentiment, COUNT(*) as count,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct\nFROM `social-listening-pl.social_listening.enriched_posts` ep\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY ep.sentiment ORDER BY count DESC"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT theme, COUNT(*) as mentions,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct,\n  ROUND(AVG(CASE WHEN ep.sentiment = 'positive' THEN 1 WHEN ep.sentiment = 'negative' THEN -1 ELSE 0 END), 2) as avg_sentiment_score\nFROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\nJOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY theme ORDER BY mentions DESC LIMIT 15"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT p.platform, ep.sentiment, COUNT(*) as post_count\nFROM `social-listening-pl.social_listening.posts` p\nJOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nGROUP BY p.platform, ep.sentiment ORDER BY p.platform, post_count DESC"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "SELECT p.post_id, p.platform, p.channel_handle, p.title, pe.likes, pe.views, ep.sentiment, ep.ai_summary\nFROM `social-listening-pl.social_listening.posts` p\nJOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id\nLEFT JOIN `social-listening-pl.social_listening.post_engagements` pe ON p.post_id = pe.post_id\nWHERE p.collection_id = 'eval-collection-1'\n  AND ep.is_related_to_task IS NOT FALSE\nQUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1\nORDER BY (COALESCE(pe.likes,0) + COALESCE(pe.views,0)) DESC LIMIT 10"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "list_topics": 1,
+        "update_todos": 1,
+        "execute_sql": 24
+      }
+    },
+    {
+      "scenario_id": "autonomous-narrow-scope",
+      "mode": "autonomous",
+      "duration_s": 26.04,
+      "n_turns": 1,
+      "output_tokens": 188,
+      "text_events": 1,
+      "tool_calls_total": 9,
+      "tool_calls_unique": 9,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "list_topics": 1,
+        "execute_sql": 1,
+        "update_todos": 3,
+        "generate_briefing": 1,
+        "verify_briefing": 1,
+        "compose_briefing": 1
+      }
+    },
+    {
+      "scenario_id": "autonomous-recurring-trend",
+      "mode": "autonomous",
+      "duration_s": 76.64,
+      "n_turns": 1,
+      "output_tokens": 15,
+      "text_events": 1,
+      "tool_calls_total": 26,
+      "tool_calls_unique": 14,
+      "duplicate_action_count": 12,
+      "duplicate_actions": [
+        {
+          "tool": "update_todos",
+          "args": {
+            "todos": "[\n    {\"id\": \"1\", \"content\": \"Compare current run metrics against 2026-04-20 baseline\", \"status\": \"completed\"},\n    {\"id\": \"2\", \"content\": \"Identify the largest week-over-week deltas\", \"status\": \"in_progress\"},\n    {\"id\": \"3\", \"content\": \"Generate dashboard highlighting deltas\", \"status\": \"pending\"},\n    {\"id\": \"4\", \"content\": \"Compose briefing focused on what changed\" , \"status\": \"pending\"}\n]"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "\nWITH latest_engagements AS (\n    SELECT post_id, likes, views, shares, comments_count, \n           ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as _rn\n    FROM `social-listening-pl.social_listening.post_engagements`\n),\nperiod_metrics AS (\n    SELECT \n        CASE \n            WHEN DATE(p.posted_at) BETWEEN '2026-04-13' AND '2026-04-20' THEN 'Baseline'\n            WHEN DATE(p.posted_at) BETWEEN '2026-04-24' AND '2026-05-01' THEN 'Current'\n            ELSE 'Other'\n        END as period,\n        COUNT(DISTINCT p.post_id) as posts,\n        SUM(le.views) as views,\n        SUM(le.likes) as likes,\n        COUNT(DISTINCT CASE WHEN ep.sentiment = 'positive' THEN p.post_id END) as positive_posts,\n        COUNT(DISTINCT CASE WHEN ep.sentiment = 'negative' THEN p.post_id END) as negative_posts\n    FROM `social-listening-pl.social_listening.posts` p\n    JOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id\n    LEFT JOIN latest_engagements le ON p.post_id = le.post_id AND le._rn = 1\n    WHERE p.collection_id = 'eval-collection-1'\n      AND ep.is_related_to_task IS NOT FALSE\n    GROUP BY 1\n)\nSELECT \n    period,\n    posts,\n    views,\n    likes,\n    SAFE_DIVIDE(positive_posts, posts) as pos_pct,\n    SAFE_DIVIDE(negative_posts, posts) as neg_pct\nFROM period_metrics\nWHERE period IN ('Baseline', 'Current')\n"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        },
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "\nWITH theme_stats AS (\n    SELECT \n        CASE \n            WHEN DATE(p.posted_at) BETWEEN '2026-04-13' AND '2026-04-20' THEN 'Baseline'\n            WHEN DATE(p.posted_at) BETWEEN '2026-04-24' AND '2026-05-01' THEN 'Current'\n        END as period,\n        theme,\n        COUNT(DISTINCT p.post_id) as posts\n    FROM `social-listening-pl.social_listening.posts` p\n    JOIN `social-listening-pl.social_listening.enriched_posts` ep ON p.post_id = ep.post_id,\n    UNNEST(ep.themes) theme\n    WHERE p.collection_id = 'eval-collection-1'\n      AND ep.is_related_to_task IS NOT FALSE\n    GROUP BY 1, 2\n)\nSELECT \n    theme,\n    MAX(CASE WHEN period = 'Baseline' THEN posts ELSE 0 END) as baseline_posts,\n    MAX(CASE WHEN period = 'Current' THEN posts ELSE 0 END) as current_posts,\n    (MAX(CASE WHEN period = 'Current' THEN posts ELSE 0 END) - MAX(CASE WHEN period = 'Baseline' THEN posts ELSE 0 END)) as delta\nFROM theme_stats\nWHERE theme IS NOT NULL\nGROUP BY 1\nORDER BY ABS(delta) DESC\nLIMIT 10\n"
+          },
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "update_todos": 6,
+        "get_collection_stats": 1,
+        "execute_sql": 18,
+        "list_topics": 1
+      }
+    },
+    {
+      "scenario_id": "autonomous-verifier-catches-bad-claim",
+      "mode": "autonomous",
+      "duration_s": 42.94,
+      "n_turns": 1,
+      "output_tokens": 419,
+      "text_events": 1,
+      "tool_calls_total": 11,
+      "tool_calls_unique": 10,
+      "duplicate_action_count": 1,
+      "duplicate_actions": [
+        {
+          "tool": "verify_briefing",
+          "args": {},
+          "first_turn": 0,
+          "repeat_turn": 0
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_collection_stats": 1,
+        "list_topics": 1,
+        "execute_sql": 1,
+        "update_todos": 3,
+        "generate_briefing": 2,
+        "verify_briefing": 2,
+        "compose_briefing": 1
+      }
+    }
+  ],
+  "n_scenarios": 4
+}

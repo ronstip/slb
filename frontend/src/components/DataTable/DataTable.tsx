@@ -29,6 +29,7 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   className?: string;
   striped?: boolean;
+  density?: 'compact' | 'comfortable';
 }
 
 /* ------------------------------------------------------------------ */
@@ -49,7 +50,11 @@ export function DataTable<T>({
   onRowClick,
   className,
   striped = true,
+  density = 'compact',
 }: DataTableProps<T>) {
+  const headerPadY = density === 'comfortable' ? 'py-3' : 'py-2';
+  const cellPadY = density === 'comfortable' ? 'py-3' : 'py-1.5';
+  const cellPadX = density === 'comfortable' ? 'px-3' : 'px-2';
   const hasSorting = defaultSortKey != null;
   const { sorted, sortKey, sortDir, handleSort } = useTableSort(
     data,
@@ -98,7 +103,7 @@ export function DataTable<T>({
                 return (
                   <th
                     key={col.key}
-                    className={`truncate px-2 py-2 font-medium ${
+                    className={`truncate ${cellPadX} ${headerPadY} font-medium ${
                       col.align === 'right' ? 'text-right' : 'text-left'
                     } ${isSortable ? 'cursor-pointer select-none' : ''}`}
                     onClick={isSortable ? () => onSort(colSortKey) : undefined}
@@ -138,7 +143,7 @@ export function DataTable<T>({
                     {columns.map((col) => (
                       <td
                         key={col.key}
-                        className={`px-2 py-1.5 overflow-hidden ${col.align === 'right' ? 'text-right' : ''}`}
+                        className={`${cellPadX} ${cellPadY} overflow-hidden ${col.align === 'right' ? 'text-right' : ''}`}
                       >
                         {col.render(row, idx)}
                       </td>

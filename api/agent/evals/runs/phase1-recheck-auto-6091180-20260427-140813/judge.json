@@ -1,0 +1,19 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "conciseness": 5,
+      "tone": 4,
+      "repetition": 2,
+      "correctness": 4,
+      "one_line_critique": "Efficient single-turn completion of all tasks, though marred by redundant SQL queries and calling multiple briefing tools for a single requirement."
+    }
+  ],
+  "averages": {
+    "conciseness": 5.0,
+    "tone": 4.0,
+    "repetition": 2.0,
+    "correctness": 4.0
+  },
+  "n_judged": 1
+}

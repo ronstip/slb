@@ -1,0 +1,14 @@
+{
+  "label": "phase4-final",
+  "git_sha": "6c7d079",
+  "timestamp": "20260502-133747",
+  "live": false,
+  "model": null,
+  "scenarios": [
+    "chat-bare-greeting",
+    "simple-q-engagement",
+    "repeat-dashboard",
+    "ambiguous-data-overview",
+    "chat-followup-no-restate"
+  ]
+}

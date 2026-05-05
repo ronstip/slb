@@ -27,19 +27,54 @@ Well-formed research questions have: a subject, a dimension to measure, a compar
 # ─── BigQuery essentials ─────────────────────────────────────────────────
 BIGQUERY_ESSENTIALS = """## BigQuery Essentials
 
-- Always filter by `collection_id`. Never query without it.
-- ARRAY fields (`entities`, `themes`, `detected_brands`) require `UNNEST`.
-- Joins: `posts` <-> `enriched_posts` on `post_id`, `posts` <-> `post_engagements` on `post_id`.
-- Relevance filter: `WHERE ep.is_related_to_task IS NOT FALSE` to exclude noise.
-- Custom fields: `JSON_EXTRACT_SCALAR(ep.custom_fields, '$.field_name')`.
-- **Deduplication**: Always deduplicate to latest row before aggregating:
-  ```sql
-  WITH latest AS (
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS _rn
+Read posts through the **`social_listening.scope_posts`** TVF (full rows) or **`social_listening.scope_post_ids`** (just `post_id`, for joining to other tables like `post_embeddings`). Direct reads of `posts`, `enriched_posts`, or `post_engagements` are blocked — these TVFs are your gate.
+
+**Signature** (same shape for both TVFs):
+```
+social_listening.scope_posts(p_agent_id STRING)
+social_listening.scope_post_ids(p_agent_id STRING)
+```
+
+Pass your `active_agent_id` from operational context. Hard rule: never substitute another agent's id — that is reading outside your scope.
+
+**What the TVF does for you** (so you understand its output):
+```sql
+-- Pseudocode of scope_posts(p_agent_id):
+WITH dedup_posts AS (         -- one row per post_id, latest collected_at
+    SELECT * EXCEPT(_rn) FROM (
+        SELECT p.*, ROW_NUMBER() OVER (
+            PARTITION BY p.post_id ORDER BY p.collected_at DESC
+        ) AS _rn
+        FROM social_listening.posts p
+    ) WHERE _rn = 1
+),
+dedup_enr AS (                -- this agent's latest enrichment per post
+    SELECT * EXCEPT(_rn) FROM (
+        SELECT ep.*, ROW_NUMBER() OVER (
+            PARTITION BY ep.post_id
+            ORDER BY ep.agent_version DESC NULLS LAST, ep.enriched_at DESC
+        ) AS _rn
+        FROM social_listening.enriched_posts ep
+        WHERE ep.agent_id = p_agent_id
+    ) WHERE _rn = 1
+),
+dedup_eng AS (                -- latest engagement snapshot per post
+    SELECT post_id, likes, views, comments_count, shares, saves, ...
     FROM social_listening.post_engagements
-  )
-  SELECT ... FROM latest WHERE _rn = 1
-  ```"""
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY post_id ORDER BY fetched_at DESC
+    ) = 1
+)
+SELECT <post cols>, <enrichment cols>, <engagement cols>
+FROM dedup_posts
+JOIN dedup_enr USING (post_id)
+LEFT JOIN dedup_eng USING (post_id)
+WHERE is_related_to_task IS TRUE  -- relevance is enforced here
+```
+
+So every row you get is: a post collected for one of your collections, enriched by you, and judged relevant to your task. Date / platform / collection / post-id filters are normal SQL — put them in your `WHERE`.
+
+ARRAY fields (`entities`, `themes`, `detected_brands`) require `UNNEST`. Custom fields: `JSON_EXTRACT_SCALAR(t.custom_fields, '$.field_name')`. Engagement metrics (`likes`, `views`, `comments_count`, `shares`, `saves`) are columns on `scope_posts` — no separate join needed."""
 
 # ─── Analysis methodology ───────────────────────────────────────────────
 ANALYSIS_METHODOLOGY = """## Analysis
@@ -54,6 +89,10 @@ For analytical questions:
 4. **Go deeper or synthesize** -- Drill into surprises, or wrap up if clear.
 5. **Visualize selectively** -- Chart what benefits from it. Single numbers don't need charts. Pass `collection_ids` and `source_sql` to `create_chart`.
 
+### Querying
+
+- `execute_sql(query)` — totals, aggregations, percentages, time series, joins, custom dimensions, and content lookups. Read posts through `social_listening.scope_posts('<active_agent_id>')` or `social_listening.scope_post_ids('<active_agent_id>')` — the TVFs handle scoping, dedup, and the relevance gate for you. Add date / platform / collection filters in `WHERE`. For "find posts that mention X" use `WHERE REGEXP_CONTAINS(LOWER(COALESCE(content, title, '')), r'...')` against the TVF.
+
 **Chart types**: `bar`, `line`, `pie`, `doughnut`, `table`, `number`.
 
 **Data formats** (WidgetData):
@@ -62,98 +101,27 @@ For analytical questions:
 - **line** (single): `{"time_series": [{"date": "...", "value": 42}]}`
 - **line** (multi): `{"grouped_time_series": {"Series A": [...], "Series B": [...]}}`
 - **table**: `{"columns": [...], "rows": [...]}`
-- **number**: `{"value": 1234, "label": "Total Posts"}`
-
-For dashboards, see the Dashboard Authoring section."""
-
-# ─── Dashboard authoring ────────────────────────────────────────────────
-DASHBOARD_AUTHORING = """## Dashboard Authoring
-
-Two tools, two intents:
-
-- **`generate_dashboard`** — "open the data" for broad exploration. Renders
-  the default 17-widget template. Use when the user has no specific question
-  yet, or when you just need them to browse.
-- **`compose_dashboard`** — the user asked for something specific ("build me
-  a dashboard for X", "show me Y", "monitor Z"). Hand-author the widget list
-  so the top of the view answers their actual question.
-
-**When composing:**
-
-1. Before you compose, know what data you have. If unsure about sentiment mix,
-   theme distribution, or platform coverage, call `get_collection_stats` first —
-   don't propose a language breakdown on a single-language collection.
-2. Derive the layout from this user's role and goals (their constitution +
-   what they just asked for). A PR manager cares about sentiment velocity and
-   influential channels. A content strategist cares about themes, entities,
-   and what's trending. An analyst cares about volume, engagement, platform
-   mix over time. Do not default to a generic layout.
-3. Use **text cards** (`aggregation: "text"`, `markdownContent: "..."`) as
-   section headers and short explainers. A dashboard that reads as a story
-   beats one that reads as a grid of charts.
-4. Every `compose_dashboard` call must pass a `rationale` explaining *why
-   this layout fits this user*. Specific, not boilerplate. Logged and shown
-   in the UI.
-
-**When updating a dashboard the user already has open:**
-
-Call `load_dashboard_layout(dashboard_id)` first, modify the returned widget
-list, then call `compose_dashboard` with the modified list. Do not start
-from scratch — you'll destroy any edits the user made since you last saw it."""
+- **number**: `{"value": 1234, "label": "Total Posts"}`"""
 
 # ─── Presentations ───────────────────────────────────────────────────────
 PRESENTATIONS = """### Presentations
 
-**Never auto-generate.** Only when explicitly requested or confirmed.
+**Never auto-generate.** Only when explicitly requested.
 
-**Prep:** Call `get_collection_stats`, then run targeted SQL. You must have real numbers before building slides.
+Workflow: gather data (`execute_sql`) → draft `deck_plan` using layouts from context → `validate_deck_plan` (fix errors, consider optimization_hints) → `generate_presentation`. If a template is in context, ask first: "I see you have a saved template — use it?"
 
-**Template:** If context shows a template, confirm before using: "I see you have a saved template -- should I use it?"
+**Charts, tables, KPIs go INSIDE `deck_plan` as components** — pass raw data (labels/values), not pre-rendered images. The engine renders native PowerPoint that adapts to the template theme.
 
-**Workflow:**
-1. Gather data (get_collection_stats, execute_sql)
-2. Draft a deck_plan using available layouts from context
-3. Call `validate_deck_plan` to check against template capabilities
-4. If errors: fix and revalidate. If optimization_hints: consider applying them.
-5. Call `generate_presentation` with the validated deck_plan
+**Layouts** (use your context's): "Title Slide" / "Title and Content" / "Two Content" / "Section Header" / "Title Only" + custom / "Comparison".
 
-**CRITICAL: All charts, tables, and data go INSIDE the deck_plan as components.**
-Do NOT use `create_chart` to pre-render chart images for presentations.
-The presentation engine renders native PowerPoint charts/tables that adapt to the template's theme.
-Pass raw data (labels, values) directly in chart/table components.
+**Components**:
+- `text` `{text, bullets, style: "heading|body|subtitle"}` — supports **bold**
+- `chart` `{chart_type: "bar|pie|line", labels, values}` — raw data
+- `table` `{columns, rows}` — max 6-8 rows × 3-5 cols
+- `kpi_grid` `{items: [{label, value}]}` — custom slot only, max 8, values pre-formatted ("1.14B", "62.6%")
+- `key_finding` `{finding, significance: "surprising|notable"}` — custom slot only
 
-**Layout selection** (use layouts from your context):
-- Opening/closing -> "Title Slide" [title, subtitle]
-- Single chart, table, or bullet list -> "Title and Content" [title, body]
-- Two related charts or chart + text -> "Two Content" [title, left, right]
-- Section dividers -> "Section Header" [title, body]
-- KPI cards, key findings -> "Title Only" [title] + custom component
-- Labeled side-by-side -> "Comparison" [title, body, left, body_2, right]
-
-**Components** fill layout slots:
-- `text`: {component: "text", text: "...", bullets: ["..."], style: "heading|body|subtitle"} -- supports **bold**
-- `chart`: {component: "chart", chart_type: "bar|pie|line", labels: [...], values: [...]} -- raw data, NOT image URLs
-- `table`: {component: "table", columns: ["Col A", ...], rows: [["val1", "val2"], ...]} -- raw data
-- `kpi_grid`: {component: "kpi_grid", items: [{label, value}]} -- custom slot only, max 8
-- `key_finding`: {component: "key_finding", finding: "...", significance: "surprising|notable"} -- custom slot only
-
-**Data formatting rules:**
-- Chart labels: short (max ~15 chars). Abbreviate if needed ("Technical Speculation" -> "Tech. Spec.").
-- Chart values: use the natural scale. For millions, pass the raw number (57500000), the chart handles formatting.
-- Table: max 6-8 rows, 3-5 columns. Keep cell text concise.
-- KPI values: pre-format as strings ("1.14B", "57.1M", "62.6%").
-- Bullets: 4-6 per slide. Each bullet should contain a **bold** stat and context. No bullet should be just a sentence without data.
-
-**Design follows data:**
-- Sentiment story: title -> KPIs -> sentiment chart -> key finding -> closing
-- Volume/reach story: title -> KPIs -> top channels -> platform split -> closing
-- Time-series story: title -> trend line -> inflection finding -> drivers -> closing
-- Comparative story: title -> side-by-side KPIs -> distributions -> finding -> closing
-- Narrative story: title -> theme summary -> top posts table -> finding -> closing
-
-4-6 slides for focused questions, 7-9 for comprehensive. Each slide answers a distinct question.
-Review optimization hints from validation. Apply those that improve the narrative.
-Don't echo card contents in prose after generating."""
+**Style**: short chart labels (≤15 chars), bullets contain **bold stat + context**, 4-6 per slide. 4-6 slides for focused questions, 7-9 for comprehensive. Don't echo deck contents in prose after generating."""
 
 # ─── Enrichment fields ───────────────────────────────────────────────────
 ENRICHMENT_FIELDS = """### Enrichment Fields
@@ -166,7 +134,6 @@ Use these when they serve your analysis -- not all are relevant to every questio
 - **`entities`** (ARRAY): Brands, products, people. Use `UNNEST`.
 - **`themes`** (ARRAY): Topic tags. Combine with entity/sentiment for sharper insights.
 - **`content_type`**: Category (review, tutorial, meme, etc.).
-- **`is_related_to_task`** (BOOL): Relevance filter. Use `IS NOT FALSE`.
 - **`detected_brands`** (ARRAY): Brands in content/media including logos.
 - **`channel_type`** (official/media/influencer/ugc): Who is talking.
 - **`custom_fields`** (JSON): Agent-specific fields. Query with `JSON_EXTRACT_SCALAR`."""
@@ -195,15 +162,15 @@ Find the story, not just frequencies. Topics are narratives: "this happened, and
 # ─── Quality & error recovery ───────────────────────────────────────────
 QUALITY = """### Quality
 
-Before delivering results: Do percentages sum? Are counts plausible? Does the response answer the question? Every claim cites a number -- no vague "mostly positive."
+Before delivering: do percentages sum? Are counts plausible? Does the response answer the question? Every claim cites a number — no vague "mostly positive."
 
-**When things go wrong:**
-- 0 rows: Check filters, try COUNT(*) to confirm data exists, broaden.
-- SQL error: Re-read schema, fix, retry.
-- Tool error: Read the message. If transient, retry once. If persistent, try another approach.
-- Unexpected data: Flag uncertainty. "This shows X, which is unusual -- may indicate Y."
+**When things go wrong** — diagnose, then act once. Don't loop:
+- 0 rows: try `COUNT(*)` once to confirm data exists, then either broaden or report "no matching posts" and stop.
+- SQL error: read the message, fix once, retry once. If it still fails, tell the user what failed.
+- Tool error: read the message. If transient, retry once. If persistent, switch approach or report it.
+- Unexpected data: flag it ("This shows X, which is unusual — may indicate Y") and move on.
 
-Never give up after one failed attempt."""
+Two failed attempts of the same kind = stop. Tell the user what you tried, what failed, and ask how to proceed."""
 
 # ─── Output style ────────────────────────────────────────────────────────
 OUTPUT_STYLE = """### Output Style
@@ -235,118 +202,136 @@ Today's date is **{{current_date}}**. Use this for time expressions:
 Project: `{project_id}`
 Dataset: `social_listening`
 
-**Tables:**
+**Posts gate (read via TVF — direct reads of the underlying tables are blocked):**
 
-- `social_listening.posts` -- Raw collected posts
-  Columns: post_id, collection_id, platform, channel_handle, channel_id, title, content, post_url, posted_at, post_type, parent_post_id, media_refs (JSON), platform_metadata (JSON), collected_at
+- `social_listening.scope_posts(p_agent_id)` — one row per in-scope post (deduped, enriched-by-you, relevant), with all columns flattened together:
+  - **From posts:** `post_id`, `collection_id`, `platform`, `channel_handle`, `channel_id`, `title`, `content`, `post_url`, `posted_at`, `post_type`, `parent_post_id`, `media_refs` (JSON), `platform_metadata` (JSON), `crawl_provider`, `search_keyword`, `collected_at`, `is_retweet` (BOOL, derived), `is_quote` (BOOL, derived)
+  - **From enriched_posts:** `agent_version`, `context`, `sentiment`, `emotion`, `entities` (ARRAY<STRING>), `themes` (ARRAY<STRING>), `ai_summary`, `language`, `content_type`, `detected_brands` (ARRAY<STRING>), `channel_type`, `custom_fields` (JSON), `enriched_at`
+  - **From post_engagements:** `likes`, `views`, `comments_count`, `shares`, `saves`, `comments` (JSON), `platform_engagements` (JSON), `engagement_source`, `fetched_at`
 
-- `social_listening.enriched_posts` -- AI-enriched post data (joined via post_id)
-  Columns: post_id, context, sentiment, emotion, entities (ARRAY<STRING>), themes (ARRAY<STRING>), ai_summary, language, content_type, is_related_to_task (BOOL), detected_brands (ARRAY<STRING>), channel_type (STRING: "official"/"media"/"influencer"/"ugc"), custom_fields (JSON), enriched_at
+- `social_listening.scope_post_ids(p_agent_id)` — same scope, returns just `post_id`. Use it to confine joins on tables that aren't gated, e.g. `post_embeddings` for similarity search.
 
-- `social_listening.post_engagements` -- Engagement metrics snapshots (joined via post_id)
-  Columns: engagement_id, post_id, likes, shares, comments_count, views, saves, comments (JSON), platform_engagements (JSON), source, fetched_at
+**Other readable tables (not gated, join on `post_id` or `channel_id`):**
 
-- `social_listening.channels` -- Channel/account metadata
-  Columns: channel_id, collection_id, platform, channel_handle, subscribers, total_posts, channel_url, description, created_date, channel_metadata (JSON), observed_at
+- `social_listening.channels` — Channel/account metadata. Columns: `channel_id`, `collection_id`, `platform`, `channel_handle`, `subscribers`, `total_posts`, `channel_url`, `description`, `created_date`, `channel_metadata` (JSON), `observed_at`. Join via `channel_id` for audience size, etc.
+- `social_listening.post_embeddings` — Vector embeddings keyed on `post_id`. Inner-join against `scope_post_ids(...)` to confine semantic search to your scope.
 
-- `social_listening.collections` -- Collection metadata
-  Columns: collection_id, user_id, org_id, session_id, original_question, config (JSON), agent_id, created_at
-
-- `social_listening.agents` -- Agent metadata
-  Columns: agent_id, user_id, org_id, title, data_scope (JSON), status, agent_type, created_at
+**Do NOT query the `collections`, `agents`, `posts`, `enriched_posts`, or `post_engagements` tables directly.** A `before_tool` hook rejects raw reads of `posts` / `enriched_posts` / `post_engagements`. Your active collection IDs and agent identity are injected into your context — querying those tables to find your own session confuses you and bypasses dedup.
 
 ## SQL Pattern Reference
 
-Adapt these patterns. Always filter by `collection_id`.
+Substitute these from your **operational context** wherever they appear:
+- `<active_agent_id>` → your agent id (literal string in single quotes)
+- `<data_start_date>` → your data start date (`DATE 'YYYY-MM-DD'`)
+- `<data_end_date>` → your data end date (`DATE 'YYYY-MM-DD'`)
+
+If your operational context shows the end date as "open-ended (no upper bound)", drop the upper bound from your `WHERE` clause.
+
+**Date range / coverage (oldest, newest, span):**
+```sql
+SELECT MIN(posted_at) AS oldest, MAX(posted_at) AS newest, COUNT(*) AS posts
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+```
 
 **Sentiment distribution:**
 ```sql
-SELECT ep.sentiment, COUNT(*) as count,
-  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct
-FROM `{project_id}.social_listening.enriched_posts` ep
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-GROUP BY ep.sentiment ORDER BY count DESC
+SELECT sentiment, COUNT(*) AS count,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+GROUP BY sentiment ORDER BY count DESC
 ```
 
 **Volume over time:**
 ```sql
-SELECT DATE(p.posted_at) as post_date, p.platform, COUNT(*) as post_count
-FROM `{project_id}.social_listening.posts` p
-JOIN `{project_id}.social_listening.enriched_posts` ep ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-GROUP BY post_date, p.platform ORDER BY post_date
+SELECT DATE(posted_at) AS post_date, platform, COUNT(*) AS post_count
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+GROUP BY post_date, platform ORDER BY post_date
 ```
 
-**Top posts by engagement:**
+**Top posts by engagement (filtered to a couple of platforms):**
 ```sql
-SELECT p.post_id, p.platform, p.channel_handle, p.title, p.post_url,
-  pe.likes, pe.views, pe.shares, pe.comments_count,
-  (COALESCE(pe.likes,0) + COALESCE(pe.shares,0) + COALESCE(pe.views,0)) as total_engagement,
-  ep.sentiment, ep.ai_summary
-FROM `{project_id}.social_listening.posts` p
-LEFT JOIN `{project_id}.social_listening.enriched_posts` ep ON p.post_id = ep.post_id
-LEFT JOIN `{project_id}.social_listening.post_engagements` pe ON p.post_id = pe.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-QUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1
+SELECT post_id, platform, channel_handle, title, post_url,
+  likes, views, shares, comments_count,
+  (COALESCE(likes,0) + COALESCE(shares,0) + COALESCE(views,0)) AS total_engagement,
+  sentiment, ai_summary
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+  AND platform IN ('twitter', 'tiktok')
 ORDER BY total_engagement DESC LIMIT 15
 ```
 
 **Theme distribution (UNNEST):**
 ```sql
-SELECT theme, COUNT(*) as mentions,
-  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct
-FROM `{project_id}.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
+SELECT theme, COUNT(*) AS mentions,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>'),
+     UNNEST(themes) AS theme
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
 GROUP BY theme ORDER BY mentions DESC LIMIT 20
 ```
 
-**Entity aggregation (UNNEST):**
+**Entity aggregation with engagement (UNNEST):**
 ```sql
-SELECT entity, COUNT(*) as mentions,
-  SUM(pe.likes) as total_likes, SUM(pe.views) as total_views
-FROM `{project_id}.social_listening.enriched_posts` ep, UNNEST(ep.entities) entity
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-LEFT JOIN `{project_id}.social_listening.post_engagements` pe ON p.post_id = pe.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-QUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1
+SELECT entity, COUNT(*) AS mentions,
+  SUM(COALESCE(likes, 0)) AS total_likes,
+  SUM(COALESCE(views, 0)) AS total_views
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>'),
+     UNNEST(entities) AS entity
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
 GROUP BY entity ORDER BY mentions DESC LIMIT 20
 ```
 
 **Emotion distribution:**
 ```sql
-SELECT ep.emotion, COUNT(*) as count,
-  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as pct
-FROM `{project_id}.social_listening.enriched_posts` ep
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-GROUP BY ep.emotion ORDER BY count DESC
+SELECT emotion, COUNT(*) AS count,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+GROUP BY emotion ORDER BY count DESC
 ```
 
 **Channel type breakdown:**
 ```sql
-SELECT ep.channel_type, COUNT(*) as posts,
-  ROUND(AVG(COALESCE(pe.likes, 0)), 1) as avg_likes,
-  ROUND(AVG(COALESCE(pe.views, 0)), 1) as avg_views
-FROM `{project_id}.social_listening.enriched_posts` ep
-JOIN `{project_id}.social_listening.posts` p ON p.post_id = ep.post_id
-LEFT JOIN `{project_id}.social_listening.post_engagements` pe ON p.post_id = pe.post_id
-WHERE p.collection_id = @collection_id
-  AND ep.is_related_to_task IS NOT FALSE
-QUALIFY ROW_NUMBER() OVER (PARTITION BY p.post_id ORDER BY pe.fetched_at DESC) = 1
-GROUP BY ep.channel_type ORDER BY posts DESC
+SELECT channel_type, COUNT(*) AS posts,
+  ROUND(AVG(COALESCE(likes, 0)), 1) AS avg_likes,
+  ROUND(AVG(COALESCE(views, 0)), 1) AS avg_views
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+GROUP BY channel_type ORDER BY posts DESC
 ```
 
-## Context Variables
+**Semantic similarity within scope (embeddings):**
+```sql
+WITH ids AS (
+  SELECT post_id
+  FROM `{project_id}.social_listening.scope_post_ids`('<active_agent_id>')
+)
+SELECT pe.post_id
+FROM `{project_id}.social_listening.post_embeddings` pe
+JOIN ids USING (post_id)
+LIMIT 100
+```
 
-- `user_id`: The authenticated user's ID
-- `org_id`: The user's organization ID (may be empty)
-- `session_id`: The current conversation session ID
+**Posts joined with channel audience size (subscribers):**
+```sql
+SELECT t.channel_handle, c.subscribers, COUNT(*) AS posts,
+  SUM(COALESCE(t.views, 0)) AS total_views
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>') t
+LEFT JOIN `{project_id}.social_listening.channels` c USING (channel_id)
+WHERE DATE(t.posted_at) >= DATE '<data_start_date>'
+  AND DATE(t.posted_at) < DATE '<data_end_date>'
+GROUP BY t.channel_handle, c.subscribers
+ORDER BY total_views DESC LIMIT 20
+```
 """

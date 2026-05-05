@@ -1,38 +1,102 @@
 import { useState } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { ChartDialog } from './ChartDialog.tsx';
-import { STUDIO_ACTIONS } from './studio-actions.ts';
+import { StrategicPlanningDialog } from './StrategicPlanningDialog.tsx';
+import { STUDIO_ACTIONS, type StudioAction } from './studio-actions.ts';
 import { cn } from '../../lib/utils.ts';
 import type { CustomFieldDef } from '../../api/types.ts';
 
 interface StudioActionsPanelProps {
   /** Agent-defined custom enrichment fields, forwarded to dialogs that build prompts. */
   customFields?: CustomFieldDef[] | null;
+  /**
+   * 'compact' (default) renders the dense tile-and-label buttons used in the
+   * Topics page. 'overview' renders DeliverablesPanel-style cards (gradient
+   * tile on top, label below) so the actions blend with the rest of the
+   * Overview page.
+   */
+  variant?: 'compact' | 'overview';
 }
 
-export function StudioActionsPanel({ customFields }: StudioActionsPanelProps = {}) {
+export function StudioActionsPanel({ customFields, variant = 'compact' }: StudioActionsPanelProps = {}) {
   const { sendMessage } = useSSEChat();
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
   const [chartOpen, setChartOpen] = useState(false);
+  const [planningOpen, setPlanningOpen] = useState(false);
+
+  const handlerFor = (action: StudioAction) => {
+    if (action.id === 'chart') return () => setChartOpen(true);
+    if (action.id === 'strategic_planning') return () => setPlanningOpen(true);
+    if (action.id === 'create_skill') return () => {};
+    return () => action.prompt && sendMessage(action.prompt);
+  };
+
+  if (variant === 'overview') {
+    return (
+      <>
+        <div className="grid grid-cols-3 gap-2">
+          {STUDIO_ACTIONS.map((action) => {
+            const Icon = action.icon;
+            const isDashed = action.variant === 'dashed';
+            return (
+              <button
+                key={action.id}
+                type="button"
+                disabled={isAgentResponding}
+                onClick={handlerFor(action)}
+                className={cn(
+                  'group relative flex h-[72px] flex-col items-start justify-between overflow-hidden rounded-xl border p-2.5 text-left transition-all duration-200 active:scale-[0.97]',
+                  action.tileTheme,
+                  !isDashed && 'hover:shadow-md',
+                  'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none disabled:active:scale-100',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-7 w-7 items-center justify-center rounded-lg shadow-sm ring-1 ring-inset ring-white/10 transition-transform duration-200 group-hover:scale-110',
+                    action.iconBubble,
+                  )}
+                >
+                  <Icon className="h-[14px] w-[14px]" />
+                </span>
+                <span className="line-clamp-1 text-[11px] font-semibold">
+                  {action.label}
+                </span>
+                {!isDashed && (
+                  <ArrowUpRight className="absolute right-1.5 top-1.5 h-3 w-3 opacity-60 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:opacity-100" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <ChartDialog
+          open={chartOpen}
+          onOpenChange={setChartOpen}
+          onSubmit={sendMessage}
+          customFields={customFields}
+        />
+        <StrategicPlanningDialog
+          open={planningOpen}
+          onOpenChange={setPlanningOpen}
+          onSubmit={sendMessage}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="grid grid-cols-2 gap-2">
       {STUDIO_ACTIONS.map((action) => {
         const Icon = action.icon;
-        const onClick =
-          action.id === 'chart'
-            ? () => setChartOpen(true)
-            : action.id === 'create_skill'
-              ? () => {}
-              : () => action.prompt && sendMessage(action.prompt);
         const isDashed = action.variant === 'dashed';
         return (
           <button
             key={action.id}
             type="button"
             disabled={isAgentResponding}
-            onClick={onClick}
+            onClick={handlerFor(action)}
             className={cn(
               'flex flex-col items-center justify-center gap-1.5 rounded-xl border bg-background px-2 py-3 text-center transition-colors',
               isDashed ? 'border-dashed border-muted-foreground/40' : 'border-border',
@@ -54,6 +118,11 @@ export function StudioActionsPanel({ customFields }: StudioActionsPanelProps = {
         onOpenChange={setChartOpen}
         onSubmit={sendMessage}
         customFields={customFields}
+      />
+      <StrategicPlanningDialog
+        open={planningOpen}
+        onOpenChange={setPlanningOpen}
+        onSubmit={sendMessage}
       />
     </div>
   );

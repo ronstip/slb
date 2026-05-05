@@ -27,10 +27,10 @@ The analyst is an interactive agent embedded in the user's conversation. It live
 **When it runs:** Every time a user sends a message in the chat.
 
 **Key behaviors:**
-- Responds with text before using tools
+- Leads with the answer; skips preamble (no "Let me query…", no trailing "How would you like to proceed?")
+- Fans out independent tool calls in parallel
 - Can ask the user structured questions (`ask_user`)
 - Can create new agents (`start_agent`)
-- Shows inline visualizations (`show_metrics`, `show_topics`)
 - Stops and waits after calling `ask_user` or `start_agent`
 
 ### Executor (Autonomous Mode)
@@ -94,12 +94,9 @@ User sends message
 | `execute_sql` | Query BigQuery (via BQ Toolset) |
 | `update_todos` | Track plan progress |
 | `create_chart` | Generate charts (bar, line, pie, table, number) |
-| `get_collection_stats` | Pre-computed statistics for collections |
-| `get_collection_details` | Inspect collection configuration |
 | `set_working_collections` | Set which collections are in scope |
 | `export_data` | Export posts as CSV |
 | `generate_report` | Structured insight report with KPIs, charts, findings |
-| `generate_dashboard` | Interactive dashboard (frontend handles filtering) |
 | `generate_presentation` | PowerPoint deck from slide specs |
 | `compose_email` | Send email with markdown body |
 
@@ -111,8 +108,6 @@ User sends message
 | `start_agent` | Create and dispatch a new agent |
 | `get_agent_status` | Check agent run status |
 | `set_active_agent` | Switch to a different agent's context |
-| `show_metrics` | Display stat cards inline in chat |
-| `show_topics` | Display topic clusters inline in chat |
 
 ---
 

@@ -38,7 +38,8 @@ def _load_underlying_data_ctes() -> str:
     """
     raw = (_SQL_DIR / "export_queries" / "underlying_data.sql").read_text()
     # Remove @created_at timestamp filters
-    sql = raw.replace("AND collected_at <= @created_at", "")
+    sql = raw.replace("AND p.collected_at <= @created_at", "")
+    sql = sql.replace("AND collected_at <= @created_at", "")
     sql = sql.replace("WHERE enriched_at <= @created_at", "")
     sql = sql.replace("WHERE fetched_at <= @created_at", "")
     # Extract just the WITH ... CTEs block (everything before the final SELECT)

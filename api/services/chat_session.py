@@ -30,6 +30,7 @@ _AGENT_SCOPED_STATE_KEYS = (
     "active_agent_id", "active_agent_title", "active_agent_status",
     "active_agent_protocol", "active_agent_type", "active_agent_context_summary",
     "active_agent_context", "active_agent_constitution", "active_agent_data_scope",
+    "active_agent_enrichment_config",
     "todos", "tool_result_history",
     "active_collection_id", "agent_selected_sources",
     "collection_status", "collection_running",
@@ -155,6 +156,7 @@ def _maybe_load_agent_context(session, chat_request: ChatRequest, user: CurrentU
     session.state["active_agent_status"] = _agent_doc.get("status", "")
     session.state["active_agent_type"] = _agent_doc.get("agent_type", "one_shot")
     session.state["active_agent_data_scope"] = _ds
+    session.state["active_agent_enrichment_config"] = _agent_doc.get("enrichment_config", {})
     session.state["active_agent_constitution"] = _agent_doc.get("constitution")
     session.state["active_agent_context"] = _agent_doc.get("context")
     _cids = _agent_doc.get("collection_ids", [])

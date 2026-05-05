@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, Play, RotateCcw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 import type { Agent } from '../../../../../api/endpoints/agents.ts';
-import { cn } from '../../../../../lib/utils.ts';
 import { timeAgo } from '../../../../../lib/format.ts';
 
 interface LiveProgressBandProps {
@@ -38,6 +37,11 @@ export function LiveProgressBand({ task, onRun, onGoToBriefing }: LiveProgressBa
   const isRunning = task.status === 'running';
   const elapsed = useElapsed(task.updated_at, isRunning);
 
+  const [witnessedRun, setWitnessedRun] = useState(isRunning);
+  useEffect(() => {
+    if (isRunning) setWitnessedRun(true);
+  }, [isRunning]);
+
   if (isRunning) {
     return (
       <div className="shrink-0 border-b border-border/40 bg-gradient-to-r from-amber-50/40 via-transparent to-transparent dark:from-amber-500/5">
@@ -71,6 +75,8 @@ export function LiveProgressBand({ task, onRun, onGoToBriefing }: LiveProgressBa
       </div>
     );
   }
+
+  if (!witnessedRun) return null;
 
   if (task.status === 'success') {
     return (
@@ -120,23 +126,5 @@ export function LiveProgressBand({ task, onRun, onGoToBriefing }: LiveProgressBa
     );
   }
 
-  // Idle / archived
-  return (
-    <div className="shrink-0 border-b border-border/40 bg-muted/30">
-      <div className="px-6 py-3 flex items-center gap-3">
-        <span className={cn('h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40')} />
-        <div className="flex-1 min-w-0 text-sm text-muted-foreground">
-          Ready to run — kick off a run to see live progress here.
-        </div>
-        {onRun && (
-          <button
-            onClick={onRun}
-            className="shrink-0 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <Play className="h-3 w-3 fill-current" /> Run now
-          </button>
-        )}
-      </div>
-    </div>
-  );
+  return null;
 }

@@ -21,7 +21,6 @@ Center panel. Users converse with the AI agent via SSE streaming. Agent tool cal
 | `design_research` | `ResearchDesignCard` + pre-fills Collection Modal |
 | `get_progress` | `ProgressCard` |
 | `create_chart` | `ChartCard` (Recharts) |
-| `generate_dashboard` | `ArtifactCard` (saved to Artifacts) |
 | `export_data` | `DataExportCard` (saved to Artifacts) |
 | Agent decision/question | `DecisionCard` or `QuickChoicePoll` |
 

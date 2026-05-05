@@ -1,0 +1,13 @@
+{
+  "label": "phase2b",
+  "git_sha": "6091180",
+  "timestamp": "20260427-200241",
+  "live": false,
+  "model": null,
+  "scenarios": [
+    "simple-q-engagement",
+    "repeat-dashboard",
+    "ambiguous-data-overview",
+    "chat-followup-no-restate"
+  ]
+}

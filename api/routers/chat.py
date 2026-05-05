@@ -39,7 +39,11 @@ router = APIRouter()
 async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """SSE endpoint — streams agent events to the client."""
     t_start = _time.perf_counter()
-    runner = get_runner(model=resolve_model_alias(chat_request.model))
+    runner = get_runner(
+        model=resolve_model_alias(chat_request.model),
+        thinking_level=chat_request.thinking_level,
+        search_grounding=chat_request.search_grounding,
+    )
     user_id = user.uid
     session_id = chat_request.session_id or str(uuid4())
 

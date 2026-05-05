@@ -63,6 +63,21 @@ def update_todos(
     if not validated:
         return {"status": "error", "message": "No valid todo items provided"}
 
+    # Discipline rule (Phase 2): exactly ONE todo may be in_progress at a
+    # time. Enforced here rather than in the prompt because gemini-3-flash
+    # over-fits when the same rule appears as prompt text and stops calling
+    # update_todos at all (Phase 1 retrospective).
+    in_progress_ids = [t["id"] for t in validated if t["status"] == "in_progress"]
+    if len(in_progress_ids) > 1:
+        return {
+            "status": "error",
+            "message": (
+                f"Exactly ONE todo may be 'in_progress' at a time — you marked "
+                f"{len(in_progress_ids)}: {in_progress_ids}. Mark all but one "
+                "as 'pending' or 'completed' and call update_todos again."
+            ),
+        }
+
     # Merge with existing automated steps managed by the system.
     # Automated steps (collect, enrich) are ALWAYS preserved — even if the
     # agent explicitly includes a conflicting ID, the system version wins.
@@ -70,6 +85,28 @@ def update_todos(
         existing = tool_context.state.get("todos") or []
         automated = [t for t in existing if t.get("automated")]
         automated_ids = {t["id"] for t in automated}
+
+        # Discipline rule (Phase 2): completed is sticky. Once a todo is
+        # marked completed, it cannot transition back to pending or
+        # in_progress — that pattern is the agent re-doing finished work.
+        prior_completed = {
+            t["id"] for t in existing
+            if t.get("status") == "completed" and not t.get("automated")
+        }
+        regressed = [
+            t["id"] for t in validated
+            if t["id"] in prior_completed and t["status"] != "completed"
+        ]
+        if regressed:
+            return {
+                "status": "error",
+                "message": (
+                    f"Todos {regressed} were already completed and cannot be "
+                    "re-opened. If the previous step actually wasn't done, "
+                    "add a new todo with a fresh id describing what's left."
+                ),
+            }
+
         # Strip any agent items that collide with automated IDs
         validated = [t for t in validated if t["id"] not in automated_ids]
         validated = automated + validated

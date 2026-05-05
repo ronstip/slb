@@ -12,8 +12,10 @@ export type AgentStatus =
 
 export type AgentType = 'one_shot' | 'recurring';
 
-export interface SearchDef {
-  platforms: string[];
+/** A single data source — one platform, with its own keywords, post quota,
+ *  time range, and region. Each source maps 1:1 to a collection at run time. */
+export interface Source {
+  platform: string;
   keywords: string[];
   channels?: string[];
   time_range_days: number;
@@ -56,11 +58,42 @@ export interface Constitution {
 }
 
 export interface Briefing {
+  executive_briefing?: string;
   state_of_the_world: string;
   open_threads: string;
   process_notes: string;
   generated_at: string;
   word_count: number;
+}
+
+export type AgentOutputType =
+  | 'briefing'
+  | 'slides'
+  | 'email'
+  | 'data_export'
+  | 'post_examples';
+
+export interface AgentOutputConfig {
+  // briefing
+  template?: 'exec' | 'analyst' | 'custom';
+  // slides
+  audience?: string;
+  template_file_id?: string;
+  // email
+  recipients?: string[];
+  format?: 'briefing' | 'summary';
+  // data_export
+  export_format?: 'csv' | 'json';
+  columns?: string[];
+  // post_examples
+  count?: number;
+  criteria?: string;
+}
+
+export interface AgentOutput {
+  id: string;
+  type: AgentOutputType;
+  config: AgentOutputConfig;
 }
 
 export interface Agent {
@@ -69,17 +102,25 @@ export interface Agent {
   org_id: string | null;
   title: string;
   agent_type: AgentType;
-  status: AgentStatus;
+  status: AgentStatus | null;
   data_scope: {
-    searches: SearchDef[];
-    custom_fields?: CustomFieldDef[] | null;
-    enrichment_context?: string;
+    sources: Source[];
+    /** @deprecated Use `outputs` instead. Kept for legacy agents created before
+     * the typed outputs migration. */
     auto_report?: boolean;
+    /** @deprecated Use `outputs` instead. */
     auto_email?: boolean;
+    /** @deprecated Use `outputs` instead. */
     auto_slides?: boolean;
-    auto_dashboard?: boolean;
+    /** @deprecated Use the corresponding email output's `config.recipients`. */
     email_recipients?: string[];
   };
+  enrichment_config?: {
+    custom_fields?: CustomFieldDef[] | null;
+    enrichment_context?: string;
+    content_types?: string[];
+  };
+  outputs?: AgentOutput[];
   context?: AgentContext;
   constitution?: Constitution;
   paused?: boolean;
@@ -87,6 +128,11 @@ export interface Agent {
   todos: TodoItem[];
   collection_ids: string[];
   artifact_ids: string[];
+  /** Agent-level data window. ISO date strings (YYYY-MM-DD). Start is set
+   *  at creation from `today − MAX(source.time_range_days)`; end is null
+   *  by default (no upper bound). Both editable in Settings → Sources. */
+  data_start_date?: string | null;
+  data_end_date?: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -95,6 +141,8 @@ export interface Agent {
   session_ids?: string[];
   active_run_id?: string | null;
   context_summary?: string;
+  continuation_ready?: boolean;
+  continuation_ready_at?: string | null;
 }
 
 // --- Run Types ---
@@ -125,6 +173,7 @@ export function createAgent(data: {
   title: string;
   agent_type?: AgentType;
   data_scope?: Record<string, unknown>;
+  enrichment_config?: Record<string, unknown>;
   schedule?: AgentSchedule;
   status?: AgentStatus;
 }): Promise<Agent> {
@@ -133,7 +182,7 @@ export function createAgent(data: {
 
 export function updateAgent(
   agentId: string,
-  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution'>>,
+  updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'enrichment_config' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution' | 'outputs' | 'data_start_date' | 'data_end_date'>>,
 ): Promise<{ ok: boolean; version?: number }> {
   return apiPatch<{ ok: boolean; version?: number }>(`/agents/${agentId}`, updates);
 }
@@ -142,18 +191,29 @@ export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: s
   return apiPost<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }>(`/agents/${agentId}/run`, {});
 }
 
+/** Re-collect data for selected sources. Targeting: pass `source_idx` for one
+ *  card, `platform` to refresh every card on that platform, or omit both to
+ *  refresh everything. Does NOT trigger the agent workflow — collection
+ *  pipelines only. */
+export function runAgentSources(
+  agentId: string,
+  target?: { source_idx: number } | { platform: string },
+): Promise<{ agent_id: string; collection_ids: string[]; status: string }> {
+  return apiPost<{ agent_id: string; collection_ids: string[]; status: string }>(
+    `/agents/${agentId}/sources/run`,
+    target ?? {},
+  );
+}
+
+export function resumeAgent(agentId: string): Promise<{ ok: boolean; agent_id: string; status: string }> {
+  return apiPost<{ ok: boolean; agent_id: string; status: string }>(`/agents/${agentId}/resume`, {});
+}
+
 export interface CreateFromWizardPayload {
   title: string;
   description?: string;
   agent_type: 'one_shot' | 'recurring';
-  searches: Array<{
-    platforms: string[];
-    keywords: string[];
-    channels?: string[];
-    time_range_days: number;
-    geo_scope: string;
-    n_posts: number;
-  }>;
+  sources: Source[];
   schedule?: { frequency: string; frequency_label: string } | null;
   custom_fields?: Array<{ name: string; type: string; description: string; options?: string[] }> | null;
   enrichment_context?: string;
@@ -161,17 +221,23 @@ export interface CreateFromWizardPayload {
   context?: AgentContext;
   constitution?: Constitution;
   existing_agent_ids?: string[];
+  /** Typed outputs — preferred. When set, supersedes the auto_* booleans. */
+  outputs?: AgentOutput[];
+  /** @deprecated send `outputs` instead. */
   auto_report?: boolean;
+  /** @deprecated send `outputs` instead. */
   auto_email?: boolean;
+  /** @deprecated send `outputs` instead. */
   email_recipients?: string[];
+  /** @deprecated send `outputs` instead. */
   auto_slides?: boolean;
-  auto_dashboard?: boolean;
+  start_run?: boolean;
 }
 
 export function createAgentFromWizard(
   data: CreateFromWizardPayload,
-): Promise<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string }> {
-  return apiPost<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string }>('/agents/create-from-wizard', data);
+): Promise<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string | null }> {
+  return apiPost<{ agent_id: string; run_id: string | null; collection_ids: string[]; status: string | null }>('/agents/create-from-wizard', data);
 }
 
 // --- Agent Runs ---

@@ -58,7 +58,7 @@ def _extract_search_keyword(item: dict) -> str | None:
 def parse_brightdata_tiktok_post(item: dict) -> Post:
     """Parse a TikTok post from Bright Data's dataset response."""
     post_id = str(item.get("post_id") or "")
-    username = item.get("profile_username") or ""
+    username = item.get("account_id") or item.get("profile_username") or ""
 
     # Media URLs — skip video_url (TikTok CDN tokens expire within minutes,
     # causing 100% 403 failures). Keep thumbnails + carousel images only.

@@ -3,7 +3,7 @@
 Public API (backward-compatible with the pre-rename `workers.pipeline` module):
 - `run_pipeline(collection_id, continuation=False)` — synchronous entry point
 - `dispatch_collection_pipeline(collection_id, continuation=False)` — dev-mode thread dispatch or prod Cloud Task dispatch
-- `recover_stale_pipelines(max_age_minutes=60)` — scheduler-driven recovery
+- `recover_stale_pipelines(max_age_minutes=10)` — scheduler-driven recovery
 """
 
 import json
@@ -72,7 +72,7 @@ def dispatch_collection_pipeline(collection_id: str, continuation: bool = False)
     )
 
 
-def recover_stale_pipelines(max_age_minutes: int = 60) -> int:
+def recover_stale_pipelines(max_age_minutes: int = 10) -> int:
     """Detect and recover pipelines stuck in active states.
 
     If the collection has partial data (posts_collected > 0), mark as
@@ -96,18 +96,25 @@ def recover_stale_pipelines(max_age_minutes: int = 60) -> int:
         cid = entry["collection_id"]
         try:
             posts_collected = entry.get("posts_collected", 0) or 0
+            posts_enriched = entry.get("posts_enriched", 0) or 0
 
             if posts_collected > 0:
                 status = "success"
-                error_message = (
-                    f"Pipeline was interrupted after collecting {posts_collected} posts. "
-                    f"Partial data is available."
-                )
+                if posts_enriched > 0:
+                    error_message = (
+                        f"Pipeline was interrupted with {posts_collected} posts collected "
+                        f"and {posts_enriched} enriched. Partial data is available."
+                    )
+                else:
+                    error_message = (
+                        f"Pipeline was interrupted after collecting {posts_collected} posts. "
+                        f"Partial data is available."
+                    )
             else:
                 status = "failed"
                 error_message = (
                     f"Pipeline was stuck in '{entry['status']}' for over "
-                    f"{max_age_minutes} minutes. No data was collected."
+                    f"{max_age_minutes} minutes with no progress."
                 )
 
             fs.update_collection_status(

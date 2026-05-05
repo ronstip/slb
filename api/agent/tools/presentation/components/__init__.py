@@ -5,6 +5,7 @@ from api.agent.tools.presentation.components.chart import fill_chart
 from api.agent.tools.presentation.components.table import fill_table
 from api.agent.tools.presentation.components.kpi_grid import render_kpi_grid
 from api.agent.tools.presentation.components.key_finding import render_key_finding
+from api.agent.tools.presentation.components.post_example import render_post_examples
 
 __all__ = [
     "fill_text",
@@ -12,4 +13,5 @@ __all__ = [
     "fill_table",
     "render_kpi_grid",
     "render_key_finding",
+    "render_post_examples",
 ]

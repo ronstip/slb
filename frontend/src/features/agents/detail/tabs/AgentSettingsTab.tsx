@@ -1,6 +1,7 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   Activity,
+  AlertTriangle,
   Check,
   CheckCircle2,
   Circle,
@@ -8,12 +9,14 @@ import {
   ListChecks,
   Loader2,
   Play,
+  PlayCircle,
   Plus,
+  Send,
   TerminalSquare,
   X,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Agent, SearchDef, TodoItem } from '../../../../api/endpoints/agents.ts';
+import type { Agent, AgentOutput, Source, TodoItem } from '../../../../api/endpoints/agents.ts';
 import type { AgentLogEntry } from '../../../../api/endpoints/agents.ts';
 import { AgentActivityLog } from '../AgentActivityLog.tsx';
 import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
@@ -34,10 +37,33 @@ import type { DetailTab } from '../../../../components/AppSidebar.tsx';
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { EnrichmentEditor } from '../../wizard/EnrichmentEditor.tsx';
 import { ConstitutionEditor } from '../../wizard/AgentContextEditor.tsx';
+import { OutputsListEditor } from '../../wizard/OutputsListEditor.tsx';
+import { useUpdateAgentOutputs } from '../useAgentDetail.ts';
 import type { AgentEditDraft } from '../useAgentEditMode.ts';
 import { LiveCollectionProgress } from './LiveCollectionProgress.tsx';
 import { SourcesSection } from './SourcesSection.tsx';
 import { AgentDetailHeader } from '../AgentDetailHeader.tsx';
+
+// --- Helpers ---
+
+function deriveOutputsForDisplay(agent: Agent): AgentOutput[] {
+  const scope = agent.data_scope ?? ({} as Agent['data_scope']);
+  const out: AgentOutput[] = [];
+  if (scope.auto_report ?? true) {
+    out.push({ id: 'briefing', type: 'briefing', config: { template: 'exec' } });
+  }
+  if (scope.auto_slides) {
+    out.push({ id: 'slides', type: 'slides', config: {} });
+  }
+  if (scope.auto_email) {
+    out.push({
+      id: 'email',
+      type: 'email',
+      config: { recipients: [...(scope.email_recipients ?? [])], format: 'briefing' },
+    });
+  }
+  return out;
+}
 
 // --- Constants ---
 
@@ -49,10 +75,11 @@ const TIME_RANGES = [
   { label: '1y', value: 365 },
 ];
 
-type SettingsTab = 'workflow' | 'context' | 'sources' | 'logs';
+type SettingsTab = 'workflow' | 'outputs' | 'context' | 'sources' | 'logs';
 
 const SETTINGS_TABS: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: 'workflow', label: 'Workflow Plan', icon: ListChecks },
+  { id: 'outputs', label: 'Outputs', icon: Send },
   { id: 'context', label: 'Context & Prompt', icon: TerminalSquare },
   { id: 'sources', label: 'Data Sources', icon: Database },
   { id: 'logs', label: 'Live Logs', icon: Activity },
@@ -68,6 +95,7 @@ interface AgentSettingsTabProps {
   onOpenSchedule: () => void;
   onRun?: () => void;
   onStop?: () => void;
+  onResume?: () => void;
   canRun?: boolean;
   isEditing: boolean;
   draft: AgentEditDraft | null;
@@ -87,6 +115,7 @@ export function AgentSettingsTab({
   onOpenSchedule,
   onRun,
   onStop,
+  onResume,
   canRun,
   isEditing,
   draft,
@@ -232,6 +261,24 @@ export function AgentSettingsTab({
             </div>
           )}
 
+          {/* OUTPUTS TAB */}
+          {activeSettingsTab === 'outputs' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <div>
+                <h2 className="text-2xl font-heading font-bold text-foreground">Outputs</h2>
+                <p className="text-muted-foreground mt-1">
+                  Artifacts and side-effects this agent produces each run. Each output adds a step to the Workflow Plan.
+                </p>
+              </div>
+              {task.status === 'running' && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+                  Outputs are frozen while the agent is running. Edits will be available after this run completes.
+                </div>
+              )}
+              <OutputsAutoSavePanel task={task} />
+            </div>
+          )}
+
           {/* CONTEXT TAB */}
           {activeSettingsTab === 'context' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -257,7 +304,7 @@ export function AgentSettingsTab({
               {isEditing && draft ? (
                 <EditableSourcesSection draft={draft} onUpdateDraft={onUpdateDraft} />
               ) : (
-                <SourcesSection task={task} />
+                <SourcesSection task={task} onAddPlatforms={onEnterEdit} />
               )}
             </div>
           )}
@@ -269,6 +316,7 @@ export function AgentSettingsTab({
                 <h2 className="text-2xl font-heading font-bold text-foreground">Live Logs</h2>
                 <p className="text-muted-foreground mt-1">Real-time activity output from the agent's operations.</p>
               </div>
+              <ResumeBanner task={task} onResume={onResume} />
               <div className="bg-card border border-border/50 rounded-2xl shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 280px)' }}>
                 {logs.length > 0 ? (
                   <div className="overflow-y-auto flex-1">
@@ -286,6 +334,94 @@ export function AgentSettingsTab({
 
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Resume Banner ───────────────────────────────────────────────────────────
+//
+// Shown in the Live Logs sub-tab when the agent is recoverable:
+//   - status === 'failed' (exception during continuation)
+//   - status === 'running' but updated_at is older than the backend's 5-min
+//     liveness window (almost certainly a dead worker — host died, uvicorn
+//     reloaded mid-run, etc.)
+// Both cases are unstuck by POST /agents/{id}/resume, which preserves the
+// already-collected/enriched data and re-runs the agent phase.
+
+const STALE_RUNNING_MS = 5 * 60 * 1000;
+
+function ResumeBanner({ task, onResume }: { task: Agent; onResume?: () => void }) {
+  const [isResuming, setIsResuming] = useState(false);
+
+  const updatedAtMs = task.updated_at ? Date.parse(task.updated_at) : NaN;
+  const isStaleRunning =
+    task.status === 'running' &&
+    Number.isFinite(updatedAtMs) &&
+    Date.now() - updatedAtMs > STALE_RUNNING_MS;
+  const isFailed = task.status === 'failed';
+
+  const firstIncomplete = task.todos?.find((t) => t.status !== 'completed');
+  const canResume = !!onResume && !!task.continuation_ready && !!firstIncomplete;
+
+  if (!isFailed && !isStaleRunning) return null;
+
+  const handleClick = async () => {
+    if (!onResume || isResuming) return;
+    setIsResuming(true);
+    try {
+      await onResume();
+    } finally {
+      setIsResuming(false);
+    }
+  };
+
+  const reason = task.context_summary?.trim();
+  const headline = isFailed
+    ? 'Agent failed mid-run'
+    : 'Agent appears stuck';
+  const subline = isFailed
+    ? (reason && reason !== 'Agent continuation failed after collection completion.'
+        ? reason
+        : 'The continuation worker raised an exception (often a dead local server or a tool error).')
+    : `No progress for over ${Math.round((Date.now() - updatedAtMs) / 60000)} minutes — the worker likely died.`;
+
+  return (
+    <div className="flex items-start gap-4 rounded-2xl border border-amber-500/40 bg-amber-500/5 px-5 py-4">
+      <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-foreground">{headline}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{subline}</p>
+        {firstIncomplete && (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Will continue from: <span className="font-medium text-foreground/80">{firstIncomplete.content}</span>
+          </p>
+        )}
+        {!canResume && (
+          <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
+            {!task.continuation_ready
+              ? 'Not resumable — collections did not finish. Re-run the agent instead.'
+              : 'Nothing to resume — all steps are already complete.'}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={!canResume || isResuming}
+        className={cn(
+          'shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+          canResume && !isResuming
+            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+            : 'bg-muted text-muted-foreground cursor-not-allowed',
+        )}
+      >
+        {isResuming ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <PlayCircle className="h-4 w-4" />
+        )}
+        {isResuming ? 'Resuming…' : 'Resume agent'}
+      </button>
     </div>
   );
 }
@@ -315,8 +451,8 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
   const ctx = task.context;
   const hasConstitution = constitution && Object.values(constitution).some((v) => v);
   const hasContext = ctx && Object.values(ctx).some((v) => v);
-  const hasEnrichment = !!task.data_scope?.enrichment_context;
-  const hasCustomFields = (task.data_scope?.custom_fields?.length ?? 0) > 0;
+  const hasEnrichment = !!task.enrichment_config?.enrichment_context;
+  const hasCustomFields = (task.enrichment_config?.custom_fields?.length ?? 0) > 0;
 
   if (!hasConstitution && !hasContext && !hasEnrichment && !hasCustomFields) {
     return (
@@ -373,12 +509,12 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
         )}
 
         {!hasConstitution && !hasContext && hasEnrichment && (
-          <p className="text-sm text-muted-foreground leading-relaxed">{task.data_scope.enrichment_context}</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">{task.enrichment_config!.enrichment_context}</p>
         )}
 
         {hasCustomFields && (
           <div className="flex flex-wrap gap-2 pt-1">
-            {task.data_scope.custom_fields!.map((f) => (
+            {task.enrichment_config!.custom_fields!.map((f) => (
               <span key={f.name} className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs text-muted-foreground">
                 <Tag className="h-3 w-3" />
                 {f.name}
@@ -423,6 +559,29 @@ function EditableConstitutionSection({
 }
 
 // ─── Editable Sources Section ────────────────────────────────────────────────
+//
+// Each card == one Source (one platform, its own keywords / quota / range /
+// region). Users add as many cards as they want — including multiple cards for
+// the same platform with different queries (e.g. two Twitter cards tracking
+// different keywords with different quotas).
+
+const REGION_OPTIONS = [
+  { value: 'global', label: 'Global' },
+  { value: 'US', label: 'US' },
+  { value: 'UK', label: 'UK' },
+  { value: 'EU', label: 'EU' },
+  { value: 'APAC', label: 'APAC' },
+];
+
+function defaultSourceForPlatform(platform: string): Source {
+  return {
+    platform,
+    keywords: [],
+    time_range_days: 30,
+    geo_scope: 'global',
+    n_posts: 500,
+  };
+}
 
 function EditableSourcesSection({
   draft,
@@ -431,184 +590,259 @@ function EditableSourcesSection({
   draft: AgentEditDraft;
   onUpdateDraft: (patch: Partial<AgentEditDraft>) => void;
 }) {
+  const updateSource = (idx: number, patch: Partial<Source>) => {
+    const next = draft.sources.map((s, i) => (i === idx ? { ...s, ...patch } : s));
+    onUpdateDraft({ sources: next });
+  };
+  const removeSource = (idx: number) => {
+    onUpdateDraft({ sources: draft.sources.filter((_, i) => i !== idx) });
+  };
+  const addSource = (platform: string) => {
+    onUpdateDraft({ sources: [...draft.sources, defaultSourceForPlatform(platform)] });
+  };
+
   return (
     <div className="space-y-4">
-      {draft.searches.map((search, idx) => (
-        <SearchDefEditor
+      <DataWindowEditor
+        startDate={draft.data_start_date}
+        endDate={draft.data_end_date}
+        onChange={(patch) => onUpdateDraft(patch)}
+      />
+
+      {draft.sources.map((source, idx) => (
+        <SourceCardEditor
           key={idx}
-          search={search}
-          onChange={(updated) => {
-            const next = [...draft.searches];
-            next[idx] = updated;
-            onUpdateDraft({ searches: next });
-          }}
-          onRemove={
-            draft.searches.length > 1
-              ? () => onUpdateDraft({ searches: draft.searches.filter((_, i) => i !== idx) })
-              : undefined
-          }
+          source={source}
+          onUpdate={(patch) => updateSource(idx, patch)}
+          onRemove={() => removeSource(idx)}
         />
       ))}
-      <button
-        type="button"
-        onClick={() =>
-          onUpdateDraft({
-            searches: [
-              ...draft.searches,
-              { platforms: [], keywords: [], time_range_days: 30, geo_scope: 'global', n_posts: 500 },
-            ],
-          })
-        }
-        className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80"
-      >
-        <Plus className="h-4 w-4" />
-        Add source
-      </button>
+
+      {draft.sources.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No sources yet. Add one below to start collecting.
+        </p>
+      )}
+
+      <AddSourcePicker onAdd={addSource} />
     </div>
   );
 }
 
-// ─── Inline Search Definition Editor ─────────────────────────────────────────
-
-function SearchDefEditor({
-  search,
+function DataWindowEditor({
+  startDate,
+  endDate,
   onChange,
-  onRemove,
 }: {
-  search: SearchDef;
-  onChange: (s: SearchDef) => void;
-  onRemove?: () => void;
+  startDate: string;
+  endDate: string;
+  onChange: (patch: Partial<AgentEditDraft>) => void;
 }) {
-  const [keywordInput, setKeywordInput] = useState('');
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-3">
+      <div className="text-sm font-medium text-foreground mb-1">Data window</div>
+      <p className="text-[11px] text-muted-foreground mb-3">
+        The agent only sees posts whose <code>posted_at</code> falls inside this range. Leave the end date empty for "no upper bound" (the default).
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Start</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => onChange({ data_start_date: e.target.value })}
+            className="rounded-md border border-border/60 bg-background px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">End (optional)</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => onChange({ data_end_date: e.target.value })}
+            className="rounded-md border border-border/60 bg-background px-2 py-1 text-sm"
+          />
+        </label>
+        {endDate && (
+          <button
+            type="button"
+            onClick={() => onChange({ data_end_date: '' })}
+            className="text-[11px] text-muted-foreground hover:text-foreground underline mb-1.5"
+          >
+            Clear end
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
-  const togglePlatform = (p: string) => {
-    const next = search.platforms.includes(p)
-      ? search.platforms.filter((x) => x !== p)
-      : [...search.platforms, p];
-    onChange({ ...search, platforms: next });
-  };
+function AddSourcePicker({ onAdd }: { onAdd: (platform: string) => void }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3">
+      <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-primary">
+        <Plus className="h-4 w-4" />
+        Add source
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {PLATFORMS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onAdd(p)}
+            className="flex items-center gap-1.5 rounded-full border border-border/50 bg-card px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all"
+          >
+            <PlatformIcon platform={p} className="h-3 w-3" />
+            {PLATFORM_LABELS[p] ?? p}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-  const addKeyword = () => {
-    const trimmed = keywordInput.trim();
-    if (trimmed && !search.keywords.includes(trimmed)) {
-      onChange({ ...search, keywords: [...search.keywords, trimmed] });
-      setKeywordInput('');
+function KeywordsEditor({
+  keywords,
+  onChange,
+  placeholder = 'Add keyword and press Enter',
+}: {
+  keywords: string[];
+  onChange: (kws: string[]) => void;
+  placeholder?: string;
+}) {
+  const [input, setInput] = useState('');
+
+  const add = () => {
+    const trimmed = input.trim();
+    if (trimmed && !keywords.includes(trimmed)) {
+      onChange([...keywords, trimmed]);
+      setInput('');
     }
   };
+
+  const remove = (kw: string) => onChange(keywords.filter((k) => k !== kw));
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      addKeyword();
+      add();
     }
   };
 
   return (
-    <div className="rounded-2xl border border-border/50 bg-card p-5 space-y-4 shadow-sm">
-      {onRemove && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onRemove}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
-      <div>
-        <Label className="text-xs font-medium text-muted-foreground mb-2 block">Platforms</Label>
-        <div className="flex flex-wrap gap-2">
-          {PLATFORMS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => togglePlatform(p)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
-                search.platforms.includes(p)
-                  ? 'border-primary/40 bg-primary/10 text-primary'
-                  : 'border-border/50 text-muted-foreground hover:border-border',
-              )}
-            >
-              <PlatformIcon platform={p} className="h-3 w-3" />
-              {PLATFORM_LABELS[p]}
-            </button>
+    <div>
+      <Label className="text-xs font-medium text-muted-foreground mb-2 block">Keywords</Label>
+      <Input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="text-sm h-8"
+      />
+      {keywords.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {keywords.map((kw) => (
+            <Badge key={kw} variant="secondary" className="gap-1 text-xs">
+              {kw}
+              <button
+                type="button"
+                onClick={() => remove(kw)}
+                aria-label={`Remove ${kw}`}
+                className="inline-flex items-center text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function SourceCardEditor({
+  source,
+  onUpdate,
+  onRemove,
+}: {
+  source: Source;
+  onUpdate: (patch: Partial<Source>) => void;
+  onRemove: () => void;
+}) {
+  const platform = source.platform;
+  const platformLabel = PLATFORM_LABELS[platform] ?? platform;
+  return (
+    <div className="rounded-xl border border-border/50 bg-card shadow-sm">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/40">
+        <div className="flex items-center gap-2 min-w-0">
+          <PlatformIcon platform={platform} className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-semibold text-foreground">{platformLabel}</span>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${platform} source`}
+          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
 
-      <div>
-        <Label className="text-xs font-medium text-muted-foreground mb-2 block">Keywords</Label>
-        <Input
-          value={keywordInput}
-          onChange={(e) => setKeywordInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Add keyword and press Enter"
-          className="text-sm h-8"
+      <div className="px-4 py-4 space-y-4">
+        <KeywordsEditor
+          keywords={source.keywords ?? []}
+          onChange={(kws) => onUpdate({ keywords: kws })}
+          placeholder={`Keywords for ${platformLabel}`}
         />
-        {search.keywords.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {search.keywords.map((kw) => (
-              <Badge key={kw} variant="secondary" className="gap-1 text-xs">
-                {kw}
-                <X
-                  className="h-3 w-3 cursor-pointer hover:text-destructive"
-                  onClick={() => onChange({ ...search, keywords: search.keywords.filter((k) => k !== kw) })}
-                />
-              </Badge>
-            ))}
-          </div>
-        )}
-      </div>
 
-      <div className="flex flex-wrap gap-4">
-        <div className="flex-1 min-w-[140px]">
-          <Label className="text-xs font-medium text-muted-foreground mb-2 block">Time Range</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {TIME_RANGES.map(({ label, value }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onChange({ ...search, time_range_days: value })}
-                className={cn(
-                  'rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
-                  search.time_range_days === value
-                    ? 'border-primary/40 bg-primary/10 text-primary'
-                    : 'border-border/50 text-muted-foreground hover:border-border',
-                )}
-              >
-                {label}
-              </button>
-            ))}
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[140px]">
+            <Label className="text-xs font-medium text-muted-foreground mb-2 block">Time Range</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {TIME_RANGES.map(({ label, value }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onUpdate({ time_range_days: value })}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                    source.time_range_days === value
+                      ? 'border-primary/40 bg-primary/10 text-primary'
+                      : 'border-border/50 text-muted-foreground hover:border-border',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="w-28">
-          <Label className="text-xs font-medium text-muted-foreground mb-2 block">Region</Label>
-          <Select value={search.geo_scope} onValueChange={(v) => onChange({ ...search, geo_scope: v })}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="global">Global</SelectItem>
-              <SelectItem value="US">US</SelectItem>
-              <SelectItem value="UK">UK</SelectItem>
-              <SelectItem value="EU">EU</SelectItem>
-              <SelectItem value="APAC">APAC</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="w-24">
-          <Label className="text-xs font-medium text-muted-foreground mb-2 block">Posts</Label>
-          <Input
-            type="number"
-            value={search.n_posts || ''}
-            onChange={(e) => onChange({ ...search, n_posts: parseInt(e.target.value) || 0 })}
-            className="text-xs h-8"
-            min={0}
-            step={100}
-          />
+          <div className="w-28">
+            <Label className="text-xs font-medium text-muted-foreground mb-2 block">Region</Label>
+            <Select
+              value={source.geo_scope}
+              onValueChange={(v) => onUpdate({ geo_scope: v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REGION_OPTIONS.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-28">
+            <Label className="text-xs font-medium text-muted-foreground mb-2 block">Posts</Label>
+            <Input
+              type="number"
+              value={source.n_posts || ''}
+              onChange={(e) => onUpdate({ n_posts: parseInt(e.target.value) || 0 })}
+              className="text-xs h-8"
+              min={0}
+              step={100}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -719,4 +953,104 @@ function EditablePlanSection({
       )}
     </div>
   );
+}
+
+// ─── Outputs auto-save panel ─────────────────────────────────────────────────
+//
+// The Outputs sub-tab edits live without going through the page-level edit/save
+// flow. Toggles save immediately; config text fields debounce by ~500ms to
+// coalesce keystrokes. Optimistic updates come from useUpdateAgentOutputs.
+
+const SAVE_DEBOUNCE_MS = 500;
+
+function OutputsAutoSavePanel({ task }: { task: Agent }) {
+  const seedFromTask = (t: Agent): AgentOutput[] =>
+    t.outputs && t.outputs.length > 0 ? t.outputs : deriveOutputsForDisplay(t);
+
+  const [localOutputs, setLocalOutputs] = useState<AgentOutput[]>(() => seedFromTask(task));
+  const lastServerSnapshotRef = useRef<string>(JSON.stringify(seedFromTask(task)));
+  const pendingSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mutation = useUpdateAgentOutputs(task.agent_id);
+
+  // Keep local state in sync with the server when there are no in-flight edits
+  // (e.g. a refetch after a run, another tab updates the agent). We use a JSON
+  // snapshot of the last value we sent/received from the server so we don't
+  // clobber the user's in-progress edits.
+  useEffect(() => {
+    const incoming = seedFromTask(task);
+    const incomingKey = JSON.stringify(incoming);
+    if (incomingKey !== lastServerSnapshotRef.current) {
+      lastServerSnapshotRef.current = incomingKey;
+      setLocalOutputs(incoming);
+    }
+  }, [task]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) clearTimeout(pendingSaveRef.current);
+    };
+  }, []);
+
+  const isRunning = task.status === 'running';
+
+  const handleChange = (next: AgentOutput[]) => {
+    setLocalOutputs(next);
+    if (pendingSaveRef.current) clearTimeout(pendingSaveRef.current);
+    pendingSaveRef.current = setTimeout(() => {
+      lastServerSnapshotRef.current = JSON.stringify(next);
+      mutation.mutate(next);
+    }, SAVE_DEBOUNCE_MS);
+  };
+
+  const status: 'idle' | 'saving' | 'saved' | 'error' = mutation.isPending
+    ? 'saving'
+    : mutation.isError
+      ? 'error'
+      : mutation.isSuccess
+        ? 'saved'
+        : 'idle';
+
+  return (
+    <div className="bg-card border border-border/50 rounded-2xl shadow-sm p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">
+          Changes save automatically.
+        </span>
+        <SaveStatusIndicator status={status} />
+      </div>
+      <OutputsListEditor
+        outputs={localOutputs}
+        onChange={handleChange}
+        readOnly={isRunning}
+      />
+    </div>
+  );
+}
+
+function SaveStatusIndicator({ status }: { status: 'idle' | 'saving' | 'saved' | 'error' }) {
+  if (status === 'saving') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+        Saving…
+      </span>
+    );
+  }
+  if (status === 'saved') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        Saved
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-destructive">
+        <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+        Save failed — retrying on next change
+      </span>
+    );
+  }
+  return null;
 }

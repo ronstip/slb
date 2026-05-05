@@ -1,0 +1,19 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "autonomous-full-run",
+      "conciseness": 3,
+      "tone": 5,
+      "repetition": 2,
+      "correctness": 4,
+      "one_line_critique": "Highly redundant SQL execution and excessive todo updates cluttered the transcript, though the final summary was sharp and professional."
+    }
+  ],
+  "averages": {
+    "conciseness": 3.0,
+    "tone": 5.0,
+    "repetition": 2.0,
+    "correctness": 4.0
+  },
+  "n_judged": 1
+}

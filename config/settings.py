@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-005"
 
     # Enrichment worker config
-    enrichment_concurrency: int = 30
+    enrichment_concurrency: int = 50
     enrichment_search: bool = True
     enrichment_temperature: float = 1
     enrichment_max_output_tokens: int = 4096
@@ -34,9 +34,9 @@ class Settings(BaseSettings):
     enrichment_video_end_offset: str = "180s"
     enrichment_video_fps: float = 0.5
     enrichment_batch_workers: int = 4
-    enrichment_global_concurrency: int = 30  # Max concurrent Gemini calls across all batches
+    enrichment_global_concurrency: int = 50  # Max concurrent Gemini calls across all batches
     enrichment_video_rate_limit: int = 25  # Max video enrichment calls per minute (process-wide)
-    enrichment_general_rate_limit: int = 300  # Max total enrichment calls per minute (process-wide) — requires matching Gemini quota in GCP
+    enrichment_general_rate_limit: int = 600  # Max total enrichment calls per minute (process-wide) — requires matching Gemini quota in GCP
     # Retry budget is deliberately tight — the old defaults (base=60s, retries=5)
     # with exponential backoff let a single 429-prone post hold a worker slot
     # for up to 15 minutes (60+120+240+480+...), gridlocking the enrichment
@@ -51,8 +51,28 @@ class Settings(BaseSettings):
     # Wall-clock ceiling for a single post across all retries, including HTTP
     # time, retry sleeps, and blocking in the rate-limiter acquires. Acts as
     # the ThreadPoolExecutor per-future timeout so a single hung Gemini call
-    # can't stall the whole batch.
-    enrichment_per_post_timeout_sec: float = 1200.0
+    # can't stall the whole batch. Must be smaller than
+    # ``pipeline_stall_threshold_minutes`` (in seconds) so the per-post
+    # timeout fires before the stale-pipeline watchdog recovers a "slow but
+    # not stuck" run.
+    enrichment_per_post_timeout_sec: float = 480.0
+
+    # Streaming enrichment — the consumer flushes pending Gemini results into
+    # BigQuery via MERGE either when `flush_size` accumulates or `flush_interval_sec`
+    # elapses. Smaller flush_size = smoother `posts_enriched` counter advancement
+    # at the cost of more BQ MERGEs.
+    enrichment_bq_flush_size: int = 25
+    enrichment_bq_flush_interval_sec: float = 3.0
+
+    # Pipeline liveness — a dedicated thread inside the runner touches
+    # `collection_status.updated_at` every N seconds, independent of the main
+    # loop, so the stale-pipeline watchdog can detect a wedged loop quickly
+    # without waiting for the next progress log.
+    pipeline_heartbeat_seconds: float = 60.0
+    # Watchdog: a running pipeline whose `updated_at` is older than this is
+    # considered stale and recovered. Must be comfortably larger than the
+    # heartbeat cadence to absorb transient Firestore latency.
+    pipeline_stall_threshold_minutes: int = 10
 
     # Max concurrent CDN/GCS downloads per collection (owned by PipelineRunner).
     # Decouples media I/O from the step orchestration pool so a slow download
@@ -74,6 +94,14 @@ class Settings(BaseSettings):
     vetric_api_key_reddit: str = ""
     vetric_api_key_youtube: str = ""
 
+    # X (Twitter) API v2 — official vendor; default for the `twitter` platform
+    x_api_bearer_token: str = ""
+    x_api_max_results: int = 500  # 10..500 per /tweets/search/all page
+    x_api_min_request_interval_sec: float = 1.0  # client-side throttle (PAYG-friendly)
+    x_api_sort_order: str = "relevancy"  # "relevancy" | "recency"; per-collection override via config["sort_order"]
+    x_api_default_max_calls: int = 2  # pagination depth fallback when n_posts/max_posts_per_keyword unset
+    x_api_end_time_lag_hours: float = 0.0  # offset end_time back from now; X's 10s floor is enforced inside the adapter
+
     # Bright Data
     brightdata_api_token: str = ""
     brightdata_poll_max_wait_sec: int = 1800
@@ -81,15 +109,36 @@ class Settings(BaseSettings):
     brightdata_max_snapshots_per_collection: int = 20
     brightdata_max_snapshots_per_task: int = 50
 
+    # Apify — pay-per-result actor platform; primary vendor for Instagram, Facebook, TikTok
+    apify_api_token: str = ""
+    apify_actor_instagram: str = "apidojo/instagram-scraper"
+    apify_actor_facebook: str = "apify/facebook-posts-scraper"
+    apify_actor_tiktok: str = "apidojo/tiktok-scraper-api"
+    apify_run_timeout_sec: int = 1500
+    apify_max_runs_per_collection: int = 30
+    apify_max_parallel_runs: int = 10
+    apify_memory_mbytes: int = 2048  # STARTER plan cap is 32 GB; max_parallel * memory must stay <= cap
+    apify_account_memory_cap_mbytes: int = 32768
+    apify_build: str = ""  # optional build tag for stability
+    apify_proxy_group: str = "RESIDENTIAL"  # RESIDENTIAL | DATACENTER
+
+    # Per-platform default vendor selection. Empty string falls through to
+    # `vendor_config.default` then to the first-supporting adapter.
+    # Read in `wrapper._get_adapter` between collection-level platform_overrides
+    # and collection-level default.
+    default_vendor_instagram: str = ""
+    default_vendor_facebook: str = ""
+    default_vendor_tiktok: str = ""
+
     environment: str = "development"
     enable_search_grounding: bool = True
     agent_engine_id: str = ""  # Vertex AI Agent Engine ID for Memory Bank (prod only)
     google_genai_use_vertexai: bool = True
 
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:5174"
 
     # CORS — comma-separated allowed origins
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = "http://localhost:5174,http://localhost:5173,http://localhost:3000"
 
     # Worker service URL for Cloud Tasks dispatch (set in prod, e.g. https://sl-worker-xxx.run.app)
     worker_service_url: str = ""

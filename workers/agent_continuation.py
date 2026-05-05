@@ -102,7 +102,7 @@ def check_agent_completion(collection_id: str) -> None:
             )
             thread.start()
         else:
-            _dispatch_continuation_task(settings, agent_id, delay_seconds=300)
+            _dispatch_continuation_task(settings, agent_id, delay_seconds=30)
     except Exception:
         logger.exception("Failed to dispatch continuation fallback for agent %s", agent_id)
 
@@ -251,9 +251,10 @@ async def _async_agent_continuation(agent_id: str) -> None:
         else:
             remaining_steps.append(f"- {t['content']}")
 
-    # Include data scope context
+    # Include data scope context + enrichment context
     data_scope = agent.get("data_scope") or {}
-    enrichment_context = data_scope.get("enrichment_context", "")
+    enrichment_config = agent.get("enrichment_config") or {}
+    enrichment_context = enrichment_config.get("enrichment_context", "")
 
     # Fetch previous run briefing for continuity
     previous_briefing = fs.get_latest_briefing(agent_id)
@@ -324,6 +325,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
     session.state["active_agent_status"] = "running"
     session.state["active_agent_type"] = agent.get("agent_type", "one_shot")
     session.state["active_agent_data_scope"] = data_scope
+    session.state["active_agent_enrichment_config"] = enrichment_config
     session.state["active_agent_constitution"] = agent.get("constitution")
     session.state["active_agent_context"] = agent.get("context")
     session.state["active_agent_created_at"] = agent.get("created_at", "")
@@ -359,24 +361,84 @@ async def _async_agent_continuation(agent_id: str) -> None:
         parts=[types.Part.from_text(text=continuation_message)],
     )
 
-    # Run agent — emit structured activity logs in real-time
+    # Run agent — emit structured activity logs and persist artifacts as
+    # tool results stream in. Per-event persistence (instead of a single
+    # post-loop pass) means a Cloud Run timeout / OOM mid-run no longer
+    # silently drops completed deliverables.
     from google.adk.runners import RunConfig
+    from api.services.artifact_service import persist_event_artifacts
     tool_start_times: dict[str, float] = {}
-    events = []
+    event_count = 0
+    tool_call_counts: dict[str, int] = {}
     async for event in runner.run_async(
         user_id=user_id,
         session_id=session_id,
         new_message=content,
         run_config=RunConfig(),
     ):
-        events.append(event)
+        event_count += 1
         _emit_activity(fs, agent_id, event, tool_start_times)
+        # Track which tools the model actually invoked. Used after the loop
+        # to detect silent termination (e.g. model returned final text without
+        # ever calling `compose_briefing`).
+        try:
+            content_obj = getattr(event, "content", None)
+            parts = getattr(content_obj, "parts", None) if content_obj else None
+            if parts:
+                for part in parts:
+                    fc = getattr(part, "function_call", None)
+                    if fc and getattr(fc, "name", None):
+                        tool_call_counts[fc.name] = tool_call_counts.get(fc.name, 0) + 1
+        except Exception:
+            logger.exception("Tool-call tracking failed for agent %s", agent_id)
+        try:
+            created = persist_event_artifacts(
+                event, user_id, org_id, session_id, agent_id=agent_id,
+            )
+            for aid in created:
+                logger.info(
+                    "Persisted artifact %s for agent %s during continuation",
+                    aid, agent_id,
+                )
+        except Exception:
+            logger.exception(
+                "Per-event artifact persist failed for agent %s", agent_id,
+            )
 
-    logger.info("Agent %s: continuation completed with %d events", agent_id, len(events))
+    logger.info(
+        "Agent %s: continuation completed with %d events, tool calls: %s",
+        agent_id, event_count, tool_call_counts,
+    )
     fs.add_agent_log(agent_id, "Analysis agent completed", source="continuation")
 
-    # Persist artifacts from agent output
-    _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_id)
+    # Detect silent termination: the executor MUST end with `compose_briefing`
+    # (the autonomous prompt's exit tool). If the loop ended without it being
+    # called, the model returned text instead of calling the publish tool —
+    # the run produced no user-facing briefing. Mark this as a failure with
+    # a clear, actionable summary so the UI shows an error and the user can
+    # resume manually rather than silently believing the run succeeded.
+    if not tool_call_counts.get("compose_briefing"):
+        called = sorted(tool_call_counts) or ["(none)"]
+        summary = (
+            "Run ended without calling `compose_briefing` — no user-facing "
+            "briefing was published. The model finished the loop with a text "
+            "response instead of completing the generate → verify → compose "
+            f"sequence. Tools called this run: {', '.join(called)}. "
+            "Use Resume to retry."
+        )
+        logger.warning("Agent %s: %s", agent_id, summary)
+        fs.add_agent_log(
+            agent_id,
+            "Run ended without compose_briefing — see context_summary",
+            source="continuation", level="error",
+        )
+        fs.update_agent(
+            agent_id,
+            status="failed",
+            completed_at=datetime.now(timezone.utc),
+            context_summary=summary,
+        )
+        return
 
     # Mark all remaining todos as completed
     agent = fs.get_agent(agent_id)  # re-read in case agent updated during run
@@ -397,9 +459,10 @@ async def _async_agent_continuation(agent_id: str) -> None:
             run_for_sig = fs.get_run(agent_id, active_run_id)
             run_collection_ids = (run_for_sig or {}).get("collection_ids", [])
             if run_collection_ids:
-                searches = ((agent or {}).get("data_scope") or {}).get("searches", [])
+                from api.services.agent_service import normalize_sources
+                sources = normalize_sources((agent or {}).get("data_scope"))
                 max_days = max(
-                    (s.get("time_range_days") or 90 for s in searches),
+                    (s.get("time_range_days") or 90 for s in sources),
                     default=90,
                 )
                 since = datetime.now(timezone.utc) - timedelta(days=max_days)
@@ -444,11 +507,8 @@ _TOOL_DISPLAY_NAMES: dict[str, str] = {
     "execute_sql": "Querying data",
     "create_chart": "Creating chart",
     "generate_report": "Generating insight report",
-    "generate_dashboard": "Creating interactive dashboard",
     "generate_presentation": "Building presentation deck",
     "export_data": "Preparing data export",
-    "get_collection_stats": "Loading collection stats",
-    "get_collection_details": "Loading collection details",
     "set_working_collections": "Setting working collections",
     "compose_email": "Composing email",
     "update_todos": "Updating plan",
@@ -465,7 +525,7 @@ def _get_tool_description(tool_name: str, args: dict) -> str | None:
     if tool_name == "execute_sql":
         q = args.get("query") or args.get("sql") or ""
         return (q[:120] + "...") if len(q) > 120 else q or None
-    if tool_name in ("create_chart", "generate_report", "generate_dashboard", "generate_presentation"):
+    if tool_name in ("create_chart", "generate_report", "generate_presentation"):
         return args.get("title")
     if tool_name == "compose_email":
         return args.get("subject")
@@ -579,38 +639,6 @@ def _emit_activity(fs, agent_id: str, event, tool_start_times: dict[str, float])
             )
 
 
-def _persist_continuation_artifacts(events, user_id, org_id, session_id, agent_id):
-    """Extract and persist artifacts from agent continuation events."""
-    for event in events:
-        if not hasattr(event, 'content') or not event.content:
-            continue
-        if not hasattr(event.content, 'parts') or not event.content.parts:
-            continue
-        for part in event.content.parts:
-            if not hasattr(part, 'function_response') or not part.function_response:
-                continue
-            fr = part.function_response
-            tool_name = fr.name if hasattr(fr, 'name') else ''
-            raw_response = fr.response if hasattr(fr, 'response') else {}
-
-            # ADK returns proto Struct — convert to plain dict
-            try:
-                result = dict(raw_response) if raw_response else {}
-            except (TypeError, ValueError):
-                continue
-
-            try:
-                from api.services.artifact_service import persist_tool_result_artifact
-                artifact_id = persist_tool_result_artifact(
-                    tool_name, result, user_id, org_id, session_id,
-                    agent_id=agent_id,
-                )
-                if artifact_id:
-                    logger.info("Persisted artifact %s from continuation tool %s for agent %s", artifact_id, tool_name, agent_id)
-            except Exception:
-                logger.exception("Failed to persist artifact from continuation: %s (agent %s)", tool_name, agent_id)
-
-
 def _notify_agent_completion(agent_id: str, agent: dict, user_id: str) -> None:
     """Send email notification when an agent completes."""
     try:
@@ -653,7 +681,10 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
     if not target_url:
         raise RuntimeError(
             "api_service_url is not set — cannot dispatch continuation Cloud Task. "
-            "Set API_SERVICE_URL env var on the sl-worker service."
+            "Set the API_SERVICE_URL env var on every Cloud Run service that may "
+            "invoke continuation dispatch (sl-api runs the watchdog via "
+            "/internal/scheduler/tick; sl-worker calls this after pipeline "
+            "completion). It must point at the sl-api base URL."
         )
 
     client = tasks_v2.CloudTasksClient()
@@ -691,3 +722,99 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
     client.create_task(parent=parent, task=task_config)
     logger.info("Dispatched Cloud Task for agent continuation %s → %s (delay=%ds)",
                 agent_id, target_url, delay_seconds)
+
+
+# ── Stuck-agent watchdog ──────────────────────────────────────────────
+
+# Cap how many times the watchdog will re-dispatch a single agent before
+# giving up and marking it failed. Without a cap, a runtime that
+# deterministically crashes on the same input would loop forever.
+MAX_CONTINUATION_ATTEMPTS = 3
+
+
+def recover_stuck_agents(stale_minutes: int = 10) -> int:
+    """Detect agents whose continuation died mid-flight and re-dispatch.
+
+    A continuation may die without notice if the runtime process is evicted
+    (Cloud Run instance restart, OOM, deploy) or the dispatched Cloud Task
+    silently fails to fire. The endpoint at /internal/agent/continue handles
+    *Cloud Tasks retries* via a liveness check, but once Cloud Tasks gives
+    up there is no other recovery path — the agent is stranded in
+    status='running' forever. This function fills that gap.
+
+    For each stuck agent: increment continuation_attempts and re-dispatch
+    the continuation. After MAX_CONTINUATION_ATTEMPTS, mark the agent failed
+    so the UI surfaces a clean state instead of a perpetual spinner.
+
+    Returns the number of agents handled (re-dispatched + marked failed).
+    """
+    from workers.shared.firestore_client import FirestoreClient
+
+    settings = get_settings()
+    fs = FirestoreClient(settings)
+    stuck = fs.get_stuck_agents(stale_minutes=stale_minutes)
+
+    if not stuck:
+        return 0
+
+    handled = 0
+    for agent in stuck:
+        agent_id = agent["agent_id"]
+        attempts = int(agent.get("continuation_attempts") or 0)
+
+        if attempts >= MAX_CONTINUATION_ATTEMPTS:
+            try:
+                fs.update_agent(
+                    agent_id,
+                    status="failed",
+                    completed_at=datetime.now(timezone.utc),
+                    context_summary=(
+                        f"Continuation runtime crashed {attempts}× — giving up. "
+                        "Use the Resume button to retry manually."
+                    ),
+                )
+                fs.add_agent_log(
+                    agent_id,
+                    f"Watchdog: marking failed after {attempts} continuation attempts",
+                    source="watchdog", level="error",
+                )
+                handled += 1
+            except Exception:
+                logger.exception("Watchdog: failed to mark agent %s failed", agent_id)
+            continue
+
+        try:
+            fs.update_agent(
+                agent_id,
+                continuation_ready=True,
+                continuation_attempts=attempts + 1,
+                completed_at=None,
+            )
+            fs.add_agent_log(
+                agent_id,
+                f"Watchdog: re-dispatching continuation (attempt {attempts + 1}/{MAX_CONTINUATION_ATTEMPTS})",
+                source="watchdog", level="warning",
+            )
+        except Exception:
+            logger.exception("Watchdog: failed to update agent %s before re-dispatch", agent_id)
+            continue
+
+        try:
+            if settings.is_dev:
+                threading.Thread(
+                    target=_delayed_fallback,
+                    args=(agent_id,),
+                    daemon=True,
+                    name=f"watchdog-resume-{agent_id[:8]}",
+                ).start()
+            else:
+                _dispatch_continuation_task(settings, agent_id, delay_seconds=10)
+            handled += 1
+            logger.warning(
+                "Watchdog: re-dispatched stuck agent %s (attempt %d/%d)",
+                agent_id, attempts + 1, MAX_CONTINUATION_ATTEMPTS,
+            )
+        except Exception:
+            logger.exception("Watchdog: re-dispatch failed for agent %s", agent_id)
+
+    return handled

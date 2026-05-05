@@ -1,6 +1,6 @@
 import { PLATFORM_LABELS, buildScheduleString, formatSchedule } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
-import type { Constitution, CreateFromWizardPayload } from '../../../api/endpoints/agents.ts';
+import type { Constitution, CreateFromWizardPayload, Source } from '../../../api/endpoints/agents.ts';
 
 function intervalHoursToSchedule(hours: number, time: string): string {
   if (hours < 24) return buildScheduleString('hour', hours, time);
@@ -77,13 +77,9 @@ export function formatWizardAsPrompt(
   }
 
   // Outputs
-  const outputs: string[] = [];
-  if (task.autoReport) outputs.push('report');
-  if (task.autoEmail) outputs.push('email');
-  if (task.autoSlides) outputs.push('slides');
-  if (task.autoDashboard) outputs.push('dashboard');
-  if (outputs.length > 0) {
-    lines.push(`Auto-generate outputs: ${outputs.join(', ')}`);
+  if (task.outputs.length > 0) {
+    const labels = task.outputs.map((o) => o.type);
+    lines.push(`Auto-generate outputs: ${labels.join(', ')}`);
   }
 
   // Enrichment context
@@ -115,18 +111,28 @@ export function buildWizardRequestBody(
   task: WizardAgentSettings,
   title: string,
   constitution?: Constitution,
+  startRun: boolean = true,
 ): CreateFromWizardPayload {
-  // Build searches array (one search per wizard config)
-  const searches: CreateFromWizardPayload['searches'] = [];
+  // Wizard creates one Source per selected platform — same shared defaults
+  // baked into each. Users can later edit each source independently in
+  // Settings → Data Sources, or add additional sources for the same platform
+  // (e.g. two Twitter sources with different keywords / quotas).
+  const sources: Source[] = [];
   if (collection.newCollectionEnabled && collection.platforms.length > 0) {
-    searches.push({
-      platforms: collection.platforms,
-      keywords: collection.keywords,
-      ...(collection.channelUrls.length > 0 ? { channels: collection.channelUrls } : {}),
-      time_range_days: collection.timeRangeDays,
-      geo_scope: collection.geoScope,
-      n_posts: collection.nPosts,
-    });
+    const platformCount = collection.platforms.length;
+    const perSourcePosts = collection.nPosts
+      ? Math.round(collection.nPosts / platformCount)
+      : 0;
+    for (const platform of collection.platforms) {
+      sources.push({
+        platform,
+        keywords: [...collection.keywords],
+        ...(collection.channelUrls.length > 0 ? { channels: [...collection.channelUrls] } : {}),
+        time_range_days: collection.timeRangeDays,
+        geo_scope: collection.geoScope,
+        n_posts: perSourcePosts,
+      });
+    }
   }
 
   // Build schedule for recurring tasks
@@ -153,7 +159,7 @@ export function buildWizardRequestBody(
     title: title.trim() || 'New agent',
     description: description.trim(),
     agent_type: task.taskType === 'recurring' ? 'recurring' : 'one_shot',
-    searches,
+    sources,
     schedule,
     custom_fields: customFields,
     enrichment_context: collection.enrichmentContext.trim() || undefined,
@@ -162,10 +168,7 @@ export function buildWizardRequestBody(
     existing_agent_ids: collection.existingAgentIds.length > 0
       ? collection.existingAgentIds
       : undefined,
-    auto_report: task.autoReport,
-    auto_email: task.autoEmail,
-    email_recipients: task.emailRecipients.length > 0 ? task.emailRecipients : undefined,
-    auto_slides: task.autoSlides,
-    auto_dashboard: task.autoDashboard,
+    outputs: task.outputs,
+    start_run: startRun,
   };
 }

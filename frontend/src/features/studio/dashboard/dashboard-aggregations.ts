@@ -43,6 +43,37 @@ export function aggregatePlatforms(posts: DashboardPost[]): PlatformBreakdown[] 
     .sort((a, b) => b.post_count - a.post_count);
 }
 
+// ─── Channel type × sentiment (views-weighted) ───────────────────────
+
+export const SENT_KEYS = ['positive', 'neutral', 'mixed', 'negative'] as const;
+export type SentimentKey = (typeof SENT_KEYS)[number];
+
+export interface ChannelTypeViewBreakdown {
+  type: string;
+  total: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  mixed: number;
+}
+
+/** Aggregate views by channel_type, broken down by sentiment. */
+export function aggregateChannelTypeViews(posts: DashboardPost[]): ChannelTypeViewBreakdown[] {
+  const map = new Map<string, { total: number; positive: number; negative: number; neutral: number; mixed: number }>();
+  for (const p of posts) {
+    const ct = p.channel_type || 'unknown';
+    const cur = map.get(ct) ?? { total: 0, positive: 0, negative: 0, neutral: 0, mixed: 0 };
+    cur.total += p.view_count;
+    const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof cur;
+    if (s in cur && s !== 'total') cur[s] += p.view_count;
+    else cur.neutral += p.view_count;
+    map.set(ct, cur);
+  }
+  return [...map.entries()]
+    .map(([type, v]) => ({ type, ...v }))
+    .sort((a, b) => b.total - a.total);
+}
+
 // ─── Themes ──────────────────────────────────────────────────────────
 
 export interface ThemeBreakdown {
@@ -156,13 +187,32 @@ export interface VolumePoint {
   post_count: number;
 }
 
-export function aggregateVolume(posts: DashboardPost[]): VolumePoint[] {
+export type VolumeMetric = 'posts' | 'views';
+
+function localBucketKey(rawTimestamp: string, bucket: 'day' | 'hour'): string | null {
+  const d = new Date(rawTimestamp);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  if (bucket === 'day') return `${y}-${m}-${day}`;
+  const h = String(d.getHours()).padStart(2, '0');
+  return `${y}-${m}-${day}T${h}`;
+}
+
+export function aggregateVolume(
+  posts: DashboardPost[],
+  bucket: 'day' | 'hour' = 'day',
+  metric: VolumeMetric = 'posts',
+): VolumePoint[] {
   const map = new Map<string, number>();
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.slice(0, 10); // YYYY-MM-DD
+    const date = localBucketKey(p.posted_at, bucket);
+    if (!date) continue;
     const key = `${date}|${p.platform}`;
-    map.set(key, (map.get(key) || 0) + 1);
+    const inc = metric === 'views' ? (p.view_count ?? 0) : 1;
+    map.set(key, (map.get(key) || 0) + inc);
   }
   return [...map.entries()]
     .map(([key, post_count]) => {
@@ -254,19 +304,25 @@ export interface SentimentTimePoint {
   mixed: number;
 }
 
-export function aggregateSentimentOverTime(posts: DashboardPost[]): SentimentTimePoint[] {
+export function aggregateSentimentOverTime(
+  posts: DashboardPost[],
+  bucket: 'day' | 'hour' = 'day',
+  metric: VolumeMetric = 'posts',
+): SentimentTimePoint[] {
   const map = new Map<string, { positive: number; negative: number; neutral: number; mixed: number }>();
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.slice(0, 10);
-    const bucket = map.get(date) ?? { positive: 0, negative: 0, neutral: 0, mixed: 0 };
-    const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof bucket;
-    if (s in bucket) bucket[s] += 1;
-    else bucket.neutral += 1;
-    map.set(date, bucket);
+    const date = localBucketKey(p.posted_at, bucket);
+    if (!date) continue;
+    const counts = map.get(date) ?? { positive: 0, negative: 0, neutral: 0, mixed: 0 };
+    const inc = metric === 'views' ? (p.view_count ?? 0) : 1;
+    const s = (p.sentiment ?? 'neutral').toLowerCase() as keyof typeof counts;
+    if (s in counts) counts[s] += inc;
+    else counts.neutral += inc;
+    map.set(date, counts);
   }
   return [...map.entries()]
-    .map(([date, counts]) => ({ date, ...counts }))
+    .map(([date, c]) => ({ date, ...c }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -325,11 +381,15 @@ export interface EngagementRatePoint {
   total_views: number;
 }
 
-export function aggregateEngagementRate(posts: DashboardPost[]): EngagementRatePoint[] {
+export function aggregateEngagementRate(
+  posts: DashboardPost[],
+  bucket: 'day' | 'hour' = 'day',
+): EngagementRatePoint[] {
   const map = new Map<string, { engagement: number; views: number }>();
   for (const p of posts) {
     if (!p.posted_at) continue;
-    const date = p.posted_at.slice(0, 10);
+    const date = localBucketKey(p.posted_at, bucket);
+    if (!date) continue;
     const cur = map.get(date) ?? { engagement: 0, views: 0 };
     cur.engagement += p.like_count + p.comment_count + p.share_count;
     cur.views += p.view_count;

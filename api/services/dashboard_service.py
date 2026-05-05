@@ -1,99 +1,140 @@
-"""Shared dashboard data-fetching logic used by both authenticated and public endpoints."""
+"""Shared dashboard data-fetching logic used by both authenticated and public endpoints.
+
+Dashboard reads always go through the `social_listening.scope_posts` TVF —
+the same single source of truth used by `/feed`, the data tab, topics,
+briefings, and the agent's overview/live feed. The TVF dedups posts, picks
+*this* agent's enrichment row (skipping NULL-agent legacy and other agents'
+rows), and joins the latest engagement.
+
+`agent_id` is required. Callers that don't have one in hand should derive it
+from the collections via :func:`derive_agent_id_for_collections`. When no
+agent context is recoverable (collections never linked to any agent), the
+builders return ``(None, None)`` — callers should skip BigQuery and serve an
+empty result.
+"""
 
 import json
+import logging
 
 from api.schemas.responses import DashboardPostResponse
 
+logger = logging.getLogger(__name__)
+
 MAX_ROWS = 5000
 
-DASHBOARD_SQL = """
-SELECT
-    p.post_id,
-    p.collection_id,
-    p.platform,
-    p.channel_handle,
-    p.posted_at,
-    p.title,
-    p.content,
-    p.post_url,
-    ep.sentiment,
-    ep.emotion,
-    ep.themes,
-    ep.entities,
-    ep.language,
-    ep.content_type,
-    ep.custom_fields,
-    ep.ai_summary,
-    ep.context,
-    ep.is_related_to_task,
-    ep.detected_brands,
-    ep.channel_type,
-    p.media_refs,
-    COALESCE(pe.likes, 0) AS like_count,
-    COALESCE(pe.views, 0) AS view_count,
-    COALESCE(pe.comments_count, 0) AS comment_count,
-    COALESCE(pe.shares, 0) AS share_count
-FROM (
-    SELECT * FROM (
-        SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
-        FROM (
-            SELECT *,
-                   ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-        ) sub
-        WHERE _rn = 1
-    ) deduped
-    WHERE _dedup_rn = 1
-) p
-LEFT JOIN (
-    SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-    FROM social_listening.enriched_posts
-) ep ON p.post_id = ep.post_id AND ep._rn = 1
-LEFT JOIN (
-    SELECT post_id, likes, shares, comments_count, views,
-           ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn
-    FROM social_listening.post_engagements
-) pe ON p.post_id = pe.post_id AND pe.rn = 1
-WHERE p.collection_id IN UNNEST(@collection_ids)
-LIMIT {max_rows}
-"""
 
-DASHBOARD_KPIS_SQL = """
-WITH deduped_posts AS (
-    SELECT * FROM (
-        SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
-        FROM (
-            SELECT *,
-                   ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-        ) sub
-        WHERE _rn = 1
-    ) deduped
-    WHERE _dedup_rn = 1
-)
-SELECT
-    COUNT(*) AS total_posts,
-    COALESCE(SUM(COALESCE(pe.views, 0)), 0) AS total_views,
-    COALESCE(SUM(COALESCE(pe.likes, 0)), 0) AS total_likes,
-    COALESCE(SUM(COALESCE(pe.comments_count, 0)), 0) AS total_comments,
-    COALESCE(SUM(COALESCE(pe.shares, 0)), 0) AS total_shares
-FROM deduped_posts p
-LEFT JOIN (
-    SELECT post_id, likes, shares, comments_count, views,
-           ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) AS rn
-    FROM social_listening.post_engagements
-) pe ON p.post_id = pe.post_id AND pe.rn = 1
-WHERE p.collection_id IN UNNEST(@collection_ids)
-"""
+def derive_agent_id_for_collections(fs, collection_ids: list[str]) -> str | None:
+    """Look up the agent_id for a set of collections in Firestore.
+
+    Each collection's status doc carries `agent_id` (set when the agent's run
+    creates the collection — see services/agent_service.py). We use that to
+    resolve the dashboard's agent context when the request didn't carry one.
+
+    Returns the most-common agent_id across the collections (multi-agent
+    dashboards are rare; we pick a consistent view). Returns None when no
+    collection has an agent_id — those collections are orphan and not
+    queryable through the agent-scoped dashboard.
+    """
+    if not collection_ids:
+        return None
+
+    counts: dict[str, int] = {}
+    for cid in collection_ids:
+        try:
+            status = fs.get_collection_status(cid)
+        except Exception:  # noqa: BLE001 — telemetry-style lookup, never block
+            logger.exception("Failed reading collection_status for %s", cid)
+            continue
+        if not status:
+            continue
+        aid = status.get("agent_id")
+        if aid:
+            counts[aid] = counts.get(aid, 0) + 1
+
+    if not counts:
+        return None
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
 
 COLLECTION_NAMES_SQL = """
 SELECT collection_id, original_question
 FROM social_listening.collections
 WHERE collection_id IN UNNEST(@collection_ids)
 """
+
+
+# ─── TVF-backed SQL builders ────────────────────────────────────────
+
+
+def build_dashboard_sql(
+    collection_ids: list[str],
+    agent_id: str | None,
+    max_rows: int,
+) -> tuple[str | None, dict | None]:
+    """Return (sql, params) for the dashboard rows query, or (None, None) when
+    no agent context is recoverable. Always TVF-scoped — the legacy cross-agent
+    SQL has been retired in favor of a single source of truth.
+    """
+    if not agent_id:
+        return None, None
+
+    sql = f"""
+    SELECT
+        post_id,
+        collection_id,
+        platform,
+        channel_handle,
+        posted_at,
+        title,
+        content,
+        post_url,
+        sentiment,
+        emotion,
+        themes,
+        entities,
+        language,
+        content_type,
+        custom_fields,
+        ai_summary,
+        context,
+        detected_brands,
+        channel_type,
+        media_refs,
+        COALESCE(likes, 0) AS like_count,
+        COALESCE(views, 0) AS view_count,
+        COALESCE(comments_count, 0) AS comment_count,
+        COALESCE(shares, 0) AS share_count
+    FROM social_listening.scope_posts(@agent_id)
+    WHERE collection_id IN UNNEST(@collection_ids)
+    LIMIT {max_rows}
+    """
+    return sql, {"agent_id": agent_id, "collection_ids": collection_ids}
+
+
+def build_dashboard_kpis_sql(
+    collection_ids: list[str],
+    agent_id: str | None,
+) -> tuple[str | None, dict | None]:
+    """Return (sql, params) for the dashboard KPI aggregates, or (None, None)
+    when no agent context is recoverable.
+    """
+    if not agent_id:
+        return None, None
+
+    sql = """
+    SELECT
+        COUNT(*) AS total_posts,
+        COALESCE(SUM(COALESCE(views, 0)), 0) AS total_views,
+        COALESCE(SUM(COALESCE(likes, 0)), 0) AS total_likes,
+        COALESCE(SUM(COALESCE(comments_count, 0)), 0) AS total_comments,
+        COALESCE(SUM(COALESCE(shares, 0)), 0) AS total_shares
+    FROM social_listening.scope_posts(@agent_id)
+    WHERE collection_id IN UNNEST(@collection_ids)
+    """
+    return sql, {"agent_id": agent_id, "collection_ids": collection_ids}
+
+
+# ─── Field parsing helpers ──────────────────────────────────────────
 
 
 def _parse_custom_fields(value) -> dict | None:
@@ -154,7 +195,6 @@ def build_post_response(row: dict) -> DashboardPostResponse:
         share_count=row.get("share_count", 0),
         ai_summary=row.get("ai_summary"),
         context=row.get("context"),
-        is_related_to_task=row.get("is_related_to_task"),
         detected_brands=parse_json_field(row.get("detected_brands")),
         channel_type=row.get("channel_type"),
         media_refs=_serialize_media_refs(row.get("media_refs")),

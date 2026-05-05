@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams, useBlocker } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -6,21 +6,43 @@ import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSessionStore } from '../../../stores/session-store.ts';
 import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
-import { runAgent, updateAgent as patchAgent } from '../../../api/endpoints/agents.ts';
+import { runAgent, resumeAgent, updateAgent as patchAgent } from '../../../api/endpoints/agents.ts';
 import { useAgentDetail } from './useAgentDetail.ts';
 import { useAgentEditMode } from './useAgentEditMode.ts';
 import { AppSidebar } from '../../../components/AppSidebar.tsx';
 import type { DetailTab } from '../../../components/AppSidebar.tsx';
 import { ScheduleDialog } from './ScheduleDialog.tsx';
-import { AgentOverviewTab } from './tabs/AgentOverviewTab.tsx';
-import { AgentSettingsTab } from './tabs/AgentSettingsTab.tsx';
-import { AgentChatTab } from './tabs/AgentChatTab.tsx';
-import { AgentCollectionsTab } from './tabs/AgentCollectionsTab.tsx';
-import { AgentArtifactsTab } from './tabs/AgentArtifactsTab.tsx';
-import { AgentExplorerTab } from './tabs/AgentExplorerTab.tsx';
-import { AgentTopicsTab } from './tabs/AgentTopicsTab.tsx';
-import { AgentBriefingTab } from './tabs/AgentBriefingTab.tsx';
 import { RUNNABLE_STATUSES } from './agent-status-utils.tsx';
+
+// Tab content is code-split: only the bundle for the active tab is fetched.
+// Eagerly importing all six tabs pulls recharts, chart.js, react-grid-layout,
+// the chat module, etc. into the agent-detail entry chunk.
+const AgentOverviewTab = lazy(() =>
+  import('./tabs/AgentOverviewTab.tsx').then((m) => ({ default: m.AgentOverviewTab })),
+);
+const AgentSettingsTab = lazy(() =>
+  import('./tabs/AgentSettingsTab.tsx').then((m) => ({ default: m.AgentSettingsTab })),
+);
+const AgentChatTab = lazy(() =>
+  import('./tabs/AgentChatTab.tsx').then((m) => ({ default: m.AgentChatTab })),
+);
+const AgentCollectionsTab = lazy(() =>
+  import('./tabs/AgentCollectionsTab.tsx').then((m) => ({ default: m.AgentCollectionsTab })),
+);
+const AgentArtifactsTab = lazy(() =>
+  import('./tabs/AgentArtifactsTab.tsx').then((m) => ({ default: m.AgentArtifactsTab })),
+);
+const AgentExplorerTab = lazy(() =>
+  import('./tabs/AgentExplorerTab.tsx').then((m) => ({ default: m.AgentExplorerTab })),
+);
+
+function TabFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
+    </div>
+  );
+}
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +54,7 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'briefing', 'chat', 'data', 'topics', 'artifacts', 'explorer', 'settings'];
+const VALID_TABS: DetailTab[] = ['overview', 'chat', 'data', 'artifacts', 'explorer', 'settings'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -93,6 +115,19 @@ export function AgentDetailPage() {
   useEffect(() => {
     if (task) useAgentStore.getState().upsertAgent(task);
   }, [task]);
+
+  // Initialise a fresh agent session once per agent. Lifted to the parent so
+  // every tab that mounts a chat (Overview, Chat) shares one session
+  // and tab-switches don't reset chat state.
+  const sessionInitRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!task) return;
+    if (sessionInitRef.current === task.agent_id) return;
+    sessionInitRef.current = task.agent_id;
+    useSessionStore.getState().startNewAgentSession(task.agent_id);
+    useAgentStore.getState().setActiveAgent(task.agent_id, task.collection_ids);
+  }, [task?.agent_id, task?.collection_ids]);
+
   const editMode = useAgentEditMode(task);
 
   // Block navigation when there are unsaved edits
@@ -132,6 +167,28 @@ export function AgentDetailPage() {
     }
   };
 
+  const handleResume = async () => {
+    if (!task) return;
+    try {
+      await resumeAgent(task.agent_id);
+      toast.success('Resuming agent');
+      queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
+      fetchAgents();
+    } catch (e) {
+      // Surface server-provided `detail` so 4xx reasons are visible to the user.
+      let msg = 'Failed to resume agent';
+      if (e && typeof e === 'object' && 'body' in e && typeof (e as { body?: unknown }).body === 'string') {
+        try {
+          const parsed = JSON.parse((e as { body: string }).body);
+          if (parsed?.detail) msg = String(parsed.detail);
+        } catch {
+          // body wasn't JSON — leave default
+        }
+      }
+      toast.error(msg);
+    }
+  };
+
   const handlePauseResume = async () => {
     if (!task) return;
     const newPaused = !task.paused;
@@ -149,15 +206,10 @@ export function AgentDetailPage() {
     return null;
   }
 
-  if (isLoading && !task) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
-      </div>
-    );
-  }
-
-  if (!task) {
+  // The agent has fully resolved as missing only when the query is no longer
+  // loading and still has no data (placeholderData from the store didn't hit
+  // either). Show the not-found UI in that case.
+  if (!task && !isLoading) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3 bg-background">
         <p className="text-sm text-muted-foreground">Agent not found</p>
@@ -171,7 +223,7 @@ export function AgentDetailPage() {
     );
   }
 
-  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
+  const canRun = !!task && RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
 
   return (
     <div className="flex h-screen bg-background">
@@ -184,9 +236,10 @@ export function AgentDetailPage() {
           activeAgent={task}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          hasCollections={(task.collection_ids?.length ?? 0) > 0}
+          hasCollections={(task?.collection_ids?.length ?? 0) > 0}
           onRun={handleRun}
           onStop={handleStop}
+          onResume={handleResume}
           onPauseResume={handlePauseResume}
           onOpenSchedule={() => setScheduleOpen(true)}
           agentSessions={agentSessions}
@@ -202,59 +255,78 @@ export function AgentDetailPage() {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Tab content */}
+        {/* Tab content — wait for task before mounting tabs (each tab assumes a
+            non-null task). The sidebar renders independently above. */}
         <main className="flex flex-1 flex-col overflow-hidden">
-          {activeTab === 'overview' && (
-            <AgentOverviewTab
-              task={task}
-              artifacts={artifacts}
-              logs={logs}
-              onTabChange={setActiveTab}
-              onOpenSchedule={() => setScheduleOpen(true)}
-              onRun={handleRun}
-              onStop={handleStop}
-              canRun={canRun}
-              onOpenLayout={handleLayoutSelect}
-            />
-          )}
-          {activeTab === 'settings' && (
-            <AgentSettingsTab
-              task={task}
-              artifacts={artifacts}
-              logs={logs}
-              onTabChange={setActiveTab}
-              onOpenSchedule={() => setScheduleOpen(true)}
-              onRun={handleRun}
-              onStop={handleStop}
-              canRun={canRun}
-              isEditing={editMode.isEditing}
-              draft={editMode.draft}
-              isDirty={editMode.isDirty}
-              isSaving={editMode.isSaving}
-              onEnterEdit={editMode.enterEdit}
-              onSave={editMode.save}
-              onCancelEdit={editMode.cancel}
-              onUpdateDraft={editMode.updateDraft}
-            />
-          )}
-          {activeTab === 'briefing' && <AgentBriefingTab task={task} />}
-          {activeTab === 'chat' && <AgentChatTab task={task} />}
-          {activeTab === 'data' && <AgentCollectionsTab task={task} />}
-          {activeTab === 'topics' && <AgentTopicsTab task={task} />}
-          {activeTab === 'artifacts' && (
-            <AgentArtifactsTab task={task} artifacts={artifacts} />
-          )}
-          {activeTab === 'explorer' && (
-            <AgentExplorerTab
-              task={task}
-              activeLayoutId={activeLayoutId}
-              startInEditMode={startInEditMode}
-            />
+          {!task ? (
+            <TabFallback />
+          ) : (
+            <Suspense fallback={<TabFallback />}>
+              {activeTab === 'overview' && (
+                <AgentOverviewTab
+                  task={task}
+                  artifacts={artifacts}
+                  logs={logs}
+                  onTabChange={setActiveTab}
+                  onOpenSchedule={() => setScheduleOpen(true)}
+                  onRun={handleRun}
+                  onStop={handleStop}
+                  canRun={canRun}
+                />
+              )}
+              {activeTab === 'settings' && (
+                <AgentSettingsTab
+                  task={task}
+                  artifacts={artifacts}
+                  logs={logs}
+                  onTabChange={setActiveTab}
+                  onOpenSchedule={() => setScheduleOpen(true)}
+                  onRun={handleRun}
+                  onStop={handleStop}
+                  onResume={handleResume}
+                  canRun={canRun}
+                  isEditing={editMode.isEditing}
+                  draft={editMode.draft}
+                  isDirty={editMode.isDirty}
+                  isSaving={editMode.isSaving}
+                  onEnterEdit={editMode.enterEdit}
+                  onSave={editMode.save}
+                  onCancelEdit={editMode.cancel}
+                  onUpdateDraft={editMode.updateDraft}
+                />
+              )}
+              {activeTab === 'chat' && (
+                <AgentChatTab
+                  task={task}
+                  artifacts={artifacts}
+                  agentSessions={agentSessions}
+                  activeSessionId={activeSessionId}
+                  onSessionSelect={handleSessionSelect}
+                  onNewChat={handleNewChat}
+                  onTabChange={setActiveTab}
+                  onRun={handleRun}
+                  onStop={handleStop}
+                  onOpenSchedule={() => setScheduleOpen(true)}
+                  canRun={canRun}
+                />
+              )}
+              {activeTab === 'data' && <AgentCollectionsTab task={task} />}
+              {activeTab === 'artifacts' && (
+                <AgentArtifactsTab task={task} artifacts={artifacts} />
+              )}
+              {activeTab === 'explorer' && (
+                <AgentExplorerTab
+                  task={task}
+                  activeLayoutId={activeLayoutId}
+                  startInEditMode={startInEditMode}
+                />
+              )}
+            </Suspense>
           )}
         </main>
       </div>
 
-      <ScheduleDialog task={task} open={scheduleOpen} onOpenChange={setScheduleOpen} />
+      {task && <ScheduleDialog task={task} open={scheduleOpen} onOpenChange={setScheduleOpen} />}
 
       {/* Unsaved changes confirmation dialog */}
       <AlertDialog open={blocker.state === 'blocked'}>

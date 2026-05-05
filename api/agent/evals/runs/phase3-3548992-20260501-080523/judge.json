@@ -1,0 +1,51 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Excellent data-driven summary that leads with findings and provides sharp, decisive analysis without any filler."
+    },
+    {
+      "scenario_id": "chat-bare-greeting",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "The agent followed all scenario constraints perfectly, providing a brief introduction without unnecessary tool calls or trailing questions."
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "conciseness": 1,
+      "tone": 2,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a 25-call runaway loop, failing to answer the growth question or recognize that tool results were consistently irrelevant."
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "conciseness": 2,
+      "tone": 3,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent failed to reuse the existing dashboard, creating multiple redundant dashboards across turns instead of acknowledging the previous output."
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Perfect execution; leads immediately with the answer and uses sharp, decisive language without any preamble."
+    }
+  ],
+  "averages": {
+    "conciseness": 3.6,
+    "tone": 4.0,
+    "repetition": 3.4,
+    "correctness": 3.4
+  },
+  "n_judged": 5
+}

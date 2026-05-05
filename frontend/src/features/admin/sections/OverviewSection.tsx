@@ -3,7 +3,7 @@ import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer,
   Tooltip, XAxis, YAxis, Legend,
 } from 'recharts';
-import { Users, MessageSquare, Database, FileText, DollarSign, Coins } from 'lucide-react';
+import { Users, MessageSquare, Database, FileText, DollarSign, Coins, Target } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card.tsx';
 import { getAdminOverview, getAdminActivity } from '../../../api/endpoints/admin.ts';
 
@@ -100,7 +100,22 @@ export function OverviewSection() {
         />
         <StatCard title="Total Queries" value={(overview?.total_queries ?? 0).toLocaleString()} icon={MessageSquare} />
         <StatCard title="Total Collections" value={overview?.total_collections ?? 0} icon={Database} />
-        <StatCard title="Total Posts" value={(overview?.total_posts ?? 0).toLocaleString()} icon={FileText} />
+        <StatCard
+          title="Total Posts"
+          value={(overview?.total_posts ?? 0).toLocaleString()}
+          icon={FileText}
+          subtitle={overview?.total_posts_in_range != null
+            ? `${overview.total_posts_in_range.toLocaleString()} in-range`
+            : undefined}
+        />
+        <StatCard
+          title="Relevancy"
+          value={overview?.avg_relevancy_pct != null ? `${overview.avg_relevancy_pct}%` : '—'}
+          icon={Target}
+          subtitle={overview?.total_posts_related != null
+            ? `${overview.total_posts_related.toLocaleString()} on-task`
+            : 'related / fetched'}
+        />
         <StatCard
           title="Revenue"
           value={formatCents(overview?.total_revenue_cents ?? 0)}

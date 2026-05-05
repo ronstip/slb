@@ -108,6 +108,7 @@ export function ArtifactLibraryCard({ artifact, view }: ArtifactLibraryCardProps
     try {
       const detail = await getArtifact(artifact.artifact_id);
       const studioArtifact = convertToStudioArtifact(detail);
+      if (!studioArtifact) return;
 
       if (detail.collection_ids.length > 0) {
         useSourcesStore.getState().selectByIds(detail.collection_ids);

@@ -215,10 +215,14 @@ function CustomFieldRow({ field, onChange, onRemove }: CustomFieldRowProps) {
               {(field.options ?? []).map((o) => (
                 <Badge key={o} variant="secondary" className="gap-1 text-[10px]">
                   {o}
-                  <X
-                    className="h-2.5 w-2.5 cursor-pointer hover:text-destructive pointer-events-auto"
+                  <button
+                    type="button"
                     onClick={() => removeOption(o)}
-                  />
+                    aria-label={`Remove ${o}`}
+                    className="inline-flex items-center text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
                 </Badge>
               ))}
             </div>

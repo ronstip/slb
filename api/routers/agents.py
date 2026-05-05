@@ -9,7 +9,8 @@ from pydantic import BaseModel, ValidationError
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
 from api.rate_limiting import limiter
-from api.schemas.requests import CreateFromWizardRequest
+from api.schemas.requests import CreateFromWizardRequest, RunSourcesRequest
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ async def create_agent_endpoint(
         title=request.get("title", "Untitled Agent"),
         agent_type=request.get("agent_type", "one_shot"),
         data_scope=request.get("data_scope"),
+        enrichment_config=request.get("enrichment_config"),
         schedule=request.get("schedule"),
         org_id=user.org_id,
         session_id=request.get("session_id"),
@@ -59,50 +61,61 @@ async def create_from_wizard_endpoint(
     REST call: creates the agent, attaches existing collections, and
     dispatches new collections from searches.
     """
-    from api.services.agent_service import create_agent, dispatch_agent_run
+    from api.services.agent_service import create_agent, dispatch_agent_run, update_agent
     from api.agent.workflow_template import build_workflow_template
+    from api.schemas.agent_outputs import normalize_outputs, derive_outputs
+    from workers.pipeline.schedule_utils import compute_next_run_at
 
     fs = get_fs()
 
-    data_scope: dict = {"searches": body.searches}
+    # Wizard payload still uses `sources` (new) or `searches` (legacy clients);
+    # create_agent normalizes either shape to flat `sources` before persisting.
+    data_scope: dict = {"sources": body.sources or body.searches}
+    enrichment_config: dict = {}
     if body.custom_fields:
-        data_scope["custom_fields"] = body.custom_fields
+        enrichment_config["custom_fields"] = body.custom_fields
     if body.enrichment_context:
-        data_scope["enrichment_context"] = body.enrichment_context
+        enrichment_config["enrichment_context"] = body.enrichment_context
     if body.content_types:
-        data_scope["content_types"] = body.content_types
-    # Persist deliverable flags on data_scope so the UI can show expected
-    # outputs for both one-shot and recurring agents.
-    data_scope["auto_report"] = body.auto_report
-    data_scope["auto_email"] = body.auto_email
-    data_scope["auto_slides"] = body.auto_slides
-    data_scope["auto_dashboard"] = body.auto_dashboard
-    if body.email_recipients:
-        data_scope["email_recipients"] = body.email_recipients
+        enrichment_config["content_types"] = body.content_types
+
+    # Resolve outputs: explicit list wins, otherwise derive from legacy flags.
+    if body.outputs is not None:
+        outputs = normalize_outputs(body.outputs)
+    else:
+        outputs = derive_outputs({
+            "data_scope": {
+                "auto_report": body.auto_report,
+                "auto_email": body.auto_email,
+                "auto_slides": body.auto_slides,
+                "email_recipients": body.email_recipients,
+            },
+        })
 
     schedule = None
     if body.agent_type == "recurring" and body.schedule:
-        schedule = {
-            **body.schedule,
-            "auto_report": body.auto_report,
-            "auto_email": body.auto_email,
-            "auto_slides": body.auto_slides,
-            "auto_dashboard": body.auto_dashboard,
-        }
+        schedule = {**body.schedule}
 
-    todos = build_workflow_template(data_scope, body.agent_type)
+    todos = build_workflow_template(
+        data_scope, body.agent_type, outputs=outputs, enrichment_config=enrichment_config,
+    )
 
+    initial_status = "running" if body.start_run else None
     agent = create_agent(
         user_id=user.uid,
         title=body.title,
         agent_type=body.agent_type,
         data_scope=data_scope,
+        enrichment_config=enrichment_config,
         schedule=schedule,
         org_id=user.org_id,
         todos=todos,
-        status="running",
+        status=initial_status,
         context=body.context,
         constitution=body.constitution,
+        outputs=outputs,
+        data_start_date=body.data_start_date,
+        data_end_date=body.data_end_date,
     )
     agent_id = agent["agent_id"]
 
@@ -134,19 +147,31 @@ async def create_from_wizard_endpoint(
 
     run_id: str | None = None
     dispatched_ids: list[str] = []
-    if body.searches:
+    has_sources = bool(body.sources or body.searches)
+    if body.start_run and has_sources:
         fresh_agent = fs.get_agent(agent_id) or agent
         run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent)
-    elif attached_existing and body.agent_type == "one_shot":
+    elif body.start_run and attached_existing and body.agent_type == "one_shot":
         fs.update_agent(agent_id, status="success")
+    elif not body.start_run and body.agent_type == "recurring" and schedule and schedule.get("frequency"):
+        # Create-only path for recurring agents: schedule the first run.
+        now = datetime.now(timezone.utc)
+        update_agent(agent_id, next_run_at=compute_next_run_at(schedule["frequency"], now))
 
     all_ids = list(dict.fromkeys(attached_existing + dispatched_ids))
+
+    if dispatched_ids:
+        response_status: str | None = "running"
+    elif body.start_run:
+        response_status = "success" if attached_existing else "running"
+    else:
+        response_status = None
 
     return {
         "agent_id": agent_id,
         "run_id": run_id,
         "collection_ids": all_ids,
-        "status": "running" if dispatched_ids else ("success" if attached_existing else "running"),
+        "status": response_status,
     }
 
 
@@ -262,10 +287,47 @@ async def update_agent_endpoint(
         raise HTTPException(status_code=403, detail="Only the agent owner can update")
 
     allowed = {
-        "title", "status", "protocol", "data_scope", "schedule",
+        "title", "status", "protocol", "data_scope", "enrichment_config", "schedule",
         "agent_type", "context_summary", "context", "constitution", "paused", "todos",
+        "outputs", "data_start_date", "data_end_date",
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
+
+    # Outputs are frozen during a run — reject edits while running.
+    if "outputs" in safe_updates and agent.get("status") == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="Outputs cannot be edited while the agent is running",
+        )
+
+    # Normalize outputs payload before persisting, and rebuild the workflow
+    # template so the deliver phase reflects the new outputs immediately.
+    # Custom user steps (custom=true) carry over; standard steps are rebuilt.
+    if "outputs" in safe_updates:
+        from api.schemas.agent_outputs import normalize_outputs
+        from api.agent.workflow_template import build_workflow_template
+        safe_updates["outputs"] = normalize_outputs(safe_updates["outputs"])
+        if "todos" not in safe_updates:
+            data_scope = safe_updates.get("data_scope", agent.get("data_scope") or {})
+            enrichment_config = safe_updates.get(
+                "enrichment_config", agent.get("enrichment_config") or {}
+            )
+            agent_type = safe_updates.get("agent_type", agent.get("agent_type", "one_shot"))
+            fresh_todos = build_workflow_template(
+                data_scope, agent_type, outputs=safe_updates["outputs"],
+                enrichment_config=enrichment_config,
+            )
+            existing_todos = agent.get("todos") or []
+            custom_steps = [t for t in existing_todos if t.get("custom")]
+            if custom_steps:
+                deliver_idx = next(
+                    (i for i, t in enumerate(fresh_todos) if t.get("phase") == "deliver"),
+                    len(fresh_todos),
+                )
+                fresh_todos = (
+                    fresh_todos[:deliver_idx] + custom_steps + fresh_todos[deliver_idx:]
+                )
+            safe_updates["todos"] = fresh_todos
 
     # Recompute next_run_at when schedule changes on a recurring agent
     # (also handles one-shot → recurring conversion where agent_type is being set in the same update).
@@ -310,6 +372,7 @@ async def approve_agent_protocol(
     title = request.get("title", "Untitled Agent")
     agent_type = request.get("agent_type", "one_shot")
     data_scope = request.get("data_scope", {})
+    enrichment_config = request.get("enrichment_config")
     schedule = request.get("schedule")
     session_id = request.get("session_id")
     run_now = request.get("run_now", True)
@@ -319,6 +382,7 @@ async def approve_agent_protocol(
         title=title,
         agent_type=agent_type,
         data_scope=data_scope,
+        enrichment_config=enrichment_config,
         schedule=schedule,
         org_id=user.org_id,
         session_id=session_id,
@@ -332,7 +396,7 @@ async def approve_agent_protocol(
 
     run_id: str | None = None
     collection_ids = []
-    if run_now and data_scope.get("searches"):
+    if run_now and (data_scope.get("sources") or data_scope.get("searches")):
         run_id, collection_ids = dispatch_agent_run(agent_id, agent)
     elif not run_now and schedule and agent_type == "recurring":
         now = datetime.now(timezone.utc)
@@ -380,6 +444,160 @@ async def run_agent_endpoint(
 
     run_id, collection_ids = dispatch_agent_run(agent_id, agent)
     return {"agent_id": agent_id, "run_id": run_id, "collection_ids": collection_ids, "status": "running"}
+
+
+@router.post("/agents/{agent_id}/sources/run")
+@limiter.limit("10/minute")
+async def run_agent_sources_endpoint(
+    request: Request,
+    agent_id: str,
+    body: RunSourcesRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Re-collect data for one source or all sources on the agent.
+
+    This dispatches collection pipelines only — it does NOT trigger the agent's
+    analyze/briefing workflow or change agent status. Use /agents/{id}/run for
+    the full run.
+    """
+    from api.services.agent_service import get_agent, run_agent_sources
+
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    collection_ids = run_agent_sources(
+        agent_id, agent, source_idx=body.source_idx, platform=body.platform,
+    )
+    if not collection_ids:
+        raise HTTPException(status_code=404, detail="No matching source with collectable config")
+
+    return {"agent_id": agent_id, "collection_ids": collection_ids, "status": "running"}
+
+
+@router.post("/agents/{agent_id}/resume")
+@limiter.limit("3/minute")
+async def resume_agent_endpoint(
+    request: Request,
+    agent_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Run only the agent phase against existing collected data.
+
+    Two scenarios:
+      1. Resume after failure: collections finished and continuation_ready=True
+         was set by the pipeline auto-trigger, but the agent stopped mid-run.
+      2. Run on manually-collected data: user ran collections separately
+         (e.g. via /agents/{id}/sources/run) so continuation_ready was never
+         set, but all collections are in a terminal state.
+
+    Either way, no fresh BrightData calls — only the agent phase runs.
+    """
+    from api.services.agent_service import get_agent
+
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the agent owner can resume")
+
+    if not agent.get("continuation_ready"):
+        # Manual-collection case: continuation_ready was never auto-set, but
+        # the data is in fact ready. Accept iff all collections are terminal,
+        # then backfill continuation_ready so subsequent reads are consistent.
+        fs_check = get_fs()
+        collection_ids = agent.get("collection_ids") or []
+        terminal = {"success", "failed"}
+        all_done = bool(collection_ids) and all(
+            (fs_check.get_collection_status(cid) or {}).get("status") in terminal
+            for cid in collection_ids
+        )
+        if not all_done:
+            raise HTTPException(
+                status_code=409,
+                detail="Agent is not in a resumable state — collections have not finished",
+            )
+        fs_check.update_agent(
+            agent_id,
+            continuation_ready=True,
+            continuation_ready_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    todos = agent.get("todos") or []
+    if todos and all(t.get("status") == "completed" for t in todos):
+        raise HTTPException(
+            status_code=409,
+            detail="Nothing to resume — all steps already completed",
+        )
+
+    # If already running, treat as a stuck state and re-kick the continuation
+    # rather than 409. Liveness gate: if updated_at is recent (< 5 min) the
+    # previous attempt is probably alive — skip to avoid duplicate runs.
+    if agent.get("status") == "running":
+        from datetime import datetime, timedelta, timezone
+        updated_at = agent.get("updated_at")
+        if isinstance(updated_at, str):
+            try:
+                updated_at = datetime.fromisoformat(updated_at)
+            except ValueError:
+                updated_at = None
+        if updated_at and updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        if updated_at and (datetime.now(timezone.utc) - updated_at) < timedelta(minutes=5):
+            return {"ok": True, "agent_id": agent_id, "status": "running", "skipped": "in_flight"}
+
+    fs = get_fs()
+
+    # Reconcile stale todo state: if collect/enrich automated todos were never
+    # progressed (manual-collection path, or a prior progression failure), the
+    # first incomplete todo can still be "Collect…" — misleads the UI and the
+    # agent's own decisions. Idempotent: a no-op when todos are already correct.
+    from workers.shared.workflow_steps import progress_automated_steps
+    progressed = progress_automated_steps(todos, phase="collection_complete", status="success")
+    if progressed != todos:
+        fs.update_agent(agent_id, todos=progressed)
+
+    fs.update_agent(agent_id, status="running", completed_at=None)
+    fs.add_agent_log(agent_id, "Resumed by user — continuing agent phase", source="continuation")
+
+    settings = get_settings()
+    if settings.is_dev:
+        # Spawn a detached subprocess so uvicorn `--reload` (which kills daemon
+        # threads on file change) can't interrupt the long-running agent.
+        # Prefer the project venv's Python (`.venv/bin/python`) so deps resolve
+        # even when uvicorn was started outside `uv run` (sys.executable then
+        # points to the framework Python which lacks the venv's site-packages).
+        import subprocess
+        import sys
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parents[2]
+        venv_py = project_root / ".venv" / "bin" / "python"
+        python_bin = str(venv_py) if venv_py.exists() else sys.executable
+        log_path = Path("/tmp/slb-resume") / f"{agent_id}.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_file = log_path.open("ab")
+        try:
+            subprocess.Popen(
+                [python_bin, "-m", "workers.agent_continuation_cli", agent_id],
+                cwd=str(project_root),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        except Exception:
+            # Don't strand the agent in `running` if the spawn fails — flip
+            # back to success so the Resume button stays available, and
+            # surface a clean 500 to the client.
+            logger.exception("Failed to spawn continuation subprocess for agent %s", agent_id)
+            fs.update_agent(agent_id, status="success")
+            raise HTTPException(status_code=500, detail="Failed to spawn continuation worker")
+    else:
+        from workers.agent_continuation import _dispatch_continuation_task
+        _dispatch_continuation_task(settings, agent_id, delay_seconds=0)
+
+    return {"ok": True, "agent_id": agent_id, "status": "running"}
 
 
 @router.post("/agents/{agent_id}/refresh-context")

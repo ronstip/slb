@@ -1,0 +1,119 @@
+{
+  "totals": {
+    "output_tokens": 680,
+    "tool_calls_total": 44,
+    "tool_calls_unique": 43,
+    "duplicate_action_count": 1,
+    "preamble_tokens": 38,
+    "restated_tokens_estimate": 0
+  },
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "mode": "chat",
+      "duration_s": 19.33,
+      "n_turns": 1,
+      "output_tokens": 136,
+      "text_events": 1,
+      "tool_calls_total": 2,
+      "tool_calls_unique": 2,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_agent_status": 1,
+        "get_collection_stats": 1
+      }
+    },
+    {
+      "scenario_id": "chat-bare-greeting",
+      "mode": "chat",
+      "duration_s": 5.36,
+      "n_turns": 1,
+      "output_tokens": 38,
+      "text_events": 1,
+      "tool_calls_total": 0,
+      "tool_calls_unique": 0,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 38,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {}
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "mode": "chat",
+      "duration_s": 533.78,
+      "n_turns": 2,
+      "output_tokens": 159,
+      "text_events": 3,
+      "tool_calls_total": 25,
+      "tool_calls_unique": 24,
+      "duplicate_action_count": 1,
+      "duplicate_actions": [
+        {
+          "tool": "execute_sql",
+          "args": {
+            "project_id": "social-listening-pl",
+            "query": "WITH theme_periods AS (\n  SELECT \n    theme,\n    CASE \n      WHEN DATE(p.posted_at) BETWEEN '2026-04-24' AND '2026-04-30' THEN 'current'\n      WHEN DATE(p.posted_at) BETWEEN '2026-04-17' AND '2026-04-23' THEN 'previous'\n    END as period,\n    COUNT(*) as post_count\n  FROM `social-listening-pl.social_listening.enriched_posts` ep, UNNEST(ep.themes) theme\n  JOIN `social-listening-pl.social_listening.posts` p ON p.post_id = ep.post_id\n  WHERE p.collection_id = 'eval-collection-1'\n    AND ep.is_related_to_task IS NOT FALSE\n    AND theme IN ('product complaints', 'user tutorials', 'competitor mentions')\n  GROUP BY 1, 2\n)\nSELECT \n  theme,\n  MAX(CASE WHEN period = 'previous' THEN post_count ELSE 0 END) as prev_week_posts,\n  MAX(CASE WHEN period = 'current' THEN post_count ELSE 0 END) as curr_week_posts,\n  ROUND(SAFE_DIVIDE(\n    MAX(CASE WHEN period = 'current' THEN post_count ELSE 0 END) - MAX(CASE WHEN period = 'previous' THEN post_count ELSE 0 END),\n    MAX(CASE WHEN period = 'previous' THEN post_count ELSE 0 END)\n  ) * 100, 1) as growth_pct\nFROM theme_periods\nWHERE period IS NOT NULL\nGROUP BY 1\nORDER BY growth_pct DESC"
+          },
+          "first_turn": 1,
+          "repeat_turn": 1
+        }
+      ],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_agent_status": 1,
+        "get_collection_stats": 1,
+        "execute_sql": 21,
+        "create_chart": 1,
+        "list_topics": 1
+      }
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "mode": "chat",
+      "duration_s": 106.25,
+      "n_turns": 2,
+      "output_tokens": 311,
+      "text_events": 2,
+      "tool_calls_total": 14,
+      "tool_calls_unique": 14,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_agent_status": 1,
+        "get_collection_stats": 1,
+        "compose_dashboard": 3,
+        "execute_sql": 6,
+        "load_dashboard_layout": 1,
+        "generate_dashboard": 1,
+        "update_todos": 1
+      }
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "mode": "chat",
+      "duration_s": 48.87,
+      "n_turns": 1,
+      "output_tokens": 36,
+      "text_events": 1,
+      "tool_calls_total": 3,
+      "tool_calls_unique": 3,
+      "duplicate_action_count": 0,
+      "duplicate_actions": [],
+      "preamble_tokens": 0,
+      "restated_tokens_estimate": 0,
+      "tools_by_name": {
+        "get_agent_status": 1,
+        "get_collection_stats": 1,
+        "execute_sql": 1
+      }
+    }
+  ],
+  "n_scenarios": 5
+}

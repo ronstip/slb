@@ -39,6 +39,8 @@ export function ArtifactPreviewIllustration({
       return <DashboardIllustration fillClass={fillClass} />;
     case 'data_export':
       return <TableIllustration fillClass={fillClass} />;
+    case 'markdown':
+      return <DocumentIllustration fillClass={fillClass} />;
     default:
       return <BarIllustration fillClass={fillClass} />;
   }
@@ -138,6 +140,26 @@ function MetricsIllustration({ fillClass }: { fillClass: string }) {
       <rect x="42" y="26" width="34" height="16" rx="3" className={cn(fillClass, 'opacity-20')} />
       <rect x="46" y="30" width="18" height="3" rx="1" className={cn(fillClass, 'opacity-50')} />
       <rect x="46" y="36" width="10" height="3" rx="1" className={cn(fillClass, 'opacity-30')} />
+    </svg>
+  );
+}
+
+function DocumentIllustration({ fillClass }: { fillClass: string }) {
+  return (
+    <svg viewBox="0 0 80 48" className="h-full w-full" aria-hidden>
+      {/* Page outline */}
+      <rect x="20" y="4" width="40" height="40" rx="3" className={cn(fillClass, 'opacity-15')} />
+      {/* Heading */}
+      <rect x="24" y="10" width="22" height="4" rx="1.5" className={cn(fillClass, 'opacity-70')} />
+      {/* Paragraph lines */}
+      <rect x="24" y="18" width="32" height="2.5" rx="1" className={cn(fillClass, 'opacity-35')} />
+      <rect x="24" y="23" width="28" height="2.5" rx="1" className={cn(fillClass, 'opacity-35')} />
+      <rect x="24" y="28" width="32" height="2.5" rx="1" className={cn(fillClass, 'opacity-30')} />
+      {/* Bullet block */}
+      <circle cx="26" cy="36" r="1" className={cn(fillClass, 'opacity-60')} />
+      <rect x="29" y="35" width="22" height="2" rx="1" className={cn(fillClass, 'opacity-30')} />
+      <circle cx="26" cy="40" r="1" className={cn(fillClass, 'opacity-60')} />
+      <rect x="29" y="39" width="18" height="2" rx="1" className={cn(fillClass, 'opacity-30')} />
     </svg>
   );
 }

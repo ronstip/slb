@@ -8,7 +8,7 @@ import { useAgentStore } from '../../../stores/agent-store.ts';
 import { planWizard } from '../../../api/endpoints/wizard.ts';
 import { createAgentFromWizard } from '../../../api/endpoints/agents.ts';
 import type { CustomFieldDef, WizardClarification, WizardPlan } from '../../../api/types.ts';
-import type { Constitution } from '../../../api/endpoints/agents.ts';
+import type { AgentOutput, Constitution } from '../../../api/endpoints/agents.ts';
 import { DescribePanel } from './DescribePanel.tsx';
 import { CollectionSettingsPanel } from './CollectionSettingsPanel.tsx';
 import { AgentSettingsPanel } from './AgentSettingsPanel.tsx';
@@ -43,12 +43,8 @@ export interface WizardAgentSettings {
   taskType: 'one_shot' | 'recurring';
   scheduleIntervalHours: number;
   scheduleTime: string;
-  autoReport: boolean;
-  autoEmail: boolean;
-  autoSlides: boolean;
-  autoDashboard: boolean;
-  emailRecipients: string[];
-  slidesTemplateFile: File | null;
+  outputs: AgentOutput[];
+  outputsFromAI: boolean;
 }
 
 const DEFAULT_COLLECTION: WizardCollectionSettings = {
@@ -70,12 +66,8 @@ const DEFAULT_AGENT: WizardAgentSettings = {
   taskType: 'one_shot',
   scheduleIntervalHours: 24,
   scheduleTime: '09:00',
-  autoReport: true,
-  autoEmail: false,
-  autoSlides: false,
-  autoDashboard: false,
-  emailRecipients: [],
-  slidesTemplateFile: null,
+  outputs: [{ id: 'briefing', type: 'briefing', config: { template: 'exec' } }],
+  outputsFromAI: false,
 };
 
 function mapFrequencyToIntervalHours(freq: 'hourly' | 'daily' | 'weekly' | 'monthly'): number {
@@ -138,16 +130,21 @@ export function AgentCreationWizard() {
       contentTypes: plan.content_types ?? [],
     });
 
+    // Outputs come from the planner directly; fall back to deriving them from
+    // the legacy auto_* booleans for older planner responses.
+    let resolvedOutputs: AgentOutput[] = plan.outputs ?? [];
+    if (resolvedOutputs.length === 0) {
+      if (plan.auto_report) resolvedOutputs.push({ id: 'briefing', type: 'briefing', config: { template: 'exec' } });
+      if (plan.auto_slides) resolvedOutputs.push({ id: 'slides', type: 'slides', config: {} });
+      if (plan.auto_email) resolvedOutputs.push({ id: 'email', type: 'email', config: { recipients: [], format: 'briefing' } });
+    }
+
     setTaskSettings({
       taskType: plan.agent_type,
       scheduleIntervalHours: plan.schedule ? mapFrequencyToIntervalHours(plan.schedule.frequency) : 24,
       scheduleTime: plan.schedule?.time ?? '09:00',
-      autoReport: plan.auto_report,
-      autoEmail: plan.auto_email ?? false,
-      autoSlides: plan.auto_slides ?? false,
-      autoDashboard: plan.auto_dashboard ?? false,
-      emailRecipients: [],
-      slidesTemplateFile: null,
+      outputs: resolvedOutputs,
+      outputsFromAI: true,
     });
 
     if (plan.constitution) {
@@ -204,12 +201,12 @@ export function AgentCreationWizard() {
     setClarificationAnswers((prev) => ({ ...prev, [id]: values }));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (startRun: boolean = true) => {
     if (!canSubmit || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle, constitution);
+      const body = buildWizardRequestBody(description, collectionSettings, taskSettings, agentTitle, constitution, startRun);
       const result = await createAgentFromWizard(body);
 
       // Add new collection IDs to sources store
@@ -311,7 +308,8 @@ export function AgentCreationWizard() {
         <AgentSettingsPanel
           settings={taskSettings}
           onChange={setTaskSettings}
-          onSubmit={handleSubmit}
+          onSubmit={() => handleSubmit(true)}
+          onCreateOnly={() => handleSubmit(false)}
           canSubmit={canSubmit}
           isSubmitting={isSubmitting}
           planStatus={planStatus}

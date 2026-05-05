@@ -1,56 +1,73 @@
-import { useQuery, useQueries } from '@tanstack/react-query';
-import { MessageSquare } from 'lucide-react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
+import { MessageSquare, Play, Sparkles } from 'lucide-react';
 import { getMultiCollectionPosts } from '../../../../../api/endpoints/feed.ts';
 import { getCollectionStatus } from '../../../../../api/endpoints/collections.ts';
 import { mediaUrl } from '../../../../../api/client.ts';
 import type { FeedPost } from '../../../../../api/types.ts';
+import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { PlatformIcon } from '../../../../../components/PlatformIcon.tsx';
 import { formatNumber, timeAgo } from '../../../../../lib/format.ts';
 import { cn } from '../../../../../lib/utils.ts';
+import { computeWindowStart } from './overview-filters.ts';
 
 interface LivePostStreamProps {
   collectionIds: string[];
   isAgentRunning: boolean;
+  sources?: Source[];
+  agentCreatedAt: string | undefined;
+  /** Agent-level data window — wins over the per-source computation
+   *  when set. Both are ISO date strings (YYYY-MM-DD); end may be null. */
+  dataStartDate?: string | null;
+  dataEndDate?: string | null;
+  /** Pins the feed to this agent's enrichment via the scope_posts TVF. */
+  agentId?: string;
   onOpenData: () => void;
 }
 
-export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: LivePostStreamProps) {
-  // Per-collection status (to know whether any collection is still running — governs refetch cadence + "live" banner)
-  const statusQueries = useQueries({
-    queries: collectionIds.map((id) => ({
-      queryKey: ['collection-status', id],
-      queryFn: () => getCollectionStatus(id),
-      enabled: !!id,
-      staleTime: 10_000,
-      refetchInterval: (query: { state: { data?: { status?: string } } }) => {
-        const s = query.state.data?.status;
-        return s === 'success' || s === 'failed' ? false : 10_000;
-      },
-    })),
-  });
-
+export function LivePostStream({
+  collectionIds,
+  isAgentRunning,
+  sources,
+  agentCreatedAt,
+  dataStartDate,
+  dataEndDate,
+  agentId,
+  onOpenData,
+}: LivePostStreamProps) {
+  const statusQueries = useCollectionStatusQueries(collectionIds);
   const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
-  const totalPosts = statusQueries.reduce((sum, q) => sum + (q.data?.posts_collected ?? 0), 0);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['overview-posts', [...collectionIds].sort().join(',')],
+  // Prefer the agent's stored data window; fall back to per-source computation
+  // for legacy agents whose window hasn't been backfilled yet.
+  const startDate = useMemo(
+    () => dataStartDate ?? computeWindowStart(sources, agentCreatedAt).startDate,
+    [dataStartDate, sources, agentCreatedAt],
+  );
+  const endDate = dataEndDate ?? undefined;
+
+  // Count must match what the grid below renders: in time-range AND task-relevant
+  // (relevance is enforced inside the scope_posts TVF).
+  const { data: countData } = useQuery({
+    queryKey: ['live-feed-count', [...collectionIds].sort().join(','), startDate ?? '', endDate ?? '', agentId ?? ''],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
-        sort: 'recent',
-        limit: 24,
+        sort: 'views',
+        limit: 1,
+        offset: 0,
         dedup: true,
-        // Show all posts as they arrive, not just ones scored relevant —
-        // relevance scoring happens late in the pipeline so the default filter
-        // hides everything until enrichment completes.
-        relevant_to_task: 'all',
+        start_date: startDate ?? undefined,
+        end_date: endDate,
+        agent_id: agentId,
       }),
     enabled: collectionIds.length > 0,
     staleTime: 10_000,
     refetchInterval: isAgentRunning || anyCollecting ? 10_000 : false,
   });
-
-  const posts = data?.posts ?? [];
+  const totalPosts = countData?.total ?? 0;
+  const totalViews = countData?.total_views ?? 0;
+  const totalSources = countData?.total_sources ?? 0;
 
   if (collectionIds.length === 0) {
     return (
@@ -75,38 +92,178 @@ export function LivePostStream({ collectionIds, isAgentRunning, onOpenData }: Li
           )}
           <span>
             {formatNumber(totalPosts)} post{totalPosts === 1 ? '' : 's'}
-            {collectionIds.length > 1 && ` · ${collectionIds.length} sources`}
+            {` · ${formatNumber(totalViews)} view${totalViews === 1 ? '' : 's'}`}
+            {totalSources > 0 && ` · ${totalSources} source${totalSources === 1 ? '' : 's'}`}
           </span>
         </span>
       }
       action={{ label: 'View all posts', onClick: onOpenData }}
     >
-      {posts.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {posts.slice(0, 12).map((post, i) => (
-            <PostCard key={post.post_id} post={post} isLatest={anyCollecting && i === 0} />
-          ))}
-        </div>
-      ) : isLoading || isAgentRunning || anyCollecting ? (
-        <div className="space-y-3">
-          <p className="text-center text-sm text-muted-foreground">
-            {anyCollecting ? 'Collecting posts…' : 'Waiting for posts…'}
-          </p>
-          <SkeletonGrid />
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-          <MessageSquare className="h-8 w-8 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">No posts collected yet.</p>
-        </div>
-      )}
+      <PostsFeedGrid
+        collectionIds={collectionIds}
+        isAgentRunning={isAgentRunning}
+        startDate={startDate ?? undefined}
+        endDate={endDate}
+        agentId={agentId}
+        variant="compact"
+      />
     </Section>
   );
 }
 
+interface PostsFeedGridProps {
+  collectionIds: string[];
+  isAgentRunning?: boolean;
+  platform?: string;
+  sentiment?: string;
+  dedup?: boolean;
+  startDate?: string;
+  endDate?: string;
+  /** Pins the feed to this agent's enrichment via the scope_posts TVF. */
+  agentId?: string;
+  variant?: 'compact' | 'wide';
+}
+
+function useCollectionStatusQueries(collectionIds: string[]) {
+  return useQueries({
+    queries: collectionIds.map((id) => ({
+      queryKey: ['collection-status', id],
+      queryFn: () => getCollectionStatus(id),
+      enabled: !!id,
+      staleTime: 10_000,
+      refetchInterval: (query: { state: { data?: { status?: string } } }) => {
+        const s = query.state.data?.status;
+        return s === 'success' || s === 'failed' ? false : 10_000;
+      },
+    })),
+  });
+}
+
+export function PostsFeedGrid({
+  collectionIds,
+  isAgentRunning = false,
+  platform,
+  sentiment,
+  dedup = true,
+  startDate,
+  endDate,
+  agentId,
+  variant = 'compact',
+}: PostsFeedGridProps) {
+  const statusQueries = useCollectionStatusQueries(collectionIds);
+  const anyCollecting = statusQueries.some((q) => q.data?.status === 'running');
+
+  const PAGE_SIZE = 24;
+  const queryKey = [
+    'feed-posts',
+    [...collectionIds].sort().join(','),
+    platform ?? 'all',
+    sentiment ?? 'all',
+    dedup,
+    startDate ?? '',
+    endDate ?? '',
+    agentId ?? '',
+  ];
+
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam = 0 }) =>
+      getMultiCollectionPosts({
+        collection_ids: collectionIds,
+        sort: 'views',
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        dedup,
+        platform,
+        sentiment,
+        start_date: startDate,
+        end_date: endDate,
+        agent_id: agentId,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const loaded = lastPage.offset + lastPage.posts.length;
+      return loaded < lastPage.total ? loaded : undefined;
+    },
+    enabled: collectionIds.length > 0,
+    staleTime: 10_000,
+    refetchInterval: isAgentRunning || anyCollecting ? 10_000 : false,
+  });
+
+  const posts = data?.pages.flatMap((p) => p.posts) ?? [];
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const gridClasses =
+    variant === 'wide'
+      ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+      : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3';
+  const scrollerClasses =
+    variant === 'wide' ? 'flex-1 overflow-y-auto pr-1' : 'max-h-[640px] overflow-y-auto pr-1';
+
+  if (posts.length > 0) {
+    return (
+      <div className={scrollerClasses}>
+        <div className={gridClasses}>
+          {posts.map((post, i) => (
+            <PostCard key={post.post_id} post={post} isLatest={anyCollecting && i === 0} />
+          ))}
+        </div>
+        <div ref={sentinelRef} className="h-8" />
+        {isFetchingNextPage && (
+          <p className="py-2 text-center text-xs text-muted-foreground">Loading more…</p>
+        )}
+      </div>
+    );
+  }
+
+  if (isLoading || isAgentRunning || anyCollecting) {
+    return (
+      <div className="space-y-3">
+        <p className="text-center text-sm text-muted-foreground">
+          {anyCollecting ? 'Collecting posts…' : 'Waiting for posts…'}
+        </p>
+        <SkeletonGrid columns={variant === 'wide' ? 4 : 3} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+      <MessageSquare className="h-8 w-8 text-muted-foreground/30" />
+      <p className="text-sm text-muted-foreground">No posts collected yet.</p>
+    </div>
+  );
+}
+
+function textPostLabel(post: FeedPost): string {
+  if (post.is_retweet) return 'retweet';
+  if (post.is_quote) return 'quote';
+  return 'textual post';
+}
+
 function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
-  const img = post.media_refs?.find((m) => m.media_type === 'image' || m.media_type === 'video');
-  const resolvedImg = img ? mediaUrl(img.gcs_uri, img.original_url) : null;
+  const media = post.media_refs?.find((m) => m.media_type === 'image' || m.media_type === 'video');
+  const isVideo = media?.media_type === 'video';
+  // Videos: prefer the X-provided preview_image_url thumbnail, since the original_url
+  // is a CDN MP4 that won't render as an <img>.
+  const resolvedImg = media
+    ? isVideo && media.preview_image_url
+      ? mediaUrl(undefined, media.preview_image_url)
+      : mediaUrl(media.gcs_uri, media.original_url)
+    : null;
   const body = post.content || post.title || post.ai_summary || '';
 
   return (
@@ -115,7 +272,7 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
       target="_blank"
       rel="noreferrer"
       className={cn(
-        'group relative flex flex-col gap-2 rounded-xl border border-border/60 bg-card p-3 transition-all hover:border-border hover:shadow-sm',
+        'group relative flex flex-col gap-2 overflow-hidden rounded-xl border border-border/60 bg-card p-3 transition-all hover:border-border hover:shadow-sm',
         isLatest && 'animate-in fade-in slide-in-from-top-2 duration-500',
       )}
     >
@@ -124,16 +281,30 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
         <span className="truncate font-medium text-foreground/90">{post.channel_handle || post.platform}</span>
         <span className="ml-auto shrink-0 text-muted-foreground/70">{timeAgo(post.posted_at)}</span>
       </div>
-      {resolvedImg && (
-        <div className="h-28 w-full overflow-hidden rounded-md bg-muted">
-          <img
-            src={resolvedImg}
-            alt=""
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-            loading="lazy"
-          />
-        </div>
-      )}
+      <div className="relative h-28 w-full overflow-hidden rounded-md bg-muted">
+        {resolvedImg ? (
+          <>
+            <img
+              src={resolvedImg}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+              loading="lazy"
+            />
+            {isVideo && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm">
+                  <Play className="h-4 w-4 fill-white text-white" />
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-muted/40 via-muted/20 to-muted/40">
+            <PlatformIcon platform={post.platform} className="h-8 w-8 text-muted-foreground/30" />
+            <span className="text-[11px] text-muted-foreground/70">{textPostLabel(post)}</span>
+          </div>
+        )}
+      </div>
       {body && (
         <p className="line-clamp-3 text-xs leading-relaxed text-foreground/80">{body}</p>
       )}
@@ -143,13 +314,225 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
           {post.views != null && post.views > 0 && <span>{formatNumber(post.views)} views</span>}
         </div>
       )}
+      <EnrichmentOverlay post={post} resolvedImg={resolvedImg} isVideo={isVideo} />
     </a>
   );
 }
 
-function SkeletonGrid() {
+function EnrichmentOverlay({
+  post,
+  resolvedImg,
+  isVideo,
+}: {
+  post: FeedPost;
+  resolvedImg: string | null;
+  isVideo: boolean;
+}) {
+  const themes = post.themes ?? [];
+  const entities = post.entities ?? [];
+  const customEntries = post.custom_fields
+    ? Object.entries(post.custom_fields).filter(([, v]) => v !== null && v !== undefined && v !== '')
+    : [];
+  const hasMetaChips = !!post.channel_type || !!post.content_type || !!post.language;
+  const hasEnrichment =
+    !!post.ai_summary ||
+    !!post.sentiment ||
+    !!post.emotion ||
+    themes.length > 0 ||
+    entities.length > 0 ||
+    hasMetaChips ||
+    customEntries.length > 0;
+
+  if (!hasEnrichment) return null;
+
+  const sentimentDot =
+    post.sentiment === 'positive'
+      ? 'bg-emerald-500'
+      : post.sentiment === 'negative'
+        ? 'bg-rose-500'
+        : 'bg-sky-500';
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="absolute inset-0 flex flex-col gap-2.5 overflow-y-auto rounded-xl bg-gradient-to-br from-background/98 via-background/95 to-background/98 p-3 opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover:opacity-100">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+          <Sparkles className="h-3 w-3 text-primary" />
+          AI insights
+        </div>
+        {(post.sentiment || post.emotion) && (
+          <div className="flex items-center gap-1.5 text-[10px] text-foreground/75">
+            {post.sentiment && (
+              <span className="flex items-center gap-1">
+                <span className={cn('inline-block h-1.5 w-1.5 rounded-full', sentimentDot)} />
+                <span className="capitalize">{post.sentiment}</span>
+              </span>
+            )}
+            {post.sentiment && post.emotion && (
+              <span className="text-muted-foreground/40">·</span>
+            )}
+            {post.emotion && <span className="capitalize">{post.emotion}</span>}
+          </div>
+        )}
+      </div>
+
+      {resolvedImg ? (
+        <div className="relative h-28 w-full shrink-0 overflow-hidden rounded-md bg-muted">
+          <img src={resolvedImg} alt="" className="h-full w-full object-cover" loading="lazy" />
+          {isVideo && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm">
+                <Play className="h-4 w-4 fill-white text-white" />
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex h-28 w-full shrink-0 flex-col items-center justify-center gap-1.5 rounded-md bg-gradient-to-br from-muted/40 via-muted/20 to-muted/40">
+          <PlatformIcon platform={post.platform} className="h-8 w-8 text-muted-foreground/30" />
+          <span className="text-[11px] text-muted-foreground/70">{textPostLabel(post)}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        {post.channel_type && (
+          <MetricRow label="Source" tone="sky">
+            <Chip tone="sky">{post.channel_type}</Chip>
+          </MetricRow>
+        )}
+        {post.content_type && (
+          <MetricRow label="Type" tone="amber">
+            <Chip tone="amber">{post.content_type}</Chip>
+          </MetricRow>
+        )}
+        {post.language && (
+          <MetricRow label="Language" tone="emerald">
+            <Chip tone="emerald">{post.language}</Chip>
+          </MetricRow>
+        )}
+        {entities.length > 0 && (
+          <MetricRow label="Mentions" tone="violet">
+            <div className="flex flex-wrap gap-1">
+              {entities.slice(0, 5).map((e) => (
+                <Chip key={`e-${e}`} tone="violet">
+                  {e}
+                </Chip>
+              ))}
+              {entities.length > 5 && (
+                <span className="self-center text-[10px] leading-none text-muted-foreground/60">
+                  +{entities.length - 5}
+                </span>
+              )}
+            </div>
+          </MetricRow>
+        )}
+        {themes.length > 0 && (
+          <MetricRow label="Topics" tone="rose">
+            <div className="flex flex-wrap gap-1">
+              {themes.slice(0, 5).map((t) => (
+                <Chip key={`t-${t}`} tone="rose">
+                  {t}
+                </Chip>
+              ))}
+              {themes.length > 5 && (
+                <span className="self-center text-[10px] leading-none text-muted-foreground/60">
+                  +{themes.length - 5}
+                </span>
+              )}
+            </div>
+          </MetricRow>
+        )}
+        {customEntries.map(([key, value]) => (
+          <MetricRow key={`cf-${key}`} label={key.replace(/_/g, ' ')} tone="indigo">
+            <div className="flex flex-wrap gap-1">
+              {(Array.isArray(value) ? value : [value]).map((v, i) => (
+                <Chip key={`cf-${key}-${i}`} tone={customFieldTone(v)}>
+                  {formatCustomFieldValue(v)}
+                </Chip>
+              ))}
+            </div>
+          </MetricRow>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type ChipTone = 'sky' | 'amber' | 'emerald' | 'violet' | 'rose' | 'indigo' | 'green' | 'red';
+
+const TONE_CHIP: Record<ChipTone, string> = {
+  sky: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  amber: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  emerald: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  violet: 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
+  rose: 'bg-rose-500/10 text-rose-700 dark:text-rose-300',
+  indigo: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
+  green: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  red: 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+};
+
+const TONE_DOT: Record<ChipTone, string> = {
+  sky: 'bg-sky-500',
+  amber: 'bg-amber-500',
+  emerald: 'bg-emerald-500',
+  violet: 'bg-violet-500',
+  rose: 'bg-rose-500',
+  indigo: 'bg-indigo-500',
+  green: 'bg-emerald-500',
+  red: 'bg-rose-500',
+};
+
+function MetricRow({
+  label,
+  tone,
+  children,
+}: {
+  label: string;
+  tone: ChipTone;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="flex w-14 shrink-0 items-center gap-1 truncate text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        <span className={cn('inline-block h-1 w-1 rounded-full', TONE_DOT[tone])} />
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function Chip({ tone, children }: { tone: ChipTone; children: React.ReactNode }) {
+  return (
+    <span
+      className={cn(
+        'rounded-md px-1.5 py-0.5 text-[10px] leading-none capitalize',
+        TONE_CHIP[tone],
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function customFieldTone(value: unknown): ChipTone {
+  if (typeof value === 'boolean') return value ? 'green' : 'red';
+  return 'indigo';
+}
+
+function formatCustomFieldValue(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.join(', ');
+  return String(value);
+}
+
+function SkeletonGrid({ columns = 3 }: { columns?: number }) {
+  const gridClass =
+    columns === 4
+      ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+      : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3';
+  return (
+    <div className={gridClass}>
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
@@ -183,7 +566,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
+    <section className="rounded-2xl border border-border/60 bg-card p-4">
       <header className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <h3 className="font-heading text-sm font-semibold text-foreground">{title}</h3>

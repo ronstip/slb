@@ -19,7 +19,12 @@ function splitColumns(posts: FeedPost[], numCols: number): FeedPost[][] {
 
 export function FeedTab() {
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const activeAgent = useAgentStore((s) => s.activeAgent);
   const sources = useSourcesStore((s) => s.sources);
+  // When a session has an active agent, bound the studio feed by that
+  // agent's data window so this view agrees with the agent's other surfaces.
+  const agentStartDate = activeAgent?.data_start_date ?? undefined;
+  const agentEndDate = activeAgent?.data_end_date ?? undefined;
   // All active (checkbox-checked) collections in session
   const activeSources = sources.filter((s) => s.active && s.selected);
   // Auto-refetch while any active collection is still collecting/enriching
@@ -47,7 +52,6 @@ export function FeedTab() {
   const [sort, setSort] = useState<FeedParams['sort']>('views');
   const [platform, setPlatform] = useState('all');
   const [sentiment, setSentiment] = useState('all');
-  const [relevantToTask, setRelevantToTask] = useState('true');
   // Which of the active collections to show (empty = all)
   const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
   // Topic filter (set from TopicCard "Posts" button)
@@ -84,16 +88,18 @@ export function FeedTab() {
   );
 
   const { data, fetchNextPage, hasNextPage, isFetching, isLoading, isError } = useInfiniteQuery({
-    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, relevantToTask, topicFilter?.id ?? ''],
+    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, topicFilter?.id ?? '', agentStartDate ?? '', agentEndDate ?? '', activeAgentId ?? ''],
     queryFn: ({ pageParam = 0 }) =>
       getMultiCollectionPosts({
         collection_ids: effectiveIds,
         sort,
         platform,
         sentiment,
-        relevant_to_task: relevantToTask,
         limit: 12,
         offset: pageParam,
+        start_date: agentStartDate,
+        end_date: agentEndDate,
+        agent_id: activeAgentId ?? undefined,
         ...(topicFilter ? { topic_cluster_id: topicFilter.id } : {}),
       }),
     getNextPageParam: (lastPage) => {
@@ -154,11 +160,9 @@ export function FeedTab() {
         sort={sort}
         platform={platform}
         sentiment={sentiment}
-        relevantToTask={relevantToTask}
         onSortChange={setSort}
         onPlatformChange={setPlatform}
         onSentimentChange={setSentiment}
-        onRelevantToTaskChange={setRelevantToTask}
         totalCount={totalCount}
         activeSources={activeSources}
         collectionFilter={collectionFilter}

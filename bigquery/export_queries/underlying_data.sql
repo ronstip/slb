@@ -6,11 +6,13 @@ WITH deduped_posts AS (
         SELECT *,
                ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _dedup_rn
         FROM (
-            SELECT *,
-                   ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-            WHERE collection_id IN UNNEST(@collection_ids)
-              AND collected_at <= @created_at
+            SELECT p.*,
+                   ROW_NUMBER() OVER (PARTITION BY p.collection_id, p.post_id ORDER BY p.collected_at DESC) AS _rn
+            FROM social_listening.posts p
+            JOIN social_listening.collections c USING (collection_id)
+            WHERE p.collection_id IN UNNEST(@collection_ids)
+              AND p.collected_at <= @created_at
+              AND p.posted_at BETWEEN COALESCE(c.time_range_start, TIMESTAMP('2000-01-01')) AND COALESCE(c.time_range_end, CURRENT_TIMESTAMP())
         ) sub
         WHERE _rn = 1
     ) deduped

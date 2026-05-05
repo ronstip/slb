@@ -39,7 +39,9 @@ class OngoingScheduler:
                     ticks_since_stale_check = 0
                     try:
                         from workers.pipeline import recover_stale_pipelines
-                        recovered = recover_stale_pipelines(max_age_minutes=60)
+                        recovered = recover_stale_pipelines(
+                            max_age_minutes=settings.pipeline_stall_threshold_minutes,
+                        )
                         if recovered:
                             logger.info("Scheduler: recovered %d stale pipeline(s)", recovered)
                     except Exception:
@@ -53,6 +55,15 @@ class OngoingScheduler:
                             logger.info("Scheduler: recovered %d BD snapshot(s)", recovered_snaps)
                     except Exception:
                         logger.exception("Scheduler: snapshot recovery failed")
+
+                    # Recover agents whose continuation died mid-flight.
+                    try:
+                        from workers.agent_continuation import recover_stuck_agents
+                        recovered_agents = recover_stuck_agents()
+                        if recovered_agents:
+                            logger.info("Scheduler: recovered %d stuck agent(s)", recovered_agents)
+                    except Exception:
+                        logger.exception("Scheduler: stuck agent recovery failed")
 
                 # Check due recurring agents (every ~60 seconds = 4 ticks)
                 ticks_since_agent_check += 1

@@ -5,10 +5,16 @@
 
 // --- Requests ---
 
+export type ChatModelKey = 'flash' | 'pro';
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high';
+
 export interface ChatRequest {
   message: string;
   session_id?: string;
   agent_id?: string;  // Active agent — auto-loads context into session
+  model?: ChatModelKey;  // omit → backend default ("flash")
+  thinking_level?: ThinkingLevel;  // omit → backend default
+  search_grounding?: boolean;  // omit → backend default
   is_system?: boolean;
   accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
   theme?: 'light' | 'dark';  // resolved theme (never "system")
@@ -204,6 +210,7 @@ export interface MediaRef {
   original_url: string;
   gcs_uri?: string;
   size_bytes?: number;
+  preview_image_url?: string;
 }
 
 export interface FeedPost {
@@ -229,17 +236,21 @@ export interface FeedPost {
   entities?: string[];
   ai_summary?: string;
   content_type?: string;
+  language?: string;
   custom_fields?: Record<string, unknown> | null;
   context?: string;
-  is_related_to_task?: boolean;
   detected_brands?: string[];
   channel_type?: string;
   collection_id?: string;
+  is_retweet?: boolean | null;
+  is_quote?: boolean | null;
 }
 
 export interface FeedResponse {
   posts: FeedPost[];
   total: number;
+  total_views: number;
+  total_sources: number;
   offset: number;
   limit: number;
 }
@@ -249,12 +260,16 @@ export interface MultiFeedParams {
   sort?: 'engagement' | 'recent' | 'sentiment' | 'views';
   platform?: string;
   sentiment?: string;
-  relevant_to_task?: string;
   limit?: number;
   offset?: number;
   topic_cluster_id?: string;
   has_media?: boolean;
   dedup?: boolean;
+  start_date?: string;
+  end_date?: string;
+  /** When set, the feed scopes posts via the agent's scope_posts TVF — picks
+   *  enrichment rows for this agent (not the latest cross-agent row). */
+  agent_id?: string;
 }
 
 export interface BreakdownItem {
@@ -479,7 +494,6 @@ export interface DashboardPost {
   custom_fields?: Record<string, unknown> | null;
   ai_summary?: string;
   context?: string;
-  is_related_to_task?: boolean;
   detected_brands?: string[];
   channel_type?: string;
   media_refs?: string;
@@ -514,6 +528,29 @@ export interface DashboardShareInfo {
   active: boolean;
 }
 
+export interface BriefingShareInfo {
+  token: string;
+  agent_id: string;
+  title: string;
+  created_at: string;
+  share_url: string;
+  active: boolean;
+}
+
+export interface ArtifactShareInfo {
+  token: string;
+  artifact_id: string;
+  title: string;
+  created_at: string;
+  share_url: string;
+  active: boolean;
+}
+
+export interface BriefingMetaResponse {
+  exists: boolean;
+  generated_at: string | null;
+}
+
 export interface SharedDashboardDataResponse {
   posts: DashboardPost[];
   collection_names: Record<string, string>;
@@ -522,16 +559,6 @@ export interface SharedDashboardDataResponse {
     title: string;
     created_at: string;
   };
-}
-
-export interface DashboardPayload {
-  status: string;
-  dashboard_id: string;
-  title: string;
-  collection_ids: string[];
-  collection_names: Record<string, string>;
-  message?: string;
-  agent_id?: string;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────
@@ -605,6 +632,7 @@ export interface TopicCluster {
   total_likes?: number;
   thumbnail_url?: string | null;
   thumbnail_gcs_uri?: string | null;
+  platforms?: string[];
   recency_score?: number;
 }
 
@@ -643,20 +671,35 @@ export interface TopicAnalytics {
 export interface TopicPost {
   post_id: string;
   platform: string;
+  channel_handle: string;
+  channel_id?: string | null;
   channel_name: string | null;
+  channel_type?: string | null;
   title: string | null;
   content: string | null;
-  post_url: string | null;
-  posted_at: string | null;
+  post_url: string;
+  posted_at: string;
+  post_type: string;
+  media_refs?: MediaRef[];
   thumbnail_url: string | null;
   thumbnail_gcs_uri?: string | null;
-  ai_summary: string | null;
+  likes?: number;
+  shares?: number;
+  views?: number;
+  comments_count?: number;
+  saves?: number;
+  total_engagement: number;
   sentiment: string | null;
   emotion: string | null;
-  views: number | null;
-  likes: number | null;
-  comments_count: number | null;
-  shares: number | null;
+  themes?: string[];
+  entities?: string[];
+  ai_summary: string | null;
+  content_type?: string | null;
+  language?: string | null;
+  custom_fields?: Record<string, unknown> | null;
+  context?: string | null;
+  detected_brands?: string[];
+  collection_id?: string | null;
   distance_to_centroid: number;
   is_representative: boolean;
 }
@@ -670,6 +713,9 @@ export interface AdminOverview {
   total_queries: number;
   total_collections: number;
   total_posts: number;
+  total_posts_in_range?: number;
+  total_posts_related?: number;
+  avg_relevancy_pct?: number;
   total_revenue_cents: number;
   total_credits_purchased: number;
   credits_outstanding: number;
@@ -730,6 +776,10 @@ export interface AdminCollection {
   posts_enriched: number;
   posts_embedded: number;
   posts_stored: number | null;
+  posts_in_range?: number;
+  posts_unique?: number;
+  posts_related?: number;
+  relevancy_pct?: number;
   bd_raw_records: number | null;
   platforms: string[];
   created_at: string;
@@ -844,10 +894,10 @@ export interface WizardPlan {
   new_collection: NewCollectionPlan | null;
   agent_type: 'one_shot' | 'recurring';
   schedule: SchedulePlan | null;
+  outputs?: import('./endpoints/agents.ts').AgentOutput[];
   auto_report: boolean;
   auto_email: boolean;
   auto_slides: boolean;
-  auto_dashboard: boolean;
   custom_fields: CustomFieldDef[];
   enrichment_context: string;
   content_types: string[];

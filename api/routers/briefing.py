@@ -124,34 +124,19 @@ def load_topics_ranked(fs, bq, agent_id: str) -> list[dict]:
             FROM social_listening.topic_cluster_members tcm, latest
             WHERE tcm.agent_id = @agent_id
               AND tcm.clustered_at = latest.latest_at
-        ),
-        dedup_posts AS (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-        ),
-        dedup_enr AS (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-            FROM social_listening.enriched_posts
-        ),
-        dedup_eng AS (
-            SELECT post_id, likes, views, comments_count,
-                   ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-            FROM social_listening.post_engagements
         )
         SELECT
             m.cluster_id,
-            COUNTIF(ep.sentiment = 'positive') as positive_count,
-            COUNTIF(ep.sentiment = 'negative') as negative_count,
-            COUNTIF(ep.sentiment = 'neutral') as neutral_count,
-            COUNTIF(ep.sentiment = 'mixed') as mixed_count,
-            SUM(COALESCE(pe.views, 0)) as total_views,
-            SUM(COALESCE(pe.likes, 0)) as total_likes,
-            MIN(p.posted_at) as earliest_post,
-            MAX(p.posted_at) as latest_post
+            COUNTIF(t.sentiment = 'positive') as positive_count,
+            COUNTIF(t.sentiment = 'negative') as negative_count,
+            COUNTIF(t.sentiment = 'neutral') as neutral_count,
+            COUNTIF(t.sentiment = 'mixed') as mixed_count,
+            SUM(COALESCE(t.views, 0)) as total_views,
+            SUM(COALESCE(t.likes, 0)) as total_likes,
+            MIN(t.posted_at) as earliest_post,
+            MAX(t.posted_at) as latest_post
         FROM members m
-        JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
-        LEFT JOIN dedup_enr ep ON ep.post_id = m.post_id AND ep._rn = 1
-        LEFT JOIN dedup_eng pe ON pe.post_id = m.post_id AND pe.rn = 1
+        JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
         GROUP BY m.cluster_id
         """,
         {"agent_id": agent_id},
@@ -203,25 +188,15 @@ def load_best_image_per_topic(bq, agent_id: str) -> dict[str, dict]:
             WHERE tcm.agent_id = @agent_id
               AND tcm.clustered_at = latest.latest_at
         ),
-        dedup_posts AS (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-        ),
-        dedup_eng AS (
-            SELECT post_id, likes, views,
-                   ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-            FROM social_listening.post_engagements
-        ),
         image_posts AS (
             SELECT
                 m.cluster_id, m.post_id,
-                JSON_EXTRACT_SCALAR(p.media_refs, '$[0].gcs_uri') as gcs_uri,
-                JSON_EXTRACT_SCALAR(p.media_refs, '$[0].original_url') as original_url,
-                JSON_EXTRACT_SCALAR(p.media_refs, '$[0].media_type') as media_type,
-                COALESCE(pe.views, 0) + COALESCE(pe.likes, 0) * 10 as engagement
+                JSON_EXTRACT_SCALAR(t.media_refs, '$[0].gcs_uri') as gcs_uri,
+                JSON_EXTRACT_SCALAR(t.media_refs, '$[0].original_url') as original_url,
+                JSON_EXTRACT_SCALAR(t.media_refs, '$[0].media_type') as media_type,
+                COALESCE(t.views, 0) + COALESCE(t.likes, 0) * 10 as engagement
             FROM members m
-            JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
-            LEFT JOIN dedup_eng pe ON pe.post_id = m.post_id AND pe.rn = 1
+            JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
         ),
         ranked AS (
             SELECT cluster_id, post_id, gcs_uri, original_url,
@@ -281,36 +256,21 @@ def load_topic_posts(
               AND tcm.cluster_id IN UNNEST(@cluster_ids)
               AND tcm.clustered_at = latest.latest_at
         ),
-        dedup_posts AS (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-        ),
-        dedup_eng AS (
-            SELECT post_id, likes, views, comments_count,
-                   ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-            FROM social_listening.post_engagements
-        ),
-        dedup_enr AS (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-            FROM social_listening.enriched_posts
-        ),
         joined AS (
             SELECT
                 m.cluster_id,
-                m.post_id, p.platform, p.channel_handle, p.title, p.content,
-                p.post_url, p.posted_at, p.media_refs,
-                ep.ai_summary, ep.sentiment,
-                pe.views, pe.likes, pe.comments_count,
+                m.post_id, t.platform, t.channel_handle, t.title, t.content,
+                t.post_url, t.posted_at, t.media_refs,
+                t.ai_summary, t.sentiment,
+                t.views, t.likes, t.comments_count,
                 m.is_representative,
                 ROW_NUMBER() OVER (
                     PARTITION BY m.cluster_id
                     ORDER BY m.is_representative DESC,
-                             COALESCE(pe.views, 0) + COALESCE(pe.likes, 0) * 10 DESC
+                             COALESCE(t.views, 0) + COALESCE(t.likes, 0) * 10 DESC
                 ) as rn
             FROM members m
-            JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
-            LEFT JOIN dedup_enr ep ON ep.post_id = m.post_id AND ep._rn = 1
-            LEFT JOIN dedup_eng pe ON pe.post_id = m.post_id AND pe.rn = 1
+            JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
         )
         SELECT * FROM joined
         WHERE rn <= @limit_per_cluster
@@ -396,16 +356,11 @@ def load_posts_per_day(bq, agent_id: str, days: int = 7) -> list[int]:
             WHERE tcm.agent_id = @agent_id
               AND tcm.clustered_at = latest.latest_at
         ),
-        dedup_posts AS (
-            SELECT post_id, posted_at, collection_id,
-                   ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-        ),
         member_posts AS (
-            SELECT DATE(p.posted_at) as day
+            SELECT DATE(t.posted_at) as day
             FROM members m
-            JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
-            WHERE p.posted_at IS NOT NULL
+            JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
+            WHERE t.posted_at IS NOT NULL
         ),
         anchor AS (
             SELECT MAX(day) as end_day FROM member_posts
@@ -456,25 +411,15 @@ def load_briefing_analytics(bq, agent_id: str, trend_days: int = 14) -> dict:
                 WHERE tcm.agent_id = @agent_id
                   AND tcm.clustered_at = latest.latest_at
             ),
-            dedup_posts AS (
-                SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-                FROM social_listening.posts
-            ),
-            dedup_eng AS (
-                SELECT post_id, views, likes, comments_count,
-                       ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-                FROM social_listening.post_engagements
-            ),
             joined AS (
                 SELECT
                     m.post_id,
-                    p.platform, p.channel_handle, p.title, p.posted_at,
-                    COALESCE(e.views, 0) as views,
-                    COALESCE(e.likes, 0) as likes,
-                    COALESCE(e.comments_count, 0) as comments
+                    t.platform, t.channel_handle, t.title, t.posted_at,
+                    COALESCE(t.views, 0) as views,
+                    COALESCE(t.likes, 0) as likes,
+                    COALESCE(t.comments_count, 0) as comments
                 FROM members m
-                JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
-                LEFT JOIN dedup_eng e ON e.post_id = m.post_id AND e.rn = 1
+                JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
             )
             SELECT
                 (SELECT COUNT(*) FROM joined) as total_posts,
@@ -576,20 +521,11 @@ def load_briefing_analytics(bq, agent_id: str, trend_days: int = 14) -> dict:
             WHERE tcm.agent_id = @agent_id
               AND tcm.clustered_at = latest.latest_at
         ),
-        dedup_posts AS (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY collection_id, post_id ORDER BY collected_at DESC) AS _rn
-            FROM social_listening.posts
-        ),
-        dedup_enr AS (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-            FROM social_listening.enriched_posts
-        ),
         joined AS (
-            SELECT DATE(p.posted_at) as day, ep.sentiment
+            SELECT DATE(t.posted_at) as day, t.sentiment
             FROM members m
-            JOIN dedup_posts p ON p.post_id = m.post_id AND p._rn = 1
-            LEFT JOIN dedup_enr ep ON ep.post_id = m.post_id AND ep._rn = 1
-            WHERE p.posted_at IS NOT NULL
+            JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
+            WHERE t.posted_at IS NOT NULL
         ),
         anchor AS (SELECT MAX(day) as end_day FROM joined)
         SELECT
@@ -760,23 +696,21 @@ def read_cached_briefing(fs, agent_id: str) -> dict | None:
 # ─── HTTP endpoint ──────────────────────────────────────────────────
 
 
-@router.get("/agents/{agent_id}/briefing")
-async def get_agent_briefing(
+@router.get("/agents/{agent_id}/briefing/meta")
+async def get_agent_briefing_meta(
     agent_id: str,
     user: CurrentUser = Depends(get_current_user),
 ) -> dict:
-    """Return the latest agent-composed briefing.
+    """Return briefing existence + generation timestamp, no content.
 
-    Returns 404 if the agent hasn't produced one yet (brand-new agent, or
-    compose phase hasn't run). No lazy fallback — briefings are authored by
-    the agent during its run, not on demand.
+    Used by the Deliverables UI to render the ready/pending state without
+    exposing the briefing payload over an authenticated endpoint. The full
+    briefing is only served via /briefing/shares/public/{token}.
     """
     fs = get_fs()
     await asyncio.to_thread(check_agent_access, fs, user, agent_id)
 
     cached = await asyncio.to_thread(read_cached_briefing, fs, agent_id)
     if cached is None:
-        raise HTTPException(
-            404, "No briefing yet — this agent's next run will produce one"
-        )
-    return cached
+        return {"exists": False, "generated_at": None}
+    return {"exists": True, "generated_at": cached.get("generated_at")}

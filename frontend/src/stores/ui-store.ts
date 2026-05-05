@@ -17,6 +17,7 @@ export type LayoutMode = 'balanced' | 'studio-focus';
 interface UIStore {
   sourcesPanelCollapsed: boolean;
   studioPanelCollapsed: boolean;
+  studioPanelWidth: number;
   layoutMode: LayoutMode;
   collectionModalOpen: boolean;
   collectionModalPrefill: CollectionConfig | null;
@@ -28,6 +29,8 @@ interface UIStore {
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
   expandStudioPanel: () => void;
+  collapseStudioPanel: () => void;
+  setStudioPanelWidth: (width: number) => void;
   setStudioFocus: () => void;
   openCollectionModal: (prefill?: CollectionConfig) => void;
   closeCollectionModal: () => void;
@@ -49,9 +52,25 @@ const loadCollapsed = (key: string): boolean => {
   }
 };
 
+const STUDIO_WIDTH_MIN = 280;
+const STUDIO_WIDTH_MAX = 900;
+const STUDIO_WIDTH_DEFAULT = 340;
+
+const loadStudioWidth = (): number => {
+  try {
+    const raw = localStorage.getItem('studio-width');
+    const n = raw ? parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n)) return STUDIO_WIDTH_DEFAULT;
+    return Math.min(STUDIO_WIDTH_MAX, Math.max(STUDIO_WIDTH_MIN, n));
+  } catch {
+    return STUDIO_WIDTH_DEFAULT;
+  }
+};
+
 export const useUIStore = create<UIStore>((set) => ({
   sourcesPanelCollapsed: loadCollapsed('sources-collapsed'),
   studioPanelCollapsed: loadCollapsed('studio-collapsed'),
+  studioPanelWidth: loadStudioWidth(),
   layoutMode: 'balanced' as LayoutMode,
   collectionModalOpen: false,
   collectionModalPrefill: null,
@@ -81,6 +100,26 @@ export const useUIStore = create<UIStore>((set) => ({
         return { studioPanelCollapsed: false };
       }
       return s;
+    }),
+
+  collapseStudioPanel: () =>
+    set((s) => {
+      if (!s.studioPanelCollapsed) {
+        localStorage.setItem('studio-collapsed', 'true');
+        return { studioPanelCollapsed: true };
+      }
+      return s;
+    }),
+
+  setStudioPanelWidth: (width) =>
+    set(() => {
+      const clamped = Math.min(STUDIO_WIDTH_MAX, Math.max(STUDIO_WIDTH_MIN, Math.round(width)));
+      try {
+        localStorage.setItem('studio-width', String(clamped));
+      } catch {
+        // ignore
+      }
+      return { studioPanelWidth: clamped };
     }),
 
   setStudioFocus: () =>

@@ -8,9 +8,15 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 interface EngagementRateChartProps {
   data: EngagementRatePoint[];
+  tickFormatter?: (d: string) => string;
 }
 
-export function EngagementRateChart({ data }: EngagementRateChartProps) {
+const defaultDayTick = (d: string) => {
+  const parts = d.split('-');
+  return `${MONTHS[parseInt(parts[1]) - 1]} ${parseInt(parts[2])}`;
+};
+
+export function EngagementRateChart({ data, tickFormatter }: EngagementRateChartProps) {
   const chartColors = useChartColors();
   const color = chartColors[2] || chartColors[0];
 
@@ -36,10 +42,7 @@ export function EngagementRateChart({ data }: EngagementRateChartProps) {
           axisLine={false}
           tickMargin={8}
           tick={{ fontSize: 10 }}
-          tickFormatter={(d: string) => {
-            const parts = d.split('-');
-            return `${MONTHS[parseInt(parts[1]) - 1]} ${parseInt(parts[2])}`;
-          }}
+          tickFormatter={tickFormatter ?? defaultDayTick}
         />
         <YAxis
           tickLine={false}

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { BarChart3, Table2, LayoutDashboard, Download, Loader2 } from 'lucide-react';
+import { BarChart3, Table2, Download, Loader2 } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { downloadCollection } from '../../../api/endpoints/collections.ts';
@@ -7,7 +7,7 @@ import { formatNumber } from '../../../lib/format.ts';
 
 // ── Type config ──────────────────────────────────────────────────────
 
-type ArtifactType = 'chart' | 'data_export' | 'dashboard';
+type ArtifactType = 'chart' | 'data_export';
 
 const TYPE_CONFIG: Record<ArtifactType, {
   Icon: typeof BarChart3;
@@ -33,14 +33,6 @@ const TYPE_CONFIG: Record<ArtifactType, {
     iconBg: 'bg-accent-blue/10',
     iconColor: 'text-accent-blue',
   },
-  dashboard: {
-    Icon: LayoutDashboard,
-    border: 'border-amber-500/20',
-    bg: 'from-amber-500/5',
-    hoverBorder: 'hover:border-amber-500/40',
-    iconBg: 'bg-amber-500/10',
-    iconColor: 'text-amber-500',
-  },
 };
 
 const CHART_TYPE_LABELS: Record<string, string> = {
@@ -58,7 +50,6 @@ function deriveTitle(type: ArtifactType, data: Record<string, unknown>): string 
   return (data.title as string) || {
     chart: 'Chart',
     data_export: 'Data Export',
-    dashboard: 'Interactive Dashboard',
   }[type];
 }
 
@@ -73,25 +64,12 @@ function deriveMeta(type: ArtifactType, data: Record<string, unknown>): string {
       const name = data.collection_name as string;
       return name ? `${formatNumber(count)} posts from ${name}` : `${formatNumber(count)} posts`;
     }
-    case 'dashboard': {
-      const names = Object.values((data.collection_names ?? {}) as Record<string, string>);
-      const parts: string[] = [];
-      if (names.length > 0) {
-        parts.push(names.length <= 2 ? names.join(' & ') : `${names.length} collections`);
-      } else {
-        const ids = (data.collection_ids ?? []) as string[];
-        if (ids.length > 0) parts.push(`${ids.length} collection${ids.length !== 1 ? 's' : ''}`);
-      }
-      parts.push('Interactive filters');
-      return parts.join(' · ');
-    }
   }
 }
 
-function getArtifactId(type: ArtifactType, data: Record<string, unknown>): string | undefined {
+function getArtifactId(_type: ArtifactType, data: Record<string, unknown>): string | undefined {
   return (data._artifactId as string)
-    || (data._artifact_id as string)
-    || (type === 'dashboard' ? data.dashboard_id as string : undefined);
+    || (data._artifact_id as string);
 }
 
 // ── Component ────────────────────────────────────────────────────────

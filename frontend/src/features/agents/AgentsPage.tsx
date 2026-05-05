@@ -162,7 +162,7 @@ export function AgentsPage() {
     const filtered = tasks.filter((t) => {
       // Hide archived by default unless explicitly filtered
       if (statusFilter.size === 0 && t.status === 'archived') return false;
-      if (statusFilter.size > 0 && !statusFilter.has(t.status)) return false;
+      if (statusFilter.size > 0 && (t.status === null || !statusFilter.has(t.status))) return false;
       if (search) {
         const q = search.toLowerCase();
         return t.title.toLowerCase().includes(q);
@@ -176,7 +176,7 @@ export function AgentsPage() {
         case 'title':
           return dir * a.title.localeCompare(b.title);
         case 'status':
-          return dir * a.status.localeCompare(b.status);
+          return dir * (a.status ?? 'idle').localeCompare(b.status ?? 'idle');
         case 'created_at':
           return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
         case 'next_run':
@@ -477,7 +477,7 @@ export function AgentsPage() {
             {filteredAgents.map((task) => {
               const lastRun = task.updated_at ? { run_at: task.updated_at, status: task.status } : null;
               const isExecuting = task.status === 'running';
-              const borderColor = STATUS_ROW_BORDER[task.status] ?? 'border-l-transparent';
+              const borderColor = STATUS_ROW_BORDER[task.status ?? 'idle'] ?? 'border-l-transparent';
 
               return (
                 <div

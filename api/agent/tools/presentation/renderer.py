@@ -14,6 +14,7 @@ from typing import Any, Optional
 from pptx import Presentation
 from pptx.util import Inches
 
+from api.agent.tools._idempotency import action_key, check_or_register
 from api.agent.tools.presentation.branding import add_footer
 from api.agent.tools.presentation.components import (
     fill_chart,
@@ -21,7 +22,9 @@ from api.agent.tools.presentation.components import (
     fill_text,
     render_key_finding,
     render_kpi_grid,
+    render_post_examples,
 )
+from api.agent.tools.presentation.post_lookup import fetch_posts_by_ids
 from api.agent.tools.presentation.manifest import (
     compute_free_area,
     find_blank_layout,
@@ -36,7 +39,7 @@ from config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 # Component types that are rendered as custom shapes in free area
-_CUSTOM_COMPONENTS = {"kpi_grid", "key_finding"}
+_CUSTOM_COMPONENTS = {"kpi_grid", "key_finding", "post_examples"}
 
 # Component dispatch for placeholder fills
 _PLACEHOLDER_FILLERS = {
@@ -49,6 +52,7 @@ _PLACEHOLDER_FILLERS = {
 _CUSTOM_FILLERS = {
     "kpi_grid": render_kpi_grid,
     "key_finding": render_key_finding,
+    "post_examples": render_post_examples,
 }
 
 
@@ -197,6 +201,21 @@ def generate_presentation(
             "title": {"component": "text", "text": "Key Metrics"},
             "custom": {"component": "kpi_grid", "items": [{"label": "...", "value": "..."}]}
           }
+        },
+        {
+          "layout": "Title Only",
+          "content": {
+            "title": {"component": "text", "text": "Top Reactions"},
+            "custom": {
+              "component": "post_examples",
+              "layout": "grid_3",
+              "posts": [
+                {"post_id": "p1", "collection_id": "c1"},
+                {"post_id": "p2", "collection_id": "c1"},
+                {"post_id": "p3", "collection_id": "c1"}
+              ]
+            }
+          }
         }
       ]
     }
@@ -207,6 +226,11 @@ def generate_presentation(
     - table: {component: "table", columns: [...], rows: [[...]]}
     - kpi_grid: {component: "kpi_grid", items: [{label, value}]} — custom slot only
     - key_finding: {component: "key_finding", finding: "...", significance: "surprising|notable"} — custom slot only
+    - post_examples: {component: "post_examples", layout: "single|grid_2|grid_3",
+        posts: [{post_id, collection_id}]} — custom slot only.
+        Tool fetches full post content + image from BQ at render time.
+        Use exactly 1 post for "single", 2 for "grid_2", 3 for "grid_3".
+        Pick post_ids the user has cited or that came back from a search query.
 
     LAYOUT GUIDE:
     - "Title Slide" [title, subtitle] — opening/closing
@@ -214,7 +238,7 @@ def generate_presentation(
     - "Two Content" [title, left, right] — two charts or chart + text
     - "Section Header" [title, body] — section divider
     - "Comparison" [title, body, left, body_2, right] — labeled comparison
-    - "Title Only" [title] + custom — kpi_grid, key_finding
+    - "Title Only" [title] + custom — kpi_grid, key_finding, post_examples
 
     Args:
         deck_plan: Structured deck plan (preferred).
@@ -240,6 +264,25 @@ def generate_presentation(
     except Exception as e:
         return {"status": "error", "message": f"Invalid deck plan: {e}"}
 
+    # Idempotency: an identical deck rendered earlier this session reuses
+    # its presentation_id instead of producing a duplicate file.
+    _idempo_key = action_key("generate_presentation", {
+        "deck_plan": plan.model_dump(exclude_none=True),
+        "title": title or "",
+        "template_gcs_path": template_gcs_path or "",
+        "collection_ids": sorted(collection_ids or []),
+    })
+    _existing = check_or_register(tool_context, _idempo_key, dry_run=True)
+    if _existing:
+        return {
+            "status": "duplicate",
+            "presentation_id": _existing["artifact_id"],
+            "message": (
+                "An identical presentation was already rendered earlier in this session — "
+                "reusing it. Don't render another."
+            ),
+        }
+
     effective_title = title or plan.title or "Presentation"
     effective_collections = collection_ids or plan.collection_ids or []
     effective_template = template_gcs_path or plan.template_gcs_path or ""
@@ -260,6 +303,25 @@ def generate_presentation(
     prs = _load_presentation(effective_template)
     slide_width = prs.slide_width
     slide_height = prs.slide_height
+
+    # Pre-fetch all post examples in a single BQ call so each post_id only
+    # hits BigQuery once across the whole deck. The per-call image cache is
+    # filled lazily inside the renderer.
+    all_post_refs: list[dict] = []
+    for slide_spec in plan.slides:
+        for raw in slide_spec.content.values():
+            if isinstance(raw, dict) and raw.get("component") == "post_examples":
+                for ref in raw.get("posts", []) or []:
+                    if isinstance(ref, dict) and ref.get("post_id"):
+                        all_post_refs.append(ref)
+
+    post_cache: dict = {}
+    if all_post_refs:
+        for row in fetch_posts_by_ids(all_post_refs):
+            pid = row.get("post_id")
+            if pid:
+                post_cache[pid] = row
+    image_cache: dict = {}
 
     # Render slides
     rendered = 0
@@ -297,7 +359,12 @@ def generate_presentation(
                     # Render in free area
                     free_area = compute_free_area(layout_info, slide_width, slide_height)
                     filler = _CUSTOM_FILLERS.get(comp_type)
-                    if filler:
+                    if filler is render_post_examples:
+                        filler(
+                            slide, comp_spec, theme, free_area,
+                            post_cache=post_cache, image_cache=image_cache,
+                        )
+                    elif filler:
                         filler(slide, comp_spec, theme, free_area)
                     continue
 
@@ -341,6 +408,7 @@ def generate_presentation(
 
     # Serialize and upload
     presentation_id = f"ppt-{uuid.uuid4().hex[:10]}"
+    check_or_register(tool_context, _idempo_key, artifact_id=presentation_id)
     safe_title = (effective_title).replace(" ", "_").replace("/", "-")[:60]
     blob_name = f"presentations/{presentation_id}/{safe_title}.pptx"
 

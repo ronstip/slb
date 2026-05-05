@@ -1,4 +1,4 @@
-import type { DesignResearchResult, DataExportResult, DashboardPayload, StructuredPromptResult } from '../api/types.ts';
+import type { DesignResearchResult, DataExportResult, StructuredPromptResult } from '../api/types.ts';
 import { TOOL_DISPLAY_NAMES } from './constants.ts';
 
 export function getToolDisplayText(toolName: string): string {
@@ -26,13 +26,6 @@ export function isChartResult(
   return toolName === 'create_chart' && result?.status === 'success' && !!result?.chart_type;
 }
 
-export function isDashboardResult(
-  toolName: string,
-  result?: Record<string, unknown>,
-): result is Record<string, unknown> & DashboardPayload {
-  return (toolName === 'generate_dashboard' || toolName === 'compose_dashboard') && result?.status === 'success' && !!result?.dashboard_id;
-}
-
 export function isStructuredPromptResult(
   toolName: string,
   result?: Record<string, unknown>,
@@ -54,23 +47,16 @@ export function isTodoResult(
   return toolName === 'update_todos' && result?.status === 'success' && !!result?.progress;
 }
 
-export function isMetricsResult(
-  toolName: string,
-  result?: Record<string, unknown>,
-): boolean {
-  return toolName === 'show_metrics' && result?.status === 'success' && result?.display === 'metrics';
-}
-
-export function isTopicsResult(
-  toolName: string,
-  result?: Record<string, unknown>,
-): boolean {
-  return toolName === 'show_topics' && result?.status === 'success' && result?.display === 'topics';
-}
-
 export function isPresentationResult(
   toolName: string,
   result?: Record<string, unknown>,
 ): boolean {
   return toolName === 'generate_presentation' && result?.status === 'success' && !!result?.presentation_id;
+}
+
+export function isMarkdownResult(
+  toolName: string,
+  result?: Record<string, unknown>,
+): boolean {
+  return toolName === 'create_markdown' && result?.status === 'success' && typeof result?.content === 'string';
 }

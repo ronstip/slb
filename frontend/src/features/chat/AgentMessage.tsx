@@ -1,6 +1,8 @@
 import { AlertCircle } from 'lucide-react';
+import { BotAvatar } from '../../components/BrandElements.tsx';
 import { Logo } from '../../components/Logo.tsx';
 import { Markdown } from '../../components/Markdown.tsx';
+import { useAgentStore } from '../../stores/agent-store.ts';
 import type { ChatMessage } from '../../stores/chat-store.ts';
 import type { DesignResearchResult } from '../../api/types.ts';
 import { ActivityBlock } from './ActivityBar.tsx';
@@ -8,8 +10,6 @@ import { ArtifactCard } from './cards/ArtifactCard.tsx';
 import { InlineChart } from './cards/InlineChart.tsx';
 import { ResearchDesignCard } from './cards/ResearchDesignCard.tsx';
 import { CollectionProgressCard } from './cards/CollectionProgressCard.tsx';
-import { TopicsSectionCard } from './cards/TopicsSectionCard.tsx';
-import { MetricsSectionCard } from './cards/MetricsSectionCard.tsx';
 import { PromptAnsweredSummary } from './StructuredPromptPanel.tsx';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { AGENT_DISPLAY_NAMES } from '../../lib/constants.ts';
@@ -34,6 +34,7 @@ interface AgentMessageProps {
 
 export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) {
   const activePromptMessageId = useChatStore((s) => s.activePromptMessageId);
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const agentLabel = message.activeAgent
     ? (message.activeAgent in AGENT_DISPLAY_NAMES ? AGENT_DISPLAY_NAMES[message.activeAgent] : formatAgentName(message.activeAgent))
     : null;
@@ -43,14 +44,14 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
   const errorText = errorMatch ? errorMatch[1] : null;
 
   // ── Card classification ──
-  const ARTIFACT_TYPES = new Set(['data_export', 'dashboard']);
+  const ARTIFACT_TYPES = new Set(['data_export']);
   const artifactCards: typeof message.cards = [];
   const otherCards: typeof message.cards = [];
   message.cards.forEach((card) => {
     if (ARTIFACT_TYPES.has(card.type)) artifactCards.push(card);
     else otherCards.push(card);
   });
-  const CARD_ORDER: Record<string, number> = { metrics_section: 0, topics_section: 1, chart: 2 };
+  const CARD_ORDER: Record<string, number> = { chart: 0 };
   otherCards.sort((a, b) => (CARD_ORDER[a.type] ?? 0.5) - (CARD_ORDER[b.type] ?? 0.5));
 
   // ── Determine render mode ──
@@ -59,9 +60,13 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
 
   return (
     <div className="flex gap-3 overflow-hidden max-w-3xl">
-      {/* Avatar */}
+      {/* Avatar — agent's BotAvatar when in agent context, otherwise the brand mark. */}
       <div className="mt-0.5 shrink-0">
-        <Logo size="sm" showText={false} />
+        {activeAgentId ? (
+          <BotAvatar seed={activeAgentId} size={32} className="border border-border/50" />
+        ) : (
+          <Logo size="sm" showText={false} flat />
+        )}
       </div>
 
       <div className="min-w-0 flex-1 overflow-hidden">
@@ -137,10 +142,6 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           switch (card.type) {
             case 'research_design':
               return <ResearchDesignCard key={`other-${i}`} data={card.data as unknown as DesignResearchResult} onCollectionStarted={onSuggestionClick} />;
-            case 'metrics_section':
-              return <MetricsSectionCard key={`other-${i}`} data={card.data} />;
-            case 'topics_section':
-              return <TopicsSectionCard key={`other-${i}`} data={card.data} />;
             case 'collection_progress':
               return <CollectionProgressCard key={`other-${i}`} collectionId={card.data.collection_id as string} onCompleted={onSuggestionClick} />;
             case 'chart':
@@ -160,7 +161,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
             {artifactCards.map((card, i) => (
               <ArtifactCard
                 key={`artifact-${i}`}
-                type={card.type as 'chart' | 'data_export' | 'dashboard'}
+                type={card.type as 'chart' | 'data_export'}
                 data={card.data}
               />
             ))}

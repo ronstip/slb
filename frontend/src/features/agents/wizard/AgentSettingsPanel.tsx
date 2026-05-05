@@ -1,9 +1,6 @@
-import { useRef, useState } from 'react';
-import { ArrowRight, CalendarClock, Loader2, Sparkles, Upload, X, Zap } from 'lucide-react';
+import { ArrowRight, CalendarClock, Loader2, Sparkles, Zap } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
-import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
-import { Switch } from '../../../components/ui/switch.tsx';
 import {
   Select,
   SelectContent,
@@ -16,11 +13,13 @@ import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { cn } from '../../../lib/utils.ts';
 import type { PlanStatus, WizardAgentSettings } from './AgentCreationWizard.tsx';
 import { AIThinkingCard } from './AIThinkingCard.tsx';
+import { OutputsListEditor } from './OutputsListEditor.tsx';
 
 interface AgentSettingsPanelProps {
   settings: WizardAgentSettings;
   onChange: (settings: WizardAgentSettings) => void;
   onSubmit?: () => void;
+  onCreateOnly?: () => void;
   canSubmit?: boolean;
   isSubmitting?: boolean;
   planStatus: PlanStatus;
@@ -28,24 +27,9 @@ interface AgentSettingsPanelProps {
 
 const HOUR_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 48, 168];
 
-export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, isSubmitting, planStatus }: AgentSettingsPanelProps) {
-  const [emailInput, setEmailInput] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
+export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly, canSubmit, isSubmitting, planStatus }: AgentSettingsPanelProps) {
   const update = (partial: Partial<WizardAgentSettings>) => {
     onChange({ ...settings, ...partial });
-  };
-
-  const addEmail = () => {
-    const trimmed = emailInput.trim();
-    if (trimmed && !settings.emailRecipients.includes(trimmed)) {
-      update({ emailRecipients: [...settings.emailRecipients, trimmed] });
-    }
-    setEmailInput('');
-  };
-
-  const removeEmail = (email: string) => {
-    update({ emailRecipients: settings.emailRecipients.filter((e) => e !== email) });
   };
 
   if (planStatus === 'idle' || planStatus === 'clarifying') {
@@ -216,126 +200,22 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
         )}
 
         {/* Outputs */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           <Label className="text-xs font-medium text-muted-foreground block">Outputs</Label>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm font-medium">Report</Label>
-              <p className="text-[11px] text-muted-foreground">Generate an insight report</p>
-            </div>
-            <Switch
-              checked={settings.autoReport}
-              onCheckedChange={(checked) => update({ autoReport: checked })}
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium">Email</Label>
-                <p className="text-[11px] text-muted-foreground">Send findings via email</p>
-              </div>
-              <Switch
-                checked={settings.autoEmail}
-                onCheckedChange={(checked) => update({ autoEmail: checked, ...(!checked && { emailRecipients: [] }) })}
-              />
-            </div>
-            {settings.autoEmail && (
-              <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
-                <div className="flex gap-1.5">
-                  <Input
-                    type="email"
-                    placeholder="Add email address"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
-                    className="h-7 text-xs flex-1"
-                  />
-                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={addEmail}>
-                    Add
-                  </Button>
-                </div>
-                {settings.emailRecipients.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {settings.emailRecipients.map((email) => (
-                      <span key={email} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px]">
-                        {email}
-                        <button type="button" onClick={() => removeEmail(email)} className="text-muted-foreground hover:text-foreground">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium">Slides</Label>
-                <p className="text-[11px] text-muted-foreground">Create a presentation deck</p>
-              </div>
-              <Switch
-                checked={settings.autoSlides}
-                onCheckedChange={(checked) => update({ autoSlides: checked, ...(!checked && { slidesTemplateFile: null }) })}
-              />
-            </div>
-            {settings.autoSlides && (
-              <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-150">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pptx"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    update({ slidesTemplateFile: file });
-                  }}
-                />
-                {settings.slidesTemplateFile ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-3 py-2">
-                    <Upload className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-xs truncate flex-1">{settings.slidesTemplateFile.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => { update({ slidesTemplateFile: null }); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-2.5 text-xs text-muted-foreground hover:border-border hover:text-foreground transition-colors"
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    Upload .pptx template (optional)
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm font-medium">Dashboard</Label>
-              <p className="text-[11px] text-muted-foreground">Generate a visual dashboard</p>
-            </div>
-            <Switch
-              checked={settings.autoDashboard}
-              onCheckedChange={(checked) => update({ autoDashboard: checked })}
-            />
-          </div>
+          <p className="text-[11px] text-muted-foreground -mt-1">
+            One step per output is added to the agent's plan automatically.
+          </p>
+          <OutputsListEditor
+            outputs={settings.outputs}
+            onChange={(outputs) => update({ outputs })}
+            generatedByAI={settings.outputsFromAI}
+            compact
+          />
         </div>
       </div>
 
       {onSubmit && (
-        <div className="mt-6 pt-4 border-t border-border/50">
+        <div className="mt-6 pt-4 border-t border-border/50 flex flex-col gap-2">
           <Button
             className="w-full gap-2"
             disabled={!canSubmit || isSubmitting}
@@ -349,11 +229,21 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, canSubmit, is
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />
-                Create Agent
+                Create &amp; Run
                 <ArrowRight className="h-4 w-4" />
               </>
             )}
           </Button>
+          {onCreateOnly && (
+            <Button
+              variant="outline"
+              className="w-full gap-2"
+              disabled={!canSubmit || isSubmitting}
+              onClick={onCreateOnly}
+            >
+              Create without running
+            </Button>
+          )}
         </div>
       )}
     </div>

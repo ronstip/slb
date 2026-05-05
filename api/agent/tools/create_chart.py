@@ -1,6 +1,10 @@
 import logging
 from collections import OrderedDict
 
+from google.adk.tools.tool_context import ToolContext
+
+from api.agent.tools._idempotency import action_key, check_or_register
+
 logger = logging.getLogger(__name__)
 
 VALID_CHART_TYPES = {"bar", "line", "pie", "doughnut", "table", "number"}
@@ -62,10 +66,12 @@ def create_chart(
     chart_type: str,
     data: dict,
     title: str = "",
+    caption: str = "",
     collection_ids: list[str] | None = None,
     source_sql: str = "",
     bar_orientation: str = "horizontal",
     stacked: bool = True,
+    tool_context: ToolContext = None,
 ) -> dict:
     """Render a standalone chart inline in the chat.
 
@@ -128,11 +134,33 @@ def create_chart(
 
         title: Title displayed above the chart.
 
+        caption: A 1–2 sentence figure legend rendered below the chart, written
+            in the style of an academic paper figure caption. Combine BOTH the
+            methodology (sample size, time window, grouping, source) AND the
+            primary takeaway. Past tense, factual, no hedging, no marketing
+            language. Do not start with "This chart shows".
+
+            Good: "Distribution of merger reception across political stances
+            (n=110 posts, Mar–Apr 2026). Pro-Bibi accounts expressed the
+            strongest opposition, while neutral-stance posts accounted for the
+            majority of overall volume."
+
+            Bad: "This chart shows how different political groups feel about
+            the merger. As you can see, opinions vary widely!"
+
         collection_ids: Optional list of collection IDs that sourced this
             chart's data. Enables "Show underlying data" in the studio view.
 
-        source_sql: The full SQL query that produced this chart's data.
-            Stored for transparency and debugging.
+        source_sql: The full SQL query that produced this chart's data,
+            stored verbatim for transparency and debugging. MUST be
+            self-contained and re-runnable on its own:
+            - Fully qualify every table with the
+              `social-listening-pl.social_listening.` project/dataset prefix.
+            - If your data came from a CTE (e.g. `latest_eng`), include the
+              `WITH ... AS (...)` definition inline in this string. Don't
+              paste a fragment that references a CTE defined in a different
+              `execute_sql` call — anyone re-running this query later won't
+              have that scope.
 
         bar_orientation: For bar charts only. "horizontal" (default) or
             "vertical".
@@ -155,6 +183,22 @@ def create_chart(
             "message": "No data provided for chart.",
         }
 
+    # Idempotency: identical chart spec = the same chart. Don't render twice.
+    _idempo_key = action_key("create_chart", {
+        "chart_type": chart_type,
+        "title": title or "",
+        "data": data,
+        "bar_orientation": bar_orientation,
+        "stacked": stacked,
+    })
+    _existing = check_or_register(tool_context, _idempo_key, dry_run=True)
+    if _existing:
+        return {
+            "status": "duplicate",
+            "chart_type": chart_type,
+            "message": "An identical chart was already rendered earlier this session.",
+        }
+
     # Auto-pivot breakdown rows into grouped_categorical
     if "breakdown" in data:
         try:
@@ -166,12 +210,14 @@ def create_chart(
             }
 
     logger.info("create_chart: type=%s title=%r", chart_type, title)
+    check_or_register(tool_context, _idempo_key, artifact_id=f"chart-{chart_type}-{title or 'untitled'}")
 
     return {
         "status": "success",
         "chart_type": chart_type,
         "data": data,
         "title": title,
+        "caption": caption,
         "collection_ids": collection_ids or [],
         "source_sql": source_sql,
         "bar_orientation": bar_orientation,

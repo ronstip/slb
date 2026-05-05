@@ -85,7 +85,23 @@ async def admin_overview(user: CurrentUser = Depends(_admin_user)):
                 """
                 SELECT
                     (SELECT COUNT(*) FROM social_listening.posts) AS total_posts,
-                    (SELECT COUNT(*) FROM social_listening.collections) AS total_collections
+                    (SELECT COUNT(*) FROM social_listening.collections) AS total_collections,
+                    (
+                        SELECT COUNTIF(p.posted_at BETWEEN c.time_range_start AND c.time_range_end)
+                        FROM social_listening.posts p
+                        JOIN social_listening.collections c USING (collection_id)
+                    ) AS total_posts_in_range,
+                    (
+                        SELECT COUNTIF(is_related_to_task = TRUE)
+                        FROM (
+                            SELECT *, ROW_NUMBER() OVER (
+                                PARTITION BY post_id
+                                ORDER BY agent_version DESC NULLS LAST, enriched_at DESC
+                            ) AS _rn
+                            FROM social_listening.enriched_posts
+                        )
+                        WHERE _rn = 1
+                    ) AS total_posts_related
                 """,
             ),
             asyncio.to_thread(
@@ -111,13 +127,22 @@ async def admin_overview(user: CurrentUser = Depends(_admin_user)):
     all_collections_fs = await asyncio.to_thread(fs.list_all_collection_statuses, 1000)
     fs_total_posts = sum(c.get("posts_collected", 0) for c in all_collections_fs)
 
+    total_posts = totals.get("total_posts", 0) or fs_total_posts
+    total_posts_related = totals.get("total_posts_related", 0)
+    avg_relevancy_pct = (
+        round(total_posts_related / total_posts * 100, 1) if total_posts else 0.0
+    )
+
     return {
         "total_users": total_users,
         "total_orgs": len(all_orgs),
         "active_users_30d": active.get("active_users_30d", 0),
         "total_queries": active.get("total_queries", 0),
         "total_collections": totals.get("total_collections", 0) or len(all_collections_fs),
-        "total_posts": totals.get("total_posts", 0) or fs_total_posts,
+        "total_posts": total_posts,
+        "total_posts_in_range": totals.get("total_posts_in_range", 0),
+        "total_posts_related": total_posts_related,
+        "avg_relevancy_pct": avg_relevancy_pct,
         "total_revenue_cents": total_revenue_cents,
         "total_credits_purchased": total_credits_purchased,
         "credits_outstanding": credits_outstanding,
@@ -417,13 +442,29 @@ async def admin_collections(
             bq = get_bq()
             rows = await asyncio.to_thread(
                 bq.query,
+                "WITH first_seen AS ("
+                "  SELECT post_id, collection_id AS first_collection_id FROM ("
+                "    SELECT post_id, collection_id, "
+                "      ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at, collection_id) AS rn "
+                "    FROM social_listening.posts "
+                "    WHERE post_id IN ("
+                "      SELECT post_id FROM social_listening.posts "
+                "      WHERE collection_id IN UNNEST(@ids)"
+                "    )"
+                "  ) WHERE rn = 1"
+                ") "
                 "SELECT p.collection_id AS collection_id, "
                 "COUNT(DISTINCT p.post_id) AS stored, "
+                "COUNTIF(p.posted_at BETWEEN c.time_range_start AND c.time_range_end) AS in_range, "
+                "COUNT(DISTINCT IF(fs.first_collection_id = p.collection_id, p.post_id, NULL)) AS unique_posts, "
                 "COUNT(DISTINCT e.post_id) AS enriched, "
+                "COUNT(DISTINCT IF(e.is_related_to_task = TRUE, e.post_id, NULL)) AS related, "
                 "COUNT(DISTINCT em.post_id) AS embedded "
                 "FROM social_listening.posts p "
+                "JOIN social_listening.collections c USING (collection_id) "
                 "LEFT JOIN social_listening.enriched_posts e USING (post_id) "
                 "LEFT JOIN social_listening.post_embeddings em USING (post_id) "
+                "LEFT JOIN first_seen fs ON fs.post_id = p.post_id "
                 "WHERE p.collection_id IN UNNEST(@ids) "
                 "GROUP BY p.collection_id",
                 {"ids": visible_ids},
@@ -437,6 +478,11 @@ async def admin_collections(
                 c["posts_stored"] = int(r["stored"])
                 c["posts_enriched"] = int(r["enriched"])
                 c["posts_embedded"] = int(r["embedded"])
+                c["posts_in_range"] = int(r["in_range"])
+                c["posts_unique"] = int(r["unique_posts"])
+                c["posts_related"] = int(r["related"])
+                stored = int(r["stored"])
+                c["relevancy_pct"] = round(int(r["related"]) / stored * 100, 1) if stored else 0.0
         except Exception:
             logger.exception("BQ count overlay failed for admin collections list")
 

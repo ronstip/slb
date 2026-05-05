@@ -9,17 +9,16 @@ import {
   Compass,
   Database,
   FileText,
-  Hash,
   LayoutDashboard,
   LayoutGrid,
   LogOut,
   MessageSquare,
   Moon,
-  Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
   Pause,
   Play,
+  PlayCircle,
   Plus,
   Repeat,
   Settings,
@@ -59,17 +58,14 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'data' | 'topics' | 'artifacts' | 'explorer' | 'briefing' | 'settings';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer' | 'settings' | 'topics';
 
 const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'briefing', label: 'Briefing', icon: Newspaper },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
   { id: 'artifacts', label: 'Deliverables', icon: FileText },
   { id: 'data', label: 'Data', icon: Database },
-  { id: 'topics', label: 'Topics', icon: Hash },
-  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 // ── Shared class fragments — sidebar uses the always-dark sidebar-* tokens ──
@@ -88,6 +84,7 @@ interface AppSidebarProps {
   hasCollections?: boolean;
   onRun?: () => void;
   onStop?: () => void;
+  onResume?: () => void;
   onPauseResume?: () => void;
   onOpenSchedule?: () => void;
   agentSessions?: SessionListItem[];
@@ -107,6 +104,7 @@ function AppSidebarImpl({
   hasCollections,
   onRun,
   onStop,
+  onResume,
   onPauseResume,
   onOpenSchedule,
   agentSessions,
@@ -336,16 +334,6 @@ function AppSidebarImpl({
           <LayoutGrid className="h-4 w-4 shrink-0" />
           All Agents
         </button>
-        <button
-          onClick={() => navigate('/settings/account')}
-          className={cn(
-            NAV_ITEM_BASE,
-            location.pathname.startsWith('/settings') ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
-          )}
-        >
-          <Settings className="h-4 w-4 shrink-0" />
-          Settings
-        </button>
       </div>
 
       {/* Agent-specific tabs (on detail pages, right after nav) */}
@@ -522,6 +510,28 @@ function AppSidebarImpl({
                     Stop
                   </button>
                 )}
+                {(() => {
+                  const firstIncompleteTodo = activeAgent.todos?.find((t) => t.status !== 'completed');
+                  const hasCollections = (activeAgent.collection_ids?.length ?? 0) > 0;
+                  const canRunOnExistingData =
+                    activeAgent.status !== 'running' &&
+                    !!firstIncompleteTodo &&
+                    (!!activeAgent.continuation_ready || hasCollections);
+                  const label = activeAgent.continuation_ready ? 'Resume' : 'Run on existing data';
+                  return canRunOnExistingData && onResume ? (
+                    <button
+                      onClick={onResume}
+                      className={cn(NAV_ITEM_BASE, 'text-primary hover:bg-primary/10')}
+                      title={`Continue from "${firstIncompleteTodo!.content}"`}
+                    >
+                      <PlayCircle className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{label}</span>
+                      <span className="ml-auto truncate text-[11px] text-sidebar-foreground/50">
+                        {firstIncompleteTodo!.content.slice(0, 24)}{firstIncompleteTodo!.content.length > 24 ? '…' : ''}
+                      </span>
+                    </button>
+                  ) : null;
+                })()}
                 {canRun && onRun && (
                   <button
                     onClick={onRun}
@@ -585,7 +595,7 @@ function AppSidebarImpl({
               {recentAgents.map((agent) => {
                   const isActive = activeAgent?.agent_id === agent.agent_id;
                   const isRunning = agent.status === 'running';
-                  const cfg = STATUS_CONFIG[agent.status];
+                  const cfg = STATUS_CONFIG[agent.status ?? 'idle'];
                   return (
                     <button
                       key={agent.agent_id}

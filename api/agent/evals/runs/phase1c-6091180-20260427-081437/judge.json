@@ -1,0 +1,43 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "conciseness": 4,
+      "tone": 5,
+      "repetition": 3,
+      "correctness": 5,
+      "one_line_critique": "Excellent analytical tone and directness, though it performed redundant tool calls and repeated the same findings across two summary sections."
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "conciseness": 1,
+      "tone": 1,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent entered a catastrophic runaway loop of redundant tool calls and failed to provide any answer to the user's question."
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "conciseness": 2,
+      "tone": 3,
+      "repetition": 1,
+      "correctness": 2,
+      "one_line_critique": "The agent failed to acknowledge the existing dashboard, creating a duplicate and providing a generic response that ignored its own tool actions."
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "conciseness": 3,
+      "tone": 3,
+      "repetition": 3,
+      "correctness": 5,
+      "one_line_critique": "Leads with the answer effectively, but repeats the SQL query and includes an irrelevant, generic meta-comment at the end."
+    }
+  ],
+  "averages": {
+    "conciseness": 2.5,
+    "tone": 3.0,
+    "repetition": 2.0,
+    "correctness": 3.25
+  },
+  "n_judged": 4
+}

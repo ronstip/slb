@@ -5,6 +5,7 @@ Topics are agent-scoped: they cluster posts across all of an agent's collections
 
 import asyncio
 import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -29,25 +30,12 @@ _LATEST_CTE = """
         WHERE agent_id = @agent_id
     )"""
 
-# Deduplication by post_id alone — cluster members join to posts by post_id only
-# (they don't carry a collection_id). Partitioning by (collection_id, post_id) would
-# return one row per collection the post appears in, inflating topic post counts
-# when the same post_id also lives in another agent's collection.
-_POSTS_DEDUP = """(
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at DESC) AS _rn
-        FROM social_listening.posts
-    ) p ON p.post_id = m.post_id AND p._rn = 1"""
-
-_ENRICHED_DEDUP = """(
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
-        FROM social_listening.enriched_posts
-    ) ep ON ep.post_id = m.post_id AND ep._rn = 1"""
-
-_ENGAGEMENTS_DEDUP = """(
-        SELECT post_id, likes, shares, comments_count, views, saves,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY fetched_at DESC) as rn
-        FROM social_listening.post_engagements
-    ) pe ON pe.post_id = m.post_id AND pe.rn = 1"""
+# Single source of truth for the agent's view of posts: scope_posts TVF.
+# Topic post lists span the full corpus (no date / platform gate), so we pass
+# only the agent_id. The TVF returns posts deduped by post_id with this
+# agent's enrichment + latest engagement already merged — supersedes the
+# per-table dedup CTEs we used before.
+_AGENT_POSTS_TVF = "social_listening.scope_posts(@agent_id)"
 
 
 def _check_agent_access(fs, user: CurrentUser, agent_id: str) -> dict:
@@ -87,7 +75,9 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
     if not topics:
         return topics
 
-    # Batch BQ query: per-cluster sentiment + engagement summary
+    # Batch BQ query: per-cluster sentiment + engagement summary.
+    # Joins topic members with the agent's scope_posts view (TVF dedups posts +
+    # picks this agent's enrichment + merges latest engagement in one shot).
     summary_rows = bq.query(
         f"""
         {_LATEST_CTE},
@@ -99,39 +89,42 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
         )
         SELECT
             m.cluster_id,
-            COUNTIF(ep.sentiment = 'positive') as positive_count,
-            COUNTIF(ep.sentiment = 'negative') as negative_count,
-            COUNTIF(ep.sentiment = 'neutral') as neutral_count,
-            COUNTIF(ep.sentiment = 'mixed') as mixed_count,
-            SUM(COALESCE(pe.views, 0)) as total_views,
-            SUM(COALESCE(pe.likes, 0)) as total_likes
+            COUNTIF(t.sentiment = 'positive') as positive_count,
+            COUNTIF(t.sentiment = 'negative') as negative_count,
+            COUNTIF(t.sentiment = 'neutral') as neutral_count,
+            COUNTIF(t.sentiment = 'mixed') as mixed_count,
+            SUM(COALESCE(t.views, 0)) as total_views,
+            SUM(COALESCE(t.likes, 0)) as total_likes
         FROM members m
-        LEFT JOIN {_ENRICHED_DEDUP}
-        LEFT JOIN {_ENGAGEMENTS_DEDUP}
+        JOIN {_AGENT_POSTS_TVF} t USING (post_id)
         GROUP BY m.cluster_id
         """,
         {"agent_id": agent_id},
     )
     summary_map = {r["cluster_id"]: r for r in summary_rows}
 
-    # Thumbnail query: best representative post image per cluster
+    # Thumbnail query: prefer representative post w/ media, fall back to ANY
+    # cluster member that has media. Twitter clusters often contain only text
+    # tweets in their representative subset, so widening to all members ensures
+    # an image appears whenever any post in the cluster has one.
     thumb_rows = bq.query(
         f"""
         {_LATEST_CTE},
-        rep_members AS (
-            SELECT tcm.cluster_id, tcm.post_id
+        members AS (
+            SELECT tcm.cluster_id, tcm.post_id, tcm.is_representative
             FROM social_listening.topic_cluster_members tcm, latest
             WHERE tcm.agent_id = @agent_id
               AND tcm.clustered_at = latest.latest_at
-              AND tcm.is_representative = TRUE
         ),
         ranked AS (
-            SELECT m.cluster_id, p.media_refs,
-                   ROW_NUMBER() OVER (PARTITION BY m.cluster_id ORDER BY COALESCE(pe.views, 0) DESC) as rn
-            FROM rep_members m
-            JOIN {_POSTS_DEDUP}
-            LEFT JOIN {_ENGAGEMENTS_DEDUP}
-            WHERE p.media_refs IS NOT NULL
+            SELECT m.cluster_id, t.media_refs,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY m.cluster_id
+                     ORDER BY m.is_representative DESC, COALESCE(t.views, 0) DESC
+                   ) as rn
+            FROM members m
+            JOIN {_AGENT_POSTS_TVF} t USING (post_id)
+            WHERE t.media_refs IS NOT NULL
         )
         SELECT cluster_id,
                JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') as thumbnail_url,
@@ -143,6 +136,27 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
         {"agent_id": agent_id},
     )
     thumb_map = {r["cluster_id"]: r for r in thumb_rows}
+
+    # Platforms per cluster — used by the frontend to render a logo wall
+    # placeholder for clusters where no post has media.
+    platform_rows = bq.query(
+        f"""
+        {_LATEST_CTE},
+        members AS (
+            SELECT tcm.cluster_id, tcm.post_id
+            FROM social_listening.topic_cluster_members tcm, latest
+            WHERE tcm.agent_id = @agent_id
+              AND tcm.clustered_at = latest.latest_at
+        )
+        SELECT m.cluster_id,
+               ARRAY_AGG(DISTINCT t.platform IGNORE NULLS) as platforms
+        FROM members m
+        JOIN {_AGENT_POSTS_TVF} t USING (post_id)
+        GROUP BY m.cluster_id
+        """,
+        {"agent_id": agent_id},
+    )
+    platform_map = {r["cluster_id"]: r for r in platform_rows}
 
     # Merge BQ data into Firestore topics
     for topic in topics:
@@ -158,6 +172,8 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
         if cid in thumb_map:
             topic["thumbnail_url"] = thumb_map[cid].get("thumbnail_url")
             topic["thumbnail_gcs_uri"] = thumb_map[cid].get("thumbnail_gcs_uri")
+        if cid in platform_map:
+            topic["platforms"] = platform_map[cid].get("platforms") or []
 
     # Sort: by recency_score desc (trending first), then by post_count desc
     import re
@@ -355,19 +371,17 @@ async def get_agent_topic_analytics(
         )
         SELECT
             COUNT(*) as post_count,
-            COUNTIF(ep.sentiment = 'positive') as positive_count,
-            COUNTIF(ep.sentiment = 'negative') as negative_count,
-            COUNTIF(ep.sentiment = 'neutral') as neutral_count,
-            COUNTIF(ep.sentiment = 'mixed') as mixed_count,
-            SUM(COALESCE(pe.views, 0)) as total_views,
-            SUM(COALESCE(pe.likes, 0)) as total_likes,
-            SUM(COALESCE(pe.comments_count, 0)) as total_comments,
-            MIN(p.posted_at) as earliest_post,
-            MAX(p.posted_at) as latest_post
+            COUNTIF(t.sentiment = 'positive') as positive_count,
+            COUNTIF(t.sentiment = 'negative') as negative_count,
+            COUNTIF(t.sentiment = 'neutral') as neutral_count,
+            COUNTIF(t.sentiment = 'mixed') as mixed_count,
+            SUM(COALESCE(t.views, 0)) as total_views,
+            SUM(COALESCE(t.likes, 0)) as total_likes,
+            SUM(COALESCE(t.comments_count, 0)) as total_comments,
+            MIN(t.posted_at) as earliest_post,
+            MAX(t.posted_at) as latest_post
         FROM members m
-        JOIN {_POSTS_DEDUP}
-        LEFT JOIN {_ENRICHED_DEDUP}
-        LEFT JOIN {_ENGAGEMENTS_DEDUP}
+        JOIN {_AGENT_POSTS_TVF} t USING (post_id)
         """
 
     platforms_sql = f"""
@@ -380,14 +394,13 @@ async def get_agent_topic_analytics(
               AND tcm.clustered_at = latest.latest_at
         )
         SELECT
-            p.platform,
+            t.platform,
             COUNT(*) as post_count,
-            SUM(COALESCE(pe.views, 0)) as views,
-            SUM(COALESCE(pe.likes, 0)) as likes
+            SUM(COALESCE(t.views, 0)) as views,
+            SUM(COALESCE(t.likes, 0)) as likes
         FROM members m
-        JOIN {_POSTS_DEDUP}
-        LEFT JOIN {_ENGAGEMENTS_DEDUP}
-        GROUP BY p.platform
+        JOIN {_AGENT_POSTS_TVF} t USING (post_id)
+        GROUP BY t.platform
         """
 
     params = {"agent_id": agent_id, "cluster_id": cluster_id}
@@ -410,12 +423,13 @@ async def get_agent_topic_posts(
     offset: int = Query(default=0, ge=0),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Paginated posts within a topic."""
+    """Paginated posts within a topic, returned in FeedPost shape so the same
+    PostCard component used by the feed/overview can render them."""
     fs = get_fs()
     bq = get_bq()
     await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
-    posts = await asyncio.to_thread(
+    rows = await asyncio.to_thread(
         bq.query,
         f"""
         {_LATEST_CTE},
@@ -427,18 +441,24 @@ async def get_agent_topic_posts(
               AND tcm.clustered_at = latest.latest_at
         )
         SELECT
-            p.post_id, p.platform, p.channel_handle as channel_name, p.title, p.content,
-            p.post_url, p.posted_at, p.media_refs,
-            JSON_EXTRACT_SCALAR(p.media_refs, '$[0].original_url') as thumbnail_url,
-            JSON_EXTRACT_SCALAR(p.media_refs, '$[0].gcs_uri') as thumbnail_gcs_uri,
-            ep.ai_summary, ep.sentiment, ep.emotion,
-            pe.views, pe.likes, pe.comments_count, pe.shares,
+            t.post_id, t.platform, t.channel_handle, t.channel_id,
+            t.title, t.content, t.post_url, t.posted_at, t.post_type, t.media_refs,
+            t.collection_id,
+            JSON_EXTRACT_SCALAR(t.media_refs, '$[0].original_url') as thumbnail_url,
+            JSON_EXTRACT_SCALAR(t.media_refs, '$[0].gcs_uri') as thumbnail_gcs_uri,
+            COALESCE(t.likes, 0) as likes,
+            COALESCE(t.shares, 0) as shares,
+            COALESCE(t.views, 0) as views,
+            COALESCE(t.comments_count, 0) as comments_count,
+            COALESCE(t.saves, 0) as saves,
+            COALESCE(t.likes, 0) + COALESCE(t.comments_count, 0) + COALESCE(t.views, 0) as total_engagement,
+            t.sentiment, t.emotion, t.themes, t.entities, t.ai_summary,
+            t.content_type, t.language, t.custom_fields, t.context,
+            t.detected_brands, t.channel_type,
             m.distance_to_centroid, m.is_representative
         FROM members m
-        JOIN {_POSTS_DEDUP}
-        LEFT JOIN {_ENRICHED_DEDUP}
-        LEFT JOIN {_ENGAGEMENTS_DEDUP}
-        ORDER BY m.is_representative DESC, COALESCE(pe.views, 0) + COALESCE(pe.likes, 0) * 10 DESC
+        JOIN {_AGENT_POSTS_TVF} t USING (post_id)
+        ORDER BY m.is_representative DESC, COALESCE(t.views, 0) + COALESCE(t.likes, 0) * 10 DESC
         LIMIT @limit OFFSET @offset
         """,
         {
@@ -448,5 +468,68 @@ async def get_agent_topic_posts(
             "offset": offset,
         },
     )
+
+    posts = []
+    for row in rows:
+        media_refs = row.get("media_refs")
+        if isinstance(media_refs, str):
+            try:
+                media_refs = json.loads(media_refs)
+            except (json.JSONDecodeError, TypeError):
+                media_refs = []
+        if not isinstance(media_refs, list):
+            media_refs = []
+
+        themes = row.get("themes")
+        if isinstance(themes, str):
+            try:
+                themes = json.loads(themes)
+            except (json.JSONDecodeError, TypeError):
+                themes = []
+
+        entities = row.get("entities")
+        if isinstance(entities, str):
+            try:
+                entities = json.loads(entities)
+            except (json.JSONDecodeError, TypeError):
+                entities = []
+
+        posted_at = row.get("posted_at")
+        post = {
+            "post_id": row.get("post_id"),
+            "platform": row.get("platform"),
+            "channel_handle": row.get("channel_handle") or "",
+            "channel_id": row.get("channel_id"),
+            "channel_name": row.get("channel_handle") or "",
+            "title": row.get("title"),
+            "content": row.get("content"),
+            "post_url": row.get("post_url") or "",
+            "posted_at": str(posted_at) if posted_at is not None else "",
+            "post_type": row.get("post_type") or "",
+            "media_refs": media_refs,
+            "thumbnail_url": row.get("thumbnail_url"),
+            "thumbnail_gcs_uri": row.get("thumbnail_gcs_uri"),
+            "likes": row.get("likes", 0),
+            "shares": row.get("shares", 0),
+            "views": row.get("views", 0),
+            "comments_count": row.get("comments_count", 0),
+            "saves": row.get("saves", 0),
+            "total_engagement": row.get("total_engagement", 0),
+            "sentiment": row.get("sentiment"),
+            "emotion": row.get("emotion"),
+            "themes": themes if isinstance(themes, list) else [],
+            "entities": entities if isinstance(entities, list) else [],
+            "ai_summary": row.get("ai_summary"),
+            "content_type": row.get("content_type"),
+            "language": row.get("language"),
+            "custom_fields": row.get("custom_fields") if isinstance(row.get("custom_fields"), dict) else None,
+            "context": row.get("context"),
+            "detected_brands": row.get("detected_brands") if isinstance(row.get("detected_brands"), list) else [],
+            "channel_type": row.get("channel_type"),
+            "collection_id": row.get("collection_id"),
+            "distance_to_centroid": row.get("distance_to_centroid"),
+            "is_representative": row.get("is_representative"),
+        }
+        posts.append(post)
 
     return posts

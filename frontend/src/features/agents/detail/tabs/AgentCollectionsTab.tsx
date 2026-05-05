@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Database, Download, Search, X } from 'lucide-react';
+import { Database, Search, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import type { Agent } from '../../../../api/endpoints/agents.ts';
-import { listCollections, downloadCollection } from '../../../../api/endpoints/collections.ts';
+import { listCollections } from '../../../../api/endpoints/collections.ts';
 import { mapCollectionToSource } from '../../../collections/utils.ts';
 import { PostsDataPanel } from '../../../collections/PostsDataPanel.tsx';
+import { computeWindowStart } from './overview/overview-filters.ts';
 import { Input } from '../../../../components/ui/input.tsx';
-import { Button } from '../../../../components/ui/button.tsx';
 import type { Source } from '../../../../stores/sources-store.ts';
 import { StatusBadge } from '../agent-status-utils.tsx';
 
@@ -47,6 +47,16 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
     return map;
   }, [collections]);
 
+  // Prefer the agent's stored data window; fall back to per-source computation
+  // for legacy agents whose window hasn't been backfilled yet.
+  const startDate = useMemo(
+    () =>
+      task.data_start_date ??
+      computeWindowStart(task.data_scope?.sources, task.created_at).startDate,
+    [task.data_start_date, task.data_scope?.sources, task.created_at],
+  );
+  const endDate = task.data_end_date ?? null;
+
   if (taskCollectionIds.size === 0) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -84,20 +94,6 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
             </button>
           )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1.5 text-xs"
-          disabled={allCollectionIds.length === 0}
-          onClick={() => {
-            for (const id of allCollectionIds) {
-              downloadCollection(id, collectionNames.get(id) ?? id);
-            }
-          }}
-        >
-          <Download className="h-3.5 w-3.5" />
-          Export CSV
-        </Button>
       </div>
 
       {/* Data panel with built-in filter bar */}
@@ -107,6 +103,9 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
         collections={collections}
         globalSearch={globalSearch}
         dedup={allCollectionIds.length > 1}
+        startDate={startDate ?? undefined}
+        endDate={endDate}
+        exportFilenamePrefix={task.title}
       />
     </div>
   );

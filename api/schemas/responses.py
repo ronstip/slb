@@ -40,17 +40,21 @@ class FeedPostResponse(BaseModel):
     entities: list[str] = []
     ai_summary: str | None = None
     content_type: str | None = None
+    language: str | None = None
     custom_fields: dict | None = None
     context: str | None = None
-    is_related_to_task: bool | None = None
     detected_brands: list[str] = []
     channel_type: str | None = None
     collection_id: str | None = None
+    is_retweet: bool | None = None
+    is_quote: bool | None = None
 
 
 class FeedResponse(BaseModel):
     posts: list[FeedPostResponse]
     total: int
+    total_views: int = 0
+    total_sources: int = 0
     offset: int
     limit: int
 
@@ -73,7 +77,6 @@ class DashboardPostResponse(BaseModel):
     custom_fields: dict | None = None
     ai_summary: str | None = None
     context: str | None = None
-    is_related_to_task: bool | None = None
     detected_brands: list[str] = []
     channel_type: str | None = None
     media_refs: str | None = None
@@ -129,6 +132,50 @@ class SharedDashboardDataResponse(BaseModel):
     collection_names: dict[str, str]
     truncated: bool = False
     meta: SharedDashboardMetaResponse
+
+
+class BriefingShareResponse(BaseModel):
+    token: str
+    agent_id: str
+    title: str
+    created_at: str
+    share_url: str
+    active: bool = True
+
+
+class BriefingMetaResponse(BaseModel):
+    exists: bool
+    generated_at: str | None = None
+
+
+class SharedBriefingMetaResponse(BaseModel):
+    title: str
+    created_at: str
+
+
+class SharedBriefingDataResponse(BaseModel):
+    layout: dict
+    meta: SharedBriefingMetaResponse
+
+
+class ArtifactShareResponse(BaseModel):
+    token: str
+    artifact_id: str
+    title: str
+    created_at: str
+    share_url: str
+    active: bool = True
+
+
+class SharedArtifactMetaResponse(BaseModel):
+    title: str
+    type: str
+    created_at: str
+
+
+class SharedArtifactDataResponse(BaseModel):
+    payload: dict
+    meta: SharedArtifactMetaResponse
 
 
 class BreakdownItem(BaseModel):

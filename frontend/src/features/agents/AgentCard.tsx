@@ -68,18 +68,32 @@ interface TaskCardProps {
   onClick?: () => void;
 }
 
-function ThumbnailGrid({ collectionIds, compact, agentId }: { collectionIds: string[]; compact?: boolean; agentId: string }) {
+function ThumbnailGrid({
+  collectionIds,
+  compact,
+  agentId,
+  startDate,
+  endDate,
+}: {
+  collectionIds: string[];
+  compact?: boolean;
+  agentId: string;
+  startDate?: string | null;
+  endDate?: string | null;
+}) {
   const heightClass = compact ? 'h-24' : 'h-32';
   const [imageStates, setImageStates] = useState<Record<string, 'loaded' | 'error'>>({});
 
   const { data } = useQuery({
-    queryKey: ['agent-thumbnails', collectionIds.join(',')],
+    queryKey: ['agent-thumbnails', collectionIds.join(','), startDate ?? '', endDate ?? ''],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
         limit: 6,
         sort: 'engagement',
         has_media: true,
+        start_date: startDate ?? undefined,
+        end_date: endDate ?? undefined,
       }),
     enabled: collectionIds.length > 0,
     staleTime: 5 * 60_000,
@@ -273,7 +287,15 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
         className="group flex h-full flex-col rounded-xl border border-border bg-card overflow-hidden shadow-sm transition-all hover:border-primary/30 hover:shadow-md cursor-pointer"
         onClick={() => handleOpen()}
       >
-        {!skipThumbnails && <ThumbnailGrid collectionIds={task.collection_ids} compact={compact} agentId={task.agent_id} />}
+        {!skipThumbnails && (
+          <ThumbnailGrid
+            collectionIds={task.collection_ids}
+            compact={compact}
+            agentId={task.agent_id}
+            startDate={task.data_start_date}
+            endDate={task.data_end_date}
+          />
+        )}
 
         <div className={cn('flex flex-1 flex-col', compact ? 'p-3 pt-7' : 'p-4 pt-8')}>
           <div className="flex items-start justify-between gap-2 mb-1.5">

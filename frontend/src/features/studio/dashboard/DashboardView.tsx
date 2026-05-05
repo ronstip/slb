@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2, Maximize2, Pencil, X } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
-import type { Artifact } from '../../../stores/studio-store.ts';
+import type { DashboardArtifact } from '../../../stores/studio-store.ts';
 import { updateArtifact } from '../../../api/endpoints/artifacts.ts';
 import { Input } from '../../../components/ui/input.tsx';
 import { Button } from '../../../components/ui/button.tsx';
@@ -17,8 +17,6 @@ import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
 import type { DashboardToolbarHandlers } from './SocialDashboardView.tsx';
 import { SocialDashboardToolbar } from './SocialDashboardToolbar.tsx';
-
-type DashboardArtifact = Extract<Artifact, { type: 'dashboard' }>;
 
 interface DashboardViewProps {
   artifact: DashboardArtifact;

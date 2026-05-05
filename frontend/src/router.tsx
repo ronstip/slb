@@ -1,21 +1,92 @@
+import { Suspense, lazy, type ComponentType } from 'react';
 import { createBrowserRouter, Navigate, useParams } from 'react-router';
 import { LandingPage } from './auth/LandingPage.tsx';
 import { AuthGate } from './auth/AuthGate.tsx';
-import { SettingsPage } from './features/settings/SettingsPage.tsx';
-import { AdminPage } from './features/admin/AdminPage.tsx';
-import { InviteHandler } from './features/settings/InviteHandler.tsx';
-import { SharedDashboardPage } from './features/studio/dashboard/SharedDashboardPage.tsx';
-import { StandaloneArtifactPage } from './features/artifacts/StandaloneArtifactPage.tsx';
-import { AgentsPage } from './features/agents/AgentsPage.tsx';
-import { AgentHome } from './features/agents/AgentHome.tsx';
-import { AgentDetailPage } from './features/agents/detail/AgentDetailPage.tsx';
-import { CollectionsPage } from './features/collections/CollectionsPage.tsx';
 import { useAuth } from './auth/useAuth.ts';
+
+// Route-level code splitting. Each lazy() call produces a separate JS chunk
+// that is only fetched when the user navigates to that route. Keeps the
+// landing/home entry bundle small.
+const SettingsPage = lazy(() =>
+  import('./features/settings/SettingsPage.tsx').then((m) => ({ default: m.SettingsPage })),
+);
+const AdminPage = lazy(() =>
+  import('./features/admin/AdminPage.tsx').then((m) => ({ default: m.AdminPage })),
+);
+const InviteHandler = lazy(() =>
+  import('./features/settings/InviteHandler.tsx').then((m) => ({ default: m.InviteHandler })),
+);
+const SharedDashboardPage = lazy(() =>
+  import('./features/studio/dashboard/SharedDashboardPage.tsx').then((m) => ({
+    default: m.SharedDashboardPage,
+  })),
+);
+const SharedBriefingPage = lazy(() =>
+  import('./features/briefings/SharedBriefingPage.tsx').then((m) => ({
+    default: m.SharedBriefingPage,
+  })),
+);
+const SharedArtifactPage = lazy(() =>
+  import('./features/artifacts/SharedArtifactPage.tsx').then((m) => ({
+    default: m.SharedArtifactPage,
+  })),
+);
+const StandaloneArtifactPage = lazy(() =>
+  import('./features/artifacts/StandaloneArtifactPage.tsx').then((m) => ({
+    default: m.StandaloneArtifactPage,
+  })),
+);
+const AgentsPage = lazy(() =>
+  import('./features/agents/AgentsPage.tsx').then((m) => ({ default: m.AgentsPage })),
+);
+const AgentHome = lazy(() =>
+  import('./features/agents/AgentHome.tsx').then((m) => ({ default: m.AgentHome })),
+);
+const AgentDetailPage = lazy(() =>
+  import('./features/agents/detail/AgentDetailPage.tsx').then((m) => ({
+    default: m.AgentDetailPage,
+  })),
+);
+const CollectionsPage = lazy(() =>
+  import('./features/collections/CollectionsPage.tsx').then((m) => ({ default: m.CollectionsPage })),
+);
+
+function FullScreenSpinner() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-background">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
+    </div>
+  );
+}
+
+// Wraps a lazy route in a Suspense boundary so the spinner is shown only for
+// that route, not the whole app shell.
+function withSuspense<P extends object>(Component: ComponentType<P>) {
+  return function SuspenseRoute(props: P) {
+    return (
+      <Suspense fallback={<FullScreenSpinner />}>
+        <Component {...props} />
+      </Suspense>
+    );
+  };
+}
+
+const SettingsPageRoute = withSuspense(SettingsPage);
+const AdminPageRoute = withSuspense(AdminPage);
+const InviteHandlerRoute = withSuspense(InviteHandler);
+const SharedDashboardPageRoute = withSuspense(SharedDashboardPage);
+const SharedBriefingPageRoute = withSuspense(SharedBriefingPage);
+const SharedArtifactPageRoute = withSuspense(SharedArtifactPage);
+const StandaloneArtifactPageRoute = withSuspense(StandaloneArtifactPage);
+const AgentsPageRoute = withSuspense(AgentsPage);
+const AgentHomeRoute = withSuspense(AgentHome);
+const AgentDetailPageRoute = withSuspense(AgentDetailPage);
+const CollectionsPageRoute = withSuspense(CollectionsPage);
 
 // Wrapper for invite handler to extract code from params
 function InviteRoute() {
   const params = useParams<{ code: string }>();
-  return <InviteHandler inviteCode={params.code || ''} />;
+  return <InviteHandlerRoute inviteCode={params.code || ''} />;
 }
 
 // Smart home route: shows LandingPage for anonymous/unauthenticated users,
@@ -24,16 +95,12 @@ function HomeRoute() {
   const { loading, isAnonymous, devMode } = useAuth();
 
   if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
-      </div>
-    );
+    return <FullScreenSpinner />;
   }
 
   if (isAnonymous && !devMode) return <LandingPage />;
 
-  return <AgentHome />;
+  return <AgentHomeRoute />;
 }
 
 // Backward-compat redirect from old /tasks/:taskId to /agents/:taskId
@@ -55,8 +122,16 @@ export const router = createBrowserRouter([
     element: <Navigate to="/" replace />,
   },
   {
+    path: '/shared/briefing/:token',
+    element: <SharedBriefingPageRoute />,
+  },
+  {
+    path: '/shared/artifact/:token',
+    element: <SharedArtifactPageRoute />,
+  },
+  {
     path: '/shared/:token',
-    element: <SharedDashboardPage />,
+    element: <SharedDashboardPageRoute />,
   },
   {
     // All app routes go through AuthGate (redirects anonymous users to /)
@@ -68,7 +143,7 @@ export const router = createBrowserRouter([
       },
       {
         path: '/settings/:section',
-        element: <SettingsPage />,
+        element: <SettingsPageRoute />,
       },
       {
         path: '/settings',
@@ -76,19 +151,19 @@ export const router = createBrowserRouter([
       },
       {
         path: '/admin/:section?',
-        element: <AdminPage />,
+        element: <AdminPageRoute />,
       },
       {
         path: '/artifact/:artifactId',
-        element: <StandaloneArtifactPage />,
+        element: <StandaloneArtifactPageRoute />,
       },
       {
         path: '/agents',
-        element: <AgentsPage />,
+        element: <AgentsPageRoute />,
       },
       {
         path: '/agents/:taskId',
-        element: <AgentDetailPage />,
+        element: <AgentDetailPageRoute />,
       },
       // Backward-compat redirects for old /tasks URLs
       {
@@ -101,7 +176,7 @@ export const router = createBrowserRouter([
       },
       {
         path: '/collections',
-        element: <CollectionsPage />,
+        element: <CollectionsPageRoute />,
       },
     ],
   },

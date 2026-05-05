@@ -1,0 +1,51 @@
+{
+  "per_scenario": [
+    {
+      "scenario_id": "ambiguous-data-overview",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Excellent synthesis of raw tool data; provides a sharp overview and offers two crisp follow-up paths."
+    },
+    {
+      "scenario_id": "chat-bare-greeting",
+      "conciseness": 3,
+      "tone": 3,
+      "repetition": 5,
+      "correctness": 2,
+      "one_line_critique": "Included a trailing question and three sentences, violating the specific scenario instructions for a bare greeting."
+    },
+    {
+      "scenario_id": "chat-followup-no-restate",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 3,
+      "correctness": 2,
+      "one_line_critique": "Leads with the answer without restating the list, but repeats previous data and hallucinates trends from irrelevant tool outputs."
+    },
+    {
+      "scenario_id": "repeat-dashboard",
+      "conciseness": 4,
+      "tone": 2,
+      "repetition": 1,
+      "correctness": 1,
+      "one_line_critique": "The agent failed to recognize the redundant request, creating a second dashboard instead of referencing the existing one."
+    },
+    {
+      "scenario_id": "simple-q-engagement",
+      "conciseness": 5,
+      "tone": 5,
+      "repetition": 5,
+      "correctness": 5,
+      "one_line_critique": "Excellent response that leads with the answer, avoids all preamble, and provides sharp, data-backed comparisons."
+    }
+  ],
+  "averages": {
+    "conciseness": 4.4,
+    "tone": 4.0,
+    "repetition": 3.8,
+    "correctness": 3.0
+  },
+  "n_judged": 5
+}

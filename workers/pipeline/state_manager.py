@@ -16,6 +16,8 @@ from workers.pipeline.post_state import (
     FAILURE_TO_STEP,
     RETRY_MAP,
     TERMINAL_STATES,
+    TRANSIENT_REVERT,
+    TRANSIENT_STATES,
     PostState,
 )
 
@@ -205,6 +207,84 @@ class StateManager:
             results.append(data)
         return results
 
+    def claim_one(
+        self,
+        claim_state: PostState,
+        in_flight_state: PostState,
+    ) -> dict | None:
+        """Atomically claim one post for processing.
+
+        Reads a single post in `claim_state`, transitions it to `in_flight_state`,
+        and returns the post's data. Used by the streaming runner to keep its
+        executor saturated without batch drain. The transaction prevents two
+        producers from claiming the same post.
+
+        Returns None if no posts are available in `claim_state`.
+        """
+        transaction = self._db.transaction()
+        return _claim_one_txn(
+            transaction,
+            self._posts_ref,
+            self._status_ref,
+            claim_state,
+            in_flight_state,
+        )
+
+    def recover_stale_transient(
+        self,
+        cooldown_sec: int = 300,
+    ) -> int:
+        """Revert posts stuck in transient (DOWNLOADING / ENRICHING) states.
+
+        Posts whose `updated_at` is older than `cooldown_sec` are assumed to
+        belong to a crashed prior run; revert them to their claim_state so the
+        new pipeline picks them up. Bumps the per-step attempt counter so a
+        permanently-failing post eventually gets dropped via max_retries.
+
+        Returns the number of posts recovered.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=cooldown_sec)
+        transitions: list[tuple[str, PostState]] = []
+        attempts_step: dict[str, str] = {}
+        for transient, revert_to in TRANSIENT_REVERT.items():
+            try:
+                docs = (
+                    self._posts_ref
+                    .where("status", "==", transient.value)
+                    .limit(500)
+                    .stream()
+                )
+                step_name = "download" if transient == PostState.DOWNLOADING else "enrich"
+                for doc in docs:
+                    data = doc.to_dict() or {}
+                    updated_at = data.get("updated_at")
+                    if updated_at and hasattr(updated_at, "replace"):
+                        if updated_at.replace(tzinfo=timezone.utc) > cutoff:
+                            continue
+                    transitions.append((doc.id, revert_to))
+                    attempts_step[doc.id] = step_name
+            except Exception:
+                logger.warning(
+                    "Failed to query transient state %s for recovery", transient.value, exc_info=True,
+                )
+        if not transitions:
+            return 0
+        # Bump attempt counters via a side-channel write (transition_batch
+        # doesn't currently bump on non-failure transitions).
+        for post_id, _ in transitions:
+            try:
+                self._posts_ref.document(post_id).update({
+                    f"attempts.{attempts_step[post_id]}": transforms.Increment(1),
+                })
+            except Exception:
+                logger.debug("Failed to bump attempt counter for %s", post_id, exc_info=True)
+        self.transition_batch(transitions)
+        logger.info(
+            "Recovered %d stale transient posts for %s",
+            len(transitions), self._collection_id,
+        )
+        return len(transitions)
+
     def get_counts(self) -> dict[str, int]:
         """Read aggregate counters from collection_status doc."""
         doc = self._status_ref.get()
@@ -361,3 +441,50 @@ class StateManager:
                 break
             batch.commit()
             logger.debug("Deleted %d post_state docs for %s", deleted, self._collection_id)
+
+
+# ---------------------------------------------------------------------------
+# Module-level transaction helper for atomic single-post claims.
+#
+# Lives at module level (not inside StateManager) because @firestore.transactional
+# wraps a free function whose first arg is the transaction. The PostsRef +
+# status_ref are passed in by claim_one().
+# ---------------------------------------------------------------------------
+
+
+@firestore.transactional
+def _claim_one_txn(
+    transaction,
+    posts_ref,
+    status_ref,
+    claim_state: PostState,
+    in_flight_state: PostState,
+) -> dict | None:
+    """Read the first post in `claim_state` and atomically transition it.
+
+    Returns the post's data (with `post_id` populated) or None if no work.
+
+    Firestore transactions retry on contention, so multiple producer threads
+    targeting the same query won't double-claim — but in our current design
+    there's a single producer per step, so contention is essentially zero.
+    """
+    query = posts_ref.where("status", "==", claim_state.value).limit(1)
+    docs = list(query.stream(transaction=transaction))
+    if not docs:
+        return None
+    doc = docs[0]
+    data = doc.to_dict() or {}
+
+    now = datetime.now(timezone.utc)
+    transaction.update(doc.reference, {
+        "status": in_flight_state.value,
+        "updated_at": now,
+    })
+    transaction.update(status_ref, {
+        f"counts.{claim_state.value}": transforms.Increment(-1),
+        f"counts.{in_flight_state.value}": transforms.Increment(1),
+        "updated_at": now,
+    })
+    data["post_id"] = doc.id
+    data["status"] = in_flight_state.value
+    return data

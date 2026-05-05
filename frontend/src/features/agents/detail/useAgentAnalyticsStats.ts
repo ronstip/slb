@@ -7,9 +7,9 @@ import type { Agent } from '../../../api/endpoints/agents.ts';
 
 /**
  * Query keys here are kept in exact sync with PostsDataPanel's default-filter
- * state (platform=all, sentiment=all, relevant=true, sourceFilter=all). When
- * both the Data and Topics tabs are open, React Query dedupes these fetches
- * so navigation is cache-hit and instant.
+ * state (platform=all, sentiment=all, sourceFilter=all). When both the Data
+ * and Topics tabs are open, React Query dedupes these fetches so navigation
+ * is cache-hit and instant.
  */
 export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
   const taskCollectionIds = useMemo(
@@ -33,9 +33,13 @@ export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
 
   const dedup = collectionIds.length > 1;
   const hasSelection = collectionIds.length > 0;
+  // Apply the agent's data window — keeps these stats consistent with
+  // PostsDataPanel and the Live Feed.
+  const startDate = task.data_start_date ?? undefined;
+  const endDate = task.data_end_date ?? undefined;
 
   const { data: postsData } = useQuery({
-    queryKey: ['collection-posts', collectionIds, dedup, 'all', 'all', 'true'],
+    queryKey: ['collection-posts', collectionIds, dedup, 'all', 'all', startDate ?? '', endDate ?? '', task.agent_id],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: collectionIds,
@@ -43,22 +47,9 @@ export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
         limit: 5_000,
         offset: 0,
         dedup,
-        relevant_to_task: 'true',
-      }),
-    enabled: hasSelection,
-    staleTime: 30_000,
-  });
-
-  const { data: relevanceData } = useQuery({
-    queryKey: ['collection-posts-relevance', collectionIds, dedup, 'all', 'all'],
-    queryFn: () =>
-      getMultiCollectionPosts({
-        collection_ids: collectionIds,
-        sort: 'views',
-        limit: 5_000,
-        offset: 0,
-        dedup,
-        relevant_to_task: 'all',
+        start_date: startDate,
+        end_date: endDate,
+        agent_id: task.agent_id,
       }),
     enabled: hasSelection,
     staleTime: 30_000,
@@ -76,10 +67,8 @@ export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
     const base = computeAnalyticsStats(posts);
     if (!base) return null;
 
-    const pool = relevanceData?.posts ?? posts;
-    const uniquePostIds = new Set(pool.map((p) => p.post_id));
+    const uniquePostIds = new Set(posts.map((p) => p.post_id));
     base.dedupedCount = uniquePostIds.size;
-    base.relevantCount = pool.filter((p) => p.is_related_to_task === true).length;
 
     if (allStats) {
       const dailyMap = new Map<string, number>();
@@ -99,5 +88,5 @@ export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
     }
 
     return base;
-  }, [postsData, relevanceData, allStats]);
+  }, [postsData, allStats]);
 }

@@ -25,11 +25,13 @@ from workers.collection.normalizer import (
 )
 from workers.collection.wrapper import DataProviderWrapper
 from workers.pipeline.post_state import FAILURE_STATES, TERMINAL_STATES, PostState
+from workers.pipeline.run_logger import collection_run_log
 from workers.pipeline.state_manager import StateManager
 from workers.pipeline.steps import PIPELINE_STEPS, StepContext
 from workers.shared.bq_client import BQClient
 from workers.shared.firestore_client import FirestoreClient
 from workers.shared.gcs_client import GCSClient
+from workers.shared.time_range_gate import partition_by_time_range
 
 logger = logging.getLogger(__name__)
 
@@ -77,27 +79,50 @@ class PipelineRunner:
         a final status update rather than leaving the collection stuck
         at 'processing' forever.
         """
-        logger.info("━━━ Pipeline V2 START %s ━━━", self.collection_id)
-        pipeline_start = _time.monotonic()
+        agent_id = None
         try:
-            self._run_pipeline(pipeline_start)
-        except Exception as e:
-            elapsed = round(_time.monotonic() - pipeline_start, 1)
-            logger.exception(
-                "━━━ Pipeline V2 CRASHED %s after %.1fs ━━━",
-                self.collection_id, elapsed,
-            )
-            self._set_crashed_status(str(e))
-        finally:
-            # Release the media pool. wait=False because in-flight downloads
-            # that haven't propagated to BQ yet are caught by
-            # _reconcile_bq_media_refs on the next run anyway.
-            self._media_executor.shutdown(wait=False)
+            agent_id = self._get_agent_id()
+        except Exception:  # noqa: BLE001
+            pass
+        with collection_run_log(self.collection_id, agent_id=agent_id) as run_log_path:
+            logger.info("━━━ Pipeline V2 START %s ━━━", self.collection_id)
+            logger.info("Per-run log: %s (also tail logs/runs/latest.log)", run_log_path)
+            pipeline_start = _time.monotonic()
+            try:
+                self._run_pipeline(pipeline_start)
+            except Exception as e:
+                elapsed = round(_time.monotonic() - pipeline_start, 1)
+                logger.exception(
+                    "━━━ Pipeline V2 CRASHED %s after %.1fs ━━━",
+                    self.collection_id, elapsed,
+                )
+                self._set_crashed_status(str(e))
+            finally:
+                # Release the media pool. wait=False because in-flight downloads
+                # that haven't propagated to BQ yet are caught by
+                # _reconcile_bq_media_refs on the next run anyway.
+                self._media_executor.shutdown(wait=False)
 
     def _get_agent_id(self) -> str | None:
         """Return the agent_id linked to this collection, if any."""
         status = self.fs.get_collection_status(self.collection_id)
         return (status or {}).get("agent_id")
+
+    def _get_agent_version(self) -> int | None:
+        """Return the agent_version frozen on this collection at dispatch time.
+
+        Stamped by ``agent_service.dispatch_agent_run`` so the value is stable
+        across the original run + any continuation reruns. None for manual
+        collections with no owning agent.
+        """
+        status = self.fs.get_collection_status(self.collection_id)
+        v = (status or {}).get("agent_version")
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
 
     def _check_agent_completion(self) -> None:
         """Trigger agent continuation check if this collection belongs to an agent."""
@@ -232,13 +257,25 @@ class PipelineRunner:
                 crawlers={},
             )
 
+        # Resolve owning agent + frozen version up front. The enrichment skip
+        # cache keys on (agent_id, agent_version); the embedding skip cache
+        # widens to "any of the agent's collections" when the collection
+        # belongs to an agent.
+        agent_id = self._get_agent_id()
+        agent_version = self._get_agent_version()
+        agent_collection_ids = (
+            self.fs.get_agent_collection_ids(agent_id) if agent_id else []
+        )
+
         # Prime the in-run idempotency cache from BQ — avoids a per-batch
         # BQ pre-check roundtrip inside action_enrich/action_embed. The
         # cache is re-primed on every runner init, so continuation runs
         # get a correct starting set.
-        enriched_ids, embedded_ids = self._prime_idempotency_cache()
-
-        # Build step context
+        enriched_ids, embedded_ids = self._prime_idempotency_cache(
+            agent_collection_ids=agent_collection_ids,
+            agent_id=agent_id,
+            agent_version=agent_version,
+        )
         ctx = StepContext(
             collection_id=self.collection_id,
             bq=self.bq,
@@ -251,6 +288,9 @@ class PipelineRunner:
             enriched_ids=enriched_ids,
             embedded_ids=embedded_ids,
             media_executor=self._media_executor,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_collection_ids=agent_collection_ids,
         )
 
         crawl_thread: threading.Thread | None = None
@@ -286,6 +326,23 @@ class PipelineRunner:
             except Exception:
                 logger.warning(
                     "Failed to compute retry candidates for %s (continuation proceeds without retries)",
+                    self.collection_id, exc_info=True,
+                )
+            # Recover posts orphaned in transient (DOWNLOADING/ENRICHING) states
+            # by a crashed prior run. Reverts them to their claim entry-point so
+            # the new streaming runners pick them up.
+            try:
+                recovered = self.state_manager.recover_stale_transient(
+                    cooldown_sec=int(self.settings.pipeline_stall_threshold_minutes) * 60,
+                )
+                if recovered:
+                    logger.info(
+                        "Reverted %d stale transient post(s) for %s",
+                        recovered, self.collection_id,
+                    )
+            except Exception:
+                logger.warning(
+                    "Failed to recover stale transient posts for %s",
                     self.collection_id, exc_info=True,
                 )
             self._crawl_complete.set()
@@ -704,6 +761,8 @@ class PipelineRunner:
         funnel_worker_dedup = 0
         funnel_bq_dedup = 0  # wired up in the BQ-dedup PR; stays 0 until then
         funnel_bq_insert_failures = 0
+        funnel_posts_in_range = 0
+        funnel_posts_out_of_range = 0
         collection_started_at = datetime.now(timezone.utc).isoformat()
         collection_start = _time.monotonic()
 
@@ -841,8 +900,15 @@ class PipelineRunner:
                 last_run_posts_added=total_posts,
             )
 
+            # Time-range gate: out-of-range posts skip the state machine so
+            # they don't enter enrichment+embedding. They still live in
+            # `posts`/`post_engagements`/`channels` (we paid the provider).
+            in_range, out_of_range = partition_by_time_range(new_posts, self._config)
+            funnel_posts_in_range += len(in_range)
+            funnel_posts_out_of_range += len(out_of_range)
+
             # Classify posts and set initial pipeline state
-            self.state_manager.mark_collected(new_posts)
+            self.state_manager.mark_collected(in_range)
 
             # Usage tracking (fire-and-forget)
             actual_stored = len(new_posts) - failed_posts
@@ -909,6 +975,8 @@ class PipelineRunner:
                 "worker_bq_dedup": funnel_bq_dedup,
                 "worker_bq_insert_failures": funnel_bq_insert_failures,
                 "worker_posts_stored": total_posts,
+                "posts_in_range": funnel_posts_in_range,
+                "posts_out_of_range": funnel_posts_out_of_range,
             },
         }
         if errors:
@@ -1013,6 +1081,34 @@ class PipelineRunner:
 
         return True
 
+    def _heartbeat_worker(self, stop_event: threading.Event) -> None:
+        """Touch collection_status.updated_at only when post-state counts change.
+
+        A blind heartbeat would mask the run-3 failure mode (a wedged step
+        worker holding a hung Gemini call while the process stays alive) —
+        the watchdog would see a fresh `updated_at` forever and never recover
+        the pipeline. Tying the write to actual progress (the post-state
+        counts dict changing) means a stuck DAG starves `updated_at` and the
+        watchdog fires after `pipeline_stall_threshold_minutes`.
+
+        First tick always writes (establishes the baseline). After that, we
+        only write when the state-counts snapshot differs from last seen.
+        """
+        interval = float(self.settings.pipeline_heartbeat_seconds)
+        last_counts: dict | None = None
+        while not stop_event.is_set():
+            try:
+                current_counts = self.state_manager.get_counts()
+                if last_counts is None or current_counts != last_counts:
+                    self.fs.update_collection_status(self.collection_id)
+                    last_counts = current_counts
+            except Exception:
+                logger.warning(
+                    "Heartbeat update failed for %s",
+                    self.collection_id, exc_info=True,
+                )
+            stop_event.wait(interval)
+
     def _log_progress(self) -> None:
         """Periodic progress log — called once per loop iter, not per step."""
         counts = self.state_manager.get_counts()
@@ -1021,7 +1117,11 @@ class PipelineRunner:
         done = counts.get(PostState.DONE.value, 0)
         total = self.state_manager.get_total_posts()
         enriched = counts.get(PostState.ENRICHED.value, 0) + done
-        downloading = counts.get(PostState.COLLECTED_WITH_MEDIA.value, 0)
+        downloading = (
+            counts.get(PostState.COLLECTED_WITH_MEDIA.value, 0)
+            + counts.get(PostState.DOWNLOADING.value, 0)
+        )
+        enriching = counts.get(PostState.ENRICHING.value, 0)
         if total <= 0:
             return
         self.fs.update_collection_status(
@@ -1030,6 +1130,8 @@ class PipelineRunner:
         parts = [f"{enriched}/{total} posts enriched"]
         if downloading > 0:
             parts.append(f"{downloading} downloading media")
+        if enriching > 0:
+            parts.append(f"{enriching} in flight")
         msg = f"Processing: {', '.join(parts)}"
         if not hasattr(self, "_last_progress_msg") or self._last_progress_msg != msg:
             self._last_progress_msg = msg
@@ -1075,7 +1177,69 @@ class PipelineRunner:
         last_progress_log = 0.0
 
         stop_event = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=self._heartbeat_worker,
+            args=(stop_event,),
+            daemon=True,
+            name=f"heartbeat-{self.collection_id[:8]}",
+        )
+        heartbeat_thread.start()
+
         step_threads: list[threading.Thread] = []
+
+        # Streaming runners for download + enrich. They claim posts atomically
+        # and run on persistent executors — no per-batch drain.
+        from workers.pipeline.post_state import PostState
+        from workers.pipeline.steps import (
+            download_process_one,
+            enrich_flush,
+            enrich_process_one,
+        )
+        from workers.pipeline.streaming import StreamingStepRunner
+
+        download_runner = StreamingStepRunner(
+            name="download",
+            ctx=ctx,
+            claim_state=PostState.COLLECTED_WITH_MEDIA,
+            in_flight_state=PostState.DOWNLOADING,
+            success_state=PostState.READY_FOR_ENRICHMENT,
+            failure_state=PostState.DOWNLOAD_FAILED,
+            concurrency=self.settings.media_download_concurrency,
+            process_fn=download_process_one,
+            flush_fn=None,  # state transition carries media_refs; no BQ flush here
+            flush_size=10,
+            flush_interval_sec=2.0,
+            record_step_timing=self._record_step_timing,
+        )
+        enrich_runner = StreamingStepRunner(
+            name="enrich",
+            ctx=ctx,
+            claim_state=PostState.READY_FOR_ENRICHMENT,
+            in_flight_state=PostState.ENRICHING,
+            success_state=PostState.ENRICHED,
+            failure_state=PostState.ENRICHMENT_FAILED,
+            concurrency=self.settings.enrichment_concurrency,
+            process_fn=enrich_process_one,
+            flush_fn=enrich_flush,
+            flush_size=self.settings.enrichment_bq_flush_size,
+            flush_interval_sec=self.settings.enrichment_bq_flush_interval_sec,
+            record_step_timing=self._record_step_timing,
+        )
+
+        for runner_obj, step_name in (
+            (download_runner, "download"),
+            (enrich_runner, "enrich"),
+        ):
+            t = threading.Thread(
+                target=runner_obj.run,
+                args=(stop_event,),
+                daemon=True,
+                name=f"stream-{step_name}-{self.collection_id[:8]}",
+            )
+            t.start()
+            step_threads.append(t)
+
+        # Embed remains on the batched action model (single BQ query per batch).
         for step in PIPELINE_STEPS:
             t = threading.Thread(
                 target=self._step_worker,
@@ -1159,6 +1323,7 @@ class PipelineRunner:
                         "Step thread %s did not exit cleanly for %s",
                         t.name, self.collection_id,
                     )
+            heartbeat_thread.join(timeout=5)
 
         logger.info("── Processing loop complete for %s", self.collection_id)
 
@@ -1207,22 +1372,32 @@ class PipelineRunner:
                     )
                     return
 
-    def _prime_idempotency_cache(self) -> tuple[set[str], set[str]]:
+    def _prime_idempotency_cache(
+        self,
+        agent_collection_ids: list[str] | None = None,
+        agent_id: str | None = None,
+        agent_version: int | None = None,
+    ) -> tuple[set[str], set[str]]:
         """Load the set of already-enriched and already-embedded post_ids.
 
         Primed once per PipelineRunner lifecycle so continuation runs get a
         correct starting set. If either query fails, the step actions fall
         back to per-batch BQ pre-checks (defense-in-depth).
+
+        Enrichment skip is keyed on (agent_id, agent_version) — strict match,
+        NULL legacy rows DO NOT count as a hit, so a new agent re-enriches
+        them. Embedding skip widens to all of the agent's collections (one
+        embedding per post regardless of which agent triggered it).
         """
         enriched: set[str] = set()
         embedded: set[str] = set()
         try:
             rows = self.bq.query(
-                "SELECT ep.post_id AS post_id "
-                "FROM social_listening.enriched_posts ep "
-                "JOIN social_listening.posts p ON p.post_id = ep.post_id "
-                "WHERE p.collection_id = @collection_id",
-                {"collection_id": self.collection_id},
+                "SELECT DISTINCT post_id "
+                "FROM social_listening.enriched_posts "
+                "WHERE agent_id IS NOT DISTINCT FROM @agent_id "
+                "  AND agent_version IS NOT DISTINCT FROM @agent_version",
+                {"agent_id": agent_id, "agent_version": agent_version},
             )
             enriched = {r["post_id"] for r in rows}
         except Exception:
@@ -1230,13 +1405,22 @@ class PipelineRunner:
                 "Failed to prime enriched_ids cache for %s (falling back to per-batch BQ checks)",
                 self.collection_id, exc_info=True,
             )
+
+        # Embedded scope: agent-wide if agent_collection_ids is set, else
+        # just this collection.
+        if agent_collection_ids:
+            scope_filter = "p.collection_id IN UNNEST(@collection_ids)"
+            scope_params = {"collection_ids": agent_collection_ids}
+        else:
+            scope_filter = "p.collection_id = @collection_id"
+            scope_params = {"collection_id": self.collection_id}
         try:
             rows = self.bq.query(
-                "SELECT pe.post_id AS post_id "
+                "SELECT DISTINCT pe.post_id AS post_id "
                 "FROM social_listening.post_embeddings pe "
                 "JOIN social_listening.posts p ON p.post_id = pe.post_id "
-                "WHERE p.collection_id = @collection_id",
-                {"collection_id": self.collection_id},
+                f"WHERE {scope_filter}",
+                scope_params,
             )
             embedded = {r["post_id"] for r in rows}
         except Exception:

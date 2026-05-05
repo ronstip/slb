@@ -1,10 +1,7 @@
 """Pydantic schema for dashboard widget layouts.
 
 Mirrors `frontend/src/features/studio/dashboard/types-social-dashboard.ts`.
-Used by:
-  - `api/routers/dashboard_layouts.py` — validates incoming save requests.
-  - `api/agent/tools/compose_dashboard.py` — validates agent-authored layouts
-    and drives self-heal logic.
+Used by `api/routers/dashboard_layouts.py` to validate incoming save requests.
 
 Schema parity between TS and Python is enforced by
 `api/tests/test_dashboard_schema_parity.py`.
@@ -187,7 +184,7 @@ class SocialDashboardWidget(BaseModel):
 
     `extra='ignore'` so legacy widgets with fields we've since removed still
     round-trip without raising. Grid bounds are enforced in `DashboardLayout`,
-    not here, so compose_dashboard can self-heal before re-validating.
+    not here.
     """
 
     model_config = ConfigDict(extra="ignore")

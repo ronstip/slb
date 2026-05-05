@@ -104,7 +104,7 @@ class FirestoreClient:
             return data
         return None
 
-    def get_stale_pipelines(self, max_age_minutes: int = 60) -> list[dict]:
+    def get_stale_pipelines(self, max_age_minutes: int = 10) -> list[dict]:
         """Find collections stuck in 'running' past max_age_minutes.
 
         These are likely orphaned by a process crash. Returns list of dicts
@@ -124,12 +124,20 @@ class FirestoreClient:
                 for doc in docs:
                     data = doc.to_dict()
                     updated_at = data.get("updated_at")
+                    progress = {
+                        "posts_collected": data.get("posts_collected", 0) or 0,
+                        "posts_enriched": data.get("posts_enriched", 0) or 0,
+                        "posts_embedded": data.get("posts_embedded", 0) or 0,
+                        "counts": data.get("counts") or {},
+                        "task_id": data.get("task_id"),
+                    }
                     if updated_at and hasattr(updated_at, "timestamp"):
                         if updated_at.replace(tzinfo=timezone.utc) < cutoff:
                             stale.append({
                                 "collection_id": doc.id,
                                 "status": status_val,
                                 "updated_at": updated_at.isoformat(),
+                                **progress,
                             })
                     elif updated_at and isinstance(updated_at, str):
                         from datetime import datetime as dt
@@ -142,6 +150,7 @@ class FirestoreClient:
                                     "collection_id": doc.id,
                                     "status": status_val,
                                     "updated_at": updated_at,
+                                    **progress,
                                 })
                         except ValueError:
                             pass
@@ -244,6 +253,13 @@ class FirestoreClient:
                 total += (doc.to_dict() or {}).get("snapshot_count", 0)
         return total
 
+    def get_agent_collection_ids(self, agent_id: str) -> list[str]:
+        """Return all collection_ids that have ever belonged to this agent."""
+        agent_doc = self._db.collection("agents").document(agent_id).get()
+        if not agent_doc.exists:
+            return []
+        return list((agent_doc.to_dict() or {}).get("collection_ids", []))
+
     # --- Agent methods ---
 
     def create_agent(self, agent_id: str, data: dict) -> None:
@@ -273,9 +289,55 @@ class FirestoreClient:
 
     def update_agent(self, agent_id: str, **fields) -> None:
         doc_ref = self._db.collection("agents").document(agent_id)
-        fields["updated_at"] = datetime.now(timezone.utc)
+        fields.setdefault("updated_at", datetime.now(timezone.utc))
         doc_ref.update(fields)
         logger.debug("Updated agent %s: %s", agent_id, list(fields.keys()))
+
+    def get_stuck_agents(self, stale_minutes: int = 10) -> list[dict]:
+        """Find agents whose continuation died mid-flight.
+
+        A stuck agent has status='running' AND has already entered the
+        continuation phase (continuation_ready_at is set) AND has not
+        updated its parent doc for stale_minutes. Agents still in the
+        collection phase are excluded — their parent doc legitimately
+        idles for long stretches while collections run.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
+        stuck: list[dict] = []
+        try:
+            docs = (
+                self._db.collection("agents")
+                .where("status", "==", "running")
+                .stream()
+            )
+        except Exception:
+            logger.warning("Failed to query stuck agents", exc_info=True)
+            return stuck
+
+        for doc in docs:
+            data = doc.to_dict()
+            # Must have entered continuation phase at least once
+            if not data.get("continuation_ready_at"):
+                continue
+            updated_at = data.get("updated_at")
+            if hasattr(updated_at, "timestamp"):
+                ts = updated_at if updated_at.tzinfo else updated_at.replace(tzinfo=timezone.utc)
+            elif isinstance(updated_at, str):
+                try:
+                    ts = datetime.fromisoformat(updated_at)
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+            else:
+                continue
+            if ts >= cutoff:
+                continue
+            data["agent_id"] = doc.id
+            stuck.append(data)
+        return stuck
 
     def list_user_agents(self, user_id: str, org_id: str | None = None) -> list[dict]:
         """List agents visible to the user: own + org-shared."""
@@ -378,18 +440,20 @@ class FirestoreClient:
         return results
 
     def get_due_recurring_agents(self) -> list[dict]:
-        """Return recurring agents whose next_run_at is in the past and status is 'success' (not paused)."""
+        """Return recurring agents whose next_run_at is in the past (not paused, not currently running/archived/failed)."""
         now = datetime.now(timezone.utc)
         try:
             docs = (
                 self._db.collection("agents")
                 .where("agent_type", "==", "recurring")
-                .where("status", "==", "success")
                 .stream()
             )
             due = []
             for doc in docs:
                 data = doc.to_dict()
+                # Allow null (never-run) and "success"; skip running/archived/failed.
+                if data.get("status") not in (None, "success"):
+                    continue
                 next_run_at = data.get("next_run_at")
                 if next_run_at is None:
                     continue
@@ -1067,6 +1131,106 @@ class FirestoreClient:
         docs = (
             self._db.collection("dashboard_shares")
             .where("dashboard_id", "==", dashboard_id)
+            .where("owner_uid", "==", owner_uid)
+            .where("revoked", "==", False)
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            data["token"] = doc.id
+            for key in ("created_at", "revoked_at", "last_accessed_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            return data
+        return None
+
+    # --- Briefing share methods ---
+
+    def create_briefing_share(self, token: str, data: dict) -> None:
+        """Store a briefing share token document (doc ID == token)."""
+        self._db.collection("briefing_shares").document(token).set(data)
+
+    def get_briefing_share(self, token: str) -> dict | None:
+        """Fetch a briefing share token document. Returns None if not found."""
+        doc = self._db.collection("briefing_shares").document(token).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["token"] = doc.id
+        for key in ("created_at", "revoked_at", "last_accessed_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def revoke_briefing_share(self, token: str) -> None:
+        """Mark a briefing share token as revoked."""
+        self._db.collection("briefing_shares").document(token).update({
+            "revoked": True,
+            "revoked_at": datetime.now(timezone.utc),
+        })
+
+    def get_briefing_share_by_agent(
+        self, agent_id: str, owner_uid: str
+    ) -> dict | None:
+        """Find an active (non-revoked) share for an agent+owner pair.
+
+        NOTE: Requires a Firestore composite index on
+        (agent_id, owner_uid, revoked) for the briefing_shares collection.
+        """
+        docs = (
+            self._db.collection("briefing_shares")
+            .where("agent_id", "==", agent_id)
+            .where("owner_uid", "==", owner_uid)
+            .where("revoked", "==", False)
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            data["token"] = doc.id
+            for key in ("created_at", "revoked_at", "last_accessed_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            return data
+        return None
+
+    # --- Artifact share methods ---
+
+    def create_artifact_share(self, token: str, data: dict) -> None:
+        """Store an artifact share token document (doc ID == token)."""
+        self._db.collection("artifact_shares").document(token).set(data)
+
+    def get_artifact_share(self, token: str) -> dict | None:
+        """Fetch an artifact share token document. Returns None if not found."""
+        doc = self._db.collection("artifact_shares").document(token).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["token"] = doc.id
+        for key in ("created_at", "revoked_at", "last_accessed_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def revoke_artifact_share(self, token: str) -> None:
+        """Mark an artifact share token as revoked."""
+        self._db.collection("artifact_shares").document(token).update({
+            "revoked": True,
+            "revoked_at": datetime.now(timezone.utc),
+        })
+
+    def get_artifact_share_by_artifact(
+        self, artifact_id: str, owner_uid: str
+    ) -> dict | None:
+        """Find an active (non-revoked) share for an artifact+owner pair.
+
+        NOTE: Requires a Firestore composite index on
+        (artifact_id, owner_uid, revoked) for the artifact_shares collection.
+        """
+        docs = (
+            self._db.collection("artifact_shares")
+            .where("artifact_id", "==", artifact_id)
             .where("owner_uid", "==", owner_uid)
             .where("revoked", "==", False)
             .limit(1)

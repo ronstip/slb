@@ -89,6 +89,7 @@ export function InlineChart({ data }: InlineChartProps) {
   const artifactId = data._artifactId as string | undefined;
   const barOrientation = data.bar_orientation as string | undefined;
   const stacked = data.stacked as boolean | undefined;
+  const caption = (data.caption as string | undefined)?.trim();
 
   const handleOpenInStudio = useCallback(() => {
     if (!artifactId) return;
@@ -139,6 +140,12 @@ export function InlineChart({ data }: InlineChartProps) {
       {/* Chart area */}
       <div className="px-4 pb-3">
         {content}
+        {caption && (
+          <figcaption className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            <span className="font-semibold text-foreground">Figure.</span>{' '}
+            {caption}
+          </figcaption>
+        )}
       </div>
     </div>
   );
