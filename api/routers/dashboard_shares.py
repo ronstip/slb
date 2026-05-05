@@ -18,9 +18,10 @@ from api.schemas.responses import (
 )
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
-    DASHBOARD_SQL,
     MAX_ROWS,
+    build_dashboard_sql,
     build_post_response,
+    derive_agent_id_for_collections,
 )
 from config.settings import get_settings
 
@@ -142,18 +143,23 @@ async def get_shared_dashboard(
 
     bq = get_bq()
     collection_ids = share["collection_ids"]
-    params = {"collection_ids": collection_ids}
+    name_params = {"collection_ids": collection_ids}
 
-    sql = DASHBOARD_SQL.format(max_rows=MAX_ROWS + 1)
+    agent_id = share.get("agent_id") or derive_agent_id_for_collections(fs, collection_ids)
+    posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
 
-    rows, name_rows = await asyncio.gather(
-        asyncio.to_thread(bq.query, sql, params),
-        asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, params),
-    )
-
-    truncated = len(rows) > MAX_ROWS
-    if truncated:
-        rows = rows[:MAX_ROWS]
+    if posts_sql is None:
+        name_rows = await asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, name_params)
+        rows = []
+        truncated = False
+    else:
+        rows, name_rows = await asyncio.gather(
+            asyncio.to_thread(bq.query, posts_sql, posts_params),
+            asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, name_params),
+        )
+        truncated = len(rows) > MAX_ROWS
+        if truncated:
+            rows = rows[:MAX_ROWS]
 
     collection_names = {
         r["collection_id"]: r.get("original_question", r["collection_id"])

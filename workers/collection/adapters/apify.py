@@ -265,117 +265,118 @@ class ApifyAdapter(DataProviderAdapter):
             t.join()
 
     # ------------------------------------------------------------------
-    # Instagram — apify/instagram-scraper
-    #   Two-pass hybrid (details + posts) is needed because the actor has no
-    #   "top vs recent" sort flag for hashtag scraping:
-    #     - resultsType="details" returns hashtag-detail items with
-    #       topPosts[] + latestPosts[] arrays (~9 each) — the only path to
-    #       genuine "top" posts.
-    #     - resultsType="posts" returns chronological breadth, but Instagram
-    #       hard-caps it at ~24 raw posts per hashtag URL regardless of
-    #       resultsLimit (verified in production logs).
-    #   Both passes' raw items are merged and parsed in a single
-    #   `_parse_results` call so dedupe by post_id happens before posts are
-    #   handed to the streaming enrichment pipeline (avoids paying twice for
-    #   LLM/embedding/translation per duplicate).
+    # Instagram — apidojo/instagram-hashtag-scraper
+    #   Single actor run with `startUrls` (hashtag URLs derived from
+    #   keywords), `until` (server-side date floor), and `getReels`/`getPosts`
+    #   toggles. The actor returns engagement-rich items (likeCount,
+    #   commentCount, video.playCount) so we re-rank client-side by an
+    #   engagement score and trim to the requested per-keyword count.
+    #
+    #   channel_urls is intentionally not handled here — this actor accepts
+    #   hashtag URLs only. The frontend's channel_urls input is a global
+    #   field shared with other platforms; for IG we now collect on
+    #   keywords/hashtags only. A WARN is emitted when channel_urls arrive
+    #   so the noop is visible in pipeline logs.
     # ------------------------------------------------------------------
 
-    # Approximate top+latest posts returned by a single details call per
-    # hashtag (Instagram-side ceiling; not configurable via input).
-    _IG_DETAILS_CAP_PER_HASHTAG = 18
+    @staticmethod
+    def _ig_engagement_score(post: Post) -> float:
+        """Engagement score for IG client-side re-rank.
 
-    # Details mode (resultsType="details") returns the hashtag wrapper but
-    # IG leaves topPosts[]/latestPosts[] EMPTY for unauthenticated requests.
-    # Without session cookies this pass yields 0 incremental posts while
-    # costing one Apify run per IG collection. Disabled until the cookies /
-    # actor-swap workstream resolves IG auth — see plan
-    # `instagram-relevancy-redesign.md` for the redesign brief.
-    _IG_DETAILS_PASS_ENABLED = False
+        Coefficients are an opening bid; tune from prod data after Stage 2.
+        Comments weighted 2x because they're scarcer and more intent-y than
+        likes; views weighted 0.01 so a viral Reel doesn't drown out
+        higher-effort posts.
+        """
+        return (
+            (post.likes or 0)
+            + 2.0 * (post.comments_count or 0)
+            + 0.01 * (post.views or 0)
+        )
 
     def _collect_instagram(self, config: dict) -> list[Batch]:
         keywords = config.get("keywords", []) or []
         channel_urls = config.get("channel_urls", []) or []
-        if not keywords and not channel_urls:
-            logger.info("[apify/instagram] no keywords or channel_urls — skipping")
+
+        if channel_urls:
+            logger.warning(
+                "[apify/instagram] channel_urls=%d ignored — IG path is "
+                "keyword-only with apidojo/instagram-hashtag-scraper",
+                len(channel_urls),
+            )
+
+        if not keywords:
+            logger.info("[apify/instagram] no keywords — skipping")
             return []
 
         time_range = config.get("time_range", {}) or {}
         n_posts = config.get("max_posts_per_keyword") or 0
 
         hashtag_urls = [_hashtag_url(k) for k in keywords if k]
-        channel_only_urls = [u for u in channel_urls if isinstance(u, str) and u]
+        if not hashtag_urls:
+            return []
 
-        proxy_cfg = {
-            "useApifyProxy": True,
-            "apifyProxyGroups": [self._proxy_group],
+        run_input: dict = {
+            "startUrls": hashtag_urls,
+            "getReels": True,
+            "getPosts": True,
         }
+        if n_posts > 0:
+            # Global cap across all startUrls. Actor distributes across
+            # hashtags itself; we re-rank + trim client-side to enforce a
+            # true per-keyword target after dedupe.
+            run_input["maxItems"] = n_posts * len(hashtag_urls)
+        until_yyyymmdd = _to_yyyymmdd(time_range.get("start"))
+        if until_yyyymmdd:
+            # Actor semantics: "posts on or after this date" (UTC midnight).
+            run_input["until"] = until_yyyymmdd
 
-        raw_items: list[dict] = []
-        details_count = 0
-        posts_count = 0
-
-        # Pass A — details mode for hashtags (top + recent, in one call per URL).
-        if hashtag_urls and self._IG_DETAILS_PASS_ENABLED:
-            details_input = {
-                "directUrls": hashtag_urls,
-                "resultsType": "details",
-                "addParentData": False,
-                "proxyConfiguration": proxy_cfg,
-            }
-            details_raw = self._run_actor_collect_raw("instagram", details_input)
-            # Each detail item carries topPosts[] + latestPosts[] arrays of
-            # post-shaped dicts. Flatten so the regular post parser can handle
-            # them. Top first so they "win" dedupe in _parse_results.
-            for d in details_raw:
-                if not isinstance(d, dict):
-                    continue
-                for key in ("topPosts", "latestPosts"):
-                    arr = d.get(key)
-                    if isinstance(arr, list):
-                        raw_items.extend(p for p in arr if isinstance(p, dict))
-            details_count = len(raw_items)
-
-        # Pass B — posts mode for chronological breadth. When details pass is
-        # enabled and budget fits within its cap, skip this pass to avoid
-        # duplicate work. With details disabled (current default), always run
-        # this pass when there are any URLs to scrape.
-        details_can_cover_budget = (
-            self._IG_DETAILS_PASS_ENABLED
-            and n_posts > 0
-            and n_posts <= self._IG_DETAILS_CAP_PER_HASHTAG
-        )
-        needs_posts_pass = (
-            not details_can_cover_budget
-            and (hashtag_urls or channel_only_urls)
-        )
-        if needs_posts_pass:
-            posts_input: dict = {
-                "directUrls": hashtag_urls + channel_only_urls,
-                "resultsType": "posts",
-                "addParentData": False,
-                "proxyConfiguration": proxy_cfg,
-            }
-            if n_posts > 0:
-                # 1.3x buffer to compensate for the ~24/hashtag undershoot we
-                # consistently see in production logs against this actor.
-                posts_input["resultsLimit"] = math.ceil(n_posts * 1.3)
-            if time_range.get("start"):
-                days = _days_since(time_range["start"])
-                if days > 0:
-                    posts_input["onlyPostsNewerThan"] = f"{days} days"
-            posts_raw = self._run_actor_collect_raw("instagram", posts_input)
-            raw_items.extend(posts_raw)
-            posts_count = len(posts_raw)
+        raw_items = self._run_actor_collect_raw("instagram", run_input)
 
         logger.info(
-            "[apify/instagram] requested=%d details=%d posts=%d total_raw=%d (urls=%d hashtags + %d channels)",
-            n_posts, details_count, posts_count, len(raw_items),
-            len(hashtag_urls), len(channel_only_urls),
+            "[apify/instagram] requested=%d total_raw=%d (urls=%d hashtags)",
+            n_posts, len(raw_items), len(hashtag_urls),
         )
 
-        # Single parse-and-dedupe pass — happens before posts reach the
-        # streaming enrichment pipeline.
-        return self._parse_results("instagram", raw_items, config)
+        batches = self._parse_results("instagram", raw_items, config)
+
+        # Engagement re-rank and trim. Without this we'd return all maxItems
+        # in chronological order; the user's intent is "top N by engagement
+        # within the time window".
+        if n_posts > 0 and batches:
+            cap = n_posts * len(hashtag_urls)
+            all_posts: list[Post] = [p for b in batches for p in b.posts]
+            if len(all_posts) > cap:
+                all_posts.sort(key=self._ig_engagement_score, reverse=True)
+                all_posts = all_posts[:cap]
+                kept_channel_ids = {p.channel_id for p in all_posts if p.channel_id}
+                all_channels: list[Channel] = []
+                seen: set[str] = set()
+                for b in batches:
+                    for ch in b.channels:
+                        if (
+                            ch.channel_id
+                            and ch.channel_id in kept_channel_ids
+                            and ch.channel_id not in seen
+                        ):
+                            all_channels.append(ch)
+                            seen.add(ch.channel_id)
+                batches = self._chunk_into_batches(all_posts, all_channels)
+
+        return batches
+
+    def _chunk_into_batches(
+        self, posts: list[Post], channels: list[Channel]
+    ) -> list[Batch]:
+        if not posts:
+            return []
+        out: list[Batch] = []
+        for i in range(0, len(posts), self._BATCH_SIZE):
+            chunk = posts[i:i + self._BATCH_SIZE]
+            chunk_channel_ids = {p.channel_id for p in chunk if p.channel_id}
+            chunk_channels = [c for c in channels if c.channel_id in chunk_channel_ids]
+            out.append(Batch(posts=chunk, channels=chunk_channels))
+        return out
 
     # ------------------------------------------------------------------
     # Facebook — scrapeforge/facebook-search-posts
@@ -641,17 +642,7 @@ class ApifyAdapter(DataProviderAdapter):
             platform, len(raw_items), len(posts), parse_failures, time_filtered,
         )
 
-        if not posts:
-            return []
-
-        all_channels = list(channels.values())
-        batches: list[Batch] = []
-        for i in range(0, len(posts), self._BATCH_SIZE):
-            chunk = posts[i:i + self._BATCH_SIZE]
-            chunk_channel_ids = {p.channel_id for p in chunk if p.channel_id}
-            chunk_channels = [c for c in all_channels if c.channel_id in chunk_channel_ids]
-            batches.append(Batch(posts=chunk, channels=chunk_channels))
-        return batches
+        return self._chunk_into_batches(posts, list(channels.values()))
 
     @staticmethod
     def _parse_iso(value: str | None) -> datetime | None:

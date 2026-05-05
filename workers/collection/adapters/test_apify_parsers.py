@@ -12,6 +12,8 @@ import pytest
 from workers.collection.adapters.apify_parsers import (
     _PARSER_REGISTRY,
     get_parsers,
+    parse_apidojo_ig_hashtag_channel,
+    parse_apidojo_ig_hashtag_post,
     parse_apify_instagram_channel,
     parse_apify_instagram_post,
     parse_clockworks_tiktok_channel,
@@ -46,6 +48,66 @@ _IG_FIXTURE = {
     "commentsCount": 7,
     "videoViewCount": None,
     "productType": "feed",
+}
+
+
+# apidojo/instagram-hashtag-scraper output shape — captured 2026-05-05 from
+# logs/runs/pilot_apidojo_ig_climate_*.json. Differs from the legacy shape:
+# singular likeCount/commentCount, nested owner.{id,username,fullName},
+# nested image.url / video.{playCount,url}, ISO createdAt, and `type="post"`
+# with isVideo/isCarousel booleans encoding the actual media type.
+_IG_APIDOJO_IMAGE_FIXTURE = {
+    "inputSource": "https://www.instagram.com/explore/tags/climate/",
+    "id": "3890140629775419536",
+    "code": "DX8jkq8FAiQ",
+    "url": "https://www.instagram.com/p/DX8jkq8FAiQ/",
+    "createdAt": "2026-05-05T06:02:05.000Z",
+    "likeCount": 27,
+    "commentCount": 1,
+    "caption": "Image post about #climate",
+    "isAvailable": True,
+    "isVideo": False,
+    "isCarousel": False,
+    "type": "post",
+    "owner": {
+        "id": "6619572681",
+        "username": "progressivepower",
+        "fullName": "Progressive Power",
+        "isPrivate": False,
+        "isVerified": False,
+    },
+    "image": {"url": "https://scontent.cdninstagram.com/img.jpg", "width": 1318, "height": 1648},
+}
+
+
+_IG_APIDOJO_VIDEO_FIXTURE = {
+    "inputSource": "https://www.instagram.com/explore/tags/climate/",
+    "id": "3890218057409399637",
+    "code": "DX81LZCsotV",
+    "url": "https://www.instagram.com/p/DX81LZCsotV/",
+    "createdAt": "2026-05-05T08:47:10.000Z",
+    "likeCount": 13,
+    "commentCount": 0,
+    "caption": "Reel about climate",
+    "isAvailable": True,
+    "isVideo": True,
+    "isCarousel": False,
+    "type": "post",
+    "owner": {
+        "id": "3087465",
+        "username": "suepr",
+        "fullName": "Sue Pritchard",
+        "isPrivate": False,
+        "isVerified": False,
+    },
+    "video": {
+        "id": "1308744247470282v",
+        "url": "https://scontent.cdninstagram.com/clip.mp4",
+        "playCount": 4823,
+        "duration": 238,
+        "width": 1080,
+        "height": 1920,
+    },
 }
 
 
@@ -175,6 +237,51 @@ def test_instagram_channel_parsing():
     assert ch.channel_url == "https://www.instagram.com/alice/"
     assert ch.subscribers == 1234
     assert ch.channel_metadata["verified"] is True
+
+
+# ---------------------------------------------------------------------------
+# Instagram — apidojo/instagram-hashtag-scraper
+# ---------------------------------------------------------------------------
+
+def test_apidojo_ig_image_post_normalizes_nested_fields():
+    post = parse_apidojo_ig_hashtag_post(_IG_APIDOJO_IMAGE_FIXTURE)
+    assert post.platform == "instagram"
+    assert post.post_id == "3890140629775419536"
+    # owner.username and owner.id flatten correctly
+    assert post.channel_handle == "progressivepower"
+    assert post.channel_id == "6619572681"
+    # createdAt -> posted_at
+    assert post.posted_at == datetime(2026, 5, 5, 6, 2, 5, tzinfo=timezone.utc)
+    # singular likeCount/commentCount lift to plural fields
+    assert post.likes == 27
+    assert post.comments_count == 1
+    # type="post" + isVideo=False + isCarousel=False -> image
+    assert post.post_type == "image"
+    # image.url flattens to displayUrl, included in media_urls
+    assert any("img.jpg" in u for u in post.media_urls)
+    assert post.views is None  # images carry no view count
+
+
+def test_apidojo_ig_video_post_extracts_play_count():
+    post = parse_apidojo_ig_hashtag_post(_IG_APIDOJO_VIDEO_FIXTURE)
+    # isVideo=True -> post_type "video"
+    assert post.post_type == "video"
+    # nested video.playCount lifts to views
+    assert post.views == 4823
+    # video.url present in media_urls
+    assert any("clip.mp4" in u for u in post.media_urls)
+
+
+def test_apidojo_ig_channel_parsing():
+    ch = parse_apidojo_ig_hashtag_channel(_IG_APIDOJO_IMAGE_FIXTURE)
+    assert ch.platform == "instagram"
+    assert ch.channel_handle == "progressivepower"
+    assert ch.channel_id == "6619572681"
+    assert ch.channel_url == "https://www.instagram.com/progressivepower/"
+    # apidojo doesn't include followerCount on hashtag-scraped items
+    assert ch.subscribers is None
+    assert ch.channel_metadata["verified"] is False
+    assert ch.channel_metadata["full_name"] == "Progressive Power"
 
 
 # ---------------------------------------------------------------------------

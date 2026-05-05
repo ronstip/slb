@@ -306,112 +306,162 @@ def test_collect_facebook_caps_max_results_at_1000():
 
 
 # ---------------------------------------------------------------------------
-# Instagram hybrid details + posts pass
+# Instagram — apidojo/instagram-hashtag-scraper
 # ---------------------------------------------------------------------------
 
-def test_collect_instagram_skips_details_pass_by_default():
-    """Details pass is gated off until session cookies are wired up — without
-    auth it returns an empty wrapper, so we'd burn one Apify run for 0 posts.
-    Only the posts pass should fire."""
-    adapter = _build_adapter()
-    assert adapter._IG_DETAILS_PASS_ENABLED is False  # default state
+def _build_ig_adapter() -> ApifyAdapter:
+    return _build_adapter(apify_actor_instagram="apidojo/instagram-hashtag-scraper")
+
+
+def test_collect_instagram_builds_actor_input_with_new_shape():
+    """One run per collect call: startUrls (hashtag URLs derived from keywords),
+    maxItems (per_keyword * n_hashtags), until (date floor), and both
+    getReels/getPosts toggles enabled."""
+    adapter = _build_ig_adapter()
 
     raw_calls: list[dict] = []
-    parsed_args: dict = {}
 
     def _capture_raw(platform, run_input):
         raw_calls.append(run_input)
-        return [{"id": "p1"}, {"id": "p2"}]
-
-    def _capture_parse(platform, raw_items, config, *, apply_time_gate=True):
-        parsed_args["raw_items"] = raw_items
         return []
-
-    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_capture_raw), \
-         patch.object(adapter, "_parse_results", side_effect=_capture_parse):
-        adapter._collect_instagram({
-            "keywords": ["photography"],
-            "max_posts_per_keyword": 10,
-        })
-
-    assert len(raw_calls) == 1
-    assert raw_calls[0]["resultsType"] == "posts"
-    # 1.3x buffer on 10 → 13
-    assert raw_calls[0]["resultsLimit"] == 13
-
-
-def test_collect_instagram_runs_hybrid_when_details_enabled():
-    """When details pass is enabled (cookies/auth would be in place), run
-    BOTH details (top + recent) and posts (chronological breadth) and merge
-    raw items so dedupe runs once via _parse_results before posts reach
-    enrichment."""
-    adapter = _build_adapter()
-    # Force-enable details for this test only; default is False.
-    adapter._IG_DETAILS_PASS_ENABLED = True
-
-    raw_calls: list[dict] = []
-    parsed_args: dict = {}
-
-    def _capture_raw(platform, run_input):
-        raw_calls.append(run_input)
-        if run_input.get("resultsType") == "details":
-            return [{
-                "topPosts": [{"id": "t1"}, {"id": "shared"}],
-                "latestPosts": [{"id": "l1"}],
-            }]
-        return [{"id": "p1"}, {"id": "shared"}, {"id": "p2"}]
-
-    def _capture_parse(platform, raw_items, config, *, apply_time_gate=True):
-        parsed_args["raw_items"] = raw_items
-        return []
-
-    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_capture_raw), \
-         patch.object(adapter, "_parse_results", side_effect=_capture_parse):
-        adapter._collect_instagram({
-            "keywords": ["photography"],
-            "max_posts_per_keyword": 50,  # > 18 → triggers hybrid
-        })
-
-    assert len(raw_calls) == 2
-    types = {c["resultsType"] for c in raw_calls}
-    assert types == {"details", "posts"}
-    posts_call = next(c for c in raw_calls if c["resultsType"] == "posts")
-    assert posts_call["resultsLimit"] == 65  # ceil(50 * 1.3)
-
-    # Details items must come BEFORE posts items in the merged list, so
-    # dedupe in _parse_results keeps the engagement-rich top-posts version.
-    ids_in_order = [i["id"] for i in parsed_args["raw_items"]]
-    assert ids_in_order.index("shared") < ids_in_order.index("p1")
-    assert {"t1", "l1", "shared", "p1", "p2"} <= set(ids_in_order)
-
-
-def test_collect_instagram_details_only_when_budget_fits_and_enabled():
-    """With details enabled AND budget within the cap, posts pass is skipped."""
-    adapter = _build_adapter()
-    adapter._IG_DETAILS_PASS_ENABLED = True
-
-    raw_calls: list[dict] = []
-
-    def _capture_raw(platform, run_input):
-        raw_calls.append(run_input)
-        return [{"topPosts": [{"id": "t1"}], "latestPosts": [{"id": "l1"}]}]
 
     with patch.object(adapter, "_run_actor_collect_raw", side_effect=_capture_raw), \
          patch.object(adapter, "_parse_results", return_value=[]):
         adapter._collect_instagram({
-            "keywords": ["photography"],
-            "max_posts_per_keyword": 10,  # ≤ 18 details cap → no posts pass
+            "keywords": ["climate", "sustainability"],
+            "max_posts_per_keyword": 50,
+            "time_range": {"start": "2026-04-28T00:00:00Z"},
         })
 
     assert len(raw_calls) == 1
-    assert raw_calls[0]["resultsType"] == "details"
+    run_input = raw_calls[0]
+    assert run_input["startUrls"] == [
+        "https://www.instagram.com/explore/tags/climate/",
+        "https://www.instagram.com/explore/tags/sustainability/",
+    ]
+    assert run_input["getReels"] is True
+    assert run_input["getPosts"] is True
+    assert run_input["maxItems"] == 100  # 50 * 2 hashtags
+    assert run_input["until"] == "2026-04-28"
+    # Legacy pass-mode flags must NOT leak into the new shape.
+    assert "resultsType" not in run_input
+    assert "resultsLimit" not in run_input
+    assert "directUrls" not in run_input
 
 
-def test_collect_instagram_skips_when_no_inputs():
-    adapter = _build_adapter()
+def test_collect_instagram_warns_and_ignores_channel_urls():
+    """The new actor only accepts hashtag URLs. channel_urls should be logged
+    and ignored, not break the run, not be sent to the actor."""
+    adapter = _build_ig_adapter()
+
+    raw_calls: list[dict] = []
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=lambda p, ri: raw_calls.append(ri) or []), \
+         patch.object(adapter, "_parse_results", return_value=[]):
+        adapter._collect_instagram({
+            "keywords": ["climate"],
+            "channel_urls": ["https://www.instagram.com/someprofile/"],
+            "max_posts_per_keyword": 10,
+        })
+
+    assert len(raw_calls) == 1
+    # Only the keyword-derived hashtag URL should be in startUrls.
+    assert raw_calls[0]["startUrls"] == [
+        "https://www.instagram.com/explore/tags/climate/"
+    ]
+
+
+def test_collect_instagram_skips_when_no_keywords():
+    """Empty keywords short-circuits without spending an actor run, even when
+    channel_urls is set (those are now ignored)."""
+    adapter = _build_ig_adapter()
     with patch.object(adapter, "_run_actor_collect_raw") as raw, \
          patch.object(adapter, "_parse_results") as parse:
-        result = adapter._collect_instagram({"keywords": [], "channel_urls": []})
+        result = adapter._collect_instagram({
+            "keywords": [],
+            "channel_urls": ["https://www.instagram.com/someprofile/"],
+        })
     assert result == []
     raw.assert_not_called()
     parse.assert_not_called()
+
+
+def test_collect_instagram_engagement_rerank_trims_and_reorders():
+    """When _parse_results returns more posts than the per-keyword cap allows,
+    they should be sorted by engagement score and trimmed to cap *
+    n_keywords. The score is likes + 2*comments + 0.01*views."""
+    from workers.collection.models import Batch, Channel, Post
+
+    def _post(pid: str, likes: int, comments: int, views: int = 0, ch: str = "u1") -> Post:
+        return Post(
+            post_id=pid,
+            platform="instagram",
+            channel_handle=ch,
+            channel_id=ch,
+            title=None,
+            content="",
+            post_url=f"https://www.instagram.com/p/{pid}/",
+            posted_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            post_type="image",
+            parent_post_id=None,
+            media_urls=[],
+            media_refs=[],
+            likes=likes,
+            shares=None,
+            comments_count=comments,
+            views=views,
+            saves=None,
+            comments=[],
+            platform_metadata={},
+            crawl_provider="apify",
+        )
+
+    adapter = _build_ig_adapter()
+
+    # 4 posts with diverging scores; cap is 1 keyword * 2 = 2 posts -> top 2 wins.
+    posts = [
+        _post("low", likes=1, comments=0),                        # score 1
+        _post("mid", likes=10, comments=2),                       # score 14
+        _post("high", likes=5, comments=20),                      # score 45
+        _post("viral", likes=2, comments=1, views=10000),         # score 104
+    ]
+    fake_channels = [Channel(channel_id="u1", platform="instagram", channel_handle="u1")]
+
+    with patch.object(adapter, "_run_actor_collect_raw", return_value=[{"id": "ignored"}] * 4), \
+         patch.object(adapter, "_parse_results", return_value=[Batch(posts=posts, channels=fake_channels)]):
+        batches = adapter._collect_instagram({
+            "keywords": ["climate"],
+            "max_posts_per_keyword": 2,  # cap => 2 posts
+        })
+
+    surviving_ids = [p.post_id for b in batches for p in b.posts]
+    assert surviving_ids == ["viral", "high"]
+
+
+def test_collect_instagram_no_rerank_when_under_cap():
+    """When _parse_results already returns fewer posts than the cap, the
+    re-rank/trim path is skipped and original batches are returned."""
+    from workers.collection.models import Batch, Post
+
+    def _post(pid: str) -> Post:
+        return Post(
+            post_id=pid, platform="instagram", channel_handle="u",
+            channel_id="u", title=None, content="",
+            post_url=f"https://www.instagram.com/p/{pid}/",
+            posted_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            post_type="image", parent_post_id=None, media_urls=[],
+            media_refs=[], likes=1, shares=None, comments_count=0,
+            views=None, saves=None, comments=[], platform_metadata={},
+            crawl_provider="apify",
+        )
+
+    adapter = _build_ig_adapter()
+    original_batches = [Batch(posts=[_post("a"), _post("b")], channels=[])]
+
+    with patch.object(adapter, "_run_actor_collect_raw", return_value=[]), \
+         patch.object(adapter, "_parse_results", return_value=original_batches):
+        batches = adapter._collect_instagram({
+            "keywords": ["k1"],
+            "max_posts_per_keyword": 50,  # cap > 2 posts
+        })
+
+    assert batches is original_batches

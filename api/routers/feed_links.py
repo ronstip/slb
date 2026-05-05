@@ -21,10 +21,10 @@ from api.rate_limiting import limiter
 from api.schemas.requests import CreateFeedLinkRequest
 from api.schemas.responses import FeedLinkResponse
 from api.services.dashboard_service import (
-    COLLECTION_NAMES_SQL,
-    DASHBOARD_SQL,
     MAX_ROWS,
+    build_dashboard_sql,
     build_post_response,
+    derive_agent_id_for_collections,
 )
 from config.settings import get_settings
 
@@ -139,12 +139,15 @@ async def get_feed_link_data(
 
     bq = get_bq()
     collection_ids = link["collection_ids"]
-    params = {"collection_ids": collection_ids}
 
     effective_limit = min(limit, MAX_ROWS)
-    sql = DASHBOARD_SQL.format(max_rows=effective_limit)
+    agent_id = link.get("agent_id") or derive_agent_id_for_collections(fs, collection_ids)
+    posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, effective_limit)
 
-    rows = await asyncio.to_thread(bq.query, sql, params)
+    if posts_sql is None:
+        rows = []
+    else:
+        rows = await asyncio.to_thread(bq.query, posts_sql, posts_params)
     posts = [build_post_response(row) for row in rows]
 
     # Apply stored filters
