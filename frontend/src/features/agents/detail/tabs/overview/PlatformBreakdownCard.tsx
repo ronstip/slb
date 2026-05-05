@@ -14,6 +14,7 @@ import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { useOverviewDashboardData } from './useOverviewDashboardData.ts';
 
 interface PlatformBreakdownCardProps {
+  agentId: string;
   collectionIds: string[];
   isAgentRunning: boolean;
   sources?: Source[];
@@ -24,6 +25,7 @@ interface PlatformBreakdownCardProps {
 }
 
 export function PlatformBreakdownCard({
+  agentId,
   collectionIds,
   isAgentRunning,
   sources,
@@ -39,6 +41,7 @@ export function PlatformBreakdownCard({
     agentCreatedAt,
     dataStartDate,
     dataEndDate,
+    agentId,
   );
 
   const platforms = useMemo(() => aggregatePlatforms(posts), [posts]);

@@ -7,7 +7,7 @@ import { Separator } from '../../../components/ui/separator.tsx';
 import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 import { getAgentTopicAnalytics, getAgentTopicPosts } from '../../../api/endpoints/topics.ts';
 import { formatNumber } from '../../../lib/format.ts';
-import type { TopicCluster } from '../../../api/types.ts';
+import type { TopicCluster, FeedPost } from '../../../api/types.ts';
 import {
   resolveThumbnail,
   sentimentColor,
@@ -66,7 +66,7 @@ export function TopicHero({ topic, agentId }: TopicHeroProps) {
           <>
             <img
               src={thumbSrc}
-              aria-hidden=""
+              aria-hidden
               className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl"
             />
             <img
@@ -223,7 +223,7 @@ export function TopicHero({ topic, agentId }: TopicHeroProps) {
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               {posts.map((post) => (
-                <PostCard key={post.post_id} post={post} />
+                <PostCard key={post.post_id} post={post as unknown as FeedPost} />
               ))}
             </div>
           )}

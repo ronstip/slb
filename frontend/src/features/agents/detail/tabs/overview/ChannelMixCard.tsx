@@ -16,6 +16,7 @@ import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { useOverviewDashboardData } from './useOverviewDashboardData.ts';
 
 interface ChannelMixCardProps {
+  agentId: string;
   collectionIds: string[];
   isAgentRunning: boolean;
   sources?: Source[];
@@ -26,6 +27,7 @@ interface ChannelMixCardProps {
 }
 
 export function ChannelMixCard({
+  agentId,
   collectionIds,
   isAgentRunning,
   sources,
@@ -41,6 +43,7 @@ export function ChannelMixCard({
     agentCreatedAt,
     dataStartDate,
     dataEndDate,
+    agentId,
   );
 
   const channelTypes = useMemo(() => aggregateChannelTypeViews(posts), [posts]);

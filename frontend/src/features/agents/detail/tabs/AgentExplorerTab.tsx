@@ -45,7 +45,8 @@ export function AgentExplorerTab({ task, activeLayoutId = null, startInEditMode 
     collectionIds: task.collection_ids ?? [],
     collectionNames: {} as Record<string, string>,
     createdAt: new Date(task.created_at),
-  }), [artifactId, task.title, task.collection_ids, task.created_at]);
+    agentId: task.agent_id,
+  }), [artifactId, task.title, task.collection_ids, task.created_at, task.agent_id]);
 
   if (!task.collection_ids?.length) {
     return (
