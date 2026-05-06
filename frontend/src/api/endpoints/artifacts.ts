@@ -28,9 +28,19 @@ export function getArtifact(id: string): Promise<ArtifactDetail> {
   return apiGet<ArtifactDetail>(`/artifacts/${id}`);
 }
 
+export interface ChartStyleOverridesPayload {
+  accent?: string;
+  seriesColors?: Record<string, string>;
+}
+
 export function updateArtifact(
   id: string,
-  updates: { title?: string; favorited?: boolean; shared?: boolean },
+  updates: {
+    title?: string;
+    favorited?: boolean;
+    shared?: boolean;
+    style_overrides?: ChartStyleOverridesPayload;
+  },
 ): Promise<{ status: string }> {
   return apiPatch(`/artifacts/${id}`, updates);
 }

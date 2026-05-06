@@ -38,7 +38,9 @@ DEDUP_POSTS = """deduped_posts AS (
 DEDUP_ENRICHED = """deduped_enriched AS (
     SELECT *, ROW_NUMBER() OVER (
         PARTITION BY post_id
-        ORDER BY agent_version DESC NULLS LAST, enriched_at DESC
+        ORDER BY (source = 'user_override') DESC,
+                 agent_version DESC NULLS LAST,
+                 enriched_at DESC
     ) AS _rn
     FROM social_listening.enriched_posts
 )"""

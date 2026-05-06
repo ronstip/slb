@@ -8,6 +8,7 @@ import {
   parseStringList,
 } from '../../components/DataTable/cells.tsx';
 import { PostCard } from '../studio/PostCard.tsx';
+import { PostActionsMenu } from '../post-overrides/PostActionsMenu.tsx';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
 import { PLATFORM_LABELS, SENTIMENT_COLORS } from '../../lib/constants.ts';
 import { formatNumber, timeAgo } from '../../lib/format.ts';
@@ -169,13 +170,15 @@ interface CollectionPostColumnsOptions {
   filters: ColumnFilters;
   onFiltersChange: (filters: ColumnFilters) => void;
   filterOptions: FilterOptionsWithCounts;
+  /** When set, the right-most column shows a per-row actions menu (Exclude / Edit). */
+  agentId?: string;
 }
 
 export function collectionsPostColumns(
   opts: CollectionPostColumnsOptions,
 ): ColumnDef<FeedPost>[] {
   const {
-    filters, onFiltersChange, filterOptions,
+    filters, onFiltersChange, filterOptions, agentId,
   } = opts;
 
   const setFilter = <K extends keyof ColumnFilters>(key: K, value: ColumnFilters[K]) => {
@@ -326,6 +329,15 @@ export function collectionsPostColumns(
       render: (row) => <EntityChips entities={parseStringList(row.entities)} />,
     },
   );
+
+  if (agentId) {
+    cols.push({
+      key: 'actions',
+      header: '',
+      width: 'w-8',
+      render: (row) => <PostActionsMenu post={row} agentId={agentId} />,
+    });
+  }
 
   return cols;
 }

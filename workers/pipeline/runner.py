@@ -1224,6 +1224,9 @@ class PipelineRunner:
             flush_size=self.settings.enrichment_bq_flush_size,
             flush_interval_sec=self.settings.enrichment_bq_flush_interval_sec,
             record_step_timing=self._record_step_timing,
+            # Dep-gated claim: parents quoting/replying to another in-range
+            # post wait for the dep to clear download before they enrich.
+            claim_fn=ctx.state_manager.claim_one_for_enrichment,
         )
 
         for runner_obj, step_name in (

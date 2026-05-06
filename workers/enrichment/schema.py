@@ -21,6 +21,20 @@ class MediaRef(BaseModel):
     content_type: str = ""     # image/jpeg, video/mp4, etc.
 
 
+class ReferencedPost(BaseModel):
+    """Source tweet referenced by a quote/reply, surfaced as enrichment context.
+
+    Populated by `enrich_process_one` from either (a) the dep's own row +
+    post_state when the dep entered the DAG, or (b) the parent's defensive
+    `platform_metadata.referenced_post` cache when the dep is missing/out-of-range.
+    """
+
+    ref_type: Literal["quoted", "replied_to"]
+    author: str | None = None
+    content: str = ""
+    media_refs: list[MediaRef] = []
+
+
 class PostData(BaseModel):
     """Input data for enrichment — everything the LLM needs to analyze a post."""
 
@@ -33,6 +47,7 @@ class PostData(BaseModel):
     post_url: str | None = None
     search_keyword: str | None = None
     media_refs: list[MediaRef] = []
+    referenced_post: ReferencedPost | None = None
 
 
 CustomFieldType = Literal["str", "bool", "int", "float", "list[str]", "literal"]

@@ -282,9 +282,56 @@ def list_agents(user_id: str, org_id: str | None = None) -> list[dict]:
     return agents
 
 
+def _record_data_window_row(agent_id: str, agent_before: dict, fields: dict) -> None:
+    """Append a fresh agents-table row in BigQuery when `data_start_date`
+    changes, so the SCD-style table stays current. The row carries the
+    agent's identity columns alongside the new `data_start_date` and a
+    fresh `created_at` — `scope_posts` picks the latest `created_at` and
+    uses its `data_start_date` to bound `posted_at`.
+
+    No-op when `data_start_date` is absent from the update or unchanged.
+    """
+    if "data_start_date" not in fields:
+        return
+    new_start = fields.get("data_start_date")
+    if new_start == agent_before.get("data_start_date"):
+        return
+    try:
+        get_bq().insert_rows(
+            "agents",
+            [
+                {
+                    "agent_id": agent_id,
+                    "user_id": agent_before.get("user_id", ""),
+                    "org_id": agent_before.get("org_id"),
+                    "title": agent_before.get("title", ""),
+                    "data_scope": (
+                        json.dumps(agent_before.get("data_scope"))
+                        if agent_before.get("data_scope") else None
+                    ),
+                    "status": agent_before.get("status"),
+                    "agent_type": agent_before.get("agent_type"),
+                    "data_start_date": new_start,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ],
+        )
+    except Exception:
+        # Never block the Firestore write on a BQ analytics append.
+        logger.exception(
+            "Failed to record data_start_date change for agent %s in BigQuery",
+            agent_id,
+        )
+
+
 def update_agent(agent_id: str, **fields) -> None:
-    """Update agent fields in Firestore."""
-    get_fs().update_agent(agent_id, **fields)
+    """Update agent fields in Firestore. Appends a new BigQuery row if the
+    update changes `data_start_date`."""
+    fs = get_fs()
+    agent_before = fs.get_agent(agent_id) if "data_start_date" in fields else None
+    fs.update_agent(agent_id, **fields)
+    if agent_before is not None:
+        _record_data_window_row(agent_id, agent_before, fields)
 
 
 VERSIONED_FIELDS = {"title", "todos", "context", "constitution", "outputs", "enrichment_config"}
@@ -325,6 +372,7 @@ def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int
         fs.create_agent_version(agent_id, new_version, snapshot, edited_by=user_id)
 
     fs.update_agent(agent_id, **updates)
+    _record_data_window_row(agent_id, agent, updates)
     logger.info("Updated agent %s (version %d → %d)", agent_id, current_version, new_version)
     return new_version
 

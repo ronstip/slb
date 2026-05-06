@@ -74,7 +74,7 @@ export type ActivityEntry =
   | TodoChangeEntry;
 
 export interface MessageCard {
-  type: 'research_design' | 'data_export' | 'chart' | 'collection_progress' | 'structured_prompt';
+  type: 'research_design' | 'data_export' | 'chart' | 'collection_progress' | 'structured_prompt' | 'markdown';
   data: Record<string, unknown>;
 }
 

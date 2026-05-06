@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS social_listening.enriched_posts (
     detected_brands ARRAY<STRING>,
     channel_type STRING,
     custom_fields JSON,
+    source STRING,
     enriched_at TIMESTAMP
 )
 PARTITION BY DATE(enriched_at)
@@ -29,6 +30,7 @@ CLUSTER BY post_id, agent_id;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS collection_id STRING;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS agent_id STRING;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS agent_version INT64;
+-- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS source STRING;
 -- Note: re-clustering by (post_id, agent_id) requires CREATE OR REPLACE on
 -- existing tables; new partitions written after the ALTER use the original
 -- cluster spec until the table is rewritten. Acceptable for now.

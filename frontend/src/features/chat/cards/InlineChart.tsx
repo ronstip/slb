@@ -1,10 +1,21 @@
-import { useCallback } from 'react';
-import { Expand } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { Check, Copy, Expand, Palette } from 'lucide-react';
 import { SocialChartWidget } from '../../studio/dashboard/SocialChartWidget.tsx';
 import type { SocialChartType, WidgetData } from '../../studio/dashboard/types-social-dashboard.ts';
-import { useStudioStore } from '../../../stores/studio-store.ts';
+import { useStudioStore, type Artifact } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { formatNumber } from '../../../lib/format.ts';
+import { copyChartToClipboard } from '../../../lib/chart-export.ts';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '../../../components/ui/sheet.tsx';
+import { ChartStyleEditor } from '../../studio/dashboard/widget-config/ChartStyleEditor.tsx';
+import { extractChartSeriesLabels } from '../../studio/dashboard/chart-series-labels.ts';
+import { useChartStyleSave } from '../../studio/dashboard/use-chart-style-save.ts';
 
 // Chart types that SocialChartWidget handles
 const CHARTJS_TYPES = new Set<string>(['bar', 'line', 'pie', 'doughnut']);
@@ -91,6 +102,30 @@ export function InlineChart({ data }: InlineChartProps) {
   const stacked = data.stacked as boolean | undefined;
   const caption = (data.caption as string | undefined)?.trim();
 
+  // Subscribe to the artifact in the studio store so style edits in any
+  // surface (this card, ChartArtifactView) re-render the inline chart live.
+  const storedArtifact = useStudioStore(
+    (s) => (artifactId ? s.artifacts.find((a) => a.id === artifactId) : undefined),
+  ) as Extract<Artifact, { type: 'chart' }> | undefined;
+  const styleOverrides = storedArtifact?.styleOverrides ?? {};
+
+  const [showStyleEditor, setShowStyleEditor] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const exportRef = useRef<HTMLDivElement>(null);
+  const handleStyleChange = useChartStyleSave(artifactId);
+
+  const handleCopy = useCallback(async () => {
+    if (!exportRef.current) return;
+    try {
+      await copyChartToClipboard(exportRef.current);
+      setCopyState('copied');
+    } catch (err) {
+      console.error('Copy chart failed', err);
+      setCopyState('error');
+    }
+    setTimeout(() => setCopyState('idle'), 1500);
+  }, []);
+
   const handleOpenInStudio = useCallback(() => {
     if (!artifactId) return;
     useUIStore.getState().expandStudioPanel();
@@ -108,6 +143,8 @@ export function InlineChart({ data }: InlineChartProps) {
         <SocialChartWidget
           chartType={chartType as SocialChartType}
           data={widgetData}
+          accent={styleOverrides.accent}
+          seriesColorOverrides={styleOverrides.seriesColors}
           barOrientation={(barOrientation as 'horizontal' | 'vertical') ?? 'horizontal'}
           stacked={stacked ?? true}
         />
@@ -122,23 +159,60 @@ export function InlineChart({ data }: InlineChartProps) {
     return null;
   }
 
+  const canEdit = artifactId && CHARTJS_TYPES.has(chartType);
+  const canCopy = CHARTJS_TYPES.has(chartType);
+
   return (
     <div className="mt-3 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-3 pb-1">
         <h4 className="text-xs font-medium text-muted-foreground">{title || 'Chart'}</h4>
-        {artifactId && (
-          <button
-            onClick={handleOpenInStudio}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-          >
-            <Expand className="h-3 w-3" />
-            Open in Studio
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {canCopy && (
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+            >
+              {copyState === 'copied' ? (
+                <>
+                  <Check className="h-3 w-3" />
+                  Copied
+                </>
+              ) : copyState === 'error' ? (
+                <>
+                  <Copy className="h-3 w-3" />
+                  Copy failed
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" />
+                  Copy image
+                </>
+              )}
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={() => setShowStyleEditor(true)}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+            >
+              <Palette className="h-3 w-3" />
+              Edit
+            </button>
+          )}
+          {artifactId && (
+            <button
+              onClick={handleOpenInStudio}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+            >
+              <Expand className="h-3 w-3" />
+              Open in Studio
+            </button>
+          )}
+        </div>
       </div>
       {/* Chart area */}
-      <div className="px-4 pb-3">
+      <div ref={exportRef} className="px-4 pb-3">
         {content}
         {caption && (
           <figcaption className="mt-3 text-xs leading-relaxed text-muted-foreground">
@@ -147,6 +221,29 @@ export function InlineChart({ data }: InlineChartProps) {
           </figcaption>
         )}
       </div>
+
+      {canEdit && (
+        <Sheet open={showStyleEditor} onOpenChange={setShowStyleEditor}>
+          <SheetContent side="right" className="w-[360px] sm:max-w-[360px]">
+            <SheetHeader>
+              <SheetTitle className="text-sm">Edit chart style</SheetTitle>
+              <SheetDescription className="text-xs">
+                Changes save automatically.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="overflow-y-auto px-4 pb-6">
+              <ChartStyleEditor
+                seriesLabels={extractChartSeriesLabels(
+                  chartType as SocialChartType,
+                  toWidgetData(chartData),
+                )}
+                value={styleOverrides}
+                onChange={handleStyleChange}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   );
 }

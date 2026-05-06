@@ -1,6 +1,6 @@
 import { Table2, BarChart3, Presentation, FileText } from 'lucide-react';
 import type { ArtifactDetail } from '../../api/endpoints/artifacts.ts';
-import type { Artifact } from '../../stores/studio-store.ts';
+import type { Artifact, ChartStyleOverrides } from '../../stores/studio-store.ts';
 
 export const ARTIFACT_STYLES: Record<string, {
   icon: typeof Table2;
@@ -31,7 +31,9 @@ export function convertToStudioArtifact(detail: ArtifactDetail): Artifact | null
         type: 'chart',
         chartType: p.chart_type as string,
         data: (p.data ?? {}) as Record<string, unknown>,
-        colorOverrides: p.color_overrides as Record<string, string> | undefined,
+        barOrientation: p.bar_orientation as string | undefined,
+        stacked: p.stacked as boolean | undefined,
+        styleOverrides: p.style_overrides as ChartStyleOverrides | undefined,
         collectionIds: detail.collection_ids,
       } as Extract<Artifact, { type: 'chart' }>;
     case 'data_export':

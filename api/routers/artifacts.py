@@ -60,8 +60,13 @@ async def update_artifact(
     if artifact.get("user_id") != user.uid:
         raise HTTPException(403, "Only the owner can modify this artifact")
     updates = body.model_dump(exclude_none=True)
+    # `style_overrides` is stored nested inside the `payload` field. Use a
+    # Firestore dot-path so we don't clobber siblings (chart_type, data, …).
+    style_overrides = updates.pop("style_overrides", None)
+    if style_overrides is not None:
+        updates["payload.style_overrides"] = style_overrides
     if updates:
-        fs.update_artifact(artifact_id, **updates)
+        fs.update_artifact(artifact_id, updates)
     return {"status": "updated"}
 
 

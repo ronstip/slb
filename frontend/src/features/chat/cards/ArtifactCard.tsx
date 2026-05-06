@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { BarChart3, Table2, Download, Loader2 } from 'lucide-react';
+import { BarChart3, FileText, Table2, Download, Loader2 } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { downloadCollection } from '../../../api/endpoints/collections.ts';
@@ -7,7 +7,7 @@ import { formatNumber } from '../../../lib/format.ts';
 
 // ── Type config ──────────────────────────────────────────────────────
 
-type ArtifactType = 'chart' | 'data_export';
+type ArtifactType = 'chart' | 'data_export' | 'markdown';
 
 const TYPE_CONFIG: Record<ArtifactType, {
   Icon: typeof BarChart3;
@@ -33,6 +33,14 @@ const TYPE_CONFIG: Record<ArtifactType, {
     iconBg: 'bg-accent-blue/10',
     iconColor: 'text-accent-blue',
   },
+  markdown: {
+    Icon: FileText,
+    border: 'border-accent-vibrant/20',
+    bg: 'from-accent-vibrant/5',
+    hoverBorder: 'hover:border-accent-vibrant/40',
+    iconBg: 'bg-accent-vibrant/10',
+    iconColor: 'text-accent-vibrant',
+  },
 };
 
 const CHART_TYPE_LABELS: Record<string, string> = {
@@ -50,6 +58,7 @@ function deriveTitle(type: ArtifactType, data: Record<string, unknown>): string 
   return (data.title as string) || {
     chart: 'Chart',
     data_export: 'Data Export',
+    markdown: 'Report',
   }[type];
 }
 
@@ -63,6 +72,16 @@ function deriveMeta(type: ArtifactType, data: Record<string, unknown>): string {
       const count = data.row_count as number;
       const name = data.collection_name as string;
       return name ? `${formatNumber(count)} posts from ${name}` : `${formatNumber(count)} posts`;
+    }
+    case 'markdown': {
+      const summary = data.summary as string | undefined;
+      if (summary) return summary;
+      const content = data.content as string | undefined;
+      if (typeof content === 'string') {
+        const wc = content.trim().split(/\s+/).length;
+        return `${formatNumber(wc)} words`;
+      }
+      return 'Markdown report';
     }
   }
 }

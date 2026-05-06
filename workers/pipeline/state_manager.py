@@ -54,10 +54,21 @@ class StateManager:
 
         Also stores media_refs in Firestore so the download step can read them
         without waiting for the BQ streaming buffer.
+
+        Sets `awaits_dep_post_id` on the post_state when a post depends on
+        another in-range post (X API quote/reply unpack). The enrichment claim
+        gate uses this to block parents until the dep is past the download step.
+        Out-of-range or missing deps → no flag → parent enriches with whatever
+        defensive cache is in `platform_metadata.referenced_post`.
         """
         transitions: list[tuple[str, PostState]] = []
         media_refs: dict[str, list[dict]] = {}
         post_meta: dict[str, dict] = {}
+
+        # Only set awaits_dep when the dep is in this same in-range batch — i.e.
+        # the dep is actually entering the DAG. Out-of-range deps wouldn't have
+        # a post_state to gate on, and would deadlock the parent.
+        in_range_ids = {p.post_id for p in posts}
 
         for post in posts:
             if post.platform == "youtube":
@@ -78,10 +89,16 @@ class StateManager:
                     {"original_url": url} for url in post.media_urls
                 ]
 
-            post_meta[post.post_id] = {
+            meta: dict = {
                 "platform": post.platform,
                 "post_url": post.post_url or "",
             }
+            dep_id = post.enrichment_dependency_post_id
+            if dep_id and dep_id in in_range_ids:
+                meta["awaits_dep_post_id"] = dep_id
+                if post.enrichment_dependency_type:
+                    meta["enrichment_dependency_type"] = post.enrichment_dependency_type
+            post_meta[post.post_id] = meta
 
         if transitions:
             self.transition_batch(
@@ -229,6 +246,38 @@ class StateManager:
             claim_state,
             in_flight_state,
         )
+
+    def claim_one_for_enrichment(self) -> dict | None:
+        """Claim one post for enrichment, gated on its dependency being past download.
+
+        Posts with `awaits_dep_post_id` set wait until the dep reaches a state
+        where its content + media_refs are stable (any state past download —
+        success or failure). Eliminates the race where a parent enriches before
+        its quoted source's media has uploaded to GCS.
+
+        Returns None if no eligible post is available — producer backs off and
+        retries.
+        """
+        transaction = self._db.transaction()
+        return _claim_one_for_enrichment_txn(
+            transaction,
+            self._posts_ref,
+            self._status_ref,
+        )
+
+    def get_post_state(self, post_id: str) -> dict | None:
+        """Read the raw post_state doc for a single post, or None if missing.
+
+        Used by enrichment to fetch a dep's media_refs alongside the parent's
+        own content. Outside any transaction; consistency is good-enough since
+        the claim gate guarantees the dep is past download before parent enriches.
+        """
+        snapshot = self._posts_ref.document(post_id).get()
+        if not snapshot.exists:
+            return None
+        data = snapshot.to_dict() or {}
+        data["post_id"] = post_id
+        return data
 
     def recover_stale_transient(
         self,
@@ -487,4 +536,76 @@ def _claim_one_txn(
     })
     data["post_id"] = doc.id
     data["status"] = in_flight_state.value
+    return data
+
+
+# Dep states that mean "media_refs are stable, parent can enrich now."
+# Any state past download (success OR failure) qualifies — the parent only
+# needs whatever GCS-or-CDN refs the dep ended up with; even if download
+# ultimately failed, the post_state.media_refs still has the seed CDN URLs.
+# Excluded: COLLECTED_WITH_MEDIA, DOWNLOADING (still resolving).
+_DEP_MEDIA_READY_STATES = frozenset({
+    PostState.READY_FOR_ENRICHMENT.value,
+    PostState.ENRICHING.value,
+    PostState.ENRICHED.value,
+    PostState.ENRICHMENT_FAILED.value,
+    PostState.EMBEDDING_FAILED.value,
+    PostState.DONE.value,
+    PostState.MISSING_MEDIA.value,
+    PostState.DOWNLOAD_FAILED.value,
+})
+
+
+@firestore.transactional
+def _claim_one_for_enrichment_txn(
+    transaction,
+    posts_ref,
+    status_ref,
+) -> dict | None:
+    """Claim one post in READY_FOR_ENRICHMENT, gated on its dep's status.
+
+    Reads a candidate (the first post in READY_FOR_ENRICHMENT). If the
+    candidate has `awaits_dep_post_id`, also reads the dep's post_state
+    transactionally — only claims if the dep is past download. Otherwise
+    returns None so the producer can back off and retry; the dep will
+    eventually advance and the parent will become claimable.
+
+    NOTE: this scans only the head of the queue. If the head is blocked
+    on its dep, we don't auto-skip to the next candidate — we wait. In
+    practice the dep advances within seconds (download is the only step
+    we wait on) and idle backoff is forgiving. If this becomes a
+    throughput bottleneck we can paginate the candidate query.
+    """
+    query = posts_ref.where(
+        "status", "==", PostState.READY_FOR_ENRICHMENT.value,
+    ).limit(1)
+    docs = list(query.stream(transaction=transaction))
+    if not docs:
+        return None
+    doc = docs[0]
+    data = doc.to_dict() or {}
+
+    awaits = data.get("awaits_dep_post_id")
+    if awaits:
+        dep_doc = posts_ref.document(awaits).get(transaction=transaction)
+        # Dep missing from post_states means it never entered the DAG (already
+        # enriched in a prior run, or out-of-range). Either way, no waiting —
+        # parent uses the defensive cache. Same for dep already-ready states.
+        if dep_doc.exists:
+            dep_status = (dep_doc.to_dict() or {}).get("status", "")
+            if dep_status not in _DEP_MEDIA_READY_STATES:
+                return None  # dep still in download; backoff and retry
+
+    now = datetime.now(timezone.utc)
+    transaction.update(doc.reference, {
+        "status": PostState.ENRICHING.value,
+        "updated_at": now,
+    })
+    transaction.update(status_ref, {
+        f"counts.{PostState.READY_FOR_ENRICHMENT.value}": transforms.Increment(-1),
+        f"counts.{PostState.ENRICHING.value}": transforms.Increment(1),
+        "updated_at": now,
+    })
+    data["post_id"] = doc.id
+    data["status"] = PostState.ENRICHING.value
     return data

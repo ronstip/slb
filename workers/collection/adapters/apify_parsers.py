@@ -204,6 +204,69 @@ def parse_apify_instagram_channel(item: dict) -> Channel:
 
 
 # ---------------------------------------------------------------------------
+# Instagram — apidojo/instagram-hashtag-scraper
+# Different output shape from apify/instagram-scraper:
+#   - Singular `likeCount` / `commentCount` (vs plural)
+#   - Nested `owner.{id,username,fullName,isVerified}` (vs flat owner*)
+#   - Nested `video.{playCount,url}` and `image.url` (vs flat displayUrl/videoUrl)
+#   - `createdAt` ISO (vs `timestamp`)
+#   - All items typed `"post"`; video/carousel encoded via `isVideo`/`isCarousel`
+# Strategy: flatten the apidojo shape onto the legacy keys, then delegate to
+# `parse_apify_instagram_post` so the field-handling logic stays in one place.
+# ---------------------------------------------------------------------------
+
+def _normalize_apidojo_ig_item(item: dict) -> dict:
+    out = dict(item)
+
+    owner = item.get("owner")
+    if isinstance(owner, dict):
+        out.setdefault("ownerUsername", owner.get("username"))
+        out.setdefault("ownerId", owner.get("id"))
+        out.setdefault("ownerFullName", owner.get("fullName"))
+        out.setdefault("ownerIsVerified", owner.get("isVerified"))
+
+    video = item.get("video")
+    if isinstance(video, dict):
+        if out.get("videoPlayCount") is None and video.get("playCount") is not None:
+            out["videoPlayCount"] = video["playCount"]
+        if not out.get("videoUrl") and video.get("url"):
+            out["videoUrl"] = video["url"]
+
+    image = item.get("image")
+    if isinstance(image, dict):
+        if not out.get("displayUrl") and image.get("url"):
+            out["displayUrl"] = image["url"]
+
+    if out.get("likesCount") is None and "likeCount" in item:
+        out["likesCount"] = item["likeCount"]
+    if out.get("commentsCount") is None and "commentCount" in item:
+        out["commentsCount"] = item["commentCount"]
+
+    if not out.get("timestamp") and item.get("createdAt"):
+        out["timestamp"] = item["createdAt"]
+
+    # Map apidojo's boolean flags onto the legacy `type` strings the
+    # _IG_TYPE_MAP recognizes. apidojo emits type="post" for everything.
+    if str(out.get("type", "")).lower() == "post":
+        if item.get("isVideo"):
+            out["type"] = "Video"
+        elif item.get("isCarousel"):
+            out["type"] = "Sidecar"
+        else:
+            out["type"] = "Image"
+
+    return out
+
+
+def parse_apidojo_ig_hashtag_post(item: dict) -> Post:
+    return parse_apify_instagram_post(_normalize_apidojo_ig_item(item))
+
+
+def parse_apidojo_ig_hashtag_channel(item: dict) -> Channel:
+    return parse_apify_instagram_channel(_normalize_apidojo_ig_item(item))
+
+
+# ---------------------------------------------------------------------------
 # Facebook — scrapeforge/facebook-search-posts
 # Sample dataset shape:
 #   post_id, type, url, message, message_rich, timestamp (unix sec),
@@ -437,6 +500,10 @@ _PARSER_REGISTRY: dict[tuple[str, str], tuple[ParsePostFn, ParseChannelFn]] = {
     ("instagram", "apify/instagram-scraper"): (
         parse_apify_instagram_post,
         parse_apify_instagram_channel,
+    ),
+    ("instagram", "apidojo/instagram-hashtag-scraper"): (
+        parse_apidojo_ig_hashtag_post,
+        parse_apidojo_ig_hashtag_channel,
     ),
     ("facebook", "scrapeforge/facebook-search-posts"): (
         parse_scrapeforge_facebook_post,

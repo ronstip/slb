@@ -393,3 +393,24 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
 }
+
+/* Print: collapse the app to just the report content. */
+@media print {
+  body { background: white; color: black; }
+  body * { visibility: hidden; }
+  .report-print-target,
+  .report-print-target * { visibility: visible; }
+  .report-print-target {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  .no-print, .no-print * { display: none !important; }
+  figure[data-report-chart],
+  table { break-inside: avoid; page-break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+  @page { margin: 0.75in; }
+}

@@ -25,6 +25,14 @@ class Post:
     platform_metadata: dict | None = None
     crawl_provider: str | None = None
     search_keyword: str | None = None
+    # Pipeline-only signal: this post needs another post's text+media as
+    # enrichment context. Set by the X adapter when a quote/reply is unpacked
+    # alongside its referenced source. Read by mark_collected to decide whether
+    # to set `awaits_dep_post_id` on the post_state. Not persisted to BQ as a
+    # column (lives transiently on the dataclass; the BQ-persisted truth is
+    # platform_metadata.referenced_post + parent_post_id).
+    enrichment_dependency_post_id: str | None = None
+    enrichment_dependency_type: str | None = None  # "quoted" | "replied_to"
 
 
 @dataclass

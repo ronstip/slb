@@ -9,6 +9,7 @@ import type { Source } from '../../../../../api/endpoints/agents.ts';
 import { PlatformIcon } from '../../../../../components/PlatformIcon.tsx';
 import { formatNumber, timeAgo } from '../../../../../lib/format.ts';
 import { cn } from '../../../../../lib/utils.ts';
+import { PostActionsMenu } from '../../../../post-overrides/PostActionsMenu.tsx';
 import { computeWindowStart } from './overview-filters.ts';
 
 interface LivePostStreamProps {
@@ -191,6 +192,7 @@ export function PostsFeedGrid({
   });
 
   const posts = data?.pages.flatMap((p) => p.posts) ?? [];
+  const enableActions = !!agentId;
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -218,7 +220,12 @@ export function PostsFeedGrid({
       <div className={scrollerClasses}>
         <div className={gridClasses}>
           {posts.map((post, i) => (
-            <PostCard key={post.post_id} post={post} isLatest={anyCollecting && i === 0} />
+            <PostCard
+              key={post.post_id}
+              post={post}
+              isLatest={anyCollecting && i === 0}
+              agentId={enableActions ? agentId : undefined}
+            />
           ))}
         </div>
         <div ref={sentinelRef} className="h-8" />
@@ -254,7 +261,7 @@ function textPostLabel(post: FeedPost): string {
   return 'textual post';
 }
 
-function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
+function PostCard({ post, isLatest, agentId }: { post: FeedPost; isLatest: boolean; agentId?: string }) {
   const media = post.media_refs?.find((m) => m.media_type === 'image' || m.media_type === 'video');
   const isVideo = media?.media_type === 'video';
   // Videos: prefer the X-provided preview_image_url thumbnail, since the original_url
@@ -280,6 +287,18 @@ function PostCard({ post, isLatest }: { post: FeedPost; isLatest: boolean }) {
         <PlatformIcon platform={post.platform} className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate font-medium text-foreground/90">{post.channel_handle || post.platform}</span>
         <span className="ml-auto shrink-0 text-muted-foreground/70">{timeAgo(post.posted_at)}</span>
+        {agentId && (
+          <span
+            className="relative z-20 -mr-1 shrink-0"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <PostActionsMenu post={post} agentId={agentId} className="h-6 w-6" />
+          </span>
+        )}
       </div>
       <div className="relative h-28 w-full overflow-hidden rounded-md bg-muted">
         {resolvedImg ? (
@@ -354,7 +373,7 @@ function EnrichmentOverlay({
 
   return (
     <div className="absolute inset-0 flex flex-col gap-2.5 overflow-y-auto rounded-xl bg-gradient-to-br from-background/98 via-background/95 to-background/98 p-3 opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover:opacity-100">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 pr-8">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
           <Sparkles className="h-3 w-3 text-primary" />
           AI insights

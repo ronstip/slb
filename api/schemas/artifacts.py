@@ -28,3 +28,6 @@ class UpdateArtifactRequest(BaseModel):
     title: str | None = None
     favorited: bool | None = None
     shared: bool | None = None
+    # Chart-only: per-artifact style overrides (accent + seriesColors).
+    # Stored inside the artifact's `payload` document field, not at top level.
+    style_overrides: dict[str, Any] | None = None

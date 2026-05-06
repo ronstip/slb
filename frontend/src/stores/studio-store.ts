@@ -12,6 +12,13 @@ interface DataExportArtifact {
   createdAt: Date;
 }
 
+export interface ChartStyleOverrides {
+  /** Base accent color for the generated palette. */
+  accent?: string;
+  /** Per-label color overrides — keyed by exact label as it appears in data. */
+  seriesColors?: Record<string, string>;
+}
+
 interface ChartArtifact {
   id: string;
   type: 'chart';
@@ -20,6 +27,7 @@ interface ChartArtifact {
   data: Record<string, unknown>;
   barOrientation?: string;
   stacked?: boolean;
+  styleOverrides?: ChartStyleOverrides;
   collectionIds?: string[];
   sourceSql?: string;
   createdAt: Date;
@@ -85,6 +93,7 @@ interface StudioStore {
   collapseReport: () => void;
   setArtifacts: (artifacts: Artifact[]) => void;
   updateArtifactTitle: (id: string, title: string) => void;
+  updateChartStyleOverrides: (id: string, overrides: ChartStyleOverrides) => void;
   setFeedSource: (id: string | null) => void;
   setPendingTopicFilter: (filter: PendingTopicFilter) => void;
   clearPendingTopicFilter: () => void;
@@ -115,6 +124,12 @@ export const useStudioStore = create<StudioStore>((set) => ({
   updateArtifactTitle: (id, title) =>
     set((s) => ({
       artifacts: s.artifacts.map((a) => (a.id === id ? { ...a, title } : a)),
+    })),
+  updateChartStyleOverrides: (id, overrides) =>
+    set((s) => ({
+      artifacts: s.artifacts.map((a) =>
+        a.id === id && a.type === 'chart' ? { ...a, styleOverrides: overrides } : a,
+      ),
     })),
   expandReport: (id) => set({ expandedReportId: id }),
   collapseReport: () => set({ expandedReportId: null }),

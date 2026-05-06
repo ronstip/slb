@@ -272,7 +272,7 @@ def _generate_narrative(topics: list[dict]) -> _NarrativeResponse | None:
             model=settings.enrichment_model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                temperature=0.4,
+                temperature=1,
                 max_output_tokens=512,
                 response_mime_type="application/json",
                 response_schema=_NarrativeResponse,

@@ -46,8 +46,10 @@ export function PlatformBreakdownCard({
 
   const platforms = useMemo(() => aggregatePlatforms(posts), [posts]);
 
-  const maxCount = platforms[0]?.post_count || 1;
+  const maxPosts = Math.max(1, ...platforms.map((p) => p.post_count));
+  const maxViews = Math.max(1, ...platforms.map((p) => p.view_count));
   const totalPosts = platforms.reduce((sum, p) => sum + p.post_count, 0);
+  const totalViews = platforms.reduce((sum, p) => sum + p.view_count, 0);
 
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-4">
@@ -81,47 +83,77 @@ export function PlatformBreakdownCard({
         </div>
       ) : (
         <TooltipProvider delayDuration={150}>
-          <div className="space-y-1">
+          <div className="space-y-2">
             {platforms.map((p) => {
-              const pct = (p.post_count / maxCount) * 100;
-              const sharePct = totalPosts > 0 ? (p.post_count / totalPosts) * 100 : 0;
+              const postsPct = (p.post_count / maxPosts) * 100;
+              const viewsPct = (p.view_count / maxViews) * 100;
+              const postsShare = totalPosts > 0 ? (p.post_count / totalPosts) * 100 : 0;
+              const viewsShare = totalViews > 0 ? (p.view_count / totalViews) * 100 : 0;
               const color = PLATFORM_COLORS[p.platform] ?? '#94999F';
               const label = PLATFORM_LABELS[p.platform] ?? p.platform;
               return (
                 <Tooltip key={p.platform}>
                   <TooltipTrigger asChild>
                     <div className="-mx-2 cursor-default rounded-md px-2 py-1 transition-colors hover:bg-muted/40">
-                      <div className="mb-0.5 flex items-center justify-between gap-2">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <PlatformIcon platform={p.platform} className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate text-xs font-medium text-foreground">{label}</span>
-                        </div>
-                        <span className="text-xs font-semibold tabular-nums text-foreground">
-                          {formatNumber(p.post_count)}
-                        </span>
+                      <div className="mb-1 flex min-w-0 items-center gap-1.5">
+                        <PlatformIcon platform={p.platform} className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate text-xs font-medium text-foreground">{label}</span>
                       </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-muted/50">
-                        <div
-                          className="h-full transition-all duration-500"
-                          style={{ width: `${pct}%`, backgroundColor: color }}
-                        />
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/50">
+                            <div
+                              className="h-full transition-all duration-500"
+                              style={{ width: `${postsPct}%`, backgroundColor: color }}
+                            />
+                          </div>
+                          <span className="w-20 shrink-0 text-right text-[10px] tabular-nums text-foreground">
+                            {formatNumber(p.post_count)}
+                            <span className="ml-1 text-muted-foreground">posts</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/50">
+                            <div
+                              className="h-full transition-all duration-500"
+                              style={{ width: `${viewsPct}%`, backgroundColor: color, opacity: 0.4 }}
+                            />
+                          </div>
+                          <span className="w-20 shrink-0 text-right text-[10px] tabular-nums text-foreground">
+                            {formatNumber(p.view_count)}
+                            <span className="ml-1 text-muted-foreground">views</span>
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="left" className="px-3 py-2">
                     <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-4 border-b border-background/20 pb-1">
-                        <div className="flex items-center gap-1.5">
-                          <PlatformIcon platform={p.platform} className="h-3 w-3 shrink-0" />
-                          <span className="text-[11px] font-semibold uppercase tracking-wider">
-                            {label}
+                      <div className="flex items-center gap-1.5 border-b border-background/20 pb-1">
+                        <PlatformIcon platform={p.platform} className="h-3 w-3 shrink-0" />
+                        <span className="text-[11px] font-semibold uppercase tracking-wider">
+                          {label}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5 text-[11px]">
+                        <div className="flex items-baseline justify-between gap-4">
+                          <span className="opacity-80">Posts</span>
+                          <span className="font-semibold tabular-nums">
+                            {formatNumber(p.post_count)}
+                            <span className="ml-1 font-normal opacity-60">
+                              ({postsShare.toFixed(1)}%)
+                            </span>
                           </span>
                         </div>
-                        <span className="text-[10px] opacity-70">{sharePct.toFixed(1)}% of posts</span>
-                      </div>
-                      <div className="flex items-baseline justify-between gap-4 text-[11px]">
-                        <span className="opacity-80">Posts</span>
-                        <span className="font-semibold tabular-nums">{formatNumber(p.post_count)}</span>
+                        <div className="flex items-baseline justify-between gap-4">
+                          <span className="opacity-80">Views</span>
+                          <span className="font-semibold tabular-nums">
+                            {formatNumber(p.view_count)}
+                            <span className="ml-1 font-normal opacity-60">
+                              ({viewsShare.toFixed(1)}%)
+                            </span>
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </TooltipContent>

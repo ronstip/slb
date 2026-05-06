@@ -6,6 +6,8 @@ import {
   deleteSession,
 } from '../api/endpoints/sessions.ts';
 import { reconstructSession } from '../lib/session-reconstructor.ts';
+import { getArtifact } from '../api/endpoints/artifacts.ts';
+import type { ChartStyleOverrides } from './studio-store.ts';
 import { useChatStore } from './chat-store.ts';
 import { useStudioStore } from './studio-store.ts';
 import { useSourcesStore } from './sources-store.ts';
@@ -75,6 +77,26 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const { messages, artifacts, selectedSourceIds } = reconstructSession(
         detail.events,
         detail.state,
+      );
+
+      // Reconstruction rebuilds chart artifacts from raw events; per-artifact
+      // style edits (saved via PATCH /artifacts/{id}) aren't in those events,
+      // so fetch them from Firestore and merge. IDs starting with `chart-restored-`
+      // are reconstructor fallbacks (no real Firestore doc) — skip those.
+      await Promise.all(
+        artifacts
+          .filter((a) => a.type === 'chart' && !a.id.startsWith('chart-restored-'))
+          .map(async (a) => {
+            try {
+              const detail = await getArtifact(a.id);
+              const overrides = detail.payload?.style_overrides as ChartStyleOverrides | undefined;
+              if (overrides) {
+                (a as Extract<typeof a, { type: 'chart' }>).styleOverrides = overrides;
+              }
+            } catch {
+              // Artifact may have been deleted; ignore.
+            }
+          }),
       );
 
       // Restore all stores with the fetched session data
