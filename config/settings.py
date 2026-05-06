@@ -101,6 +101,12 @@ class Settings(BaseSettings):
     x_api_sort_order: str = "relevancy"  # "relevancy" | "recency"; per-collection override via config["sort_order"]
     x_api_default_max_calls: int = 2  # pagination depth fallback when n_posts/max_posts_per_keyword unset
     x_api_end_time_lag_hours: float = 0.0  # offset end_time back from now; X's 10s floor is enforced inside the adapter
+    # Promote each quoted/replied tweet hydrated in `includes.tweets` to its own Post
+    # in the same batch (Option B). The parent post gets an enrichment_dependency
+    # pointer so PR #2's pipeline gate can wait for the dep's media before enriching.
+    # When False, only the defensive `platform_metadata.referenced_post` snapshot is
+    # populated; no extra Posts are emitted.
+    x_api_unpack_referenced_posts: bool = False
 
     # Bright Data
     brightdata_api_token: str = ""

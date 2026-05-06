@@ -19,7 +19,13 @@ from pydantic import AfterValidator, BaseModel, create_model
 
 from config.settings import get_settings
 from workers.enrichment.normalize import normalize_labels
-from workers.enrichment.schema import CustomFieldDef, EnrichmentResult, PostData
+from workers.enrichment.schema import (
+    CustomFieldDef,
+    EnrichmentResult,
+    MediaRef,
+    PostData,
+    ReferencedPost,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,13 +142,13 @@ Fields of the analysis:
 - entities: brands, products, people mentioned (in text, visual or transcript)
 - themes: topic themes (e.g. "skincare routine", "product review")
 - content_type: The type, category of the content.
-- is_related_to_task: Whether this post is genuinely related to the task: "{enrichment_context}". True if the post is meaningfully about what the task is focusing. Combine the information about the post such as context, content, publish time, entities with the web information to determine if relevant or not. 
+- is_related_to_task: Whether this post is genuinely related to the task: "{enrichment_context}". True if the post is meaningfully about what the task is focusing. Combine the information about the post such as context, content, publish time, entities with the web information to determine if relevant or not.
 - detected_brands: All brand names mentioned, referenced, shown, or visible in the post content or media. Include both text mentions and brands visible in images/video (logos, products, packaging).
 - channel_type: Classify the posting channel/account. "official" for brand or entity accounts, "media" for news outlets and media channels. "Influencer" for Individuals which are known to work as influencer for their living. "ugc" for regular users and creators.
 
 IMPORTANT: All output fields MUST be in English, regardless of the post's original language.
 
-
+{referenced_post_block}
 Post:
   Platform: {platform}
   Channel: {channel_handle}
@@ -150,6 +156,15 @@ Post:
   Content: {title} {content}
   Media:
 
+"""
+
+# Rendered into ENRICHMENT_PROMPT when the post is a quote/reply with a hydrated
+# source. Lets the model interpret the post in light of what it's responding to,
+# instead of inventing a coherent-sounding narrative for ambiguous one-liners.
+REFERENCED_POST_BLOCK_TEMPLATE = """\
+Context — this post is a {ref_type_label} of @{ref_author} who said:
+  "{ref_content}"
+{ref_media_note}
 """
 
 _MEDIA_RESOLUTION_MAP = {
@@ -270,6 +285,7 @@ def _build_content_parts(
 
     # Text prompt with post metadata
     effective_context = enrichment_context or post.search_keyword or "N/A"
+    referenced_post_block = _render_referenced_post_block(post.referenced_post)
     prompt_text = ENRICHMENT_PROMPT.format(
         platform=post.platform,
         channel_handle=post.channel_handle or "unknown",
@@ -277,6 +293,7 @@ def _build_content_parts(
         title=post.title or "",
         content=post.content or "",
         enrichment_context=effective_context,
+        referenced_post_block=referenced_post_block,
     )
 
     # Inject custom field instructions inline, before the IMPORTANT marker
@@ -291,30 +308,22 @@ def _build_content_parts(
 
     # Media parts — prefer GCS URI (permanent), fall back to original CDN URL for images
     for ref in post.media_refs[: settings.enrichment_max_media_per_post]:
-        uri = ref.gcs_uri or ref.original_url
-        if not uri:
-            continue
-        mime = ref.content_type or ("video/mp4" if _is_video(ref.media_type, ref.content_type) else "image/jpeg")
-        try:
-            if _is_video(ref.media_type, ref.content_type) and ref.gcs_uri:
-                if skip_video:
-                    continue
-                # Video: only use GCS (CDN video URLs don't work with Gemini)
-                parts.append(
-                    types.Part(
-                        file_data=types.FileData(file_uri=ref.gcs_uri, mime_type=mime),
-                        video_metadata=types.VideoMetadata(
-                            start_offset=settings.enrichment_video_start_offset,
-                            end_offset=settings.enrichment_video_end_offset,
-                            fps=settings.enrichment_video_fps,
-                        ),
-                    )
-                )
-            elif not _is_video(ref.media_type, ref.content_type):
-                # Image: GCS URI or CDN URL both work with Gemini
-                parts.append(types.Part.from_uri(file_uri=uri, mime_type=mime))
-        except Exception:
-            logger.warning("Failed to create media part for %s (%s)", post.post_id, uri)
+        part = _build_media_part(ref, post.post_id, skip_video, settings)
+        if part is not None:
+            parts.append(part)
+
+    # Referenced post media (quote/reply context) — appended after parent media
+    # so the parent post's own media stays the primary signal. Uses a small
+    # text separator so the model knows the next images belong to the source.
+    ref_post = post.referenced_post
+    if ref_post and ref_post.media_refs:
+        parts.append(types.Part.from_text(
+            text=f"\n[Below: media from the {ref_post.ref_type} post by @{ref_post.author or 'unknown'}]\n"
+        ))
+        for ref in ref_post.media_refs[: settings.enrichment_max_media_per_post]:
+            part = _build_media_part(ref, post.post_id, skip_video, settings)
+            if part is not None:
+                parts.append(part)
 
     # YouTube: if no GCS video, pass the YouTube URL directly.
     # Gemini natively understands YouTube URLs for video analysis.
@@ -339,6 +348,61 @@ def _build_content_parts(
             )
 
     return parts
+
+
+def _render_referenced_post_block(ref: ReferencedPost | None) -> str:
+    """Render the optional 'Context — this is a quote/reply' block.
+
+    Returns '' when no referenced post is set, so the prompt template renders
+    seamlessly. Includes a hint about media when the dep had attachments.
+    """
+    if ref is None or not ref.content:
+        return ""
+    type_label = "quote-tweet" if ref.ref_type == "quoted" else "reply"
+    media_note = (
+        "(its media follows the post media below)\n"
+        if ref.media_refs else ""
+    )
+    return REFERENCED_POST_BLOCK_TEMPLATE.format(
+        ref_type_label=type_label,
+        ref_author=ref.author or "unknown",
+        ref_content=ref.content,
+        ref_media_note=media_note,
+    )
+
+
+def _build_media_part(
+    ref: MediaRef,
+    post_id: str,
+    skip_video: bool,
+    settings,
+) -> types.Part | None:
+    """Build a single Gemini multimodal Part from a MediaRef. Returns None if
+    the ref is unusable (no URI, video without GCS, video skipped)."""
+    uri = ref.gcs_uri or ref.original_url
+    if not uri:
+        return None
+    is_vid = _is_video(ref.media_type, ref.content_type)
+    mime = ref.content_type or ("video/mp4" if is_vid else "image/jpeg")
+    try:
+        if is_vid and ref.gcs_uri:
+            if skip_video:
+                return None
+            # Video: only use GCS (CDN video URLs don't work with Gemini)
+            return types.Part(
+                file_data=types.FileData(file_uri=ref.gcs_uri, mime_type=mime),
+                video_metadata=types.VideoMetadata(
+                    start_offset=settings.enrichment_video_start_offset,
+                    end_offset=settings.enrichment_video_end_offset,
+                    fps=settings.enrichment_video_fps,
+                ),
+            )
+        if not is_vid:
+            # Image: GCS URI or CDN URL both work with Gemini
+            return types.Part.from_uri(file_uri=uri, mime_type=mime)
+    except Exception:
+        logger.warning("Failed to create media part for %s (%s)", post_id, uri)
+    return None
 
 
 def _build_config(

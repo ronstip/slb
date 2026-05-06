@@ -246,12 +246,14 @@ def enrich_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None]:
     if post_id in ctx.enriched_ids:
         return "ok", None
 
-    # Read post content from BQ.
+    # Read post content from BQ — include platform_metadata so we can fall back
+    # to the defensive `referenced_post` cache when the dep isn't in our DAG.
     try:
         rows = ctx.bq.query(
             "SELECT post_id, platform, channel_handle, "
             "  CAST(posted_at AS STRING) AS posted_at, title, content, "
-            "  post_url, search_keyword "
+            "  post_url, search_keyword, parent_post_id, "
+            "  TO_JSON_STRING(platform_metadata) AS platform_metadata_json "
             "FROM social_listening.posts "
             "WHERE post_id = @post_id",
             {"post_id": post_id},
@@ -265,15 +267,9 @@ def enrich_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None]:
     row = rows[0]
 
     # Media refs are stored on the post_state doc by the download step.
-    media_refs: list[MediaRef] = []
-    for ref in (post.get("media_refs") or []):
-        if isinstance(ref, dict) and (ref.get("gcs_uri") or ref.get("original_url")):
-            media_refs.append(MediaRef(
-                gcs_uri=ref.get("gcs_uri", ""),
-                original_url=ref.get("original_url", ""),
-                media_type=ref.get("media_type", "image"),
-                content_type=ref.get("content_type", ""),
-            ))
+    media_refs = _parse_media_refs(post.get("media_refs"))
+
+    referenced_post = _resolve_referenced_post(post, row, ctx)
 
     pd = PostData(
         post_id=post_id,
@@ -285,6 +281,7 @@ def enrich_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None]:
         post_url=row.get("post_url"),
         search_keyword=row.get("search_keyword"),
         media_refs=media_refs,
+        referenced_post=referenced_post,
     )
 
     # Lazy-init shared Gemini client + config on the StepContext (per-collection).
@@ -315,6 +312,92 @@ def enrich_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None]:
     # Cache hit so a re-claim (e.g. retry path) skips the call.
     ctx.enriched_ids.add(post_id)
     return "ok", {"enrichment_result": result}
+
+
+def _parse_media_refs(raw_refs) -> list:
+    """Build a list[MediaRef] from a Firestore-stored media_refs list.
+
+    Skips entries that have neither gcs_uri nor original_url.
+    """
+    from workers.enrichment.schema import MediaRef
+    out = []
+    for ref in (raw_refs or []):
+        if isinstance(ref, dict) and (ref.get("gcs_uri") or ref.get("original_url")):
+            out.append(MediaRef(
+                gcs_uri=ref.get("gcs_uri", ""),
+                original_url=ref.get("original_url", ""),
+                media_type=ref.get("media_type", "image"),
+                content_type=ref.get("content_type", ""),
+            ))
+    return out
+
+
+def _resolve_referenced_post(post: dict, row: dict, ctx: StepContext):
+    """Build the ReferencedPost context for a quote/reply, or None.
+
+    Two paths:
+    1. Dep is in the DAG (`awaits_dep_post_id` is set on this post_state) →
+       fetch dep's content + channel from BQ and dep's media_refs from
+       Firestore post_state. Authoritative; includes media.
+    2. No DAG dep → fall back to the defensive `platform_metadata.referenced_post`
+       cache stamped at parse time by the X adapter. Text-only (no media).
+    """
+    from workers.enrichment.schema import ReferencedPost
+
+    awaits = post.get("awaits_dep_post_id")
+    dep_type = post.get("enrichment_dependency_type")
+    if awaits:
+        dep_state = None
+        try:
+            dep_state = ctx.state_manager.get_post_state(awaits)
+        except Exception:
+            logger.warning(
+                "post_state read failed for dep %s — falling back to defensive cache",
+                awaits, exc_info=True,
+            )
+        try:
+            dep_rows = ctx.bq.query(
+                "SELECT channel_handle, content, title "
+                "FROM social_listening.posts "
+                "WHERE post_id = @post_id LIMIT 1",
+                {"post_id": awaits},
+            )
+        except Exception:
+            logger.warning("BQ dep read failed for %s", awaits, exc_info=True)
+            dep_rows = []
+        if dep_rows:
+            dep_row = dep_rows[0]
+            dep_media = _parse_media_refs(
+                (dep_state or {}).get("media_refs") if dep_state else None,
+            )
+            return ReferencedPost(
+                ref_type=dep_type if dep_type in ("quoted", "replied_to") else "quoted",
+                author=dep_row.get("channel_handle"),
+                content=dep_row.get("content") or dep_row.get("title") or "",
+                media_refs=dep_media,
+            )
+        # Fall through to defensive cache if dep BQ read failed.
+
+    # Defensive cache from platform_metadata.referenced_post (text-only).
+    raw = row.get("platform_metadata_json")
+    if not raw:
+        return None
+    try:
+        meta = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        return None
+    snap = (meta or {}).get("referenced_post")
+    if not snap or not snap.get("text"):
+        return None
+    snap_type = snap.get("type")
+    if snap_type not in ("quoted", "replied_to"):
+        return None
+    return ReferencedPost(
+        ref_type=snap_type,
+        author=snap.get("author"),
+        content=snap["text"],
+        media_refs=[],
+    )
 
 
 def enrich_flush(

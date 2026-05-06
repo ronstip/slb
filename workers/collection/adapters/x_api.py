@@ -22,6 +22,7 @@ from config.settings import get_settings
 from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.x_api_client import XAPIClient, XAPIError
 from workers.collection.adapters.x_api_parsers import (
+    _index_tweets_by_id as _index_includes_tweets,
     extract_twitter_id,
     extract_twitter_username,
     parse_x_channel,
@@ -45,10 +46,13 @@ class XAPIAdapter(DataProviderAdapter):
     """Adapter for the official X API v2."""
 
     SUPPORTED = ["twitter"]
+    # `note_tweet` carries the long-form (>280 char) body for Premium-authored
+    # posts — supersedes the truncated `text` field when present. Same field
+    # is honored on referenced tweets (quoted/replied) hydrated via includes.
     DEFAULT_TWEET_FIELDS = (
         "created_at,lang,public_metrics,entities,referenced_tweets,"
         "conversation_id,attachments,context_annotations,possibly_sensitive,"
-        "author_id"
+        "author_id,note_tweet"
     )
     DEFAULT_USER_FIELDS = (
         "username,verified,public_metrics,profile_image_url,description,"
@@ -57,7 +61,13 @@ class XAPIAdapter(DataProviderAdapter):
     DEFAULT_MEDIA_FIELDS = (
         "url,preview_image_url,type,duration_ms,width,height,variants"
     )
-    DEFAULT_EXPANSIONS = "attachments.media_keys,author_id,referenced_tweets.id"
+    # `referenced_tweets.id.author_id` and `.attachments.media_keys` hydrate the
+    # quoted/replied tweets' authors and media in `includes.users`/`includes.media`,
+    # so unpacked dep Posts get the same field coverage as parents.
+    DEFAULT_EXPANSIONS = (
+        "attachments.media_keys,author_id,referenced_tweets.id,"
+        "referenced_tweets.id.author_id,referenced_tweets.id.attachments.media_keys"
+    )
 
     def __init__(self):
         settings = get_settings()
@@ -71,12 +81,14 @@ class XAPIAdapter(DataProviderAdapter):
         self._max_results = max(_PAGE_SIZE_MIN, min(_PAGE_SIZE_MAX, settings.x_api_max_results))
         self._default_sort_order = _normalize_sort_order(settings.x_api_sort_order)
         self._fallback_max_calls = max(1, settings.x_api_default_max_calls)
+        self._unpack_referenced = bool(settings.x_api_unpack_referenced_posts)
         self._platform_stats: dict[str, dict] = {}
+        self._referenced_post_count = 0
         self._stats_lock = threading.Lock()
         logger.info(
-            "XAPIAdapter initialized (max_results=%d, sort_order=%s, min_interval=%.2fs)",
+            "XAPIAdapter initialized (max_results=%d, sort_order=%s, min_interval=%.2fs, unpack_refs=%s)",
             self._max_results, self._default_sort_order,
-            settings.x_api_min_request_interval_sec,
+            settings.x_api_min_request_interval_sec, self._unpack_referenced,
         )
 
     def supported_platforms(self) -> list[str]:
@@ -92,6 +104,7 @@ class XAPIAdapter(DataProviderAdapter):
 
     def collect(self, config: dict) -> list[Batch]:
         self._platform_stats = {}
+        self._referenced_post_count = 0  # transient, per-collect
         if "twitter" not in config.get("platforms", []):
             return []
 
@@ -168,14 +181,17 @@ class XAPIAdapter(DataProviderAdapter):
 
         post_count = sum(len(b.posts) for b in all_batches)
         with self._stats_lock:
+            primary_count = max(0, post_count - self._referenced_post_count)
             self._platform_stats["twitter"] = {
                 "posts": post_count,
+                "primary_posts": primary_count,
+                "referenced_posts": self._referenced_post_count,
                 "batches": len(all_batches),
                 "errors": errors,
             }
         logger.info(
-            "X API: collected %d posts in %d batches (%d task errors)",
-            post_count, len(all_batches), errors,
+            "X API: collected %d posts (%d primary + %d referenced) in %d batches (%d task errors)",
+            post_count, primary_count, self._referenced_post_count, len(all_batches), errors,
         )
         return all_batches
 
@@ -326,20 +342,27 @@ class XAPIAdapter(DataProviderAdapter):
                 break
             includes = resp.get("includes") or {}
 
-            posts: list[Post] = []
+            primary_posts: list[Post] = []
             channels_seen: dict[str, Channel] = {}
             for tweet in tweets:
-                posts.append(parse_x_post(tweet, includes))
+                primary_posts.append(parse_x_post(tweet, includes))
 
             # Truncate this page when it would push us past the hard cap.
             # Page size is sized per-task so this only fires on the last page
             # when budget < page_min (e.g. budget=5 but X requires page>=10).
+            # hard_cap counts only PRIMARY posts; referenced unpacks are bonus.
             if hard_cap is not None:
                 remaining = hard_cap - running_total
                 if remaining <= 0:
                     break
-                if len(posts) > remaining:
-                    posts = posts[:remaining]
+                if len(primary_posts) > remaining:
+                    primary_posts = primary_posts[:remaining]
+
+            referenced_posts: list[Post] = []
+            if self._unpack_referenced:
+                referenced_posts = self._unpack_referenced_posts(
+                    primary_posts, tweets, includes,
+                )
 
             for user in includes.get("users") or []:
                 ch = parse_x_channel(user)
@@ -351,12 +374,17 @@ class XAPIAdapter(DataProviderAdapter):
                     channels_seen[seed_channel.channel_handle] = seed_channel
                 seeded_channel = True
 
+            posts = primary_posts + referenced_posts
             if posts:
                 self._stamp_posts(posts, search_keyword)
                 batches.append(
                     Batch(posts=posts, channels=list(channels_seen.values())),
                 )
-                running_total += len(posts)
+                # hard_cap budget tracks primary only.
+                running_total += len(primary_posts)
+                if referenced_posts:
+                    with self._stats_lock:
+                        self._referenced_post_count += len(referenced_posts)
 
             if hard_cap is not None and running_total >= hard_cap:
                 break
@@ -366,6 +394,63 @@ class XAPIAdapter(DataProviderAdapter):
                 break
 
         return batches
+
+    def _unpack_referenced_posts(
+        self,
+        primary_posts: list[Post],
+        tweets: list[dict],
+        includes: dict,
+    ) -> list[Post]:
+        """Promote each unique quoted/replied source tweet into its own Post.
+
+        Walks `referenced_tweets[]` on each primary tweet (matched by index to
+        `primary_posts`), collects quoted/replied refs that are hydrated in
+        `includes.tweets`, deduplicates by id within this page, and parses each
+        into a Post that travels in the same Batch.
+
+        Side effect: stamps `enrichment_dependency_post_id` and
+        `enrichment_dependency_type` onto the matching primary Post so PR #2's
+        pipeline gate knows to wait for the dep's media before enriching.
+
+        Skipped:
+        - retweeted refs (we exclude RTs at query level; if present, source
+          content == original — no extra context value)
+        - refs not hydrated in includes.tweets (deleted/protected/missing)
+        - refs whose ID matches a primary post already in this page (dep was
+          itself directly collected — no need to duplicate)
+        """
+        primary_ids = {p.post_id for p in primary_posts}
+        primary_post_by_index = {i: p for i, p in enumerate(primary_posts)}
+        tweets_by_id = _index_includes_tweets(includes)
+        if not tweets_by_id:
+            return []
+
+        unpacked: dict[str, Post] = {}
+        for idx, tweet in enumerate(tweets):
+            primary_post = primary_post_by_index.get(idx)
+            if primary_post is None:
+                continue  # truncated by hard_cap above
+            for ref in tweet.get("referenced_tweets") or []:
+                ref_type = ref.get("type")
+                if ref_type not in ("quoted", "replied_to"):
+                    continue
+                ref_id = str(ref.get("id") or "")
+                if not ref_id:
+                    continue
+                if ref_id in primary_ids:
+                    # Source already in this page as a primary post — link only.
+                    primary_post.enrichment_dependency_post_id = ref_id
+                    primary_post.enrichment_dependency_type = ref_type
+                    continue
+                ref_tweet = tweets_by_id.get(ref_id)
+                if not ref_tweet:
+                    continue  # not hydrated — fall back to defensive cache
+                if ref_id not in unpacked:
+                    unpacked[ref_id] = parse_x_post(ref_tweet, includes)
+                primary_post.enrichment_dependency_post_id = ref_id
+                primary_post.enrichment_dependency_type = ref_type
+
+        return list(unpacked.values())
 
     @staticmethod
     def _stamp_posts(posts: list[Post], keyword: str | None) -> None:

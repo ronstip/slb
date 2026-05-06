@@ -25,12 +25,13 @@ logger = logging.getLogger(__name__)
 def parse_x_post(tweet: dict, includes: dict | None) -> Post:
     """Parse a tweet from /2/tweets/search/recent or /2/users/:id/tweets.
 
-    `tweet` is a single object from `response["data"]`.
-    `includes` is `response["includes"]` — used to resolve author + media.
+    `tweet` is a single object from `response["data"]` OR `response["includes"]["tweets"]`.
+    `includes` is `response["includes"]` — used to resolve author + media + referenced text.
     """
     includes = includes or {}
     users_by_id = _index_users_by_id(includes)
     media_by_key = _index_media_by_key(includes)
+    tweets_by_id = _index_tweets_by_id(includes)
 
     author_id = str(tweet.get("author_id", ""))
     author = users_by_id.get(author_id, {})
@@ -43,6 +44,7 @@ def parse_x_post(tweet: dict, includes: dict | None) -> Post:
     parent_post_id = None
     is_retweet = False
     is_quote = False
+    referenced_post_snapshot: dict | None = None
     for ref in tweet.get("referenced_tweets") or []:
         ref_type = ref.get("type")
         ref_id = ref.get("id")
@@ -52,10 +54,44 @@ def parse_x_post(tweet: dict, includes: dict | None) -> Post:
         elif ref_type == "quoted":
             is_quote = True
             parent_post_id = parent_post_id or str(ref_id)
+            if referenced_post_snapshot is None:
+                referenced_post_snapshot = _build_referenced_snapshot(
+                    str(ref_id), "quoted", tweets_by_id, users_by_id,
+                )
         elif ref_type == "replied_to":
             parent_post_id = parent_post_id or str(ref_id)
+            if referenced_post_snapshot is None:
+                referenced_post_snapshot = _build_referenced_snapshot(
+                    str(ref_id), "replied_to", tweets_by_id, users_by_id,
+                )
+
+    # Long-form note_tweet supersedes the truncated `text` field when present.
+    # Available for posts authored by Premium accounts (>280 chars).
+    note_tweet = tweet.get("note_tweet") or {}
+    content = note_tweet.get("text") or tweet.get("text", "")
 
     metrics = tweet.get("public_metrics") or {}
+
+    platform_metadata: dict = {
+        "platform": "twitter",
+        "author": handle,
+        "author_id": author_id or None,
+        "lang": tweet.get("lang"),
+        "conversation_id": tweet.get("conversation_id"),
+        "is_retweet": is_retweet,
+        "is_quote_status": is_quote,
+        "context_annotations": tweet.get("context_annotations"),
+        "possibly_sensitive": tweet.get("possibly_sensitive"),
+        "verified": author.get("verified"),
+        "followers_count": (author.get("public_metrics") or {}).get("followers_count"),
+        "quote_count": metrics.get("quote_count"),
+    }
+    if note_tweet.get("text"):
+        platform_metadata["has_note_tweet"] = True
+    if referenced_post_snapshot is not None:
+        # Defensive cache used by enrichment fallback when the dep Post is not
+        # present in our DB (deleted/protected/out-of-range/unpack-flag-off).
+        platform_metadata["referenced_post"] = referenced_post_snapshot
 
     return Post(
         post_id=str(tweet.get("id", "")),
@@ -63,7 +99,7 @@ def parse_x_post(tweet: dict, includes: dict | None) -> Post:
         channel_handle=handle,
         channel_id=author_id or None,
         title=None,
-        content=tweet.get("text", ""),
+        content=content,
         post_url=f"https://x.com/{handle}/status/{tweet.get('id', '')}" if handle else "",
         posted_at=_parse_iso8601(tweet.get("created_at")),
         post_type=_infer_post_type(media_objs),
@@ -79,21 +115,36 @@ def parse_x_post(tweet: dict, includes: dict | None) -> Post:
         views=metrics.get("impression_count"),
         saves=metrics.get("bookmark_count"),
         comments=[],
-        platform_metadata={
-            "platform": "twitter",
-            "author": handle,
-            "author_id": author_id or None,
-            "lang": tweet.get("lang"),
-            "conversation_id": tweet.get("conversation_id"),
-            "is_retweet": is_retweet,
-            "is_quote_status": is_quote,
-            "context_annotations": tweet.get("context_annotations"),
-            "possibly_sensitive": tweet.get("possibly_sensitive"),
-            "verified": author.get("verified"),
-            "followers_count": (author.get("public_metrics") or {}).get("followers_count"),
-            "quote_count": metrics.get("quote_count"),
-        },
+        platform_metadata=platform_metadata,
     )
+
+
+def _build_referenced_snapshot(
+    ref_id: str,
+    ref_type: str,
+    tweets_by_id: dict[str, dict],
+    users_by_id: dict[str, dict],
+) -> dict:
+    """Build the defensive `referenced_post` cache for platform_metadata.
+
+    Always includes id + type. Adds text + author when the ref is hydrated in
+    `includes.tweets` (i.e. expansion was requested and the source tweet is
+    visible to us — not deleted/protected). The enricher falls back to this
+    cache when the dep Post is missing from BQ.
+    """
+    snapshot: dict = {"id": ref_id, "type": ref_type}
+    ref_tweet = tweets_by_id.get(ref_id)
+    if not ref_tweet:
+        return snapshot
+    note = ref_tweet.get("note_tweet") or {}
+    snapshot["text"] = note.get("text") or ref_tweet.get("text", "")
+    ref_author_id = str(ref_tweet.get("author_id", ""))
+    ref_author = users_by_id.get(ref_author_id, {})
+    if ref_author.get("username"):
+        snapshot["author"] = ref_author["username"]
+    if ref_author_id:
+        snapshot["author_id"] = ref_author_id
+    return snapshot
 
 
 def parse_x_channel(user: dict) -> Channel:
@@ -187,6 +238,16 @@ def _index_users_by_id(includes: dict) -> dict[str, dict]:
 
 def _index_media_by_key(includes: dict) -> dict[str, dict]:
     return {m.get("media_key"): m for m in (includes.get("media") or []) if m.get("media_key")}
+
+
+def _index_tweets_by_id(includes: dict) -> dict[str, dict]:
+    """Index `includes.tweets` — populated by the `referenced_tweets.id` expansion.
+
+    Each entry is a fully-hydrated tweet object (same shape as `data[]` items)
+    representing a post referenced (quoted/replied/retweeted) by a top-level
+    tweet in the response.
+    """
+    return {str(t.get("id")): t for t in (includes.get("tweets") or []) if t.get("id")}
 
 
 # ---------------------------------------------------------------------------

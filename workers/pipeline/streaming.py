@@ -33,6 +33,12 @@ ProcessFn = Callable[[dict, StepContext], tuple[str, dict | None]]
 # transition states.
 FlushFn = Callable[[list[tuple[str, str, dict | None]], StepContext], None] | None
 
+# Claim function: returns one claimed post (already transitioned to in-flight)
+# or None if no work. The default uses the standard `claim_state → in_flight_state`
+# transition; the enrichment runner overrides this with a dep-gated variant that
+# also waits for any quoted/replied source's media to finish downloading.
+ClaimFn = Callable[[], dict | None]
+
 
 class StreamingStepRunner:
     """Runs one streaming step (download or enrich) for a single collection."""
@@ -52,6 +58,7 @@ class StreamingStepRunner:
         flush_size: int = 1,
         flush_interval_sec: float = 1.0,
         record_step_timing: Callable | None = None,
+        claim_fn: ClaimFn | None = None,
     ) -> None:
         self._name = name
         self._ctx = ctx
@@ -65,6 +72,11 @@ class StreamingStepRunner:
         self._flush_size = max(1, flush_size)
         self._flush_interval_sec = max(0.1, flush_interval_sec)
         self._record_step_timing = record_step_timing
+        # Default claim: standard claim_state → in_flight_state. Enrichment
+        # runner injects a dep-gated claim via state_manager.claim_one_for_enrichment.
+        self._claim_fn: ClaimFn = claim_fn or (
+            lambda: ctx.state_manager.claim_one(claim_state, in_flight_state)
+        )
 
         # Cap how many posts are in-flight at once. The executor's queue is
         # unbounded, so without this we'd over-claim.
@@ -111,9 +123,7 @@ class StreamingStepRunner:
             if not self._in_flight_sem.acquire(timeout=0.2):
                 continue
             try:
-                post = self._ctx.state_manager.claim_one(
-                    self._claim_state, self._in_flight_state,
-                )
+                post = self._claim_fn()
             except Exception:
                 logger.warning(
                     "claim_one failed for step '%s' in %s — backing off",
