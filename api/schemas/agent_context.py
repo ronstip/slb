@@ -100,7 +100,7 @@ async def refresh_world_context(ctx: AgentContext) -> str:
         tools.append(types.Tool(google_search=types.GoogleSearch()))
 
     config = types.GenerateContentConfig(
-        temperature=0.5,
+        temperature=1,
         tools=tools or None,
     )
 
