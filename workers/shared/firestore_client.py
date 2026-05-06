@@ -1043,9 +1043,12 @@ class FirestoreClient:
         results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return results
 
-    def update_artifact(self, artifact_id: str, **fields) -> None:
-        fields["updated_at"] = datetime.now(timezone.utc)
-        self._db.collection("artifacts").document(artifact_id).update(fields)
+    def update_artifact(self, artifact_id: str, fields: dict | None = None, **kwargs) -> None:
+        # Accept either a dict (so callers can pass dot-path keys like
+        # `payload.style_overrides` for nested updates) or kwargs.
+        merged = {**(fields or {}), **kwargs}
+        merged["updated_at"] = datetime.now(timezone.utc)
+        self._db.collection("artifacts").document(artifact_id).update(merged)
 
     def delete_artifact(self, artifact_id: str) -> None:
         self._db.collection("artifacts").document(artifact_id).delete()
