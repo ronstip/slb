@@ -161,6 +161,15 @@ export function useSSEChat() {
               for (const artifact of patch.artifacts) {
                 useStudioStore.getState().addArtifact(artifact);
               }
+              // New artifacts persist server-side; invalidate the agent's
+              // artifact list so the Overview deliverables panel refreshes
+              // without requiring a navigate-out-and-back.
+              if (patch.artifacts.length > 0) {
+                const activeAgentId = useAgentStore.getState().activeAgentId;
+                if (activeAgentId) {
+                  queryClient.invalidateQueries({ queryKey: ['agent-artifacts', activeAgentId] });
+                }
+              }
 
               // Todo updates: use the store's updateTodos so it re-runs diff + pushes
               // todo_change entries into both flat log and chronological blocks.

@@ -31,15 +31,19 @@ export function aggregateSentiment(posts: DashboardPost[]): SentimentBreakdown[]
 export interface PlatformBreakdown {
   platform: string;
   post_count: number;
+  view_count: number;
 }
 
 export function aggregatePlatforms(posts: DashboardPost[]): PlatformBreakdown[] {
-  const counts = new Map<string, number>();
+  const map = new Map<string, { posts: number; views: number }>();
   for (const p of posts) {
-    counts.set(p.platform, (counts.get(p.platform) || 0) + 1);
+    const cur = map.get(p.platform) ?? { posts: 0, views: 0 };
+    cur.posts += 1;
+    cur.views += p.view_count ?? 0;
+    map.set(p.platform, cur);
   }
-  return [...counts.entries()]
-    .map(([platform, post_count]) => ({ platform, post_count }))
+  return [...map.entries()]
+    .map(([platform, v]) => ({ platform, post_count: v.posts, view_count: v.views }))
     .sort((a, b) => b.post_count - a.post_count);
 }
 

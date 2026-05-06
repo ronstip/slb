@@ -206,6 +206,7 @@ export function mapToolResult(
     });
   } else if (isMarkdownResult(toolName, result)) {
     const markdownId = (result._artifact_id as string) || ctx.fallbackId('markdown');
+    patch.cards.push({ type: 'markdown', data: { ...result, _artifactId: markdownId } });
     patch.artifacts.push({
       id: markdownId,
       type: 'markdown',
