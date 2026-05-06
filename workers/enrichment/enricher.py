@@ -146,6 +146,8 @@ Fields of the analysis:
 - detected_brands: All brand names mentioned, referenced, shown, or visible in the post content or media. Include both text mentions and brands visible in images/video (logos, products, packaging).
 - channel_type: Classify the posting channel/account. "official" for brand or entity accounts, "media" for news outlets and media channels. "Influencer" for Individuals which are known to work as influencer for their living. "ugc" for regular users and creators.
 
+Grounding: base each field on signal you can actually observe in the post — its text, the media, and the channel context. When that signal is thin or ambiguous, prefer empty values (empty list, `neutral`, null) over filling the gap with a plausible guess. It's expected that some posts won't carry enough to extract entities, brands, or themes from — that's a valid outcome, not a failure. If you reference wording from the post in `ai_summary`, only use what was actually written or spoken; don't paraphrase a quote or reconstruct phrasing that wasn't there. When in doubt, lean toward under-calling rather than confidently guessing.
+
 IMPORTANT: All output fields MUST be in English, regardless of the post's original language.
 
 {referenced_post_block}

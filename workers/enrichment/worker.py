@@ -35,10 +35,14 @@ def _write_results_to_bq(
     collection_id: str | None = None,
     agent_id: str | None = None,
     agent_version: int | None = None,
+    source: str | None = None,
 ) -> None:
     """Append enrichment results to enriched_posts. INSERT-only: each call
     writes new rows, even when the (post_id, agent_id, agent_version) triple
     already exists. Readers dedupe via the DEDUP_ENRICHED CTE.
+
+    `source` is a free-form tag — currently 'user_override' for manual
+    corrections, NULL for auto enrichment. User-override rows win the dedup.
     """
     if not results:
         return
@@ -47,6 +51,7 @@ def _write_results_to_bq(
         collection_id=collection_id,
         agent_id=agent_id,
         agent_version=agent_version,
+        source=source,
     )
 
 
@@ -57,6 +62,7 @@ def _write_results_via_values(
     collection_id: str | None,
     agent_id: str | None,
     agent_version: int | None,
+    source: str | None = None,
 ) -> None:
     """Write results using INSERT ... SELECT UNION ALL (works around BQ
     parameter limits when batches contain JSON / nested arrays).
@@ -67,6 +73,7 @@ def _write_results_via_values(
     cid_sql = f"'{_esc(collection_id)}'" if collection_id else "CAST(NULL AS STRING)"
     aid_sql = f"'{_esc(agent_id)}'" if agent_id else "CAST(NULL AS STRING)"
     av_sql = str(int(agent_version)) if agent_version is not None else "CAST(NULL AS INT64)"
+    src_sql = f"'{_esc(source)}'" if source else "CAST(NULL AS STRING)"
 
     # Build a UNION ALL of SELECT statements for each row
     selects = []
@@ -95,6 +102,7 @@ def _write_results_via_values(
             f"[{brands_arr}] AS detected_brands, "
             f"'{_esc(r.channel_type)}' AS channel_type, "
             f"{custom_sql} AS custom_fields, "
+            f"{src_sql} AS source, "
             f"CURRENT_TIMESTAMP() AS enriched_at"
         )
 
@@ -105,12 +113,12 @@ INSERT INTO social_listening.enriched_posts (
     post_id, collection_id, agent_id, agent_version,
     context, sentiment, emotion, entities, themes, ai_summary,
     language, content_type, is_related_to_task, detected_brands,
-    channel_type, custom_fields, enriched_at
+    channel_type, custom_fields, source, enriched_at
 )
 {source_sql};"""
 
     bq.query(insert_sql)
-    logger.info("Wrote %d enrichment results to BQ (agent=%s v=%s)", len(results), agent_id, agent_version)
+    logger.info("Wrote %d enrichment results to BQ (agent=%s v=%s src=%s)", len(results), agent_id, agent_version, source)
 
 
 def _esc(s: str) -> str:

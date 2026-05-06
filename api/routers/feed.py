@@ -312,7 +312,10 @@ def _build_legacy_sql(request: MultiFeedRequest) -> tuple[str, dict]:
     FROM {posts_subquery} p
     LEFT JOIN (
         SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY enriched_at DESC) AS _rn
+               ROW_NUMBER() OVER (
+                   PARTITION BY post_id
+                   ORDER BY (source = 'user_override') DESC, enriched_at DESC
+               ) AS _rn
         FROM social_listening.enriched_posts
     ) ep ON p.post_id = ep.post_id AND ep._rn = 1
     LEFT JOIN (

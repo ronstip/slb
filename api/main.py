@@ -39,6 +39,7 @@ from api.routers import health as health_router
 from api.routers import internal as internal_router
 from api.routers import media as media_router
 from api.routers import orgs as orgs_router
+from api.routers import posts as posts_router
 from api.routers import sessions as sessions_router
 from api.routers import settings as settings_router
 from api.routers import topics as topics_router
@@ -93,6 +94,7 @@ app.include_router(health_router.router)
 app.include_router(collections_router.router)
 app.include_router(feed_router.router)
 app.include_router(agents_router.router)
+app.include_router(posts_router.router)
 app.include_router(chat_router.router)
 app.include_router(internal_router.router)
 

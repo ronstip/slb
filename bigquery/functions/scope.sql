@@ -40,7 +40,8 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.scope_post_ids(
             SELECT ep.*,
                    ROW_NUMBER() OVER (
                        PARTITION BY ep.post_id
-                       ORDER BY ep.agent_version DESC NULLS LAST,
+                       ORDER BY (ep.source = 'user_override') DESC,
+                                ep.agent_version DESC NULLS LAST,
                                 ep.enriched_at DESC
                    ) AS _rn
             FROM social_listening.enriched_posts ep
@@ -86,7 +87,8 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.scope_posts(
             SELECT ep.*,
                    ROW_NUMBER() OVER (
                        PARTITION BY ep.post_id
-                       ORDER BY ep.agent_version DESC NULLS LAST,
+                       ORDER BY (ep.source = 'user_override') DESC,
+                                ep.agent_version DESC NULLS LAST,
                                 ep.enriched_at DESC
                    ) AS _rn
             FROM social_listening.enriched_posts ep

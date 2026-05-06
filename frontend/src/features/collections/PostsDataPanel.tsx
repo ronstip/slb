@@ -162,8 +162,9 @@ export function PostsDataPanel({
         filters: columnFilters,
         onFiltersChange: setColumnFilters,
         filterOptions,
+        agentId,
       }),
-    [columnFilters, filterOptions],
+    [columnFilters, filterOptions, agentId],
   );
 
   // Fetch collection stats for status panel data (daily_volume, enrichment, freshness)
