@@ -6,6 +6,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  ChevronDown,
   Compass,
   FileText,
   Filter,
@@ -18,11 +19,11 @@ import {
   Plus,
   Search,
   Timer,
-  X,
 } from 'lucide-react';
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { AgentDataExplorer } from './AgentDataExplorer.tsx';
-import { AgentDetailDrawer, StatusBadge, RUNNABLE_STATUSES, STATUS_CONFIG, formatLastRun } from './AgentDetailDrawer.tsx';
+import { AgentDetailDrawer, RUNNABLE_STATUSES, formatLastRun } from './AgentDetailDrawer.tsx';
+import { StatusBadge } from './detail/agent-status-utils.tsx';
 import type { Agent, AgentStatus } from '../../api/endpoints/agents.ts';
 import { runAgent, updateAgent as patchAgent } from '../../api/endpoints/agents.ts';
 import {
@@ -35,7 +36,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog.tsx';
-import { Badge } from '../../components/ui/badge.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import {
   Dialog,
@@ -48,7 +48,6 @@ import { Input } from '../../components/ui/input.tsx';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -59,10 +58,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../../components/ui/tooltip.tsx';
-import { formatSchedule } from '../../lib/constants.ts';
+import { formatSchedule, PLATFORM_COLORS, PLATFORM_LABELS } from '../../lib/constants.ts';
 import { AgentCardGrid } from './AgentCardGrid.tsx';
-import { AgentCard } from './AgentCard.tsx';
-import { BotAvatar } from '../../components/BrandElements.tsx';
+import { BotAvatar, UtilityTopBar } from '../../components/BrandElements.tsx';
+import { PlatformIcon } from '../../components/PlatformIcon.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { cn } from '../../lib/utils.ts';
@@ -70,6 +69,7 @@ import { cn } from '../../lib/utils.ts';
 type ViewMode = 'table' | 'grid';
 type SortField = 'last_run' | 'title' | 'status' | 'created_at' | 'next_run';
 type SortDir = 'asc' | 'desc';
+type StatusFilterKey = 'all' | 'running' | 'success' | 'failed' | 'archived';
 
 const loadViewMode = (): ViewMode => {
   try {
@@ -79,15 +79,20 @@ const loadViewMode = (): ViewMode => {
   return 'table';
 };
 
-const ALL_STATUSES: AgentStatus[] = [
-  'running', 'success', 'failed', 'archived',
+const FILTER_PILLS: { key: StatusFilterKey; label: string; status: AgentStatus | null }[] = [
+  { key: 'all',      label: 'All',       status: null },
+  { key: 'running',  label: 'Live',      status: 'running' },
+  { key: 'success',  label: 'Completed', status: 'success' },
+  { key: 'failed',   label: 'Failed',    status: 'failed' },
+  { key: 'archived', label: 'Archived',  status: 'archived' },
 ];
 
-const STATUS_ROW_BORDER: Record<string, string> = {
-  running: 'border-l-amber-500',
-  success: 'border-l-green-500',
-  failed: 'border-l-destructive',
-  archived: 'border-l-muted-foreground/30',
+const SORT_LABELS: Record<SortField, string> = {
+  last_run:   'Last run',
+  title:      'Title',
+  status:     'Status',
+  created_at: 'Created',
+  next_run:   'Next run',
 };
 
 /** Relative time for future dates (e.g. "in 6h", "Tomorrow") */
@@ -103,6 +108,57 @@ function formatRelativeTime(iso: string): string {
   return `in ${diffD}d`;
 }
 
+/** Coloured platform chip — used by the row's "Sources" cell. Renders the
+ *  platform's official logo on a tile painted in its brand colour. */
+function SourceMark({ platform }: { platform: string }) {
+  const bg = PLATFORM_COLORS[platform] ?? '#6E665A';
+  const label = PLATFORM_LABELS[platform] ?? platform;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label={label}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white shadow-[0_1px_2px_rgba(15,12,8,0.18)] ring-1 ring-black/5"
+          style={{ background: bg }}
+        >
+          <PlatformIcon platform={platform} className="h-3.5 w-3.5" color="#FFFFFF" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Stable seeded sparkline — decorative, distinct per agent. */
+function MiniSparkline({ seed, color }: { seed: string; color: string }) {
+  const points = useMemo(() => {
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) h = seed.charCodeAt(i) + ((h << 5) - h);
+    const n = 12;
+    const arr: number[] = [];
+    let x = h;
+    for (let i = 0; i < n; i++) {
+      x = (x * 1103515245 + 12345) & 0x7fffffff;
+      arr.push((x % 100) / 100);
+    }
+    return arr;
+  }, [seed]);
+  const w = 84;
+  const hh = 22;
+  const path = points
+    .map((v, i) => {
+      const px = (i / (points.length - 1)) * w;
+      const py = hh - v * (hh - 4) - 2;
+      return `${i === 0 ? 'M' : 'L'} ${px.toFixed(1)} ${py.toFixed(1)}`;
+    })
+    .join(' ');
+  return (
+    <svg width={w} height={hh} viewBox={`0 0 ${w} ${hh}`} className="shrink-0">
+      <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function AgentsPage() {
   const navigate = useNavigate();
   const tasks = useAgentStore((s) => s.agents);
@@ -110,9 +166,10 @@ export function AgentsPage() {
   const error = useAgentStore((s) => s.error);
   const fetchAgents = useAgentStore((s) => s.fetchAgents);
   const sidebarCollapsed = useUIStore((s) => s.sourcesPanelCollapsed);
+  const openWizardDrawer = useUIStore((s) => s.openWizardDrawer);
 
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<Set<AgentStatus>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [openScheduleOnDrawer, setOpenScheduleOnDrawer] = useState(false);
@@ -138,9 +195,7 @@ export function AgentsPage() {
     return () => clearInterval(interval);
   }, [hasExecuting, fetchAgents]);
 
-  const getLastRunTime = (agent: Agent): number => {
-    return new Date(agent.updated_at).getTime();
-  };
+  const getLastRunTime = (agent: Agent): number => new Date(agent.updated_at).getTime();
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -158,11 +213,27 @@ export function AgentsPage() {
       : <ArrowDown className="h-3 w-3" />;
   };
 
+  // Counts per filter pill — based on the *unfiltered* agents list.
+  const counts = useMemo(() => {
+    const total = tasks.length;
+    let running = 0, success = 0, failed = 0, archived = 0;
+    for (const t of tasks) {
+      if (t.status === 'running') running++;
+      else if (t.status === 'success') success++;
+      else if (t.status === 'failed') failed++;
+      else if (t.status === 'archived') archived++;
+    }
+    return { all: total, running, success, failed, archived } as Record<StatusFilterKey, number>;
+  }, [tasks]);
+
   const filteredAgents = useMemo(() => {
     const filtered = tasks.filter((t) => {
-      // Hide archived by default unless explicitly filtered
-      if (statusFilter.size === 0 && t.status === 'archived') return false;
-      if (statusFilter.size > 0 && (t.status === null || !statusFilter.has(t.status))) return false;
+      if (statusFilter === 'all') {
+        // Default view hides archived agents — same behaviour as before.
+        if (t.status === 'archived') return false;
+      } else {
+        if (t.status !== statusFilter) return false;
+      }
       if (search) {
         const q = search.toLowerCase();
         return t.title.toLowerCase().includes(q);
@@ -188,38 +259,9 @@ export function AgentsPage() {
     });
   }, [tasks, statusFilter, search, sortField, sortDir]);
 
-  const recentAgents = useMemo(() =>
-    [...tasks]
-      .filter((t) => t.status !== 'archived')
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      .slice(0, 4),
-    [tasks],
-  );
-
-  const toggleStatus = (status: AgentStatus) => {
-    setStatusFilter((prev) => {
-      // When no explicit filter is set, all non-archived statuses are implicitly active.
-      // Toggling from this state should behave as if all non-archived were checked.
-      if (prev.size === 0) {
-        if (status === 'archived') {
-          // Turning on archived → show everything
-          return new Set(ALL_STATUSES);
-        }
-        // Turning off a non-archived status → explicit filter with everything except that one and archived
-        const next = new Set(ALL_STATUSES.filter((s) => s !== 'archived' && s !== status));
-        return next;
-      }
-      const next = new Set(prev);
-      if (next.has(status)) next.delete(status);
-      else next.add(status);
-      // If the resulting set matches "all non-archived", collapse back to empty (default)
-      const allNonArchived = ALL_STATUSES.filter((s) => s !== 'archived');
-      if (allNonArchived.every((s) => next.has(s)) && !next.has('archived')) {
-        return new Set();
-      }
-      return next;
-    });
-  };
+  // Agent counts for the eyebrow utility line.
+  const totalAgents = tasks.filter((t) => t.status !== 'archived').length;
+  const listeningNow = tasks.filter((t) => (t.status === 'running' || (t.agent_type === 'recurring' && !t.paused && t.status !== 'archived'))).length;
 
   const handleRowClick = (agent: Agent) => {
     navigate(`/agents/${agent.agent_id}`);
@@ -286,7 +328,13 @@ export function AgentsPage() {
     }
   };
 
+  // Row column template — kept stable so the header line and each data row
+  // stay perfectly aligned.
+  // Agent | Sources | Status | Schedule | Last run | Trend | Actions
+  const ROW_GRID = { gridTemplateColumns: 'minmax(260px,1fr) 168px 120px 120px 120px 100px 180px' } as const;
+
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="flex h-screen w-full overflow-x-hidden bg-background">
       <aside
         className="shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar"
@@ -294,395 +342,422 @@ export function AgentsPage() {
       >
         <AppSidebar />
       </aside>
+
       <div className="flex flex-1 flex-col overflow-x-hidden">
-      {/* Toolbar */}
-      <div className="flex shrink-0 items-center gap-3 px-6 pt-5 pb-3">
-        <h1 className="font-heading text-base font-semibold tracking-tight text-foreground">Agents</h1>
-
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search agents..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-8 pl-9 text-sm"
-          />
-        </div>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5">
-              <Filter className="h-3.5 w-3.5" />
-              Status
-              {statusFilter.size > 0 && (
-                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                  {statusFilter.size}
-                </Badge>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {ALL_STATUSES.map((s) => (
-              <DropdownMenuCheckboxItem
-                key={s}
-                checked={statusFilter.size === 0 ? s !== 'archived' : statusFilter.has(s)}
-                onCheckedChange={() => toggleStatus(s)}
-              >
-                <span className="flex items-center gap-2">
-                  <span className={STATUS_CONFIG[s]?.color}>{STATUS_CONFIG[s]?.icon}</span>
-                  {STATUS_CONFIG[s]?.label || s}
+        <main className="flex-1 overflow-y-auto">
+          <div className="w-full px-10 pb-14">
+            {/* ── Top utility row — eyebrow with agent counts + bell + theme ── */}
+            <div className="pt-8">
+              <UtilityTopBar hasNotification={hasExecuting}>
+                <span>
+                  {totalAgents} {totalAgents === 1 ? 'agent' : 'agents'}
+                  {listeningNow > 0 && <> · {listeningNow} listening now</>}
                 </span>
-              </DropdownMenuCheckboxItem>
-            ))}
-            {statusFilter.size > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setStatusFilter(new Set())}>
-                  <X className="mr-2 h-3.5 w-3.5" />
-                  Clear filters
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              </UtilityTopBar>
+            </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <div className="flex items-center rounded-md border">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-7 w-7 rounded-r-none', viewMode === 'table' && 'bg-accent')}
-              onClick={() => handleViewModeChange('table')}
-            >
-              <List className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-7 w-7 rounded-l-none', viewMode === 'grid' && 'bg-accent')}
-              onClick={() => handleViewModeChange('grid')}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/?create=1')}>
-            <Plus className="h-3.5 w-3.5" />
-            New
-          </Button>
-        </div>
-      </div>
+            {/* ── Page header ── */}
+            <section className="mt-7">
+              <h1 className="font-serif text-4xl font-light leading-[1.05] tracking-tight text-foreground sm:text-5xl">
+                All <span className="italic font-normal text-primary">agents</span>
+              </h1>
+              <p className="mt-3 max-w-xl text-sm text-muted-foreground">
+                Every agent you've ever set running. Open one to see its latest report, or set a new one listening.
+              </p>
+            </section>
 
-      {/* Error state */}
-      {error && (
-        <div className="flex items-center justify-between px-6 py-3 bg-destructive/10 border-b border-destructive/20 text-sm text-destructive">
-          <span>{error}</span>
-          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => fetchAgents()}>
-            Retry
-          </Button>
-        </div>
-      )}
+            {/* ── Toolbar ── */}
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              {/* Search */}
+              <div className="flex h-10 min-w-[260px] flex-1 max-w-[480px] items-center gap-2.5 rounded-md border border-border bg-card px-3.5">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <input
+                  placeholder="Search agents, keywords, sources…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                />
+                <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</span>
+              </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Recent Agents row */}
-        {!search && statusFilter.size === 0 && tasks.length > 0 && (
-          <div className="px-6 pt-4 pb-2">
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-              Recent Agents
-            </h2>
-            <div className="flex gap-4">
-              {recentAgents.map((agent) => (
-                <div key={agent.agent_id} className="flex-1 min-w-0 flex">
-                  <AgentCard task={agent} simple onClick={() => handleRowClick(agent)} />
+              {/* Status filter pills (segmented) */}
+              <div className="inline-flex h-10 items-stretch overflow-hidden rounded-md border border-border bg-card">
+                {FILTER_PILLS.map((pill, i) => {
+                  const active = statusFilter === pill.key;
+                  return (
+                    <button
+                      key={pill.key}
+                      onClick={() => setStatusFilter(pill.key)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-3.5 text-[12.5px] transition-colors',
+                        i > 0 && 'border-l border-border',
+                        active
+                          ? 'bg-secondary font-semibold text-foreground'
+                          : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {pill.label}
+                      <span className="font-mono text-[10px] text-muted-foreground">{counts[pill.key]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Sort */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="h-10 gap-1.5 rounded-md px-3.5 text-[12.5px]">
+                    <Filter className="h-3.5 w-3.5" />
+                    Sort: {SORT_LABELS[sortField]}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {(Object.keys(SORT_LABELS) as SortField[]).map((f) => (
+                    <DropdownMenuItem
+                      key={f}
+                      onClick={() => handleSort(f)}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span>{SORT_LABELS[f]}</span>
+                      <SortIcon field={f} />
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="ml-auto flex items-center gap-3">
+                {/* View toggle */}
+                <div className="inline-flex h-10 items-stretch overflow-hidden rounded-md border border-border bg-card">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleViewModeChange('table')}
+                        className={cn(
+                          'flex w-11 items-center justify-center text-muted-foreground transition-colors',
+                          viewMode === 'table' && 'bg-secondary text-foreground',
+                        )}
+                      >
+                        <List className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>List</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleViewModeChange('grid')}
+                        className={cn(
+                          'flex w-11 items-center justify-center border-l border-border text-muted-foreground transition-colors',
+                          viewMode === 'grid' && 'bg-secondary text-foreground',
+                        )}
+                      >
+                        <LayoutGrid className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Cards</TooltipContent>
+                  </Tooltip>
                 </div>
-              ))}
-              {/* New Agent card — matches mini card dimensions */}
-              <div className="flex-1 min-w-0">
-                <div
-                  className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card shadow-sm cursor-pointer transition-all hover:border-primary/30 hover:shadow-md hover:bg-accent/20 min-h-[200px]"
-                  onClick={() => navigate('/?create=1')}
+
+                {/* New agent — dark "ink" button per template */}
+                <button
+                  onClick={openWizardDrawer}
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-semibold text-background transition-opacity hover:opacity-90"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 mb-2">
-                    <Plus className="h-5 w-5 text-primary" />
-                  </div>
-                  <span className="text-sm font-medium text-muted-foreground">New Agent</span>
-                </div>
+                  <Plus className="h-4 w-4" />
+                  New agent
+                </button>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* All Agents header */}
-        {!isLoading && filteredAgents.length > 0 && (
-          <div className="px-6 pt-3 pb-2">
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              All Agents ({filteredAgents.length})
-            </h2>
-          </div>
-        )}
+            {/* ── Error banner ── */}
+            {error && (
+              <div className="mt-4 flex items-center justify-between rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                <span>{error}</span>
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => fetchAgents()}>
+                  Retry
+                </Button>
+              </div>
+            )}
 
-        {isLoading ? (
-          <div className="px-6 py-4 space-y-2">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-12 rounded border border-border/30 bg-muted/20 animate-pulse" />
-            ))}
-          </div>
-        ) : filteredAgents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <Search className="h-10 w-10 opacity-30 mb-3" />
-            <p className="text-sm font-medium">
-              {search || statusFilter.size > 0 ? 'No agents match your filters' : 'No agents yet'}
-            </p>
-            <p className="text-xs mt-1">
-              {search || statusFilter.size > 0
-                ? 'Try adjusting your search or filters'
-                : 'Ask the AI to set up recurring monitoring or automate a scheduled report to create an agent'}
-            </p>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="p-6">
-            <AgentCardGrid
-              tasks={filteredAgents}
-              onAgentClick={handleRowClick}
-            />
-          </div>
-        ) : (
-          <div className="px-4 pb-4 space-y-1.5">
-            {/* Sort bar */}
-            <div
-              className="grid items-center gap-2 px-5 py-1.5 text-[11px] text-muted-foreground font-medium select-none"
-              style={{ gridTemplateColumns: '1fr auto 6rem 6rem 6rem 6rem 5rem 5rem' }}
-            >
-              <span className="flex items-center gap-1 cursor-pointer hover:text-foreground" onClick={() => handleSort('title')}>
-                Title <SortIcon field="title" />
-              </span>
-              <span className="w-36 text-center mr-11">Actions</span>
-              <span className="flex items-center justify-center gap-1 cursor-pointer hover:text-foreground" onClick={() => handleSort('status')}>
-                Status <SortIcon field="status" />
-              </span>
-              <span className="flex items-center gap-1">
-                <Timer className="h-3 w-3" />Schedule
-              </span>
-              <span className="flex items-center gap-1 cursor-pointer hover:text-foreground" onClick={() => handleSort('next_run')}>
-                Next Run <SortIcon field="next_run" />
-              </span>
-              <span className="flex items-center gap-1 cursor-pointer hover:text-foreground" onClick={() => handleSort('last_run')}>
-                Last Run <SortIcon field="last_run" />
-              </span>
-              <span>Collections</span>
-              <span>Artifacts</span>
-            </div>
-
-            {/* Agent rows — each in its own container */}
-            {filteredAgents.map((task) => {
-              const lastRun = task.updated_at ? { run_at: task.updated_at, status: task.status } : null;
-              const isExecuting = task.status === 'running';
-              const borderColor = STATUS_ROW_BORDER[task.status ?? 'idle'] ?? 'border-l-transparent';
-
-              return (
-                <div
-                  key={task.agent_id}
-                  onClick={() => handleRowClick(task)}
-                  className={cn(
-                    'group relative grid items-center gap-2 rounded-xl border border-border border-l-4 bg-card px-4 py-3 cursor-pointer transition-all overflow-hidden',
-                    'hover:border-primary/40 hover:shadow-[0_4px_20px_rgba(110,86,207,0.15)]',
-                    borderColor,
-                  )}
-                  style={{ gridTemplateColumns: '1fr auto 6rem 6rem 6rem 6rem 5rem 5rem' }}
-                >
-                  {isExecuting && (
-                    <div className="absolute inset-0 pointer-events-none -translate-x-full animate-[shimmer_2.5s_infinite] bg-gradient-to-r from-transparent via-primary/[0.06] to-transparent" aria-hidden />
-                  )}
-
-                  <div className="flex items-center gap-3 min-w-0">
-                    <BotAvatar seed={task.agent_id} size={32} />
-                    <div className="min-w-0">
-                      <div className="font-heading text-sm font-semibold tracking-tight text-foreground truncate">
-                        {task.title}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
-                        {isExecuting
-                          ? 'Running...'
-                          : `Ran ${formatLastRun(task.updated_at)}`}
-                        {task.schedule && ` · ${formatSchedule(task.schedule.frequency)}`}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center justify-center gap-0.5 w-36 mr-11" onClick={(e) => e.stopPropagation()}>
-                    <TooltipProvider delayDuration={300}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate(`/agents/${task.agent_id}?tab=chat`)}>
-                            <MessageSquare className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Chat</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!RUNNABLE_STATUSES.includes(task.status)} onClick={() => handleRun(task)}>
-                            <Play className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{task.agent_type === 'recurring' ? 'Run Now' : 'Re-run'}</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={task.agent_type === 'recurring' || task.status !== 'success'} onClick={() => handleScheduleFromTable(task)}>
-                            <Timer className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Enable Schedule</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={(task.artifact_ids?.length ?? 0) === 0} onClick={() => navigate(`/agents/${task.agent_id}?tab=artifacts`)}>
-                            <FileText className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Artifacts</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={(task.collection_ids?.length ?? 0) === 0} onClick={() => navigate(`/agents/${task.agent_id}?tab=explorer`)}>
-                            <Compass className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Explorer</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <MoreHorizontal className="h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}`)}>Overview</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}?tab=chat`)}>
-                          <MessageSquare className="mr-2 h-3.5 w-3.5" /> Chat
-                        </DropdownMenuItem>
-                        {(task.artifact_ids?.length ?? 0) > 0 && (
-                          <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}?tab=artifacts`)}>
-                            <FileText className="mr-2 h-3.5 w-3.5" /> Artifacts
-                          </DropdownMenuItem>
-                        )}
-                        {(task.collection_ids?.length ?? 0) > 0 && (
-                          <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}?tab=explorer`)}>
-                            <Compass className="mr-2 h-3.5 w-3.5" /> Explorer
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleRenameOpen(task)}>
-                          <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {task.status === 'archived' ? (
-                          <DropdownMenuItem onClick={() => handleRestore(task)}>
-                            <ArchiveRestore className="mr-2 h-3.5 w-3.5" /> Restore
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => setArchiveTarget(task)}>
-                            <Archive className="mr-2 h-3.5 w-3.5" /> Archive
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Status */}
-                  <div className="flex justify-center"><StatusBadge status={task.status} paused={task.paused} /></div>
-
-                  {/* Schedule */}
-                  <div className="text-xs text-muted-foreground">
-                    {task.agent_type === 'recurring' && task.schedule
-                      ? formatSchedule(task.schedule.frequency)
-                      : '\u2014'}
-                  </div>
-
-                  {/* Next Run */}
-                  <div className="text-xs text-muted-foreground">
-                    {task.paused
-                      ? 'Paused'
-                      : task.next_run_at
-                        ? formatRelativeTime(task.next_run_at)
-                        : '\u2014'}
-                  </div>
-
-                  {/* Last Run */}
-                  <div className="text-xs text-muted-foreground">
-                    {lastRun ? (
-                      <span className="flex items-center gap-1.5">
-                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${lastRun.status === 'success' ? 'bg-green-500' : lastRun.status === 'failed' ? 'bg-destructive' : 'bg-amber-500'}`} />
-                        {formatLastRun(task.updated_at)}
-                      </span>
-                    ) : '\u2014'}
-                  </div>
-
-                  {/* Collections */}
-                  <div className="text-xs text-muted-foreground">{task.collection_ids?.length || 0}</div>
-
-                  {/* Artifacts */}
-                  <div className="text-xs text-muted-foreground">{task.artifact_ids?.length || 0}</div>
+            {/* ── Body ── */}
+            <div className="mt-5">
+              {isLoading ? (
+                <div className="space-y-2">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="h-16 rounded-[14px] border border-border/30 bg-muted/20 animate-pulse" />
+                  ))}
                 </div>
-              );
-            })}
+              ) : filteredAgents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-[14px] border border-dashed border-border bg-card/40 py-20 text-muted-foreground">
+                  <Search className="mb-3 h-10 w-10 opacity-30" />
+                  <p className="text-sm font-medium">
+                    {search || statusFilter !== 'all' ? 'No agents match your filters' : 'No agents yet'}
+                  </p>
+                  <p className="mt-1 text-xs">
+                    {search || statusFilter !== 'all'
+                      ? 'Try adjusting your search or filter'
+                      : 'Ask the AI to set up recurring monitoring or automate a scheduled report to create an agent'}
+                  </p>
+                </div>
+              ) : viewMode === 'grid' ? (
+                <AgentCardGrid
+                  tasks={filteredAgents}
+                  onAgentClick={handleRowClick}
+                />
+              ) : (
+                <div className="overflow-hidden rounded-[14px] border border-border bg-card">
+                  {/* Header row */}
+                  <div
+                    className="grid items-center gap-3.5 border-b border-border bg-muted/40 px-5 py-3 font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground"
+                    style={ROW_GRID}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSort('title')}
+                      className="flex items-center gap-1 text-left hover:text-foreground"
+                    >
+                      Agent <SortIcon field="title" />
+                    </button>
+                    <span>Sources</span>
+                    <button
+                      type="button"
+                      onClick={() => handleSort('status')}
+                      className="flex items-center gap-1 text-left hover:text-foreground"
+                    >
+                      Status <SortIcon field="status" />
+                    </button>
+                    <span>Schedule</span>
+                    <button
+                      type="button"
+                      onClick={() => handleSort('last_run')}
+                      className="flex items-center gap-1 text-left hover:text-foreground"
+                    >
+                      Last run <SortIcon field="last_run" />
+                    </button>
+                    <span>Trend</span>
+                    <span className="text-right">Actions</span>
+                  </div>
+
+                  {/* Data rows */}
+                  {filteredAgents.map((task) => {
+                    const isExecuting = task.status === 'running';
+                    const lastRun = task.updated_at ? formatLastRun(task.updated_at) : '—';
+                    const sources = task.data_scope?.sources?.map((s) => s.platform) ?? [];
+                    const uniqueSources = Array.from(new Set(sources));
+
+                    const subtitleParts: string[] = [];
+                    if (task.schedule) subtitleParts.push(formatSchedule(task.schedule.frequency));
+                    if (task.next_run_at && !task.paused) subtitleParts.push(`next ${formatRelativeTime(task.next_run_at)}`);
+                    else if (task.paused) subtitleParts.push('Paused');
+                    const subtitle = subtitleParts.join(' · ') || (task.agent_type === 'recurring' ? 'recurring' : 'one-shot');
+
+                    return (
+                      <div
+                        key={task.agent_id}
+                        onClick={() => handleRowClick(task)}
+                        className="group relative grid cursor-pointer items-center gap-3.5 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
+                        style={ROW_GRID}
+                      >
+                        {isExecuting && (
+                          <div
+                            className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2.5s_infinite] bg-gradient-to-r from-transparent via-primary/[0.06] to-transparent"
+                            aria-hidden
+                          />
+                        )}
+
+                        {/* Agent column */}
+                        <div className="flex min-w-0 items-center gap-3.5">
+                          <div className="flex w-10 shrink-0 justify-center">
+                            <BotAvatar seed={task.agent_id} size={40} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">
+                              {task.title}
+                            </div>
+                            <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
+                              {subtitle}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Sources */}
+                        <div className="flex items-center gap-1.5">
+                          {uniqueSources.length === 0
+                            ? <span className="text-[11px] text-muted-foreground">—</span>
+                            : uniqueSources.slice(0, 5).map((p) => (
+                              <SourceMark key={p} platform={p} />
+                            ))}
+                          {uniqueSources.length > 5 && (
+                            <span className="font-mono text-[10px] text-muted-foreground">+{uniqueSources.length - 5}</span>
+                          )}
+                        </div>
+
+                        {/* Status */}
+                        <div>
+                          <StatusBadge status={task.status} paused={task.paused} size="sm" />
+                        </div>
+
+                        {/* Schedule */}
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {task.agent_type === 'recurring' && task.schedule
+                            ? formatSchedule(task.schedule.frequency)
+                            : '—'}
+                        </div>
+
+                        {/* Last run */}
+                        <div className="text-[12px] text-foreground/80">
+                          {lastRun}
+                        </div>
+
+                        {/* Trend */}
+                        <div>
+                          <MiniSparkline seed={task.agent_id} color={`var(--chart-${(task.agent_id.charCodeAt(0) % 5) + 1})`} />
+                          {/* fallback color via inline style — keeps the strokes within the chart palette */}
+                        </div>
+
+                        {/* Actions */}
+                        <div
+                          className="flex items-center justify-end gap-0.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => navigate(`/agents/${task.agent_id}?tab=chat`)}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Chat</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                disabled={!RUNNABLE_STATUSES.includes(task.status)}
+                                onClick={() => handleRun(task)}
+                              >
+                                <Play className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{task.agent_type === 'recurring' ? 'Run now' : 'Re-run'}</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                disabled={(task.artifact_ids?.length ?? 0) === 0}
+                                onClick={() => navigate(`/agents/${task.agent_id}?tab=artifacts`)}
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Artifacts ({task.artifact_ids?.length ?? 0})</TooltipContent>
+                          </Tooltip>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}`)}>Overview</DropdownMenuItem>
+                              {(task.collection_ids?.length ?? 0) > 0 && (
+                                <DropdownMenuItem onClick={() => navigate(`/agents/${task.agent_id}?tab=explorer`)}>
+                                  <Compass className="mr-2 h-3.5 w-3.5" /> Explorer
+                                </DropdownMenuItem>
+                              )}
+                              {task.agent_type !== 'recurring' && task.status === 'success' && (
+                                <DropdownMenuItem onClick={() => handleScheduleFromTable(task)}>
+                                  <Timer className="mr-2 h-3.5 w-3.5" /> Schedule
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleRenameOpen(task)}>
+                                <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              {task.status === 'archived' ? (
+                                <DropdownMenuItem onClick={() => handleRestore(task)}>
+                                  <ArchiveRestore className="mr-2 h-3.5 w-3.5" /> Restore
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem onClick={() => setArchiveTarget(task)}>
+                                  <Archive className="mr-2 h-3.5 w-3.5" /> Archive
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </main>
 
-      {/* Detail Drawer */}
-      <AgentDetailDrawer
-        task={selectedAgent}
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
-        autoOpenSchedule={openScheduleOnDrawer}
-        onExploreData={setExplorerAgent}
-      />
+        {/* Detail Drawer */}
+        <AgentDetailDrawer
+          task={selectedAgent}
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          autoOpenSchedule={openScheduleOnDrawer}
+          onExploreData={setExplorerAgent}
+        />
 
-      <AgentDataExplorer
-        task={explorerAgent}
-        open={!!explorerAgent}
-        onClose={() => setExplorerAgent(null)}
-      />
+        <AgentDataExplorer
+          task={explorerAgent}
+          open={!!explorerAgent}
+          onClose={() => setExplorerAgent(null)}
+        />
 
-      {/* Archive confirmation dialog */}
-      <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Archive this agent?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Any active data collection and scheduled runs will be stopped. You can restore the agent later from the archived filter.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => archiveTarget && handleArchive(archiveTarget)}>Archive</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Archive confirmation dialog */}
+        <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Archive this agent?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Any active data collection and scheduled runs will be stopped. You can restore the agent later from the archived filter.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => archiveTarget && handleArchive(archiveTarget)}>Archive</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Rename dialog */}
-      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Rename Agent</DialogTitle>
-          </DialogHeader>
-          <Input
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSave(); }}
-            autoFocus
-          />
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setRenameTarget(null)}>Cancel</Button>
-            <Button size="sm" onClick={handleRenameSave}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {/* Rename dialog */}
+        <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Rename Agent</DialogTitle>
+            </DialogHeader>
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSave(); }}
+              autoFocus
+            />
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setRenameTarget(null)}>Cancel</Button>
+              <Button size="sm" onClick={handleRenameSave}>Save</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
+    </TooltipProvider>
   );
 }

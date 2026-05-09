@@ -9,6 +9,7 @@ import {
   Compass,
   Database,
   FileText,
+  Home,
   LayoutDashboard,
   LayoutGrid,
   LogOut,
@@ -70,12 +71,14 @@ const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
 
 // ── Shared class fragments — sidebar uses the always-dark sidebar-* tokens ──
 const NAV_ITEM_BASE =
-  'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors';
+  'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] transition-colors';
 const NAV_ITEM_IDLE =
   'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground';
-const NAV_ITEM_ACTIVE = 'bg-sidebar-accent text-sidebar-foreground font-medium';
+// Active state uses an orange tint (matches template's "All agents" highlight).
+const NAV_ITEM_ACTIVE =
+  'bg-[color-mix(in_oklab,var(--color-sidebar-primary)_18%,transparent)] text-sidebar-foreground font-medium';
 const SECTION_LABEL =
-  'px-2.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50';
+  'px-2.5 font-mono text-[9.5px] font-medium uppercase tracking-[0.14em] text-sidebar-foreground/50';
 
 interface AppSidebarProps {
   activeAgent?: Agent | null;
@@ -121,6 +124,7 @@ function AppSidebarImpl({
   const agents = useAgentStore((s) => s.agents);
   const collapsed = useUIStore((s) => s.sourcesPanelCollapsed);
   const toggle = useUIStore((s) => s.toggleSourcesPanel);
+  const openWizardDrawer = useUIStore((s) => s.openWizardDrawer);
   const { user, profile, signOut, isAnonymous } = useAuth();
   const { theme, setTheme } = useTheme();
 
@@ -137,6 +141,17 @@ function AppSidebarImpl({
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const isAgentsPage = location.pathname === '/agents';
+  const isHomePage = location.pathname === '/';
+
+  // Always open the wizard in a drawer — keeps the user where they are
+  // instead of dropping them into the home-page createMode layout.
+  const handleNewAgent = () => {
+    openWizardDrawer();
+  };
+  const totalAgents = useMemo(
+    () => agents.filter((a) => a.status !== 'archived').length,
+    [agents],
+  );
   const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'running';
 
   // Recent-agents section: filter, sort, and cap once per agents-array change.
@@ -258,20 +273,29 @@ function AppSidebarImpl({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => navigate('/?create=1')}>
+            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={handleNewAgent}>
               <Plus className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">New Agent</TooltipContent>
+          <TooltipContent side="right">New agent</TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="mt-1 h-8 w-8 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => navigate('/agents')}>
+            <Button variant="ghost" size="icon" className={cn('mt-1 h-8 w-8 hover:bg-sidebar-accent hover:text-sidebar-foreground', isHomePage ? 'text-sidebar-primary' : 'text-sidebar-foreground/70')} onClick={() => navigate('/')}>
+              <Home className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Home</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className={cn('mt-1 h-8 w-8 hover:bg-sidebar-accent hover:text-sidebar-foreground', location.pathname === '/agents' ? 'text-sidebar-primary' : 'text-sidebar-foreground/70')} onClick={() => navigate('/agents')}>
               <LayoutGrid className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">All Agents</TooltipContent>
+          <TooltipContent side="right">All agents</TooltipContent>
         </Tooltip>
 
         <div className="flex-1" onClick={toggle} />
@@ -314,25 +338,35 @@ function AppSidebarImpl({
         </Button>
       </div>
 
-      {/* New Agent — primary purple button per Figma */}
+      {/* New Agent — primary action button */}
       <div className="mb-2 px-3">
         <button
-          onClick={() => navigate('/?create=1')}
-          className="flex w-full items-center gap-2.5 rounded-lg bg-sidebar-primary px-2.5 py-2.5 text-left text-sm font-medium text-sidebar-primary-foreground shadow-sm transition-opacity hover:opacity-90"
+          onClick={handleNewAgent}
+          className="flex w-full items-center gap-2.5 rounded-md bg-sidebar-primary px-2.5 py-2.5 text-left text-sm font-semibold text-sidebar-primary-foreground shadow-[0_6px_18px_-8px_color-mix(in_oklab,var(--color-sidebar-primary)_60%,transparent)] transition-opacity hover:opacity-90"
         >
           <Plus className="h-4 w-4 shrink-0" />
-          New Agent
+          New agent
         </button>
       </div>
 
       {/* Navigation */}
       <div className="flex flex-col gap-0.5 px-3">
         <button
+          onClick={() => navigate('/')}
+          className={cn(NAV_ITEM_BASE, isHomePage ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE)}
+        >
+          <Home className={cn('h-4 w-4 shrink-0', isHomePage && 'text-sidebar-primary')} />
+          Home
+        </button>
+        <button
           onClick={() => navigate('/agents')}
           className={cn(NAV_ITEM_BASE, isAgentsPage ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE)}
         >
-          <LayoutGrid className="h-4 w-4 shrink-0" />
-          All Agents
+          <LayoutGrid className={cn('h-4 w-4 shrink-0', isAgentsPage && 'text-sidebar-primary')} />
+          <span className="flex-1">All agents</span>
+          {totalAgents > 0 && (
+            <span className="font-mono text-[10.5px] text-sidebar-foreground/50">{totalAgents}</span>
+          )}
         </button>
       </div>
 

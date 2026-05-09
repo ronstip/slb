@@ -25,6 +25,7 @@ interface UIStore {
   artifactLibraryOpen: boolean;
   activePoll: PollData | null;
   signUpPromptOpen: boolean;
+  wizardDrawerOpen: boolean;
 
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
@@ -42,6 +43,8 @@ interface UIStore {
   dismissPoll: () => void;
   openSignUpPrompt: () => void;
   closeSignUpPrompt: () => void;
+  openWizardDrawer: () => void;
+  closeWizardDrawer: () => void;
 }
 
 const loadCollapsed = (key: string): boolean => {
@@ -78,6 +81,7 @@ export const useUIStore = create<UIStore>((set) => ({
   artifactLibraryOpen: false,
   activePoll: null,
   signUpPromptOpen: false,
+  wizardDrawerOpen: false,
 
   toggleSourcesPanel: () =>
     set((s) => {
@@ -150,4 +154,6 @@ export const useUIStore = create<UIStore>((set) => ({
   dismissPoll: () => set({ activePoll: null }),
   openSignUpPrompt: () => set({ signUpPromptOpen: true }),
   closeSignUpPrompt: () => set({ signUpPromptOpen: false }),
+  openWizardDrawer: () => set({ wizardDrawerOpen: true }),
+  closeWizardDrawer: () => set({ wizardDrawerOpen: false }),
 }));

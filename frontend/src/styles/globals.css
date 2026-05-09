@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Inter+Tight:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -7,8 +7,9 @@
 
 @theme {
   /* Fonts */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-heading: 'Outfit', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: 'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Fraunces', 'Times New Roman', ui-serif, Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
   /* Sentiment (app-specific) */
@@ -31,13 +32,13 @@
   --color-platform-youtube: #E03030;
 
   /* Vibrant accents (app-specific) — use for colored touches */
-  --color-accent-vibrant: #6E56CF;
-  --color-accent-success: #10B981;
-  --color-accent-blue: #3B82F6;
-  --color-accent-pink: #EC4899;
-  --color-accent-amber: #F59E0B;
-  --color-accent-purple: #A855F7;
-  --color-accent-green: #16A344;
+  --color-accent-vibrant: #D97757;
+  --color-accent-success: #2F8E6C;
+  --color-accent-blue: #3A6FB6;
+  --color-accent-pink: #C25E7E;
+  --color-accent-amber: #B6843A;
+  --color-accent-purple: #7B5BD9;
+  --color-accent-green: #2F8E6C;
 }
 
 @theme inline {
@@ -81,83 +82,83 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* ---------- Light Mode (Figma design) ---------- */
+/* ---------- Light Mode (Claude Design) ---------- */
 :root {
   --radius: 0.75rem;
-  --background: #F4F5F8;
-  --foreground: #09090B;
+  --background: #F6F4EF;
+  --foreground: #1B1815;
   --card: #FFFFFF;
-  --card-foreground: #09090B;
+  --card-foreground: #1B1815;
   --popover: #FFFFFF;
-  --popover-foreground: #09090B;
-  --primary: #6E56CF;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F3F4F6;
-  --secondary-foreground: #1F2937;
-  --muted: #F4F4F5;
-  --muted-foreground: #71717A;
-  --accent: #E2E8F0;
-  --accent-foreground: #09090B;
-  --destructive: #EF4444;
-  --border: #E4E4E7;
-  --input: #E4E4E7;
-  --ring: #6E56CF;
-  --chart-1: #6E56CF;
-  --chart-2: #A855F7;
-  --chart-3: #E11D6D;
-  --chart-4: #D49306;
-  --chart-5: #16A344;
+  --popover-foreground: #1B1815;
+  --primary: #D97757;
+  --primary-foreground: #FFF7F0;
+  --secondary: #EFEAE0;
+  --secondary-foreground: #1B1815;
+  --muted: #F0ECE3;
+  --muted-foreground: #6E665A;
+  --accent: #EFEAE0;
+  --accent-foreground: #1B1815;
+  --destructive: #C25E3F;
+  --border: #E5DFD2;
+  --input: #E5DFD2;
+  --ring: #D97757;
+  --chart-1: #D97757;
+  --chart-2: #7B5BD9;
+  --chart-3: #C25E7E;
+  --chart-4: #B6843A;
+  --chart-5: #2F8E6C;
 
-  /* Sidebar stays dark even in light mode (per Figma design) */
-  --sidebar: #09090B;
-  --sidebar-foreground: #FAFAFA;
-  --sidebar-primary: #6E56CF;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #27272A;
+  /* Sidebar stays dark warm — matches design */
+  --sidebar: #1A1714;
+  --sidebar-foreground: #D6CFBF;
+  --sidebar-primary: #D97757;
+  --sidebar-primary-foreground: #FFF7F0;
+  --sidebar-accent: #26221E;
   --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: #27272A;
-  --sidebar-ring: #6E56CF;
+  --sidebar-border: #2D2924;
+  --sidebar-ring: #D97757;
 }
 
 /* ---------- Dark Mode ---------- */
 .dark {
-  --background: #09090B;
-  --foreground: #FAFAFA;
-  --card: #131316;
-  --card-foreground: #FAFAFA;
-  --popover: #131316;
-  --popover-foreground: #FAFAFA;
-  --primary: #8B75DB;
-  --primary-foreground: #FFFFFF;
-  --secondary: #1C1C20;
-  --secondary-foreground: #FAFAFA;
-  --muted: #1C1C20;
-  --muted-foreground: #A1A1AA;
-  --accent: #27272A;
-  --accent-foreground: #FAFAFA;
-  --destructive: #EF4444;
-  --border: #27272A;
-  --input: #27272A;
-  --ring: #8B75DB;
-  --chart-1: #8B75DB;
-  --chart-2: #C084FC;
-  --chart-3: #FB7185;
-  --chart-4: #FBBF24;
-  --chart-5: #4ADE80;
+  --background: #14110F;
+  --foreground: #F2EEE6;
+  --card: #1F1B17;
+  --card-foreground: #F2EEE6;
+  --popover: #1F1B17;
+  --popover-foreground: #F2EEE6;
+  --primary: #E68B6E;
+  --primary-foreground: #14110F;
+  --secondary: #1F1B17;
+  --secondary-foreground: #F2EEE6;
+  --muted: #1F1B17;
+  --muted-foreground: #A39A88;
+  --accent: #2A2521;
+  --accent-foreground: #F2EEE6;
+  --destructive: #E16A48;
+  --border: #2A2521;
+  --input: #2A2521;
+  --ring: #E68B6E;
+  --chart-1: #E68B6E;
+  --chart-2: #A488F0;
+  --chart-3: #E07F9C;
+  --chart-4: #D8A45A;
+  --chart-5: #56B58D;
 
-  --sidebar: #09090B;
-  --sidebar-foreground: #FAFAFA;
-  --sidebar-primary: #8B75DB;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #27272A;
-  --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: #27272A;
-  --sidebar-ring: #8B75DB;
+  --sidebar: #14110F;
+  --sidebar-foreground: #D6CFBF;
+  --sidebar-primary: #E68B6E;
+  --sidebar-primary-foreground: #14110F;
+  --sidebar-accent: #1F1B17;
+  --sidebar-accent-foreground: #F2EEE6;
+  --sidebar-border: #2A2521;
+  --sidebar-ring: #E68B6E;
 
   /* Dark mode overrides for status */
   --color-status-active: #818CF8;
   --color-platform-tiktok: #FAFAF9;
-  --color-accent-vibrant: #8B75DB;
+  --color-accent-vibrant: #E68B6E;
 }
 
 @layer base {
@@ -379,20 +380,87 @@
   50% { opacity: 0; }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar — visible enough that users notice it on the cream background */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: color-mix(in srgb, var(--border) 40%, transparent);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+  background-clip: padding-box;
 }
+* {
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent) transparent;
+}
+
+/* Polished range-slider used by the wizard (Max posts per run, etc.).
+   The track is split into a primary-tinted filled portion (left of the
+   thumb) and a muted unfilled portion (right of the thumb), driven by a
+   --range-fill custom property the parent sets to the percentage [0..100].
+   Mirrors the demo's clean two-tone track + bold primary thumb. */
+.range-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  height: 18px;
+  cursor: pointer;
+  --range-fill: 50%;
+}
+.range-slider:focus { outline: none; }
+.range-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background:
+    linear-gradient(to right,
+      var(--primary) 0,
+      var(--primary) var(--range-fill),
+      color-mix(in srgb, var(--muted-foreground) 20%, transparent) var(--range-fill),
+      color-mix(in srgb, var(--muted-foreground) 20%, transparent) 100%);
+}
+.range-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted-foreground) 20%, transparent);
+}
+.range-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+.range-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 999px;
+  background: var(--primary);
+  border: 2px solid var(--card);
+  box-shadow: 0 1px 5px color-mix(in srgb, var(--primary) 40%, transparent);
+  transition: transform 120ms ease;
+}
+.range-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--primary);
+  border: 2px solid var(--card);
+  box-shadow: 0 1px 5px color-mix(in srgb, var(--primary) 40%, transparent);
+  transition: transform 120ms ease;
+}
+.range-slider:hover::-webkit-slider-thumb,
+.range-slider:focus-visible::-webkit-slider-thumb { transform: scale(1.08); }
+.range-slider:hover::-moz-range-thumb,
+.range-slider:focus-visible::-moz-range-thumb { transform: scale(1.08); }
 
 /* Print: collapse the app to just the report content. */
 @media print {

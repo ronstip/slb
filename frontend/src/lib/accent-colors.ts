@@ -5,10 +5,10 @@ export interface AccentPreset {
   hex: string;
 }
 
-export const DEFAULT_ACCENT = '#6E56CF'; // Brand purple
+export const DEFAULT_ACCENT = '#D97757'; // Claude rust orange
 
 export const ACCENT_PRESETS: AccentPreset[] = [
-  { name: 'Brand Purple', hex: '#6E56CF' },
+  { name: 'Claude Rust', hex: '#D97757' },
   { name: 'Purple', hex: '#A855F7' },
   { name: 'Navy', hex: '#3B5998' },
   { name: 'Slate Blue', hex: '#5A7FA0' },
@@ -103,9 +103,9 @@ export function generateAccentVariants(
   return {
     '--color-accent-vibrant': accentHex,
     '--primary': accentHex,
-    '--primary-foreground': '#FFFFFF',
+    '--primary-foreground': '#FFF7F0',
     '--sidebar-primary': accentHex,
-    '--sidebar-primary-foreground': '#FFFFFF',
+    '--sidebar-primary-foreground': '#FFF7F0',
     '--sidebar-ring': accentHex,
     '--ring': accentHex,
     '--chart-1': palette[0],

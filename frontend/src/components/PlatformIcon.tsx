@@ -3,10 +3,14 @@ import { PLATFORM_COLORS } from '../lib/constants.ts';
 interface PlatformIconProps {
   platform: string;
   className?: string;
+  /** Override the icon fill colour. Defaults to the platform's brand colour;
+   *  pass a contrasting value (e.g. '#FFFFFF') when the icon sits on a brand-
+   *  coloured chip background. */
+  color?: string;
 }
 
-export function PlatformIcon({ platform, className }: PlatformIconProps) {
-  const color = PLATFORM_COLORS[platform] || '#6B7294';
+export function PlatformIcon({ platform, className, color: colorOverride }: PlatformIconProps) {
+  const color = colorOverride ?? PLATFORM_COLORS[platform] ?? '#6B7294';
 
   switch (platform) {
     case 'instagram':

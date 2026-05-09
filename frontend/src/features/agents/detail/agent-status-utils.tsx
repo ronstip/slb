@@ -3,10 +3,8 @@ import {
   Archive,
   CheckCircle2,
   Circle,
-  Pause,
 } from 'lucide-react';
 import type { Agent, AgentStatus } from '../../../api/endpoints/agents.ts';
-import { Badge } from '../../../components/ui/badge.tsx';
 import { RadarPulse } from '../../../components/BrandElements.tsx';
 
 export const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -25,29 +23,52 @@ export const STATUS_ACCENT: Record<string, string> = {
   archived: 'bg-muted-foreground/30',
 };
 
-export function StatusBadge({ status, paused }: { status: AgentStatus | null; paused?: boolean }) {
-  if (paused) {
-    return (
-      <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
-        <Pause className="h-3 w-3" />
-        Paused
-      </Badge>
-    );
-  }
-  if (status === 'running') {
-    return (
-      <div className="flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-400">
-        <RadarPulse />
-        Running
-      </div>
-    );
-  }
-  const config = STATUS_CONFIG[status ?? 'idle'] || STATUS_CONFIG.idle;
+// ── StatusBadge — claude-design "pill" style ────────────────────────────────
+//
+// Filled rounded pill with a small leading dot and an uppercase mono label.
+// Maps each status to a tinted background/foreground pair. Used everywhere
+// the app shows agent status (cards, table rows, drawers, headers).
+type PillTone = {
+  bg: string;
+  fg: string;
+  dot: string;
+  label: string;
+};
+
+const PILL_TONE: Record<string, PillTone> = {
+  running:  { bg: 'bg-emerald-50',                 fg: 'text-emerald-700',                 dot: 'bg-emerald-500',                 label: 'Running'   },
+  success:  { bg: 'bg-emerald-50',                 fg: 'text-[color:var(--color-accent-green)]', dot: 'bg-[color:var(--color-accent-green)]', label: 'Completed' },
+  failed:   { bg: 'bg-[color:var(--color-accent-vibrant)]/10', fg: 'text-[color:var(--color-accent-vibrant)]', dot: 'bg-[color:var(--color-accent-vibrant)]', label: 'Failed'    },
+  archived: { bg: 'bg-muted',                       fg: 'text-muted-foreground',           dot: 'bg-muted-foreground/60',         label: 'Archived'  },
+  idle:     { bg: 'bg-muted',                       fg: 'text-muted-foreground',           dot: 'bg-muted-foreground/60',         label: 'Idle'      },
+  paused:   { bg: 'bg-muted',                       fg: 'text-muted-foreground',           dot: 'bg-muted-foreground/60',         label: 'Paused'    },
+};
+
+export function StatusBadge({
+  status,
+  paused,
+  size = 'md',
+}: {
+  status: AgentStatus | null;
+  paused?: boolean;
+  size?: 'sm' | 'md';
+}) {
+  const key = paused ? 'paused' : (status ?? 'idle');
+  const tone = PILL_TONE[key] ?? PILL_TONE.idle;
+  const isRunning = status === 'running' && !paused;
+  const padding = size === 'sm' ? 'px-2 py-[2px]' : 'px-2.5 py-[3px]';
+  const fontSize = size === 'sm' ? 'text-[9.5px]' : 'text-[10.5px]';
   return (
-    <Badge variant="outline" className={`gap-1 text-[10px] ${config.color}`}>
-      {config.icon}
-      {config.label}
-    </Badge>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full font-mono font-semibold uppercase tracking-[0.06em] ${tone.bg} ${tone.fg} ${padding} ${fontSize}`}
+    >
+      {isRunning ? (
+        <RadarPulse />
+      ) : (
+        <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      )}
+      {tone.label}
+    </span>
   );
 }
 

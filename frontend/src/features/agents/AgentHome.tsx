@@ -8,14 +8,23 @@ import { useAuth } from '../../auth/useAuth.ts';
 import { useCollectionsSync } from '../collections/useCollectionsSync.ts';
 import { Logo } from '../../components/Logo.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
-import { GeometricMesh } from '../../components/BrandElements.tsx';
+import { UtilityTopBar } from '../../components/BrandElements.tsx';
 import { AgentCreationWizard } from './wizard/AgentCreationWizard.tsx';
 import { LatestAgentsRow } from './LatestAgentsRow.tsx';
+import { NewAgentDrawer } from './NewAgentDrawer.tsx';
 import { ChatPanel } from '../chat/ChatPanel.tsx';
 import { ErrorBoundary } from '../../components/ErrorBoundary.tsx';
 
 const SIDEBAR_COLLAPSED_W = 48;
 const SIDEBAR_EXPANDED_W = 280;
+
+function formatToday(): string {
+  const d = new Date();
+  const weekday = d.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+  const month = d.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
+  const day = d.getDate();
+  return `${weekday}, ${month} ${day}`;
+}
 
 export function AgentHome() {
   const agents = useAgentStore((s) => s.agents);
@@ -66,10 +75,8 @@ export function AgentHome() {
       {/* Wizard — always keep mounted so AgentCreationWizard's useSSEChat stream is
           not aborted when we switch to the chat view. Just hide it visually. */}
       <main
-        className={`${hasChatActivity ? 'hidden' : 'flex'} relative flex-1 flex-col items-center overflow-y-auto px-6 py-8`}
+        className={`${hasChatActivity ? 'hidden' : 'flex'} relative flex-1 flex-col items-center overflow-y-auto px-8 py-8`}
       >
-        <GeometricMesh />
-
         {/* Loading state */}
         {isLoading && agents.length === 0 && (
           <div className="flex flex-1 items-center justify-center">
@@ -79,13 +86,21 @@ export function AgentHome() {
 
         {/* Content */}
         {(!isLoading || agents.length > 0) && (
-          <div className="relative z-10 w-full max-w-[1200px]">
+          <div className="relative z-10 w-full">
+            {/* Top eyebrow line — date + theme/notifications */}
             {hasAgents && !createMode && (
-              <section className="mb-8">
-                <h1 className="mb-2 font-heading text-3xl font-bold tracking-tight text-foreground">
-                  Welcome back, {firstName}.
+              <div className="mb-6">
+                <UtilityTopBar><span>{formatToday()}</span></UtilityTopBar>
+              </div>
+            )}
+
+            {hasAgents && !createMode && (
+              <section className="mb-10">
+                <h1 className="font-serif text-4xl font-normal leading-[1.05] tracking-tight text-foreground sm:text-5xl">
+                  Welcome back,{' '}
+                  <span className="italic text-primary">{firstName}.</span>
                 </h1>
-                <p className="text-sm text-muted-foreground">
+                <p className="mt-3 text-sm text-muted-foreground">
                   You have{' '}
                   <strong className="font-medium text-primary">
                     {activeAgents} {activeAgents === 1 ? 'agent' : 'agents'}
@@ -96,12 +111,12 @@ export function AgentHome() {
             )}
 
             {!hasAgents && !createMode && (
-              <div className="mb-8 flex flex-col items-center text-center">
+              <div className="mb-10 flex flex-col items-center text-center">
                 <Logo size="lg" showText={false} />
-                <h2 className="mt-3 font-heading text-2xl font-bold tracking-tight text-foreground">
-                  Welcome to Veille
+                <h2 className="mt-4 font-serif text-4xl font-normal tracking-tight text-foreground">
+                  Welcome to <span className="italic text-primary">Veille</span>
                 </h2>
-                <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Sparkles className="h-4 w-4 text-primary/60" />
                   Set up your first monitoring agent in three simple steps
                 </p>
@@ -109,18 +124,20 @@ export function AgentHome() {
             )}
 
             {hasAgents && !createMode && (
-              <div className="mb-8">
+              <div className="mb-10">
                 <LatestAgentsRow tasks={agents} />
               </div>
             )}
 
-            <div className="mb-4">
-              <h2 className="font-heading text-lg font-semibold tracking-tight text-foreground">
-                Create a New Agent
+            <div className="mb-4 flex items-end justify-between gap-4">
+              <h2 className="flex flex-wrap items-baseline gap-x-4 font-serif text-3xl font-normal leading-tight tracking-tight text-foreground sm:text-4xl">
+                <span>
+                  Create a <span className="italic text-primary">new agent</span>
+                </span>
+                <span className="font-sans text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Step 1 of 3
+                </span>
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Define what to monitor, configure collection settings, and set the schedule
-              </p>
             </div>
 
             <AgentCreationWizard />
@@ -141,6 +158,10 @@ export function AgentHome() {
           </ErrorBoundary>
         </div>
       )}
+
+      {/* Home route is rendered outside AuthGate, so mount the drawer here
+          too — without it, the sidebar's "New agent" button no-ops on /. */}
+      <NewAgentDrawer />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router';
 import { useAuth } from './useAuth.ts';
+import { NewAgentDrawer } from '../features/agents/NewAgentDrawer.tsx';
 
 export function AuthGate() {
   const { loading, isAnonymous } = useAuth();
@@ -17,5 +18,10 @@ export function AuthGate() {
     return <Navigate to="/" replace />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <NewAgentDrawer />
+    </>
+  );
 }

@@ -19,13 +19,36 @@ interface DescribePanelProps {
   clarificationAnswers: Record<string, string[]>;
   onClarificationAnswer: (id: string, values: string[]) => void;
   onClarificationSubmit: () => void;
+  /** When true, render panel contents only (no outer card / step badge / continue button).
+   *  The parent stepper provides those instead. */
+  embedded?: boolean;
 }
 
-const QUICK_PROMPTS = [
-  { label: 'Track my brand', prompt: 'Track what people are saying about my brand across social media' },
-  { label: 'Compare competitors', prompt: 'Compare my brand against competitors on social media' },
-  { label: 'Measure a campaign', prompt: 'Measure how our latest campaign is performing on social media' },
-  { label: 'Monitor for crises', prompt: 'Monitor social media for any negative sentiment or crisis around my brand' },
+const QUICK_PROMPTS: { label: string; subtitle: string; prompt: string; tint: string }[] = [
+  {
+    label: 'Track my brand',
+    subtitle: 'mentions, share of voice, sentiment',
+    prompt: 'Track what people are saying about my brand across social media',
+    tint: '#D97757',
+  },
+  {
+    label: 'Compare competitors',
+    subtitle: 'side-by-side weekly digest',
+    prompt: 'Compare my brand against competitors on social media',
+    tint: '#7B5BD9',
+  },
+  {
+    label: 'Measure a campaign',
+    subtitle: 'before / during / after window',
+    prompt: 'Measure how our latest campaign is performing on social media',
+    tint: '#3A6FB6',
+  },
+  {
+    label: 'Catch a trend early',
+    subtitle: 'rising topic detection',
+    prompt: 'Monitor social media for emerging trends and topics around my brand',
+    tint: '#2F8E6C',
+  },
 ];
 
 export function DescribePanel({
@@ -39,6 +62,7 @@ export function DescribePanel({
   clarificationAnswers,
   onClarificationAnswer,
   onClarificationSubmit,
+  embedded,
 }: DescribePanelProps) {
   const isClarifying = planStatus === 'clarifying';
   const isPlanning = planStatus === 'planning';
@@ -55,6 +79,99 @@ export function DescribePanel({
   else if (hasPlan && isStale) buttonLabel = 'Re-plan';
   else if (hasPlan) buttonLabel = 'Re-plan';
   else buttonLabel = 'Continue';
+
+  if (embedded) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div>
+          <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            What do you want Veille to listen for?
+          </p>
+          <Textarea
+            value={description}
+            onChange={(e) => onDescriptionChange(e.target.value)}
+            placeholder="Track what people are saying about Nike across social media in the past week"
+            className="min-h-[140px] resize-none rounded-xl border-border bg-background text-[15px] leading-relaxed shadow-none focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15"
+            disabled={isPlanning || isClarifying}
+          />
+        </div>
+
+        {/* Clarification questions (embedded) */}
+        {isClarifying && clarifications.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-primary/70">
+              A few quick questions
+            </p>
+            {clarifications.map((c) => (
+              <ClarificationPrompt
+                key={c.id}
+                clarification={c}
+                values={clarificationAnswers[c.id] ?? []}
+                onChange={(vals) => onClarificationAnswer(c.id, vals)}
+              />
+            ))}
+            <Button
+              type="button"
+              onClick={onClarificationSubmit}
+              disabled={!allAnswered}
+              className="w-full gap-1.5"
+              size="sm"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Continue
+            </Button>
+          </div>
+        )}
+
+        {hasPlan && isStale && !isPlanning && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-500">
+            Description changed — click Continue to re-plan.
+          </p>
+        )}
+
+        {/* Template cards — 4 across, mirrors the design's "or start from a template" row */}
+        {!isClarifying && (
+          <div className="space-y-2.5">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Or start from a template
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {QUICK_PROMPTS.map(({ label, subtitle, prompt, tint }) => {
+                const active = description === prompt;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => onQuickPrompt(prompt)}
+                    disabled={isPlanning}
+                    className={cn(
+                      'group flex w-full items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-all disabled:opacity-50',
+                      active
+                        ? 'border-primary/40 bg-primary/5'
+                        : 'border-border hover:border-primary/30 hover:bg-primary/[0.03]',
+                    )}
+                  >
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: tint }}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium text-foreground">
+                        {label}
+                      </span>
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {subtitle}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex flex-col rounded-2xl border-2 border-primary/20 bg-card p-6 shadow-sm overflow-hidden">

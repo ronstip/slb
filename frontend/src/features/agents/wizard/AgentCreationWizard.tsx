@@ -1,6 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Info, Pencil } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Info,
+  Loader2,
+  Pencil,
+  Sparkles,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
@@ -14,6 +22,8 @@ import { CollectionSettingsPanel } from './CollectionSettingsPanel.tsx';
 import { AgentSettingsPanel } from './AgentSettingsPanel.tsx';
 import { buildWizardRequestBody } from './wizard-utils.ts';
 import { EMPTY_CONSTITUTION } from './AgentContextEditor.tsx';
+import { BotAvatar } from '../../../components/BrandElements.tsx';
+import { Button } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import {
   Tooltip,
@@ -21,6 +31,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../../../components/ui/tooltip.tsx';
+import { cn } from '../../../lib/utils.ts';
 
 export type PlanStatus = 'idle' | 'planning' | 'ready' | 'error' | 'clarifying';
 
@@ -42,7 +53,14 @@ export interface WizardCollectionSettings {
 export interface WizardAgentSettings {
   taskType: 'one_shot' | 'recurring';
   scheduleIntervalHours: number;
-  scheduleTime: string;
+  /** Run times of day, UTC (HH:MM). The first entry is sent to the backend
+   *  schedule string today; additional entries are described to the agent
+   *  prompt so the planner knows about them. */
+  scheduleTimes: string[];
+  /** Day-of-week (0=Sun..6=Sat) for weekly cadence, or day-of-month (1..31)
+   *  for monthly. Ignored for hourly/daily. Surfaced to the planner via the
+   *  agent prompt — the schedule string itself stays cadence-only. */
+  scheduleDay: number;
   outputs: AgentOutput[];
   outputsFromAI: boolean;
 }
@@ -65,7 +83,8 @@ const DEFAULT_COLLECTION: WizardCollectionSettings = {
 const DEFAULT_AGENT: WizardAgentSettings = {
   taskType: 'one_shot',
   scheduleIntervalHours: 24,
-  scheduleTime: '09:00',
+  scheduleTimes: ['09:00'],
+  scheduleDay: 1, // Monday for weekly; 1st of month for monthly
   outputs: [{ id: 'briefing', type: 'briefing', config: { template: 'exec' } }],
   outputsFromAI: false,
 };
@@ -77,10 +96,19 @@ function mapFrequencyToIntervalHours(freq: 'hourly' | 'daily' | 'weekly' | 'mont
   return 24;
 }
 
+type StepIndex = 0 | 1 | 2;
+
+const STEP_META: { key: StepIndex; label: string; subtitle: string }[] = [
+  { key: 0, label: 'Describe',            subtitle: 'What to listen for' },
+  { key: 1, label: 'Sources & data',      subtitle: 'Where to look, how deep' },
+  { key: 2, label: 'Schedule & delivery', subtitle: 'When and how to deliver' },
+];
+
 export function AgentCreationWizard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentStep, setCurrentStep] = useState<StepIndex>(0);
 
   const [description, setDescription] = useState('');
   const [descriptionAtPlanTime, setDescriptionAtPlanTime] = useState('');
@@ -142,7 +170,8 @@ export function AgentCreationWizard() {
     setTaskSettings({
       taskType: plan.agent_type,
       scheduleIntervalHours: plan.schedule ? mapFrequencyToIntervalHours(plan.schedule.frequency) : 24,
-      scheduleTime: plan.schedule?.time ?? '09:00',
+      scheduleTimes: [plan.schedule?.time ?? '09:00'],
+      scheduleDay: 1,
       outputs: resolvedOutputs,
       outputsFromAI: true,
     });
@@ -238,83 +267,316 @@ export function AgentCreationWizard() {
     setDescription(prompt);
   };
 
+  // Auto-advance from Describe → Sources & data the moment a plan becomes ready,
+  // so the user is dropped straight onto the freshly populated step 2.
+  useEffect(() => {
+    if (planStatus === 'ready' && currentStep === 0) {
+      setCurrentStep(1);
+    }
+    // We deliberately omit currentStep — we only want to push forward on the
+    // ready transition, not whenever the user navigates back to step 0.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planStatus]);
+
+  // ── Stepper navigation ──
+  const isPlanReady = planStatus === 'ready' || planStatus === 'error';
+  const isPlanning = planStatus === 'planning';
+  const isClarifying = planStatus === 'clarifying';
+
+  // Which steps are reachable.
+  const stepEnabled = (idx: StepIndex): boolean => {
+    if (idx === 0) return true;
+    return isPlanReady;
+  };
+
+  const handleStepClick = (idx: StepIndex) => {
+    if (!stepEnabled(idx)) return;
+    setCurrentStep(idx);
+  };
+
+  const handleBack = () => {
+    if (currentStep === 0) return;
+    setCurrentStep((s) => Math.max(0, s - 1) as StepIndex);
+  };
+
+  const handleNext = () => {
+    if (currentStep === 0) {
+      // On step 1 the user is asking the AI to plan. After it returns "ready"
+      // the useEffect above will auto-advance to step 2. If a plan is already
+      // ready and the description hasn't changed, just navigate forward.
+      if (isPlanReady && !isStale) {
+        setCurrentStep(1);
+      } else {
+        handleContinue();
+      }
+      return;
+    }
+    if (currentStep === 1) {
+      setCurrentStep(2);
+      return;
+    }
+    // currentStep === 2 → submit
+    handleSubmit(true);
+  };
+
+  // ── Footer button label / disabled state ──
+  let nextLabel = 'Continue';
+  let nextDisabled = false;
+  let nextIcon: React.ReactNode = <ArrowRight className="h-4 w-4" />;
+
+  if (currentStep === 0) {
+    if (isPlanning) { nextLabel = 'Planning…'; nextDisabled = true; nextIcon = <Loader2 className="h-4 w-4 animate-spin" />; }
+    else if (isClarifying) { nextLabel = 'Answer the questions to continue'; nextDisabled = true; }
+    else if (isPlanReady && !isStale) { nextLabel = 'Continue'; nextDisabled = description.trim().length < 10; }
+    else if (isPlanReady && isStale) { nextLabel = 'Re-plan agent'; nextDisabled = description.trim().length < 10; nextIcon = <Sparkles className="h-4 w-4" />; }
+    else { nextLabel = 'Plan agent'; nextDisabled = description.trim().length < 10; nextIcon = <Sparkles className="h-4 w-4" />; }
+  } else if (currentStep === 1) {
+    nextLabel = 'Continue';
+  } else {
+    if (isSubmitting) { nextLabel = 'Creating agent…'; nextDisabled = true; nextIcon = <Loader2 className="h-4 w-4 animate-spin" />; }
+    else { nextLabel = 'Create agent'; nextDisabled = !canSubmit; nextIcon = <Sparkles className="h-4 w-4" />; }
+  }
+
+  // Footer eyebrow stat — varies per step to nudge the user about what's
+  // about to happen next. Mirrors the design copy.
+  const estMinutes = Math.max(1, Math.round(collectionSettings.nPosts / 500));
+  let footerStat: string | null = null;
+  if (currentStep === 0) {
+    footerStat = 'Veille will draft a plan you can review';
+  } else if (currentStep === 1 && isPlanReady) {
+    footerStat = `First run · ~${estMinutes} min · ~${collectionSettings.nPosts.toLocaleString()} posts`;
+  } else if (currentStep === 2 && isPlanReady) {
+    footerStat = canSubmit ? 'Ready · click Create to launch' : 'Configure outputs to continue';
+  }
+
   return (
-    <div className="space-y-6">
-      {planStatus === 'ready' && (
-        <div className="flex items-start gap-3 rounded-2xl border border-primary/30 bg-primary/5 shadow-[0_4px_20px_rgba(110,86,207,0.12)] px-5 py-4">
-          <div className="flex-1 min-w-0">
-            {titleEditing ? (
-              <Input
-                value={agentTitle}
-                onChange={(e) => setAgentTitle(e.target.value)}
-                onBlur={() => setTitleEditing(false)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') setTitleEditing(false);
-                }}
-                autoFocus
-                className="h-8 font-heading text-base font-semibold tracking-tight"
-              />
-            ) : (
+    <div>
+      {/* ── Single unified wizard card: stepper tabs at top, then the
+           plan-identity header (after plan ready), then the step body and
+           footer all share the same outer card and border. ── */}
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        {/* Stepper tabs — divided into 3 columns with vertical separators. */}
+        <StepperTabs
+          currentStep={currentStep}
+          onStepClick={handleStepClick}
+          stepEnabled={stepEnabled}
+        />
+
+        {/* Header bar — agent identity (after plan ready, shown on steps 2 & 3) */}
+        {isPlanReady && currentStep > 0 && (
+          <div className="flex items-start gap-3 border-b border-border bg-[color:var(--color-accent-vibrant)]/5 px-5 py-4">
+            <BotAvatar seed={agentTitle || 'new-agent'} size={44} />
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Created by Veille
+              </div>
+              {titleEditing ? (
+                <Input
+                  value={agentTitle}
+                  onChange={(e) => setAgentTitle(e.target.value)}
+                  onBlur={() => setTitleEditing(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') setTitleEditing(false);
+                  }}
+                  autoFocus
+                  className="mt-1 h-9 font-serif text-2xl tracking-tight"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setTitleEditing(true)}
+                  className="group mt-0.5 flex items-center gap-1.5 text-left font-serif text-2xl leading-tight tracking-tight text-foreground hover:text-primary"
+                >
+                  {agentTitle || 'New agent'}
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </button>
+              )}
+              {planSummary && (
+                <p className="mt-1 line-clamp-2 text-[12px] text-muted-foreground">{planSummary}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {planReasoning && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" aria-label="Why this plan" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-primary">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="max-w-xs text-xs">
+                      {planReasoning}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               <button
                 type="button"
-                onClick={() => setTitleEditing(true)}
-                className="group flex items-center gap-1.5 text-left font-heading text-base font-semibold tracking-tight text-foreground hover:text-primary"
+                onClick={() => setCurrentStep(0)}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
               >
-                {agentTitle || 'New agent'}
-                <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Pencil className="h-3 w-3" />
+                Edit prompt
               </button>
-            )}
-            {planSummary && (
-              <p className="mt-1 text-[13px] text-muted-foreground line-clamp-2">{planSummary}</p>
-            )}
+            </div>
           </div>
-          {planReasoning && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button type="button" aria-label="Why this plan" className="text-muted-foreground hover:text-primary">
-                    <Info className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="max-w-xs text-xs">
-                  {planReasoning}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+        )}
+
+        {/* Step body */}
+        <div className="p-6">
+          {currentStep === 0 && (
+            <DescribePanel
+              embedded
+              description={description}
+              onDescriptionChange={setDescription}
+              onQuickPrompt={handleQuickPrompt}
+              onContinue={handleContinue}
+              planStatus={planStatus}
+              isStale={isStale}
+              clarifications={clarifications}
+              clarificationAnswers={clarificationAnswers}
+              onClarificationAnswer={handleClarificationAnswer}
+              onClarificationSubmit={handleContinue}
+            />
+          )}
+
+          {currentStep === 1 && (
+            <CollectionSettingsPanel
+              embedded
+              settings={collectionSettings}
+              onChange={setCollectionSettings}
+              planStatus={planStatus}
+            />
+          )}
+
+          {currentStep === 2 && (
+            <AgentSettingsPanel
+              embedded
+              settings={taskSettings}
+              onChange={setTaskSettings}
+              canSubmit={canSubmit}
+              isSubmitting={isSubmitting}
+              planStatus={planStatus}
+            />
           )}
         </div>
-      )}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <DescribePanel
-          description={description}
-          onDescriptionChange={setDescription}
-          onQuickPrompt={handleQuickPrompt}
-          onContinue={handleContinue}
-          planStatus={planStatus}
-          isStale={isStale}
-          clarifications={clarifications}
-          clarificationAnswers={clarificationAnswers}
-          onClarificationAnswer={handleClarificationAnswer}
-          onClarificationSubmit={handleContinue}
-        />
-
-        <CollectionSettingsPanel
-          settings={collectionSettings}
-          onChange={setCollectionSettings}
-          planStatus={planStatus}
-        />
-
-        <AgentSettingsPanel
-          settings={taskSettings}
-          onChange={setTaskSettings}
-          onSubmit={() => handleSubmit(true)}
-          onCreateOnly={() => handleSubmit(false)}
-          canSubmit={canSubmit}
-          isSubmitting={isSubmitting}
-          planStatus={planStatus}
-        />
+        {/* Footer */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/20 px-5 py-3">
+          <div className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {footerStat ?? (currentStep === 0 ? 'Step 1 of 3' : currentStep === 1 ? 'Step 2 of 3' : 'Step 3 of 3')}
+          </div>
+          <div className="flex items-center gap-2">
+            {currentStep > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleBack}
+                className="gap-1.5"
+                disabled={isSubmitting}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleNext}
+              disabled={nextDisabled}
+              className="gap-1.5"
+            >
+              {nextIcon}
+              {nextLabel}
+            </Button>
+            {currentStep === 2 && !isSubmitting && canSubmit && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleSubmit(false)}
+                disabled={isSubmitting}
+              >
+                Create without running
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ── Step tabs (top of wizard) ──────────────────────────────────────────────
+//
+// Three columns in a single row, divided by faint vertical separators. The
+// active column gets a brighter background and a primary underline along
+// its bottom edge — mirrors the Claude design exactly.
+function StepperTabs({
+  currentStep,
+  onStepClick,
+  stepEnabled,
+}: {
+  currentStep: StepIndex;
+  onStepClick: (idx: StepIndex) => void;
+  stepEnabled: (idx: StepIndex) => boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 border-b border-border sm:grid-cols-3">
+      {STEP_META.map((s, i) => {
+        const isActive = currentStep === s.key;
+        const isComplete = currentStep > s.key;
+        const enabled = stepEnabled(s.key);
+        const hasRightDivider = i < STEP_META.length - 1;
+        return (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => onStepClick(s.key)}
+            disabled={!enabled}
+            className={cn(
+              'group relative flex items-center gap-3 px-5 py-3.5 text-left transition-colors',
+              hasRightDivider && 'sm:border-r sm:border-border',
+              isActive
+                ? 'bg-card'
+                : enabled
+                  ? 'bg-muted/40 hover:bg-muted/60'
+                  : 'bg-muted/30 cursor-not-allowed',
+            )}
+          >
+            {/* Active underline (sits on the bottom edge of the active column) */}
+            {isActive && (
+              <span className="pointer-events-none absolute inset-x-0 -bottom-px h-[2px] bg-primary" />
+            )}
+            <span
+              className={cn(
+                'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition-colors',
+                isActive
+                  ? 'bg-primary text-primary-foreground'
+                  : isComplete
+                    ? 'bg-primary/15 text-primary'
+                    : 'border border-border bg-card text-muted-foreground',
+              )}
+            >
+              {isComplete ? <Check className="h-3 w-3" /> : s.key + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div
+                className={cn(
+                  'truncate text-[13px] font-semibold tracking-tight',
+                  isActive ? 'text-foreground' : enabled ? 'text-foreground/70' : 'text-muted-foreground/60',
+                )}
+              >
+                {s.label}
+              </div>
+              <div className="truncate text-[11px] text-muted-foreground">
+                {s.subtitle}
+              </div>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }

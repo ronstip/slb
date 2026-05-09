@@ -2,6 +2,8 @@ import { PLATFORM_LABELS, buildScheduleString, formatSchedule } from '../../../l
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
 import type { Constitution, CreateFromWizardPayload, Source } from '../../../api/endpoints/agents.ts';
 
+const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 function intervalHoursToSchedule(hours: number, time: string): string {
   if (hours < 24) return buildScheduleString('hour', hours, time);
   return buildScheduleString('day', Math.round(hours / 24), time);
@@ -70,8 +72,18 @@ export function formatWizardAsPrompt(
 
   // Agent type + schedule
   if (task.taskType === 'recurring') {
-    const schedule = intervalHoursToSchedule(task.scheduleIntervalHours, task.scheduleTime);
+    const firstTime = task.scheduleTimes[0] ?? '09:00';
+    const schedule = intervalHoursToSchedule(task.scheduleIntervalHours, firstTime);
     lines.push(`Schedule: ${formatSchedule(schedule)}`);
+    // Surface richer scheduling intent to the planner — the cadence-only
+    // schedule string can't carry day-of-week or multiple times yet.
+    if (task.scheduleIntervalHours >= 168) {
+      const dayLabel = WEEKDAY_LABELS[task.scheduleDay] ?? 'Monday';
+      lines.push(`Schedule day: ${task.scheduleDay >= 28 ? 'last day of month' : dayLabel} (anchor first run on this day)`);
+    }
+    if (task.scheduleTimes.length > 1) {
+      lines.push(`Additional run times (UTC): ${task.scheduleTimes.slice(1).join(', ')}`);
+    }
   } else {
     lines.push(`Schedule: One-time (run now)`);
   }
@@ -135,10 +147,15 @@ export function buildWizardRequestBody(
     }
   }
 
-  // Build schedule for recurring tasks
+  // Build schedule for recurring tasks. The backend schedule format is
+  // cadence-only (`Nd@HH:MM`) and uses just the first run time. Day-of-week
+  // and additional times are described in the planner prompt above so the
+  // agent can communicate them, but they don't yet round-trip through the
+  // schedule string itself.
   let schedule: CreateFromWizardPayload['schedule'] = null;
   if (task.taskType === 'recurring') {
-    const frequency = intervalHoursToSchedule(task.scheduleIntervalHours, task.scheduleTime);
+    const firstTime = task.scheduleTimes[0] ?? '09:00';
+    const frequency = intervalHoursToSchedule(task.scheduleIntervalHours, firstTime);
     schedule = {
       frequency,
       frequency_label: formatSchedule(frequency),
