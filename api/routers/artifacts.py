@@ -65,6 +65,11 @@ async def update_artifact(
     style_overrides = updates.pop("style_overrides", None)
     if style_overrides is not None:
         updates["payload.style_overrides"] = style_overrides
+    content = updates.pop("content", None)
+    if content is not None:
+        if artifact.get("type") != "markdown":
+            raise HTTPException(400, "content can only be updated on markdown artifacts")
+        updates["payload.content"] = content
     if updates:
         fs.update_artifact(artifact_id, updates)
     return {"status": "updated"}

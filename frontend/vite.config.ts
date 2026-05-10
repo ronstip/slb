@@ -10,6 +10,19 @@ import tailwindcss from '@tailwindcss/vite'
 //      demand alongside the route/tab that needs them.
 function vendorChunk(id: string): string | undefined {
   if (!id.includes('node_modules')) return undefined
+  // MDXEditor + its lexical/codemirror runtime are only reachable via the
+  // dynamic import in MarkdownArtifactView. Returning undefined lets Rollup
+  // emit them in the async chunk for that route instead of eagerly bundling
+  // them into `vendor`. Safe because nothing eager imports these packages.
+  if (
+    id.includes('@mdxeditor') ||
+    id.includes('@lexical') ||
+    id.includes('/lexical/') ||
+    id.includes('@codemirror') ||
+    id.includes('@uiw/react-codemirror') ||
+    id.includes('@lezer')
+  )
+    return undefined
   // Only chunk leaf libraries that don't share React internals. Splitting
   // anything inside the React ecosystem (react, radix, router, react-query,
   // motion, …) creates cross-chunk circular imports that crash the app on

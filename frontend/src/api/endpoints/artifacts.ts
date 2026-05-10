@@ -40,6 +40,7 @@ export function updateArtifact(
     favorited?: boolean;
     shared?: boolean;
     style_overrides?: ChartStyleOverridesPayload;
+    content?: string;
   },
 ): Promise<{ status: string }> {
   return apiPatch(`/artifacts/${id}`, updates);

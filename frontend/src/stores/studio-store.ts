@@ -93,6 +93,7 @@ interface StudioStore {
   collapseReport: () => void;
   setArtifacts: (artifacts: Artifact[]) => void;
   updateArtifactTitle: (id: string, title: string) => void;
+  updateArtifactContent: (id: string, content: string) => void;
   updateChartStyleOverrides: (id: string, overrides: ChartStyleOverrides) => void;
   setFeedSource: (id: string | null) => void;
   setPendingTopicFilter: (filter: PendingTopicFilter) => void;
@@ -124,6 +125,12 @@ export const useStudioStore = create<StudioStore>((set) => ({
   updateArtifactTitle: (id, title) =>
     set((s) => ({
       artifacts: s.artifacts.map((a) => (a.id === id ? { ...a, title } : a)),
+    })),
+  updateArtifactContent: (id, content) =>
+    set((s) => ({
+      artifacts: s.artifacts.map((a) =>
+        a.id === id && a.type === 'markdown' ? { ...a, content } : a,
+      ),
     })),
   updateChartStyleOverrides: (id, overrides) =>
     set((s) => ({

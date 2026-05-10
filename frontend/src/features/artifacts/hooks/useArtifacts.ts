@@ -6,6 +6,7 @@ import {
   deleteArtifact,
   type ArtifactListItem,
 } from '../../../api/endpoints/artifacts.ts';
+import { useStudioStore } from '../../../stores/studio-store.ts';
 
 export function useArtifactsList(enabled: boolean) {
   return useQuery({
@@ -46,6 +47,23 @@ export function useUpdateArtifact() {
       if (context?.previous) qc.setQueryData(['artifacts'], context.previous);
     },
     onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['artifacts'] });
+    },
+  });
+}
+
+export function useUpdateMarkdownContent() {
+  const qc = useQueryClient();
+  const updateArtifactContent = useStudioStore((s) => s.updateArtifactContent);
+  return useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      updateArtifact(id, { content }),
+    onSuccess: (_data, { id, content }) => {
+      updateArtifactContent(id, content);
+      qc.invalidateQueries({ queryKey: ['artifact', id] });
+      // Standalone artifact route uses a separate cache key — invalidate it too
+      // so /artifacts/{id} refetches the updated content without a page reload.
+      qc.invalidateQueries({ queryKey: ['artifact-standalone', id] });
       qc.invalidateQueries({ queryKey: ['artifacts'] });
     },
   });
