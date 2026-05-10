@@ -137,10 +137,26 @@ Before any tool call, check what you've already done in this turn:
 
 When unsure whether something was done, finish your text answer instead of probing again."""
 
+_WEB_SEARCH = """## Web Search (`google_search_agent`)
+
+You have a Google-grounded web search tool: `google_search_agent`. **Use it.**
+Your social-listening data (BigQuery via `execute_sql`) covers ONLY the posts collected for this agent's keywords — it is NOT a source of truth about the outside world.
+
+Call `google_search_agent` whenever the answer requires information from outside the collected dataset, including:
+- Anything happening in the real world (news, scores, weather, prices, schedules, public figures, releases).
+- Verifying or providing context on entities, events, or claims that surface in the data.
+- The user explicitly says "search the web", "google", "look up", "check online", "what's happening with…", or asks for "the latest" on something.
+- Quick fact-checks before writing analysis.
+
+Do NOT answer external-world questions from BigQuery — `scope_posts` is a feed of social media posts, not a knowledge base. Querying it for sports scores, news headlines, or general facts will fabricate or mislead. If a question is about the world (not about what people are posting on social media), web-search first.
+
+When in doubt between SQL and web search: SQL answers "what are people posting?", web search answers "what is actually true?"."""
+
 _CHAT_HARD_RULES = """- Greetings, thanks, chit-chat → plain text, no tools.
 - After `start_agent`, confirm briefly. Do NOT poll.
 - After `ask_user`, STOP and wait for the user's response.
-- One try per dead-end. If a query returns nothing or errors twice, say so plainly and ask the user how to proceed; don't keep variant-querying."""
+- One try per dead-end. If a query returns nothing or errors twice, say so plainly and ask the user how to proceed; don't keep variant-querying.
+- Real-world facts (news, scores, current events, external entities) → `google_search_agent`, not `execute_sql`."""
 
 # ─── Compose the full prompt ─────────────────────────────────────────────
 
@@ -175,6 +191,8 @@ CHAT_STATIC_PROMPT = f"""{_IDENTITY}
 {OUTPUT_STYLE}
 
 {_DATA_COMPLETION}
+
+{_WEB_SEARCH}
 
 {_BRIEFING_ON_REQUEST}
 

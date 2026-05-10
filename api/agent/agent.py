@@ -7,7 +7,8 @@ from google.adk.apps.app import App
 from google.adk.runners import Runner
 from google.adk.tools.bigquery import BigQueryToolset
 from google.adk.tools.bigquery.config import BigQueryToolConfig, WriteMode
-from google.adk.tools.google_search_tool import GoogleSearchTool
+from google.adk.tools.google_search_agent_tool import GoogleSearchAgentTool
+from google.adk.tools.google_search_tool import google_search
 from google.genai import types as genai_types
 
 from api.agent.callbacks import (
@@ -88,13 +89,35 @@ def create_agent(
     tools: list = compose_tools(profile=mode)
     tools.append(bq_toolset)
 
-    # Google Search — only in chat mode for full context awareness
+    # Google Search — only in chat mode for full context awareness.
+    #
+    # ADK's stock `create_google_search_agent` instructs the sub-agent to
+    # "use the `google_search` tool" — which Gemini 3 Flash Preview now
+    # interprets as a function call rather than the built-in. The function
+    # name is unresolvable (no `_get_declaration`), so the call fails with
+    # "Tool 'google_search' not found." We wrap our own sub-agent with an
+    # instruction that doesn't name the tool, so the model handles search
+    # natively via `Tool(google_search=GoogleSearch())` in `config.tools`.
     search_enabled = (
         search_override if search_override is not None
         else settings.enable_search_grounding
     )
     if mode == "chat" and search_enabled:
-        tools.insert(0, GoogleSearchTool(bypass_multi_tools_limit=True))
+        search_subagent = LlmAgent(
+            name="google_search_agent",
+            model=model_name,
+            description=(
+                "Performs Google web search to retrieve current "
+                "real-world information."
+            ),
+            instruction=(
+                "You receive a search query. Answer it concisely using "
+                "current web information. Respond with the answer text "
+                "directly — do not call any tool by name."
+            ),
+            tools=[google_search],
+        )
+        tools.insert(0, GoogleSearchAgentTool(search_subagent))
 
     # ─── Thinking config ────────────────────────────────────────────
     # Resolve the effective thinking level. Per-request override wins; an
