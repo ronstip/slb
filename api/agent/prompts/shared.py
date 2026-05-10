@@ -49,10 +49,12 @@ WITH dedup_posts AS (         -- one row per post_id, latest collected_at
     ) WHERE _rn = 1
 ),
 dedup_enr AS (                -- this agent's latest enrichment per post
-    SELECT * EXCEPT(_rn) FROM (
-        SELECT ep.*, ROW_NUMBER() OVER (
-            PARTITION BY ep.post_id
-            ORDER BY ep.agent_version DESC NULLS LAST, ep.enriched_at DESC
+    SELECT * EXCEPT(_rn) FROM (                          -- user overrides win,
+        SELECT ep.*, ROW_NUMBER() OVER (                 -- then latest version,
+            PARTITION BY ep.post_id                      -- then latest enriched_at
+            ORDER BY (ep.source = 'user_override') DESC,
+                     ep.agent_version DESC NULLS LAST,
+                     ep.enriched_at DESC
         ) AS _rn
         FROM social_listening.enriched_posts ep
         WHERE ep.agent_id = p_agent_id
@@ -69,12 +71,36 @@ SELECT <post cols>, <enrichment cols>, <engagement cols>
 FROM dedup_posts
 JOIN dedup_enr USING (post_id)
 LEFT JOIN dedup_eng USING (post_id)
-WHERE is_related_to_task IS TRUE  -- relevance is enforced here
+WHERE is_related_to_task IS TRUE              -- relevance is enforced here
+  AND posted_at >= agent.data_start_date      -- agent's window lower bound (also enforced)
 ```
 
-So every row you get is: a post collected for one of your collections, enriched by you, and judged relevant to your task. Date / platform / collection / post-id filters are normal SQL — put them in your `WHERE`.
+So every row you get is: a post collected for one of your collections, enriched by you, judged relevant to your task, and inside your data window. Platform / collection / post-id and any narrower date filters are normal SQL — put them in your `WHERE`.
 
-ARRAY fields (`entities`, `themes`, `detected_brands`) require `UNNEST`. Custom fields: `JSON_EXTRACT_SCALAR(t.custom_fields, '$.field_name')`. Engagement metrics (`likes`, `views`, `comments_count`, `shares`, `saves`) are columns on `scope_posts` — no separate join needed."""
+### Field-selection guide
+
+Match the question to the field that was extracted for it. When in doubt, prefer the enrichment field over text matching — the enricher normalizes language, casing, and variants that regex won't catch.
+
+- People / brands / products mentioned → `entities` (text & transcript) or `detected_brands` (also images, video, logos).
+- Topical tags ("pricing", "sustainability", "outage") → `themes`.
+- Stance toward the main subject → `sentiment` (3-class) or `emotion` (9-class) for finer-grained.
+- Channel role (media / influencer / official / ugc) → `channel_type`.
+- Post format (review, tutorial, meme, …) → `content_type`.
+- Free-text concepts not in the enrichment vocabulary (slogans, phrases, hashtags) → `REGEXP_CONTAINS` on `content` / `title` / `ai_summary`.
+- Agent-specific structured fields → `custom_fields` via `JSON_EXTRACT_SCALAR(t.custom_fields, '$.field_name')`.
+
+### Mechanics
+
+- ARRAY fields (`entities`, `themes`, `detected_brands`): use `FROM scope_posts(...), UNNEST(arr)` to **aggregate by element**, or `EXISTS (SELECT 1 FROM UNNEST(arr) x WHERE LOWER(x) LIKE '%foo%')` / `'foo' IN UNNEST(arr)` to **filter posts**.
+- JSON fields (`custom_fields`, `platform_metadata`, `media_refs`, `comments`, `platform_engagements`): `JSON_EXTRACT_SCALAR(t.field, '$.path')` for scalars, `JSON_QUERY` for nested.
+- Engagement metrics (`likes`, `views`, `comments_count`, `shares`, `saves`) are columns on `scope_posts` — no separate join needed.
+
+### Common footguns
+
+- **Percentages after UNNEST.** `COUNT(*)` over an unnested array counts element-rows, not posts — a post with 3 themes contributes 3 rows. For "% of posts tagged X" use `COUNT(DISTINCT post_id)` and divide by the total post count from a CTE; never `SUM(COUNT(*)) OVER()`.
+- **Engagement is not a sum of all metrics.** `views` is 10–100× larger than `likes`/`shares` on most platforms; summing them just ranks by views. Pick an explicit metric: reach (`views`), interactions (`likes + shares + comments_count + saves`), or rate (`interactions / NULLIF(views, 0)`).
+- **Retweets and quotes inflate volume.** `is_retweet` and `is_quote` are exposed on `scope_posts`. For "how many original posts mentioned X", filter `COALESCE(is_retweet, FALSE) = FALSE AND COALESCE(is_quote, FALSE) = FALSE`.
+- **NULL enrichments.** Legacy or partially-enriched rows can have NULL `sentiment` / `emotion`. `WHERE sentiment = 'positive'` silently excludes NULLs; `GROUP BY sentiment` keeps a NULL bucket. Decide explicitly which behavior you want."""
 
 # ─── Analysis methodology ───────────────────────────────────────────────
 ANALYSIS_METHODOLOGY = """## Analysis
@@ -91,7 +117,7 @@ For analytical questions:
 
 ### Querying
 
-- `execute_sql(query)` — totals, aggregations, percentages, time series, joins, custom dimensions, and content lookups. Read posts through `social_listening.scope_posts('<active_agent_id>')` or `social_listening.scope_post_ids('<active_agent_id>')` — the TVFs handle scoping, dedup, and the relevance gate for you. Add date / platform / collection filters in `WHERE`. For "find posts that mention X" use `WHERE REGEXP_CONTAINS(LOWER(COALESCE(content, title, '')), r'...')` against the TVF.
+- `execute_sql(query)` — totals, aggregations, percentages, time series, joins, custom dimensions, and content lookups. Read posts through `social_listening.scope_posts('<active_agent_id>')` or `social_listening.scope_post_ids('<active_agent_id>')` — the TVFs handle scoping, dedup, and the relevance gate for you. Add date / platform / collection filters in `WHERE`. Picking the right field for a question and the common SQL footguns are covered in BigQuery Essentials above; the recipes below show the canonical shapes — copy them rather than improvising.
 
 **Chart types**: `bar`, `line`, `pie`, `doughnut`, `table`, `number`.
 
@@ -126,17 +152,18 @@ Workflow: gather data (`execute_sql`) → draft `deck_plan` using layouts from c
 # ─── Enrichment fields ───────────────────────────────────────────────────
 ENRICHMENT_FIELDS = """### Enrichment Fields
 
-Use these when they serve your analysis -- not all are relevant to every question.
+Quick catalog of what each field carries. For *which field to use for what question* and *how to query each type*, see "Field-selection guide" and "Mechanics" in BigQuery Essentials. Use these when they serve your analysis — not all are relevant to every question.
 
 - **`context`** + **`ai_summary`**: Understand posts without reading raw content. Primary material for topic/narrative grouping.
 - **`sentiment`** (positive/neutral/negative): Stance toward the main entity.
 - **`emotion`** (joy/anger/frustration/excitement/disappointment/surprise/trust/fear/neutral): More granular than sentiment.
-- **`entities`** (ARRAY): Brands, products, people. Use `UNNEST`.
+- **`entities`** (ARRAY): Brands, products, people mentioned in text or transcript.
 - **`themes`** (ARRAY): Topic tags. Combine with entity/sentiment for sharper insights.
-- **`content_type`**: Category (review, tutorial, meme, etc.).
-- **`detected_brands`** (ARRAY): Brands in content/media including logos.
+- **`content_type`**: Post format (review, tutorial, meme, etc.).
+- **`detected_brands`** (ARRAY): Brands in content/media including logos — broader than `entities` for visual brand presence.
 - **`channel_type`** (official/media/influencer/ugc): Who is talking.
-- **`custom_fields`** (JSON): Agent-specific fields. Query with `JSON_EXTRACT_SCALAR`."""
+- **`language`**: ISO code of the post language. Useful for splitting multi-language datasets.
+- **`custom_fields`** (JSON): Agent-specific structured fields."""
 
 # ─── Post & engagement fields ────────────────────────────────────────────
 POST_FIELDS = """### Post & Engagement Fields
@@ -255,39 +282,85 @@ GROUP BY post_date, platform ORDER BY post_date
 ```
 
 **Top posts by engagement (filtered to a couple of platforms):**
+
+Pick a metric explicitly. Three sensible choices:
+- **Reach** — order by `views` directly.
+- **Interactions** — `likes + shares + comments_count + saves` (active engagement; comparable across platforms).
+- **Engagement rate** — `interactions / NULLIF(views, 0)` (use only when a post has views).
+
+Don't sum `views` with `likes`/`shares` — views dwarf the others, and you just get a `views` ranking with extra noise.
+
 ```sql
 SELECT post_id, platform, channel_handle, title, post_url,
-  likes, views, shares, comments_count,
-  (COALESCE(likes,0) + COALESCE(shares,0) + COALESCE(views,0)) AS total_engagement,
+  likes, views, shares, comments_count, saves,
+  (COALESCE(likes,0) + COALESCE(shares,0) + COALESCE(comments_count,0) + COALESCE(saves,0)) AS interactions,
   sentiment, ai_summary
 FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
 WHERE DATE(posted_at) >= DATE '<data_start_date>'
   AND DATE(posted_at) < DATE '<data_end_date>'
   AND platform IN ('twitter', 'tiktok')
-ORDER BY total_engagement DESC LIMIT 15
+ORDER BY interactions DESC LIMIT 15
 ```
 
-**Theme distribution (UNNEST):**
+**Theme distribution (UNNEST — % of posts, not % of theme rows):**
 ```sql
-SELECT theme, COUNT(*) AS mentions,
-  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS pct
-FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>'),
-     UNNEST(themes) AS theme
-WHERE DATE(posted_at) >= DATE '<data_start_date>'
-  AND DATE(posted_at) < DATE '<data_end_date>'
-GROUP BY theme ORDER BY mentions DESC LIMIT 20
+WITH scoped AS (
+  SELECT post_id, themes
+  FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+  WHERE DATE(posted_at) >= DATE '<data_start_date>'
+    AND DATE(posted_at) < DATE '<data_end_date>'
+)
+SELECT theme,
+  COUNT(DISTINCT post_id) AS posts_tagged,
+  ROUND(COUNT(DISTINCT post_id) * 100.0 / (SELECT COUNT(*) FROM scoped), 1) AS pct_of_posts
+FROM scoped, UNNEST(themes) AS theme
+GROUP BY theme ORDER BY posts_tagged DESC LIMIT 20
 ```
 
-**Entity aggregation with engagement (UNNEST):**
+**Entity aggregation with engagement (UNNEST — `COUNT(DISTINCT post_id)` to avoid double-counting):**
 ```sql
-SELECT entity, COUNT(*) AS mentions,
+SELECT entity,
+  COUNT(DISTINCT post_id) AS posts_mentioning,
   SUM(COALESCE(likes, 0)) AS total_likes,
   SUM(COALESCE(views, 0)) AS total_views
 FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>'),
      UNNEST(entities) AS entity
 WHERE DATE(posted_at) >= DATE '<data_start_date>'
   AND DATE(posted_at) < DATE '<data_end_date>'
-GROUP BY entity ORDER BY mentions DESC LIMIT 20
+GROUP BY entity ORDER BY posts_mentioning DESC LIMIT 20
+```
+
+**Posts that mention a specific entity (filter, don't aggregate):**
+```sql
+SELECT post_id, platform, channel_handle, posted_at, sentiment, ai_summary, post_url
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+  AND EXISTS (
+    SELECT 1 FROM UNNEST(entities) e
+    WHERE LOWER(e) LIKE '%nike%' OR LOWER(e) LIKE '%adidas%'
+  )
+ORDER BY posted_at DESC LIMIT 50
+```
+
+**Sentiment within a theme (filter on themes array):**
+```sql
+SELECT sentiment, COUNT(*) AS posts
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+  AND 'pricing' IN UNNEST(themes)
+GROUP BY sentiment ORDER BY posts DESC
+```
+
+**Original posts only (exclude retweets and quote-tweets):**
+```sql
+SELECT COUNT(*) AS original_posts
+FROM `{project_id}.social_listening.scope_posts`('<active_agent_id>')
+WHERE DATE(posted_at) >= DATE '<data_start_date>'
+  AND DATE(posted_at) < DATE '<data_end_date>'
+  AND COALESCE(is_retweet, FALSE) = FALSE
+  AND COALESCE(is_quote, FALSE) = FALSE
 ```
 
 **Emotion distribution:**

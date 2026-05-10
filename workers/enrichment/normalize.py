@@ -10,6 +10,7 @@ import re
 import unicodedata
 
 _WHITESPACE_RE = re.compile(r"\s+")
+_SEPARATOR_RE = re.compile(r"[-_‐-―]+")
 
 
 def normalize_label(s: str) -> str:
@@ -17,7 +18,8 @@ def normalize_label(s: str) -> str:
         return ""
     nfkd = unicodedata.normalize("NFKD", s)
     no_marks = "".join(c for c in nfkd if not unicodedata.combining(c))
-    collapsed = _WHITESPACE_RE.sub(" ", no_marks.strip())
+    no_seps = _SEPARATOR_RE.sub(" ", no_marks)
+    collapsed = _WHITESPACE_RE.sub(" ", no_seps.strip())
     return collapsed.lower()
 
 

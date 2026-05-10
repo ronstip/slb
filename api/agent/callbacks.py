@@ -155,9 +155,10 @@ def gate_expensive_tools(
 
 # Maximum execute_sql calls before the callback hard-stops further probes.
 # Two-pronged guard: (1) per-session count cap, (2) per-query whitespace-
-# normalized dedup. Set generously enough that legitimate multi-angle
-# analysis still works, tight enough that runaway loops can't burn quota.
-_MAX_SQL_CALLS_PER_SESSION = 40
+# normalized dedup. Set generously enough that deep strategic-planning runs
+# (18+ sections, per-section verification queries, EDA fan-out) finish without
+# being throttled — the dedup + loop-repeat guards catch runaway loops.
+_MAX_SQL_CALLS_PER_SESSION = 120
 
 # Serializes the read-decide-write of `_execute_sql_count` across parallel
 # tool calls fanned out within a single turn. Without this, two concurrent
@@ -389,12 +390,13 @@ def enforce_collection_access(
 # 3b. Loop bounding — before_tool_callback
 # ---------------------------------------------------------------------------
 
-# Hard cap on total tool calls per session. Generous enough that a full
-# autonomous run (analyze → validate → dashboard → briefing typically uses
-# 16–18 calls) has headroom; tight enough that a runaway loop trips before
-# burning serious quota. The eval harness uses a stricter cap of 25 to
-# stress-test loop behavior — see api/agent/evals/runner.py.
-_MAX_TOOL_CALLS_PER_SESSION = 40
+# Hard cap on total tool calls per session. Sized for deep strategic-planning
+# runs: ~120 SQL probes + ~20 update_todos + list_topics + web grounding +
+# create_markdown leaves real headroom. The dedup + loop-repeat detector below
+# still catches actual runaway loops; this ceiling is the last-resort backstop.
+# The eval harness uses a stricter cap of 25 to stress-test loop behavior —
+# see api/agent/evals/runner.py.
+_MAX_TOOL_CALLS_PER_SESSION = 200
 
 # How many times the same (tool, args) signature may repeat before the
 # cycle detector blocks. 3 is the sweet spot: legitimate retries (one
