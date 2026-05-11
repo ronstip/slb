@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { remarkStripComments } from '../lib/remark-strip-comments.ts';
 import { ReportChart, tryParseChartSpec } from '../features/studio/ReportChart.tsx';
 
@@ -83,6 +84,7 @@ export function Markdown({
   const content = (
     <ReactMarkdown
       remarkPlugins={plugins}
+      rehypePlugins={[rehypeRaw]}
       components={Object.keys(components).length > 0 ? components : undefined}
     >
       {children}

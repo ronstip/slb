@@ -333,7 +333,7 @@
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--border);
-  margin: 8px 0;
+  margin: 8px auto;
 }
 .agent-prose thead th {
   background: color-mix(in srgb, var(--accent) 60%, transparent);

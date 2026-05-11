@@ -9,6 +9,7 @@ import {
   linkDialogPlugin,
   tablePlugin,
   codeBlockPlugin,
+  diffSourcePlugin,
   markdownShortcutPlugin,
   toolbarPlugin,
   BoldItalicUnderlineToggles,
@@ -19,10 +20,23 @@ import {
   InsertTable,
   InsertCodeBlock,
   InsertThematicBreak,
+  DiffSourceToggleWrapper,
+  ButtonWithTooltip,
   Separator,
   UndoRedo,
+  insertMarkdown$,
+  usePublisher,
 } from '@mdxeditor/editor';
 import '@mdxeditor/editor/style.css';
+import {
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  ArrowRightToLine,
+  ArrowLeftToLine,
+  Space,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { ReportChart, tryParseChartSpec } from './ReportChart.tsx';
 
 interface MarkdownArtifactEditorProps {
@@ -80,9 +94,58 @@ const plainCodeDescriptor: CodeBlockEditorDescriptor = {
   Editor: PlainCodeEditor,
 };
 
+/** Toolbar button that injects a raw markdown/HTML snippet at the cursor.
+ *  Used for features markdown can't express natively (alignment, RTL/LTR,
+ *  vertical spacing) — the snippet is rendered correctly by Markdown.tsx
+ *  via rehype-raw, but appears as HTML source inside the editor itself. */
+function InsertSnippetButton({
+  title,
+  icon,
+  snippet,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  snippet: string;
+}) {
+  const insertMarkdown = usePublisher(insertMarkdown$);
+  return (
+    <ButtonWithTooltip title={title} onClick={() => insertMarkdown(snippet)}>
+      {icon}
+    </ButtonWithTooltip>
+  );
+}
+
+const ALIGN_SNIPPET = (align: 'left' | 'center' | 'right') =>
+  `\n\n<div style="text-align: ${align}">\n\nYour text here\n\n</div>\n\n`;
+const DIR_SNIPPET = (dir: 'ltr' | 'rtl') =>
+  `\n\n<div dir="${dir}">\n\nYour text here\n\n</div>\n\n`;
+const SPACER_SNIPPET = '\n\n<br />\n\n';
+
+/** Replacement for MDXEditor's `InsertImage` button — the built-in dialog
+ *  portals into the editor root and uses `position: fixed`, which breaks
+ *  when the editor is nested inside a Radix Dialog (the dialog's
+ *  `transform` creates a new containing block, pushing the image dialog
+ *  off-screen). Window prompt is dependable across both surfaces. */
+function InsertImageButton() {
+  const insertMarkdown = usePublisher(insertMarkdown$);
+  return (
+    <ButtonWithTooltip
+      title="Insert image"
+      onClick={() => {
+        const url = window.prompt('Image URL');
+        if (!url) return;
+        const alt = window.prompt('Alt text (optional)', '') ?? '';
+        insertMarkdown(`![${alt}](${url})`);
+      }}
+    >
+      <ImageIcon size={15} strokeWidth={1.75} />
+    </ButtonWithTooltip>
+  );
+}
+
 function Toolbar() {
   return (
-    <>
+    <DiffSourceToggleWrapper>
       <UndoRedo />
       <Separator />
       <BoldItalicUnderlineToggles />
@@ -92,11 +155,45 @@ function Toolbar() {
       <Separator />
       <ListsToggle />
       <Separator />
+      <InsertSnippetButton
+        title="Align left"
+        icon={<AlignLeft size={15} strokeWidth={1.75} />}
+        snippet={ALIGN_SNIPPET('left')}
+      />
+      <InsertSnippetButton
+        title="Align center"
+        icon={<AlignCenter size={15} strokeWidth={1.75} />}
+        snippet={ALIGN_SNIPPET('center')}
+      />
+      <InsertSnippetButton
+        title="Align right"
+        icon={<AlignRight size={15} strokeWidth={1.75} />}
+        snippet={ALIGN_SNIPPET('right')}
+      />
+      <Separator />
+      <InsertSnippetButton
+        title="Left-to-right block"
+        icon={<ArrowRightToLine size={15} strokeWidth={1.75} />}
+        snippet={DIR_SNIPPET('ltr')}
+      />
+      <InsertSnippetButton
+        title="Right-to-left block"
+        icon={<ArrowLeftToLine size={15} strokeWidth={1.75} />}
+        snippet={DIR_SNIPPET('rtl')}
+      />
+      <Separator />
+      <InsertSnippetButton
+        title="Insert blank line"
+        icon={<Space size={15} strokeWidth={1.75} />}
+        snippet={SPACER_SNIPPET}
+      />
+      <Separator />
       <CreateLink />
+      <InsertImageButton />
       <InsertTable />
       <InsertThematicBreak />
       <InsertCodeBlock />
-    </>
+    </DiffSourceToggleWrapper>
   );
 }
 
@@ -122,6 +219,7 @@ export function MarkdownArtifactEditor({
           defaultCodeBlockLanguage: '',
         }),
         markdownShortcutPlugin(),
+        diffSourcePlugin({ viewMode: 'rich-text' }),
         toolbarPlugin({ toolbarContents: () => <Toolbar /> }),
       ]}
     />
