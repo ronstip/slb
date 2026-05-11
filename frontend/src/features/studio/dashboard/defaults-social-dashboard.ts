@@ -127,6 +127,18 @@ export function getDefaultLayout(): SocialDashboardWidget[] {
       aggregation: 'entities',
       chartType: 'table',
       title: 'Top Entities',
+      tableConfig: {
+        dimension: 'entities',
+        columns: [
+          { id: 'mentions', metric: 'post_count', header: 'Mentions' },
+          { id: 'views',    metric: 'view_count' },
+          { id: 'likes',    metric: 'like_count' },
+        ],
+        sortBy: 'mentions',
+        sortDir: 'desc',
+        rowLimit: 10,
+        showRank: true,
+      },
     },
     {
       i: uid(),
@@ -134,6 +146,18 @@ export function getDefaultLayout(): SocialDashboardWidget[] {
       aggregation: 'channels',
       chartType: 'table',
       title: 'Top Channels',
+      tableConfig: {
+        dimension: 'channel_handle',
+        columns: [
+          { id: 'posts',    metric: 'post_count', header: 'Posts' },
+          { id: 'avglikes', metric: 'like_count', agg: 'avg', header: 'Avg Likes' },
+          { id: 'avgviews', metric: 'view_count', agg: 'avg', header: 'Avg Views' },
+        ],
+        sortBy: 'posts',
+        sortDir: 'desc',
+        rowLimit: 10,
+        showRank: true,
+      },
     },
 
     // ── Row 7: Content breakdown (y=35, h=6) ─────────────────────────

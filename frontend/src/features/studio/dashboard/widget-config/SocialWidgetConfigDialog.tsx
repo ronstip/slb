@@ -23,10 +23,11 @@ const MarkdownArtifactEditor = lazy(() =>
 );
 import { cn } from '../../../../lib/utils.ts';
 import type { DashboardPost } from '../../../../api/types.ts';
-import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides } from '../types-social-dashboard.ts';
-import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, getDimensionMeta } from '../types-social-dashboard.ts';
+import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig } from '../types-social-dashboard.ts';
+import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, getDimensionMeta, defaultTableConfigFor } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
+import { TableDataForm } from './TableDataForm.tsx';
 import { WidgetFilterForm } from './WidgetFilterForm.tsx';
 import { WidgetStyleForm } from './WidgetStyleForm.tsx';
 import { ChartStyleEditor } from './ChartStyleEditor.tsx';
@@ -101,9 +102,39 @@ export function SocialWidgetConfigDialog({
 function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
   // Text widgets have no data/chart config — pass through untouched.
   if (widget.aggregation === 'text') return widget;
-  if (widget.aggregation === 'custom' && widget.customConfig) return widget;
-  const { customConfig, chartType } = presetToCustomConfig(widget.aggregation, widget.kpiIndex);
-  return { ...widget, aggregation: 'custom', customConfig, chartType, kpiIndex: undefined };
+  // Preserve the preset's chart type if it was set — e.g. channels/entities
+  // ship with `chartType: 'table'` and the rich table view should survive the
+  // round-trip through the edit dialog. Without this, opening any 'channels'
+  // widget for edit would silently rewrite it as a bar chart on save.
+  const resolvedChartType =
+    widget.aggregation === 'custom' && widget.customConfig
+      ? widget.chartType
+      : widget.chartType ?? presetToCustomConfig(widget.aggregation, widget.kpiIndex).chartType;
+
+  // Seed tableConfig when the widget is rendered as a table — keeps the dialog
+  // populated with the actual columns the user sees on the dashboard so edits
+  // round-trip. Uses dimension-aware defaults for known presets.
+  let seededTableConfig = widget.tableConfig;
+  if (!seededTableConfig && resolvedChartType === 'table') {
+    const seedDim =
+      widget.customConfig?.dimension
+      ?? presetToCustomConfig(widget.aggregation, widget.kpiIndex).customConfig.dimension
+      ?? 'channel_handle';
+    seededTableConfig = defaultTableConfigFor(seedDim);
+  }
+
+  if (widget.aggregation === 'custom' && widget.customConfig) {
+    return { ...widget, tableConfig: seededTableConfig };
+  }
+  const { customConfig } = presetToCustomConfig(widget.aggregation, widget.kpiIndex);
+  return {
+    ...widget,
+    aggregation: 'custom',
+    customConfig,
+    chartType: resolvedChartType,
+    tableConfig: seededTableConfig,
+    kpiIndex: undefined,
+  };
 }
 
 // ── Inner component (mounted fresh per widget.i) ──────────────────────────────
@@ -159,7 +190,19 @@ function SocialWidgetConfigDialogInner({
   };
 
   const updateChartType = (chartType: SocialChartType) => {
-    setDraft((prev) => ({ ...prev, chartType }));
+    setDraft((prev) => {
+      // When switching INTO table mode, seed tableConfig if missing so the
+      // Data tab opens populated and the preview renders immediately.
+      if (chartType === 'table' && !prev.tableConfig) {
+        const seedDim = prev.customConfig?.dimension ?? 'channel_handle';
+        return { ...prev, chartType, tableConfig: defaultTableConfigFor(seedDim) };
+      }
+      return { ...prev, chartType };
+    });
+  };
+
+  const updateTableConfig = (tableConfig: CustomTableConfig) => {
+    setDraft((prev) => ({ ...prev, tableConfig }));
   };
 
   const previewPosts = useMemo(
@@ -379,14 +422,25 @@ function SocialWidgetConfigDialogInner({
 
                   <Separator />
 
-                  {/* Data source: Metric → Aggregation → Group By → Time Bucket */}
-                  <DataSourceForm
-                    config={draft.customConfig ?? { metric: 'post_count' }}
-                    onChange={updateConfig}
-                    onChartTypeChange={updateChartType}
-                    chartType={draft.chartType}
-                    customFieldNames={customFieldNames}
-                  />
+                  {draft.chartType === 'table' ? (
+                    /* Table widgets: pick row dimension + columns + sort + limit.
+                     * The chart-flavored Metric / Breakdown / Top-N / Stacked
+                     * controls don't apply here, so we render a dedicated form. */
+                    <TableDataForm
+                      config={draft.tableConfig ?? defaultTableConfigFor(draft.customConfig?.dimension ?? 'channel_handle')}
+                      onChange={updateTableConfig}
+                      customFieldNames={customFieldNames}
+                    />
+                  ) : (
+                    /* Data source: Metric → Aggregation → Group By → Time Bucket */
+                    <DataSourceForm
+                      config={draft.customConfig ?? { metric: 'post_count' }}
+                      onChange={updateConfig}
+                      onChartTypeChange={updateChartType}
+                      chartType={draft.chartType}
+                      customFieldNames={customFieldNames}
+                    />
+                  )}
                 </TabsContent>
 
                 <TabsContent value="filters" className="mt-0 p-5">
@@ -408,6 +462,7 @@ function SocialWidgetConfigDialogInner({
                     onAccentChange={(accent) =>
                       setDraft((prev) => ({ ...prev, accent }))
                     }
+                    onTableConfigChange={updateTableConfig}
                   />
                 </TabsContent>
               </div>
@@ -458,12 +513,14 @@ function StyleTab({
   onKpiIndexChange,
   onStyleChange,
   onAccentChange,
+  onTableConfigChange,
 }: {
   draft: SocialDashboardWidget;
   previewPosts: DashboardPost[];
   onKpiIndexChange: (i: number) => void;
   onStyleChange: (overrides: ChartStyleOverrides) => void;
   onAccentChange: (accent: string | undefined) => void;
+  onTableConfigChange: (config: CustomTableConfig) => void;
 }) {
   // KPI cards: keep the simple accent-only picker.
   if (draft.chartType === 'number-card') {
@@ -476,6 +533,14 @@ function StyleTab({
         onAccentChange={onAccentChange}
       />
     );
+  }
+
+  // Tables: minimal set — density + stripes. Accent / per-series colors don't
+  // apply (rows aren't colored series).
+  if (draft.chartType === 'table') {
+    const tableConfig =
+      draft.tableConfig ?? defaultTableConfigFor(draft.customConfig?.dimension ?? 'channel_handle');
+    return <TableStyleForm config={tableConfig} onChange={onTableConfigChange} />;
   }
 
   // Charts: compute the labels the chart will render so the per-series picker
@@ -493,6 +558,49 @@ function StyleTab({
       value={styleOverrides}
       onChange={onStyleChange}
     />
+  );
+}
+
+function TableStyleForm({
+  config,
+  onChange,
+}: {
+  config: CustomTableConfig;
+  onChange: (config: CustomTableConfig) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Density</Label>
+        <div className="flex items-center gap-1.5">
+          {(['compact', 'comfortable'] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => onChange({ ...config, density: d })}
+              className={cn(
+                'rounded-md border px-2.5 py-1 text-xs font-medium transition-all capitalize',
+                (config.density ?? 'compact') === d
+                  ? 'border-primary bg-primary/5 text-primary'
+                  : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+              )}
+            >
+              {d}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={config.striped ?? true}
+          onChange={(e) => onChange({ ...config, striped: e.target.checked })}
+          className="h-3.5 w-3.5 cursor-pointer"
+        />
+        Striped rows
+      </label>
+    </div>
   );
 }
 

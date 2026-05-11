@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation } from './types-social-dashboard.ts';
-import { aggregateCustom } from './dashboard-aggregations.ts';
+import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, CustomTableConfig, CustomDimension } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, getDimensionMeta } from './types-social-dashboard.ts';
+import { aggregateCustom, aggregateTable, type TableRow } from './dashboard-aggregations.ts';
 import {
   aggregateSentiment,
   aggregateEmotions,
@@ -16,10 +16,12 @@ import {
   aggregateEngagementRate,
   computeEnhancedKpis,
 } from './dashboard-aggregations.ts';
+import type { ColumnDef } from '../../../components/DataTable/DataTable.tsx';
+import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
+import { formatNumber } from '../../../lib/format.ts';
 import { SocialChartWidget } from './SocialChartWidget.tsx';
 import { SocialKpiCard } from './SocialKpiCard.tsx';
 import { SocialProgressListWidget } from './SocialProgressListWidget.tsx';
-import { EntityTableWidget, ChannelTableWidget } from './SocialTableWidget.tsx';
 import { SocialWordCloudWidget } from './SocialWordCloudWidget.tsx';
 import { SocialWidgetFrame } from './SocialWidgetFrame.tsx';
 import { DataTable } from '../../../components/DataTable/DataTable.tsx';
@@ -34,6 +36,120 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu.tsx';
 import { Copy, MoreVertical, Settings2, Trash2 } from 'lucide-react';
+
+// ── Configurable table widget ─────────────────────────────────────────────────
+
+/** Map a dimension to the dashboard filter key — used to wire row-click
+ *  filtering. Returns undefined for dimensions that don't correspond to a
+ *  single-value filter (e.g. posted_at, or custom enrichment fields). */
+function filterKeyForDimension(dim: CustomDimension): string | undefined {
+  switch (dim) {
+    case 'channel_handle': return 'channels';
+    case 'entities':       return 'entities';
+    case 'themes':         return 'themes';
+    case 'platform':       return 'platform';
+    case 'sentiment':      return 'sentiment';
+    case 'emotion':        return 'emotion';
+    case 'language':       return 'language';
+    case 'content_type':   return 'content_type';
+    default:               return undefined;
+  }
+}
+
+function buildTableColumns(
+  tableConfig: CustomTableConfig,
+): ColumnDef<TableRow>[] {
+  const cols: ColumnDef<TableRow>[] = [];
+
+  if (tableConfig.showRank !== false) {
+    cols.push({
+      key: '__rank',
+      header: '#',
+      width: 'w-10',
+      sortable: false,
+      render: (_row, idx) => (
+        <span className="text-[11px] tabular-nums text-muted-foreground/50">{idx + 1}</span>
+      ),
+    });
+  }
+
+  const isChannel = tableConfig.dimension === 'channel_handle';
+  cols.push({
+    key: '__dim',
+    header: getDimensionMeta(tableConfig.dimension).label,
+    // Dimension is a string; DataTable's sort is numeric-only (apart from a
+    // hardcoded posted_at branch), so we don't expose a header-click sort
+    // here. Sort by label is still achievable via the config dialog (Sort by
+    // → "Label"), and `aggregateTable` pre-sorts the rows before render.
+    sortable: false,
+    render: (row) =>
+      isChannel ? (
+        <div className="flex items-center gap-2 min-w-0">
+          {row.__platform && <PlatformIcon platform={row.__platform} className="h-3.5 w-3.5 shrink-0" />}
+          <span className="text-[12px] font-medium text-foreground truncate">@{row.__label}</span>
+        </div>
+      ) : (
+        <span className="text-[12px] font-medium text-foreground truncate">{row.__label}</span>
+      ),
+  });
+
+  for (const col of tableConfig.columns) {
+    const effectiveAgg = col.metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
+    cols.push({
+      key: col.id,
+      header: col.header || autoColumnHeader(col.metric, effectiveAgg),
+      align: 'right',
+      sortable: true,
+      render: (row) => (
+        <span className="tabular-nums">
+          {formatNumber(Number(row[col.id] ?? 0))}
+        </span>
+      ),
+    });
+  }
+
+  return cols;
+}
+
+function ConfigurableTableWidget({
+  posts,
+  tableConfig,
+  onFilterToggle,
+}: {
+  posts: DashboardPost[];
+  tableConfig: CustomTableConfig;
+  onFilterToggle?: (key: string, value: string) => void;
+}) {
+  const rows = useMemo(() => aggregateTable(posts, tableConfig), [posts, tableConfig]);
+  const columns = useMemo(() => buildTableColumns(tableConfig), [tableConfig]);
+  const filterKey = filterKeyForDimension(tableConfig.dimension);
+  // When sorting by the (string) dimension label, rely on aggregateTable's
+  // pre-sort — DataTable's sort is numeric-only and would scramble the order.
+  const defaultSortKey =
+    tableConfig.sortBy === '__dim' ? undefined : (tableConfig.sortBy ?? tableConfig.columns[0]?.id);
+
+  return (
+    <DataTable<TableRow>
+      data={rows}
+      columns={columns}
+      getRowKey={(r) => r.__key}
+      defaultSortKey={defaultSortKey}
+      defaultSortDir={tableConfig.sortDir ?? 'desc'}
+      pageSize={tableConfig.rowLimit ?? 25}
+      // Defaults chosen to match the original Top Channels look:
+      // generous row padding, no stripes — the user can tweak both in the
+      // Style tab.
+      density={tableConfig.density ?? 'comfortable'}
+      striped={tableConfig.striped ?? false}
+      emptyMessage="No data"
+      onRowClick={
+        filterKey && onFilterToggle
+          ? (r) => onFilterToggle(filterKey, r.__key)
+          : undefined
+      }
+    />
+  );
+}
 
 // ── Generic table for custom widgets ──────────────────────────────────────────
 
@@ -188,11 +304,15 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
   }), [entityData]);
 
   if (widget.chartType === 'table') {
+    // tableConfig drives the configurable design; falls back to the hardcoded
+    // EntityTable only when neither the widget nor the dimension has defaults.
+    const tableConfig = widget.tableConfig ?? defaultTableConfigFor('entities');
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
-        <EntityTableWidget
-          data={entityData}
-          onRowClick={onFilterToggle ? (v) => onFilterToggle('entities', v) : undefined}
+        <ConfigurableTableWidget
+          posts={posts}
+          tableConfig={tableConfig}
+          onFilterToggle={onFilterToggle}
         />
       </SocialWidgetFrame>
     );
@@ -212,11 +332,13 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
   }), [channelData]);
 
   if (widget.chartType === 'table') {
+    const tableConfig = widget.tableConfig ?? defaultTableConfigFor('channel_handle');
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
-        <ChannelTableWidget
-          data={channelData}
-          onRowClick={onFilterToggle ? (v) => onFilterToggle('channels', v) : undefined}
+        <ConfigurableTableWidget
+          posts={posts}
+          tableConfig={tableConfig}
+          onFilterToggle={onFilterToggle}
         />
       </SocialWidgetFrame>
     );
@@ -228,7 +350,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
   );
 }
 
-function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
+function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, onFilterToggle }: FrameProps & { posts: DashboardPost[]; onFilterToggle?: (key: string, value: string) => void }) {
   const config = widget.customConfig;
 
   // Optional viewer-facing metric toggle. The persisted `metric` is the
@@ -321,6 +443,23 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
   }
 
   if (widget.chartType === 'table') {
+    // Prefer the configurable table (multi-column, sortable, picks columns).
+    // If the widget has no tableConfig but its dimension matches a known
+    // preset (channel_handle / entities), synthesize defaults so legacy
+    // widgets keep rendering the rich design without losing functionality.
+    const tableConfig = widget.tableConfig
+      ?? (config.dimension ? defaultTableConfigFor(config.dimension) : undefined);
+    if (tableConfig) {
+      return (
+        <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
+          <ConfigurableTableWidget
+            posts={posts}
+            tableConfig={tableConfig}
+            onFilterToggle={onFilterToggle}
+          />
+        </SocialWidgetFrame>
+      );
+    }
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
         <GenericTableView data={data ?? undefined} />
@@ -584,7 +723,7 @@ export function SocialWidgetRenderer({
     return <PostsTableWidget {...frameProps} posts={widgetPosts} />;
   }
   if (widget.aggregation === 'custom') {
-    return <CustomWidget {...frameProps} posts={widgetPosts} />;
+    return <CustomWidget {...frameProps} posts={widgetPosts} onFilterToggle={onFilterToggle} />;
   }
   if (widget.chartType === 'number-card') {
     return <KpiWidget {...frameProps} posts={widgetPosts} serverKpis={serverKpis} />;

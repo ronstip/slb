@@ -1,5 +1,5 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { CustomChartConfig, CustomDimension, WidgetData } from './types-social-dashboard.ts';
+import type { CustomChartConfig, CustomDimension, CustomTableConfig, WidgetData } from './types-social-dashboard.ts';
 import { isCustomFieldDimension, customFieldName } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
@@ -752,4 +752,75 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
 
   const total = values.reduce((s, v) => s + v, 0);
   return { value: total, labels, values };
+}
+
+// ─── Table aggregation ────────────────────────────────────────────────────────
+
+export interface TableRow {
+  /** Stable key for React + sort. */
+  __key: string;
+  /** Display label for the dimension cell (e.g. channel handle, theme name). */
+  __label: string;
+  /** Platform attached to channel rows so the dimension cell can render a
+   *  platform icon. Picked from the most recent post in the group. */
+  __platform?: string;
+  /** Per-column resolved values, keyed by TableColumn.id. */
+  [columnId: string]: number | string | undefined;
+}
+
+/** Multi-column aggregation: one row per dimension value, with each table
+ *  column resolved against the column's own metric + agg. Single pass over
+ *  posts; reuses the same metric extractor as `aggregateCustom` so chart and
+ *  table widgets agree on numbers. */
+export function aggregateTable(posts: DashboardPost[], config: CustomTableConfig): TableRow[] {
+  const { dimension, columns, sortBy, sortDir = 'desc', rowLimit = 25 } = config;
+
+  // dimension key -> per-column Stats
+  const acc = new Map<string, Map<string, Stats>>();
+  const platformOf = new Map<string, string>();
+
+  for (const p of posts) {
+    const keys = getDimensionKeys(p, dimension, 'day');
+    if (keys.length === 0) continue;
+    for (const key of keys) {
+      let perCol = acc.get(key);
+      if (!perCol) {
+        perCol = new Map();
+        acc.set(key, perCol);
+      }
+      for (const col of columns) {
+        addToStats(perCol, col.id, getMetricValue(p, col.metric));
+      }
+      if (dimension === 'channel_handle' && p.platform && !platformOf.has(key)) {
+        platformOf.set(key, p.platform);
+      }
+    }
+  }
+
+  const rows: TableRow[] = [];
+  for (const [key, perCol] of acc) {
+    const row: TableRow = { __key: key, __label: key };
+    if (platformOf.has(key)) row.__platform = platformOf.get(key);
+    for (const col of columns) {
+      const stats = perCol.get(col.id) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity };
+      const agg = col.metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
+      row[col.id] = resolveAgg(stats, agg);
+    }
+    rows.push(row);
+  }
+
+  const sortKey = sortBy ?? columns[0]?.id;
+  if (sortKey) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      if (sortKey === '__dim') {
+        return dir * String(a.__label).localeCompare(String(b.__label));
+      }
+      const av = Number(a[sortKey] ?? 0);
+      const bv = Number(b[sortKey] ?? 0);
+      return dir * (av - bv);
+    });
+  }
+
+  return rows.slice(0, rowLimit);
 }

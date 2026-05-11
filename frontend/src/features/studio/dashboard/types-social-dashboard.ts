@@ -201,6 +201,92 @@ export function presetToCustomConfig(
   }
 }
 
+// ─── Table widget config (used when chartType === 'table') ─────────────────
+
+export type TableColumnAgg = 'sum' | 'avg' | 'min' | 'max' | 'count';
+
+export interface TableColumn {
+  /** Stable key — also used as the sort key. */
+  id: string;
+  /** Which post field to aggregate. */
+  metric: CustomMetric;
+  /** Default 'sum'. Forced to 'count' for `post_count` (every post contributes 1). */
+  agg?: TableColumnAgg;
+  /** Optional header override. Falls back to `autoColumnHeader(metric, agg)`. */
+  header?: string;
+}
+
+export interface CustomTableConfig {
+  /** Row grouping — required for tables. */
+  dimension: CustomDimension;
+  /** 1..N metric columns (excludes the auto rank + dimension cell). */
+  columns: TableColumn[];
+  /** Column id to sort by. Special: '__rank' (insertion order), '__dim' (label). Default = first metric column id. */
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  /** Cap on rows kept after sort. Default 25. */
+  rowLimit?: number;
+  /** Show the leading rank gutter (#). Default true. */
+  showRank?: boolean;
+  /** Style — minimal subset; chart accent / palette do not apply to tables. */
+  density?: 'compact' | 'comfortable';
+  striped?: boolean;
+}
+
+export function autoColumnHeader(metric: CustomMetric, agg: TableColumnAgg = 'sum'): string {
+  const base = METRIC_META[metric]?.label ?? metric;
+  if (metric === 'post_count') return 'Posts';
+  switch (agg) {
+    case 'avg': return `Avg ${base}`;
+    case 'min': return `Min ${base}`;
+    case 'max': return `Max ${base}`;
+    case 'count': return `# ${base}`;
+    default:    return base; // sum → just the metric name
+  }
+}
+
+/** Bootstrap a sensible table config for a dimension. Matches the Top
+ *  Channels / Top Entities designs for known dims; falls back to a single
+ *  post-count column for everything else. */
+export function defaultTableConfigFor(dimension: CustomDimension): CustomTableConfig {
+  if (dimension === 'channel_handle') {
+    return {
+      dimension,
+      columns: [
+        { id: 'posts',    metric: 'post_count' },
+        { id: 'avglikes', metric: 'like_count', agg: 'avg' },
+        { id: 'avgviews', metric: 'view_count', agg: 'avg' },
+      ],
+      sortBy: 'posts',
+      sortDir: 'desc',
+      rowLimit: 10,
+      showRank: true,
+    };
+  }
+  if (dimension === 'entities') {
+    return {
+      dimension,
+      columns: [
+        { id: 'mentions', metric: 'post_count', header: 'Mentions' },
+        { id: 'views',    metric: 'view_count' },
+        { id: 'likes',    metric: 'like_count' },
+      ],
+      sortBy: 'mentions',
+      sortDir: 'desc',
+      rowLimit: 10,
+      showRank: true,
+    };
+  }
+  return {
+    dimension,
+    columns: [{ id: 'posts', metric: 'post_count' }],
+    sortBy: 'posts',
+    sortDir: 'desc',
+    rowLimit: 25,
+    showRank: true,
+  };
+}
+
 // ─── Chart style overrides (accent + per-series colors) ─────────────────────
 
 export interface ChartStyleOverrides {
@@ -329,6 +415,9 @@ export interface SocialDashboardWidget {
   filters?: SocialWidgetFilters;
   /** Custom chart configuration — set when aggregation === 'custom' */
   customConfig?: CustomChartConfig;
+  /** Table widget configuration — set when chartType === 'table'. Coexists
+   *  with `customConfig` so switching chart type ↔ table preserves both. */
+  tableConfig?: CustomTableConfig;
   /** Markdown body — set when aggregation === 'text' */
   markdownContent?: string;
   /** Optional figure-style caption rendered below the chart body (figcaption).
@@ -383,7 +472,7 @@ export const VALID_CHART_TYPES: Record<SocialAggregation, SocialChartType[]> = {
   'language': ['pie', 'doughnut', 'bar', 'progress-list'],
   'engagement-rate': ['line'],
   'posts': ['data-table'],
-  'custom': ['bar', 'pie', 'doughnut', 'line', 'number-card', 'progress-list', 'word-cloud'],
+  'custom': ['bar', 'pie', 'doughnut', 'line', 'number-card', 'progress-list', 'word-cloud', 'table'],
   'text': ['table'],
 };
 
