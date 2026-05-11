@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../components/ui/tabs.tsx';
 import { Button } from '../../../../components/ui/button.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
+import { Textarea } from '../../../../components/ui/textarea.tsx';
 import { Label } from '../../../../components/ui/label.tsx';
 import { Separator } from '../../../../components/ui/separator.tsx';
 import {
@@ -23,15 +24,16 @@ const MarkdownArtifactEditor = lazy(() =>
 import { cn } from '../../../../lib/utils.ts';
 import type { DashboardPost } from '../../../../api/types.ts';
 import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides } from '../types-social-dashboard.ts';
-import { getValidChartTypesForCustom, presetToCustomConfig } from '../types-social-dashboard.ts';
+import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, getDimensionMeta } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
 import { WidgetFilterForm } from './WidgetFilterForm.tsx';
 import { WidgetStyleForm } from './WidgetStyleForm.tsx';
 import { ChartStyleEditor } from './ChartStyleEditor.tsx';
-import { aggregateCustom } from '../dashboard-aggregations.ts';
+import { aggregateCustom, aggregatePlatforms, aggregateSentiment } from '../dashboard-aggregations.ts';
 import { extractChartSeriesLabels } from '../chart-series-labels.ts';
 import { SocialWidgetRenderer, applyWidgetFilters } from '../SocialWidgetRenderer.tsx';
+import { composeWidgetField, type WidgetDataSummary } from '../../../../api/endpoints/dashboard.ts';
 
 // ── Chart type metadata ────────────────────────────────────────────────────────
 
@@ -59,6 +61,8 @@ interface SocialWidgetConfigDialogProps {
   onClose: () => void;
   /** Distinct custom enrichment field names present on the dataset. */
   customFieldNames?: string[];
+  /** Agent context used to ground AI compose with task title + description. */
+  agentId?: string;
 }
 
 export function SocialWidgetConfigDialog({
@@ -71,6 +75,7 @@ export function SocialWidgetConfigDialog({
   onSave,
   onClose,
   customFieldNames,
+  agentId,
 }: SocialWidgetConfigDialogProps) {
   if (!open || !widget) return null;
 
@@ -86,6 +91,7 @@ export function SocialWidgetConfigDialog({
       onSave={onSave}
       onClose={onClose}
       customFieldNames={customFieldNames}
+      agentId={agentId}
     />
   );
 }
@@ -111,6 +117,7 @@ function SocialWidgetConfigDialogInner({
   onSave,
   onClose,
   customFieldNames,
+  agentId,
 }: SocialWidgetConfigDialogProps & { widget: SocialDashboardWidget }) {
   const [draft, setDraft] = useState<SocialDashboardWidget>(() => toCustomDraft(widget));
 
@@ -256,7 +263,8 @@ function SocialWidgetConfigDialogInner({
 
               <div className="flex-1 overflow-y-auto">
                 <TabsContent value="data" className="mt-0 p-5 space-y-4">
-                  {/* Title */}
+                  {/* Title — doubles as the figure header. AI compose drafts a
+                       terse 4–8 word label from the current data. */}
                   <div className="flex items-center gap-3">
                     <Label className="text-xs w-24 shrink-0">Title</Label>
                     <Input
@@ -264,6 +272,13 @@ function SocialWidgetConfigDialogInner({
                       onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
                       className="h-8 text-xs"
                       placeholder="Widget title"
+                    />
+                    <ComposeButton
+                      target="header"
+                      draft={draft}
+                      previewPosts={previewPosts}
+                      agentId={agentId}
+                      onResult={(text) => setDraft((prev) => ({ ...prev, title: text }))}
                     />
                   </div>
 
@@ -275,6 +290,28 @@ function SocialWidgetConfigDialogInner({
                       onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value || undefined }))}
                       className="h-8 text-xs"
                       placeholder="Optional subtitle"
+                    />
+                  </div>
+
+                  {/* Figure text — academic-style caption rendered below the
+                       chart body. Optional; blank → no change in look. */}
+                  <div className="flex items-start gap-3">
+                    <Label className="text-xs w-24 shrink-0 pt-2">Figure text</Label>
+                    <Textarea
+                      value={draft.figureText ?? ''}
+                      onChange={(e) =>
+                        setDraft((prev) => ({ ...prev, figureText: e.target.value || undefined }))
+                      }
+                      placeholder="1–2 sentence caption rendered below the chart."
+                      className="text-xs min-h-[60px]"
+                      rows={2}
+                    />
+                    <ComposeButton
+                      target="figure_text"
+                      draft={draft}
+                      previewPosts={previewPosts}
+                      agentId={agentId}
+                      onResult={(text) => setDraft((prev) => ({ ...prev, figureText: text }))}
                     />
                   </div>
 
@@ -456,5 +493,134 @@ function StyleTab({
       value={styleOverrides}
       onChange={onStyleChange}
     />
+  );
+}
+
+// ── AI compose button (used for Title + Figure text inputs) ──────────────────
+
+function buildDataSummary(
+  previewPosts: DashboardPost[],
+  widget: SocialDashboardWidget,
+): WidgetDataSummary {
+  const summary: WidgetDataSummary = { post_count: previewPosts.length };
+
+  // Time range from posted_at
+  if (previewPosts.length > 0) {
+    const dates = previewPosts
+      .map((p) => p.posted_at?.slice(0, 10) ?? '')
+      .filter((d) => d.length > 0)
+      .sort();
+    if (dates.length > 0) {
+      summary.time_range = { from: dates[0], to: dates[dates.length - 1] };
+    }
+  }
+
+  // Widget-specific buckets via the same aggregator the chart uses
+  const cfg = widget.customConfig;
+  if (cfg) {
+    summary.metric_label = METRIC_META[cfg.metric]?.label;
+    if (cfg.dimension) {
+      summary.dimension_label = getDimensionMeta(cfg.dimension).label;
+    }
+    const data = aggregateCustom(previewPosts, cfg);
+    if (!cfg.dimension && typeof data.value === 'number') {
+      summary.kpi_value = data.value;
+    } else if (data.labels && data.values) {
+      summary.top_buckets = data.labels.slice(0, 8).map((label, i) => ({
+        label,
+        value: data.values![i],
+      }));
+    } else if (data.groupedCategorical) {
+      summary.top_buckets = data.groupedCategorical.labels.slice(0, 8).map((label, i) => ({
+        label,
+        value: data.groupedCategorical!.datasets.reduce(
+          (sum, ds) => sum + (ds.values[i] ?? 0),
+          0,
+        ),
+      }));
+    } else if (data.timeSeries) {
+      summary.top_buckets = data.timeSeries.slice(0, 8).map((p) => ({
+        label: p.date,
+        value: p.value,
+      }));
+    }
+  }
+
+  // Always include high-level backdrop so the model can ground the language
+  summary.top_platforms = aggregatePlatforms(previewPosts).slice(0, 5).map((p) => ({
+    label: p.platform,
+    value: p.post_count,
+  }));
+  summary.top_sentiments = aggregateSentiment(previewPosts).slice(0, 5).map((s) => ({
+    label: s.sentiment,
+    value: s.count,
+  }));
+
+  return summary;
+}
+
+function ComposeButton({
+  target,
+  draft,
+  previewPosts,
+  agentId,
+  onResult,
+}: {
+  target: 'header' | 'figure_text';
+  draft: SocialDashboardWidget;
+  previewPosts: DashboardPost[];
+  agentId?: string;
+  onResult: (text: string) => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  const handleClick = useCallback(async () => {
+    setPending(true);
+    setErrored(false);
+    try {
+      const result = await composeWidgetField({
+        target,
+        widget: {
+          title: draft.title,
+          description: draft.description,
+          chart_type: draft.chartType,
+          aggregation: draft.aggregation,
+          custom_config: draft.customConfig
+            ? (draft.customConfig as unknown as Record<string, unknown>)
+            : null,
+          filters: draft.filters
+            ? (draft.filters as unknown as Record<string, unknown>)
+            : null,
+          figure_text: draft.figureText,
+        },
+        data_summary: buildDataSummary(previewPosts, draft),
+        agent_id: agentId,
+      });
+      onResult(result.text);
+    } catch {
+      setErrored(true);
+    } finally {
+      setPending(false);
+    }
+  }, [target, draft, previewPosts, agentId, onResult]);
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-8 px-2 shrink-0 text-xs gap-1.5"
+      disabled={pending}
+      onClick={handleClick}
+      title={errored ? 'Compose failed — try again' : 'Compose with AI'}
+    >
+      {pending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Sparkles className={`h-3.5 w-3.5 ${errored ? 'text-destructive' : ''}`} />
+      )}
+      <span className="hidden sm:inline">AI</span>
+    </Button>
   );
 }

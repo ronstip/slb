@@ -16,6 +16,7 @@ interface SocialWidgetFrameProps {
   onRemove?: () => void;
   onDuplicate?: () => void;
   headerAction?: React.ReactNode;
+  figureText?: string;
   children: React.ReactNode;
 }
 
@@ -27,6 +28,7 @@ export function SocialWidgetFrame({
   onRemove,
   onDuplicate,
   headerAction,
+  figureText,
   children,
 }: SocialWidgetFrameProps) {
   return (
@@ -78,7 +80,16 @@ export function SocialWidgetFrame({
       </CardHeader>
 
       <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden px-3 pb-1.5 pt-1">
-        {children}
+        <div className="flex-1 min-h-0 flex flex-col">{children}</div>
+        {figureText && (
+          <figcaption
+            className="mt-2 text-[11px] text-muted-foreground shrink-0"
+            dir="auto"
+            style={{ overflowWrap: 'anywhere' }}
+          >
+            <span className="font-semibold text-foreground">Figure:</span> {figureText}
+          </figcaption>
+        )}
       </CardContent>
     </Card>
   );

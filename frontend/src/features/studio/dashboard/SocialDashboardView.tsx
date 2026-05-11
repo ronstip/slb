@@ -66,6 +66,8 @@ interface SocialDashboardViewProps {
   defaultOrientation?: DashboardOrientation;
   /** Server-computed KPIs (passed only when no client filters are active) */
   serverKpis?: DashboardKpis;
+  /** Agent context — used to ground AI compose for widget annotations. */
+  agentId?: string;
 }
 
 export function SocialDashboardView({
@@ -85,6 +87,7 @@ export function SocialDashboardView({
   defaultLayout,
   defaultOrientation,
   serverKpis,
+  agentId,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
 
@@ -336,6 +339,7 @@ export function SocialDashboardView({
         onSave={handleSaveWidget}
         onClose={() => setConfigWidget(null)}
         customFieldNames={customFieldNames}
+        agentId={agentId}
       />
     </div>
   );

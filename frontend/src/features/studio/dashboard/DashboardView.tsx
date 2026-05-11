@@ -278,6 +278,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             gridRef={gridRef}
             defaultLayout={defaultLayout}
             serverKpis={activeFilterCount === 0 ? response?.kpis : undefined}
+            agentId={artifact.agentId}
           />
         )}
       </div>

@@ -331,6 +331,9 @@ export interface SocialDashboardWidget {
   customConfig?: CustomChartConfig;
   /** Markdown body — set when aggregation === 'text' */
   markdownContent?: string;
+  /** Optional figure-style caption rendered below the chart body (figcaption).
+   *  The widget's `title` doubles as the figure header — there's only one. */
+  figureText?: string;
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────

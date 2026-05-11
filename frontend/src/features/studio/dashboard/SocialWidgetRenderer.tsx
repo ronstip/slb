@@ -171,7 +171,7 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
 function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, onFilterToggle }: FrameProps & { posts: DashboardPost[]; onFilterToggle?: (key: string, value: string) => void }) {
   const cloudData = useMemo(() => aggregateThemeCloud(posts), [posts]);
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
       <SocialWordCloudWidget
         data={cloudData}
         onWordClick={onFilterToggle ? (v) => onFilterToggle('themes', v) : undefined}
@@ -189,7 +189,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   if (widget.chartType === 'table') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
         <EntityTableWidget
           data={entityData}
           onRowClick={onFilterToggle ? (v) => onFilterToggle('entities', v) : undefined}
@@ -198,7 +198,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     );
   }
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
       <SocialProgressListWidget data={listData} />
     </SocialWidgetFrame>
   );
@@ -213,7 +213,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
 
   if (widget.chartType === 'table') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
         <ChannelTableWidget
           data={channelData}
           onRowClick={onFilterToggle ? (v) => onFilterToggle('channels', v) : undefined}
@@ -222,7 +222,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
     );
   }
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
       <SocialProgressListWidget data={listData} />
     </SocialWidgetFrame>
   );
@@ -283,7 +283,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   if (!config) {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
         <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
           Configure this widget to select a metric
         </div>
@@ -306,7 +306,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   if (widget.chartType === 'word-cloud') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
         <SocialWordCloudWidget data={cloudData} />
       </SocialWidgetFrame>
     );
@@ -314,7 +314,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
         <SocialProgressListWidget data={data ?? undefined} />
       </SocialWidgetFrame>
     );
@@ -322,14 +322,14 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   if (widget.chartType === 'table') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
         <GenericTableView data={data ?? undefined} />
       </SocialWidgetFrame>
     );
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
       <SocialChartWidget
         chartType={widget.chartType}
         data={data ?? undefined}
@@ -384,14 +384,14 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
         <SocialProgressListWidget data={chartData ?? undefined} />
       </SocialWidgetFrame>
     );
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
       <SocialChartWidget
         chartType={widget.chartType}
         data={chartData ?? undefined}
@@ -527,7 +527,7 @@ const POST_TABLE_COLUMNS = postColumns<PostTableRow>({ summaryField: 'content', 
 function PostsTableWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
   const rows = useMemo(() => toPostTableRows(posts), [posts]);
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
       <DataTable
         data={rows}
         columns={POST_TABLE_COLUMNS}

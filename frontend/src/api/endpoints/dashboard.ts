@@ -39,3 +39,45 @@ export async function getSharedDashboardData(
   }
   return res.json();
 }
+
+// --- Widget annotation compose (AI-drafted header / figure text) ---
+
+export interface WidgetBucketStat {
+  label: string;
+  value: number;
+}
+
+export interface WidgetDataSummary {
+  post_count: number;
+  time_range?: { from: string | null; to: string | null };
+  metric_label?: string;
+  dimension_label?: string;
+  top_buckets?: WidgetBucketStat[];
+  kpi_value?: number;
+  top_sentiments?: WidgetBucketStat[];
+  top_platforms?: WidgetBucketStat[];
+}
+
+export interface WidgetSnapshot {
+  title?: string;
+  description?: string;
+  chart_type?: string;
+  aggregation?: string;
+  custom_config?: Record<string, unknown> | null;
+  filters?: Record<string, unknown> | null;
+  figure_header?: string;
+  figure_text?: string;
+}
+
+export interface ComposeWidgetFieldRequest {
+  target: 'header' | 'figure_text';
+  widget: WidgetSnapshot;
+  data_summary: WidgetDataSummary;
+  agent_id?: string;
+}
+
+export async function composeWidgetField(
+  req: ComposeWidgetFieldRequest,
+): Promise<{ text: string }> {
+  return apiPost('/dashboard/widget/compose-field', req);
+}
