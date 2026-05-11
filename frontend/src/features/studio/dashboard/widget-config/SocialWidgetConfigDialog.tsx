@@ -22,12 +22,15 @@ const MarkdownArtifactEditor = lazy(() =>
 );
 import { cn } from '../../../../lib/utils.ts';
 import type { DashboardPost } from '../../../../api/types.ts';
-import type { SocialDashboardWidget, SocialChartType, CustomChartConfig } from '../types-social-dashboard.ts';
+import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides } from '../types-social-dashboard.ts';
 import { getValidChartTypesForCustom, presetToCustomConfig } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
 import { WidgetFilterForm } from './WidgetFilterForm.tsx';
 import { WidgetStyleForm } from './WidgetStyleForm.tsx';
+import { ChartStyleEditor } from './ChartStyleEditor.tsx';
+import { aggregateCustom } from '../dashboard-aggregations.ts';
+import { extractChartSeriesLabels } from '../chart-series-labels.ts';
 import { SocialWidgetRenderer, applyWidgetFilters } from '../SocialWidgetRenderer.tsx';
 
 // ── Chart type metadata ────────────────────────────────────────────────────────
@@ -344,6 +347,7 @@ function SocialWidgetConfigDialogInner({
                     config={draft.customConfig ?? { metric: 'post_count' }}
                     onChange={updateConfig}
                     onChartTypeChange={updateChartType}
+                    chartType={draft.chartType}
                     customFieldNames={customFieldNames}
                   />
                 </TabsContent>
@@ -357,12 +361,16 @@ function SocialWidgetConfigDialogInner({
                 </TabsContent>
 
                 <TabsContent value="style" className="mt-0 p-5">
-                  <WidgetStyleForm
-                    aggregation={draft.aggregation}
-                    kpiIndex={draft.kpiIndex}
-                    accent={draft.accent}
+                  <StyleTab
+                    draft={draft}
+                    previewPosts={previewPosts}
                     onKpiIndexChange={(kpiIndex) => setDraft((prev) => ({ ...prev, kpiIndex }))}
-                    onAccentChange={(accent) => setDraft((prev) => ({ ...prev, accent }))}
+                    onStyleChange={(styleOverrides) =>
+                      setDraft((prev) => ({ ...prev, styleOverrides, accent: undefined }))
+                    }
+                    onAccentChange={(accent) =>
+                      setDraft((prev) => ({ ...prev, accent }))
+                    }
                   />
                 </TabsContent>
               </div>
@@ -399,5 +407,54 @@ function SocialWidgetConfigDialogInner({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Style tab ─────────────────────────────────────────────────────────────────
+
+/** KPI cards have a different style model (card-tint accent only) than charts
+ *  (palette accent + per-series overrides), so this branches on chart type
+ *  rather than dumping both controls onto every widget. */
+function StyleTab({
+  draft,
+  previewPosts,
+  onKpiIndexChange,
+  onStyleChange,
+  onAccentChange,
+}: {
+  draft: SocialDashboardWidget;
+  previewPosts: DashboardPost[];
+  onKpiIndexChange: (i: number) => void;
+  onStyleChange: (overrides: ChartStyleOverrides) => void;
+  onAccentChange: (accent: string | undefined) => void;
+}) {
+  // KPI cards: keep the simple accent-only picker.
+  if (draft.chartType === 'number-card') {
+    return (
+      <WidgetStyleForm
+        aggregation={draft.aggregation}
+        kpiIndex={draft.kpiIndex}
+        accent={draft.styleOverrides?.accent ?? draft.accent}
+        onKpiIndexChange={onKpiIndexChange}
+        onAccentChange={onAccentChange}
+      />
+    );
+  }
+
+  // Charts: compute the labels the chart will render so the per-series picker
+  // matches the legend 1:1.
+  const previewData = draft.customConfig
+    ? aggregateCustom(previewPosts, draft.customConfig)
+    : undefined;
+  const seriesLabels = extractChartSeriesLabels(draft.chartType, previewData);
+  const styleOverrides: ChartStyleOverrides = draft.styleOverrides
+    ?? (draft.accent ? { accent: draft.accent } : {});
+
+  return (
+    <ChartStyleEditor
+      seriesLabels={seriesLabels}
+      value={styleOverrides}
+      onChange={onStyleChange}
+    />
   );
 }

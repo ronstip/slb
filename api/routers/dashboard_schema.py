@@ -125,6 +125,17 @@ class CustomChartConfig(BaseModel):
     timeBucket: Literal["day", "week", "month"] | None = None
     barOrientation: Literal["horizontal", "vertical"] | None = None
     breakdownDimension: CustomDimension | None = None
+    topN: int | None = Field(default=None, ge=1, le=100)
+    includeOthers: bool | None = None
+    stacked: bool | None = None
+    metricToggle: list[CustomMetric] | None = None
+
+
+class ChartStyleOverrides(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    accent: str | None = None
+    seriesColors: dict[str, str] | None = None
 
 
 class FilterCondition(BaseModel):
@@ -201,6 +212,7 @@ class SocialDashboardWidget(BaseModel):
     title: str
     description: str | None = None
     accent: str | None = None
+    styleOverrides: ChartStyleOverrides | None = None
     kpiIndex: int | None = Field(default=None, ge=0, le=4)
     filters: SocialWidgetFilters | None = None
     customConfig: CustomChartConfig | None = None

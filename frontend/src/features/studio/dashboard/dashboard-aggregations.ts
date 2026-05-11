@@ -553,8 +553,27 @@ function addToStats(map: Map<string, Stats>, key: string, val: number) {
   map.set(key, cur);
 }
 
+/** Sum two Stats together — used to merge tail categories into an "Others" bucket. */
+function mergeStats(a: Stats, b: Stats): Stats {
+  return {
+    sum: a.sum + b.sum,
+    count: a.count + b.count,
+    min: Math.min(a.min, b.min),
+    max: Math.max(a.max, b.max),
+  };
+}
+
+/** Default limit when topN is unset. Prevents pathological cardinality from
+ *  hanging the chart. */
+const DEFAULT_TOP_N = 50;
+/** Default limit on breakdown series count when topN is unset on a 2D config. */
+const DEFAULT_BREAKDOWN_LIMIT = 10;
+
 export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfig): WidgetData {
-  const { dimension, metric, metricAgg = 'sum', timeBucket = 'day', breakdownDimension } = config;
+  const {
+    dimension, metric, metricAgg = 'sum', timeBucket = 'day',
+    breakdownDimension, topN, includeOthers,
+  } = config;
 
   if (!dimension) {
     if (metricAgg === 'count') return { value: posts.length, labels: ['Count'], values: [posts.length] };
@@ -569,7 +588,56 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
     return { value, labels: [metric], values: [value] };
   }
 
-  // ── Two-dimensional pivot (breakdown) ─────────────────────────────────
+  // ── Time series with breakdown → groupedTimeSeries (multi-line) ───────
+  if (dimension === 'posted_at' && breakdownDimension && breakdownDimension !== dimension) {
+    const acc = new Map<string, Map<string, Stats>>(); // date → breakdownKey → Stats
+    const breakdownTotals = new Map<string, number>();
+
+    for (const p of posts) {
+      const val = getMetricValue(p, metric);
+      const dateKey = bucketDate(p.posted_at ?? '', timeBucket);
+      const bKeys = getDimensionKeys(p, breakdownDimension, timeBucket);
+      if (!acc.has(dateKey)) acc.set(dateKey, new Map());
+      const inner = acc.get(dateKey)!;
+      for (const bk of bKeys) {
+        addToStats(inner, bk, val);
+        breakdownTotals.set(bk, (breakdownTotals.get(bk) ?? 0) + val);
+      }
+    }
+
+    const allDates = [...acc.keys()].sort();
+    const limit = topN ?? DEFAULT_BREAKDOWN_LIMIT;
+    const sortedByTotal = [...breakdownTotals.entries()].sort((a, b) => b[1] - a[1]);
+    const topKeys = sortedByTotal.slice(0, limit).map(([k]) => k);
+    const tailKeys = sortedByTotal.slice(limit).map(([k]) => k);
+
+    const grouped: Record<string, Array<{ date: string; value: number }>> = {};
+    for (const bk of topKeys) {
+      grouped[bk] = allDates.map((date) => {
+        const s = acc.get(date)?.get(bk);
+        return { date, value: s ? resolveAgg(s, metricAgg) : 0 };
+      });
+    }
+    if (includeOthers && tailKeys.length > 0) {
+      grouped['Others'] = allDates.map((date) => {
+        let merged: Stats = { sum: 0, count: 0, min: Infinity, max: -Infinity };
+        let any = false;
+        for (const bk of tailKeys) {
+          const s = acc.get(date)?.get(bk);
+          if (s) { merged = mergeStats(merged, s); any = true; }
+        }
+        return { date, value: any ? resolveAgg(merged, metricAgg) : 0 };
+      });
+    }
+
+    let grandTotal = 0;
+    for (const series of Object.values(grouped)) {
+      for (const p of series) grandTotal += p.value;
+    }
+    return { value: grandTotal, groupedTimeSeries: grouped };
+  }
+
+  // ── Two-dimensional pivot (categorical primary + breakdown) ───────────
   if (breakdownDimension && breakdownDimension !== dimension && dimension !== 'posted_at') {
     const acc2d = new Map<string, Map<string, Stats>>();
     const breakdownTotals = new Map<string, number>();
@@ -588,26 +656,40 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
       }
     }
 
-    // Sort primary labels by total value descending
-    const primaryLabels = [...acc2d.keys()]
+    // Primary labels sorted by total value descending, then apply topN/Others
+    const primaryRanked = [...acc2d.keys()]
       .map((label) => {
         const inner = acc2d.get(label)!;
         let total = 0;
         for (const s of inner.values()) total += resolveAgg(s, metricAgg);
         return { label, total };
       })
-      .sort((a, b) => b.total - a.total)
-      .map((r) => r.label);
+      .sort((a, b) => b.total - a.total);
 
-    // Top 10 breakdown groups by total
+    const primaryLimit = topN ?? DEFAULT_TOP_N;
+    const topPrimary = primaryRanked.slice(0, primaryLimit).map((r) => r.label);
+    const tailPrimary = primaryRanked.slice(primaryLimit).map((r) => r.label);
+
+    // Breakdown groups: capped at DEFAULT_BREAKDOWN_LIMIT (legend would be unreadable beyond)
     const topBreakdowns = [...breakdownTotals.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
+      .slice(0, DEFAULT_BREAKDOWN_LIMIT)
       .map(([k]) => k);
+
+    const primaryLabels = [...topPrimary];
+    if (includeOthers && tailPrimary.length > 0) primaryLabels.push('Others');
 
     const datasets = topBreakdowns.map((bk) => ({
       label: bk,
       values: primaryLabels.map((pk) => {
+        if (pk === 'Others') {
+          let othersVal = 0;
+          for (const tail of tailPrimary) {
+            const s = acc2d.get(tail)?.get(bk);
+            if (s) othersVal += resolveAgg(s, metricAgg);
+          }
+          return othersVal;
+        }
         const s = acc2d.get(pk)?.get(bk);
         return s ? resolveAgg(s, metricAgg) : 0;
       }),
@@ -621,7 +703,7 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
     };
   }
 
-  // ── Single-dimension aggregation (existing logic) ─────────────────────
+  // ── Single-dimension aggregation ──────────────────────────────────────
   const acc = new Map<string, Stats>();
 
   for (const p of posts) {
@@ -631,15 +713,14 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
     }
   }
 
-  const resolved: Array<{ label: string; value: number }> = [];
-  for (const [label, s] of acc) {
-    resolved.push({ label, value: resolveAgg(s, metricAgg) });
-  }
-
-  const total = resolved.reduce((s, r) => s + r.value, 0);
-
   if (dimension === 'posted_at') {
+    // Time series — natural chronological order, no topN/Others.
+    const resolved: Array<{ label: string; value: number }> = [];
+    for (const [label, s] of acc) {
+      resolved.push({ label, value: resolveAgg(s, metricAgg) });
+    }
     resolved.sort((a, b) => a.label.localeCompare(b.label));
+    const total = resolved.reduce((s, r) => s + r.value, 0);
     return {
       value: total,
       labels: resolved.map((r) => r.label),
@@ -648,6 +729,27 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
     };
   }
 
-  resolved.sort((a, b) => b.value - a.value);
-  return { value: total, labels: resolved.map((r) => r.label), values: resolved.map((r) => r.value) };
+  // Categorical: apply topN + optional Others bucket
+  const ranked: Array<{ label: string; stats: Stats; value: number }> = [];
+  for (const [label, s] of acc) {
+    ranked.push({ label, stats: s, value: resolveAgg(s, metricAgg) });
+  }
+  ranked.sort((a, b) => b.value - a.value);
+
+  const limit = topN ?? DEFAULT_TOP_N;
+  const top = ranked.slice(0, limit);
+  const tail = ranked.slice(limit);
+
+  const labels = top.map((r) => r.label);
+  const values = top.map((r) => r.value);
+
+  if (includeOthers && tail.length > 0) {
+    let merged: Stats = { sum: 0, count: 0, min: Infinity, max: -Infinity };
+    for (const r of tail) merged = mergeStats(merged, r.stats);
+    labels.push('Others');
+    values.push(resolveAgg(merged, metricAgg));
+  }
+
+  const total = values.reduce((s, v) => s + v, 0);
+  return { value: total, labels, values };
 }

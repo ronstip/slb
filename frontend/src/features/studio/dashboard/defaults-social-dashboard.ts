@@ -77,18 +77,31 @@ export function getDefaultLayout(): SocialDashboardWidget[] {
     {
       i: uid(),
       x: 0, y: 8, w: 12, h: 6,
-      aggregation: 'volume',
+      aggregation: 'custom',
       chartType: 'line',
       title: 'Volume Over Time',
+      customConfig: {
+        dimension: 'posted_at',
+        metric: 'post_count',
+        timeBucket: 'day',
+        breakdownDimension: 'platform',
+        metricToggle: ['post_count', 'view_count'],
+      },
     },
 
     // ── Row 4: Sentiment over time (y=14, h=6) ───────────────────────
     {
       i: uid(),
       x: 0, y: 14, w: 12, h: 6,
-      aggregation: 'sentiment-over-time',
+      aggregation: 'custom',
       chartType: 'line',
       title: 'Sentiment Over Time',
+      customConfig: {
+        dimension: 'posted_at',
+        metric: 'post_count',
+        timeBucket: 'day',
+        breakdownDimension: 'sentiment',
+      },
     },
 
     // ── Row 5: Topics (y=20, h=7) ────────────────────────────────────

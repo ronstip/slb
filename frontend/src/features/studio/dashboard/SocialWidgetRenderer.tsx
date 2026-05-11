@@ -1,14 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation } from './types-social-dashboard.ts';
 import { aggregateCustom } from './dashboard-aggregations.ts';
 import {
   aggregateSentiment,
   aggregateEmotions,
   aggregatePlatforms,
-  aggregateVolume,
-  aggregateSentimentOverTime,
   aggregateThemeCloud,
   aggregateThemes,
   aggregateEntities,
@@ -160,7 +158,7 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
   return (
     <SocialKpiCard
       kpi={kpi}
-      accent={widget.accent}
+      accent={widget.styleOverrides?.accent ?? widget.accent}
       kpiIndex={widget.kpiIndex ?? 0}
       isEditMode={isEditMode}
       onConfigure={onConfigure}
@@ -232,10 +230,27 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
 
 function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
   const config = widget.customConfig;
+
+  // Optional viewer-facing metric toggle. The persisted `metric` is the
+  // initial selection; the toggle list normally contains it.
+  const toggleMetrics = (config?.metricToggle?.length ?? 0) >= 2 ? config!.metricToggle! : undefined;
+  const [activeMetric, setActiveMetric] = useState<CustomMetric>(() => config?.metric ?? 'post_count');
+  // Reset when the underlying widget config changes (e.g. user opens a
+  // different widget that reuses this dispatch path).
+  useEffect(() => {
+    if (!config) return;
+    setActiveMetric(config.metric);
+  }, [config?.metric, toggleMetrics?.join(',')]);
+
+  const effectiveConfig = useMemo(
+    () => (config ? { ...config, metric: activeMetric } : null),
+    [config, activeMetric],
+  );
+
   const data = useMemo<WidgetData | null>(() => {
-    if (!config) return null;
-    return aggregateCustom(posts, config);
-  }, [posts, config]);
+    if (!effectiveConfig) return null;
+    return aggregateCustom(posts, effectiveConfig);
+  }, [posts, effectiveConfig]);
 
   const cloudData = useMemo(() => {
     if (!data?.labels || !data.values) return [];
@@ -246,6 +261,25 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     () => ({ label: widget.title, value: data?.value ?? 0, icon: 'posts' as const, sparklineData: [] }),
     [widget.title, data?.value],
   );
+
+  const headerAction = toggleMetrics ? (
+    <div className="inline-flex rounded-md border border-border overflow-hidden text-[11px]">
+      {toggleMetrics.map((m, i) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => setActiveMetric(m)}
+          className={`px-2 py-0.5 transition-colors ${i > 0 ? 'border-l border-border' : ''} ${
+            activeMetric === m
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background hover:bg-muted text-muted-foreground'
+          }`}
+        >
+          {METRIC_META[m].label}
+        </button>
+      ))}
+    </div>
+  ) : undefined;
 
   if (!config) {
     return (
@@ -261,7 +295,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     return (
       <SocialKpiCard
         kpi={syntheticKpi}
-        accent={widget.accent}
+        accent={widget.styleOverrides?.accent ?? widget.accent}
         isEditMode={isEditMode}
         onConfigure={onConfigure}
         onRemove={onRemove}
@@ -272,7 +306,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   if (widget.chartType === 'word-cloud') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
         <SocialWordCloudWidget data={cloudData} />
       </SocialWidgetFrame>
     );
@@ -280,7 +314,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
         <SocialProgressListWidget data={data ?? undefined} />
       </SocialWidgetFrame>
     );
@@ -288,21 +322,27 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   if (widget.chartType === 'table') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
         <GenericTableView data={data ?? undefined} />
       </SocialWidgetFrame>
     );
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
-      <SocialChartWidget chartType={widget.chartType} data={data ?? undefined} accent={widget.accent} barOrientation={widget.customConfig?.barOrientation} />
+    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
+      <SocialChartWidget
+        chartType={widget.chartType}
+        data={data ?? undefined}
+        accent={widget.styleOverrides?.accent ?? widget.accent}
+        seriesColorOverrides={widget.styleOverrides?.seriesColors}
+        barOrientation={widget.customConfig?.barOrientation}
+        stacked={widget.customConfig?.stacked ?? true}
+      />
     </SocialWidgetFrame>
   );
 }
 
 function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
-  const [volumeMetric, setVolumeMetric] = useState<'posts' | 'views'>('posts');
   const chartData = useMemo<WidgetData | null>(() => {
     switch (widget.aggregation) {
       case 'sentiment': {
@@ -316,31 +356,6 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
       case 'platform': {
         const d = aggregatePlatforms(posts);
         return { labels: d.map((x) => x.platform), values: d.map((x) => x.post_count) };
-      }
-      case 'volume': {
-        const d = aggregateVolume(posts, 'day', volumeMetric);
-        const grouped: Record<string, Array<{ date: string; value: number }>> = {};
-        for (const point of d) {
-          if (!grouped[point.platform]) grouped[point.platform] = [];
-          grouped[point.platform].push({ date: point.post_date, value: point.post_count });
-        }
-        return { groupedTimeSeries: grouped };
-      }
-      case 'sentiment-over-time': {
-        const d = aggregateSentimentOverTime(posts);
-        const grouped: Record<string, Array<{ date: string; value: number }>> = {
-          positive: [], negative: [], neutral: [], mixed: [],
-        };
-        for (const point of d) {
-          grouped.positive.push({ date: point.date, value: point.positive });
-          grouped.negative.push({ date: point.date, value: point.negative });
-          grouped.neutral.push({ date: point.date, value: point.neutral });
-          grouped.mixed.push({ date: point.date, value: point.mixed });
-        }
-        for (const key of Object.keys(grouped)) {
-          if (grouped[key].every((p) => p.value === 0)) delete grouped[key];
-        }
-        return { groupedTimeSeries: grouped };
       }
       case 'themes': {
         const d = aggregateThemes(posts);
@@ -365,42 +380,25 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
       default:
         return null;
     }
-  }, [widget.aggregation, posts, volumeMetric]);
-
-  const headerAction = widget.aggregation === 'volume' ? (
-    <div className="inline-flex rounded-md border border-border overflow-hidden text-[11px]">
-      <button
-        type="button"
-        onClick={() => setVolumeMetric('posts')}
-        className={`px-2 py-0.5 transition-colors ${volumeMetric === 'posts' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted text-muted-foreground'}`}
-      >
-        Posts
-      </button>
-      <button
-        type="button"
-        onClick={() => setVolumeMetric('views')}
-        className={`px-2 py-0.5 transition-colors border-l border-border ${volumeMetric === 'views' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted text-muted-foreground'}`}
-      >
-        Views
-      </button>
-    </div>
-  ) : undefined;
-
-  const frameTitle = widget.aggregation === 'volume' && volumeMetric === 'views' && widget.title === 'Volume Over Time'
-    ? 'Views Over Time'
-    : widget.title;
+  }, [widget.aggregation, posts]);
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={frameTitle} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
         <SocialProgressListWidget data={chartData ?? undefined} />
       </SocialWidgetFrame>
     );
   }
 
   return (
-    <SocialWidgetFrame title={frameTitle} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
-      <SocialChartWidget chartType={widget.chartType} data={chartData ?? undefined} accent={widget.accent} barOrientation={widget.customConfig?.barOrientation} />
+    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+      <SocialChartWidget
+        chartType={widget.chartType}
+        data={chartData ?? undefined}
+        accent={widget.styleOverrides?.accent ?? widget.accent}
+        seriesColorOverrides={widget.styleOverrides?.seriesColors}
+        barOrientation={widget.customConfig?.barOrientation}
+      />
     </SocialWidgetFrame>
   );
 }
@@ -559,7 +557,7 @@ interface SocialWidgetRendererProps {
 }
 
 export function SocialWidgetRenderer({
-  widget,
+  widget: rawWidget,
   filteredPosts,
   isEditMode,
   onConfigure,
@@ -568,6 +566,10 @@ export function SocialWidgetRenderer({
   onFilterToggle,
   serverKpis,
 }: SocialWidgetRendererProps) {
+  // Legacy aggregations (`volume`, `sentiment-over-time`) are rewritten to
+  // `aggregation: 'custom'` here so the dispatch below stays uniform.
+  const widget = useMemo(() => normalizeWidgetAggregation(rawWidget), [rawWidget]);
+
   const widgetPosts = useMemo(
     () => applyWidgetFilters(filteredPosts, widget.filters),
     [filteredPosts, widget.filters],

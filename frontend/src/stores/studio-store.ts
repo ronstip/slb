@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { DataExportRow } from '../api/types.ts';
+import type { ChartStyleOverrides as DashboardChartStyleOverrides } from '../features/studio/dashboard/types-social-dashboard.ts';
 
 interface DataExportArtifact {
   id: string;
@@ -12,12 +13,7 @@ interface DataExportArtifact {
   createdAt: Date;
 }
 
-export interface ChartStyleOverrides {
-  /** Base accent color for the generated palette. */
-  accent?: string;
-  /** Per-label color overrides — keyed by exact label as it appears in data. */
-  seriesColors?: Record<string, string>;
-}
+export type ChartStyleOverrides = DashboardChartStyleOverrides;
 
 interface ChartArtifact {
   id: string;

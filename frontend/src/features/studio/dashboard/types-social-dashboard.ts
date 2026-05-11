@@ -108,6 +108,18 @@ export interface CustomChartConfig {
   barOrientation?: 'horizontal' | 'vertical';
   /** Optional second dimension to split bars/slices into sub-groups */
   breakdownDimension?: CustomDimension;
+  /** Max number of primary categories to show. Undefined = show all (capped at 50). */
+  topN?: number;
+  /** Roll remaining categories beyond topN into an "Others" bucket. Only meaningful
+   *  for categorical primary dimensions (not time series). */
+  includeOthers?: boolean;
+  /** Bar chart stacking when a breakdownDimension is set. Default true. */
+  stacked?: boolean;
+  /** When set with 2+ metrics, the widget renders a header toggle so the
+   *  viewer can swap the active metric without entering edit mode. The
+   *  primary `metric` field is the initial selection; the toggle list should
+   *  contain it. */
+  metricToggle?: CustomMetric[];
 }
 
 export const DIMENSION_META: Record<StandardCustomDimension, DimensionMeta> = {
@@ -171,9 +183,15 @@ export function presetToCustomConfig(
     case 'channels':
       return { customConfig: { dimension: 'channel_handle', metric: 'post_count' }, chartType: 'bar' };
     case 'volume':
-      return { customConfig: { dimension: 'posted_at', metric: 'post_count', timeBucket: 'day' }, chartType: 'line' };
+      return {
+        customConfig: { dimension: 'posted_at', metric: 'post_count', timeBucket: 'day', breakdownDimension: 'platform' },
+        chartType: 'line',
+      };
     case 'sentiment-over-time':
-      return { customConfig: { dimension: 'posted_at', metric: 'post_count', timeBucket: 'day' }, chartType: 'line' };
+      return {
+        customConfig: { dimension: 'posted_at', metric: 'post_count', timeBucket: 'day', breakdownDimension: 'sentiment' },
+        chartType: 'line',
+      };
     case 'engagement-rate':
       return { customConfig: { dimension: 'posted_at', metric: 'engagement_total', timeBucket: 'day' }, chartType: 'line' };
     case 'posts':
@@ -181,6 +199,37 @@ export function presetToCustomConfig(
     default:
       return { customConfig: { metric: 'post_count' }, chartType: 'bar' };
   }
+}
+
+// ─── Chart style overrides (accent + per-series colors) ─────────────────────
+
+export interface ChartStyleOverrides {
+  /** Base accent color for the generated palette. */
+  accent?: string;
+  /** Per-label color overrides — keyed by the exact label in the data. */
+  seriesColors?: Record<string, string>;
+}
+
+/** Aggregations that were superseded by `aggregation: 'custom'` with the right
+ *  dimension/breakdown. Stored widgets and agent-emitted layouts may still use
+ *  them; we normalize at render time so the dispatch table stays simple. */
+const LEGACY_PRESET_AGGREGATIONS: ReadonlySet<SocialAggregation> = new Set([
+  'volume',
+  'sentiment-over-time',
+]);
+
+/** Convert legacy preset widgets to their equivalent `aggregation: 'custom'`
+ *  form. Idempotent for already-custom or non-legacy widgets. */
+export function normalizeWidgetAggregation<T extends { aggregation: SocialAggregation; chartType: SocialChartType; customConfig?: CustomChartConfig; kpiIndex?: number }>(widget: T): T {
+  if (!LEGACY_PRESET_AGGREGATIONS.has(widget.aggregation)) return widget;
+  const { customConfig, chartType } = presetToCustomConfig(widget.aggregation, widget.kpiIndex);
+  return {
+    ...widget,
+    aggregation: 'custom',
+    chartType: widget.chartType ?? chartType,
+    customConfig: widget.customConfig ?? customConfig,
+    kpiIndex: undefined,
+  };
 }
 
 // ─── Filter conditions (advanced per-widget rules) ──────────────────────────
@@ -270,8 +319,12 @@ export interface SocialDashboardWidget {
   title: string;
   /** Optional subtitle / description */
   description?: string;
-  /** Optional color accent for number cards */
+  /** Legacy: KPI card tint + simple chart accent. New widgets prefer
+   *  `styleOverrides.accent`; kept here for KPI cards and back-compat. */
   accent?: string;
+  /** Chart style — accent + per-series color overrides. Takes precedence
+   *  over `accent` for non-KPI chart widgets. */
+  styleOverrides?: ChartStyleOverrides;
   /** Per-widget filters applied on top of global filtered posts */
   filters?: SocialWidgetFilters;
   /** Custom chart configuration — set when aggregation === 'custom' */
