@@ -333,6 +333,18 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     }
     if (data.groupedTimeSeries && Object.keys(data.groupedTimeSeries).length > 0 && chartType !== 'line') {
       const entries = Object.entries(data.groupedTimeSeries);
+      if (chartType === 'bar') {
+        // Keep dates on the primary axis with breakdown values as datasets so
+        // bars stack/group by breakdown — matching the user's group-by intent.
+        const allDates = new Set<string>();
+        for (const [, series] of entries) for (const p of series) allDates.add(p.date);
+        const labels = [...allDates].sort();
+        const datasets = entries.map(([name, series]) => {
+          const byDate = new Map(series.map((p) => [p.date, p.value]));
+          return { label: name, values: labels.map((d) => byDate.get(d) ?? 0) };
+        });
+        return { ...data, groupedCategorical: { labels, datasets }, groupedTimeSeries: undefined };
+      }
       return {
         ...data,
         labels: entries.map(([name]) => name),
