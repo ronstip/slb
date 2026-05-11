@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -137,6 +137,7 @@ class SharedDashboardDataResponse(BaseModel):
     # None when the owner never saved a layout (default preset is used then).
     layout: list[dict[str, Any]] | None = None
     filterBarFilters: list[str] | None = None
+    orientation: Literal["horizontal", "vertical"] | None = None
 
 
 class BriefingShareResponse(BaseModel):

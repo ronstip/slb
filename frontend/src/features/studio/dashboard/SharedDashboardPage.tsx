@@ -139,6 +139,7 @@ export function SharedDashboardPage() {
               filterBarFilters={filterBarFilters}
               onLayoutLoaded={handleLayoutLoaded}
               defaultLayout={response.layout as SocialDashboardWidget[] | undefined ?? undefined}
+              defaultOrientation={response.orientation ?? undefined}
               readOnly
             />
           </main>

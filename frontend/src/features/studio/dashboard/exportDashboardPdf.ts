@@ -1,5 +1,6 @@
 import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
+import type { DashboardOrientation } from './types-social-dashboard.ts';
 
 const BRAND_COLOR = '#06B6D4';
 const PAGE_MARGIN = 24;
@@ -46,8 +47,10 @@ async function loadLogoDataUrl(): Promise<string> {
 export async function exportDashboardPdf(
   gridElement: HTMLElement,
   projectName: string,
+  orientation: DashboardOrientation = 'horizontal',
 ) {
-  const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
+  const pdfOrientation = orientation === 'vertical' ? 'portrait' : 'landscape'
+  const pdf = new jsPDF({ orientation: pdfOrientation, unit: 'pt', format: 'a4' })
   const pageW = pdf.internal.pageSize.getWidth()
   const pageH = pdf.internal.pageSize.getHeight()
   const contentW = pageW - PAGE_MARGIN * 2

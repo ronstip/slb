@@ -4,7 +4,7 @@ import type { Layout, LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { SocialDashboardWidget } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
 import { SocialWidgetRenderer } from './SocialWidgetRenderer.tsx';
 
 function mergeRefs<T>(...refs: Array<React.Ref<T | null> | undefined | null>) {
@@ -48,6 +48,7 @@ interface SocialDashboardGridProps {
   widgets: SocialDashboardWidget[];
   filteredPosts: DashboardPost[];
   isEditMode: boolean;
+  orientation?: DashboardOrientation;
   onLayoutChange: (widgets: SocialDashboardWidget[]) => void;
   onConfigure: (widgetId: string) => void;
   onRemove: (widgetId: string) => void;
@@ -57,10 +58,16 @@ interface SocialDashboardGridProps {
   serverKpis?: DashboardKpis;
 }
 
+// A4 portrait/landscape content-width ratio (after page margins). Used to
+// constrain the on-screen grid to roughly match the PDF page proportions
+// when the user picks a vertical layout.
+const VERTICAL_WIDTH_RATIO = 0.69;
+
 export function SocialDashboardGrid({
   widgets,
   filteredPosts,
   isEditMode,
+  orientation = 'horizontal',
   onLayoutChange,
   onConfigure,
   onRemove,
@@ -108,8 +115,16 @@ export function SocialDashboardGrid({
 
   const canInteract = isEditMode && currentBreakpoint === 'lg';
 
+  const containerStyle: React.CSSProperties = orientation === 'vertical'
+    ? { maxWidth: `${VERTICAL_WIDTH_RATIO * 100}%`, marginLeft: 'auto', marginRight: 'auto' }
+    : {};
+
   return (
-    <div ref={mergeRefs(containerRef, gridRef)} className="w-full">
+    <div
+      ref={mergeRefs(containerRef, gridRef)}
+      className="w-full"
+      style={containerStyle}
+    >
       <ResponsiveGridLayout
         className="layout"
         width={width}

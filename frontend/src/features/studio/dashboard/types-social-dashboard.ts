@@ -1,5 +1,9 @@
 // ─── Core enums ──────────────────────────────────────────────────────────────
 
+export type DashboardOrientation = 'horizontal' | 'vertical';
+
+export const DEFAULT_DASHBOARD_ORIENTATION: DashboardOrientation = 'horizontal';
+
 export type SocialAggregation =
   | 'kpi'
   | 'sentiment'

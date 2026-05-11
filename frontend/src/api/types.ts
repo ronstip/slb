@@ -565,6 +565,7 @@ export interface SharedDashboardDataResponse {
    *  (SharedDashboardPage) casts to `SocialDashboardWidget[]`. */
   layout?: unknown[] | null;
   filterBarFilters?: string[] | null;
+  orientation?: 'horizontal' | 'vertical' | null;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText } from 'lucide-react';
+import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, RectangleHorizontal, RectangleVertical } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -7,23 +7,28 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu.tsx';
 import type { AddWidgetKind } from './SocialDashboardView.tsx';
+import type { DashboardOrientation } from './types-social-dashboard.ts';
 
 interface SocialDashboardToolbarProps {
   isEditMode: boolean;
   isSaving?: boolean;
+  orientation: DashboardOrientation;
   onEdit: () => void;
   onDone: () => void;
   onAddWidget: (kind: AddWidgetKind) => void;
   onResetToDefaults: () => void;
+  onOrientationChange: (orientation: DashboardOrientation) => void;
 }
 
 export function SocialDashboardToolbar({
   isEditMode,
   isSaving,
+  orientation,
   onEdit,
   onDone,
   onAddWidget,
   onResetToDefaults,
+  onOrientationChange,
 }: SocialDashboardToolbarProps) {
   if (!isEditMode) {
     return (
@@ -39,8 +44,21 @@ export function SocialDashboardToolbar({
     );
   }
 
+  const nextOrientation: DashboardOrientation = orientation === 'horizontal' ? 'vertical' : 'horizontal';
+  const OrientationIcon = orientation === 'horizontal' ? RectangleHorizontal : RectangleVertical;
+
   return (
     <div className="flex items-center gap-1.5">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        onClick={() => onOrientationChange(nextOrientation)}
+        title={`Switch to ${nextOrientation} layout`}
+      >
+        <OrientationIcon className="h-3.5 w-3.5" />
+        {orientation === 'horizontal' ? 'Landscape' : 'Portrait'}
+      </Button>
       <Button
         variant="outline"
         size="sm"

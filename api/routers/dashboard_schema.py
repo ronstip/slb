@@ -110,6 +110,8 @@ AGGREGATION_DEFAULTS: dict[str, dict] = {
 GRID_COLS = 12
 MAX_WIDGETS = 24
 
+DashboardOrientation = Literal["horizontal", "vertical"]
+
 
 # ─── Sub-models ───────────────────────────────────────────────────────────────
 
@@ -212,6 +214,7 @@ class DashboardLayout(BaseModel):
 
     layout: list[SocialDashboardWidget] = Field(max_length=MAX_WIDGETS)
     filterBarFilters: list[str] | None = None
+    orientation: DashboardOrientation | None = None
 
 
 def is_chart_type_valid_for(aggregation: str, chart_type: str) -> bool:

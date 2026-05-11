@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { SocialDashboardWidget } from './types-social-dashboard.ts';
-import { AGGREGATION_META } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
+import { AGGREGATION_META, DEFAULT_DASHBOARD_ORIENTATION } from './types-social-dashboard.ts';
 import type { DashboardFilters, FilterOptions } from './use-dashboard-filters.ts';
 import { useSocialDashboardStore } from './social-dashboard-store.ts';
 import { getDefaultLayout } from './defaults-social-dashboard.ts';
@@ -39,6 +39,8 @@ export interface DashboardToolbarHandlers {
   onDone: () => void;
   onAddWidget: (kind: AddWidgetKind) => void;
   onResetToDefaults: () => void;
+  orientation: DashboardOrientation;
+  onOrientationChange: (orientation: DashboardOrientation) => void;
   isSaving: boolean;
   isEditMode: boolean;
 }
@@ -55,9 +57,13 @@ interface SocialDashboardViewProps {
   filterBarFilters?: string[];
   onLayoutLoaded?: (filterBarFilters: string[]) => void;
   onToolbarReady?: (handlers: DashboardToolbarHandlers) => void;
+  onOrientationChange?: (orientation: DashboardOrientation) => void;
   gridRef?: React.RefObject<HTMLElement | null>;
   /** Custom default layout used when no saved layout exists */
   defaultLayout?: SocialDashboardWidget[];
+  /** Default orientation used when no persisted orientation is available
+   * (e.g. shared/public dashboards where the layout endpoint 401s). */
+  defaultOrientation?: DashboardOrientation;
   /** Server-computed KPIs (passed only when no client filters are active) */
   serverKpis?: DashboardKpis;
 }
@@ -74,8 +80,10 @@ export function SocialDashboardView({
   filterBarFilters,
   onLayoutLoaded,
   onToolbarReady,
+  onOrientationChange,
   gridRef,
   defaultLayout,
+  defaultOrientation,
   serverKpis,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
@@ -92,6 +100,7 @@ export function SocialDashboardView({
   }, [allPosts]);
 
   const [widgets, setWidgets] = useState<SocialDashboardWidget[]>([]);
+  const [orientation, setOrientation] = useState<DashboardOrientation>(DEFAULT_DASHBOARD_ORIENTATION);
   // Single config dialog for both add + edit
   const [configWidget, setConfigWidget] = useState<SocialDashboardWidget | null>(null);
   const [configMode, setConfigMode] = useState<'add' | 'edit'>('edit');
@@ -110,6 +119,9 @@ export function SocialDashboardView({
     } else {
       setWidgets(defaultLayout ?? getDefaultLayout());
     }
+    const persistedOrientation = layoutData?.orientation ?? defaultOrientation ?? DEFAULT_DASHBOARD_ORIENTATION;
+    setOrientation(persistedOrientation);
+    onOrientationChange?.(persistedOrientation);
     if (onLayoutLoaded) {
       const persisted = layoutData?.filterBarFilters;
       onLayoutLoaded(persisted && persisted.length > 0 ? persisted : DEFAULT_FILTER_BAR_FILTERS);
@@ -122,16 +134,23 @@ export function SocialDashboardView({
   useEffect(() => { filterBarFiltersRef.current = filterBarFilters ?? DEFAULT_FILTER_BAR_FILTERS; }, [filterBarFilters]);
   const widgetsRef = useRef(widgets);
   useEffect(() => { widgetsRef.current = widgets; }, [widgets]);
+  const orientationRef = useRef(orientation);
+  useEffect(() => { orientationRef.current = orientation; }, [orientation]);
 
   // Debounced auto-save
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleAutoSave = useCallback(
-    (updatedWidgets: SocialDashboardWidget[], updatedFilterBar?: string[]) => {
+    (
+      updatedWidgets: SocialDashboardWidget[],
+      updatedFilterBar?: string[],
+      updatedOrientation?: DashboardOrientation,
+    ) => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         saveLayout({
           layout: updatedWidgets,
           filterBarFilters: updatedFilterBar ?? filterBarFiltersRef.current,
+          orientation: updatedOrientation ?? orientationRef.current,
         });
       }, 800);
     },
@@ -160,8 +179,21 @@ export function SocialDashboardView({
   const handleDone = useCallback(() => {
     setEditMode(false);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveLayout({ layout: widgetsRef.current, filterBarFilters: filterBarFiltersRef.current });
+    saveLayout({
+      layout: widgetsRef.current,
+      filterBarFilters: filterBarFiltersRef.current,
+      orientation: orientationRef.current,
+    });
   }, [setEditMode, saveLayout]);
+
+  const handleOrientationChange = useCallback(
+    (next: DashboardOrientation) => {
+      setOrientation(next);
+      onOrientationChange?.(next);
+      scheduleAutoSave(widgetsRef.current, filterBarFiltersRef.current, next);
+    },
+    [onOrientationChange, scheduleAutoSave],
+  );
 
   const handleResetToDefaults = useCallback(() => {
     const defaults = defaultLayout ?? getDefaultLayout();
@@ -238,7 +270,11 @@ export function SocialDashboardView({
     widgetsRef.current = next;
     setWidgets(next);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveLayout({ layout: next, filterBarFilters: filterBarFiltersRef.current });
+    saveLayout({
+      layout: next,
+      filterBarFilters: filterBarFiltersRef.current,
+      orientation: orientationRef.current,
+    });
   }, [saveLayout]);
 
   const handleFilterToggle = useCallback(
@@ -256,11 +292,13 @@ export function SocialDashboardView({
       onDone: handleDone,
       onAddWidget: handleOpenAdd,
       onResetToDefaults: handleResetToDefaults,
+      orientation,
+      onOrientationChange: handleOrientationChange,
       isSaving,
       isEditMode,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditMode, isSaving, handleDone, handleOpenAdd, handleResetToDefaults, readOnly]);
+  }, [isEditMode, isSaving, handleDone, handleOpenAdd, handleResetToDefaults, handleOrientationChange, orientation, readOnly]);
 
   if (layoutLoading || widgets.length === 0) {
     return (
@@ -277,6 +315,7 @@ export function SocialDashboardView({
         widgets={widgets}
         filteredPosts={filteredPosts}
         isEditMode={isEditMode && !readOnly}
+        orientation={orientation}
         onLayoutChange={handleLayoutChange}
         onConfigure={handleOpenEdit}
         onRemove={handleRemoveWidget}

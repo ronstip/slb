@@ -1,15 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../../../../api/client.ts';
-import type { SocialDashboardWidget } from '../types-social-dashboard.ts';
+import type { SocialDashboardWidget, DashboardOrientation } from '../types-social-dashboard.ts';
 
 export interface LayoutSavePayload {
   layout: SocialDashboardWidget[];
   filterBarFilters?: string[];
+  orientation?: DashboardOrientation;
 }
 
 export interface LayoutResponse {
   layout: SocialDashboardWidget[] | null;
   filterBarFilters?: string[] | null;
+  orientation?: DashboardOrientation | null;
 }
 
 export function useDashboardLayout(artifactId: string) {

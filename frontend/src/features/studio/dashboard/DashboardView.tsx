@@ -90,7 +90,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     if (!gridRef.current) return;
     setDownloading(true);
     try {
-      await exportDashboardPdf(gridRef.current, displayTitle);
+      await exportDashboardPdf(gridRef.current, displayTitle, toolbarHandlers?.orientation ?? 'horizontal');
     } finally {
       setDownloading(false);
     }
@@ -147,10 +147,12 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
               <SocialDashboardToolbar
                 isEditMode={toolbarHandlers.isEditMode}
                 isSaving={toolbarHandlers.isSaving}
+                orientation={toolbarHandlers.orientation}
                 onEdit={toolbarHandlers.onEdit}
                 onDone={toolbarHandlers.onDone}
                 onAddWidget={toolbarHandlers.onAddWidget}
                 onResetToDefaults={toolbarHandlers.onResetToDefaults}
+                onOrientationChange={toolbarHandlers.onOrientationChange}
               />
               <div className="h-4 w-px bg-border shrink-0" />
             </>

@@ -8,7 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
-from api.routers.dashboard_schema import SocialDashboardWidget, MAX_WIDGETS, GRID_COLS
+from api.routers.dashboard_schema import (
+    DashboardOrientation,
+    SocialDashboardWidget,
+    MAX_WIDGETS,
+    GRID_COLS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +27,13 @@ class LayoutSaveRequest(BaseModel):
 
     layout: list[SocialDashboardWidget] = Field(max_length=MAX_WIDGETS)
     filterBarFilters: list[str] | None = None
+    orientation: DashboardOrientation | None = None
 
 
 class LayoutResponse(BaseModel):
     layout: list[dict[str, Any]] | None
     filterBarFilters: list[str] | None = None
+    orientation: DashboardOrientation | None = None
 
 
 @router.get("/{artifact_id}", response_model=LayoutResponse)
@@ -51,6 +58,7 @@ async def get_dashboard_layout(
     return LayoutResponse(
         layout=data.get("layout"),
         filterBarFilters=data.get("filterBarFilters"),
+        orientation=data.get("orientation"),
     )
 
 
@@ -85,6 +93,11 @@ async def save_dashboard_layout(
         "artifact_id": artifact_id,
         "layout": serialized_layout,
         "filterBarFilters": request.filterBarFilters,
+        "orientation": request.orientation,
     })
 
-    return LayoutResponse(layout=serialized_layout, filterBarFilters=request.filterBarFilters)
+    return LayoutResponse(
+        layout=serialized_layout,
+        filterBarFilters=request.filterBarFilters,
+        orientation=request.orientation,
+    )

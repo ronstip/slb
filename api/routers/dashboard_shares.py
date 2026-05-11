@@ -147,6 +147,7 @@ async def get_shared_dashboard(
     # the authenticated /dashboard/layouts route enforces.
     layout: list[dict] | None = None
     filter_bar_filters: list[str] | None = None
+    orientation: str | None = None
     try:
         layout_doc = await asyncio.to_thread(
             fs._db.collection("dashboard_layouts").document(share["dashboard_id"]).get
@@ -155,6 +156,7 @@ async def get_shared_dashboard(
             layout_data = layout_doc.to_dict()
             layout = layout_data.get("layout")
             filter_bar_filters = layout_data.get("filterBarFilters")
+            orientation = layout_data.get("orientation")
     except Exception:  # noqa: BLE001 — layout is non-critical, fall back to defaults
         logger.exception("Failed to load layout for shared dashboard %s", token)
 
@@ -201,6 +203,7 @@ async def get_shared_dashboard(
             ),
             layout=layout,
             filterBarFilters=filter_bar_filters,
+            orientation=orientation,
         )
 
     posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
@@ -225,6 +228,7 @@ async def get_shared_dashboard(
         ),
         layout=layout,
         filterBarFilters=filter_bar_filters,
+        orientation=orientation,
     )
 
 
