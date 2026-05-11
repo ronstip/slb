@@ -83,17 +83,60 @@ export function DescribePanel({
   if (embedded) {
     return (
       <div className="flex flex-col gap-5">
-        <div>
-          <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            What do you want Veille to listen for?
-          </p>
-          <Textarea
-            value={description}
-            onChange={(e) => onDescriptionChange(e.target.value)}
-            placeholder="Track what people are saying about Nike across social media in the past week"
-            className="min-h-[140px] resize-none rounded-xl border-border bg-background text-[15px] leading-relaxed shadow-none focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15"
-            disabled={isPlanning || isClarifying}
-          />
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">
+          <div className="flex-1 min-w-0 flex flex-col">
+            <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              What do you want Veille to listen for?
+            </p>
+            <Textarea
+              value={description}
+              onChange={(e) => onDescriptionChange(e.target.value)}
+              placeholder="Track what people are saying about Nike across social media in the past week"
+              className="flex-1 min-h-[140px] resize-none rounded-xl border-border bg-background text-[15px] leading-relaxed shadow-none focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15"
+              disabled={isPlanning || isClarifying}
+            />
+          </div>
+
+          {/* Template cards — side-by-side with the textarea on lg+ */}
+          {!isClarifying && (
+            <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Or start from a template
+              </p>
+              <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
+                {QUICK_PROMPTS.map(({ label, subtitle, prompt, tint }) => {
+                  const active = description === prompt;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => onQuickPrompt(prompt)}
+                      disabled={isPlanning}
+                      className={cn(
+                        'group flex w-full items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-all disabled:opacity-50',
+                        active
+                          ? 'border-primary/40 bg-primary/5'
+                          : 'border-border hover:border-primary/30 hover:bg-primary/[0.03]',
+                      )}
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: tint }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-foreground">
+                          {label}
+                        </span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {subtitle}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Clarification questions (embedded) */}
@@ -127,47 +170,6 @@ export function DescribePanel({
           <p className="text-[11px] text-amber-600 dark:text-amber-500">
             Description changed — click Continue to re-plan.
           </p>
-        )}
-
-        {/* Template cards — 4 across, mirrors the design's "or start from a template" row */}
-        {!isClarifying && (
-          <div className="space-y-2.5">
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Or start from a template
-            </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {QUICK_PROMPTS.map(({ label, subtitle, prompt, tint }) => {
-                const active = description === prompt;
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => onQuickPrompt(prompt)}
-                    disabled={isPlanning}
-                    className={cn(
-                      'group flex w-full items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-all disabled:opacity-50',
-                      active
-                        ? 'border-primary/40 bg-primary/5'
-                        : 'border-border hover:border-primary/30 hover:bg-primary/[0.03]',
-                    )}
-                  >
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: tint }}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium text-foreground">
-                        {label}
-                      </span>
-                      <span className="block truncate text-[11px] text-muted-foreground">
-                        {subtitle}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         )}
       </div>
     );

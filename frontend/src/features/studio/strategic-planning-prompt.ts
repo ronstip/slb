@@ -2,12 +2,51 @@ export const STRATEGIC_PLANNING_PROMPT = `Run a deep strategic intelligence sess
 
 **Workflow — two stages, in order**
 
-Do not start writing until you have done the research. The work runs in two explicit stages, and you should track progress with a todo list (one item per major investigation thread plus one per required report section).
+Don't write until the research is done. Track progress with a todo list.
 
-- *Stage 1 — Scope & baseline.* Define the precise data scope first: time range, entities, platforms, languages, what's in and what's out. Then run one well-formed baseline \`execute_sql\` query that returns the headline numbers (total posts, dedup count, platform mix, language mix, total reach, period boundaries). Everything downstream rests on these numbers — get them right before going further.
-- *Stage 2 — Deep EDA.* Vary the cuts aggressively: by time (day, week, day-of-week, hour), by platform, by actor, by format, by sentiment, by topic cluster, by audience cohort. Each cut should either confirm a thread or open a new one. Use queries in many shapes — aggregates, top-N, joins, time-series, comparisons. The goal of EDA is not to fill sections; it is to find the non-obvious threads worth pulling on.
+- *Stage 1 — Scope, baseline, landscape.* Define scope (time range, entities, platforms, languages, in/out). Then run two queries: (1) a baseline \`execute_sql\` for corpus totals (posts, dedup, platform mix, language mix, total reach, period bounds); (2) one \`social_listening.entity_metrics\` call covering every material actor at once. The TVF (see below) returns per-actor volume, SoV, sentiment, channels by type, themes, top emotion/content_type, and an auto-discovered breakdown of every \`custom_fields\` key — replacing nearly all hand-rolled per-actor aggregations. Discover entity candidates first by sampling the \`entities\` array on \`scope_posts\` and grouping aliases (surnames, nicknames, transliterations) under one \`canonical\`.
+- *Stage 2 — Qualitative and global EDA.* The TVF has settled the per-actor quantitative picture. The rest of EDA targets what it doesn't: corpus-wide cuts (time-of-day, day-of-week, format performance across the whole corpus, reach distribution), qualitative reads of actual text (\`content\`, \`ai_summary\`, \`context\`, top comments — in the original language), and drill-downs wherever the TVF output is surprising (a custom_field skewed unexpectedly, a theme dominating one actor and absent from another, sentiment flipping by platform). Follow the threads the data exposes, not a checklist. Qualitative material — what was said, how, by whom — stays load-bearing; pull and quote real text, don't paraphrase aggregates.
 
-Only after Stages 1–2 are substantially complete do you start writing the report.
+Only after Stages 1–2 do you start writing the report.
+
+**\`social_listening.entity_metrics\` — the per-actor landscape**
+
+\`\`\`
+entity_metrics(
+    p_agent_id      STRING,
+    p_entity_groups ARRAY<STRUCT<canonical STRING, variants ARRAY<STRING>>>,
+    p_start         TIMESTAMP,    -- NULL = open lower bound
+    p_end           TIMESTAMP,    -- NULL = open upper; CURRENT_TIMESTAMP() for "to now"
+    p_platforms     ARRAY<STRING> -- NULL or [] = all platforms
+)
+\`\`\`
+
+Variants match case-insensitively against each post's \`entities\` array. SoV is over the full filtered corpus, not just matched entities. Empty groups still return a row (useful for "who is silent"). One call per report — include every material actor so SoV denominators stay consistent.
+
+Worked example:
+\`\`\`sql
+SELECT *
+FROM social_listening.entity_metrics(
+    '4a809b8d-96e2-4527-a3ef-b2ffd4bbc45f',
+    [
+        STRUCT('Naftali Bennett'    AS canonical, ['naftali bennett', 'bennet'] AS variants),
+        STRUCT('Benjamin Netanyahu' AS canonical, ['benjamin netanyahu', 'bibi', 'netanyahu'] AS variants),
+        STRUCT('Yair Lapid'         AS canonical, ['yair lapid', 'lapid'] AS variants),
+        STRUCT('Gadi Eisenkot'      AS canonical, ['gadi eisenkot', 'eisenkot'] AS variants),
+        STRUCT('Yair Golan'         AS canonical, ['yair golan', 'golan'] AS variants),
+        STRUCT('Bezalel Smotrich'   AS canonical, ['bezalel smotrich', 'smotrich'] AS variants),
+        STRUCT('Benny Gantz'        AS canonical, ['benny gantz', 'gantz'] AS variants),
+        STRUCT('Avigdor Liberman'   AS canonical, ['avigdor liberman', 'liberman'] AS variants),
+        STRUCT('Itamar Ben-Gvir'    AS canonical, ['itamar ben-gvir', 'itamar ben gvir', 'ben-gvir', 'ben gvir'] AS variants)
+    ],
+    TIMESTAMP('2026-05-07'),
+    CURRENT_TIMESTAMP(),
+    ['twitter', 'tiktok']
+)
+ORDER BY mentions DESC;
+\`\`\`
+
+\`execute_sql\` still handles what the TVF doesn't: pulling specific posts to quote, day-by-day chronology, format × platform crosstabs, and any cut not per-canonical-entity.
 
 **Frame the question first**
 
@@ -69,22 +108,7 @@ You may reorder sections to match what the data is shouting, but every report in
 
    Rank rows by reach. Below the table, write **1–2 paragraphs of strategic insight** that interpret the asymmetries (who leads in volume vs. reach, who has the worst pro/anti ratio, who is silent, who is over-amplified relative to follower count). The table answers "what"; the paragraph answers "so what".
 
-   Query template for the underlying numbers (adapt names to the actual schema, or change sentiment to mor relevant custom field):
-
-   \`\`\`sql
-   SELECT
-     actor,
-     COUNT(*) AS posts,
-     SUM(views) AS reach,
-     COUNTIF(sentiment = 'positive') AS pro,
-     COUNTIF(sentiment = 'negative') AS anti
-   FROM <posts_table>
-   WHERE created_at BETWEEN <period_start> AND <period_end>
-   GROUP BY actor
-   ORDER BY reach DESC
-   \`\`\`
-
-   Build the table directly from this result. Do not paraphrase from memory of an earlier query — re-run if needed.
+   Build this table directly from the Stage 1 \`entity_metrics\` result: Posts = \`mentions\`, Reach = \`total_views\`, SoV % = \`sov_views * 100\`, Sentiment Pro/Anti = \`pos_mentions / neg_mentions\`. Rank by \`total_views\` (or \`mentions\` when reach is unreliable — say which once, in a footnote). Do not re-aggregate from \`scope_posts\` for this table.
 
 5. **Chronology + format/channel performance** — the period over time, plus the format and channel cuts that explain *what* drove each day. Numbers and dates here are the highest-risk surface for errors; build every cell from a single query result, not memory.
 

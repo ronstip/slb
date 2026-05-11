@@ -1,4 +1,4 @@
-import { PLATFORM_LABELS, buildScheduleString, formatSchedule } from '../../../lib/constants.ts';
+import { PLATFORM_LABELS, buildScheduleString, formatSchedule, localTimeToUtc } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
 import type { Constitution, CreateFromWizardPayload, Source } from '../../../api/endpoints/agents.ts';
 
@@ -82,7 +82,8 @@ export function formatWizardAsPrompt(
       lines.push(`Schedule day: ${task.scheduleDay >= 28 ? 'last day of month' : dayLabel} (anchor first run on this day)`);
     }
     if (task.scheduleTimes.length > 1) {
-      lines.push(`Additional run times (UTC): ${task.scheduleTimes.slice(1).join(', ')}`);
+      const extraUtc = task.scheduleTimes.slice(1).map(localTimeToUtc);
+      lines.push(`Additional run times (UTC): ${extraUtc.join(', ')}`);
     }
   } else {
     lines.push(`Schedule: One-time (run now)`);

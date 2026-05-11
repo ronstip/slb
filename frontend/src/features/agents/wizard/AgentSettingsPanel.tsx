@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import { Switch } from '../../../components/ui/switch.tsx';
-import { SCHEDULE_UTC_TIMES } from '../../../lib/constants.ts';
+import { SCHEDULE_LOCAL_TIMES } from '../../../lib/constants.ts';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { cn } from '../../../lib/utils.ts';
 import type { AgentOutput, AgentOutputType } from '../../../api/endpoints/agents.ts';
@@ -242,7 +242,7 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly,
                         }}
                         className="bg-transparent px-2 py-1 text-[12px] font-medium text-primary focus:outline-none"
                       >
-                        {SCHEDULE_UTC_TIMES.map(({ value }) => (
+                        {SCHEDULE_LOCAL_TIMES.map(({ value }) => (
                           <option key={value} value={value}>{value}</option>
                         ))}
                       </select>
@@ -267,8 +267,8 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly,
                       // Add the first available time not already in use.
                       const used = new Set(settings.scheduleTimes);
                       const next =
-                        SCHEDULE_UTC_TIMES.find((t) => !used.has(t.value))?.value
-                        ?? SCHEDULE_UTC_TIMES[0].value;
+                        SCHEDULE_LOCAL_TIMES.find((t) => !used.has(t.value))?.value
+                        ?? SCHEDULE_LOCAL_TIMES[0].value;
                       update({ scheduleTimes: [...settings.scheduleTimes, next] });
                     }}
                     className="inline-flex items-center gap-1 rounded-full border border-dashed border-muted-foreground/40 px-3 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary"

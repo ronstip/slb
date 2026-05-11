@@ -79,7 +79,10 @@ export const SENTIMENT_COLORS: Record<string, string> = {
 export const PLATFORMS = ['instagram', 'tiktok', 'facebook', 'twitter', 'reddit', 'youtube'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
-export const SCHEDULE_UTC_TIMES = [
+// Picker options shown to the user. Values are interpreted as the user's
+// LOCAL time. They are converted to UTC before being stored, and converted
+// back to local for display.
+export const SCHEDULE_LOCAL_TIMES = [
   { label: '12:00 AM', value: '00:00' },
   { label: '02:00 AM', value: '02:00' },
   { label: '04:00 AM', value: '04:00' },
@@ -94,15 +97,49 @@ export const SCHEDULE_UTC_TIMES = [
   { label: '09:00 PM', value: '21:00' },
 ] as const;
 
+/** Convert local "HH:MM" (browser's TZ) to UTC "HH:MM". */
+export function localTimeToUtc(local: string): string {
+  const [h, m] = local.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+/** Convert UTC "HH:MM" to local "HH:MM" (browser's TZ). */
+export function utcTimeToLocal(utc: string): string {
+  const [h, m] = utc.split(':').map(Number);
+  const d = new Date();
+  d.setUTCHours(h, m, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Format a "HH:MM" 24h time as 12h ("3:00 AM"). */
+export function formatTime12(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const period = h < 12 ? 'AM' : 'PM';
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+/** Browser-local timezone short name (e.g. "IDT", "PDT"), best-effort. */
+export function getLocalTzAbbrev(): string {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date());
+    return parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export type ScheduleUnit = 'minute' | 'hour' | 'day';
 
 export interface ParsedSchedule {
   unit: ScheduleUnit;
   interval: number;
-  time: string; // only meaningful for 'day' unit
+  time: string; // only meaningful for 'day' unit; stored as UTC
 }
 
-/** Parse a schedule string → { unit, interval, time } */
+/** Parse a schedule string → { unit, interval, time }. `time` is UTC "HH:MM". */
 export function parseScheduleString(schedule?: string | null): ParsedSchedule {
   if (!schedule || schedule === 'daily') return { unit: 'day', interval: 1, time: '09:00' };
   if (schedule === 'weekly') return { unit: 'day', interval: 7, time: '09:00' };
@@ -115,37 +152,41 @@ export function parseScheduleString(schedule?: string | null): ParsedSchedule {
   return { unit: 'day', interval: 1, time: '09:00' };
 }
 
-/** Build a schedule string from parts */
-export function buildScheduleString(unit: ScheduleUnit, interval: number, time: string): string {
+/** Build a schedule string from parts. `localTime` is local "HH:MM"; storage uses UTC. */
+export function buildScheduleString(unit: ScheduleUnit, interval: number, localTime: string): string {
   if (unit === 'minute') return `${interval}m`;
   if (unit === 'hour') return `${interval}h`;
-  return `${interval}d@${time}`;
+  return `${interval}d@${localTimeToUtc(localTime)}`;
 }
 
-/** Format a schedule into human-readable text */
+/** Format a schedule into human-readable text (in the viewer's local time). */
 export function formatSchedule(schedule?: string | null): string {
   const { unit, interval, time } = parseScheduleString(schedule);
   if (unit === 'minute') return `Every ${interval === 1 ? 'minute' : `${interval} minutes`}`;
   if (unit === 'hour') return `Every ${interval === 1 ? 'hour' : `${interval} hours`}`;
-  if (interval === 7) return `Every week at ${time} UTC`;
-  return `Every ${interval === 1 ? 'day' : `${interval} days`} at ${time} UTC`;
+  const local = utcTimeToLocal(time);
+  const tz = getLocalTzAbbrev();
+  const suffix = tz ? ` ${tz}` : '';
+  if (interval === 7) return `Every week at ${formatTime12(local)}${suffix}`;
+  return `Every ${interval === 1 ? 'day' : `${interval} days`} at ${formatTime12(local)}${suffix}`;
 }
 
 export type SchedulePreset = 'hourly' | 'daily' | 'weekly';
 
-/** Build a schedule string from a preset frequency */
-export function buildScheduleFromPreset(preset: SchedulePreset, time: string): string {
+/** Build a schedule string from a preset frequency. `localTime` is local "HH:MM". */
+export function buildScheduleFromPreset(preset: SchedulePreset, localTime: string): string {
   if (preset === 'hourly') return '1h';
-  if (preset === 'daily') return `1d@${time}`;
-  return `7d@${time}`; // weekly
+  const utc = localTimeToUtc(localTime);
+  if (preset === 'daily') return `1d@${utc}`;
+  return `7d@${utc}`; // weekly
 }
 
-/** Reverse-map a schedule string to a preset + time */
+/** Reverse-map a schedule string to a preset + local "HH:MM". */
 export function parseToPreset(schedule?: string | null): { preset: SchedulePreset; time: string } {
   const parsed = parseScheduleString(schedule);
   if (parsed.unit === 'hour' || parsed.unit === 'minute')
     return { preset: 'hourly', time: '09:00' };
-  if (parsed.interval >= 7)
-    return { preset: 'weekly', time: parsed.time };
-  return { preset: 'daily', time: parsed.time };
+  const local = utcTimeToLocal(parsed.time);
+  if (parsed.interval >= 7) return { preset: 'weekly', time: local };
+  return { preset: 'daily', time: local };
 }

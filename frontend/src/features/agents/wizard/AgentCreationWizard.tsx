@@ -462,11 +462,8 @@ export function AgentCreationWizard() {
         </div>
 
         {/* Footer */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/20 px-5 py-3">
-          <div className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {footerStat ?? (currentStep === 0 ? 'Step 1 of 3' : currentStep === 1 ? 'Step 2 of 3' : 'Step 3 of 3')}
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3 border-t border-border bg-muted/20 px-5 py-3">
+          <div className="flex items-center gap-2 order-1">
             {currentStep > 0 && (
               <Button
                 type="button"
@@ -501,6 +498,9 @@ export function AgentCreationWizard() {
                 Create without running
               </Button>
             )}
+          </div>
+          <div className="order-2 text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {footerStat ?? (currentStep === 0 ? 'Step 1 of 3' : currentStep === 1 ? 'Step 2 of 3' : 'Step 3 of 3')}
           </div>
         </div>
       </div>

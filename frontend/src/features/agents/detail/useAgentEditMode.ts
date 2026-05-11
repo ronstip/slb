@@ -12,6 +12,7 @@ export interface AgentEditDraft {
   constitution: Constitution;
   sources: Source[];
   custom_fields: CustomFieldDef[];
+  content_types: string[];
   todos: TodoItem[];
   data_start_date: string;
   data_end_date: string;
@@ -24,6 +25,7 @@ function draftFromAgent(agent: Agent): AgentEditDraft {
     constitution: agent.constitution ? structuredClone(agent.constitution) : { ...EMPTY_CONSTITUTION },
     sources: structuredClone(agent.data_scope?.sources ?? []),
     custom_fields: structuredClone((agent.enrichment_config?.custom_fields ?? []) as CustomFieldDef[]),
+    content_types: [...(agent.enrichment_config?.content_types ?? [])],
     todos: structuredClone(agent.todos ?? []),
     data_start_date: agent.data_start_date ?? '',
     data_end_date: agent.data_end_date ?? '',
@@ -40,6 +42,7 @@ const EMPTY_DRAFT: AgentEditDraft = {
   constitution: { ...EMPTY_CONSTITUTION },
   sources: [],
   custom_fields: [],
+  content_types: [],
   todos: [],
   data_start_date: '',
   data_end_date: '',
@@ -84,6 +87,7 @@ export function useAgentEditMode(agent: Agent | null) {
         enrichment_config: {
           custom_fields: draft.custom_fields.length > 0 ? draft.custom_fields : null,
           enrichment_context: draft.enrichment_context || undefined,
+          content_types: draft.content_types.length > 0 ? draft.content_types : null,
         },
         constitution: draft.constitution,
         todos: draft.todos,

@@ -13,6 +13,7 @@ import type { Agent } from '../../../api/endpoints/agents.ts';
 import { listAgentRuns } from '../../../api/endpoints/agents.ts';
 import type { ArtifactListItem } from '../../../api/endpoints/artifacts.ts';
 import { StatusBadge, formatDate } from './agent-status-utils.tsx';
+import { formatSchedule } from '../../../lib/constants.ts';
 import { BotAvatar, RadarPulse } from '../../../components/BrandElements.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
@@ -76,7 +77,11 @@ export function AgentDetailHeader({
   const artifactsCount = task.artifact_ids?.length || 0;
 
   const startDate = formatDate(task.created_at);
-  const showScheduleBtn = task.agent_type !== 'recurring' && task.status === 'success';
+  const hasSchedule = task.agent_type === 'recurring' && !!task.schedule;
+  // Show the button for one-off agents (so they can promote to recurring) and
+  // for recurring agents (so they can view/change the existing schedule).
+  const showScheduleBtn =
+    (task.agent_type !== 'recurring' && task.status === 'success') || hasSchedule;
   const canEdit = task.status !== 'running';
 
   const isEditing = editMode?.isEditing ?? false;
@@ -164,10 +169,11 @@ export function AgentDetailHeader({
                 {showScheduleBtn && onOpenSchedule && (
                   <button
                     onClick={onOpenSchedule}
+                    title={hasSchedule ? formatSchedule(task.schedule?.frequency) : 'Set a schedule'}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-border/50 rounded-lg bg-card hover:bg-secondary transition-colors text-foreground shadow-sm"
                   >
                     <CalendarClock className="w-3.5 h-3.5 text-muted-foreground" />
-                    Schedule
+                    {hasSchedule ? formatSchedule(task.schedule?.frequency) : 'Schedule'}
                   </button>
                 )}
                 <RunHistoryDropdown runs={runs} artifacts={artifacts} />

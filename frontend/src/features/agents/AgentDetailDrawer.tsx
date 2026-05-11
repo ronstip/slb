@@ -69,7 +69,10 @@ import {
   formatSchedule,
   buildScheduleFromPreset,
   parseToPreset,
-  SCHEDULE_UTC_TIMES,
+  SCHEDULE_LOCAL_TIMES,
+  localTimeToUtc,
+  formatTime12,
+  getLocalTzAbbrev,
 } from '../../lib/constants.ts';
 import type { SchedulePreset } from '../../lib/constants.ts';
 
@@ -611,15 +614,33 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
             </div>
             {editPreset !== 'hourly' && (
               <div className="space-y-1">
-                <label className="text-xs font-medium">Run at (UTC)</label>
+                <label className="text-xs font-medium">
+                  Run at <span className="text-muted-foreground font-normal">(your local time{getLocalTzAbbrev() ? ` — ${getLocalTzAbbrev()}` : ''})</span>
+                </label>
                 <Select value={editTime} onValueChange={setEditTime}>
                   <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {SCHEDULE_UTC_TIMES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
+                    {(() => {
+                      const presetValues: string[] = SCHEDULE_LOCAL_TIMES.map((t) => t.value);
+                      const showCustom = !presetValues.includes(editTime);
+                      return (
+                        <>
+                          {showCustom && (
+                            <SelectItem value={editTime}>
+                              {formatTime12(editTime)} (current)
+                            </SelectItem>
+                          )}
+                          {SCHEDULE_LOCAL_TIMES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </SelectContent>
                 </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Stored as {localTimeToUtc(editTime)} UTC
+                </p>
               </div>
             )}
             <div className="text-xs text-muted-foreground">

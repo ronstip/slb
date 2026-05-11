@@ -22,6 +22,8 @@ interface EnrichmentEditorProps {
   onContextChange: (v: string) => void;
   customFields: CustomFieldDef[];
   onCustomFieldsChange: (next: CustomFieldDef[]) => void;
+  contentTypes?: string[];
+  onContentTypesChange?: (next: string[]) => void;
   /** True when the values were populated by the AI planner and not yet edited. */
   generatedByAI: boolean;
 }
@@ -31,9 +33,13 @@ export function EnrichmentEditor({
   onContextChange,
   customFields,
   onCustomFieldsChange,
+  contentTypes,
+  onContentTypesChange,
   generatedByAI,
 }: EnrichmentEditorProps) {
-  const [open, setOpen] = useState(customFields.length > 0 || context.length > 0);
+  const [open, setOpen] = useState(
+    customFields.length > 0 || context.length > 0 || (contentTypes?.length ?? 0) > 0,
+  );
 
   const updateField = (idx: number, patch: Partial<CustomFieldDef>) => {
     const next = customFields.map((f, i) => (i === idx ? { ...f, ...patch } : f));
@@ -85,6 +91,13 @@ export function EnrichmentEditor({
               className="text-xs min-h-16"
             />
           </div>
+
+          {onContentTypesChange && (
+            <ContentTypesEditor
+              contentTypes={contentTypes ?? []}
+              onChange={onContentTypesChange}
+            />
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -237,6 +250,71 @@ function CustomFieldRow({ field, onChange, onRemove }: CustomFieldRowProps) {
         <p className="text-[10px] text-destructive">
           Lowercase snake_case, must start with a letter
         </p>
+      )}
+    </div>
+  );
+}
+
+interface ContentTypesEditorProps {
+  contentTypes: string[];
+  onChange: (next: string[]) => void;
+}
+
+function ContentTypesEditor({ contentTypes, onChange }: ContentTypesEditorProps) {
+  const [input, setInput] = useState('');
+
+  const add = () => {
+    const v = input.trim().toLowerCase();
+    if (!v) return;
+    if (contentTypes.includes(v)) {
+      setInput('');
+      return;
+    }
+    onChange([...contentTypes, v]);
+    setInput('');
+  };
+
+  const remove = (v: string) => onChange(contentTypes.filter((t) => t !== v));
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      add();
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <Label className="text-xs font-medium text-muted-foreground">Content types</Label>
+      </div>
+      <p className="text-[11px] text-muted-foreground italic mb-2">
+        Closed vocabulary the enricher must pick from when labelling each post's <code>content_type</code>.
+        Lowercase, 1–3 words. Keep "other" as the last item.
+      </p>
+      <Input
+        value={input}
+        onChange={(e) => setInput(e.target.value.toLowerCase())}
+        onKeyDown={handleKeyDown}
+        placeholder="Add a content type and press Enter (e.g. review, unboxing, ad)"
+        className="text-xs h-8"
+      />
+      {contentTypes.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {contentTypes.map((t) => (
+            <Badge key={t} variant="secondary" className="gap-1 text-xs">
+              {t}
+              <button
+                type="button"
+                onClick={() => remove(t)}
+                aria-label={`Remove ${t}`}
+                className="inline-flex items-center text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
       )}
     </div>
   );

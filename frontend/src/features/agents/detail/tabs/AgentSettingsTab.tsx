@@ -453,8 +453,9 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
   const hasContext = ctx && Object.values(ctx).some((v) => v);
   const hasEnrichment = !!task.enrichment_config?.enrichment_context;
   const hasCustomFields = (task.enrichment_config?.custom_fields?.length ?? 0) > 0;
+  const hasContentTypes = (task.enrichment_config?.content_types?.length ?? 0) > 0;
 
-  if (!hasConstitution && !hasContext && !hasEnrichment && !hasCustomFields) {
+  if (!hasConstitution && !hasContext && !hasEnrichment && !hasCustomFields && !hasContentTypes) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <TerminalSquare className="w-10 h-10 text-muted-foreground/30 mb-3" />
@@ -522,6 +523,24 @@ function ReadOnlyContextSection({ task }: { task: Agent }) {
             ))}
           </div>
         )}
+
+        {hasContentTypes && (
+          <div className="border-l-2 border-primary/20 pl-4 py-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-foreground/70 mb-1.5">
+              Content Types
+            </p>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              Closed vocabulary the enricher picks from when labelling each post.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {task.enrichment_config!.content_types!.map((t) => (
+                <span key={t} className="inline-flex items-center rounded-md bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -551,6 +570,8 @@ function EditableConstitutionSection({
           onContextChange={(v) => onUpdateDraft({ enrichment_context: v })}
           customFields={draft.custom_fields}
           onCustomFieldsChange={(fields) => onUpdateDraft({ custom_fields: fields })}
+          contentTypes={draft.content_types}
+          onContentTypesChange={(types) => onUpdateDraft({ content_types: types })}
           generatedByAI={false}
         />
       </div>

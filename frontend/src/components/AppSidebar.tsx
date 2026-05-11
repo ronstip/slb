@@ -31,6 +31,7 @@ import {
 import type { Agent } from '../api/endpoints/agents.ts';
 import type { SessionListItem } from '../api/endpoints/sessions.ts';
 import type { ExplorerLayoutListItem } from '../api/endpoints/explorer-layouts.ts';
+import { formatSchedule } from '../lib/constants.ts';
 import { DASHBOARD_DEFAULT_ID } from '../features/studio/dashboard/defaults-social-dashboard.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { LayoutCard } from './LayoutCard.tsx';
@@ -590,15 +591,23 @@ function AppSidebarImpl({
                     )}
                   </button>
                 )}
-                {activeAgent.agent_type !== 'recurring' && activeAgent.status === 'success' && onOpenSchedule && (
-                  <button
-                    onClick={onOpenSchedule}
-                    className={cn(NAV_ITEM_BASE, NAV_ITEM_IDLE)}
-                  >
-                    <CalendarClock className="h-4 w-4 shrink-0" />
-                    Schedule
-                  </button>
-                )}
+                {onOpenSchedule
+                  && (
+                    (activeAgent.agent_type !== 'recurring' && activeAgent.status === 'success')
+                    || (activeAgent.agent_type === 'recurring' && !!activeAgent.schedule)
+                  )
+                  && (
+                    <button
+                      onClick={onOpenSchedule}
+                      title={activeAgent.schedule ? formatSchedule(activeAgent.schedule.frequency) : 'Set a schedule'}
+                      className={cn(NAV_ITEM_BASE, NAV_ITEM_IDLE)}
+                    >
+                      <CalendarClock className="h-4 w-4 shrink-0" />
+                      <span className="truncate">
+                        {activeAgent.schedule ? formatSchedule(activeAgent.schedule.frequency) : 'Schedule'}
+                      </span>
+                    </button>
+                  )}
               </div>
             </>
           )}
