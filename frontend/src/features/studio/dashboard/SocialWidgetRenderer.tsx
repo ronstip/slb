@@ -437,7 +437,11 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
   if (widget.chartType === 'progress-list') {
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
-        <SocialProgressListWidget data={data ?? undefined} />
+        <SocialProgressListWidget
+          data={data ?? undefined}
+          accent={widget.styleOverrides?.accent ?? widget.accent}
+          seriesColorOverrides={widget.styleOverrides?.seriesColors}
+        />
       </SocialWidgetFrame>
     );
   }

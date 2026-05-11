@@ -31,7 +31,7 @@ export function extractChartSeriesLabels(
   }
 
   if (data.groupedCategorical) {
-    if (chartType === 'bar') {
+    if (chartType === 'bar' || chartType === 'progress-list') {
       return data.groupedCategorical.datasets.map((d) => d.label);
     }
     // Pie/doughnut: SocialChartWidget flattens to "Primary – Breakdown" labels.
