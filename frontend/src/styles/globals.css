@@ -482,3 +482,11 @@
   h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
   @page { margin: 0.75in; }
 }
+
+/* MDXEditor portals its toolbar dropdowns (BlockTypeSelect, link dialog, etc.)
+   into a `.mdxeditor-popup-container` div appended to <body> with z-index 2.
+   Radix Dialog uses z-50, so without this override the popups render behind
+   the dialog overlay — visible but unclickable. Bump above the dialog stack. */
+.mdxeditor-popup-container {
+  z-index: 60;
+}
