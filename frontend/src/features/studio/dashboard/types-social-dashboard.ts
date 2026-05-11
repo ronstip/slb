@@ -46,6 +46,7 @@ export type CustomDimension =
   | 'emotion'
   | 'language'
   | 'content_type'
+  | 'channel_type'
   | 'channel_handle'
   | 'posted_at'
   | 'themes'
@@ -128,6 +129,7 @@ export const DIMENSION_META: Record<StandardCustomDimension, DimensionMeta> = {
   emotion:        { label: 'Emotion',       icon: 'Smile',         description: 'Group by emotional tone' },
   language:       { label: 'Language',      icon: 'MessageSquare', description: 'Group by post language' },
   content_type:   { label: 'Content Type',  icon: 'LayoutGrid',    description: 'Group by content format' },
+  channel_type:   { label: 'Channel Type',  icon: 'Radio',         description: 'Group by channel type (e.g. news, influencer, brand)' },
   channel_handle: { label: 'Channel',       icon: 'Tv',            description: 'Group by source channel' },
   posted_at:      { label: 'Date',          icon: 'Calendar',      description: 'Group by date over time' },
   themes:         { label: 'Theme',         icon: 'Tag',           description: 'Group by topic / theme' },
