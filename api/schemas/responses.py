@@ -132,6 +132,11 @@ class SharedDashboardDataResponse(BaseModel):
     collection_names: dict[str, str]
     truncated: bool = False
     meta: SharedDashboardMetaResponse
+    # Owner's saved widget layout, copied through on the public endpoint so
+    # custom widgets (text cards, custom charts, reorderings) survive sharing.
+    # None when the owner never saved a layout (default preset is used then).
+    layout: list[dict[str, Any]] | None = None
+    filterBarFilters: list[str] | None = None
 
 
 class BriefingShareResponse(BaseModel):

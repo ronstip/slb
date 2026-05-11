@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
@@ -10,6 +10,7 @@ import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilte
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
+import type { SocialDashboardWidget } from './types-social-dashboard.ts';
 
 export function SharedDashboardPage() {
   const { token } = useParams<{ token: string }>();
@@ -38,6 +39,17 @@ export function SharedDashboardPage() {
   const handleLayoutLoaded = useCallback((persisted: string[]) => {
     setFilterBarFilters(persisted as FilterBarFilterId[]);
   }, []);
+
+  // Seed filter-bar pills from the owner's saved choice once the shared
+  // response arrives. Inside SocialDashboardView, the authed layout fetch 401s
+  // for public viewers and falls back to defaults — so without this the
+  // owner's pill selection wouldn't survive sharing.
+  useEffect(() => {
+    const persisted = response?.filterBarFilters;
+    if (persisted && persisted.length > 0) {
+      setFilterBarFilters(persisted as FilterBarFilterId[]);
+    }
+  }, [response?.filterBarFilters]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,6 +138,7 @@ export function SharedDashboardPage() {
               toggleFilterValue={toggleFilterValue}
               filterBarFilters={filterBarFilters}
               onLayoutLoaded={handleLayoutLoaded}
+              defaultLayout={response.layout as SocialDashboardWidget[] | undefined ?? undefined}
               readOnly
             />
           </main>

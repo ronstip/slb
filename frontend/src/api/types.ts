@@ -559,6 +559,12 @@ export interface SharedDashboardDataResponse {
     title: string;
     created_at: string;
   };
+  /** Owner's saved widget layout, copied through on the public endpoint so
+   *  custom widgets (text cards, custom charts) survive sharing. Typed loosely
+   *  here to keep api/types.ts free of feature-layer imports; the consumer
+   *  (SharedDashboardPage) casts to `SocialDashboardWidget[]`. */
+  layout?: unknown[] | null;
+  filterBarFilters?: string[] | null;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────

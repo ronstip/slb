@@ -28,6 +28,14 @@ import { DataTable } from '../../../components/DataTable/DataTable.tsx';
 import { postColumns } from '../../../components/DataTable/columns.tsx';
 import { ExpandedPostRow } from '../../../components/DataTable/ExpandedPostRow.tsx';
 import { Markdown } from '../../../components/Markdown.tsx';
+import { Button } from '../../../components/ui/button.tsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../../components/ui/dropdown-menu.tsx';
+import { Copy, MoreVertical, Settings2, Trash2 } from 'lucide-react';
 
 // ── Generic table for custom widgets ──────────────────────────────────────────
 
@@ -401,8 +409,47 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
 
 function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps) {
   const content = widget.markdownContent ?? '';
+  // No card chrome: transparent background, no border, no header. In edit mode
+  // the entire widget acts as the drag handle and a floating menu surfaces the
+  // configure/remove/duplicate actions on hover.
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
+    <div
+      className={`h-full relative group bg-transparent ${
+        isEditMode ? 'drag-handle cursor-grab active:cursor-grabbing ring-1 ring-dashed ring-primary/30 rounded-md' : ''
+      }`}
+    >
+      {isEditMode && (
+        <div
+          className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 bg-background/80 backdrop-blur-sm shadow-sm">
+                <MoreVertical className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onConfigure}>
+                <Settings2 className="h-3.5 w-3.5 mr-2" />
+                Configure
+              </DropdownMenuItem>
+              {onDuplicate && (
+                <DropdownMenuItem onClick={onDuplicate}>
+                  <Copy className="h-3.5 w-3.5 mr-2" />
+                  Duplicate
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={onRemove} className="text-destructive focus:text-destructive">
+                <Trash2 className="h-3.5 w-3.5 mr-2" />
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+
       {content.trim() ? (
         <div className="h-full overflow-y-auto">
           <Markdown
@@ -419,7 +466,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }: 
           Empty text card — click the gear to add markdown
         </div>
       )}
-    </SocialWidgetFrame>
+    </div>
   );
 }
 
