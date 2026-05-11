@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,11 +12,14 @@ import { Button } from '../../../../components/ui/button.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { Label } from '../../../../components/ui/label.tsx';
 import { Separator } from '../../../../components/ui/separator.tsx';
-import { Textarea } from '../../../../components/ui/textarea.tsx';
 import {
   BarChart3, TrendingUp, PieChart, Circle, Hash, Cloud, List, Table2,
   Database, Filter, Palette, GripHorizontal,
 } from 'lucide-react';
+
+const MarkdownArtifactEditor = lazy(() =>
+  import('../../MarkdownArtifactEditor.tsx').then((m) => ({ default: m.MarkdownArtifactEditor })),
+);
 import { cn } from '../../../../lib/utils.ts';
 import type { DashboardPost } from '../../../../api/types.ts';
 import type { SocialDashboardWidget, SocialChartType, CustomChartConfig } from '../types-social-dashboard.ts';
@@ -160,7 +164,7 @@ function SocialWidgetConfigDialogInner({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
-        className="sm:max-w-[1100px] max-h-[88vh] flex flex-col p-0 gap-0"
+        className={`${isTextMode ? 'sm:max-w-[min(1600px,95vw)]' : 'sm:max-w-[1100px]'} max-h-[88vh] flex flex-col p-0 gap-0`}
         style={{ marginLeft: dragOffset.x, marginTop: dragOffset.y }}
       >
         <DialogHeader
@@ -176,8 +180,8 @@ function SocialWidgetConfigDialogInner({
         </DialogHeader>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* ── Left: config (55%) ── */}
-          <div className="w-[55%] border-r border-border flex flex-col min-h-0 bg-white dark:bg-zinc-950">
+          {/* ── Left: config (wider in text mode for the markdown editor) ── */}
+          <div className={`${isTextMode ? 'w-[65%]' : 'w-[55%]'} border-r border-border flex flex-col min-h-0 bg-white dark:bg-zinc-950`}>
             {isTextMode ? (
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
                 <div className="flex items-center gap-3">
@@ -206,12 +210,24 @@ function SocialWidgetConfigDialogInner({
                   <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     Markdown
                   </Label>
-                  <Textarea
-                    value={draft.markdownContent ?? ''}
-                    onChange={(e) => setDraft((prev) => ({ ...prev, markdownContent: e.target.value }))}
-                    placeholder={'## Heading\n\nBody text. Supports **bold**, *italic*, lists, links, and tables.'}
-                    className="min-h-[260px] font-mono text-xs leading-relaxed"
-                  />
+                  <div className="rounded-md border border-border bg-background overflow-hidden">
+                    <Suspense
+                      fallback={
+                        <div className="flex items-center justify-center py-12 text-xs text-muted-foreground">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading editor…
+                        </div>
+                      }
+                    >
+                      <MarkdownArtifactEditor
+                        initialMarkdown={draft.markdownContent ?? ''}
+                        onChange={(md, isInitialNormalize) => {
+                          if (isInitialNormalize) return;
+                          setDraft((prev) => ({ ...prev, markdownContent: md }));
+                        }}
+                      />
+                    </Suspense>
+                  </div>
                   <p className="text-[11px] text-muted-foreground">
                     Supports GitHub-flavored Markdown. The preview on the right updates as you type.
                   </p>

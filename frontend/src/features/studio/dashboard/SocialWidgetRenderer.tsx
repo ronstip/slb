@@ -404,13 +404,16 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }: 
   return (
     <SocialWidgetFrame title={widget.title} description={widget.description} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
       {content.trim() ? (
-        <Markdown
-          autoDir
-          stripComments={false}
-          className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground prose-a:text-primary overflow-y-auto h-full"
-        >
-          {content}
-        </Markdown>
+        <div className="h-full overflow-y-auto">
+          <Markdown
+            autoDir
+            stripComments={false}
+            headingIds
+            className="agent-prose max-w-none break-words text-sm leading-relaxed"
+          >
+            {content}
+          </Markdown>
+        </div>
       ) : (
         <div className="flex items-center justify-center h-full text-xs text-muted-foreground italic">
           Empty text card — click the gear to add markdown
