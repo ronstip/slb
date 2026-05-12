@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     # Membership in v2 is LLM-claimed: pass 1 asks the model which sample posts
     # inspired each candidate. Pass 2 unions those across merged candidates.
     # No rule-based assignment over the full corpus.
-    topics_algorithm: str = "brothers_v1"  # "brothers_v1" | "llm_taxonomy_v2"
+    topics_algorithm: str = "llm_taxonomy_v2"  # "brothers_v1" | "llm_taxonomy_v2"
     topics_window_days: int = 7
     topics_sample_size: int = 1000
     topics_sample_per_signature: int = 3
