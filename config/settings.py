@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     # Decouples media I/O from the step orchestration pool so a slow download
     # batch can't starve enrich/embed progress.
     media_download_concurrency: int = 16
+
+    # Pipeline embedding step (BQ AI.GENERATE_EMBEDDING — paid per row).
+    # Disabled by default because the current default topic algorithm
+    # (llm_taxonomy_v2) does not use embeddings. When False, action_embed
+    # short-circuits as a no-op pass-through (ENRICHED → DONE) so the state
+    # machine still drains, but no BQ embedding cost is incurred.
+    # Re-enable via env var PIPELINE_EMBED_STEP_ENABLED=true if you switch an
+    # agent back to brothers_v1 (which relies on embeddings).
+    pipeline_embed_step_enabled: bool = False
     # Fan adapters (BrightData, Vetric, ...) across threads during crawl.
     # Off by default — flip after verifying per-adapter snapshot accounting in
     # a canary agent. Only affects multi-provider collections.
@@ -87,6 +96,36 @@ class Settings(BaseSettings):
     clustering_brothers_threshold: float = 0.17
     clustering_max_intra_group_mean: float = 0.20
     clustering_max_distance_ungrouped: float = 0.21
+
+    # LLM-taxonomy topic algorithm (alternative to brothers_v1 — no embeddings).
+    # Toggle via topics_algorithm; per-agent override lives in the agent doc's
+    # `topics_config.algorithm_version` field.
+    #
+    # Membership in v2 is LLM-claimed: pass 1 asks the model which sample posts
+    # inspired each candidate. Pass 2 unions those across merged candidates.
+    # No rule-based assignment over the full corpus.
+    topics_algorithm: str = "brothers_v1"  # "brothers_v1" | "llm_taxonomy_v2"
+    topics_window_days: int = 7
+    topics_sample_size: int = 1000
+    topics_sample_per_signature: int = 3
+    topics_sample_channel_cap: int = 3
+    topics_sample_time_buckets: int = 4
+    # Pass-1 sweet spot: 100 posts/batch, concurrency 10, minimal thinking.
+    # End-to-end on a 1.2k-post pool runs ~90s wallclock at ~$0.13.
+    topics_batch_size: int = 100
+    topics_taxonomy_concurrency: int = 10
+    topics_pass1_thinking_level: str = "minimal"  # minimal | low | medium | high
+    topics_pass2_thinking_level: str = "low"
+    topics_pass3_thinking_level: str = "low"
+    topics_min_match_score: int = 2  # kept on AssignmentRule for audit/search only
+    topics_broad_size_warn_ratio: float = 0.05  # log warn when mean topic size > X% of corpus
+    # Pass-3 post-hoc filter: per-topic LLM membership check that strips posts
+    # whose primary subject doesn't match the beat. Removes ~30% of members
+    # (the residual stance-mismatch / actor-overlap-only noise that pass-1's
+    # VERIFY-ASSIGNMENT step doesn't fully catch). Costs one extra LLM call per
+    # final topic (~50 calls on a typical run, comparable to pass-1 batch count).
+    topics_pass3_filter_enabled: bool = True
+    topics_pass3_min_members_after: int = 1  # drop topic if fewer kept members
 
     vetric_api_key_twitter: str = ""
     vetric_api_key_instagram: str = ""

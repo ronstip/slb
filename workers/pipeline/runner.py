@@ -1659,9 +1659,11 @@ class PipelineRunner:
 
     def _run_collection_gates(self) -> None:
         """Run collection-level steps after all posts are terminal."""
+        from config.settings import get_settings as _get_settings
         from workers.clustering.worker import run_clustering
         from workers.enrichment.worker import update_enrichment_counts
         from workers.shared.statistical_signature import refresh_statistical_signature
+        from workers.topics.orchestrator import run_llm_topics
 
         logger.info("── Running collection gates for %s", self.collection_id)
 
@@ -1716,21 +1718,42 @@ class PipelineRunner:
         except Exception:
             logger.exception("Failed to update embedded count for %s", self.collection_id)
 
-        # Topic clustering (agent-wide)
+        # Topic clustering (agent-wide). Dispatch by agent.topics_config →
+        # global settings.topics_algorithm. Either algorithm produces the same
+        # downstream artifacts (BQ topic_cluster_members rows + Firestore
+        # topic docs with topic_name/topic_summary/post_count surface fields).
+        # If the agent has opted out via topics_config.auto_regenerate_on_pipeline=False,
+        # skip entirely — they will regenerate manually via the API/UI.
         try:
             agent_id = self._get_agent_id()
-            if agent_id:
-                agent_doc = self.fs.get_agent(agent_id)
-                collection_ids = (agent_doc or {}).get("collection_ids", [])
-                result = run_clustering(agent_id, collection_ids)
-                logger.info(
-                    "Topic clustering: %d topics for agent %s",
-                    result.get("topics_count", 0), agent_id,
-                )
+            if not agent_id:
+                logger.info("No agent_id for %s — skipping topic generation", self.collection_id)
             else:
-                logger.info("No agent_id for %s — skipping topic clustering", self.collection_id)
+                agent_doc = self.fs.get_agent(agent_id) or {}
+                topics_config = agent_doc.get("topics_config") or {}
+                auto = topics_config.get("auto_regenerate_on_pipeline", True)
+                if not auto:
+                    logger.info(
+                        "Agent %s topics_config.auto_regenerate_on_pipeline=False — skipping",
+                        agent_id,
+                    )
+                else:
+                    settings_local = _get_settings()
+                    algorithm = (
+                        topics_config.get("algorithm_version")
+                        or settings_local.topics_algorithm
+                    )
+                    if algorithm == "llm_taxonomy_v2":
+                        result = run_llm_topics(agent_id, bq=self.bq, fs=self.fs)
+                    else:
+                        collection_ids = agent_doc.get("collection_ids", [])
+                        result = run_clustering(agent_id, collection_ids)
+                    logger.info(
+                        "Topic generation (%s): %d topics for agent %s",
+                        algorithm, result.get("topics_count", 0), agent_id,
+                    )
         except Exception:
-            logger.exception("Topic clustering failed for %s", self.collection_id)
+            logger.exception("Topic generation failed for %s", self.collection_id)
 
     # ------------------------------------------------------------------
     # Final status

@@ -71,10 +71,18 @@ def action_embed(posts: list[dict], ctx: StepContext) -> list[StepResult]:
     """Generate embeddings via BQ batch SQL.
 
     Uses batch_embed.sql which already has NOT EXISTS guard for idempotency.
+
+    When `pipeline_embed_step_enabled=False` (default), short-circuits as a
+    no-op so posts transition ENRICHED → DONE without incurring BQ embedding
+    cost. Re-enable via PIPELINE_EMBED_STEP_ENABLED=true when running an agent
+    on the brothers_v1 topic algorithm.
     """
     post_ids = [p["post_id"] for p in posts]
     if not post_ids:
         return []
+
+    if not ctx.settings.pipeline_embed_step_enabled:
+        return [(pid, "ok", None) for pid in post_ids]
 
     # Short-circuit via in-run cache before hitting BQ.
     cache_hits = {pid for pid in post_ids if pid in ctx.embedded_ids}

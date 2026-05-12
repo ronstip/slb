@@ -118,7 +118,28 @@ export function TopicCard({ topic, agentId, onViewPosts }: TopicCardProps) {
 
             {/* Metrics row */}
             <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
-              <span className="font-medium">{topic.post_count} posts</span>
+              {topic.estimated_pool_count != null && topic.estimated_pool_count > 0 ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="font-medium cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
+                        ~{formatNumber(topic.estimated_pool_count)} posts
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <p className="text-[11px]">
+                        Estimated pool count (95% CI: {formatNumber(topic.estimated_pool_count_ci_low ?? 0)}–
+                        {formatNumber(topic.estimated_pool_count_ci_high ?? 0)})
+                      </p>
+                      <p className="text-[10px] opacity-70">
+                        {topic.post_count} posts in sample · extrapolated to full pool
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <span className="font-medium">{topic.post_count} posts</span>
+              )}
               {sentiment && (
                 <span className="flex items-center gap-1">
                   <span

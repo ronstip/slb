@@ -533,3 +533,113 @@ async def get_agent_topic_posts(
         posts.append(post)
 
     return posts
+
+
+# ---------------------------------------------------------------------------
+# Regenerate (manual trigger) + topics_config PATCH
+# ---------------------------------------------------------------------------
+
+
+class _RegenerateRequest(BaseModel):
+    algorithm_version: str | None = None  # brothers_v1 | llm_taxonomy_v2
+    window_days: int | None = None
+    sample_size: int | None = None
+    batch_size: int | None = None
+    save_as_default: bool = False
+
+
+class _TopicsConfigPatch(BaseModel):
+    algorithm_version: str | None = None
+    window_days: int | None = None
+    sample_size: int | None = None
+    batch_size: int | None = None
+    auto_regenerate_on_pipeline: bool | None = None
+
+
+@router.post("/agents/{agent_id}/topics/regenerate")
+async def regenerate_agent_topics(
+    agent_id: str,
+    body: _RegenerateRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Manually regenerate topics for an agent. Synchronous — wall-clock is
+    typically 30-60s for llm_taxonomy_v2; 60-120s for brothers_v1 on a large
+    agent. The HTTP client should set its timeout accordingly. Long-running
+    agents will eventually need Cloud Tasks fallback (see plan); not wired yet.
+
+    If `save_as_default=True`, also persists the chosen knobs into
+    agent.topics_config so the next pipeline run uses the same settings.
+    """
+    from api.services.agent_service import _normalize_topics_config
+
+    fs = get_fs()
+    bq = get_bq()
+    agent = await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
+
+    settings = get_settings()
+    topics_config = agent.get("topics_config") or {}
+    algorithm = (
+        body.algorithm_version
+        or topics_config.get("algorithm_version")
+        or settings.topics_algorithm
+    )
+
+    # Optionally persist the chosen knobs before running so a crash mid-run
+    # still leaves the new defaults in place.
+    if body.save_as_default:
+        merged = _normalize_topics_config({
+            **topics_config,
+            "algorithm_version": algorithm,
+            "window_days": body.window_days or topics_config.get("window_days"),
+            "sample_size": body.sample_size or topics_config.get("sample_size"),
+            "batch_size": body.batch_size or topics_config.get("batch_size"),
+            "auto_regenerate_on_pipeline": topics_config.get(
+                "auto_regenerate_on_pipeline", True,
+            ),
+        })
+        await asyncio.to_thread(fs.update_agent, agent_id, topics_config=merged)
+
+    if algorithm == "llm_taxonomy_v2":
+        from workers.topics.orchestrator import run_llm_topics
+
+        result = await asyncio.to_thread(
+            run_llm_topics,
+            agent_id,
+            window_days=body.window_days,
+            sample_size=body.sample_size,
+            batch_size=body.batch_size,
+            bq=bq, fs=fs,
+        )
+    elif algorithm == "brothers_v1":
+        from workers.clustering.worker import run_clustering
+
+        collection_ids = agent.get("collection_ids") or []
+        result = await asyncio.to_thread(
+            run_clustering, agent_id, collection_ids,
+        )
+        result["algorithm_version"] = "brothers_v1"
+    else:
+        raise HTTPException(400, f"Unknown algorithm_version: {algorithm}")
+
+    return result
+
+
+@router.patch("/agents/{agent_id}/topics-config")
+async def patch_topics_config(
+    agent_id: str,
+    body: _TopicsConfigPatch,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Patch the agent's topics_config (algorithm + knobs). NOT a versioned
+    field — changes here do not bump agent.version. Merges with existing
+    config; unset fields preserve their current value.
+    """
+    from api.services.agent_service import _normalize_topics_config
+
+    fs = get_fs()
+    agent = await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
+    existing = agent.get("topics_config") or {}
+    payload = body.model_dump(exclude_unset=True, exclude_none=True)
+    merged = _normalize_topics_config({**existing, **payload})
+    await asyncio.to_thread(fs.update_agent, agent_id, topics_config=merged)
+    return {"agent_id": agent_id, "topics_config": merged}

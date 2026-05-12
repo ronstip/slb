@@ -132,6 +132,46 @@ def _normalize_enrichment_config(enrichment_config: dict | None) -> dict:
     return out
 
 
+_TOPICS_CONFIG_KEYS = (
+    "algorithm_version",
+    "window_days",
+    "sample_size",
+    "batch_size",
+    "auto_regenerate_on_pipeline",
+    "last_run_at",
+    "last_run_stats",
+)
+_TOPICS_ALGORITHMS = {"brothers_v1", "llm_taxonomy_v2"}
+
+
+def _normalize_topics_config(topics_config: dict | None) -> dict:
+    """Strip unknown keys, validate ranges. Returns empty dict for falsy input
+    so unset agents fall back to global settings + brothers_v1 default.
+    NOT in VERSIONED_FIELDS — this is a presentation knob, not a data-shape
+    change, so editing it must not bump agent.version.
+    """
+    if not topics_config:
+        return {}
+    out: dict = {}
+    for k in _TOPICS_CONFIG_KEYS:
+        v = topics_config.get(k)
+        if v is None or v == "":
+            continue
+        if k == "algorithm_version" and v not in _TOPICS_ALGORITHMS:
+            continue  # silently drop unknown algorithms
+        if k in {"window_days", "sample_size", "batch_size"}:
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                continue
+            if v <= 0:
+                continue
+        if k == "auto_regenerate_on_pipeline":
+            v = bool(v)
+        out[k] = v
+    return out
+
+
 def create_agent(
     user_id: str,
     title: str,
@@ -351,6 +391,8 @@ def update_agent_with_version(agent_id: str, user_id: str, updates: dict) -> int
         updates["data_scope"] = _normalize_data_scope(updates["data_scope"])
     if "enrichment_config" in updates:
         updates["enrichment_config"] = _normalize_enrichment_config(updates["enrichment_config"])
+    if "topics_config" in updates:
+        updates["topics_config"] = _normalize_topics_config(updates["topics_config"])
 
     needs_version = bool(VERSIONED_FIELDS & set(updates.keys()))
     current_version = agent.get("version") or 1

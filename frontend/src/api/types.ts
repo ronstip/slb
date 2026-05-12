@@ -641,6 +641,43 @@ export interface TopicCluster {
   thumbnail_gcs_uri?: string | null;
   platforms?: string[];
   recency_score?: number;
+  // llm_taxonomy_v2-only fields. `post_count` above remains the SAMPLED count;
+  // when extrapolation ran, `estimated_pool_count` (with CI bounds) is what
+  // the UI should show as the headline "how big is this story" number.
+  header?: string;
+  subheader?: string;
+  beat_type?: 'event' | 'narrative' | 'dynamic';
+  anchor_entities?: string[];
+  anchor_themes?: string[];
+  anchor_brands?: string[];
+  anchor_content_types?: string[];
+  member_post_ids?: string[];
+  estimated_pool_count?: number;
+  estimated_pool_count_ci_low?: number;
+  estimated_pool_count_ci_high?: number;
+}
+
+export interface TopicsConfig {
+  algorithm_version?: 'brothers_v1' | 'llm_taxonomy_v2';
+  window_days?: number;
+  sample_size?: number;
+  batch_size?: number;
+  auto_regenerate_on_pipeline?: boolean;
+  last_run_at?: string;
+}
+
+export interface TopicsRegenerateResult {
+  algorithm_version: string;
+  topics_count: number;
+  pool_size?: number;
+  sample_size?: number;
+  candidates_count?: number;
+  sample_coverage_pct?: number;
+  estimated_pool_count?: number;
+  estimated_pool_coverage_pct?: number;
+  wall_sec?: number;
+  wrote?: boolean;
+  error?: string;
 }
 
 export interface TopicsNarrative {
