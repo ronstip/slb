@@ -1,9 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
-import { FileText, Target, BarChart3, Mail, Presentation, Plus } from 'lucide-react';
+import { FileText, Target, BarChart3, Mail, Presentation, Plus, LayoutDashboard } from 'lucide-react';
 
 export type StudioActionId =
   | 'insight_report'
   | 'strategic_planning'
+  | 'dashboard_report'
   | 'chart'
   | 'send_email'
   | 'deck_slides'
@@ -58,6 +59,19 @@ export const STUDIO_ACTIONS: StudioAction[] = [
       'border-emerald-500/40 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white hover:from-emerald-400 hover:to-emerald-600',
     iconBubble: 'bg-white/20 text-white ring-white/20',
     // Special: opens StrategicPlanningDialog rather than sending a prompt directly.
+  },
+  {
+    id: 'dashboard_report',
+    label: 'Dashboard Report',
+    icon: LayoutDashboard,
+    iconClass: 'text-violet-600 bg-violet-500/10',
+    hoverClass: 'hover:border-violet-500/40 hover:bg-violet-500/5',
+    tileGradient: 'from-violet-500/20 via-violet-500/5 to-transparent',
+    iconTint: 'text-violet-500',
+    tileTheme:
+      'border-violet-500/40 bg-gradient-to-br from-violet-500 to-violet-700 text-white hover:from-violet-400 hover:to-violet-600',
+    iconBubble: 'bg-white/20 text-white ring-white/20',
+    // Special: opens DashboardReportDialog rather than sending a prompt directly.
   },
   {
     id: 'chart',

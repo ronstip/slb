@@ -4,6 +4,7 @@ import { useChatStore } from '../../stores/chat-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { ChartDialog } from './ChartDialog.tsx';
 import { StrategicPlanningDialog } from './StrategicPlanningDialog.tsx';
+import { DashboardReportDialog } from './DashboardReportDialog.tsx';
 import { STUDIO_ACTIONS, type StudioAction } from './studio-actions.ts';
 import { cn } from '../../lib/utils.ts';
 import type { CustomFieldDef } from '../../api/types.ts';
@@ -25,10 +26,12 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
   const [chartOpen, setChartOpen] = useState(false);
   const [planningOpen, setPlanningOpen] = useState(false);
+  const [dashboardReportOpen, setDashboardReportOpen] = useState(false);
 
   const handlerFor = (action: StudioAction) => {
     if (action.id === 'chart') return () => setChartOpen(true);
     if (action.id === 'strategic_planning') return () => setPlanningOpen(true);
+    if (action.id === 'dashboard_report') return () => setDashboardReportOpen(true);
     if (action.id === 'create_skill') return () => {};
     return () => action.prompt && sendMessage(action.prompt);
   };
@@ -82,6 +85,11 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
           onOpenChange={setPlanningOpen}
           onSubmit={sendMessage}
         />
+        <DashboardReportDialog
+          open={dashboardReportOpen}
+          onOpenChange={setDashboardReportOpen}
+          onSubmit={sendMessage}
+        />
       </>
     );
   }
@@ -122,6 +130,11 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
       <StrategicPlanningDialog
         open={planningOpen}
         onOpenChange={setPlanningOpen}
+        onSubmit={sendMessage}
+      />
+      <DashboardReportDialog
+        open={dashboardReportOpen}
+        onOpenChange={setDashboardReportOpen}
         onSubmit={sendMessage}
       />
     </div>
