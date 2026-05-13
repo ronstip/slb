@@ -118,7 +118,7 @@ export interface Agent {
   enrichment_config?: {
     custom_fields?: CustomFieldDef[] | null;
     enrichment_context?: string;
-    content_types?: string[];
+    content_types?: string[] | null;
   };
   outputs?: AgentOutput[];
   context?: AgentContext;
