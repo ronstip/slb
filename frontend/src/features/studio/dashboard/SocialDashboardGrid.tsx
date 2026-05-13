@@ -56,6 +56,8 @@ interface SocialDashboardGridProps {
   onFilterToggle?: (key: string, value: string) => void;
   gridRef?: React.RefObject<HTMLElement | null>;
   serverKpis?: DashboardKpis;
+  /** When set, text widgets call this with a measured ideal grid-row height. */
+  onAutoSize?: (i: string, h: number) => void;
 }
 
 // A4 portrait/landscape content-width ratio (after page margins). Used to
@@ -75,6 +77,7 @@ export function SocialDashboardGrid({
   onFilterToggle,
   gridRef,
   serverKpis,
+  onAutoSize,
 }: SocialDashboardGridProps) {
   const [currentBreakpoint, setCurrentBreakpoint] = useState<string>('lg');
   const isDragging = useRef(false);
@@ -152,6 +155,7 @@ export function SocialDashboardGrid({
               onDuplicate={onDuplicate ? () => onDuplicate(widget.i) : undefined}
               onFilterToggle={onFilterToggle}
               serverKpis={serverKpis}
+              onAutoSize={onAutoSize}
             />
           </div>
         ))}

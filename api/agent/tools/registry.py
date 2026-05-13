@@ -20,6 +20,7 @@ from api.agent.tools.dashboard_report import (
     publish_dashboard,
     read_dashboard,
     update_dashboard,
+    verify_dashboard,
 )
 from api.agent.tools.export_data import export_data
 from api.agent.tools.presentation import generate_presentation, validate_deck_plan
@@ -58,13 +59,14 @@ REGISTRY: dict[str, ToolSpec] = {
         # Output & visualization
         ToolSpec("create_chart", create_chart, "reporting", False, "Generate a chart spec"),
         ToolSpec("create_markdown", create_markdown, "reporting", False, "Write a long-form markdown report — prose, sections, takeaways. NOT the autonomous exit (use compose_briefing)"),
-        # Dashboard report skill — four narrow tools (read / create-from-template / update / publish).
+        # Dashboard report skill — five narrow tools (read / create-from-template / update / verify / publish).
         # Used by the dashboard_report studio action to write a live dashboard
         # as the output of a deep strategic analysis, instead of a markdown artifact.
         ToolSpec("read_dashboard", read_dashboard, "reporting", False, "Read a dashboard's current state — widgets, title, filter pills. Used for the template at session start and for cross-section validation during/after writing."),
         ToolSpec("create_dashboard_from_template", create_dashboard_from_template, "reporting", True, "Clone a template dashboard into a new HIDDEN dashboard for this run. Returns the new layout_id."),
-        ToolSpec("update_dashboard", update_dashboard, "reporting", True, "Apply patches/additions/removals to a dashboard's widgets — the workhorse for per-section iteration. Validates the resulting layout before persisting."),
-        ToolSpec("publish_dashboard", publish_dashboard, "reporting", True, "Make a hidden dashboard visible in the explorer dropdown — the FINAL action of a dashboard-report run."),
+        ToolSpec("update_dashboard", update_dashboard, "reporting", True, "Apply patches/additions/removals to a dashboard's widgets — the workhorse for per-section iteration. Removals auto-repack y. Validates the resulting layout before persisting."),
+        ToolSpec("verify_dashboard", verify_dashboard, "reporting", False, "Pre-publish gate. Detects template-brief leakage, placeholders, SERP-host citations, '§' headings, duplicate anchors. Returns ok or a list of defects to fix via update_dashboard."),
+        ToolSpec("publish_dashboard", publish_dashboard, "reporting", True, "Make a hidden dashboard visible in the explorer dropdown — the FINAL action of a dashboard-report run. Runs verify_dashboard internally and refuses on defects."),
         ToolSpec("export_data", export_data, "reporting", False, "Export posts as CSV"),
         ToolSpec("compose_email", compose_email, "reporting", True, "Compose an email artifact"),
         ToolSpec("validate_deck_plan", validate_deck_plan, "reporting", False, "Validate a presentation deck plan"),
@@ -86,7 +88,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
         "create_chart", "create_markdown",
         "export_data", "list_topics",
         # Dashboard-report skill — iterative dashboard output
-        "read_dashboard", "create_dashboard_from_template", "update_dashboard", "publish_dashboard",
+        "read_dashboard", "create_dashboard_from_template", "update_dashboard", "verify_dashboard", "publish_dashboard",
         # Agent management (interactive)
         "start_agent", "set_active_agent", "get_agent_status",
         # User interaction

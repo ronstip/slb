@@ -179,6 +179,45 @@ export function SocialDashboardView({
     [isEditMode, scheduleAutoSave],
   );
 
+  // Auto-size handler for text widgets: when a widget reports its measured
+  // height, update its `h` and repack the y-positions of all widgets below it
+  // in the same column. Vertical layouts (full-width widgets) collapse cleanly;
+  // multi-column rows fall back to a stable minimum y advancement.
+  const handleAutoSize = useCallback(
+    (widgetId: string, newH: number) => {
+      setWidgets((prev) => {
+        const idx = prev.findIndex((w) => w.i === widgetId);
+        if (idx === -1) return prev;
+        if (prev[idx].h === newH) return prev;
+        const next = prev.slice();
+        next[idx] = { ...prev[idx], h: newH };
+        // Repack rows below the changed widget. Build a fresh y-layout by
+        // sweeping the list, preserving each widget's relative order and
+        // packing it just below the previous row's bottom.
+        const sorted = next
+          .map((w, i) => ({ ...w, _origIdx: i }))
+          .sort((a, b) => a.y - b.y || a.x - b.x);
+        let cursorY = 0;
+        let rowMaxBottom = 0;
+        let rowStartY = sorted.length > 0 ? sorted[0].y : 0;
+        const yMap = new Map<number, number>();
+        for (const w of sorted) {
+          if (w.y !== rowStartY) {
+            cursorY = rowMaxBottom;
+            rowStartY = w.y;
+            rowMaxBottom = cursorY + w.h;
+          } else {
+            rowMaxBottom = Math.max(rowMaxBottom, cursorY + w.h);
+          }
+          yMap.set(w._origIdx, cursorY);
+        }
+        const repacked = next.map((w, i) => ({ ...w, y: yMap.get(i) ?? w.y }));
+        return repacked;
+      });
+    },
+    [],
+  );
+
   const handleDone = useCallback(async () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     try {
@@ -330,6 +369,7 @@ export function SocialDashboardView({
         onFilterToggle={handleFilterToggle}
         gridRef={gridRef}
         serverKpis={serverKpis}
+        onAutoSize={handleAutoSize}
       />
 
       {/* Single config dialog — used for both add and edit */}

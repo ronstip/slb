@@ -371,6 +371,10 @@ function AppSidebarImpl({
         </button>
       </div>
 
+      {/* Scrollable middle: agent tabs + recent agents. `min-h-0` lets the
+          flex child shrink below its content size so overflow actually scrolls
+          instead of pushing the user card off the bottom of the sidebar. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {/* Agent-specific tabs (on detail pages, right after nav) */}
       {isDetailPage && onTabChange && (
         <>
@@ -667,8 +671,7 @@ function AppSidebarImpl({
         </div>
       )}
 
-      {/* Spacer — pushes user card to bottom */}
-      <div className="flex-1" />
+      </div>
 
       {/* Bottom: User card */}
       <div className="border-t border-sidebar-border px-3 py-3">

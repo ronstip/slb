@@ -1,22 +1,26 @@
-"""Dashboard Report Tools — read, create-from-template, update, publish.
+"""Dashboard Report Tools — read, create-from-template, update, verify, publish.
 
 Used by the dashboard-report studio skill. The agent reads a template dashboard
 to get per-section briefs, creates a hidden copy, fills text widgets section by
 section with `update_dashboard` (validating against the dashboard schema each
-write), and finally calls `publish_dashboard` to make the new dashboard visible
-in the explorer dropdown.
+write), runs `verify_dashboard` to catch leakage / placeholders / SERP URLs /
+duplicate anchors / `§` symbols, and finally calls `publish_dashboard` to make
+the new dashboard visible in the explorer dropdown. `publish_dashboard` runs
+verify internally and refuses to publish on errors.
 
 Distinct from `create_markdown`, which produces a single markdown artifact —
 this skill produces a live filterable dashboard.
 
-Four narrow tools — one verb each — instead of one multi-mode tool. The
+Five narrow tools — one verb each — instead of one multi-mode tool. The
 docstrings carry the one-tool-one-job contract.
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from google.adk.tools import ToolContext
 from pydantic import ValidationError
@@ -72,6 +76,23 @@ def _verify_dashboard_ownership(fs, layout_id: str, user_id: str) -> tuple[dict 
             "message": f"Access denied — dashboard '{layout_id}' is owned by a different user.",
         }
     return data, None
+
+
+def _refuse_if_template(data: dict, layout_id: str, action: str) -> dict | None:
+    """Reject writes targeting a template doc. Templates are user-curated and
+    must remain immutable from the agent's side — the agent works on the COPY
+    returned by `create_dashboard_from_template`, never on the source template.
+    """
+    if data.get("is_template"):
+        return {
+            "status": "error",
+            "message": (
+                f"Refused {action}: dashboard '{layout_id}' is a TEMPLATE and is "
+                f"immutable from the agent. Call create_dashboard_from_template first, "
+                f"then operate on the new layout_id it returns."
+            ),
+        }
+    return None
 
 
 def _validate_layout(
@@ -259,6 +280,15 @@ def create_dashboard_from_template(
     template_data, err = _verify_dashboard_ownership(fs, template_id, user_id)
     if err:
         return err
+    if not template_data.get("is_template"):
+        return {
+            "status": "error",
+            "message": (
+                f"'{template_id}' is not a TEMPLATE (missing is_template=true). "
+                f"create_dashboard_from_template only accepts user-curated template "
+                f"dashboards as a source."
+            ),
+        }
 
     widgets = template_data.get("layout") or []
     if not widgets:
@@ -275,6 +305,8 @@ def create_dashboard_from_template(
         "filterBarFilters": template_data.get("filterBarFilters") or [],
         "orientation": template_data.get("orientation") or "vertical",
         "title": title.strip(),
+        "is_template": False,
+        "source_template_id": template_id,
     })
 
     widget_ids = [w.get("i") for w in widgets if isinstance(w, dict) and w.get("i")]
@@ -314,13 +346,19 @@ def update_dashboard(
 
     WHEN TO USE:
       - To replace a text widget's markdownContent with your drafted section.
-        This is ~95% of edits. Use ``patches``.
-      - Rarely, to add a new widget (use ``additions``) or remove one (use
-        ``removals``). The template defines the structure — avoid these unless
-        the data genuinely demands a structural change.
+        This is ~90% of edits. Use ``patches``.
+      - To REMOVE a section whose data is genuinely silent for this period
+        (e.g., emotion enrichment unavailable → drop the §8b widget). Use
+        ``removals=[widget_i]``. Better than leaving a stub that reads as
+        forgotten. Note the removal in the methodology appendix.
+      - Rarely, to add a new widget (use ``additions``). The template defines
+        the structure — only add when the data genuinely demands a new section.
+      - To patch ``title`` or ``figureText`` on chart widgets when localizing
+        for the data's language — these are display-only and safe to edit.
 
     WHEN NOT TO USE:
-      - To edit chart widgets. Charts are copied verbatim from the template.
+      - To edit chart widgets' ``customConfig`` / ``tableConfig`` / ``kpiIndex``
+        / ``aggregation`` / ``chartType``. Those are deliberate and frozen.
       - To reorder widgets. Positions (`x`, `y`, `w`, `h`) should not change.
 
     PATCHES — most common operation.
@@ -382,6 +420,9 @@ def update_dashboard(
     data, err = _verify_dashboard_ownership(fs, layout_id, user_id)
     if err:
         return err
+    err = _refuse_if_template(data, layout_id, "update_dashboard")
+    if err:
+        return err
 
     widgets: list[dict] = list(data.get("layout") or [])
     by_id = {w.get("i"): i for i, w in enumerate(widgets) if isinstance(w, dict) and w.get("i")}
@@ -422,7 +463,8 @@ def update_dashboard(
         by_id[new_widget["i"]] = len(widgets) - 1
         touched.append(new_widget["i"])
 
-    # 3. removals — drop by `i`.
+    # 3. removals — drop by `i` and repack `y` of widgets below the removed slot.
+    # Without repack, removals leave a visible blank band where the widget was.
     for idx, widget_i in enumerate(removals):
         if not isinstance(widget_i, str) or not widget_i:
             return {"status": "error", "message": f"removals[{idx}] must be a non-empty string."}
@@ -432,7 +474,21 @@ def update_dashboard(
                 "status": "error",
                 "message": f"removals[{idx}]: widget '{widget_i}' not found.",
             }
-        widgets.pop(pos)
+        removed = widgets.pop(pos)
+        # Repack: shift every widget whose top edge sits at or below the removed
+        # widget's bottom edge upward by the removed widget's h. Same-row siblings
+        # (KPI cards in a row, sentiment+platform charts side-by-side) share the
+        # removed widget's `y` and should NOT shift.
+        rem_y = removed.get("y") if isinstance(removed.get("y"), int) else None
+        rem_h = removed.get("h") if isinstance(removed.get("h"), int) else None
+        if rem_y is not None and rem_h is not None and rem_h > 0:
+            rem_bottom = rem_y + rem_h
+            for w in widgets:
+                if not isinstance(w, dict):
+                    continue
+                wy = w.get("y")
+                if isinstance(wy, int) and wy >= rem_bottom:
+                    w["y"] = wy - rem_h
         # rebuild index — positions shifted
         by_id = {w.get("i"): i for i, w in enumerate(widgets) if isinstance(w, dict) and w.get("i")}
         touched.append(widget_i)
@@ -467,7 +523,226 @@ def update_dashboard(
     }
 
 
-# ─── Tool 4 — publish_dashboard ─────────────────────────────────────────────
+# ─── Verification helpers (shared by verify_dashboard and publish_dashboard) ─
+
+# Strings that exist only in the v3 template's per-section briefs. If any of
+# these survive into a published dashboard, the agent forgot to overwrite that
+# widget's markdownContent.
+_TEMPLATE_LEAKAGE_MARKERS = (
+    "Agent instructions.",
+    "Reference example",
+)
+
+# Angle-bracket placeholders the template uses in its reference examples
+# (e.g. "<Subject>'s week was structurally strong …"). Any survivor in the
+# published output is a placeholder that the agent never replaced. The pattern
+# below catches the convention "<Capitalized identifier or generic word>".
+_PLACEHOLDER_PATTERN = re.compile(r"<[A-Za-z][A-Za-z0-9]{1,30}>")
+
+# SERP host-prefixes that prove a citation is a search query, not an article.
+# Matched on parsed URL `host + path`, not raw substring, so a legitimate link
+# to e.g. https://news.google.com/articles/... isn't flagged.
+_SERP_PATTERNS = (
+    ("google.com", "/search"),
+    ("www.google.com", "/search"),
+    ("bing.com", "/search"),
+    ("www.bing.com", "/search"),
+    ("duckduckgo.com", "/"),  # ddg uses query-string ?q=...
+    ("www.duckduckgo.com", "/"),
+)
+
+# Pull every markdown link [label](url) — we only audit explicit links, not
+# raw URLs in prose. Markdown links are how the agent is asked to cite §App-A.
+_MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]*\]\((https?://[^)\s]+)\)")
+
+# Any line that starts with markdown heading marker(s) followed by `§`.
+_SECTION_SYMBOL_HEADING_PATTERN = re.compile(r"^#{1,6}\s+§", re.MULTILINE)
+
+# `<a id="sec-xxx">` anchor declarations — used to detect duplicates.
+_ANCHOR_PATTERN = re.compile(r'<a\s+id="(sec-[A-Za-z0-9-]+)"\s*>')
+
+
+def _looks_like_serp(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or ""
+    query = parsed.query or ""
+    for h, p in _SERP_PATTERNS:
+        if host == h and (path.startswith(p) or (h.startswith("duckduckgo") and "q=" in query)):
+            return True
+    return False
+
+
+def _check_dashboard_for_publish(widgets: list[dict]) -> list[str]:
+    """Run all hard pre-publish checks on a widget list. Returns a list of
+    short error strings (one per defect, naming the widget id). Empty list
+    means clean.
+    """
+    errors: list[str] = []
+    seen_anchors: dict[str, str] = {}  # anchor → first widget i that declared it
+
+    for w in widgets:
+        if not isinstance(w, dict):
+            continue
+        if w.get("aggregation") != "text":
+            continue
+        wi = w.get("i") or "<unknown>"
+        mc = w.get("markdownContent") or ""
+        if not isinstance(mc, str):
+            continue
+
+        # 1. Template leakage — unfilled briefs.
+        for marker in _TEMPLATE_LEAKAGE_MARKERS:
+            if marker in mc:
+                errors.append(
+                    f"widget '{wi}': contains template-brief marker '{marker}' — "
+                    f"the section was never filled. Patch markdownContent with real content."
+                )
+                break  # one error per widget for this class is enough
+
+        # 2. Angle-bracket placeholders left in the prose.
+        placeholders = sorted(set(_PLACEHOLDER_PATTERN.findall(mc)))
+        if placeholders:
+            sample = ", ".join(placeholders[:5])
+            errors.append(
+                f"widget '{wi}': unreplaced placeholder(s) {sample} — these come "
+                f"from the template's reference example and must be replaced with real values."
+            )
+
+        # 3. SERP URLs in markdown links.
+        for url in _MARKDOWN_LINK_PATTERN.findall(mc):
+            if _looks_like_serp(url):
+                errors.append(
+                    f"widget '{wi}': cites a search-results URL ({url}) — replace "
+                    f"with the underlying article URL or drop the claim."
+                )
+                break  # one SERP error per widget; fix-then-reverify is fast
+
+        # 4. `§` symbol in any heading line.
+        if _SECTION_SYMBOL_HEADING_PATTERN.search(mc):
+            errors.append(
+                f"widget '{wi}': contains a heading starting with '§' — drop the "
+                f"symbol (the v3 template uses plain numbering like '## 5. Share of voice')."
+            )
+
+        # 5. Duplicate `<a id="sec-...">` anchors across the dashboard.
+        for anchor in _ANCHOR_PATTERN.findall(mc):
+            prior = seen_anchors.get(anchor)
+            if prior and prior != wi:
+                errors.append(
+                    f"widget '{wi}': declares anchor '{anchor}' that is also used "
+                    f"by widget '{prior}'. Each section anchor must be unique — "
+                    f"likely off-by-one widget assignment; move the content to the "
+                    f"widget whose i matches the section."
+                )
+            else:
+                seen_anchors[anchor] = wi
+
+    return errors
+
+
+# ─── Tool 4 — verify_dashboard ──────────────────────────────────────────────
+
+
+def verify_dashboard(
+    layout_id: str,
+    tool_context: ToolContext = None,
+) -> dict:
+    """Pre-publish gate. Returns ok or a list of specific defects to fix.
+
+    This is the hard check for everything `publish_dashboard` would reject.
+    Run it before publish, fix every error via `update_dashboard`, run it
+    again, repeat until ok. `publish_dashboard` runs the same check internally
+    and refuses on errors — this tool is your way to *see* the errors before
+    that final step.
+
+    What it catches:
+      - Template-brief leakage: any text widget whose `markdownContent` still
+        contains the template's `Agent instructions.` or `Reference example`
+        markers (the agent forgot to fill that section).
+      - Angle-bracket placeholders left in prose: `<Subject>`, `<Rival1>`,
+        `<TopicA>`, `<wing>`, etc. — these come from the template's reference
+        examples and must be replaced with real values.
+      - SERP-host URLs in markdown links: `google.com/search`, `bing.com/search`,
+        `duckduckgo.com/?q=...` — these prove only that you constructed a query,
+        not that the source exists. Cite the article URL or drop the claim.
+      - `§` symbol in any heading line — the v3 template uses plain numbering
+        (`## 5. Share of voice`, not `## §5 — Share of voice`).
+      - Duplicate `<a id="sec-...">` anchors across the dashboard — symptom of
+        off-by-one widget assignment, breaks intra-page TOC links.
+
+    What it does NOT catch:
+      - Content quality (depth, accuracy, tone) — those are your judgment.
+      - Number / date correctness against the underlying SQL — re-run the query
+        if uncertain; verify_dashboard cannot reach the data.
+      - Missing-anchor breakage from removals (intentionally lenient — removing
+        a section is allowed and the TOC isn't structurally enforced).
+
+    Args:
+        layout_id: The dashboard to check (the new dashboard's id from
+            create_dashboard_from_template).
+        tool_context: ADK tool context (injected automatically).
+
+    Returns:
+        On clean: ``{status: "ok", layout_id, message, checked_widget_count}``.
+        On defects: ``{status: "error", layout_id, errors: [...], message}``
+        with one short error line per defect. Fix via update_dashboard, re-run.
+        On access error: ``{status: "error", message}``.
+    """
+    user_id = _user_id(tool_context)
+    if not user_id:
+        return {"status": "error", "message": "No user_id in session — cannot verify dashboard."}
+    if not layout_id:
+        return {"status": "error", "message": "layout_id is required."}
+
+    fs = get_fs()
+    data, err = _verify_dashboard_ownership(fs, layout_id, user_id)
+    if err:
+        return err
+
+    widgets = data.get("layout") or []
+    text_widget_count = sum(
+        1 for w in widgets
+        if isinstance(w, dict) and w.get("aggregation") == "text"
+    )
+    errors = _check_dashboard_for_publish(widgets)
+
+    if errors:
+        logger.info(
+            "verify_dashboard: layout=%s user=%s defects=%d",
+            layout_id, user_id, len(errors),
+        )
+        return {
+            "status": "error",
+            "layout_id": layout_id,
+            "errors": errors,
+            "checked_widget_count": text_widget_count,
+            "message": (
+                f"verify_dashboard found {len(errors)} defect(s) — fix via "
+                f"update_dashboard and re-run verify_dashboard. publish_dashboard "
+                f"will refuse the same errors."
+            ),
+        }
+
+    logger.info(
+        "verify_dashboard: layout=%s user=%s OK widgets=%d",
+        layout_id, user_id, text_widget_count,
+    )
+    return {
+        "status": "ok",
+        "layout_id": layout_id,
+        "checked_widget_count": text_widget_count,
+        "message": (
+            f"verify_dashboard passed — {text_widget_count} text widget(s) "
+            f"clean. Safe to call publish_dashboard."
+        ),
+    }
+
+
+# ─── Tool 5 — publish_dashboard ─────────────────────────────────────────────
 
 
 def publish_dashboard(
@@ -485,13 +760,18 @@ def publish_dashboard(
     Idempotent: calling it twice on the same layout_id just updates the title
     and updated_at timestamps.
 
+    HARD PRE-PUBLISH GATE: this tool runs the same checks as `verify_dashboard`
+    and refuses to publish if any are violated (template-brief leakage,
+    placeholders, SERP-host citations, `§` headings, duplicate anchors).
+    Call `verify_dashboard(layout_id)` first to see and fix the errors before
+    invoking publish.
+
     WHEN TO USE:
-      - ONCE per run, after end-of-run validation passes (a final read_dashboard
-        confirms no contradictions).
+      - ONCE per run, after `verify_dashboard` returns ok.
 
     WHEN NOT TO USE:
-      - Before end-of-run validation. The user only sees the dashboard when you
-        publish; the run is incomplete if you publish before validation.
+      - Before verify_dashboard is clean. Publish will refuse and you'll
+        receive the same error list.
       - On the template itself. Templates are user-curated; do not republish.
 
     Args:
@@ -504,7 +784,9 @@ def publish_dashboard(
 
     Returns:
         On success: ``{status, layout_id, explorer_url, published: True, message}``.
-        On error: ``{status: "error", message}``.
+        On verify failure: ``{status: "error", layout_id, errors: [...], message}``
+          — fix via update_dashboard, then republish.
+        On other error: ``{status: "error", message}``.
     """
     user_id = _user_id(tool_context)
     if not user_id:
@@ -523,6 +805,29 @@ def publish_dashboard(
     data, err = _verify_dashboard_ownership(fs, layout_id, user_id)
     if err:
         return err
+    err = _refuse_if_template(data, layout_id, "publish_dashboard")
+    if err:
+        return err
+
+    # Hard pre-publish gate — same checks as verify_dashboard. The agent is
+    # asked to call verify_dashboard first; this is the safety net for when
+    # it doesn't, or when content drifted between verify and publish.
+    pre_publish_errors = _check_dashboard_for_publish(data.get("layout") or [])
+    if pre_publish_errors:
+        logger.info(
+            "publish_dashboard: REFUSED layout=%s user=%s defects=%d",
+            layout_id, user_id, len(pre_publish_errors),
+        )
+        return {
+            "status": "error",
+            "layout_id": layout_id,
+            "errors": pre_publish_errors,
+            "message": (
+                f"Refused publish: {len(pre_publish_errors)} defect(s) found by "
+                f"verify_dashboard. Fix via update_dashboard, then republish. "
+                f"Call verify_dashboard(layout_id) to see the same list before retrying."
+            ),
+        }
 
     final_title = (title or "").strip() or data.get("title") or "Untitled Dashboard"
     now = _now_iso()

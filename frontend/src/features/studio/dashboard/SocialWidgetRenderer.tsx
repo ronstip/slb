@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, CustomTableConfig, CustomDimension } from './types-social-dashboard.ts';
 import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, getDimensionMeta, isDimensionColumn } from './types-social-dashboard.ts';
@@ -290,6 +290,10 @@ interface FrameProps {
   onConfigure: () => void;
   onRemove: () => void;
   onDuplicate?: () => void;
+  /** Optional callback: when a text widget's rendered content height changes,
+   * the grid receives a suggested new grid-row height. Used to auto-fit text
+   * widgets to their content (no inner scroll). */
+  onAutoSize?: (i: string, h: number) => void;
 }
 
 // ── Sub-components (each calls hooks unconditionally) ─────────────────────────
@@ -574,8 +578,41 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
 
 // ── Text (markdown) widget ────────────────────────────────────────────────────
 
-function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps) {
+function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize }: FrameProps) {
   const content = widget.markdownContent ?? '';
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-fit the widget grid height to its rendered content. Avoids inner
+  // scrollbars and large pockets of empty whitespace. Fires on mount, on
+  // content change, and on container resize. Updates are debounced to a
+  // single rAF to coalesce burst observer callbacks during layout flush.
+  useEffect(() => {
+    if (!onAutoSize || !contentRef.current) return;
+    const ROW_HEIGHT_PX = 48;
+    const MARGIN_Y_PX = 6;
+    const BOTTOM_PAD_PX = 24; // visual breathing room below last block
+    let raf = 0;
+    const recompute = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        if (!contentRef.current) return;
+        const contentH = contentRef.current.scrollHeight;
+        const cellPx = contentH + BOTTOM_PAD_PX;
+        const targetH = Math.max(2, Math.ceil(cellPx / (ROW_HEIGHT_PX + MARGIN_Y_PX)));
+        if (Math.abs(targetH - widget.h) >= 1) {
+          onAutoSize(widget.i, targetH);
+        }
+      });
+    };
+    const observer = new ResizeObserver(recompute);
+    observer.observe(contentRef.current);
+    recompute();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [widget.i, widget.h, content, onAutoSize]);
+
   // No card chrome: transparent background, no border, no header. In edit mode
   // the entire widget acts as the drag handle and a floating menu surfaces the
   // configure/remove/duplicate actions on hover.
@@ -619,14 +656,20 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }: 
 
       {content.trim() ? (
         <div className="h-full overflow-y-auto">
-          <Markdown
-            autoDir
-            stripComments={false}
-            headingIds
-            className="agent-prose max-w-none break-words text-sm leading-relaxed"
-          >
-            {content}
-          </Markdown>
+          {/* Inner div is the natural-height content; outer wrapper provides
+              the scrolling fallback if auto-size hasn't caught up yet. The
+              `ref` is placed on the inner div so scrollHeight measures the
+              content, not the (possibly oversized) cell. */}
+          <div ref={contentRef}>
+            <Markdown
+              autoDir
+              stripComments={false}
+              headingIds
+              className="agent-prose max-w-none break-words text-sm leading-relaxed"
+            >
+              {content}
+            </Markdown>
+          </div>
         </div>
       ) : (
         <div className="flex items-center justify-center h-full text-xs text-muted-foreground italic">
@@ -723,6 +766,7 @@ interface SocialWidgetRendererProps {
   onDuplicate?: () => void;
   onFilterToggle?: (key: string, value: string) => void;
   serverKpis?: DashboardKpis;
+  onAutoSize?: (i: string, h: number) => void;
 }
 
 export function SocialWidgetRenderer({
@@ -734,6 +778,7 @@ export function SocialWidgetRenderer({
   onDuplicate,
   onFilterToggle,
   serverKpis,
+  onAutoSize,
 }: SocialWidgetRendererProps) {
   // Legacy aggregations (`volume`, `sentiment-over-time`) are rewritten to
   // `aggregation: 'custom'` here so the dispatch below stays uniform.
@@ -744,7 +789,7 @@ export function SocialWidgetRenderer({
     [filteredPosts, widget.filters],
   );
 
-  const frameProps = { widget, isEditMode, onConfigure, onRemove, onDuplicate };
+  const frameProps = { widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize };
 
   if (widget.aggregation === 'text') {
     return <TextWidget {...frameProps} />;
