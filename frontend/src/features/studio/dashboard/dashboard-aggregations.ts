@@ -1,6 +1,6 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { CustomChartConfig, CustomDimension, CustomTableConfig, WidgetData } from './types-social-dashboard.ts';
-import { isCustomFieldDimension, customFieldName } from './types-social-dashboard.ts';
+import { isCustomFieldDimension, customFieldName, isDimensionColumn } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
 
@@ -775,21 +775,40 @@ export interface TableRow {
 export function aggregateTable(posts: DashboardPost[], config: CustomTableConfig): TableRow[] {
   const { dimension, columns, sortBy, sortDir = 'desc', rowLimit = 25 } = config;
 
-  // dimension key -> per-column Stats
-  const acc = new Map<string, Map<string, Stats>>();
+  // dimension key -> per-metric-column Stats
+  const metricAcc = new Map<string, Map<string, Stats>>();
+  // dimension key -> per-dim-column -> value -> count (frequency)
+  const dimAcc = new Map<string, Map<string, Map<string, number>>>();
   const platformOf = new Map<string, string>();
 
   for (const p of posts) {
     const keys = getDimensionKeys(p, dimension, 'day');
     if (keys.length === 0) continue;
     for (const key of keys) {
-      let perCol = acc.get(key);
-      if (!perCol) {
-        perCol = new Map();
-        acc.set(key, perCol);
+      let perMetric = metricAcc.get(key);
+      if (!perMetric) {
+        perMetric = new Map();
+        metricAcc.set(key, perMetric);
       }
+      let perDim = dimAcc.get(key);
       for (const col of columns) {
-        addToStats(perCol, col.id, getMetricValue(p, col.metric));
+        if (isDimensionColumn(col) && col.dimension) {
+          if (!perDim) {
+            perDim = new Map();
+            dimAcc.set(key, perDim);
+          }
+          let counts = perDim.get(col.id);
+          if (!counts) {
+            counts = new Map();
+            perDim.set(col.id, counts);
+          }
+          const values = getDimensionKeys(p, col.dimension, 'day');
+          for (const v of values) {
+            counts.set(v, (counts.get(v) ?? 0) + 1);
+          }
+        } else if (col.metric) {
+          addToStats(perMetric, col.id, getMetricValue(p, col.metric));
+        }
       }
       if (dimension === 'channel_handle' && p.platform && !platformOf.has(key)) {
         platformOf.set(key, p.platform);
@@ -798,13 +817,35 @@ export function aggregateTable(posts: DashboardPost[], config: CustomTableConfig
   }
 
   const rows: TableRow[] = [];
-  for (const [key, perCol] of acc) {
+  for (const [key, perMetric] of metricAcc) {
     const row: TableRow = { __key: key, __label: key };
     if (platformOf.has(key)) row.__platform = platformOf.get(key);
+    const perDim = dimAcc.get(key);
     for (const col of columns) {
-      const stats = perCol.get(col.id) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity };
-      const agg = col.metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
-      row[col.id] = resolveAgg(stats, agg);
+      if (isDimensionColumn(col) && col.dimension) {
+        const counts = perDim?.get(col.id);
+        const dimAggKind = col.dimensionAgg ?? 'top';
+        if (dimAggKind === 'distinct_count') {
+          row[col.id] = counts?.size ?? 0;
+        } else {
+          // 'top' — most frequent value; ties broken alphabetically.
+          let topVal = '';
+          let topCount = -1;
+          if (counts) {
+            for (const [v, c] of counts) {
+              if (c > topCount || (c === topCount && v < topVal)) {
+                topVal = v;
+                topCount = c;
+              }
+            }
+          }
+          row[col.id] = topVal;
+        }
+      } else if (col.metric) {
+        const stats = perMetric.get(col.id) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity };
+        const agg = col.metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
+        row[col.id] = resolveAgg(stats, agg);
+      }
     }
     rows.push(row);
   }
@@ -816,9 +857,12 @@ export function aggregateTable(posts: DashboardPost[], config: CustomTableConfig
       if (sortKey === '__dim') {
         return dir * String(a.__label).localeCompare(String(b.__label));
       }
-      const av = Number(a[sortKey] ?? 0);
-      const bv = Number(b[sortKey] ?? 0);
-      return dir * (av - bv);
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return dir * String(av ?? '').localeCompare(String(bv ?? ''));
+      }
+      return dir * (Number(av ?? 0) - Number(bv ?? 0));
     });
   }
 

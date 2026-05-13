@@ -50,10 +50,12 @@ CustomDimension = Literal[
     "emotion",
     "language",
     "content_type",
+    "channel_type",
     "channel_handle",
     "posted_at",
     "themes",
     "entities",
+    "brands",
 ]
 
 CustomMetric = Literal[
@@ -81,7 +83,7 @@ VALID_CHART_TYPES: dict[str, tuple[str, ...]] = {
     "language": ("pie", "doughnut", "bar", "progress-list"),
     "engagement-rate": ("line",),
     "posts": ("data-table",),
-    "custom": ("bar", "pie", "doughnut", "line", "number-card", "progress-list", "word-cloud"),
+    "custom": ("bar", "pie", "doughnut", "line", "number-card", "progress-list", "word-cloud", "table"),
     "text": ("table",),
 }
 
@@ -108,7 +110,7 @@ AGGREGATION_DEFAULTS: dict[str, dict] = {
 }
 
 GRID_COLS = 12
-MAX_WIDGETS = 24
+MAX_WIDGETS = 50
 
 DashboardOrientation = Literal["horizontal", "vertical"]
 
@@ -189,6 +191,34 @@ class SocialWidgetFilters(BaseModel):
     conditions: list[FilterCondition] | None = None
 
 
+class TableColumn(BaseModel):
+    """One column in a custom table widget. A column is either a metric
+    aggregation or a dimension extraction (kind='dimension')."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(min_length=1)
+    kind: Literal["metric", "dimension"] | None = None
+    metric: CustomMetric | None = None
+    agg: Literal["sum", "avg", "min", "max", "count"] | None = None
+    dimension: CustomDimension | None = None
+    dimensionAgg: Literal["top", "distinct_count"] | None = None
+    header: str | None = None
+
+
+class CustomTableConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    dimension: CustomDimension
+    columns: list[TableColumn]
+    sortBy: str | None = None
+    sortDir: Literal["asc", "desc"] | None = None
+    rowLimit: int | None = Field(default=None, ge=1, le=500)
+    showRank: bool | None = None
+    density: Literal["compact", "comfortable"] | None = None
+    striped: bool | None = None
+
+
 # ─── Widget ───────────────────────────────────────────────────────────────────
 
 
@@ -216,6 +246,7 @@ class SocialDashboardWidget(BaseModel):
     kpiIndex: int | None = Field(default=None, ge=0, le=4)
     filters: SocialWidgetFilters | None = None
     customConfig: CustomChartConfig | None = None
+    tableConfig: CustomTableConfig | None = None
     markdownContent: str | None = None
 
 

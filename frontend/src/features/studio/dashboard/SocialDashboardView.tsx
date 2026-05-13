@@ -110,7 +110,7 @@ export function SocialDashboardView({
 
   // Load persisted layout
   const { data: layoutData, isLoading: layoutLoading } = useDashboardLayout(artifactId);
-  const { mutate: saveLayout, isPending: isSaving } = useSaveDashboardLayout(artifactId);
+  const { mutate: saveLayout, mutateAsync: saveLayoutAsync, isPending: isSaving } = useSaveDashboardLayout(artifactId);
 
   // Initialise widgets from persisted layout or defaults
   const initialised = useRef(false);
@@ -179,15 +179,19 @@ export function SocialDashboardView({
     [isEditMode, scheduleAutoSave],
   );
 
-  const handleDone = useCallback(() => {
-    setEditMode(false);
+  const handleDone = useCallback(async () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveLayout({
-      layout: widgetsRef.current,
-      filterBarFilters: filterBarFiltersRef.current,
-      orientation: orientationRef.current,
-    });
-  }, [setEditMode, saveLayout]);
+    try {
+      await saveLayoutAsync({
+        layout: widgetsRef.current,
+        filterBarFilters: filterBarFiltersRef.current,
+        orientation: orientationRef.current,
+      });
+      setEditMode(false);
+    } catch {
+      // Save failed — stay in edit mode so the user can retry.
+    }
+  }, [setEditMode, saveLayoutAsync]);
 
   const handleOrientationChange = useCallback(
     (next: DashboardOrientation) => {

@@ -206,16 +206,30 @@ export function presetToCustomConfig(
 // ─── Table widget config (used when chartType === 'table') ─────────────────
 
 export type TableColumnAgg = 'sum' | 'avg' | 'min' | 'max' | 'count';
+/** How a dimension column summarizes multiple values within a row's group.
+ *  - 'top' (default): the most frequent value as a string.
+ *  - 'distinct_count': count of distinct values as a number. */
+export type TableDimensionAgg = 'top' | 'distinct_count';
 
 export interface TableColumn {
   /** Stable key — also used as the sort key. */
   id: string;
-  /** Which post field to aggregate. */
-  metric: CustomMetric;
-  /** Default 'sum'. Forced to 'count' for `post_count` (every post contributes 1). */
+  /** 'metric' (default — back-compat) or 'dimension'. */
+  kind?: 'metric' | 'dimension';
+  /** Metric column: which post field to aggregate. */
+  metric?: CustomMetric;
+  /** Metric column: default 'sum'. Forced to 'count' for `post_count`. */
   agg?: TableColumnAgg;
-  /** Optional header override. Falls back to `autoColumnHeader(metric, agg)`. */
+  /** Dimension column: which dimension to extract from posts in the row's group. */
+  dimension?: CustomDimension;
+  /** Dimension column: default 'top'. */
+  dimensionAgg?: TableDimensionAgg;
+  /** Optional header override. Falls back to `autoColumnHeader(col)`. */
   header?: string;
+}
+
+export function isDimensionColumn(col: TableColumn): boolean {
+  return col.kind === 'dimension';
 }
 
 export interface CustomTableConfig {
@@ -235,7 +249,14 @@ export interface CustomTableConfig {
   striped?: boolean;
 }
 
-export function autoColumnHeader(metric: CustomMetric, agg: TableColumnAgg = 'sum'): string {
+export function autoColumnHeader(col: TableColumn): string {
+  if (isDimensionColumn(col) && col.dimension) {
+    const base = getDimensionMeta(col.dimension).label;
+    const dimAgg = col.dimensionAgg ?? 'top';
+    return dimAgg === 'distinct_count' ? `# ${base}s` : base;
+  }
+  const metric = col.metric ?? 'post_count';
+  const agg: TableColumnAgg = metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
   const base = METRIC_META[metric]?.label ?? metric;
   if (metric === 'post_count') return 'Posts';
   switch (agg) {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Plus, X } from 'lucide-react';
 import { Label } from '../../../../components/ui/label.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { Button } from '../../../../components/ui/button.tsx';
@@ -10,6 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../../../components/ui/select.tsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../../../components/ui/dropdown-menu.tsx';
 import { cn } from '../../../../lib/utils.ts';
 import type {
   CustomDimension,
@@ -17,6 +23,7 @@ import type {
   CustomTableConfig,
   TableColumn,
   TableColumnAgg,
+  TableDimensionAgg,
 } from '../types-social-dashboard.ts';
 import {
   DIMENSION_META,
@@ -24,6 +31,7 @@ import {
   getDimensionMeta,
   CUSTOM_DIM_PREFIX,
   autoColumnHeader,
+  isDimensionColumn,
 } from '../types-social-dashboard.ts';
 
 const STANDARD_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
@@ -35,6 +43,11 @@ const AGG_OPTIONS: Array<{ value: TableColumnAgg; label: string }> = [
   { value: 'min',   label: 'Minimum' },
   { value: 'max',   label: 'Maximum' },
   { value: 'count', label: 'Count' },
+];
+
+const DIM_AGG_OPTIONS: Array<{ value: TableDimensionAgg; label: string }> = [
+  { value: 'top',            label: 'Most common' },
+  { value: 'distinct_count', label: 'Distinct count' },
 ];
 
 interface TableDataFormProps {
@@ -80,13 +93,35 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
     onChange({ ...config, columns: next });
   };
 
-  const addColumn = () => {
-    const seed = 'col';
-    const id = uniqueColumnId(config.columns, seed);
+  const addMetricColumn = () => {
+    const id = uniqueColumnId(config.columns, 'col');
     onChange({
       ...config,
-      columns: [...config.columns, { id, metric: 'like_count', agg: 'sum' }],
+      columns: [...config.columns, { id, kind: 'metric', metric: 'like_count', agg: 'sum' }],
     });
+  };
+
+  const addDimensionColumn = () => {
+    const id = uniqueColumnId(config.columns, 'dim');
+    onChange({
+      ...config,
+      columns: [
+        ...config.columns,
+        { id, kind: 'dimension', dimension: 'sentiment', dimensionAgg: 'top' },
+      ],
+    });
+  };
+
+  /** Switch a column between metric and dimension while preserving its id and
+   *  optional header so existing sort/header settings survive the toggle. */
+  const setColumnKind = (idx: number, kind: 'metric' | 'dimension') => {
+    const cur = config.columns[idx];
+    if (!cur) return;
+    const next: TableColumn = kind === 'dimension'
+      ? { id: cur.id, kind: 'dimension', dimension: cur.dimension ?? 'sentiment', dimensionAgg: cur.dimensionAgg ?? 'top', header: cur.header }
+      : { id: cur.id, kind: 'metric',    metric: cur.metric ?? 'like_count',     agg: cur.agg ?? 'sum',                   header: cur.header };
+    const columns = config.columns.map((c, i) => (i === idx ? next : c));
+    onChange({ ...config, columns });
   };
 
   return (
@@ -117,16 +152,30 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
           <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Columns
           </Label>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs gap-1"
-            onClick={addColumn}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add column
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add column
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={addMetricColumn} className="text-xs">
+                Metric
+                <span className="ml-auto text-[10px] text-muted-foreground">number</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={addDimensionColumn} className="text-xs">
+                Dimension
+                <span className="ml-auto text-[10px] text-muted-foreground">label</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {config.columns.length === 0 ? (
@@ -136,8 +185,11 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
         ) : (
           <div className="space-y-1.5">
             {config.columns.map((col, idx) => {
-              const isPostCount = col.metric === 'post_count';
+              const isDim = isDimensionColumn(col);
+              const kind: 'metric' | 'dimension' = isDim ? 'dimension' : 'metric';
+              const isPostCount = !isDim && col.metric === 'post_count';
               const effectiveAgg: TableColumnAgg = isPostCount ? 'count' : (col.agg ?? 'sum');
+              const effectiveDimAgg: TableDimensionAgg = col.dimensionAgg ?? 'top';
               return (
                 <div
                   key={col.id}
@@ -165,40 +217,90 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
                     </button>
                   </div>
 
-                  {/* Metric */}
+                  {/* Kind toggle */}
                   <Select
-                    value={col.metric}
-                    onValueChange={(v) => updateColumn(idx, { metric: v as CustomMetric })}
+                    value={kind}
+                    onValueChange={(v) => setColumnKind(idx, v as 'metric' | 'dimension')}
                   >
-                    <SelectTrigger className="h-7 text-xs w-[140px]">
+                    <SelectTrigger className="h-7 text-xs w-[100px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {ALL_METRICS.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {METRIC_META[m].label}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="metric">Metric</SelectItem>
+                      <SelectItem value="dimension">Dimension</SelectItem>
                     </SelectContent>
                   </Select>
 
-                  {/* Aggregation */}
-                  <Select
-                    value={effectiveAgg}
-                    onValueChange={(v) => updateColumn(idx, { agg: v as TableColumnAgg })}
-                    disabled={isPostCount}
-                  >
-                    <SelectTrigger className={cn('h-7 text-xs w-[120px]', isPostCount && 'opacity-60')}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {AGG_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {/* Field selector — metric or dimension based on kind */}
+                  {isDim ? (
+                    <Select
+                      value={col.dimension ?? 'sentiment'}
+                      onValueChange={(v) => updateColumn(idx, { dimension: v as CustomDimension })}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-[140px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allDimensions.map((dim) => (
+                          <SelectItem key={dim} value={dim}>
+                            {getDimensionMeta(dim).label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select
+                      value={col.metric ?? 'like_count'}
+                      onValueChange={(v) => updateColumn(idx, { metric: v as CustomMetric })}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-[140px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ALL_METRICS.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {METRIC_META[m].label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {/* Aggregation — metric agg or dimension agg */}
+                  {isDim ? (
+                    <Select
+                      value={effectiveDimAgg}
+                      onValueChange={(v) => updateColumn(idx, { dimensionAgg: v as TableDimensionAgg })}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DIM_AGG_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select
+                      value={effectiveAgg}
+                      onValueChange={(v) => updateColumn(idx, { agg: v as TableColumnAgg })}
+                      disabled={isPostCount}
+                    >
+                      <SelectTrigger className={cn('h-7 text-xs w-[120px]', isPostCount && 'opacity-60')}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AGG_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
 
                   {/* Header override */}
                   <Input
@@ -206,7 +308,7 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
                     onChange={(e) =>
                       updateColumn(idx, { header: e.target.value || undefined })
                     }
-                    placeholder={autoColumnHeader(col.metric, effectiveAgg)}
+                    placeholder={autoColumnHeader(col)}
                     className="h-7 text-xs flex-1 min-w-0"
                   />
 
@@ -240,7 +342,7 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
             <SelectItem value="__dim">{getDimensionMeta(config.dimension).label} (label)</SelectItem>
             {config.columns.map((col) => (
               <SelectItem key={col.id} value={col.id}>
-                {col.header || autoColumnHeader(col.metric, col.metric === 'post_count' ? 'count' : (col.agg ?? 'sum'))}
+                {col.header || autoColumnHeader(col)}
               </SelectItem>
             ))}
           </SelectContent>

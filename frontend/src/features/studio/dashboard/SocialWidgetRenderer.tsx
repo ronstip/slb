@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, CustomTableConfig, CustomDimension } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, getDimensionMeta } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, getDimensionMeta, isDimensionColumn } from './types-social-dashboard.ts';
 import { aggregateCustom, aggregateTable, type TableRow } from './dashboard-aggregations.ts';
 import {
   aggregateSentiment,
@@ -94,18 +94,39 @@ function buildTableColumns(
   });
 
   for (const col of tableConfig.columns) {
-    const effectiveAgg = col.metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
-    cols.push({
-      key: col.id,
-      header: col.header || autoColumnHeader(col.metric, effectiveAgg),
-      align: 'right',
-      sortable: true,
-      render: (row) => (
-        <span className="tabular-nums">
-          {formatNumber(Number(row[col.id] ?? 0))}
-        </span>
-      ),
-    });
+    if (isDimensionColumn(col)) {
+      const dimAgg = col.dimensionAgg ?? 'top';
+      const isCount = dimAgg === 'distinct_count';
+      cols.push({
+        key: col.id,
+        header: col.header || autoColumnHeader(col),
+        align: isCount ? 'right' : 'left',
+        // String values (top): DataTable's header sort is numeric-only and
+        // would scramble — fall back to aggregateTable's pre-sort by setting
+        // sortBy via the config dialog. distinct_count is numeric → sortable.
+        sortable: isCount,
+        render: (row) => {
+          const v = row[col.id];
+          if (isCount) {
+            return <span className="tabular-nums">{formatNumber(Number(v ?? 0))}</span>;
+          }
+          const text = v == null || v === '' ? '—' : String(v);
+          return <span className="text-[12px] text-foreground truncate">{text}</span>;
+        },
+      });
+    } else {
+      cols.push({
+        key: col.id,
+        header: col.header || autoColumnHeader(col),
+        align: 'right',
+        sortable: true,
+        render: (row) => (
+          <span className="tabular-nums">
+            {formatNumber(Number(row[col.id] ?? 0))}
+          </span>
+        ),
+      });
+    }
   }
 
   return cols;
@@ -123,10 +144,15 @@ function ConfigurableTableWidget({
   const rows = useMemo(() => aggregateTable(posts, tableConfig), [posts, tableConfig]);
   const columns = useMemo(() => buildTableColumns(tableConfig), [tableConfig]);
   const filterKey = filterKeyForDimension(tableConfig.dimension);
-  // When sorting by the (string) dimension label, rely on aggregateTable's
-  // pre-sort — DataTable's sort is numeric-only and would scramble the order.
-  const defaultSortKey =
-    tableConfig.sortBy === '__dim' ? undefined : (tableConfig.sortBy ?? tableConfig.columns[0]?.id);
+  // When the active sort key produces strings (the dimension label, or a
+  // dimension column with 'top' agg), rely on aggregateTable's pre-sort —
+  // DataTable's sort is numeric-only and would scramble the order.
+  const sortBy = tableConfig.sortBy ?? tableConfig.columns[0]?.id;
+  const sortCol = tableConfig.columns.find((c) => c.id === sortBy);
+  const sortIsString =
+    sortBy === '__dim' ||
+    (sortCol != null && isDimensionColumn(sortCol) && (sortCol.dimensionAgg ?? 'top') === 'top');
+  const defaultSortKey = sortIsString ? undefined : sortBy;
 
   return (
     <DataTable<TableRow>
