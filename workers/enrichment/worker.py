@@ -78,9 +78,9 @@ def _write_results_via_values(
     # Build a UNION ALL of SELECT statements for each row
     selects = []
     for post_id, r in results:
-        entities_arr = ", ".join(f"'{_esc(e)}'" for e in r.entities)
-        themes_arr = ", ".join(f"'{_esc(t)}'" for t in r.themes)
-        brands_arr = ", ".join(f"'{_esc(b)}'" for b in r.detected_brands)
+        entities_sql = _string_array_sql(r.entities)
+        themes_sql = _string_array_sql(r.themes)
+        brands_sql = _string_array_sql(r.detected_brands)
 
         custom_json = json.dumps(r.custom_fields) if r.custom_fields else None
         custom_sql = f"PARSE_JSON('{_esc(custom_json)}')" if custom_json else "CAST(NULL AS JSON)"
@@ -93,13 +93,13 @@ def _write_results_via_values(
             f"'{_esc(r.context)}' AS context, "
             f"'{_esc(r.sentiment)}' AS sentiment, "
             f"'{_esc(r.emotion)}' AS emotion, "
-            f"[{entities_arr}] AS entities, "
-            f"[{themes_arr}] AS themes, "
+            f"{entities_sql} AS entities, "
+            f"{themes_sql} AS themes, "
             f"'{_esc(r.ai_summary)}' AS ai_summary, "
             f"'{_esc(r.language)}' AS language, "
             f"'{_esc(r.content_type)}' AS content_type, "
             f"{'TRUE' if r.is_related_to_task else 'FALSE'} AS is_related_to_task, "
-            f"[{brands_arr}] AS detected_brands, "
+            f"{brands_sql} AS detected_brands, "
             f"'{_esc(r.channel_type)}' AS channel_type, "
             f"{custom_sql} AS custom_fields, "
             f"{src_sql} AS source, "
@@ -124,6 +124,15 @@ INSERT INTO social_listening.enriched_posts (
 def _esc(s: str) -> str:
     """Escape single quotes for BQ SQL string literals."""
     return s.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _string_array_sql(values: list[str]) -> str:
+    # Bare `[]` is inferred as ARRAY<INT64> by BQ; type the literal so empty
+    # arrays insert cleanly into ARRAY<STRING> columns.
+    if not values:
+        return "CAST([] AS ARRAY<STRING>)"
+    inner = ", ".join(f"'{_esc(v)}'" for v in values)
+    return f"[{inner}]"
 
 
 # ---------------------------------------------------------------------------
