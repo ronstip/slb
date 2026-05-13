@@ -37,7 +37,39 @@ function vendorChunk(id: string): string | undefined {
   if (id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-pdf'
   if (id.includes('firebase')) return 'vendor-firebase'
   if (id.includes('lucide-react')) return 'vendor-icons'
-  if (id.includes('react-markdown') || id.includes('remark-') || id.includes('micromark') || id.includes('mdast') || id.includes('hast'))
+  // Keep the entire unified/remark/rehype pipeline in a single chunk. Splitting
+  // any of these out causes cross-chunk circular imports — e.g. `mdast-util-to-hast`
+  // calls `convert` from `unist-util-is` at module top-level, so if they land in
+  // different chunks the importing chunk hits `Cannot access 'Bn' before
+  // initialization` on first paint.
+  if (
+    id.includes('react-markdown') ||
+    id.includes('remark-') ||
+    id.includes('rehype-') ||
+    id.includes('micromark') ||
+    id.includes('mdast') ||
+    id.includes('hast') ||
+    id.includes('/unified/') ||
+    id.includes('/unist-util-') ||
+    id.includes('/vfile') ||
+    id.includes('/zwitch/') ||
+    id.includes('/bail/') ||
+    id.includes('/trough/') ||
+    id.includes('/is-plain-obj/') ||
+    id.includes('/parse5') ||
+    id.includes('/property-information/') ||
+    id.includes('/space-separated-tokens/') ||
+    id.includes('/comma-separated-tokens/') ||
+    id.includes('/decode-named-character-reference/') ||
+    id.includes('/character-entities') ||
+    id.includes('/stringify-entities/') ||
+    id.includes('/web-namespaces/') ||
+    id.includes('/html-void-elements/') ||
+    id.includes('/markdown-table/') ||
+    id.includes('/longest-streak/') ||
+    id.includes('/ccount/') ||
+    id.includes('/mdurl/')
+  )
     return 'vendor-markdown'
   if (id.includes('react-hook-form') || id.includes('@hookform') || id.includes('zod')) return 'vendor-forms'
   if (id.includes('date-fns')) return 'vendor-date-fns'
