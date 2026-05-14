@@ -1,5 +1,6 @@
 """Auth & identity endpoints: current-user profile and account linking."""
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,13 +24,19 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
     """
     fs = get_fs()
 
-    org_name = None
+    # Run the two Firestore reads in parallel — previously they were sync and
+    # sequential on the asyncio loop, blocking every other request for the
+    # duration of both gets. /me is hit on every page load.
     if user.org_id:
-        org = fs.get_org(user.org_id)
-        if org:
-            org_name = org.get("name")
+        org, user_doc = await asyncio.gather(
+            asyncio.to_thread(fs.get_org, user.org_id),
+            asyncio.to_thread(fs.get_user, user.uid),
+        )
+    else:
+        org = None
+        user_doc = await asyncio.to_thread(fs.get_user, user.uid)
 
-    user_doc = fs.get_user(user.uid)
+    org_name = org.get("name") if org else None
 
     # is_super_admin reflects the TARGET user's privileges — during
     # impersonation this is always false because admin-on-admin is blocked.

@@ -1,5 +1,6 @@
 """Artifacts router — list, retrieve, update, and delete artifacts."""
 
+import asyncio
 import json
 import logging
 import re
@@ -33,13 +34,13 @@ def _can_access(user: CurrentUser, artifact: dict) -> bool:
 @router.get("/artifacts", response_model=list[ArtifactListItem])
 async def list_artifacts(user: CurrentUser = Depends(get_current_user)):
     fs = get_fs()
-    return fs.list_artifacts(user.uid, user.org_id)
+    return await asyncio.to_thread(fs.list_artifacts, user.uid, user.org_id)
 
 
 @router.get("/artifacts/{artifact_id}", response_model=ArtifactDetailResponse)
 async def get_artifact(artifact_id: str, user: CurrentUser = Depends(get_current_user)):
     fs = get_fs()
-    artifact = fs.get_artifact(artifact_id)
+    artifact = await asyncio.to_thread(fs.get_artifact, artifact_id)
     if not artifact:
         raise HTTPException(404, "Artifact not found")
     if not _can_access(user, artifact):

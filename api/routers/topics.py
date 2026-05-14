@@ -75,11 +75,12 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
     if not topics:
         return topics
 
-    # Batch BQ query: per-cluster sentiment + engagement summary.
-    # Joins topic members with the agent's scope_posts view (TVF dedups posts +
-    # picks this agent's enrichment + merges latest engagement in one shot).
-    summary_rows = bq.query(
-        f"""
+    # The three BQ queries below are independent of each other; previously they
+    # ran sequentially, so the endpoint paid 3× the round-trip + BQ slot time
+    # for what is fundamentally three views of the same cluster data. Fire them
+    # in parallel via a small thread pool (bq.query releases the GIL during the
+    # gRPC call, so threads give real parallelism here).
+    summary_sql = f"""
         {_LATEST_CTE},
         members AS (
             SELECT tcm.cluster_id, tcm.post_id
@@ -98,17 +99,13 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
         FROM members m
         JOIN {_AGENT_POSTS_TVF} t USING (post_id)
         GROUP BY m.cluster_id
-        """,
-        {"agent_id": agent_id},
-    )
-    summary_map = {r["cluster_id"]: r for r in summary_rows}
+        """
 
     # Thumbnail query: prefer representative post w/ media, fall back to ANY
     # cluster member that has media. Twitter clusters often contain only text
     # tweets in their representative subset, so widening to all members ensures
     # an image appears whenever any post in the cluster has one.
-    thumb_rows = bq.query(
-        f"""
+    thumb_sql = f"""
         {_LATEST_CTE},
         members AS (
             SELECT tcm.cluster_id, tcm.post_id, tcm.is_representative
@@ -132,15 +129,11 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
         FROM ranked
         WHERE rn = 1
           AND JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') IS NOT NULL
-        """,
-        {"agent_id": agent_id},
-    )
-    thumb_map = {r["cluster_id"]: r for r in thumb_rows}
+        """
 
     # Platforms per cluster — used by the frontend to render a logo wall
     # placeholder for clusters where no post has media.
-    platform_rows = bq.query(
-        f"""
+    platforms_sql = f"""
         {_LATEST_CTE},
         members AS (
             SELECT tcm.cluster_id, tcm.post_id
@@ -153,9 +146,21 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
         FROM members m
         JOIN {_AGENT_POSTS_TVF} t USING (post_id)
         GROUP BY m.cluster_id
-        """,
-        {"agent_id": agent_id},
-    )
+        """
+
+    params = {"agent_id": agent_id}
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        summary_future = pool.submit(bq.query, summary_sql, params)
+        thumb_future = pool.submit(bq.query, thumb_sql, params)
+        platform_future = pool.submit(bq.query, platforms_sql, params)
+        summary_rows = summary_future.result()
+        thumb_rows = thumb_future.result()
+        platform_rows = platform_future.result()
+
+    summary_map = {r["cluster_id"]: r for r in summary_rows}
+    thumb_map = {r["cluster_id"]: r for r in thumb_rows}
     platform_map = {r["cluster_id"]: r for r in platform_rows}
 
     # Merge BQ data into Firestore topics

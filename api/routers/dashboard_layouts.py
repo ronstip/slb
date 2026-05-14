@@ -1,5 +1,6 @@
 """Dashboard layouts router — persists per-artifact widget layout configuration."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -44,7 +45,7 @@ async def get_dashboard_layout(
 ):
     """Get saved layout for a dashboard artifact. Returns null layout if not yet saved."""
     doc_ref = fs._db.collection(COLLECTION).document(artifact_id)
-    doc = doc_ref.get()
+    doc = await asyncio.to_thread(doc_ref.get)
 
     if not doc.exists:
         return LayoutResponse(layout=None)
@@ -79,7 +80,7 @@ async def save_dashboard_layout(
             )
 
     doc_ref = fs._db.collection(COLLECTION).document(artifact_id)
-    doc = doc_ref.get()
+    doc = await asyncio.to_thread(doc_ref.get)
 
     # If doc exists, verify ownership before overwriting
     if doc.exists:
@@ -88,13 +89,16 @@ async def save_dashboard_layout(
             raise HTTPException(status_code=403, detail="Access denied")
 
     serialized_layout = [w.model_dump(exclude_none=True, by_alias=True) for w in request.layout]
-    doc_ref.set({
-        "user_id": user.uid,
-        "artifact_id": artifact_id,
-        "layout": serialized_layout,
-        "filterBarFilters": request.filterBarFilters,
-        "orientation": request.orientation,
-    })
+    await asyncio.to_thread(
+        doc_ref.set,
+        {
+            "user_id": user.uid,
+            "artifact_id": artifact_id,
+            "layout": serialized_layout,
+            "filterBarFilters": request.filterBarFilters,
+            "orientation": request.orientation,
+        },
+    )
 
     return LayoutResponse(
         layout=serialized_layout,
