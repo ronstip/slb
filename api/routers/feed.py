@@ -27,8 +27,13 @@ async def get_multi_collection_feed(
         return FeedResponse(posts=[], total=0, offset=request.offset, limit=request.limit)
 
     fs = get_fs()
-    for cid in request.collection_ids:
-        status = fs.get_collection_status(cid)
+    # Fan out the per-collection Firestore reads in parallel — the previous
+    # sequential loop blocked the asyncio loop and added one round-trip per
+    # collection (4 collections = 4× the validation latency).
+    statuses = await asyncio.gather(
+        *(asyncio.to_thread(fs.get_collection_status, cid) for cid in request.collection_ids)
+    )
+    for cid, status in zip(request.collection_ids, statuses):
         if not status:
             raise HTTPException(status_code=404, detail=f"Collection {cid} not found")
         if not can_access_collection(user, status):

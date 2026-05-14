@@ -72,6 +72,10 @@ export function AgentDetailPage() {
 
   const tabParam = searchParams.get('tab') as DetailTab | null;
   const activeTab: DetailTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'overview';
+  // Active explorer layout is persisted in the URL (?tab=explorer&layout=…) so
+  // refresh, back/forward, and shared links restore the same dashboard. The
+  // store is mirrored from the URL via a sync effect below.
+  const layoutParam = searchParams.get('layout');
 
   const setActiveTab = (tab: DetailTab) => {
     setSearchParams(tab === 'overview' ? {} : { tab }, { replace: true });
@@ -90,18 +94,31 @@ export function AgentDetailPage() {
 
   const handleLayoutSelect = (layoutId: string | null) => {
     useExplorerLayoutStore.getState().selectLayout(layoutId);
-    setSearchParams({ tab: 'explorer' }, { replace: true });
+    const next: Record<string, string> = { tab: 'explorer' };
+    if (layoutId) next.layout = layoutId;
+    setSearchParams(next, { replace: true });
   };
 
   const handleNewLayout = async () => {
     if (!taskId) return;
     try {
-      await useExplorerLayoutStore.getState().createLayout(taskId, 'Untitled Layout');
-      setSearchParams({ tab: 'explorer' }, { replace: true });
+      const newId = await useExplorerLayoutStore.getState().createLayout(taskId, 'Untitled Layout');
+      setSearchParams({ tab: 'explorer', layout: newId }, { replace: true });
     } catch {
       toast.error('Failed to create layout');
     }
   };
+
+  // Sync the URL's `layout` param into the explorer-layout store. Runs whenever
+  // the URL changes (initial mount, refresh, back/forward), so the dashboard
+  // matches what the URL says — making layouts bookmarkable and shareable.
+  useEffect(() => {
+    if (activeTab !== 'explorer') return;
+    const desired = layoutParam ?? null;
+    if (useExplorerLayoutStore.getState().activeLayoutId !== desired) {
+      useExplorerLayoutStore.getState().selectLayout(desired);
+    }
+  }, [layoutParam, activeTab]);
 
   useEffect(() => {
     if (taskId) {

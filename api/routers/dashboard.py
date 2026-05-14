@@ -51,9 +51,13 @@ async def get_dashboard_data(
 
     fs = get_fs()
 
-    # Validate access for each collection
-    for cid in request.collection_ids:
-        status = fs.get_collection_status(cid)
+    # Validate access for each collection. Run in parallel — the previous
+    # sequential loop did N synchronous Firestore reads on the asyncio loop,
+    # blocking every other request and adding one round-trip per collection.
+    statuses = await asyncio.gather(
+        *(asyncio.to_thread(fs.get_collection_status, cid) for cid in request.collection_ids)
+    )
+    for cid, status in zip(request.collection_ids, statuses):
         if not status:
             raise HTTPException(status_code=404, detail=f"Collection {cid} not found")
         if not _can_access_collection(user, status):
