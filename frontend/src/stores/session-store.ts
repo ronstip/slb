@@ -158,7 +158,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     // Keep agent context active so the next message links to this agent
     useAgentStore.getState().setActiveAgent(agentId);
-    get().fetchAgentSessions(agentId);
+    // Callers (AgentDetailPage, AgentChatTab) already fetch sessions from their
+    // own mount effects — calling fetchAgentSessions here too triples the
+    // /sessions request count under React StrictMode and on every task reload.
   },
 
   setActiveSession: (id: string) => {

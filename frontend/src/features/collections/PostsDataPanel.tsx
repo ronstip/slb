@@ -91,13 +91,22 @@ export function PostsDataPanel({
   const effectiveStartDate = dateRange.from ?? startDate;
   const effectiveEndDate = dateRange.to ?? endDate ?? undefined;
 
+  // Initial page size. Earlier this was 5_000 — that forced every visit to
+  // download 1–10 MB of post JSON before the table could render, even though
+  // the table only ever shows 50 rows at a time. Most agents have <500 posts
+  // total, so 500 covers them in full; busy agents get a truncation banner +
+  // a one-click "Load all" for cases that need the long tail (export, filter).
+  const INITIAL_LIMIT = 500;
+  const [showAll, setShowAll] = useState(false);
+  const fetchLimit = showAll ? 10_000 : INITIAL_LIMIT;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, effectiveEndDate, agentId ?? ''],
+    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, effectiveEndDate, agentId ?? '', fetchLimit],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: effectiveCollectionIds,
         sort: 'views',
-        limit: 5_000,
+        limit: fetchLimit,
         offset: 0,
         dedup,
         platform: platformFilter !== 'all' ? platformFilter : undefined,
@@ -107,10 +116,14 @@ export function PostsDataPanel({
         agent_id: agentId,
       }),
     enabled: hasSelection,
-    staleTime: 30_000,
+    // Bumped from 30 s — posts data rarely changes mid-session; the 30 s window
+    // forced a fresh /feed (multi-second BQ query) every tab-switch.
+    staleTime: 5 * 60_000,
   });
 
   const allPosts = data?.posts ?? [];
+  const totalAvailable = data?.total ?? allPosts.length;
+  const isTruncated = !showAll && totalAvailable > allPosts.length;
 
   // Apply top-level channel filter + column-level filters (both client-side)
   const afterColumnFilters = useMemo(() => {
@@ -497,6 +510,25 @@ export function PostsDataPanel({
 
       {/* Analytics metrics strip */}
       <AnalyticsStrip stats={analyticsStats} />
+
+      {/* Truncation banner: shown when the agent has more posts than we fetched
+          in the initial page. Clicking "Load all" refetches with a higher cap. */}
+      {isTruncated && (
+        <div className="flex items-center justify-between gap-3 border-b border-amber-500/20 bg-amber-500/5 px-4 py-1.5 text-xs">
+          <span className="text-amber-900 dark:text-amber-200">
+            Showing the top {allPosts.length.toLocaleString()} of {totalAvailable.toLocaleString()} posts
+            (sorted by views). Filters and search apply to this subset.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 text-[11px]"
+            onClick={() => setShowAll(true)}
+          >
+            Load all
+          </Button>
+        </div>
+      )}
 
       {/* View body: table or feed */}
       {view === 'table' ? (

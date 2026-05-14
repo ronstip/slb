@@ -1,8 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { Sheet, SheetContent, SheetTitle } from '../../components/ui/sheet.tsx';
-import { AgentCreationWizard } from './wizard/AgentCreationWizard.tsx';
+
+// Lazy — the wizard pulls in 4+ panels (~300 KB total), the chat SSE stack, the
+// AI thinking card, and the wizard-utils chain. None of that is needed until
+// the user actually opens the drawer.
+const AgentCreationWizard = lazy(() =>
+  import('./wizard/AgentCreationWizard.tsx').then((m) => ({ default: m.AgentCreationWizard })),
+);
 
 /**
  * Side drawer containing the agent creation wizard. Opened from the sidebar
@@ -42,7 +48,17 @@ export function NewAgentDrawer() {
           </h2>
         </div>
         <div className="px-8 pb-10">
-          {open && <AgentCreationWizard />}
+          {open && (
+            <Suspense
+              fallback={
+                <div className="flex h-40 items-center justify-center">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
+                </div>
+              }
+            >
+              <AgentCreationWizard />
+            </Suspense>
+          )}
         </div>
       </SheetContent>
     </Sheet>

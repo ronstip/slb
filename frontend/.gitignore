@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Stray lockfiles from non-npm package managers — this project uses npm
+pnpm-lock.yaml
+yarn.lock
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

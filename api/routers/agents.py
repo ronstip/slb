@@ -1,5 +1,6 @@
 """Agent CRUD, wizard planning/creation, runs, artifacts, and logs."""
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -22,7 +23,9 @@ async def list_agents(user: CurrentUser = Depends(get_current_user)):
     """List all agents visible to the user."""
     from api.services.agent_service import list_agents as _list_agents
 
-    agents = _list_agents(user.uid, user.org_id)
+    # _list_agents does synchronous Firestore I/O — off-load to a worker thread
+    # so it doesn't block the asyncio loop while other concurrent requests pile up.
+    agents = await asyncio.to_thread(_list_agents, user.uid, user.org_id)
     return agents
 
 
@@ -263,7 +266,7 @@ async def get_agent_endpoint(agent_id: str, user: CurrentUser = Depends(get_curr
     """Get an agent by ID."""
     from api.services.agent_service import get_agent
 
-    agent = get_agent(agent_id)
+    agent = await asyncio.to_thread(get_agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
@@ -620,7 +623,7 @@ async def get_agent_artifacts(
     """Return the artifacts belonging to an agent."""
     from api.services.agent_service import get_agent
 
-    agent = get_agent(agent_id)
+    agent = await asyncio.to_thread(get_agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
@@ -631,21 +634,23 @@ async def get_agent_artifacts(
         return []
 
     fs = get_fs()
-    refs = [fs._db.collection("artifacts").document(aid) for aid in artifact_ids]
-    docs = fs._db.get_all(refs)
 
-    by_id: dict[str, dict] = {}
-    for doc in docs:
-        if not doc.exists:
-            continue
-        data = doc.to_dict()
-        data["artifact_id"] = doc.id
-        for key in ("created_at", "updated_at"):
-            if hasattr(data.get(key), "isoformat"):
-                data[key] = data[key].isoformat()
-        by_id[doc.id] = data
+    def _fetch_artifacts() -> list[dict]:
+        refs = [fs._db.collection("artifacts").document(aid) for aid in artifact_ids]
+        docs = fs._db.get_all(refs)
+        by_id: dict[str, dict] = {}
+        for doc in docs:
+            if not doc.exists:
+                continue
+            data = doc.to_dict()
+            data["artifact_id"] = doc.id
+            for key in ("created_at", "updated_at"):
+                if hasattr(data.get(key), "isoformat"):
+                    data[key] = data[key].isoformat()
+            by_id[doc.id] = data
+        return [by_id[aid] for aid in artifact_ids if aid in by_id]
 
-    return [by_id[aid] for aid in artifact_ids if aid in by_id]
+    return await asyncio.to_thread(_fetch_artifacts)
 
 
 @router.get("/agents/{agent_id}/logs")
@@ -657,14 +662,14 @@ async def get_agent_logs(
     """Return activity log entries for an agent, newest first."""
     from api.services.agent_service import get_agent
 
-    agent = get_agent(agent_id)
+    agent = await asyncio.to_thread(get_agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     fs = get_fs()
-    return fs.get_agent_logs(agent_id, limit=min(limit, 500))
+    return await asyncio.to_thread(fs.get_agent_logs, agent_id, min(limit, 500))
 
 
 @router.get("/agents/{agent_id}/runs")
@@ -675,14 +680,14 @@ async def list_agent_runs(
     """List all runs for an agent."""
     from api.services.agent_service import get_agent
 
-    agent = get_agent(agent_id)
+    agent = await asyncio.to_thread(get_agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     fs = get_fs()
-    return fs.list_runs(agent_id)
+    return await asyncio.to_thread(fs.list_runs, agent_id)
 
 
 @router.get("/agents/{agent_id}/runs/{run_id}")

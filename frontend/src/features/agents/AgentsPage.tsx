@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Archive,
@@ -21,9 +21,18 @@ import {
   Timer,
 } from 'lucide-react';
 import { useAgentStore } from '../../stores/agent-store.ts';
-import { AgentDataExplorer } from './AgentDataExplorer.tsx';
-import { AgentDetailDrawer, RUNNABLE_STATUSES, formatLastRun } from './AgentDetailDrawer.tsx';
-import { StatusBadge } from './detail/agent-status-utils.tsx';
+import { RUNNABLE_STATUSES, StatusBadge, formatLastRun } from './detail/agent-status-utils.tsx';
+
+// Lazy-load heavy panels — they're only rendered after the user clicks a row
+// (drawer) or "Explore data" (dashboard). Eagerly importing them pulls in
+// recharts, chart.js, react-grid-layout, jspdf, html2canvas, react-markdown,
+// and the entire dashboard widget system into the agents-list bundle.
+const AgentDataExplorer = lazy(() =>
+  import('./AgentDataExplorer.tsx').then((m) => ({ default: m.AgentDataExplorer })),
+);
+const AgentDetailDrawer = lazy(() =>
+  import('./AgentDetailDrawer.tsx').then((m) => ({ default: m.AgentDetailDrawer })),
+);
 import type { Agent, AgentStatus } from '../../api/endpoints/agents.ts';
 import { runAgent, updateAgent as patchAgent } from '../../api/endpoints/agents.ts';
 import {
@@ -707,20 +716,32 @@ export function AgentsPage() {
           </div>
         </main>
 
-        {/* Detail Drawer */}
-        <AgentDetailDrawer
-          task={selectedAgent}
-          open={drawerOpen}
-          onOpenChange={setDrawerOpen}
-          autoOpenSchedule={openScheduleOnDrawer}
-          onExploreData={setExplorerAgent}
-        />
+        {/* Detail Drawer — only mounted once the user opens it, to keep the
+            heavy drawer + StatsModal + TableModal out of the list-view bundle. */}
+        {(drawerOpen || selectedAgent) && (
+          <Suspense fallback={null}>
+            <AgentDetailDrawer
+              task={selectedAgent}
+              open={drawerOpen}
+              onOpenChange={setDrawerOpen}
+              autoOpenSchedule={openScheduleOnDrawer}
+              onExploreData={setExplorerAgent}
+            />
+          </Suspense>
+        )}
 
-        <AgentDataExplorer
-          task={explorerAgent}
-          open={!!explorerAgent}
-          onClose={() => setExplorerAgent(null)}
-        />
+        {/* Data Explorer — only mounted when explorerAgent is set. Lazy keeps
+            the entire DashboardView + recharts + chart.js + react-grid-layout
+            chunk off the agents-list critical path. */}
+        {explorerAgent && (
+          <Suspense fallback={null}>
+            <AgentDataExplorer
+              task={explorerAgent}
+              open={!!explorerAgent}
+              onClose={() => setExplorerAgent(null)}
+            />
+          </Suspense>
+        )}
 
         {/* Archive confirmation dialog */}
         <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>

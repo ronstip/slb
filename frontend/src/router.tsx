@@ -1,12 +1,14 @@
 import { Suspense, lazy, type ComponentType } from 'react';
 import { createBrowserRouter, Navigate, useParams } from 'react-router';
-import { LandingPage } from './auth/LandingPage.tsx';
 import { AuthGate } from './auth/AuthGate.tsx';
 import { useAuth } from './auth/useAuth.ts';
 
 // Route-level code splitting. Each lazy() call produces a separate JS chunk
 // that is only fetched when the user navigates to that route. Keeps the
 // landing/home entry bundle small.
+const LandingPage = lazy(() =>
+  import('./auth/LandingPage.tsx').then((m) => ({ default: m.LandingPage })),
+);
 const SettingsPage = lazy(() =>
   import('./features/settings/SettingsPage.tsx').then((m) => ({ default: m.SettingsPage })),
 );
@@ -71,6 +73,7 @@ function withSuspense<P extends object>(Component: ComponentType<P>) {
   };
 }
 
+const LandingPageRoute = withSuspense(LandingPage);
 const SettingsPageRoute = withSuspense(SettingsPage);
 const AdminPageRoute = withSuspense(AdminPage);
 const InviteHandlerRoute = withSuspense(InviteHandler);
@@ -98,7 +101,7 @@ function HomeRoute() {
     return <FullScreenSpinner />;
   }
 
-  if (isAnonymous && !devMode) return <LandingPage />;
+  if (isAnonymous && !devMode) return <LandingPageRoute />;
 
   return <AgentHomeRoute />;
 }

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -52,12 +53,18 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
     settings = get_settings()
-    try:
-        cleanup_stuck_collections()
-    except Exception:
-        # Non-fatal: startup must proceed even if cleanup fails. Stuck
-        # collections remain in a transient state until the next boot.
-        logger.exception("Startup cleanup of stuck collections failed (non-fatal)")
+
+    async def _bg_cleanup() -> None:
+        try:
+            await asyncio.to_thread(cleanup_stuck_collections)
+        except Exception:
+            logger.exception("Startup cleanup of stuck collections failed (non-fatal)")
+
+    # Run cleanup off the lifespan critical path so uvicorn --reload restarts
+    # can start serving requests immediately. The sweep does Firestore + BrightData
+    # I/O and used to block startup for tens of seconds on every reload.
+    asyncio.create_task(_bg_cleanup())
+
     if settings.is_dev:
         from api.scheduler import OngoingScheduler
         scheduler = OngoingScheduler()

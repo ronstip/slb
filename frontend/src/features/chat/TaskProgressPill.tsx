@@ -1,12 +1,17 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { getCollectionStatus } from '../../api/endpoints/collections.ts';
 import { formatNumber } from '../../lib/format.ts';
-import { AgentDetailDrawer } from '../agents/AgentDetailDrawer.tsx';
 import type { CollectionStatusResponse } from '../../api/types.ts';
+
+// Lazy — the drawer pulls in StatsModal, TableModal, activity log, schedule
+// dialog, and a wall of icons. Only loaded when the user actually opens it.
+const AgentDetailDrawer = lazy(() =>
+  import('../agents/AgentDetailDrawer.tsx').then((m) => ({ default: m.AgentDetailDrawer })),
+);
 
 const PHASE_PCT: Record<string, number> = {
   running: 50,
@@ -227,12 +232,16 @@ export function TaskProgressPill() {
       </button>
       </div>
 
-      {/* Task detail drawer */}
-      <AgentDetailDrawer
-        task={activeAgent}
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
-      />
+      {/* Task detail drawer — lazy-mounted to keep the chat bundle slim. */}
+      {(drawerOpen || activeAgent) && (
+        <Suspense fallback={null}>
+          <AgentDetailDrawer
+            task={activeAgent}
+            open={drawerOpen}
+            onOpenChange={setDrawerOpen}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

@@ -1,5 +1,6 @@
 """Explorer layouts router — per-agent named layout configurations."""
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -48,12 +49,17 @@ async def list_explorer_layouts(
 ):
     """List all explorer layouts for an agent belonging to the current user."""
     # Sort client-side to avoid requiring a composite (agent_id, user_id, updated_at) index.
-    docs = list(
-        fs._db.collection(COLLECTION)
-        .where("agent_id", "==", agent_id)
-        .where("user_id", "==", user.uid)
-        .stream()
-    )
+    # Firestore's Python client is synchronous; running .stream() on the asyncio
+    # loop stalls every concurrent request — push it to a worker thread.
+    def _fetch():
+        return list(
+            fs._db.collection(COLLECTION)
+            .where("agent_id", "==", agent_id)
+            .where("user_id", "==", user.uid)
+            .stream()
+        )
+
+    docs = await asyncio.to_thread(_fetch)
     items = [
         ExplorerLayoutListItem(
             layout_id=doc.id,

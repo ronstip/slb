@@ -21,7 +21,10 @@ import type { Agent } from '../../api/endpoints/agents.ts';
 import { runAgent, updateAgent as patchAgent } from '../../api/endpoints/agents.ts';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { mediaUrl } from '../../api/client.ts';
-import { StatusBadge, RUNNABLE_STATUSES, formatLastRun } from './AgentDetailDrawer.tsx';
+// Import the status helpers directly from the canonical source to avoid
+// pulling the entire AgentDetailDrawer module (and its StatsModal / TableModal
+// / activity-log dependency chain) into every page that renders an AgentCard.
+import { StatusBadge, RUNNABLE_STATUSES, formatLastRun } from './detail/agent-status-utils.tsx';
 import { formatSchedule } from '../../lib/constants.ts';
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { Logo } from '../../components/Logo.tsx';

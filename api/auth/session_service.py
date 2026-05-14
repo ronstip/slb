@@ -1,5 +1,6 @@
 """Firestore-backed session service for persistent ADK agent sessions."""
 
+import asyncio
 import json
 import logging
 import time
@@ -88,7 +89,9 @@ class FirestoreSessionService(BaseSessionService):
                     return None
                 return cached
 
-        doc = self._db.collection(SESSIONS_COLLECTION).document(session_id).get()
+        doc = await asyncio.to_thread(
+            self._db.collection(SESSIONS_COLLECTION).document(session_id).get
+        )
         if not doc.exists:
             return None
 
@@ -130,26 +133,31 @@ class FirestoreSessionService(BaseSessionService):
         app_name: str,
         user_id: Optional[str] = None,
     ) -> ListSessionsResponse:
-        query = self._db.collection(SESSIONS_COLLECTION).where(
-            "app_name", "==", app_name
-        )
-        if user_id:
-            query = query.where("user_id", "==", user_id)
-
-        sessions = []
-        for doc in query.stream():
-            data = doc.to_dict()
-            # Return sessions without events for listing
-            sessions.append(
-                Session(
-                    id=data["session_id"],
-                    app_name=data["app_name"],
-                    user_id=data["user_id"],
-                    state=data.get("state", {}),
-                    events=[],
-                    last_update_time=data.get("last_update_time", 0.0),
-                )
+        # Firestore's Python client is synchronous — running its blocking I/O
+        # (`query.stream()`) directly on the asyncio loop stalls every other
+        # coroutine in the process. Off-load to a worker thread.
+        def _fetch() -> list[Session]:
+            query = self._db.collection(SESSIONS_COLLECTION).where(
+                "app_name", "==", app_name
             )
+            if user_id:
+                query = query.where("user_id", "==", user_id)
+            sessions: list[Session] = []
+            for doc in query.stream():
+                data = doc.to_dict()
+                sessions.append(
+                    Session(
+                        id=data["session_id"],
+                        app_name=data["app_name"],
+                        user_id=data["user_id"],
+                        state=data.get("state", {}),
+                        events=[],
+                        last_update_time=data.get("last_update_time", 0.0),
+                    )
+                )
+            return sessions
+
+        sessions = await asyncio.to_thread(_fetch)
         return ListSessionsResponse(sessions=sessions)
 
     @override
