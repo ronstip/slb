@@ -91,7 +91,7 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
 
   return (
     <Card className={`h-full relative group overflow-hidden ${
-      isEditMode ? 'ring-1 ring-dashed ring-primary/30 cursor-grab active:cursor-grabbing' : ''
+      isEditMode ? 'drag-handle ring-1 ring-dashed ring-primary/30 cursor-grab active:cursor-grabbing' : ''
     }`}>
       {/* Left accent bar */}
       <div
@@ -101,7 +101,11 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
 
       {/* Edit controls */}
       {isEditMode && (
-        <div className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div
+          className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="h-6 w-6 p-0 bg-background/80 backdrop-blur-sm shadow-sm">
