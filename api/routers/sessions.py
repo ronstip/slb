@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.agent.agent import APP_NAME
 from api.auth.dependencies import CurrentUser, get_current_user
-from api.auth.session_service import FirestoreSessionService
+from api.auth.session_service import SESSIONS_COLLECTION, FirestoreSessionService
 from api.deps import get_fs
 from api.schemas.responses import SessionDetailResponse, SessionListItem
 
@@ -96,6 +96,73 @@ def _extract_event_fallback(event) -> dict | None:
     return result
 
 
+def _build_session_item(data: dict) -> SessionListItem:
+    """Convert a raw Firestore session doc to a SessionListItem response model."""
+    state = data.get("state") or {}
+    last_update = data.get("last_update_time", 0.0)
+    return SessionListItem(
+        session_id=data["session_id"],
+        title=state.get("session_title", "New Session"),
+        created_at=state.get("created_at"),
+        updated_at=(
+            datetime.fromtimestamp(last_update, tz=timezone.utc).isoformat()
+            if last_update
+            else None
+        ),
+        message_count=state.get("message_count", 0),
+        preview=state.get("first_message", "")[:120] if state.get("first_message") else None,
+        task_id=state.get("active_agent_id"),
+    )
+
+
+async def _list_sessions_for_agent(user: CurrentUser, agent_id: str) -> list[SessionListItem]:
+    """Fast-path listing: read agent.session_ids and bulk-fetch only those docs.
+
+    Previously this endpoint streamed every session the user has ever created
+    (one Firestore page per ~500 docs) and filtered by membership in
+    agent.session_ids in Python. For users with many sessions that took 8+
+    seconds. Now we go straight to the IDs the agent already owns and let
+    Firestore do a single batched read.
+
+    Returns [] if the agent has no sessions yet. Raises 404 if the agent
+    doesn't exist and 403 if the user doesn't own / isn't org-shared on it.
+    """
+    fs = get_fs()
+    agent = await asyncio.to_thread(fs.get_agent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    # Mirror the access rule used elsewhere (e.g. topics._check_agent_access).
+    if agent.get("user_id") != user.uid and (
+        not user.org_id or agent.get("org_id") != user.org_id
+    ):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    session_ids: list[str] = agent.get("session_ids") or []
+    if not session_ids:
+        return []
+
+    def _fetch_by_ids() -> list[dict]:
+        refs = [fs._db.collection(SESSIONS_COLLECTION).document(sid) for sid in session_ids]
+        out: list[dict] = []
+        for doc in fs._db.get_all(refs):
+            if not doc.exists:
+                # session_ids carries stale entries when a session is deleted; skip
+                continue
+            data = doc.to_dict() or {}
+            # Defense in depth: even though access to the agent was already
+            # checked, refuse to leak any session whose user_id doesn't match
+            # the caller (shouldn't happen given how session_ids is populated).
+            if data.get("user_id") != user.uid:
+                continue
+            out.append(data)
+        return out
+
+    raw = await asyncio.to_thread(_fetch_by_ids)
+    items = [_build_session_item(d) for d in raw]
+    items.sort(key=lambda s: s.updated_at or s.created_at or "", reverse=True)
+    return items
+
+
 @router.get("/sessions", response_model=list[SessionListItem])
 async def list_sessions(
     user: CurrentUser = Depends(get_current_user),
@@ -105,23 +172,14 @@ async def list_sessions(
 
     If ``agent_id`` is provided, only sessions linked to that agent are returned.
     """
+    if agent_id:
+        return await _list_sessions_for_agent(user, agent_id)
+
     svc = _get_session_service()
     response = await svc.list_sessions(app_name=APP_NAME, user_id=user.uid)
 
-    # When filtering by agent, use the agent's session_ids as the source of truth
-    allowed_session_ids: set[str] | None = None
-    if agent_id:
-        agent = await asyncio.to_thread(get_fs().get_agent, agent_id)
-        if agent:
-            allowed_session_ids = set(agent.get("session_ids") or [])
-        else:
-            allowed_session_ids = set()
-
     items = []
     for session in response.sessions:
-        if allowed_session_ids is not None and session.id not in allowed_session_ids:
-            continue
-
         state = session.state or {}
         items.append(
             SessionListItem(
@@ -139,7 +197,6 @@ async def list_sessions(
             )
         )
 
-    # Sort newest first, preferring updated_at then falling back to created_at
     items.sort(key=lambda s: s.updated_at or s.created_at or "", reverse=True)
     return items
 
