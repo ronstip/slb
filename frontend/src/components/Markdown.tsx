@@ -21,6 +21,22 @@ interface MarkdownProps {
 
 type CodeProps = ComponentProps<'code'> & { node?: unknown };
 
+type AnchorProps = ComponentProps<'a'> & { node?: unknown };
+
+/** Open links in a new tab. Skip in-document anchors (TOC, headings) so
+ *  same-page navigation stays in the current view. */
+function linkRenderer({ node: _node, href, children, ...rest }: AnchorProps) {
+  const isInPageAnchor = typeof href === 'string' && href.startsWith('#');
+  if (isInPageAnchor) {
+    return <a href={href} {...rest}>{children}</a>;
+  }
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+      {children}
+    </a>
+  );
+}
+
 function chartCodeRenderer({ className, children, ...rest }: CodeProps) {
   const lang = /language-chart\b/.test(className ?? '');
   if (lang) {
@@ -78,6 +94,7 @@ export function Markdown({
 }: MarkdownProps) {
   const plugins = stripComments ? [remarkGfm, remarkStripComments] : [remarkGfm];
   const components = {
+    a: linkRenderer,
     ...(renderCharts ? { code: chartCodeRenderer } : {}),
     ...(headingIds ? HEADING_COMPONENTS : {}),
   };
@@ -85,7 +102,7 @@ export function Markdown({
     <ReactMarkdown
       remarkPlugins={plugins}
       rehypePlugins={[rehypeRaw]}
-      components={Object.keys(components).length > 0 ? components : undefined}
+      components={components}
     >
       {children}
     </ReactMarkdown>

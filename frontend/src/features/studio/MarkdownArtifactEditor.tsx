@@ -45,6 +45,12 @@ interface MarkdownArtifactEditorProps {
    *  change MDXEditor emits on mount when it reformats the seed markdown
    *  (e.g. bullet glyph swap). Skip those to avoid marking the doc dirty. */
   onChange: (markdown: string, isInitialNormalize: boolean) => void;
+  /** Where MDXEditor portals its popups (BlockTypeSelect dropdown, link
+   *  dialog). When the editor sits inside a Radix Dialog with modal pointer
+   *  events, the default `document.body` target falls outside the dialog's
+   *  interactive scope and the popups become unclickable — pass a node
+   *  inside the dialog content instead. */
+  overlayContainer?: HTMLElement | null;
 }
 
 /** Renders ```chart blocks as live ReportChart while keeping the JSON source
@@ -200,11 +206,13 @@ function Toolbar() {
 export function MarkdownArtifactEditor({
   initialMarkdown,
   onChange,
+  overlayContainer,
 }: MarkdownArtifactEditorProps) {
   return (
     <MDXEditor
       markdown={initialMarkdown}
       onChange={onChange}
+      overlayContainer={overlayContainer ?? undefined}
       contentEditableClassName="agent-prose max-w-none break-words text-sm leading-relaxed"
       plugins={[
         headingsPlugin(),

@@ -446,6 +446,8 @@ export interface SocialDashboardWidget {
   /** Optional figure-style caption rendered below the chart body (figcaption).
    *  The widget's `title` doubles as the figure header — there's only one. */
   figureText?: string;
+  /** Visual scale for number-card widgets. Undefined → medium. */
+  numberSize?: NumberSize;
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────
@@ -650,3 +652,17 @@ export const KPI_OPTIONS = [
   { index: 3, label: 'Engagement Rate', icon: 'TrendingUp', accent: '#6B3040' },
   { index: 4, label: 'Avg Engagement/Post', icon: 'BarChart3', accent: '#4A5568' },
 ] as const;
+
+// ─── Number-card size presets ────────────────────────────────────────────────
+
+export type NumberSize = 'small' | 'medium' | 'big';
+
+export const DEFAULT_NUMBER_SIZE: NumberSize = 'medium';
+
+/** Grid footprint applied when the user picks a size in the editor. Existing
+ *  widgets keep their saved w/h on render — only an explicit size change snaps. */
+export const NUMBER_SIZE_GRID: Record<NumberSize, { w: number; h: number }> = {
+  small:  { w: 2, h: 1 },
+  medium: { w: 3, h: 2 },
+  big:    { w: 4, h: 3 },
+};

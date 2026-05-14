@@ -23,8 +23,8 @@ const MarkdownArtifactEditor = lazy(() =>
 );
 import { cn } from '../../../../lib/utils.ts';
 import type { DashboardPost } from '../../../../api/types.ts';
-import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig } from '../types-social-dashboard.ts';
-import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, getDimensionMeta, defaultTableConfigFor } from '../types-social-dashboard.ts';
+import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize } from '../types-social-dashboard.ts';
+import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, getDimensionMeta, defaultTableConfigFor, NUMBER_SIZE_GRID } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
 import { TableDataForm } from './TableDataForm.tsx';
@@ -214,6 +214,13 @@ function SocialWidgetConfigDialogInner({
 
   const isTextMode = draft.aggregation === 'text';
 
+  // MDXEditor portals its toolbar popups (block-type dropdown, link dialog)
+  // into this host. Keeping it inside DialogContent puts the popups in the
+  // Radix Dialog's pointer-events scope — otherwise they render but clicks
+  // are swallowed because modal Dialog blocks pointer events on body.
+  // Callback ref + state so the editor re-renders once the host mounts.
+  const [editorOverlayHost, setEditorOverlayHost] = useState<HTMLDivElement | null>(null);
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
@@ -278,6 +285,7 @@ function SocialWidgetConfigDialogInner({
                           if (isInitialNormalize) return;
                           setDraft((prev) => ({ ...prev, markdownContent: md }));
                         }}
+                        overlayContainer={editorOverlayHost}
                       />
                     </Suspense>
                   </div>
@@ -463,6 +471,14 @@ function SocialWidgetConfigDialogInner({
                       setDraft((prev) => ({ ...prev, accent }))
                     }
                     onTableConfigChange={updateTableConfig}
+                    onNumberSizeChange={(numberSize) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        numberSize,
+                        w: NUMBER_SIZE_GRID[numberSize].w,
+                        h: NUMBER_SIZE_GRID[numberSize].h,
+                      }))
+                    }
                   />
                 </TabsContent>
               </div>
@@ -497,6 +513,7 @@ function SocialWidgetConfigDialogInner({
             {mode === 'add' ? 'Add Widget' : 'Save'}
           </Button>
         </DialogFooter>
+        {isTextMode && <div ref={setEditorOverlayHost} />}
       </DialogContent>
     </Dialog>
   );
@@ -514,6 +531,7 @@ function StyleTab({
   onStyleChange,
   onAccentChange,
   onTableConfigChange,
+  onNumberSizeChange,
 }: {
   draft: SocialDashboardWidget;
   previewPosts: DashboardPost[];
@@ -521,16 +539,19 @@ function StyleTab({
   onStyleChange: (overrides: ChartStyleOverrides) => void;
   onAccentChange: (accent: string | undefined) => void;
   onTableConfigChange: (config: CustomTableConfig) => void;
+  onNumberSizeChange: (size: NumberSize) => void;
 }) {
-  // KPI cards: keep the simple accent-only picker.
+  // KPI cards: size + accent + (optional) KPI index picker.
   if (draft.chartType === 'number-card') {
     return (
       <WidgetStyleForm
         aggregation={draft.aggregation}
         kpiIndex={draft.kpiIndex}
         accent={draft.styleOverrides?.accent ?? draft.accent}
+        numberSize={draft.numberSize}
         onKpiIndexChange={onKpiIndexChange}
         onAccentChange={onAccentChange}
+        onNumberSizeChange={onNumberSizeChange}
       />
     );
   }

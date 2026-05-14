@@ -1,31 +1,69 @@
 import { Label } from '../../../../components/ui/label.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { cn } from '../../../../lib/utils.ts';
-import type { SocialAggregation } from '../types-social-dashboard.ts';
-import { KPI_OPTIONS } from '../types-social-dashboard.ts';
+import type { NumberSize, SocialAggregation } from '../types-social-dashboard.ts';
+import { DEFAULT_NUMBER_SIZE, KPI_OPTIONS } from '../types-social-dashboard.ts';
 
 const PRESET_COLORS = [
   '#4A7C8F', '#2B5066', '#5A7FA0', '#6B3040', '#9E4A5A',
   '#9A7B3C', '#3E6B52', '#4A5568', '#8B6040', '#6B4A6E',
 ];
 
+const NUMBER_SIZE_OPTIONS: Array<{ value: NumberSize; label: string }> = [
+  { value: 'small',  label: 'Small'  },
+  { value: 'medium', label: 'Medium' },
+  { value: 'big',    label: 'Big'    },
+];
+
 interface WidgetStyleFormProps {
   aggregation: SocialAggregation;
   kpiIndex?: number;
   accent?: string;
+  numberSize?: NumberSize;
   onKpiIndexChange?: (index: number) => void;
   onAccentChange: (color: string | undefined) => void;
+  onNumberSizeChange?: (size: NumberSize) => void;
 }
 
 export function WidgetStyleForm({
   aggregation,
   kpiIndex,
   accent,
+  numberSize,
   onKpiIndexChange,
   onAccentChange,
+  onNumberSizeChange,
 }: WidgetStyleFormProps) {
+  const activeSize = numberSize ?? DEFAULT_NUMBER_SIZE;
   return (
     <div className="space-y-5">
+      {/* Size selector (number-card only) */}
+      {onNumberSizeChange && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Size</Label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {NUMBER_SIZE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onNumberSizeChange(opt.value)}
+                className={cn(
+                  'rounded-md border px-3 py-1.5 text-xs font-medium transition-all',
+                  activeSize === opt.value
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Changing size also resizes the widget on the grid.
+          </p>
+        </div>
+      )}
+
       {/* KPI selector (only for kpi aggregation) */}
       {aggregation === 'kpi' && onKpiIndexChange && (
         <div className="space-y-2">

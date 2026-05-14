@@ -306,6 +306,7 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
       kpi={kpi}
       accent={widget.styleOverrides?.accent ?? widget.accent}
       kpiIndex={widget.kpiIndex ?? 0}
+      size={widget.numberSize}
       isEditMode={isEditMode}
       onConfigure={onConfigure}
       onRemove={onRemove}
@@ -448,6 +449,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
       <SocialKpiCard
         kpi={syntheticKpi}
         accent={widget.styleOverrides?.accent ?? widget.accent}
+        size={widget.numberSize}
         isEditMode={isEditMode}
         onConfigure={onConfigure}
         onRemove={onRemove}
