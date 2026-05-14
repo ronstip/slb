@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2, Maximize2, Pencil, X } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import type { DashboardArtifact } from '../../../stores/studio-store.ts';
+import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { updateArtifact } from '../../../api/endpoints/artifacts.ts';
 import { Input } from '../../../components/ui/input.tsx';
 import { Button } from '../../../components/ui/button.tsx';
@@ -90,7 +91,14 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     if (!gridRef.current) return;
     setDownloading(true);
     try {
-      await exportDashboardPdf(gridRef.current, displayTitle, toolbarHandlers?.orientation ?? 'horizontal');
+      // Prefer the active *layout* title (= specific report name) over the
+      // dashboard artifact title (which mirrors the agent name).
+      const { agentLayouts, activeLayoutId } = useExplorerLayoutStore.getState();
+      const layoutTitle = activeLayoutId
+        ? agentLayouts.find((l) => l.layout_id === activeLayoutId)?.title
+        : undefined;
+      const reportTitle = layoutTitle?.trim() || displayTitle;
+      await exportDashboardPdf(gridRef.current, reportTitle, toolbarHandlers?.orientation ?? 'horizontal');
     } finally {
       setDownloading(false);
     }
