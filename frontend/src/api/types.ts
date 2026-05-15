@@ -566,6 +566,10 @@ export interface SharedDashboardDataResponse {
   layout?: unknown[] | null;
   filterBarFilters?: string[] | null;
   orientation?: 'horizontal' | 'vertical' | null;
+  /** The data scope this dashboard's report committed to (if any). Typed
+   *  loosely here for the same reason as `layout`; the consumer casts to
+   *  `ReportScope`. Absence = standalone dashboard. */
+  reportScope?: Record<string, unknown> | null;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────

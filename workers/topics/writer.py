@@ -2,17 +2,16 @@
 
 Writes two destinations:
 
-  1. BigQuery `social_listening.topic_cluster_members` — one row per (topic,
-     post). Reuses the brothers_v1 schema for downstream-query compatibility:
-       cluster_id, post_id, agent_id, collection_id,
-       distance_to_centroid (NULL — algorithm has no embeddings),
-       is_representative (top-K by engagement), clustered_at
+  1. BigQuery `social_listening.topic_clusters` — one row per topic with
+     denormalised membership (member_post_ids ARRAY), real aggregates over
+     sampled members (sentiment counts, view/like/comment/share totals,
+     earliest/median/latest post time), and extrapolated full-pool metrics
+     (per-topic blowup factor = estimated_post_count / post_count).
 
   2. Firestore `agents/{agent_id}/topics/{cluster_uuid}` — one doc per topic.
-     Carries both v1-compat fields (topic_name, topic_summary, topic_keywords,
-     post_count, representative_post_ids, recency_score, algorithm_version,
-     created_at) and v2-only fields (header, subheader, beat_type,
-     anchor_entities/themes/brands/content_types, member_post_ids,
+     v1-compat fields (topic_name, topic_summary, topic_keywords, post_count,
+     representative_post_ids, recency_score, algorithm_version, created_at) +
+     v2 fields (header, subheader, beat_type, anchor_*, member_post_ids,
      estimated_pool_count, estimated_pool_count_ci_low/high).
 
   Topic UUIDs are assigned here (not in pass-2) so the same Topic object can be
@@ -20,14 +19,14 @@ Writes two destinations:
 
 Side-effects also include `agents/{agent_id}` updates: `topics_count`,
 `topics_generated_at`. Deletes existing topics for the agent before writing
-new ones (matches brothers_v1 behaviour — there is only ever one current
-topic snapshot per agent).
+new ones — there is only ever one current topic snapshot per agent.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import statistics
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -74,10 +73,13 @@ def write_topic_results(
     # share the same cluster_id.
     topic_uuids = [str(uuid.uuid4()) for _ in topics]
 
-    # 1. BQ rows
-    bq_rows = _build_bq_rows(
-        agent_id, topics, topic_uuids, pid_to_post, clustered_at_iso,
-    )
+    # 1. BQ rows — one per topic, denormalised membership + aggregates.
+    cluster_rows = [
+        _build_topic_cluster_row(
+            agent_id, t, uid, pid_to_post, clustered_at, clustered_at_iso,
+        )
+        for t, uid in zip(topics, topic_uuids)
+    ]
 
     # 2. Firestore docs
     topic_docs = [
@@ -86,12 +88,12 @@ def write_topic_results(
     ]
 
     # 3. Execute writes
-    bq_written = 0
-    if bq_rows:
-        for i in range(0, len(bq_rows), 500):
-            bq.insert_rows("topic_cluster_members", bq_rows[i : i + 500])
-        bq_written = len(bq_rows)
-        logger.info("Wrote %d topic-member rows to BQ for agent %s", bq_written, agent_id)
+    cluster_rows_written = 0
+    if cluster_rows:
+        for i in range(0, len(cluster_rows), 500):
+            bq.insert_rows("topic_clusters", cluster_rows[i : i + 500])
+        cluster_rows_written = len(cluster_rows)
+        logger.info("Wrote %d topic_clusters rows to BQ for agent %s", cluster_rows_written, agent_id)
 
     # Firestore: delete-and-replace (one snapshot per agent)
     topics_ref = (
@@ -120,34 +122,9 @@ def write_topic_results(
 
     return {
         "topics_written": len(topics),
-        "bq_rows_written": bq_written,
+        "topic_clusters_written": cluster_rows_written,
         "algorithm_version": ALGORITHM_VERSION,
     }
-
-
-def _build_bq_rows(
-    agent_id: str,
-    topics: list[Topic],
-    topic_uuids: list[str],
-    pid_to_post: dict[str, dict],
-    clustered_at_iso: str,
-) -> list[dict]:
-    rows = []
-    for t, cluster_uuid in zip(topics, topic_uuids):
-        rep_ids = _representative_post_ids(t.member_post_ids, pid_to_post)
-        rep_set = set(rep_ids)
-        for pid in t.member_post_ids:
-            post = pid_to_post.get(pid, {})
-            rows.append({
-                "cluster_id": cluster_uuid,
-                "post_id": pid,
-                "agent_id": agent_id,
-                "collection_id": post.get("collection_id") or "",
-                "distance_to_centroid": None,  # no embeddings in this algorithm
-                "is_representative": pid in rep_set,
-                "clustered_at": clustered_at_iso,
-            })
-    return rows
 
 
 def _build_topic_doc(
@@ -200,6 +177,110 @@ def _representative_post_ids(
         scored.append((engagement, pid))
     scored.sort(key=lambda x: x[0], reverse=True)
     return [pid for _, pid in scored[:MAX_REPRESENTATIVES]]
+
+
+def _build_topic_cluster_row(
+    agent_id: str,
+    t: Topic,
+    cluster_uuid: str,
+    pid_to_post: dict[str, dict],
+    clustered_at: datetime,
+    clustered_at_iso: str,
+) -> dict[str, Any]:
+    """One row per topic. Denormalises membership and materialises
+    real + extrapolated aggregates so readers don't need to join scope_posts.
+    """
+    member_posts = [pid_to_post.get(pid) or {} for pid in t.member_post_ids]
+    rep_ids = _representative_post_ids(t.member_post_ids, pid_to_post)
+    post_count = len(t.member_post_ids)
+
+    # Real aggregates over the sampled members
+    total_views = sum(int(p.get("views") or 0) for p in member_posts)
+    total_likes = sum(int(p.get("likes") or 0) for p in member_posts)
+    total_comments = sum(int(p.get("comments_count") or 0) for p in member_posts)
+    total_shares = sum(int(p.get("shares") or 0) for p in member_posts)
+
+    sent_counts = {"positive": 0, "negative": 0, "neutral": 0, "mixed": 0}
+    for p in member_posts:
+        s = (p.get("sentiment") or "").lower()
+        if s in sent_counts:
+            sent_counts[s] += 1
+
+    earliest, median_t, latest = _post_time_stats(member_posts)
+
+    # Extrapolation: post-stratified count from the extrapolator drives the
+    # per-topic blowup factor. Apply that factor to real engagement metrics
+    # to estimate full-pool engagement. Approximation: assumes engagement
+    # scales with count within the topic.
+    est_post_count = int(t.estimated_pool_count or 0)
+    factor = (est_post_count / post_count) if post_count > 0 else 1.0
+
+    return {
+        "agent_id": agent_id,
+        "cluster_id": cluster_uuid,
+        "clustered_at": clustered_at_iso,
+        "algorithm_version": ALGORITHM_VERSION,
+        # definition
+        "header": t.header,
+        "subheader": t.subheader,
+        "beat_type": getattr(t, "beat_type", None),
+        "keywords": list(t.keywords or []),
+        "anchor_entities": list(t.anchor_entities or []),
+        "anchor_themes": list(t.anchor_themes or []),
+        "anchor_brands": list(t.anchor_brands or []),
+        "anchor_content_types": list(t.anchor_content_types or []),
+        # membership
+        "member_post_ids": list(t.member_post_ids or []),
+        "representative_post_ids": rep_ids,
+        "post_count": post_count,
+        # real aggregates
+        "total_views": total_views,
+        "total_likes": total_likes,
+        "total_comments": total_comments,
+        "total_shares": total_shares,
+        "positive_count": sent_counts["positive"],
+        "negative_count": sent_counts["negative"],
+        "neutral_count": sent_counts["neutral"],
+        "mixed_count": sent_counts["mixed"],
+        "earliest_post": earliest.isoformat() if earliest else None,
+        "median_post_time": median_t.isoformat() if median_t else None,
+        "latest_post": latest.isoformat() if latest else None,
+        # extrapolated
+        "estimated_post_count": est_post_count,
+        "estimated_views": int(round(total_views * factor)),
+        "estimated_likes": int(round(total_likes * factor)),
+        "estimated_comments": int(round(total_comments * factor)),
+        "estimated_shares": int(round(total_shares * factor)),
+        # ranking
+        "recency_score": _recency_score(member_posts, clustered_at),
+    }
+
+
+def _post_time_stats(
+    member_posts: list[dict],
+) -> tuple[datetime | None, datetime | None, datetime | None]:
+    """Returns (earliest, median, latest) posted_at across member posts.
+
+    Median uses median_low to avoid datetime averaging — "where is the mass"
+    is fine with the lower of the two middle values on even-length lists.
+    """
+    times: list[datetime] = []
+    for p in member_posts:
+        pa = p.get("posted_at")
+        if not pa:
+            continue
+        if isinstance(pa, str):
+            try:
+                pa = datetime.fromisoformat(pa.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+        if pa.tzinfo is None:
+            pa = pa.replace(tzinfo=timezone.utc)
+        times.append(pa)
+    if not times:
+        return None, None, None
+    times.sort()
+    return times[0], statistics.median_low(times), times[-1]
 
 
 def _recency_score(member_posts: list[dict], now: datetime) -> float:

@@ -387,6 +387,91 @@ def enforce_collection_access(
 
 
 # ---------------------------------------------------------------------------
+# 3a. Publish gate — before_tool_callback
+# ---------------------------------------------------------------------------
+
+
+def enforce_verify_before_publish(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+) -> Optional[dict]:
+    """Refuse `publish_dashboard` if the target dashboard has a committed
+    `reportScope` and `verify_dashboard` has not been called and passed for
+    this `layout_id` since the most recent `update_dashboard`.
+
+    Same surgical-block pattern as `enforce_data_window_in_sql`: this callback
+    does NOT rewrite arguments or rerun anything, it simply refuses calls that
+    skipped the verification step. The agent must call `verify_dashboard`,
+    receive `status: "ok"`, and only then publish.
+
+    State invariants (written by the dashboard tools):
+      - `dashboard_last_update_ts[layout_id]` — ISO timestamp set by
+        `update_dashboard` after a successful persist.
+      - `dashboard_last_verify_ok[layout_id]` — ISO timestamp set by
+        `verify_dashboard` on a passing run (including the numerical scope
+        check when reportScope is set).
+
+    Publish is allowed when `last_verify_ok >= last_update_ts` (or when
+    `last_update_ts` is absent and `last_verify_ok` is present). Standalone
+    dashboards (no reportScope on the doc) do not get the gate — the agent
+    isn't committing any numbers against a scope, so there's nothing for the
+    numerical verify to enforce. Structural defects are still caught by
+    `publish_dashboard`'s internal pre-publish check.
+    """
+    if tool.name != "publish_dashboard":
+        return None
+
+    layout_id = args.get("layout_id")
+    if not layout_id or not isinstance(layout_id, str):
+        # Let the tool itself produce the missing-arg error message.
+        return None
+
+    # Read the dashboard doc to check whether reportScope is committed. If the
+    # doc is unreachable, fall through — the tool will surface the access error.
+    try:
+        from api.deps import get_fs
+
+        fs = get_fs()
+        doc = fs._db.collection("dashboard_layouts").document(layout_id).get()
+    except Exception:
+        return None
+    if not doc.exists:
+        return None
+    data = doc.to_dict() or {}
+    if not data.get("reportScope"):
+        return None  # standalone-mode dashboard — gate doesn't apply
+
+    state = tool_context.state
+    last_update = (state.get("dashboard_last_update_ts") or {}).get(layout_id)
+    last_verify = (state.get("dashboard_last_verify_ok") or {}).get(layout_id)
+
+    if not last_verify:
+        return {
+            "status": "verify_required",
+            "layout_id": layout_id,
+            "message": (
+                f"Refused publish_dashboard('{layout_id}'): this dashboard has a "
+                "committed reportScope but verify_dashboard has not been called "
+                "yet in this session. Call verify_dashboard(layout_id) first; "
+                "fix any errors it reports; then retry publish."
+            ),
+        }
+    if last_update and last_update > last_verify:
+        return {
+            "status": "verify_stale",
+            "layout_id": layout_id,
+            "message": (
+                f"Refused publish_dashboard('{layout_id}'): the dashboard was "
+                "updated after the most recent verify_dashboard pass "
+                f"(last_update={last_update} > last_verify={last_verify}). "
+                "Re-run verify_dashboard(layout_id) and retry publish."
+            ),
+        }
+    return None
+
+
+# ---------------------------------------------------------------------------
 # 3b. Loop bounding — before_tool_callback
 # ---------------------------------------------------------------------------
 

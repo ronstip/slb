@@ -32,7 +32,7 @@ SELECT
   COALESCE(views, 0) AS views,
   COALESCE(shares, 0) AS shares,
   COALESCE(saves, 0) AS saves,
-  posted_at, collection_id, language
+  posted_at, collection_id, language, sentiment
 FROM social_listening.scope_posts(@agent_id)
 WHERE posted_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @window_days DAY)
   {collection_clause}
@@ -48,7 +48,7 @@ SELECT
   COALESCE(views, 0) AS views,
   COALESCE(shares, 0) AS shares,
   COALESCE(saves, 0) AS saves,
-  posted_at, collection_id, language
+  posted_at, collection_id, language, sentiment
 FROM social_listening.scope_posts(@agent_id)
 WHERE TRUE
   {collection_clause}

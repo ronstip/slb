@@ -179,15 +179,16 @@ def _build_tvf_sql(request: MultiFeedRequest) -> tuple[str, dict]:
     topic_join_sql = ""
     if request.topic_cluster_id:
         topic_join_sql = """
-        JOIN social_listening.topic_cluster_members tcm
-          ON base.post_id = tcm.post_id
-          AND tcm.collection_id = base.collection_id
-          AND tcm.cluster_id = @topic_cluster_id
-          AND tcm.clustered_at = (
-              SELECT MAX(clustered_at)
-              FROM social_listening.topic_cluster_members
-              WHERE collection_id = base.collection_id
-          )
+        JOIN (
+            SELECT post_id
+            FROM social_listening.topic_clusters tc, UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.cluster_id = @topic_cluster_id
+              AND tc.clustered_at = (
+                  SELECT MAX(clustered_at)
+                  FROM social_listening.topic_clusters
+                  WHERE cluster_id = @topic_cluster_id
+              )
+        ) tcm USING (post_id)
         """
         params["topic_cluster_id"] = request.topic_cluster_id
 
@@ -278,15 +279,16 @@ def _build_legacy_sql(request: MultiFeedRequest) -> tuple[str, dict]:
     topic_join_sql = ""
     if request.topic_cluster_id:
         topic_join_sql = """
-        JOIN social_listening.topic_cluster_members tcm
-          ON p.post_id = tcm.post_id
-          AND tcm.collection_id = p.collection_id
-          AND tcm.cluster_id = @topic_cluster_id
-          AND tcm.clustered_at = (
-              SELECT MAX(clustered_at)
-              FROM social_listening.topic_cluster_members
-              WHERE collection_id = p.collection_id
-          )
+        JOIN (
+            SELECT post_id
+            FROM social_listening.topic_clusters tc, UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.cluster_id = @topic_cluster_id
+              AND tc.clustered_at = (
+                  SELECT MAX(clustered_at)
+                  FROM social_listening.topic_clusters
+                  WHERE cluster_id = @topic_cluster_id
+              )
+        ) tcm USING (post_id)
         """
         params["topic_cluster_id"] = request.topic_cluster_id
 

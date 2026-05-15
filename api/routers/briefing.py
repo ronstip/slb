@@ -112,32 +112,22 @@ def load_topics_ranked(fs, bq, agent_id: str) -> list[dict]:
     if not topics:
         return topics
 
+    # All aggregates pre-materialised on topic_clusters — no scope_posts join.
     stats_rows = bq.query(
         """
         WITH latest AS (
             SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
+            FROM social_listening.topic_clusters
             WHERE agent_id = @agent_id
-        ),
-        members AS (
-            SELECT tcm.cluster_id, tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
         )
         SELECT
-            m.cluster_id,
-            COUNTIF(t.sentiment = 'positive') as positive_count,
-            COUNTIF(t.sentiment = 'negative') as negative_count,
-            COUNTIF(t.sentiment = 'neutral') as neutral_count,
-            COUNTIF(t.sentiment = 'mixed') as mixed_count,
-            SUM(COALESCE(t.views, 0)) as total_views,
-            SUM(COALESCE(t.likes, 0)) as total_likes,
-            MIN(t.posted_at) as earliest_post,
-            MAX(t.posted_at) as latest_post
-        FROM members m
-        JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
-        GROUP BY m.cluster_id
+            cluster_id,
+            positive_count, negative_count, neutral_count, mixed_count,
+            total_views, total_likes,
+            earliest_post, latest_post
+        FROM social_listening.topic_clusters tc, latest
+        WHERE tc.agent_id = @agent_id
+          AND tc.clustered_at = latest.latest_at
         """,
         {"agent_id": agent_id},
     )
@@ -179,14 +169,15 @@ def load_best_image_per_topic(bq, agent_id: str) -> dict[str, dict]:
         """
         WITH latest AS (
             SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
+            FROM social_listening.topic_clusters
             WHERE agent_id = @agent_id
         ),
         members AS (
-            SELECT tcm.cluster_id, tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT tc.cluster_id, post_id
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.clustered_at = latest.latest_at
         ),
         image_posts AS (
             SELECT
@@ -246,15 +237,17 @@ def load_topic_posts(
         """
         WITH latest AS (
             SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
+            FROM social_listening.topic_clusters
             WHERE agent_id = @agent_id
         ),
         members AS (
-            SELECT tcm.cluster_id, tcm.post_id, tcm.is_representative
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.cluster_id IN UNNEST(@cluster_ids)
-              AND tcm.clustered_at = latest.latest_at
+            SELECT tc.cluster_id, post_id,
+                   post_id IN UNNEST(tc.representative_post_ids) as is_representative
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.cluster_id IN UNNEST(@cluster_ids)
+              AND tc.clustered_at = latest.latest_at
         ),
         joined AS (
             SELECT
@@ -347,14 +340,15 @@ def load_posts_per_day(bq, agent_id: str, days: int = 7) -> list[int]:
         """
         WITH latest AS (
             SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
+            FROM social_listening.topic_clusters
             WHERE agent_id = @agent_id
         ),
         members AS (
-            SELECT DISTINCT tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT DISTINCT post_id
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.clustered_at = latest.latest_at
         ),
         member_posts AS (
             SELECT DATE(t.posted_at) as day
@@ -402,14 +396,15 @@ def load_briefing_analytics(bq, agent_id: str, trend_days: int = 14) -> dict:
             """
             WITH latest AS (
                 SELECT MAX(clustered_at) as latest_at
-                FROM social_listening.topic_cluster_members
+                FROM social_listening.topic_clusters
                 WHERE agent_id = @agent_id
             ),
             members AS (
-                SELECT DISTINCT tcm.post_id
-                FROM social_listening.topic_cluster_members tcm, latest
-                WHERE tcm.agent_id = @agent_id
-                  AND tcm.clustered_at = latest.latest_at
+                SELECT DISTINCT post_id
+                FROM social_listening.topic_clusters tc, latest,
+                     UNNEST(tc.member_post_ids) as post_id
+                WHERE tc.agent_id = @agent_id
+                  AND tc.clustered_at = latest.latest_at
             ),
             joined AS (
                 SELECT
@@ -512,14 +507,15 @@ def load_briefing_analytics(bq, agent_id: str, trend_days: int = 14) -> dict:
         """
         WITH latest AS (
             SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
+            FROM social_listening.topic_clusters
             WHERE agent_id = @agent_id
         ),
         members AS (
-            SELECT DISTINCT tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT DISTINCT post_id
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.clustered_at = latest.latest_at
         ),
         joined AS (
             SELECT DATE(t.posted_at) as day, t.sentiment

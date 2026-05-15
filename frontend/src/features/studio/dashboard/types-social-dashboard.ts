@@ -408,6 +408,25 @@ export interface SocialWidgetFilters {
   conditions?: FilterCondition[];
 }
 
+// ─── Report scope (committed by an agent-generated report) ────────────────────
+// When set on a dashboard, chart aggregations apply this as a base filter and
+// viewer filters intersect with it (can narrow, cannot widen). Absence = the
+// dashboard is in standalone mode and the viewer's filter bar is unrestricted.
+// Mirrors `ReportScope` in api/routers/dashboard_schema.py.
+
+export interface ReportScope {
+  sentiment?: string[] | null;
+  emotion?: string[] | null;
+  platform?: string[] | null;
+  language?: string[] | null;
+  content_type?: string[] | null;
+  collection?: string[] | null;
+  channels?: string[] | null;
+  themes?: string[] | null;
+  entities?: string[] | null;
+  date_range?: { from: string | null; to: string | null } | null;
+}
+
 // ─── Widget config ────────────────────────────────────────────────────────────
 
 export interface SocialDashboardWidget {

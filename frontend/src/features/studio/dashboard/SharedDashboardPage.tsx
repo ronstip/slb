@@ -10,7 +10,7 @@ import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilte
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
-import type { SocialDashboardWidget } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, ReportScope } from './types-social-dashboard.ts';
 
 export function SharedDashboardPage() {
   const { token } = useParams<{ token: string }>();
@@ -25,6 +25,9 @@ export function SharedDashboardPage() {
   });
 
   const allPosts = response?.posts ?? [];
+  // The shared dashboard API copies the owner's `reportScope` through. When
+  // present, the filter bar locks those dimensions for the public viewer too.
+  const reportScope = (response?.reportScope ?? null) as ReportScope | null;
 
   const {
     filters,
@@ -34,7 +37,7 @@ export function SharedDashboardPage() {
     availableOptions,
     activeFilterCount,
     clearAll,
-  } = useDashboardFilters(allPosts);
+  } = useDashboardFilters(allPosts, reportScope);
 
   const handleLayoutLoaded = useCallback((persisted: string[]) => {
     setFilterBarFilters(persisted as FilterBarFilterId[]);
@@ -123,6 +126,7 @@ export function SharedDashboardPage() {
               collectionNames={response.collection_names}
               filterBarFilters={filterBarFilters}
               allPosts={allPosts}
+              reportScope={reportScope}
             />
             </div>
           </div>
