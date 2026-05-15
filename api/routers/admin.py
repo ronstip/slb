@@ -436,13 +436,60 @@ async def admin_collections(
     # Firestore counters lag (worker_posts_stored is written only at crawl-complete;
     # posts_enriched drifts across runner restarts/continuations). A single grouped
     # query gives authoritative counts for the visible rows.
+    #
+    # Both enriched_posts and post_embeddings lack a collection_id stamp, so a
+    # naive USING(post_id) join inflates counts whenever the same post appears
+    # in sibling collections (very common — shared keywords/sources). The funnel
+    # column should reflect "what THIS run did", so we filter per-collection:
+    # - enriched: (agent_id, agent_version) matches the collection's owning
+    #   agent AND enriched_at >= collection.created_at. The agent match mirrors
+    #   the pipeline's _prime_idempotency_cache skip key; the time window
+    #   excludes posts already enriched by a sibling collection (which the
+    #   pipeline correctly cache-skips and does not re-enrich this run).
+    # - embedded: embedded_at >= collection.created_at. post_embeddings has no
+    #   agent stamp, so time-window is the only available proxy. Collections
+    #   that ran after PIPELINE_EMBED_STEP_ENABLED was turned off naturally
+    #   show 0.
     visible_ids = [c["collection_id"] for c in collections if c.get("collection_id")]
     if visible_ids:
         try:
             bq = get_bq()
+            status_by_id = {c.get("collection_id"): c for c in all_collections}
+
+            def _sql_str(v) -> str:
+                if v is None or v == "":
+                    return "NULL"
+                return "'" + str(v).replace("'", "''") + "'"
+
+            def _sql_int(v) -> str:
+                if v is None:
+                    return "NULL"
+                try:
+                    return str(int(v))
+                except (TypeError, ValueError):
+                    return "NULL"
+
+            def _sql_ts(v) -> str:
+                if not v:
+                    return "NULL"
+                if hasattr(v, "isoformat"):
+                    v = v.isoformat()
+                return f"SAFE.TIMESTAMP({_sql_str(v)})"
+
+            triples_sql = ",\n".join(
+                "STRUCT("
+                f"{_sql_str(cid)} AS collection_id, "
+                f"{_sql_str((status_by_id.get(cid) or {}).get('agent_id'))} AS agent_id, "
+                f"{_sql_int((status_by_id.get(cid) or {}).get('agent_version'))} AS agent_version, "
+                f"{_sql_ts((status_by_id.get(cid) or {}).get('created_at'))} AS started_at)"
+                for cid in visible_ids
+            )
+
             rows = await asyncio.to_thread(
                 bq.query,
-                "WITH first_seen AS ("
+                "WITH collection_agent AS ("
+                f"  SELECT * FROM UNNEST([{triples_sql}])"
+                "), first_seen AS ("
                 "  SELECT post_id, collection_id AS first_collection_id FROM ("
                 "    SELECT post_id, collection_id, "
                 "      ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY collected_at, collection_id) AS rn "
@@ -462,8 +509,15 @@ async def admin_collections(
                 "COUNT(DISTINCT em.post_id) AS embedded "
                 "FROM social_listening.posts p "
                 "JOIN social_listening.collections c USING (collection_id) "
-                "LEFT JOIN social_listening.enriched_posts e USING (post_id) "
-                "LEFT JOIN social_listening.post_embeddings em USING (post_id) "
+                "JOIN collection_agent ca ON ca.collection_id = p.collection_id "
+                "LEFT JOIN social_listening.enriched_posts e "
+                "  ON e.post_id = p.post_id "
+                "  AND e.agent_id IS NOT DISTINCT FROM ca.agent_id "
+                "  AND e.agent_version IS NOT DISTINCT FROM ca.agent_version "
+                "  AND (ca.started_at IS NULL OR e.enriched_at >= ca.started_at) "
+                "LEFT JOIN social_listening.post_embeddings em "
+                "  ON em.post_id = p.post_id "
+                "  AND (ca.started_at IS NULL OR em.embedded_at >= ca.started_at) "
                 "LEFT JOIN first_seen fs ON fs.post_id = p.post_id "
                 "WHERE p.collection_id IN UNNEST(@ids) "
                 "GROUP BY p.collection_id",
