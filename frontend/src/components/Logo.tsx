@@ -26,22 +26,28 @@ const SIZES: Record<NonNullable<LogoProps['size']>, { mark: number; text: number
   lg: { mark: 38, text: 50, gap: 14 },
 };
 
+// viewBox dimensions for the mark. Width relaxed from the strict 36:64 phone
+// proportion to a slightly wider 44:64 so the brackets breathe more.
+const MARK_W = 44;
+const MARK_H = 64;
+const BRACKET_ARM = 14;
+
 export function ScoltoMark({ size = 28 }: { size?: number }) {
-  // size = height of the mark; width narrows to a phone-rect (36:64) proportion.
+  // size = height of the mark; width follows MARK_W / MARK_H.
   const height = size;
-  const width = size * (36 / 64);
-  // Stroke width matches the brand standalone (2 viewBox units in a 64-tall
-  // mark) with a floor so brackets read at the same absolute thickness as the
-  // reference even when the mark is displayed smaller than 64px.
-  const sw = Math.max(2, size / 32);
-  const half = sw / 2;
-  // Each bracket is a 14×14 L flush with a corner: arm length 14, anchored
-  // via miter joins so the outer corner of the stroke sits exactly on the
-  // viewBox edge (matching how the standalone draws brackets with CSS
-  // borders along the box edges).
+  const width = size * (MARK_W / MARK_H);
+  // Stroke width: floor keeps brackets readable at small sizes; scales with
+  // mark height above the floor.
+  const sw = Math.max(2.5, size / 26);
+  const armRight = MARK_W - BRACKET_ARM; // x where right-side brackets begin
+  const armBottom = MARK_H - BRACKET_ARM; // y where bottom brackets begin
   return (
     <svg
-      viewBox="0 0 36 64"
+      // viewBox padded by 1 unit on every side so bracket strokes (which sit
+      // at the original 0/MARK_W/MARK_H edges) are fully inside the viewport
+      // and don't get asymmetrically clipped or anti-aliased — that's what
+      // made the left brackets look heavier than the right.
+      viewBox={`-1 -1 ${MARK_W + 2} ${MARK_H + 2}`}
       width={width}
       height={height}
       aria-label={BRAND_NAME}
@@ -50,13 +56,13 @@ export function ScoltoMark({ size = 28 }: { size?: number }) {
       strokeWidth={sw}
       strokeLinecap="butt"
       strokeLinejoin="miter"
-      style={{ display: 'block', flexShrink: 0 }}
+      style={{ display: 'block', flexShrink: 0, overflow: 'visible' }}
     >
-      <path d={`M${half} 14 V${half} H14`} />
-      <path d={`M22 ${half} H${36 - half} V14`} />
-      <path d={`M${36 - half} 50 V${64 - half} H22`} />
-      <path d={`M14 ${64 - half} H${half} V50`} />
-      <circle cx="18" cy="32" r="7" fill={BRAND_DOT_COLOR} stroke="none" />
+      <path d={`M0 ${BRACKET_ARM} V0 H${BRACKET_ARM}`} />
+      <path d={`M${armRight} 0 H${MARK_W} V${BRACKET_ARM}`} />
+      <path d={`M${MARK_W} ${armBottom} V${MARK_H} H${armRight}`} />
+      <path d={`M${BRACKET_ARM} ${MARK_H} H0 V${armBottom}`} />
+      <circle cx={MARK_W / 2} cy={MARK_H / 2} r="7" fill={BRAND_DOT_COLOR} stroke="none" />
     </svg>
   );
 }

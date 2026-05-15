@@ -2083,7 +2083,7 @@ const LP_Footer = () => (
     <div className="lp-footer-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 48, flexWrap: 'wrap' }}>
       <div style={{ maxWidth: 300 }}>
         <div style={{ marginBottom: 14 }}>
-          <LP_ScoltoLogo markSize={42} fontSize={55} onDark />
+          <LP_ScoltoLogo markSize={32} fontSize={42} onDark />
         </div>
         <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: '#A29A8B', lineHeight: 1.55 }}>
           A researcher that reads the internet so you don't have to.
@@ -2127,7 +2127,7 @@ const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist
     borderBottom: `1px solid ${LP_BRAND.rule}`, background: LP_BRAND.cream,
     position: 'sticky', top: 0, zIndex: 50,
   }}>
-    <LP_ScoltoLogo markSize={46} fontSize={60} />
+    <LP_ScoltoLogo markSize={34} fontSize={44} />
     <nav className="lp-nav-links" style={{ display: 'flex', gap: 32, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink }}>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>How it works</a>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>What it ships</a>
