@@ -215,12 +215,13 @@ echo ""
 # ══════════════════════════════════════════════════
 echo "==> [7/9] Wiring services (CORS, worker URL, frontend URL)..."
 
-# The frontend will be at https://{project}.web.app
-FRONTEND_URL="https://${PROJECT_ID}.web.app"
+# The canonical frontend domain is scolto.com; keep .web.app + .firebaseapp.com as CORS fallbacks
+FRONTEND_URL="https://scolto.com"
+CORS_ORIGINS="https://scolto.com,https://www.scolto.com,https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com"
 
 gcloud run services update sl-api \
     --region "$REGION" \
-    --update-env-vars "WORKER_SERVICE_URL=$WORKER_URL,CORS_ORIGINS=${FRONTEND_URL},FRONTEND_URL=${FRONTEND_URL}" \
+    --update-env-vars "^|^WORKER_SERVICE_URL=$WORKER_URL|CORS_ORIGINS=${CORS_ORIGINS}|FRONTEND_URL=${FRONTEND_URL}" \
     --quiet
 
 # Tell the worker where the API is — used by Cloud Task continuation dispatches

@@ -2,6 +2,7 @@
 import { useAuth } from './useAuth.ts';
 import { captureGoogleEmail } from './firebase.ts';
 import { apiPost } from '../api/client.ts';
+import { ScoltoMark } from '../components/Logo.tsx';
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const LP_BRAND = {
@@ -73,44 +74,36 @@ const LP_Mono = ({
   </span>
 );
 
-const LP_ScoltoMark = ({ size = 32, onDark = false }: { size?: number; onDark?: boolean }) => {
-  const stroke = onDark ? '#F6F4EF' : '#0F1F4D';
-  const sw = Math.max(1.4, 2 * (size / 32));
-  return (
-    <svg
-      viewBox="0 0 64 64"
-      width={size}
-      height={size}
-      aria-label="Scolto"
-      fill="none"
-      stroke={stroke}
-      strokeWidth={sw}
-      strokeLinecap="round"
-      style={{ display: 'block', flexShrink: 0 }}
-    >
-      <path d="M4 18 V4 H18" />
-      <path d="M46 4 H60 V18" />
-      <path d="M60 46 V60 H46" />
-      <path d="M18 60 H4 V46" />
-      <circle cx="32" cy="32" r="7" fill={LP_BRAND.orange} stroke="none" />
-    </svg>
-  );
-};
+// Thin landing-page wrapper around the shared brand mark. The shared
+// component uses `currentColor` for the brackets, so all we add here is the
+// onDark color toggle.
+const LP_ScoltoMark = ({ size = 32, onDark = false }: { size?: number; onDark?: boolean }) => (
+  <span
+    style={{
+      display: 'inline-flex',
+      color: onDark ? LP_BRAND.cream : '#0F1F4D',
+      flexShrink: 0,
+    }}
+  >
+    <ScoltoMark size={size} />
+  </span>
+);
 
 const LP_ScoltoLogo = ({
   markSize = 44,
   fontSize = 34,
-  gap = 12,
+  gap,
   onDark = false,
   showMark = true,
 }: {
   markSize?: number;
   fontSize?: number;
+  /** Optional override; defaults to markSize × 0.375 (the brand standalone ratio). */
   gap?: number;
   onDark?: boolean;
   showMark?: boolean;
 }) => (
-  <span style={{ display: 'inline-flex', alignItems: 'center', gap, lineHeight: 1 }}>
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: gap ?? markSize * 0.375, lineHeight: 1 }}>
     {showMark && <LP_ScoltoMark size={markSize} onDark={onDark} />}
     <span
       style={{
@@ -118,7 +111,7 @@ const LP_ScoltoLogo = ({
         fontStyle: 'italic',
         fontWeight: 400,
         fontSize,
-        letterSpacing: -0.6,
+        letterSpacing: '-0.026em',
         lineHeight: 1,
         color: onDark ? LP_BRAND.cream : '#0F1F4D',
         display: 'inline-flex',
@@ -2090,7 +2083,7 @@ const LP_Footer = () => (
     <div className="lp-footer-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 48, flexWrap: 'wrap' }}>
       <div style={{ maxWidth: 300 }}>
         <div style={{ marginBottom: 14 }}>
-          <LP_ScoltoLogo markSize={42} fontSize={32} onDark />
+          <LP_ScoltoLogo markSize={42} fontSize={55} onDark />
         </div>
         <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: '#A29A8B', lineHeight: 1.55 }}>
           A researcher that reads the internet so you don't have to.
@@ -2134,7 +2127,7 @@ const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist
     borderBottom: `1px solid ${LP_BRAND.rule}`, background: LP_BRAND.cream,
     position: 'sticky', top: 0, zIndex: 50,
   }}>
-    <LP_ScoltoLogo markSize={46} fontSize={36} />
+    <LP_ScoltoLogo markSize={46} fontSize={60} />
     <nav className="lp-nav-links" style={{ display: 'flex', gap: 32, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink }}>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>How it works</a>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>What it ships</a>
