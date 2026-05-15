@@ -22,11 +22,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Shared CTE fragment for latest clustering run (agent-scoped)
+# Shared CTE fragment for latest clustering run (agent-scoped). Reads
+# topic_clusters — the per-cluster table with pre-materialised aggregates.
+# Agents that have not been regenerated since the migration have no rows here;
+# the merge loop in _load_agent_topics tolerates that.
 _LATEST_CTE = """
     WITH latest AS (
         SELECT MAX(clustered_at) as latest_at
-        FROM social_listening.topic_cluster_members
+        FROM social_listening.topic_clusters
         WHERE agent_id = @agent_id
     )"""
 
@@ -80,25 +83,16 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
     # for what is fundamentally three views of the same cluster data. Fire them
     # in parallel via a small thread pool (bq.query releases the GIL during the
     # gRPC call, so threads give real parallelism here).
+    # Aggregates are pre-materialised on topic_clusters — no scope_posts join.
     summary_sql = f"""
-        {_LATEST_CTE},
-        members AS (
-            SELECT tcm.cluster_id, tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
-        )
+        {_LATEST_CTE}
         SELECT
-            m.cluster_id,
-            COUNTIF(t.sentiment = 'positive') as positive_count,
-            COUNTIF(t.sentiment = 'negative') as negative_count,
-            COUNTIF(t.sentiment = 'neutral') as neutral_count,
-            COUNTIF(t.sentiment = 'mixed') as mixed_count,
-            SUM(COALESCE(t.views, 0)) as total_views,
-            SUM(COALESCE(t.likes, 0)) as total_likes
-        FROM members m
-        JOIN {_AGENT_POSTS_TVF} t USING (post_id)
-        GROUP BY m.cluster_id
+            cluster_id,
+            positive_count, negative_count, neutral_count, mixed_count,
+            total_views, total_likes
+        FROM social_listening.topic_clusters tc, latest
+        WHERE tc.agent_id = @agent_id
+          AND tc.clustered_at = latest.latest_at
         """
 
     # Thumbnail query: prefer representative post w/ media, fall back to ANY
@@ -108,10 +102,12 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
     thumb_sql = f"""
         {_LATEST_CTE},
         members AS (
-            SELECT tcm.cluster_id, tcm.post_id, tcm.is_representative
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT tc.cluster_id, post_id,
+                   post_id IN UNNEST(tc.representative_post_ids) as is_representative
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.clustered_at = latest.latest_at
         ),
         ranked AS (
             SELECT m.cluster_id, t.media_refs,
@@ -136,10 +132,11 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
     platforms_sql = f"""
         {_LATEST_CTE},
         members AS (
-            SELECT tcm.cluster_id, tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT tc.cluster_id, post_id
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.clustered_at = latest.latest_at
         )
         SELECT m.cluster_id,
                ARRAY_AGG(DISTINCT t.platform IGNORE NULLS) as platforms
@@ -365,38 +362,32 @@ async def get_agent_topic_analytics(
     bq = get_bq()
     await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
+    # Totals come straight from topic_clusters — every field pre-materialised,
+    # including median_post_time which the old query couldn't compute.
     totals_sql = f"""
-        {_LATEST_CTE},
-        members AS (
-            SELECT tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.cluster_id = @cluster_id
-              AND tcm.clustered_at = latest.latest_at
-        )
+        {_LATEST_CTE}
         SELECT
-            COUNT(*) as post_count,
-            COUNTIF(t.sentiment = 'positive') as positive_count,
-            COUNTIF(t.sentiment = 'negative') as negative_count,
-            COUNTIF(t.sentiment = 'neutral') as neutral_count,
-            COUNTIF(t.sentiment = 'mixed') as mixed_count,
-            SUM(COALESCE(t.views, 0)) as total_views,
-            SUM(COALESCE(t.likes, 0)) as total_likes,
-            SUM(COALESCE(t.comments_count, 0)) as total_comments,
-            MIN(t.posted_at) as earliest_post,
-            MAX(t.posted_at) as latest_post
-        FROM members m
-        JOIN {_AGENT_POSTS_TVF} t USING (post_id)
+            post_count,
+            positive_count, negative_count, neutral_count, mixed_count,
+            total_views, total_likes, total_comments,
+            earliest_post, median_post_time, latest_post,
+            estimated_post_count, estimated_views, estimated_likes,
+            estimated_comments, estimated_shares
+        FROM social_listening.topic_clusters tc, latest
+        WHERE tc.agent_id = @agent_id
+          AND tc.cluster_id = @cluster_id
+          AND tc.clustered_at = latest.latest_at
         """
 
     platforms_sql = f"""
         {_LATEST_CTE},
         members AS (
-            SELECT tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.cluster_id = @cluster_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT post_id
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.cluster_id = @cluster_id
+              AND tc.clustered_at = latest.latest_at
         )
         SELECT
             t.platform,
@@ -439,11 +430,13 @@ async def get_agent_topic_posts(
         f"""
         {_LATEST_CTE},
         members AS (
-            SELECT tcm.post_id, tcm.distance_to_centroid, tcm.is_representative
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.cluster_id = @cluster_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT post_id,
+                   post_id IN UNNEST(tc.representative_post_ids) as is_representative
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.cluster_id = @cluster_id
+              AND tc.clustered_at = latest.latest_at
         )
         SELECT
             t.post_id, t.platform, t.channel_handle, t.channel_id,
@@ -460,7 +453,7 @@ async def get_agent_topic_posts(
             t.sentiment, t.emotion, t.themes, t.entities, t.ai_summary,
             t.content_type, t.language, t.custom_fields, t.context,
             t.detected_brands, t.channel_type,
-            m.distance_to_centroid, m.is_representative
+            m.is_representative
         FROM members m
         JOIN {_AGENT_POSTS_TVF} t USING (post_id)
         ORDER BY m.is_representative DESC, COALESCE(t.views, 0) + COALESCE(t.likes, 0) * 10 DESC

@@ -1720,8 +1720,8 @@ class PipelineRunner:
 
         # Topic clustering (agent-wide). Dispatch by agent.topics_config →
         # global settings.topics_algorithm. Either algorithm produces the same
-        # downstream artifacts (BQ topic_cluster_members rows + Firestore
-        # topic docs with topic_name/topic_summary/post_count surface fields).
+        # downstream artifacts (BQ topic_clusters rows + Firestore topic docs
+        # with topic_name/topic_summary/post_count surface fields).
         # If the agent has opted out via topics_config.auto_regenerate_on_pipeline=False,
         # skip entirely — they will regenerate manually via the API/UI.
         try:
