@@ -6,7 +6,7 @@ import { useUIStore } from '../../stores/ui-store.ts';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useAuth } from '../../auth/useAuth.ts';
 import { useCollectionsSync } from '../collections/useCollectionsSync.ts';
-import { Logo } from '../../components/Logo.tsx';
+import { Logo, BRAND_NAME } from '../../components/Logo.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
 import { UtilityTopBar } from '../../components/BrandElements.tsx';
 import { AgentCreationWizard } from './wizard/AgentCreationWizard.tsx';
@@ -114,7 +114,7 @@ export function AgentHome() {
               <div className="mb-10 flex flex-col items-center text-center">
                 <Logo size="lg" showText={false} />
                 <h2 className="mt-4 font-serif text-4xl font-normal tracking-tight text-foreground">
-                  Welcome to <span className="italic text-primary">Veille</span>
+                  Welcome to <span className="italic text-primary">{BRAND_NAME}</span>
                 </h2>
                 <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Sparkles className="h-4 w-4 text-primary/60" />

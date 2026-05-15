@@ -85,6 +85,15 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    // Match the production firebase.json hosting header so Firebase Auth's
+    // popup-based sign-in can interact with the Google OAuth popup. Without
+    // this, modern Chrome blocks `popup.closed` polling and `popup.close()`
+    // calls when accounts.google.com (which sets COOP `same-origin`) is
+    // opened from an opener with no COOP — the popup completes the auth
+    // dance but the parent never learns the credential arrived.
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

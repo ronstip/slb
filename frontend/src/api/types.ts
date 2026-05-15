@@ -905,6 +905,22 @@ export interface AdminRevenue {
   recent_purchases: CreditPurchaseHistoryItem[];
 }
 
+export interface AdminWaitlistEntry {
+  id: string;
+  email: string;
+  display_name?: string | null;
+  interested_in?: string | null;
+  source?: string | null;
+  submission_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdminWaitlistList {
+  entries: AdminWaitlistEntry[];
+  total: number;
+}
+
 // --- Wizard planner ---
 
 export type CustomFieldType = 'str' | 'bool' | 'int' | 'float' | 'list[str]' | 'literal';

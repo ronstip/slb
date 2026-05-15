@@ -5,6 +5,7 @@ import { Button } from '../../../components/ui/button.tsx';
 import { Badge } from '../../../components/ui/badge.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { cn } from '../../../lib/utils.ts';
+import { BRAND_NAME } from '../../../components/Logo.tsx';
 import type { PlanStatus } from './AgentCreationWizard.tsx';
 import type { WizardClarification } from '../../../api/types.ts';
 
@@ -86,7 +87,7 @@ export function DescribePanel({
         <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">
           <div className="flex-1 min-w-0 flex flex-col">
             <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              What do you want Veille to listen for?
+              What do you want {BRAND_NAME} to listen for?
             </p>
             <Textarea
               value={description}

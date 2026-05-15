@@ -725,3 +725,66 @@ async def impersonate_stop(
 
     _write_audit_entry("stop", real_user, target_uid, target_email, request)
     logger.info("Impersonation STOP: %s", real_user.email)
+
+
+# ---------------------------------------------------------------------------
+# Waitlist (private-beta signups from the landing page)
+# ---------------------------------------------------------------------------
+
+
+def _serialize_waitlist_doc(doc) -> dict:
+    data = doc.to_dict() or {}
+    data["id"] = doc.id
+    for key in ("created_at", "updated_at"):
+        val = data.get(key)
+        if val is not None and hasattr(val, "isoformat"):
+            data[key] = val.isoformat()
+    return data
+
+
+@router.get("/waitlist")
+async def admin_waitlist(
+    search: str = Query("", description="Filter by email or interested_in text"),
+    sort_by: str = Query("created_at", pattern="^(created_at|updated_at|email|submission_count)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    user: CurrentUser = Depends(_admin_user),
+):
+    """List waitlist signups captured from the landing page."""
+    fs = get_fs()
+
+    def _load() -> list[dict]:
+        return [_serialize_waitlist_doc(d) for d in fs._db.collection("waitlist").stream()]
+
+    entries = await asyncio.to_thread(_load)
+
+    if search:
+        s = search.lower()
+        entries = [
+            e for e in entries
+            if s in (e.get("email") or "").lower()
+            or s in (e.get("interested_in") or "").lower()
+            or s in (e.get("display_name") or "").lower()
+        ]
+
+    reverse = order == "desc"
+    entries.sort(key=lambda e: e.get(sort_by) or "", reverse=reverse)
+
+    total = len(entries)
+    entries = entries[offset : offset + limit]
+
+    return {"entries": entries, "total": total}
+
+
+@router.delete("/waitlist/{entry_id}", status_code=204)
+async def admin_waitlist_delete(
+    entry_id: str,
+    user: CurrentUser = Depends(_admin_user),
+):
+    """Remove a waitlist entry (e.g. after promoting to a real account)."""
+    fs = get_fs()
+    await asyncio.to_thread(
+        fs._db.collection("waitlist").document(entry_id).delete
+    )
+    logger.info("admin %s deleted waitlist entry %s", user.email, entry_id)

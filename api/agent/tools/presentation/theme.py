@@ -1,7 +1,7 @@
 """Template-native theme system.
 
 Reads colors and fonts from the template manifest instead of hardcoding.
-Falls back to Veille brand defaults when no manifest is available.
+Falls back to Scolto brand defaults when no manifest is available.
 """
 
 import logging
@@ -13,7 +13,7 @@ from pptx.util import Pt
 
 logger = logging.getLogger(__name__)
 
-# Veille brand defaults (used when no template manifest)
+# Scolto brand defaults (used when no template manifest)
 _DEFAULT_ACCENT = "#4A7C8F"
 _DEFAULT_COLORS = {
     "dk1": "#0A0A0A",

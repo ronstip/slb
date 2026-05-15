@@ -187,7 +187,7 @@ def _download_url(url: str) -> Optional[bytes]:
         resp = requests.get(
             url,
             timeout=5,
-            headers={"User-Agent": "veille-presentation/1.0"},
+            headers={"User-Agent": "scolto-presentation/1.0"},
             stream=True,
         )
         resp.raise_for_status()

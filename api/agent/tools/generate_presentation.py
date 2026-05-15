@@ -228,89 +228,62 @@ def _title_bar(slide, title: str, t: "_Theme", top: float = Inches(0.22)) -> Non
     line.line.fill.background()
 
 
-def _draw_veille_logo(slide, cx, cy, radius, t: "_Theme",
+_BRAND_NAME = "Scolto"
+_BRAND_DOT_COLOR = RGBColor(0xD9, 0x77, 0x57)  # matches Logo.tsx BRAND_DOT_COLOR
+
+
+def _draw_scolto_logo(slide, cx, cy, radius, t: "_Theme",
                       on_accent_bg: bool = False) -> None:
-    """
-    Draw the Veille radar logo at (cx, cy) with given radius.
-    Structure mirrors Logo.tsx:
-      - 3 concentric rings (stroke, no fill)
-      - 3 satellite dots (chart palette colors)
-      - 3 thin lines from center to each satellite (rotated rectangles — no connectors)
-      - 1 center dot (accent color)
-    All position/size values are EMUs.
-    NOTE: We deliberately avoid add_connector() — it produces unresolvable shape-ID
-    references in the XML that cause PowerPoint's repair dialog on open.
-    """
-    ring_color = t.white if on_accent_bg else t.muted
-    line_color = t.white if on_accent_bg else t.border
+    """Draw the Scolto mark at (cx, cy) with the given half-size in EMU.
 
-    def _oval(x_c, y_c, r, fill_color: Optional[RGBColor], stroke_color: RGBColor,
-              stroke_pt: float = 0.75):
-        shape = slide.shapes.add_shape(9, x_c - r, y_c - r, r * 2, r * 2)
-        if fill_color:
-            shape.fill.solid()
-            shape.fill.fore_color.rgb = fill_color
-        else:
-            shape.fill.background()
-        shape.line.color.rgb = stroke_color
-        shape.line.width = Pt(stroke_pt)
+    Mirrors the SVG in frontend/src/components/Logo.tsx: four corner
+    brackets framing a solid orange dot. Geometry is derived from the
+    64-unit viewBox there, so 1 viewBox unit = radius/32.
+    """
+    bracket_color = t.white if on_accent_bg else t.fg
 
-    def _line(x1, y1, x2, y2, color: RGBColor, thickness_pt: float = 0.4):
-        """Draw a line as a rotated thin rectangle — compatible with all PPTX viewers."""
-        dx = x2 - x1
-        dy = y2 - y1
-        length = math.hypot(dx, dy)
-        if length < 1:
-            return
-        angle_deg = math.degrees(math.atan2(dy, dx))
-        # Height of the rectangle (line thickness)
-        h = max(int(Pt(thickness_pt)), 9144)  # min 1pt
-        # Rectangle left/top so its left-center is at (x1, y1) before rotation
-        # python-pptx rotates around the shape center, so offset accordingly
-        rect_left = x1
-        rect_top  = y1 - h // 2
-        shape = slide.shapes.add_shape(1, rect_left, rect_top, int(length), h)
+    inset = radius // 8
+    arm_len = int(radius * 7 / 16)
+    stroke_t = max(radius // 16, 9144)
+    dot_r = max(int(radius * 7 / 32), 30000)
+
+    left, right = cx - radius, cx + radius
+    top, bottom = cy - radius, cy + radius
+
+    def _rect(x, y, w, h, color: RGBColor) -> None:
+        shape = slide.shapes.add_shape(1, x, y, w, h)
         shape.fill.solid()
         shape.fill.fore_color.rgb = color
         shape.line.fill.background()
-        shape.rotation = angle_deg
 
-    # 3 concentric rings at 100%, 78%, 56% of radius
-    for scale in (1.0, 0.78, 0.56):
-        _oval(cx, cy, int(radius * scale), None, ring_color, stroke_pt=0.6)
+    tl_x, tl_y = left + inset, top + inset
+    tr_x, tr_y = right - inset, top + inset
+    br_x, br_y = right - inset, bottom - inset
+    bl_x, bl_y = left + inset, bottom - inset
 
-    # Satellite positions (match Logo.tsx viewBox 40×40, center at 20,20)
-    # Logo.tsx: (28,12), (32,24), (12,28) → offsets from center: (+8,-8),(+12,+4),(-8,+8)
-    # Normalised by half-viewbox (20): 0.40, 0.60, etc.
-    vp = radius
-    satellites = [
-        (cx + int(vp * 0.40), cy - int(vp * 0.40), t.chart_palette[4 % len(t.chart_palette)]),
-        (cx + int(vp * 0.60), cy + int(vp * 0.20), t.chart_palette[1 % len(t.chart_palette)]),
-        (cx - int(vp * 0.40), cy + int(vp * 0.40), t.chart_palette[3 % len(t.chart_palette)]),
-    ]
-    dot_r = max(int(radius * 0.10), 30000)
+    _rect(tl_x, tl_y, arm_len, stroke_t, bracket_color)
+    _rect(tl_x, tl_y, stroke_t, arm_len, bracket_color)
+    _rect(tr_x - arm_len, tr_y, arm_len, stroke_t, bracket_color)
+    _rect(tr_x - stroke_t, tr_y, stroke_t, arm_len, bracket_color)
+    _rect(br_x - arm_len, br_y - stroke_t, arm_len, stroke_t, bracket_color)
+    _rect(br_x - stroke_t, br_y - arm_len, stroke_t, arm_len, bracket_color)
+    _rect(bl_x, bl_y - stroke_t, arm_len, stroke_t, bracket_color)
+    _rect(bl_x, bl_y - arm_len, stroke_t, arm_len, bracket_color)
 
-    # Lines from center to each satellite (draw before dots so dots sit on top)
-    for sx, sy, _ in satellites:
-        _line(cx, cy, sx, sy, line_color)
-
-    # Satellite dots
-    for sx, sy, color in satellites:
-        _oval(sx, sy, dot_r, color, color, stroke_pt=0)
-
-    # Center dot (accent color, drawn last so it's on top)
-    center_r = max(int(radius * 0.30), 60000)
-    _oval(cx, cy, center_r, t.accent, t.accent, stroke_pt=0)
+    oval = slide.shapes.add_shape(9, cx - dot_r, cy - dot_r, dot_r * 2, dot_r * 2)
+    oval.fill.solid()
+    oval.fill.fore_color.rgb = _BRAND_DOT_COLOR
+    oval.line.fill.background()
 
 
 def _footer(slide, t: "_Theme", on_accent_bg: bool = False) -> None:
-    """Logo + 'Powered by Veille' anchored to bottom-right corner."""
+    """Logo + 'Powered by Scolto' anchored to bottom-right corner."""
     logo_r = Inches(0.115)   # radius of whole logo
     # Right-align: logo right edge = slide right - 0.18"
     logo_cx = SLIDE_W - Inches(0.18) - logo_r
     logo_cy = SLIDE_H - Inches(0.22)
 
-    _draw_veille_logo(slide, logo_cx, logo_cy, logo_r, t, on_accent_bg=on_accent_bg)
+    _draw_scolto_logo(slide, logo_cx, logo_cy, logo_r, t, on_accent_bg=on_accent_bg)
 
     # Text to the left of the logo, right-aligned to slide edge
     text_color = (t.white if on_accent_bg else t.muted)
@@ -319,7 +292,7 @@ def _footer(slide, t: "_Theme", on_accent_bg: bool = False) -> None:
         left=logo_cx - logo_r - text_w - Inches(0.04),
         top=SLIDE_H - Inches(0.35),
         width=text_w, height=Inches(0.3),
-        text="Powered by Veille",
+        text=f"Powered by {_BRAND_NAME}",
         size_pt=7.5, color=text_color, t=t, align=PP_ALIGN.RIGHT,
     )
 
@@ -848,11 +821,11 @@ def _render_closing(slide, spec: dict, t: "_Theme") -> None:
     logo_r = Inches(0.14)
     logo_cx = SLIDE_W / 2 - Inches(0.9)
     logo_cy = SLIDE_H - Inches(0.65)
-    _draw_veille_logo(slide, logo_cx, logo_cy, logo_r, t)
+    _draw_scolto_logo(slide, logo_cx, logo_cy, logo_r, t)
     _add_textbox(slide,
         left=logo_cx + logo_r + Inches(0.06), top=SLIDE_H - Inches(0.8),
         width=Inches(1.85), height=Inches(0.45),
-        text="Powered by Veille", size_pt=10, color=t.muted, t=t,
+        text=f"Powered by {_BRAND_NAME}", size_pt=10, color=t.muted, t=t,
     )
 
 

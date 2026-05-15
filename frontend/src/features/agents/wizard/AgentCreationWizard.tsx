@@ -23,6 +23,7 @@ import { AgentSettingsPanel } from './AgentSettingsPanel.tsx';
 import { buildWizardRequestBody } from './wizard-utils.ts';
 import { EMPTY_CONSTITUTION } from './AgentContextEditor.tsx';
 import { BotAvatar } from '../../../components/BrandElements.tsx';
+import { BRAND_NAME } from '../../../components/Logo.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import {
@@ -342,7 +343,7 @@ export function AgentCreationWizard() {
   const estMinutes = Math.max(1, Math.round(collectionSettings.nPosts / 500));
   let footerStat: string | null = null;
   if (currentStep === 0) {
-    footerStat = 'Veille will draft a plan you can review';
+    footerStat = `${BRAND_NAME} will draft a plan you can review`;
   } else if (currentStep === 1 && isPlanReady) {
     footerStat = `First run · ~${estMinutes} min · ~${collectionSettings.nPosts.toLocaleString()} posts`;
   } else if (currentStep === 2 && isPlanReady) {
@@ -368,7 +369,7 @@ export function AgentCreationWizard() {
             <BotAvatar seed={agentTitle || 'new-agent'} size={44} />
             <div className="flex-1 min-w-0">
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Created by Veille
+                Created by {BRAND_NAME}
               </div>
               {titleEditing ? (
                 <Input

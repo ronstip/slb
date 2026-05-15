@@ -1,5 +1,7 @@
-import { useState, useEffect, type ReactNode, type CSSProperties } from 'react';
+﻿import { useState, useEffect, type ReactNode, type CSSProperties } from 'react';
 import { useAuth } from './useAuth.ts';
+import { captureGoogleEmail } from './firebase.ts';
+import { apiPost } from '../api/client.ts';
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const LP_BRAND = {
@@ -435,24 +437,24 @@ const LP_DailyRead = () => {
     { label: 'negative', pct:  8, color: LP_BRAND.orangeDeep },
   ];
   return (
-    <article style={{
+    <article className="lp-daily-read" style={{
       background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 18,
       boxShadow: '0 40px 80px -40px rgba(40,30,20,0.32), 0 12px 28px -18px rgba(40,30,20,0.12)',
-      overflow: 'hidden', width: 520, display: 'flex', flexDirection: 'column',
+      overflow: 'hidden', width: 520, maxWidth: '100%', display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{
+      <div className="lp-daily-head" style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px',
         background: LP_BRAND.cream, borderBottom: `1px solid ${LP_BRAND.rule}`,
       }}>
         <LP_ScoltoMark size={20} />
-        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, minWidth: 0 }}>
           <span style={{ fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontSize: 14, color: LP_BRAND.ink }}>Weekly Read</span>
-          <LP_Mono size={8.5} style={{ marginTop: 2 }}>Tue · 17 Mar · 09:14 PT</LP_Mono>
+          <LP_Mono size={8.5} style={{ marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>Tue · 17 Mar · 09:14 PT</LP_Mono>
         </div>
         <span style={{ flex: 1 }} />
-        <span style={{
+        <span className="lp-daily-fresh" style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 9px', borderRadius: 99,
-          background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`,
+          background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, whiteSpace: 'nowrap',
         }}>
           <span style={{
             width: 6, height: 6, borderRadius: 99, background: '#3DA37D',
@@ -477,21 +479,21 @@ const LP_DailyRead = () => {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr', gap: 0, padding: '14px 20px 6px' }}>
-        <div style={{ paddingRight: 14, borderRight: `1px solid ${LP_BRAND.rule}` }}>
+      <div className="lp-daily-kpis" style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr', gap: 0, padding: '14px 20px 6px' }}>
+        <div style={{ paddingRight: 14, borderRight: `1px solid ${LP_BRAND.rule}`, minWidth: 0 }}>
           <LP_Mono size={9}>mentions · 7d</LP_Mono>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-            <span style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 400, color: LP_BRAND.ink, letterSpacing: -0.6 }}>27.4M</span>
+            <span className="lp-daily-num" style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 400, color: LP_BRAND.ink, letterSpacing: -0.6 }}>27.4M</span>
             <span style={{ fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 10, fontWeight: 600, color: '#3DA37D' }}>+1,872%</span>
           </div>
           <div style={{ marginTop: 4 }}>
             <LP_Sparkline values={trend} width={140} height={26} />
           </div>
         </div>
-        <div style={{ padding: '0 14px', borderRight: `1px solid ${LP_BRAND.rule}` }}>
+        <div style={{ padding: '0 14px', borderRight: `1px solid ${LP_BRAND.rule}`, minWidth: 0 }}>
           <LP_Mono size={9}>sentiment</LP_Mono>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-            <span style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 400, color: LP_BRAND.ink, letterSpacing: -0.6 }}>+0.61</span>
+            <span className="lp-daily-num" style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 400, color: LP_BRAND.ink, letterSpacing: -0.6 }}>+0.61</span>
           </div>
           <div style={{ marginTop: 6, display: 'flex', height: 6, borderRadius: 99, overflow: 'hidden', border: `1px solid ${LP_BRAND.rule}` }}>
             {sentimentBars.map(b => (
@@ -499,12 +501,12 @@ const LP_DailyRead = () => {
             ))}
           </div>
         </div>
-        <div style={{ paddingLeft: 14 }}>
+        <div style={{ paddingLeft: 14, minWidth: 0 }}>
           <LP_Mono size={9}>reach</LP_Mono>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-            <span style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 400, color: LP_BRAND.ink, letterSpacing: -0.6 }}>1.4B</span>
+            <span className="lp-daily-num" style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 400, color: LP_BRAND.ink, letterSpacing: -0.6 }}>1.4B</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8 }}>
+          <div className="lp-daily-reach-badges" style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
             {(['tiktok','instagram','x','youtube','reddit'] as PlatformId[]).map(p => (
               <LP_PlatformBadge key={p} id={p} size={15} />
             ))}
@@ -533,7 +535,7 @@ const LP_DailyRead = () => {
           <span style={{
             fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 300, fontSize: 32,
             color: LP_BRAND.orangeDeep, lineHeight: 0.7, marginTop: 6,
-          }}>“</span>
+          }}>"</span>
           <div style={{ flex: 1 }}>
             <div style={{
               fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 300, fontSize: 18,
@@ -575,24 +577,24 @@ const LP_DailyRead = () => {
 };
 
 const LP_HeroCharacter = () => (
-  <div style={{ position: 'relative', height: 660, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-    <div style={{
+  <div className="lp-hero-illustration" style={{ position: 'relative', height: 660, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <div className="lp-hero-glow" style={{
       position: 'absolute', inset: '30px 20px 30px 20px', borderRadius: 28,
       background: `radial-gradient(120% 90% at 65% 30%, ${LP_BRAND.orange}24 0%, ${LP_BRAND.orange}0d 40%, transparent 75%)`,
     }} />
-    <div style={{
+    <div className="lp-hero-paper" style={{
       position: 'absolute', right: 0, top: 18, width: 460, height: 600,
       background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 18,
       transform: 'rotate(2.5deg)', opacity: 0.55,
       boxShadow: '0 30px 60px -40px rgba(40,30,20,0.2)',
     }} />
-    <div style={{
+    <div className="lp-hero-card-wrap" style={{
       position: 'relative', zIndex: 2,
       transform: 'rotate(-1.4deg)',
       filter: 'drop-shadow(0 30px 60px rgba(40,30,20,0.18))',
     }}>
       <LP_DailyRead />
-      <div style={{
+      <div className="lp-hero-live-pill" style={{
         position: 'absolute', top: -30, left: 38, display: 'flex', alignItems: 'center', gap: 8,
         padding: '6px 13px 6px 9px', background: LP_BRAND.ink, color: LP_BRAND.cream, borderRadius: 99,
         boxShadow: '0 14px 28px -16px rgba(40,30,20,0.45)', zIndex: 4, transform: 'rotate(-0.6deg)',
@@ -606,7 +608,7 @@ const LP_HeroCharacter = () => (
       </div>
     </div>
 
-    <div style={{ position: 'absolute', bottom: 8, right: -4, width: 248, zIndex: 5, transform: 'rotate(3deg)' }}>
+    <div className="lp-hero-popup" style={{ position: 'absolute', bottom: 8, right: -4, width: 248, zIndex: 5, transform: 'rotate(3deg)' }}>
       <div style={{
         background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 12,
         padding: '10px 12px', boxShadow: '0 24px 40px -22px rgba(40,30,20,0.35)',
@@ -625,12 +627,12 @@ const LP_HeroCharacter = () => (
           }} />
         </div>
         <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 12, color: LP_BRAND.ink, lineHeight: 1.4 }}>
-          leo's "TFW you didn't agree to this" face when Conan put him on the jumbotron 💀
+          leo's "TFW you didn't agree to this" face when Conan put him on the jumbotron ðŸ’€
         </div>
       </div>
     </div>
 
-    <div style={{ position: 'absolute', top: 80, right: -18, width: 230, zIndex: 3, transform: 'rotate(4deg)' }}>
+    <div className="lp-hero-popup" style={{ position: 'absolute', top: 80, right: -18, width: 230, zIndex: 3, transform: 'rotate(4deg)' }}>
       <div style={{
         background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 12,
         padding: '10px 12px', boxShadow: '0 22px 36px -22px rgba(40,30,20,0.32)',
@@ -650,7 +652,7 @@ const LP_HeroCharacter = () => (
   </div>
 );
 
-const LP_Hero = ({ openAuth }: { openAuth: () => void }) => {
+const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) => {
   const [brief, setBrief] = useState('');
   const PLACEHOLDERS = [
     'Track how the 98th Oscars are landing across every platform this week…',
@@ -666,20 +668,20 @@ const LP_Hero = ({ openAuth }: { openAuth: () => void }) => {
   }, [brief]);
 
   return (
-    <section style={{ padding: '48px 64px 80px', position: 'relative' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.08fr 0.92fr', gap: 56, alignItems: 'center' }}>
+    <section className="lp-section lp-hero-section" style={{ padding: '48px 64px 80px', position: 'relative' }}>
+      <div className="lp-hero-grid" style={{ display: 'grid', gridTemplateColumns: '1.08fr 0.92fr', gap: 56, alignItems: 'center' }}>
         <div>
-          <div style={{
+          <div className="lp-hero-badge" style={{
             display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 22,
             padding: '6px 14px 6px 8px', borderRadius: 99, background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`,
           }}>
             <LP_AgentBot hue={LP_BRAND.orange} variant={1} size={24} />
             <LP_Mono size={10} color={LP_BRAND.orangeDeep}>Open beta · meet Scolto</LP_Mono>
-            <span style={{ width: 1, height: 14, background: LP_BRAND.rule }} />
-            <LP_Mono size={10}>AI social listening</LP_Mono>
+            <span className="lp-hero-badge-extra" style={{ width: 1, height: 14, background: LP_BRAND.rule }} />
+            <span className="lp-hero-badge-extra"><LP_Mono size={10}>AI social listening</LP_Mono></span>
           </div>
 
-          <h1 style={{
+          <h1 className="lp-hero-h1" style={{
             margin: 0, fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 92,
             lineHeight: 0.94, letterSpacing: -2.6, color: LP_BRAND.ink,
           }}>
@@ -704,7 +706,7 @@ const LP_Hero = ({ openAuth }: { openAuth: () => void }) => {
             Scolto is a team of senior AI analysts that listens across every social platform - and ships you the report, the dashboard, the deck and the digest. All from one sentence.
           </p>
 
-          <form onSubmit={(e) => { e.preventDefault(); openAuth(); }} style={{ marginTop: 32, maxWidth: 620 }}>
+          <form onSubmit={(e) => { e.preventDefault(); openWaitlist(brief.trim() || undefined); }} className="lp-hero-form" style={{ marginTop: 32, maxWidth: 620 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <span style={{
                 width: 7, height: 7, borderRadius: 99, background: '#3DA37D',
@@ -760,7 +762,7 @@ const LP_Hero = ({ openAuth }: { openAuth: () => void }) => {
                     whiteSpace: 'nowrap', boxShadow: '0 8px 20px -8px rgba(40,30,20,0.5)',
                   }}
                 >
-                  Hire Scolto
+                  Get early access
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M13 6l6 6-6 6" />
                   </svg>
@@ -804,7 +806,9 @@ const LP_Hero = ({ openAuth }: { openAuth: () => void }) => {
           </div>
         </div>
 
-        <LP_HeroCharacter />
+        <div className="lp-hero-char">
+          <LP_HeroCharacter />
+        </div>
       </div>
     </section>
   );
@@ -821,21 +825,23 @@ const ListensDemo = () => {
     { p: 'x',         h: '@velo_run',                    c: 'drift runs ½ size small btw',        t: '+33' },
   ];
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+    <div className="lp-listens-demo" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
         <span style={{ width: 6, height: 6, borderRadius: 99, background: '#3DA37D', animation: 'lp-pulse 1.6s ease-in-out infinite' }} />
         <LP_Mono size={9} color={LP_BRAND.muted}>live · 1,204 new mentions in the last hour</LP_Mono>
       </div>
       {FEED.map((r, i) => (
-        <div key={i} style={{
+        <div key={i} className="lp-listens-row" style={{
           display: 'flex', alignItems: 'center', gap: 9, padding: '6px 9px', borderRadius: 8,
           background: r.hi ? '#FFF7F1' : LP_BRAND.paper,
           border: r.hi ? `1px solid ${LP_BRAND.orange}` : `1px solid ${LP_BRAND.rule}`,
         }}>
           <LP_PlatformBadge id={r.p} size={16} />
-          <LP_Mono size={9} style={{ minWidth: 96 }}>{r.h}</LP_Mono>
-          <span style={{
-            flex: 1, fontFamily: "'Inter Tight',sans-serif", fontSize: 11.5,
+          <span className="lp-listens-handle" style={{ minWidth: 96, display: 'inline-block' }}>
+            <LP_Mono size={9}>{r.h}</LP_Mono>
+          </span>
+          <span className="lp-listens-text" style={{
+            flex: 1, minWidth: 0, fontFamily: "'Inter Tight',sans-serif", fontSize: 11.5,
             color: LP_BRAND.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>{r.c}</span>
           <LP_Mono size={9} color={r.hi ? LP_BRAND.orangeDeep : LP_BRAND.muted}>{r.t}</LP_Mono>
@@ -1024,14 +1030,14 @@ const LP_MeetScolto = () => {
     { hue: LP_BRAND.blue,   v: 2, name: 'Scolto', role: 'competitive intel' },
   ];
   return (
-    <section style={{
+    <section className="lp-section" style={{
       padding: '96px 64px 84px', background: LP_BRAND.cream2,
       borderTop: `1px solid ${LP_BRAND.rule}`, borderBottom: `1px solid ${LP_BRAND.rule}`,
     }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'end', marginBottom: 48 }}>
+      <div className="lp-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'end', marginBottom: 48 }}>
         <div>
           <LP_Mono>Meet your researcher</LP_Mono>
-          <h2 style={{
+          <h2 className="lp-section-h2" style={{
             margin: '14px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 72,
             letterSpacing: -1.8, lineHeight: 0.95, color: LP_BRAND.ink,
           }}>
@@ -1046,7 +1052,7 @@ const LP_MeetScolto = () => {
             Scolto is an <em>AI social-listening platform</em> built as a roster of senior analyst agents. You hand them a brief; they go to work across every platform - listening, watching, analyzing, enriching - and deliver the read-out in whatever shape your team needs.
           </p>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', gap: 8, paddingBottom: 8 }}>
+        <div className="lp-meet-roster" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', gap: 8, paddingBottom: 8 }}>
           {VARIANTS.map((v, i) => (
             <div key={i} style={{
               padding: '18px 14px 12px', borderRadius: 14, background: '#FFFFFF',
@@ -1064,7 +1070,7 @@ const LP_MeetScolto = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
+      <div className="lp-3col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
         <LP_JobCard
           n="01" verb="Listens" noun="on every platform."
           body="Scolto runs continuous social listening across TikTok, Instagram, YouTube, X, Reddit, Facebook and the open web. It doesn't sample - it ingests the whole conversation, including the replies under the replies."
@@ -1107,12 +1113,12 @@ const GenericMark = ({
 );
 
 const DetectionRing = ({
-  x, y, size, color, label, conf, delay = 0, side = 'top',
+  x, y, size, color, label, conf, delay = 0, side = 'top', className,
 }: {
   x: number; y: number; size: number; color: string; label: string;
-  conf: number; delay?: number; side?: 'top' | 'bottom';
+  conf: number; delay?: number; side?: 'top' | 'bottom'; className?: string;
 }) => (
-  <div style={{
+  <div className={className} style={{
     position: 'absolute', left: `${x}%`, top: `${y}%`, width: size, height: size,
     marginLeft: -size / 2, marginTop: -size / 2, pointerEvents: 'none',
   }}>
@@ -1159,11 +1165,11 @@ const LP_Competitive = () => {
   const k = `cycle-${tick}`;
 
   return (
-    <section style={{ padding: '96px 64px 88px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.05fr', gap: 56, alignItems: 'start' }}>
-        <div style={{ position: 'sticky', top: 32 }}>
+    <section className="lp-section" style={{ padding: '96px 64px 88px' }}>
+      <div className="lp-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1.05fr', gap: 56, alignItems: 'start' }}>
+        <div className="lp-sticky" style={{ position: 'sticky', top: 32 }}>
           <LP_Mono>Competitive analysis</LP_Mono>
-          <h2 style={{
+          <h2 className="lp-section-h2" style={{
             margin: '14px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 64,
             letterSpacing: -1.6, lineHeight: 0.96, color: LP_BRAND.ink,
           }}>
@@ -1239,8 +1245,8 @@ const LP_Competitive = () => {
               </div>
             </div>
 
-            <DetectionRing x={28} y={50} size={130} color={LP_BRAND.orange} label={BRAND_A.name} conf={94} delay={400} side="top" />
-            <DetectionRing x={70} y={64} size={86}  color="#FFFFFF"          label={BRAND_B.name} conf={88} delay={1500} side="bottom" />
+            <DetectionRing className="lp-comp-ring lp-comp-ring-a" x={28} y={50} size={130} color={LP_BRAND.orange} label={BRAND_A.name} conf={94} delay={400} side="top" />
+            <DetectionRing className="lp-comp-ring lp-comp-ring-b" x={70} y={64} size={86}  color="#FFFFFF"          label={BRAND_B.name} conf={88} delay={1500} side="bottom" />
 
             <div style={{
               position: 'absolute', bottom: 14, left: 14, right: 14,
@@ -1278,7 +1284,7 @@ const LP_Competitive = () => {
                 { brand: BRAND_A, secs: '01:47', pct: 71, size: 'large', placement: 'hero' },
                 { brand: BRAND_B, secs: '00:38', pct: 22, size: 'medium', placement: 'background' },
               ].map((row, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 14, alignItems: 'center' }}>
+                <div key={i} className="lp-comp-share-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 14, alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 140 }}>
                     <GenericMark short={row.brand.short} color={row.brand.color} accent={row.brand.accent} size={28} />
                     <div>
@@ -1321,7 +1327,7 @@ const LP_Competitive = () => {
                 flex: 1, fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontSize: 14,
                 color: LP_BRAND.ink, lineHeight: 1.4,
               }}>
-                "{BRAND_A.name} owned 3.2× more screen than {BRAND_B.name} in this clip, and was placed as hero in 4 of 5 cuts. I rolled this up across 312 clips this week - see <span style={{ color: LP_BRAND.orangeDeep, textDecoration: 'underline' }}>the landscape map</span>."
+                "{BRAND_A.name} owned 3.2Ã— more screen than {BRAND_B.name} in this clip, and was placed as hero in 4 of 5 cuts. I rolled this up across 312 clips this week - see <span style={{ color: LP_BRAND.orangeDeep, textDecoration: 'underline' }}>the landscape map</span>."
               </span>
             </div>
           </div>
@@ -1372,7 +1378,7 @@ const DashboardChart = () => {
 };
 
 const BriefPreview = () => (
-  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.85fr', gap: 36 }}>
+  <div className="lp-brief-grid" style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.85fr', gap: 36 }}>
     <div>
       <LP_Mono size={9.5} color={LP_BRAND.muted}>Stanley Cup · week of May 6 · prepared by Scolto</LP_Mono>
       <div style={{
@@ -1405,7 +1411,7 @@ const BriefPreview = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <LP_Mono size={9.5}>receipts</LP_Mono>
       {[
-        { p: 'tiktok'    as PlatformId, photo: PEOPLE.vlog1,    handle: '@maya.unboxes',    body: 'the pink one is SCREAMING 😭 retail tho???', likes: '+124k' },
+        { p: 'tiktok'    as PlatformId, photo: PEOPLE.vlog1,    handle: '@maya.unboxes',    body: 'the pink one is SCREAMING ðŸ˜­ retail tho???', likes: '+124k' },
         { p: 'reddit'    as PlatformId, photo: PEOPLE.creator3, handle: 'u/coffee_skeptic', body: '$80 for a cup is genuinely insane',         likes: '+2.1k' },
         { p: 'instagram' as PlatformId, photo: PEOPLE.creator6, handle: '@_brookehale',     body: 'haul w/ the new pink - actually worth it',  likes: '+412'  },
         { p: 'youtube'   as PlatformId, photo: PEOPLE.creator8, handle: '@dailygrind',      body: 'we tried every viral water bottle…',        likes: '+88k'  },
@@ -1435,18 +1441,19 @@ const BriefPreview = () => (
 
 const DashboardPreview = () => (
   <div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderBottom: `1px solid ${LP_BRAND.rule}` }}>
+    <div className="lp-dash-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderBottom: `1px solid ${LP_BRAND.rule}` }}>
       {[
         { k: 'mentions, 7d',   v: '4,820',        d: '+18%',     up: true  as boolean | undefined },
         { k: 'sentiment',      v: '+0.42',        d: '+0.08',    up: true  as boolean | undefined },
         { k: 'share of voice', v: '32%',          d: '−3pp',     up: false as boolean | undefined },
         { k: 'top creator',    v: '@stanleylover',d: '1.4M reach', up: undefined as boolean | undefined },
       ].map((kpi, i) => (
-        <div key={i} style={{ padding: '22px 24px', borderRight: i < 3 ? `1px solid ${LP_BRAND.rule}` : 'none' }}>
+        <div key={i} className="lp-dash-kpi-cell" style={{ padding: '22px 24px', borderRight: i < 3 ? `1px solid ${LP_BRAND.rule}` : 'none', minWidth: 0 }}>
           <LP_Mono size={9}>{kpi.k}</LP_Mono>
-          <div style={{
+          <div className="lp-dash-kpi-val" style={{
             marginTop: 8, fontFamily: "'Fraunces',serif", fontWeight: 400, fontSize: 30,
             color: LP_BRAND.ink, letterSpacing: -0.5, lineHeight: 1,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{kpi.v}</div>
           <div style={{
             marginTop: 6, fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 10,
@@ -1455,7 +1462,7 @@ const DashboardPreview = () => (
         </div>
       ))}
     </div>
-    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.85fr', gap: 0 }}>
+    <div className="lp-dash-charts" style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.85fr', gap: 0 }}>
       <div style={{ padding: '22px 24px', borderRight: `1px solid ${LP_BRAND.rule}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
           <LP_Mono>Mentions · last 14 days</LP_Mono>
@@ -1509,24 +1516,24 @@ const SlidesPreview = () => {
   ];
   return (
     <div>
-      <div style={{
+      <div className="lp-slide-hero" style={{
         background: LP_BRAND.ink, color: LP_BRAND.cream, borderRadius: 14, padding: '56px 56px 48px',
         position: 'relative', overflow: 'hidden', aspectRatio: '16 / 9',
       }}>
         <LP_Mono size={9.5} color={LP_BRAND.mutedDark}>Stanley · weekly read · May 6</LP_Mono>
-        <h3 style={{
+        <h3 className="lp-slide-h3" style={{
           margin: '14px 0 12px', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 64,
           letterSpacing: -1.5, lineHeight: 1.0, color: LP_BRAND.cream,
         }}>
           The <span style={{ fontStyle: 'italic', color: LP_BRAND.orange }}>pink</span> one is winning.
         </h3>
-        <p style={{
+        <p className="lp-slide-sub" style={{
           margin: 0, fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 22,
           color: LP_BRAND.cream2, opacity: 0.85, maxWidth: 520, lineHeight: 1.35,
         }}>
           71% positive sentiment on TikTok · concentrated in 18-24 audience · one creator carries the conversation.
         </p>
-        <div style={{
+        <div className="lp-slide-chart" style={{
           position: 'absolute', right: 48, bottom: 48, width: 260, height: 120,
           background: 'rgba(255,255,255,0.06)', border: `1px solid ${LP_BRAND.ruleDark}`,
           borderRadius: 10, padding: '14px 16px',
@@ -1538,7 +1545,7 @@ const SlidesPreview = () => {
           </svg>
           <LP_Mono size={9} color={LP_BRAND.orange}>+71% TikTok · +12% IG</LP_Mono>
         </div>
-        <div style={{ position: 'absolute', bottom: 18, left: 56, display: 'flex', gap: 4 }}>
+        <div className="lp-slide-dots" style={{ position: 'absolute', bottom: 18, left: 56, display: 'flex', gap: 4 }}>
           {[0, 1, 2, 3].map(i => (
             <span key={i} style={{
               width: i === 0 ? 32 : 14, height: 3, borderRadius: 99,
@@ -1547,7 +1554,7 @@ const SlidesPreview = () => {
           ))}
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 14 }}>
+      <div className="lp-slide-thumbs" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 14 }}>
         {slides.map((s, i) => (
           <div key={i} style={{
             padding: '10px 12px', borderRadius: 9,
@@ -1567,7 +1574,7 @@ const SlidesPreview = () => {
 };
 
 const ReportPreview = () => (
-  <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.1fr', gap: 36 }}>
+  <div className="lp-report-grid" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.1fr', gap: 36 }}>
     <div style={{ background: LP_BRAND.paper, border: `1px solid ${LP_BRAND.rule}`, borderRadius: 12, padding: '24px 26px' }}>
       <LP_Mono size={9.5} color={LP_BRAND.orangeDeep}>Deep-dive · 28 pages</LP_Mono>
       <div style={{
@@ -1613,7 +1620,7 @@ const ReportPreview = () => (
         fontFamily: "'Fraunces',serif", fontWeight: 400, fontSize: 22, letterSpacing: -0.3,
         marginTop: 14, lineHeight: 1.3, color: LP_BRAND.ink,
       }}>
-        Stanley's share of TikTok conversation grew <span style={{ fontStyle: 'italic', color: LP_BRAND.orangeDeep }}>3.2× faster</span> than the category - but the gains are concentrated in one SKU, one creator, and one cohort.
+        Stanley's share of TikTok conversation grew <span style={{ fontStyle: 'italic', color: LP_BRAND.orangeDeep }}>3.2Ã— faster</span> than the category - but the gains are concentrated in one SKU, one creator, and one cohort.
       </div>
       <p style={{
         fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink, opacity: 0.78,
@@ -1638,7 +1645,7 @@ const ReportPreview = () => (
 );
 
 const DigestPreview = () => (
-  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+  <div className="lp-digest-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
     {/* Email */}
     <div style={{ background: LP_BRAND.paper, border: `1px solid ${LP_BRAND.rule}`, borderRadius: 12, padding: '16px 18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 10, borderBottom: `1px solid ${LP_BRAND.rule}` }}>
@@ -1673,13 +1680,13 @@ const DigestPreview = () => (
         <LP_AgentBot hue={LP_BRAND.orange} variant={1} size={28} />
         <div style={{ flex: 1, fontFamily: "'Inter Tight',sans-serif", fontSize: 12, color: LP_BRAND.ink, lineHeight: 1.5 }}>
           <strong>Scolto</strong> <span style={{ color: LP_BRAND.muted, fontSize: 10 }}>9:02 AM</span><br />
-          this week: pink colorway is winning on TikTok (+71% sentiment) but losing on Reddit (price). full brief in 🧵
+          this week: pink colorway is winning on TikTok (+71% sentiment) but losing on Reddit (price). full brief in ðŸ§µ
         </div>
       </div>
       <div style={{ marginTop: 8, display: 'flex', gap: 6, marginLeft: 36 }}>
-        <span style={{ padding: '2px 8px', background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99, fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink }}>👀 12</span>
-        <span style={{ padding: '2px 8px', background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99, fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink }}>🔥 4</span>
-        <span style={{ padding: '2px 8px', background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99, fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink }}>💬 8 replies</span>
+        <span style={{ padding: '2px 8px', background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99, fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink }}>ðŸ‘€ 12</span>
+        <span style={{ padding: '2px 8px', background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99, fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink }}>ðŸ”¥ 4</span>
+        <span style={{ padding: '2px 8px', background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99, fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink }}>ðŸ’¬ 8 replies</span>
       </div>
     </div>
     {/* WhatsApp */}
@@ -1700,7 +1707,7 @@ const DigestPreview = () => (
           border: `1px solid ${LP_BRAND.rule}`, borderRadius: '10px 10px 10px 2px',
           fontFamily: "'Inter Tight',sans-serif", fontSize: 12, color: LP_BRAND.ink, lineHeight: 1.4,
         }}>
-          your Monday brief is ready 📩 pink colorway is winning on TikTok, getting roasted on Reddit. want the 60-sec or the full read?
+          your Monday brief is ready ðŸ“© pink colorway is winning on TikTok, getting roasted on Reddit. want the 60-sec or the full read?
         </div>
         <div style={{
           alignSelf: 'flex-end', maxWidth: '60%', padding: '7px 10px', background: '#D9FDD3',
@@ -1714,7 +1721,7 @@ const DigestPreview = () => (
           border: `1px solid ${LP_BRAND.rule}`, borderRadius: '10px 10px 10px 2px',
           fontFamily: "'Inter Tight',sans-serif", fontSize: 12, color: LP_BRAND.ink, lineHeight: 1.4,
         }}>
-          got it. sending 👇
+          got it. sending ðŸ‘‡
         </div>
       </div>
     </div>
@@ -1724,11 +1731,11 @@ const DigestPreview = () => (
 const LP_Deliverables = () => {
   const [active, setActive] = useState<DeliverableId>('brief');
   return (
-    <section style={{ padding: '96px 64px 80px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'end', marginBottom: 36 }}>
+    <section className="lp-section" style={{ padding: '96px 64px 80px' }}>
+      <div className="lp-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'end', marginBottom: 36 }}>
         <div>
           <LP_Mono>What it ships you</LP_Mono>
-          <h2 style={{
+          <h2 className="lp-section-h2" style={{
             margin: '14px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 64,
             letterSpacing: -1.6, lineHeight: 0.95, color: LP_BRAND.ink,
           }}>
@@ -1773,11 +1780,11 @@ const LP_Deliverables = () => {
         ))}
       </div>
 
-      <div style={{
+      <div className="lp-deliv-preview" style={{
         background: '#FFFFFF', borderRadius: 20, border: `1px solid ${LP_BRAND.rule}`,
         boxShadow: '0 32px 70px -36px rgba(40,30,20,0.25)', overflow: 'hidden', minHeight: 540,
       }}>
-        <div style={{
+        <div className="lp-deliv-header" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '12px 18px', borderBottom: `1px solid ${LP_BRAND.rule}`, background: LP_BRAND.paper,
         }}>
@@ -1794,7 +1801,7 @@ const LP_Deliverables = () => {
             <LP_Mono size={9}>auto-refresh · Mon 9:00</LP_Mono>
           </div>
         </div>
-        <div style={{ padding: active === 'dashboard' ? 0 : '32px 36px' }}>
+        <div className="lp-deliv-preview-body" style={{ padding: active === 'dashboard' ? 0 : '32px 36px' }}>
           {active === 'brief'     && <BriefPreview />}
           {active === 'dashboard' && <DashboardPreview />}
           {active === 'slides'    && <SlidesPreview />}
@@ -1846,11 +1853,11 @@ const WAMsg = ({
 };
 
 const LP_Channels = () => (
-  <section style={{ padding: '96px 64px 80px' }}>
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.05fr', gap: 56, alignItems: 'start' }}>
+  <section className="lp-section" style={{ padding: '96px 64px 80px' }}>
+    <div className="lp-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1.05fr', gap: 56, alignItems: 'start' }}>
       <div>
         <LP_Mono>Where it lives</LP_Mono>
-        <h2 style={{
+        <h2 className="lp-section-h2" style={{
           margin: '14px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 64,
           letterSpacing: -1.6, lineHeight: 0.95, color: LP_BRAND.ink,
         }}>
@@ -1908,7 +1915,7 @@ const LP_Channels = () => (
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 4px 4px', minHeight: 380 }}>
+          <div className="lp-mock-msgs" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 4px 4px', minHeight: 380 }}>
             <div style={{
               alignSelf: 'center', padding: '3px 10px', borderRadius: 99,
               background: 'rgba(255,255,255,0.08)', fontFamily: "'JetBrains Mono', ui-monospace",
@@ -1916,7 +1923,7 @@ const LP_Channels = () => (
             }}>MONDAY · 9:02 AM</div>
 
             <WAMsg side="left">
-              your brief is ready 📩<br />tldr: the pink colorway is <em>winning</em> on TikTok (+71% sentiment) but losing on Reddit on price.
+              your brief is ready ðŸ“©<br />tldr: the pink colorway is <em>winning</em> on TikTok (+71% sentiment) but losing on Reddit on price.
             </WAMsg>
             <WAMsg side="left" t="9:02 AM">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
@@ -1938,7 +1945,7 @@ const LP_Channels = () => (
             <WAMsg side="right" t="9:14 AM">60-sec or full read?</WAMsg>
 
             <WAMsg side="left" t="9:14 AM">
-              60-sec. 👇<br /><br />
+              60-sec. ðŸ‘‡<br /><br />
               <strong>1.</strong> TikTok loves pink (4.8K mentions, +71% sentiment). <br />
               <strong>2.</strong> Reddit hates the price ($80 thread, 2.1K upvotes). <br />
               <strong>3.</strong> @stanleylover (1.4M) is the swing creator.
@@ -1967,14 +1974,14 @@ const LP_Channels = () => (
 // ── Why Scolto ────────────────────────────────────────────────────────────────
 
 const LP_WhyScolto = () => (
-  <section style={{
+  <section className="lp-section" style={{
     padding: '96px 64px 88px', background: LP_BRAND.cream2,
     borderTop: `1px solid ${LP_BRAND.rule}`, borderBottom: `1px solid ${LP_BRAND.rule}`,
   }}>
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.1fr', gap: 64, alignItems: 'start' }}>
-      <div style={{ position: 'sticky', top: 32 }}>
+    <div className="lp-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1.1fr', gap: 64, alignItems: 'start' }}>
+      <div className="lp-sticky" style={{ position: 'sticky', top: 32 }}>
         <LP_Mono>Why Scolto</LP_Mono>
-        <h2 style={{
+        <h2 className="lp-section-h2" style={{
           margin: '14px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 72,
           letterSpacing: -1.8, lineHeight: 0.95, color: LP_BRAND.ink,
         }}>
@@ -1997,11 +2004,11 @@ const LP_WhyScolto = () => (
           { a: 'Locks you into a $30k annual seat.',     b: 'Pay only for the work it does - usage-based, no annual contract.' },
           { a: 'Wants a kickoff call.',                  b: 'Wants a sentence.' },
         ].map((row, i) => (
-          <div key={i} style={{
+          <div key={i} className="lp-why-row" style={{
             background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 14,
             overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr',
           }}>
-            <div style={{ padding: '22px 24px', borderRight: `1px solid ${LP_BRAND.rule}`, background: LP_BRAND.paper }}>
+            <div className="lp-why-row-old" style={{ padding: '22px 24px', borderRight: `1px solid ${LP_BRAND.rule}`, background: LP_BRAND.paper }}>
               <LP_Mono size={9}>The old way</LP_Mono>
               <div style={{
                 marginTop: 8, fontFamily: "'Inter Tight',sans-serif", fontSize: 15, color: LP_BRAND.muted,
@@ -2024,9 +2031,9 @@ const LP_WhyScolto = () => (
 
 // ── Invite / Final CTA ────────────────────────────────────────────────────────
 
-const LP_Invite = ({ openAuth }: { openAuth: () => void }) => (
-  <section style={{ padding: '112px 64px 96px', position: 'relative', overflow: 'hidden' }}>
-    <div style={{
+const LP_Invite = ({ openWaitlist }: { openWaitlist: () => void }) => (
+  <section className="lp-section" style={{ padding: '112px 64px 96px', position: 'relative', overflow: 'hidden' }}>
+    <div className="lp-invite-bg" style={{
       position: 'absolute', left: '50%', top: '-40%', transform: 'translateX(-50%)',
       width: 1200, height: 1200, borderRadius: '50%',
       background: `radial-gradient(circle at 50% 50%, ${LP_BRAND.orange}1f 0%, transparent 60%)`,
@@ -2037,7 +2044,7 @@ const LP_Invite = ({ openAuth }: { openAuth: () => void }) => (
         <LP_ScoltoMark size={140} />
       </div>
       <LP_Mono color={LP_BRAND.orangeDeep}>Come build your first agent</LP_Mono>
-      <h2 style={{
+      <h2 className="lp-invite-h2" style={{
         margin: '18px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 104,
         letterSpacing: -3, lineHeight: 0.95, color: LP_BRAND.ink,
       }}>
@@ -2055,9 +2062,9 @@ const LP_Invite = ({ openAuth }: { openAuth: () => void }) => (
         background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99,
         boxShadow: '0 24px 50px -28px rgba(40,30,20,0.24)',
       }}>
-        <LP_Mono size={11}>your sentence →</LP_Mono>
+        <LP_Mono size={11}>get the email when it's your turn →</LP_Mono>
         <button
-          onClick={openAuth}
+          onClick={openWaitlist}
           style={{
             padding: '12px 22px', borderRadius: 99, border: 'none', cursor: 'pointer',
             background: LP_BRAND.orange, color: '#FFF',
@@ -2065,13 +2072,13 @@ const LP_Invite = ({ openAuth }: { openAuth: () => void }) => (
             display: 'inline-flex', alignItems: 'center', gap: 8,
           }}
         >
-          Start writing it
+          Get early access
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M5 12h14M13 6l6 6-6 6" />
           </svg>
         </button>
       </div>
-      <div style={{ marginTop: 18 }}><LP_Mono size={10}>free while it's in beta · no card · cancel anytime</LP_Mono></div>
+      <div style={{ marginTop: 18 }}><LP_Mono size={10}>private beta · one click with Google · no spam</LP_Mono></div>
     </div>
   </section>
 );
@@ -2079,8 +2086,8 @@ const LP_Invite = ({ openAuth }: { openAuth: () => void }) => (
 // ── Footer ────────────────────────────────────────────────────────────────────
 
 const LP_Footer = () => (
-  <footer style={{ padding: '40px 64px 48px', background: '#1A1714', color: '#D6CFBF', borderTop: `1px solid ${LP_BRAND.ruleDark}` }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 48, flexWrap: 'wrap' }}>
+  <footer className="lp-footer" style={{ padding: '40px 64px 48px', background: '#1A1714', color: '#D6CFBF', borderTop: `1px solid ${LP_BRAND.ruleDark}` }}>
+    <div className="lp-footer-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 48, flexWrap: 'wrap' }}>
       <div style={{ maxWidth: 300 }}>
         <div style={{ marginBottom: 14 }}>
           <LP_ScoltoLogo markSize={42} fontSize={32} onDark />
@@ -2089,7 +2096,7 @@ const LP_Footer = () => (
           A researcher that reads the internet so you don't have to.
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 64, fontFamily: "'Inter Tight',sans-serif", fontSize: 13 }}>
+      <div className="lp-footer-links" style={{ display: 'flex', gap: 64, fontFamily: "'Inter Tight',sans-serif", fontSize: 13 }}>
         <div style={{ display: 'grid', gap: 8 }}>
           <LP_Mono size={9.5} color="#7E7666" style={{ marginBottom: 4 }}>Product</LP_Mono>
           <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>How it works</a>
@@ -2109,7 +2116,7 @@ const LP_Footer = () => (
         </div>
       </div>
     </div>
-    <div style={{
+    <div className="lp-footer-bottom" style={{
       marginTop: 36, paddingTop: 18, borderTop: '1px solid #2A2520',
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     }}>
@@ -2121,14 +2128,14 @@ const LP_Footer = () => (
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 
-const LP_Nav = ({ openAuth }: { openAuth: () => void }) => (
-  <header style={{
+const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist: () => void }) => (
+  <header className="lp-nav" style={{
     padding: '22px 64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     borderBottom: `1px solid ${LP_BRAND.rule}`, background: LP_BRAND.cream,
     position: 'sticky', top: 0, zIndex: 50,
   }}>
     <LP_ScoltoLogo markSize={46} fontSize={36} />
-    <nav style={{ display: 'flex', gap: 32, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink }}>
+    <nav className="lp-nav-links" style={{ display: 'flex', gap: 32, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink }}>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>How it works</a>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>What it ships</a>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>Manifesto</a>
@@ -2136,6 +2143,7 @@ const LP_Nav = ({ openAuth }: { openAuth: () => void }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
       <button
         onClick={openAuth}
+        className="lp-nav-signin"
         style={{
           background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
           fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.muted,
@@ -2144,7 +2152,7 @@ const LP_Nav = ({ openAuth }: { openAuth: () => void }) => (
         Sign in
       </button>
       <button
-        onClick={openAuth}
+        onClick={openWaitlist}
         style={{
           padding: '10px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
           background: LP_BRAND.ink, color: '#F4EFE3',
@@ -2152,7 +2160,7 @@ const LP_Nav = ({ openAuth }: { openAuth: () => void }) => (
           display: 'inline-flex', alignItems: 'center', gap: 8,
         }}
       >
-        Hire Scolto
+        Get early access
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M5 12h14M13 6l6 6-6 6" />
         </svg>
@@ -2290,15 +2298,236 @@ function AuthModal({
   );
 }
 
+// ── Waitlist modal ────────────────────────────────────────────────────────────
+
+type WaitlistStatus = 'idle' | 'loading' | 'success' | 'error';
+
+function WaitlistModal({
+  open, onClose, interestedIn,
+}: {
+  open: boolean;
+  onClose: () => void;
+  interestedIn?: string;
+}) {
+  const [status, setStatus] = useState<WaitlistStatus>('idle');
+  const [email, setEmail] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset on close so reopening starts fresh.
+  useEffect(() => {
+    if (!open) {
+      // Defer so the user sees the success state long enough if they close manually.
+      const t = setTimeout(() => {
+        setStatus('idle');
+        setEmail(null);
+        setError(null);
+      }, 250);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  const onPickGoogle = async () => {
+    if (status === 'loading') return;
+    setStatus('loading');
+    setError(null);
+    try {
+      const { email: capturedEmail, displayName } = await captureGoogleEmail();
+      await apiPost('/waitlist', {
+        email: capturedEmail,
+        display_name: displayName ?? undefined,
+        interested_in: interestedIn,
+        source: 'landing_page',
+      });
+      setEmail(capturedEmail);
+      setStatus('success');
+    } catch (err: unknown) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        // User dismissed the popup — silently return to idle.
+        setStatus('idle');
+        return;
+      }
+      console.warn('Waitlist signup failed:', err);
+      setError("Something went wrong on our end. Mind trying again?");
+      setStatus('error');
+    }
+  };
+
+  if (!open) return null;
+
+  const isSuccess = status === 'success';
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(15, 14, 12, 0.55)',
+        display: 'grid', placeItems: 'center',
+        padding: 16, animation: 'lp-fade-in 180ms ease',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 440,
+          background: LP_BRAND.cream, borderRadius: 18,
+          border: `1px solid ${LP_BRAND.rule}`, padding: '32px 28px 24px',
+          boxShadow: '0 40px 80px -32px rgba(40,30,20,0.5)',
+          fontFamily: "'Inter Tight',sans-serif",
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+          {isSuccess ? (
+            <div
+              style={{
+                width: 56, height: 56, borderRadius: '50%',
+                background: '#E8F4EE', display: 'grid', placeItems: 'center',
+                border: `1px solid ${LP_BRAND.green}33`,
+              }}
+              aria-hidden
+            >
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={LP_BRAND.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12.5l4.5 4.5L19 7" />
+              </svg>
+            </div>
+          ) : (
+            <LP_ScoltoMark size={48} />
+          )}
+        </div>
+
+        {isSuccess ? (
+          <div style={{ textAlign: 'center' }}>
+            <LP_Mono color={LP_BRAND.green}>You're on the list</LP_Mono>
+            <h3 style={{
+              margin: '10px 0 6px', fontFamily: "'Fraunces',serif", fontWeight: 400, fontSize: 30,
+              letterSpacing: -0.6, lineHeight: 1.1, color: LP_BRAND.ink,
+            }}>
+              Nice to meet you.
+            </h3>
+            <p style={{
+              margin: '0 0 4px', fontSize: 14, color: LP_BRAND.muted, lineHeight: 1.55,
+            }}>
+              We'll email <span style={{ color: LP_BRAND.ink, fontWeight: 600 }}>{email}</span> the moment a seat opens up.
+            </p>
+            {interestedIn && (
+              <p style={{
+                margin: '10px auto 0', maxWidth: 320, fontSize: 12, color: LP_BRAND.muted, lineHeight: 1.5,
+                fontStyle: 'italic',
+              }}>
+                We saved what you wanted Scolto to look into, too.
+              </p>
+            )}
+            <button
+              onClick={onClose}
+              style={{
+                marginTop: 22, width: '100%',
+                padding: '13px 18px', borderRadius: 11, cursor: 'pointer',
+                background: LP_BRAND.ink, color: '#F4EFE3', border: 'none',
+                fontFamily: "'Inter Tight',sans-serif", fontSize: 14, fontWeight: 600,
+              }}
+            >
+              Back to the page
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ textAlign: 'center' }}>
+              <LP_Mono color={LP_BRAND.orangeDeep}>Private beta · join the waitlist</LP_Mono>
+              <h3 style={{
+                margin: '10px 0 6px', fontFamily: "'Fraunces',serif", fontWeight: 400, fontSize: 30,
+                letterSpacing: -0.6, lineHeight: 1.1, color: LP_BRAND.ink,
+              }}>
+                Get <span style={{ fontStyle: 'italic', color: LP_BRAND.orangeDeep }}>early access.</span>
+              </h3>
+              <p style={{
+                margin: 0, fontSize: 13.5, color: LP_BRAND.muted, lineHeight: 1.5,
+              }}>
+                One click with Google — we'll grab your email and let you know the moment a seat opens up.
+              </p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
+              <button
+                onClick={onPickGoogle}
+                disabled={status === 'loading'}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  padding: '13px 18px', borderRadius: 11, cursor: status === 'loading' ? 'wait' : 'pointer',
+                  background: LP_BRAND.ink, color: '#F4EFE3', border: 'none',
+                  fontFamily: "'Inter Tight',sans-serif", fontSize: 14, fontWeight: 600,
+                }}
+              >
+                <GoogleIcon size={18} />
+                {status === 'loading' ? 'Just a sec…' : 'Continue with Google'}
+              </button>
+            </div>
+            {status === 'error' && error && (
+              <p style={{
+                margin: '14px 0 0', fontSize: 12.5, color: '#B83D2A', textAlign: 'center', lineHeight: 1.5,
+              }}>
+                {error}
+              </p>
+            )}
+            <p style={{
+              margin: '14px auto 0', maxWidth: 320, fontSize: 11.5, color: LP_BRAND.muted,
+              textAlign: 'center', lineHeight: 1.5,
+            }}>
+              We only use your email to invite you in — no marketing, no sharing.
+            </p>
+            <button
+              onClick={onClose}
+              disabled={status === 'loading'}
+              style={{
+                marginTop: 10, width: '100%', background: 'transparent', border: 'none',
+                cursor: status === 'loading' ? 'wait' : 'pointer',
+                fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 11, color: LP_BRAND.muted,
+                letterSpacing: 1.2, textTransform: 'uppercase', padding: '8px 4px',
+              }}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function LandingPage() {
   const { signIn, signInWithMicrosoft } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'microsoft' | null>(null);
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const [waitlistInterest, setWaitlistInterest] = useState<string | undefined>(undefined);
+
+  // The app shell sets a global body { min-width: 1280px } for desktop-only
+  // surfaces (see globals.css). The landing page is a public/viral surface
+  // that must render on phones — drop the constraint while mounted.
+  useEffect(() => {
+    const prev = document.body.style.minWidth;
+    document.body.style.minWidth = '0';
+    return () => { document.body.style.minWidth = prev; };
+  }, []);
 
   const openAuth = () => setAuthOpen(true);
   const closeAuth = () => { if (!loadingProvider) setAuthOpen(false); };
+
+  const openWaitlist = (brief?: string) => {
+    setWaitlistInterest(brief);
+    setWaitlistOpen(true);
+  };
+  const closeWaitlist = () => setWaitlistOpen(false);
 
   const handlePick = async (provider: 'google' | 'microsoft') => {
     if (loadingProvider) return;
@@ -2315,7 +2544,7 @@ export function LandingPage() {
   };
 
   return (
-    <div style={{
+    <div className="lp-root" style={{
       background: LP_BRAND.cream, color: LP_BRAND.ink,
       fontFamily: "'Inter Tight',sans-serif",
     }}>
@@ -2349,16 +2578,257 @@ export function LandingPage() {
           from { opacity: 0; }
           to   { opacity: 1; }
         }
+
+        /* ── Mobile responsive overrides ─────────────────────────────────────
+           These only apply below 768px. Desktop rendering is unchanged. */
+        @media (max-width: 768px) {
+          .lp-root .lp-section {
+            padding-left: 20px !important;
+            padding-right: 20px !important;
+            padding-top: 40px !important;
+            padding-bottom: 40px !important;
+          }
+          /* Hero sits right under the nav — keep the gap tight. */
+          .lp-root .lp-hero-section {
+            padding-top: 20px !important;
+            padding-bottom: 32px !important;
+          }
+          /* Trim the meta pill in the hero so it fits one line. */
+          .lp-root .lp-hero-badge {
+            margin-bottom: 16px !important;
+          }
+          .lp-root .lp-hero-badge-extra {
+            display: none !important;
+          }
+          /* The floating "live · 27.4M mentions" pill collides with the
+             DailyRead header on small screens — it's noise on mobile. */
+          .lp-root .lp-hero-live-pill {
+            display: none !important;
+          }
+          .lp-root .lp-nav {
+            padding-left: 18px !important;
+            padding-right: 18px !important;
+            gap: 10px !important;
+          }
+          .lp-root .lp-nav-links,
+          .lp-root .lp-nav-signin {
+            display: none !important;
+          }
+          /* minmax(0, 1fr) — without the 0 min, a child's min-content can
+             expand the column past the container and cause horizontal scroll. */
+          .lp-root .lp-2col,
+          .lp-root .lp-3col {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 32px !important;
+          }
+          .lp-root .lp-hero-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 28px !important;
+          }
+          .lp-root .lp-brief-grid,
+          .lp-root .lp-dash-charts,
+          .lp-root .lp-why-row,
+          .lp-root .lp-comp-share-row {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+          .lp-root .lp-hero-h1 {
+            font-size: 44px !important;
+            line-height: 1.0 !important;
+            letter-spacing: -1.2px !important;
+          }
+          .lp-root .lp-hero-form { max-width: 100% !important; }
+          /* Hero illustration on mobile: drop the rotations, hide the
+             decorative paper-behind + side popups, fit the DailyRead card
+             to the viewport instead of scale-transforming the whole rig
+             (which left dead whitespace + overflowed right). */
+          .lp-root .lp-hero-char {
+            overflow: visible;
+          }
+          .lp-root .lp-hero-illustration {
+            height: auto !important;
+            padding-top: 24px;
+          }
+          .lp-root .lp-hero-paper,
+          .lp-root .lp-hero-popup {
+            display: none !important;
+          }
+          .lp-root .lp-hero-card-wrap {
+            transform: none !important;
+            width: 100%;
+          }
+          .lp-root .lp-hero-glow {
+            inset: 0 !important;
+          }
+          .lp-root .lp-daily-read {
+            width: 100% !important;
+          }
+          .lp-root .lp-section-h2 {
+            font-size: 40px !important;
+            line-height: 1.02 !important;
+            letter-spacing: -1px !important;
+          }
+          .lp-root .lp-meet-roster {
+            justify-content: flex-start !important;
+            flex-wrap: wrap !important;
+          }
+          .lp-root .lp-sticky {
+            position: static !important;
+            top: auto !important;
+          }
+          .lp-root .lp-deliv-preview { min-height: 0 !important; }
+          .lp-root .lp-deliv-preview-body { padding: 16px !important; }
+          .lp-root .lp-deliv-header {
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+            padding: 10px 12px !important;
+          }
+          /* Brief preview: stack copy and "receipts" column. */
+          .lp-root .lp-brief-grid {
+            gap: 20px !important;
+          }
+          /* Dashboard KPIs: 4 → 2 columns; charts stack. */
+          .lp-root .lp-dash-kpis {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+          }
+          .lp-root .lp-dash-kpis > div {
+            padding: 14px 16px !important;
+          }
+          .lp-root .lp-dash-kpi-val {
+            font-size: 22px !important;
+          }
+          .lp-root .lp-dash-charts > div {
+            border-right: none !important;
+            padding: 18px !important;
+          }
+          /* Report preview: stack contents + excerpt instead of overflowing. */
+          .lp-root .lp-report-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 20px !important;
+          }
+          /* Digest preview: stack the 3 channel cards. */
+          .lp-root .lp-digest-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+          /* Slide-deck preview: shrink padding, headline, side chart so the
+             16:9 slide doesn't look like a billboard cropped to a phone. */
+          .lp-root .lp-slide-hero {
+            padding: 22px 22px 18px !important;
+            aspect-ratio: auto !important;
+          }
+          .lp-root .lp-slide-h3 {
+            font-size: 28px !important;
+            letter-spacing: -0.6px !important;
+            margin: 10px 0 8px !important;
+          }
+          .lp-root .lp-slide-sub {
+            font-size: 14px !important;
+          }
+          .lp-root .lp-slide-chart {
+            position: static !important;
+            width: 100% !important;
+            height: auto !important;
+            margin-top: 16px !important;
+            padding: 10px 12px !important;
+          }
+          .lp-root .lp-slide-dots {
+            position: static !important;
+            margin-top: 14px !important;
+          }
+          /* Slide thumbnail strip: 4 → 2 columns to keep cards legible. */
+          .lp-root .lp-slide-thumbs {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+          }
+          /* Listens demo: drop the fixed handle width and clamp the
+             comment so rows fit a phone column without overflowing. */
+          .lp-root .lp-listens-handle {
+            min-width: 0 !important;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .lp-root .lp-listens-row {
+            gap: 6px !important;
+            padding: 6px 8px !important;
+          }
+          /* Competitive share-of-screen rows: 3-col → stacked. */
+          .lp-root .lp-comp-share-row {
+            gap: 10px !important;
+          }
+          .lp-root .lp-comp-share-row > div:first-child {
+            min-width: 0 !important;
+          }
+          /* WhyScolto comparison rows: stack old / Scolto on top of each other. */
+          .lp-root .lp-why-row-old {
+            border-right: none !important;
+            border-bottom: 1px solid #E5E0D4 !important;
+          }
+          .lp-root .lp-mock-msgs { min-height: 0 !important; }
+          .lp-root .lp-invite-bg {
+            width: 140vw !important;
+            height: 140vw !important;
+            top: -20% !important;
+          }
+          .lp-root .lp-invite-h2 {
+            font-size: 64px !important;
+            letter-spacing: -1.6px !important;
+          }
+          .lp-root .lp-footer {
+            padding-left: 24px !important;
+            padding-right: 24px !important;
+          }
+          .lp-root .lp-footer-row {
+            flex-direction: column !important;
+            gap: 28px !important;
+          }
+          .lp-root .lp-footer-links { gap: 32px !important; }
+          .lp-root .lp-footer-bottom {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 10px !important;
+            text-align: left !important;
+          }
+          /* Daily Read card: tighten so the header fits one row and the
+             3-col KPI strip doesn't push REACH off the right. */
+          .lp-root .lp-daily-head {
+            padding: 10px 12px !important;
+            gap: 8px !important;
+          }
+          .lp-root .lp-daily-kpis {
+            padding: 12px 12px 4px !important;
+          }
+          .lp-root .lp-daily-kpis > div {
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+          }
+          .lp-root .lp-daily-num {
+            font-size: 20px !important;
+          }
+          .lp-root .lp-daily-reach-badges {
+            gap: 3px !important;
+          }
+          .lp-root .lp-daily-reach-badges > span {
+            width: 12px !important;
+            height: 12px !important;
+            border-radius: 4px !important;
+          }
+          /* Competitive detection rings: at mobile container widths the
+             two rings + their labels collide. Shrink them. */
+          .lp-root .lp-comp-ring {
+            transform: scale(0.6);
+            transform-origin: center;
+          }
+        }
       `}</style>
 
-      <LP_Nav openAuth={openAuth} />
-      <LP_Hero openAuth={openAuth} />
+      <LP_Nav openAuth={openAuth} openWaitlist={() => openWaitlist()} />
+      <LP_Hero openWaitlist={openWaitlist} />
       <LP_MeetScolto />
       <LP_Competitive />
       <LP_Deliverables />
       <LP_Channels />
       <LP_WhyScolto />
-      <LP_Invite openAuth={openAuth} />
+      <LP_Invite openWaitlist={() => openWaitlist()} />
       <LP_Footer />
 
       <AuthModal
@@ -2367,6 +2837,11 @@ export function LandingPage() {
         loadingProvider={loadingProvider}
         onPickGoogle={() => handlePick('google')}
         onPickMicrosoft={() => handlePick('microsoft')}
+      />
+      <WaitlistModal
+        open={waitlistOpen}
+        onClose={closeWaitlist}
+        interestedIn={waitlistInterest}
       />
     </div>
   );
