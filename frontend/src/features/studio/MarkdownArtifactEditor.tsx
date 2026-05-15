@@ -9,6 +9,7 @@ import {
   linkDialogPlugin,
   tablePlugin,
   codeBlockPlugin,
+  codeMirrorPlugin,
   diffSourcePlugin,
   markdownShortcutPlugin,
   toolbarPlugin,
@@ -81,23 +82,23 @@ const chartDescriptor: CodeBlockEditorDescriptor = {
   Editor: ChartCodeEditor,
 };
 
-/** Catch-all so any unknown fenced language renders as plain code instead of
- *  crashing the editor when MDXEditor encounters an undescribed block. */
-const PlainCodeEditor: CodeBlockEditorDescriptor['Editor'] = ({ code, language }) => (
-  <pre
-    contentEditable={false}
-    onKeyDown={(e) => e.nativeEvent.stopImmediatePropagation()}
-    className="my-4 overflow-x-auto rounded-md border border-border bg-muted/40 p-3 text-xs"
-    data-language={language}
-  >
-    {code}
-  </pre>
-);
-
-const plainCodeDescriptor: CodeBlockEditorDescriptor = {
-  priority: 0,
-  match: () => true,
-  Editor: PlainCodeEditor,
+/** Language list shown in the code-block language dropdown and used to load
+ *  CodeMirror's syntax-highlighting bundles. The empty key handles unlabeled
+ *  fenced blocks (```…``` with no language). */
+const CODE_BLOCK_LANGUAGES = {
+  '': 'Plain text',
+  js: 'JavaScript',
+  ts: 'TypeScript',
+  jsx: 'JSX',
+  tsx: 'TSX',
+  py: 'Python',
+  sql: 'SQL',
+  json: 'JSON',
+  bash: 'Bash',
+  sh: 'Shell',
+  html: 'HTML',
+  css: 'CSS',
+  md: 'Markdown',
 };
 
 /** Toolbar button that injects a raw markdown/HTML snippet at the cursor.
@@ -203,6 +204,46 @@ function Toolbar() {
   );
 }
 
+/** Escape pseudo-tags that come from dashboard templates and agent prose
+ *  (`<AttackLine>`, `<Subject>`, `<Rival1>`, `<avg eng/post>`). MDX
+ *  treats any `<Name…>` token as a JSX component; an unclosed one throws
+ *  the editor into source-only error mode and the error banner re-renders
+ *  on every keystroke, which manifests as the bottom of the editor
+ *  "jumping". Escape `<` → `&lt;` for any tag whose name isn't in the
+ *  allowlist; recognized HTML tags pass through. Allowlist is the
+ *  subset relevant to markdown — same set the read-only Markdown
+ *  component uses. */
+const ALLOWED_HTML_TAGS = new Set([
+  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio',
+  'b', 'bdi', 'bdo', 'blockquote', 'br', 'button',
+  'canvas', 'caption', 'cite', 'code', 'col', 'colgroup',
+  'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt',
+  'em', 'embed',
+  'fieldset', 'figcaption', 'figure', 'footer', 'form',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr',
+  'i', 'iframe', 'img', 'input', 'ins',
+  'kbd',
+  'label', 'legend', 'li', 'link',
+  'main', 'map', 'mark', 'meter',
+  'nav', 'noscript',
+  'object', 'ol', 'optgroup', 'option', 'output',
+  'p', 'picture', 'pre', 'progress',
+  'q',
+  'rp', 'rt', 'ruby',
+  's', 'samp', 'section', 'select', 'small', 'source', 'span', 'strong', 'sub', 'summary', 'sup', 'svg',
+  'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track',
+  'u', 'ul',
+  'var', 'video',
+  'wbr',
+]);
+
+function escapePseudoJsxTags(markdown: string): string {
+  return markdown.replace(/<\/?([a-zA-Z][a-zA-Z0-9-]*)\b/g, (match, name: string) => {
+    if (ALLOWED_HTML_TAGS.has(name.toLowerCase())) return match;
+    return match.replace('<', '&lt;');
+  });
+}
+
 export function MarkdownArtifactEditor({
   initialMarkdown,
   onChange,
@@ -210,8 +251,11 @@ export function MarkdownArtifactEditor({
 }: MarkdownArtifactEditorProps) {
   return (
     <MDXEditor
-      markdown={initialMarkdown}
+      markdown={escapePseudoJsxTags(initialMarkdown)}
       onChange={onChange}
+      onError={({ error, source }) => {
+        console.warn('[MarkdownArtifactEditor] parse error', error, source);
+      }}
       overlayContainer={overlayContainer ?? undefined}
       contentEditableClassName="agent-prose max-w-none break-words text-sm leading-relaxed"
       plugins={[
@@ -223,9 +267,10 @@ export function MarkdownArtifactEditor({
         linkDialogPlugin(),
         tablePlugin(),
         codeBlockPlugin({
-          codeBlockEditorDescriptors: [chartDescriptor, plainCodeDescriptor],
+          codeBlockEditorDescriptors: [chartDescriptor],
           defaultCodeBlockLanguage: '',
         }),
+        codeMirrorPlugin({ codeBlockLanguages: CODE_BLOCK_LANGUAGES }),
         markdownShortcutPlugin(),
         diffSourcePlugin({ viewMode: 'rich-text' }),
         toolbarPlugin({ toolbarContents: () => <Toolbar /> }),

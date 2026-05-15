@@ -1,11 +1,12 @@
-import { LayoutDashboard, Users, Activity, Database, DollarSign } from 'lucide-react';
+import { LayoutDashboard, Users, Activity, Database, DollarSign, MailPlus } from 'lucide-react';
 import { cn } from '../../lib/utils.ts';
 
-export type AdminSection = 'overview' | 'users' | 'activity' | 'collections' | 'revenue';
+export type AdminSection = 'overview' | 'users' | 'activity' | 'collections' | 'revenue' | 'waitlist';
 
 const NAV_ITEMS: { id: AdminSection; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'users', label: 'Users', icon: Users },
+  { id: 'waitlist', label: 'Waitlist', icon: MailPlus },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'collections', label: 'Collections', icon: Database },
   { id: 'revenue', label: 'Revenue', icon: DollarSign },

@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../client.ts';
+import { apiDelete, apiGet, apiPost } from '../client.ts';
 import type {
   AdminOverview,
   AdminUserList,
@@ -6,6 +6,7 @@ import type {
   AdminActivity,
   AdminCollectionList,
   AdminRevenue,
+  AdminWaitlistList,
   CollectionAudit,
 } from '../types.ts';
 
@@ -47,4 +48,12 @@ export function startImpersonation(targetUid: string): Promise<void> {
 
 export function stopImpersonation(): Promise<void> {
   return apiPost<void>('/admin/impersonate/stop', {});
+}
+
+export function getAdminWaitlist(params?: Record<string, string>): Promise<AdminWaitlistList> {
+  return apiGet<AdminWaitlistList>('/admin/waitlist', params);
+}
+
+export function deleteAdminWaitlistEntry(entryId: string): Promise<void> {
+  return apiDelete<void>(`/admin/waitlist/${encodeURIComponent(entryId)}`);
 }

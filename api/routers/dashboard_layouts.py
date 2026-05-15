@@ -82,13 +82,16 @@ async def save_dashboard_layout(
     doc_ref = fs._db.collection(COLLECTION).document(artifact_id)
     doc = await asyncio.to_thread(doc_ref.get)
 
-    # If doc exists, verify ownership before overwriting
+    # If doc exists, verify ownership before overwriting.
     if doc.exists:
         data = doc.to_dict()
         if data.get("user_id") != user.uid:
             raise HTTPException(status_code=403, detail="Access denied")
 
     serialized_layout = [w.model_dump(exclude_none=True, by_alias=True) for w in request.layout]
+    # MERGE the layout fields rather than replacing the whole doc. Without
+    # `merge=True`, `.set()` drops every field not in the payload — including
+    # `is_template`, `title`, and `source_template_id` — silently demoting docs.
     await asyncio.to_thread(
         doc_ref.set,
         {
@@ -98,6 +101,7 @@ async def save_dashboard_layout(
             "filterBarFilters": request.filterBarFilters,
             "orientation": request.orientation,
         },
+        merge=True,
     )
 
     return LayoutResponse(

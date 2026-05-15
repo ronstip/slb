@@ -257,7 +257,7 @@ function AppSidebarImpl({
         <Tooltip>
           <TooltipTrigger asChild>
             <button onClick={() => navigate('/')} className="mb-1 cursor-pointer focus:outline-none transition-opacity hover:opacity-75">
-              <Logo size="sm" showText={false} />
+              <Logo size="md" showText={false} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">Home</TooltipContent>
@@ -332,7 +332,7 @@ function AppSidebarImpl({
       {/* Top: Logo + collapse button */}
       <div className="flex h-16 items-center justify-between px-4">
         <button onClick={() => navigate('/')} className="cursor-pointer focus:outline-none transition-opacity hover:opacity-75">
-          <Logo size="sm" />
+          <Logo size="md" />
         </button>
         <Button variant="ghost" size="icon" className="h-7 w-7 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={toggle}>
           <PanelLeftClose className="h-4 w-4" />

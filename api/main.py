@@ -44,6 +44,7 @@ from api.routers import posts as posts_router
 from api.routers import sessions as sessions_router
 from api.routers import settings as settings_router
 from api.routers import topics as topics_router
+from api.routers import waitlist as waitlist_router
 from api.services.startup_tasks import cleanup_stuck_collections
 from config.settings import get_settings
 
@@ -72,7 +73,7 @@ async def lifespan(app_: FastAPI):
     yield
 
 
-app = FastAPI(title="Veille", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Scolto", version="0.1.0", lifespan=lifespan)
 
 # Rate limiting
 app.state.limiter = limiter
@@ -104,6 +105,7 @@ app.include_router(agents_router.router)
 app.include_router(posts_router.router)
 app.include_router(chat_router.router)
 app.include_router(internal_router.router)
+app.include_router(waitlist_router.router)
 
 # CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
 _settings = get_settings()

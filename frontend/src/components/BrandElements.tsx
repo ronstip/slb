@@ -444,33 +444,3 @@ export function GeometricMesh() {
   );
 }
 
-/**
- * Brand mark: purple rounded square with a swirling sonar sweep behind a white "V".
- * Sizes match the Logo component's sm/md/lg scale.
- */
-export function AnimatedLogo({ size = 'md', flat = false }: { size?: 'sm' | 'md' | 'lg'; flat?: boolean }) {
-  const dimensions = {
-    sm: { box: 'h-7 w-7 rounded-md', sweep: 'h-14 w-14', text: 'text-sm' },
-    md: { box: 'h-8 w-8 rounded-lg', sweep: 'h-16 w-16', text: 'text-lg' },
-    lg: { box: 'h-10 w-10 rounded-lg', sweep: 'h-20 w-20', text: 'text-xl' },
-  }[size];
-
-  return (
-    <div
-      className={`relative flex items-center justify-center overflow-hidden bg-primary ${flat ? '' : 'shadow-[0_2px_8px_rgba(255,107,61,0.25)]'} ${dimensions.box}`}
-    >
-      {!flat && (
-        <motion.div
-          className={`absolute bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_45deg,transparent_90deg)] ${dimensions.sweep}`}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-        />
-      )}
-      <span
-        className={`relative z-10 font-heading font-bold leading-none text-white ${dimensions.text}`}
-      >
-        V
-      </span>
-    </div>
-  );
-}

@@ -1,9 +1,52 @@
 import type { ComponentProps, ReactNode } from 'react';
+import { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { remarkStripComments } from '../lib/remark-strip-comments.ts';
 import { ReportChart, tryParseChartSpec } from '../features/studio/ReportChart.tsx';
+
+/** HTML tags we allow rehype-raw to pass through unchanged. Anything else
+ *  written like `<TagName>` (dashboard template placeholders such as
+ *  `<AttackLine>`, `<Subject>`, `<Rival1>`, agent-prose tokens like
+ *  `<avg eng/post>`) is escaped to `&lt;…>` so the browser stops emitting
+ *  it as an unknown custom element. Unknown elements wrap inline content
+ *  with default zero-styling, but their presence interacts badly with
+ *  layout measurements — that's the "jumping" near the bottom of the
+ *  dashboard. Lowercased on comparison because HTML parsing normalizes
+ *  tag case. */
+const ALLOWED_HTML_TAGS = new Set([
+  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio',
+  'b', 'bdi', 'bdo', 'blockquote', 'br', 'button',
+  'canvas', 'caption', 'cite', 'code', 'col', 'colgroup',
+  'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt',
+  'em', 'embed',
+  'fieldset', 'figcaption', 'figure', 'footer', 'form',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr',
+  'i', 'iframe', 'img', 'input', 'ins',
+  'kbd',
+  'label', 'legend', 'li', 'link',
+  'main', 'map', 'mark', 'meter',
+  'nav', 'noscript',
+  'object', 'ol', 'optgroup', 'option', 'output',
+  'p', 'picture', 'pre', 'progress',
+  'q',
+  'rp', 'rt', 'ruby',
+  's', 'samp', 'section', 'select', 'small', 'source', 'span', 'strong', 'sub', 'summary', 'sup', 'svg',
+  'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track',
+  'u', 'ul',
+  'var', 'video',
+  'wbr',
+]);
+
+const ANGLE_TAG_RE = /<\/?([a-zA-Z][a-zA-Z0-9-]*)\b/g;
+
+function escapeUnknownAngleTags(markdown: string): string {
+  return markdown.replace(ANGLE_TAG_RE, (match, name: string) => {
+    if (ALLOWED_HTML_TAGS.has(name.toLowerCase())) return match;
+    return match.replace('<', '&lt;');
+  });
+}
 
 interface MarkdownProps {
   children: string;
@@ -98,13 +141,14 @@ export function Markdown({
     ...(renderCharts ? { code: chartCodeRenderer } : {}),
     ...(headingIds ? HEADING_COMPONENTS : {}),
   };
+  const safeChildren = useMemo(() => escapeUnknownAngleTags(children), [children]);
   const content = (
     <ReactMarkdown
       remarkPlugins={plugins}
       rehypePlugins={[rehypeRaw]}
       components={components}
     >
-      {children}
+      {safeChildren}
     </ReactMarkdown>
   );
 

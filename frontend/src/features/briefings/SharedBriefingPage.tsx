@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Copy, Loader2, Share2, Trash2 } from 'lucide-react';
-import { Logo } from '../../components/Logo.tsx';
+import { Logo, BRAND_NAME } from '../../components/Logo.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Input } from '../../components/ui/input.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
@@ -85,7 +85,7 @@ export function SharedBriefingPage() {
             This link may have been revoked or doesn't exist.
           </p>
           <Button className="mt-6" onClick={() => window.open('/', '_blank')}>
-            Try Veille
+            Try {BRAND_NAME}
           </Button>
         </div>
       )}
@@ -100,7 +100,7 @@ export function SharedBriefingPage() {
             <div className="mx-auto max-w-6xl px-6 py-10 text-center">
               <h2 className="text-base font-semibold">Like what you see?</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Veille gives you AI-powered social intelligence briefings like this one &mdash; no coding required.
+                {BRAND_NAME} gives you AI-powered social intelligence briefings like this one &mdash; no coding required.
               </p>
               <Button
                 className="mt-4"

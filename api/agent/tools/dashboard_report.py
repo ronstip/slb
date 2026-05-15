@@ -78,6 +78,27 @@ def _verify_dashboard_ownership(fs, layout_id: str, user_id: str) -> tuple[dict 
     return data, None
 
 
+def _load_template_widgets(fs, template_id: str | None) -> list[dict] | None:
+    """Return the widget list of the template doc that a dashboard was cloned
+    from, or None if `template_id` is empty / the doc is gone / it isn't a
+    template. Used by the semantic leakage check in `_check_dashboard_for_publish`.
+    Failures here are non-fatal — verify still runs with the literal-marker checks.
+    """
+    if not template_id:
+        return None
+    try:
+        doc = fs._db.collection(DASHBOARD_LAYOUTS).document(template_id).get()
+    except Exception:
+        return None
+    if not doc.exists:
+        return None
+    data = doc.to_dict() or {}
+    if not data.get("is_template"):
+        return None
+    widgets = data.get("layout")
+    return widgets if isinstance(widgets, list) else None
+
+
 def _refuse_if_template(data: dict, layout_id: str, action: str) -> dict | None:
     """Reject writes targeting a template doc. Templates are user-curated and
     must remain immutable from the agent's side — the agent works on the COPY
@@ -525,12 +546,19 @@ def update_dashboard(
 
 # ─── Verification helpers (shared by verify_dashboard and publish_dashboard) ─
 
-# Strings that exist only in the v3 template's per-section briefs. If any of
-# these survive into a published dashboard, the agent forgot to overwrite that
-# widget's markdownContent.
+# Distinctive substrings that exist ONLY in the template's per-section briefs.
+# If ANY of these survives into a published dashboard the agent failed to fill
+# that widget. These are deliberately broader than literal phrases so a small
+# rewording in the template (e.g. "Agent instructions for the whole §14.")
+# does NOT slip past the check.
 _TEMPLATE_LEAKAGE_MARKERS = (
-    "Agent instructions.",
+    "Agent instructions",                                          # catches "Agent instructions." AND "Agent instructions for ..."
     "Reference example",
+    "Senior intelligence analyst writing for a decision-maker",    # Voice block — every section's brief has this
+    "Body skeleton (every section follows this shape)",
+    "Template v3.",                                                # header-widget brief opener
+    "Template v4.",
+    "Template v5.",
 )
 
 # Angle-bracket placeholders the template uses in its reference examples
@@ -551,15 +579,66 @@ _SERP_PATTERNS = (
     ("www.duckduckgo.com", "/"),
 )
 
+# Substrings inside a URL that mark it as a fabricated placeholder rather than
+# a real link the agent retrieved. The agent invents these when it cites a
+# source it never actually grounded (e.g. https://www.cbsnews.com/news/sample-url).
+# Matched case-insensitively against the full URL string. Distinct from SERP
+# placeholders — these have no host/path structure to leverage.
+_FAKE_URL_SUBSTRINGS = (
+    "sample-url",
+    "example.com",
+    "example.org",
+    "your-url",
+    "your-domain",
+    "placeholder",
+    "fake-url",
+    "todo-url",
+    "/example/",
+    "lorem-ipsum",
+    "xxxxxxx",
+)
+
+# Hostnames where the corpus itself was collected. Links to these domains are
+# NOT external grounding — they're the data itself. §App-A requires independent
+# journalism / polls / reports, which means hostnames OFF this list. Match is
+# done after stripping a leading `www.` and lowercasing.
+_CORPUS_PLATFORM_HOSTNAMES = frozenset({
+    "x.com",
+    "twitter.com",
+    "tiktok.com",
+    "youtube.com",
+    "youtu.be",
+    "instagram.com",
+    "facebook.com",
+    "fb.com",
+    "threads.net",
+})
+
 # Pull every markdown link [label](url) — we only audit explicit links, not
 # raw URLs in prose. Markdown links are how the agent is asked to cite §App-A.
 _MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]*\]\((https?://[^)\s]+)\)")
 
-# Any line that starts with markdown heading marker(s) followed by `§`.
-_SECTION_SYMBOL_HEADING_PATTERN = re.compile(r"^#{1,6}\s+§", re.MULTILINE)
+# `§` symbol anywhere in markdown text — the template was overhauled in v3 to
+# use plain numbering (`## 5. Share of voice`) and `§` has no place in the
+# customer-facing output, whether in headings or in body prose ("see §4").
+_SECTION_SYMBOL_PATTERN = re.compile(r"§")
 
 # `<a id="sec-xxx">` anchor declarations — used to detect duplicates.
 _ANCHOR_PATTERN = re.compile(r'<a\s+id="(sec-[A-Za-z0-9-]+)"\s*>')
+
+# Hebrew code-point block. If a meaningful fraction of a text widget's content
+# is in this range the dashboard's dominant language is Hebrew and chart titles
+# should be too. Mirror block for Arabic / RTL extensions intentionally omitted
+# — add when we see customers in that script.
+_HEBREW_CHAR_PATTERN = re.compile(r"[֐-׿]")
+
+# `<fact src="...">value</fact>` provenance tag for load-bearing numbers. The
+# render layer strips the tags; the verifier audits the `src` attributes against
+# the source TVF / query result the agent cited.
+_FACT_TAG_PATTERN = re.compile(
+    r'<fact\s+src="([^"]+)"\s*>([^<]*)</fact>',
+    re.IGNORECASE,
+)
 
 
 def _looks_like_serp(url: str) -> bool:
@@ -576,25 +655,107 @@ def _looks_like_serp(url: str) -> bool:
     return False
 
 
-def _check_dashboard_for_publish(widgets: list[dict]) -> list[str]:
+def _looks_like_fake_url(url: str) -> str | None:
+    """Return the matching placeholder substring if the URL is a fabrication,
+    else None. Catches the `sample-url` / `example.com` / etc. family that
+    `_looks_like_serp` doesn't cover — the agent invents these when it cites
+    a source it never actually retrieved via web grounding.
+    """
+    low = url.lower()
+    for marker in _FAKE_URL_SUBSTRINGS:
+        if marker in low:
+            return marker
+    return None
+
+
+def _hebrew_fraction(text: str) -> float:
+    if not text:
+        return 0.0
+    hebrew = sum(1 for c in text if "֐" <= c <= "׿")
+    # Total chars excluding whitespace — keeps the ratio meaningful on dense markdown.
+    total = sum(1 for c in text if not c.isspace())
+    return hebrew / total if total else 0.0
+
+
+def _is_section_widget(wi: str) -> bool:
+    """A 'section' widget owns one numbered section of the report and must use
+    `##` for its heading (not `#`, which is reserved for the page title).
+    The naming convention is `vNsec<suffix>` — section number widgets
+    (`v3sec05sov`, `v3sec08a00`), the appendix (`v3secapp00`), and §14's intro
+    (`v3sec14int`). Recommendation sub-section widgets (`v3sec14r01`…
+    `v3sec14r05`) use `###` and are intentionally excluded.
+    """
+    if not wi:
+        return False
+    if not re.match(r"^v\d+sec[a-z0-9]+$", wi):
+        return False
+    # Recommendation sub-sections end with `rNN`; their suffix uses `###`.
+    if re.search(r"r\d+$", wi):
+        return False
+    return True
+
+
+def _check_dashboard_for_publish(
+    widgets: list[dict],
+    template_widgets: list[dict] | None = None,
+) -> list[str]:
     """Run all hard pre-publish checks on a widget list. Returns a list of
     short error strings (one per defect, naming the widget id). Empty list
     means clean.
+
+    If ``template_widgets`` is provided (from the source template doc), each
+    text widget is also compared to its same-`i` template counterpart — an
+    exact-or-near-exact match means the widget was never filled. This catches
+    cases the literal-string markers miss when the template wording shifts.
     """
     errors: list[str] = []
     seen_anchors: dict[str, str] = {}  # anchor → first widget i that declared it
 
+    template_md_by_i: dict[str, str] = {}
+    if template_widgets:
+        for tw in template_widgets:
+            if not isinstance(tw, dict):
+                continue
+            if tw.get("aggregation") != "text":
+                continue
+            template_md_by_i[tw.get("i") or ""] = (tw.get("markdownContent") or "")
+
+    # Detect the dashboard's dominant language from filled text widgets so we
+    # can flag chart titles in the wrong script. Hebrew is currently the only
+    # non-Latin language enforced; extend when more customers appear.
+    body_text = "".join(
+        (w.get("markdownContent") or "")
+        for w in widgets
+        if isinstance(w, dict) and w.get("aggregation") == "text"
+    )
+    body_is_hebrew = _hebrew_fraction(body_text) > 0.30
+
+    appendix_widget_i: str | None = None
+    appendix_link_count = 0
+    appendix_external_hostnames: set[str] = set()
+
     for w in widgets:
         if not isinstance(w, dict):
             continue
+
+        # ── chart-widget-only checks ────────────────────────────────────────
         if w.get("aggregation") != "text":
+            if body_is_hebrew:
+                title = (w.get("title") or "").strip()
+                if title and not _HEBREW_CHAR_PATTERN.search(title):
+                    errors.append(
+                        f"chart widget '{w.get('i')}': title {title!r} is not in Hebrew "
+                        f"but the dashboard's body is Hebrew. Patch `title` (and `figureText` "
+                        f"if non-empty) via update_dashboard to localize."
+                    )
             continue
+
         wi = w.get("i") or "<unknown>"
         mc = w.get("markdownContent") or ""
         if not isinstance(mc, str):
             continue
 
-        # 1. Template leakage — unfilled briefs.
+        # 1. Template leakage — unfilled briefs (literal-substring markers).
         for marker in _TEMPLATE_LEAKAGE_MARKERS:
             if marker in mc:
                 errors.append(
@@ -602,6 +763,19 @@ def _check_dashboard_for_publish(widgets: list[dict]) -> list[str]:
                     f"the section was never filled. Patch markdownContent with real content."
                 )
                 break  # one error per widget for this class is enough
+
+        # 1b. Template leakage — semantic (widget content matches template
+        # content). Catches the case the literal markers miss when wording
+        # shifts. Compare first 200 non-whitespace chars exactly.
+        tmpl_md = template_md_by_i.get(wi)
+        if tmpl_md:
+            def _head(s: str, n: int = 200) -> str:
+                return "".join(s.split())[:n]
+            if _head(mc) and _head(mc) == _head(tmpl_md):
+                errors.append(
+                    f"widget '{wi}': first 200 chars are identical to the template's "
+                    f"brief for this widget — agent did not patch it. Write the section."
+                )
 
         # 2. Angle-bracket placeholders left in the prose.
         placeholders = sorted(set(_PLACEHOLDER_PATTERN.findall(mc)))
@@ -621,11 +795,27 @@ def _check_dashboard_for_publish(widgets: list[dict]) -> list[str]:
                 )
                 break  # one SERP error per widget; fix-then-reverify is fast
 
-        # 4. `§` symbol in any heading line.
-        if _SECTION_SYMBOL_HEADING_PATTERN.search(mc):
+        # 3b. Fabricated / placeholder URLs (sample-url, example.com, …).
+        # Catches the case the agent invents a citation URL it never actually
+        # retrieved via web grounding. Flag every distinct one per widget.
+        seen_fake_urls: set[str] = set()
+        for url in _MARKDOWN_LINK_PATTERN.findall(mc):
+            marker = _looks_like_fake_url(url)
+            if marker and url not in seen_fake_urls:
+                seen_fake_urls.add(url)
+                errors.append(
+                    f"widget '{wi}': cites a placeholder URL ({url}) — the substring "
+                    f"'{marker}' marks it as fabricated, not an article you actually "
+                    f"retrieved. Re-run web grounding or drop the claim."
+                )
+
+        # 4. `§` symbol anywhere — heading OR body prose.
+        # The v3 template uses plain numbering ("## 5. Share of voice", "see §4" → "see section 4").
+        if _SECTION_SYMBOL_PATTERN.search(mc):
             errors.append(
-                f"widget '{wi}': contains a heading starting with '§' — drop the "
-                f"symbol (the v3 template uses plain numbering like '## 5. Share of voice')."
+                f"widget '{wi}': contains the '§' symbol — drop it everywhere "
+                f"(headings AND body prose). Use plain numbering: '## 5. ...' and "
+                f"'see section 4', not '## §5 — ...' / 'see §4'."
             )
 
         # 5. Duplicate `<a id="sec-...">` anchors across the dashboard.
@@ -641,7 +831,148 @@ def _check_dashboard_for_publish(widgets: list[dict]) -> list[str]:
             else:
                 seen_anchors[anchor] = wi
 
+        # 6. Section heading level: section widgets must use `##` (H2) for
+        # their first heading line, not `#` (H1, which is the page title's
+        # level). Recommendation sub-widgets are excluded by _is_section_widget.
+        if _is_section_widget(wi):
+            first_heading = re.search(r"^(#{1,6})\s+\S", mc, re.MULTILINE)
+            if first_heading and len(first_heading.group(1)) == 1:
+                errors.append(
+                    f"widget '{wi}': section heading uses '# ' (H1) — section "
+                    f"headers must be '## ' (H2). '#' is reserved for the page title."
+                )
+
+        # 7. Track appendix widget for the link-count + external-domain check below.
+        if "app" in wi.lower():
+            appendix_widget_i = wi
+            for url in _MARKDOWN_LINK_PATTERN.findall(mc):
+                appendix_link_count += 1
+                try:
+                    host = (urlparse(url).hostname or "").lower()
+                except ValueError:
+                    continue
+                if host.startswith("www."):
+                    host = host[4:]
+                if host and host not in _CORPUS_PLATFORM_HOSTNAMES:
+                    appendix_external_hostnames.add(host)
+
+        # 8. §7b coverage — the format/channel performance table must cover
+        # ≥80% of total reach. The brief asks the agent to add an "Other /
+        # residual" row when named cuts leave a larger gap. We identify the
+        # §7b table by widget id pattern `vNsec07*` AND by the presence of a
+        # "Share of reach %" column header (or its Hebrew counterpart).
+        if re.match(r"^v\d+sec07", wi):
+            coverage_error = _check_section_7b_coverage(wi, mc)
+            if coverage_error:
+                errors.append(coverage_error)
+
+    # 9. Appendix link-count + external-domain check (§App-A web grounding).
+    # If the agent dropped the appendix entirely, skip — that's an allowed
+    # removal. When present:
+    #   - ≥5 total markdown links to http URLs
+    #   - ≥3 DISTINCT external hostnames (not on _CORPUS_PLATFORM_HOSTNAMES).
+    #     The corpus platforms are forbidden as "external grounding" — they
+    #     ARE the corpus. Independent journalism / polls / reports come from
+    #     other domains.
+    if appendix_widget_i is not None:
+        if appendix_link_count < 5:
+            errors.append(
+                f"widget '{appendix_widget_i}': appendix contains only "
+                f"{appendix_link_count} external link(s); the prompt requires at "
+                f"least 5 grounded sources with working article URLs."
+            )
+        if len(appendix_external_hostnames) < 3:
+            sample = ", ".join(sorted(appendix_external_hostnames)) or "(none)"
+            errors.append(
+                f"widget '{appendix_widget_i}': appendix has only "
+                f"{len(appendix_external_hostnames)} distinct external hostname(s) "
+                f"({sample}); §App-A requires ≥3 independent sources OFF the "
+                f"corpus platforms (x.com, twitter.com, tiktok.com, youtube.com, "
+                f"instagram.com, facebook.com). Corpus posts are the data, not "
+                f"external grounding. Re-run web grounding for news articles, "
+                f"polls, or reports from independent outlets."
+            )
+
     return errors
+
+
+# Hebrew header for "Share of reach %" plus the English form. Matched in the
+# table header row to identify the §7b table among the multiple tables a §7
+# widget may contain (7a daily, 7b format, 7c prose).
+_SHARE_OF_REACH_HEADERS = (
+    "Share of reach %",
+    "Share of reach",
+    "נתח מהחשיפה %",
+    "נתח מהחשיפה",
+    "נתח חשיפה %",
+    "נתח חשיפה",
+)
+
+
+def _check_section_7b_coverage(wi: str, mc: str) -> str | None:
+    """Find the §7b format/channel-performance table inside the §7 widget and
+    confirm its 'Share of reach %' column sums to ≥80%. The agent is allowed
+    to add an 'Other / residual' row to close the gap — that row's value
+    counts toward the sum.
+
+    Returns the error string on failure, or None when:
+      - no §7b table is identifiable (skip silently — the widget may have
+        intentionally dropped the cut),
+      - the sum is ≥80%,
+      - the table can't be parsed (skip silently rather than false-positive).
+    """
+    lines = mc.splitlines()
+    header_idx = None
+    share_col_idx = None
+    for idx, line in enumerate(lines):
+        if "|" not in line:
+            continue
+        if any(h in line for h in _SHARE_OF_REACH_HEADERS):
+            cells = [c.strip() for c in line.split("|")]
+            for col_idx, cell in enumerate(cells):
+                if any(h in cell for h in _SHARE_OF_REACH_HEADERS):
+                    share_col_idx = col_idx
+                    header_idx = idx
+                    break
+            if header_idx is not None:
+                break
+    if header_idx is None or share_col_idx is None:
+        return None
+
+    # Walk forward through the table rows (skip the alignment row), summing
+    # percentages found in `share_col_idx`. Stop at the first blank line or
+    # non-table line.
+    total = 0.0
+    row_count = 0
+    pct_pattern = re.compile(r"(\d+(?:\.\d+)?)\s*%?")
+    for line in lines[header_idx + 1:]:
+        if "|" not in line:
+            break
+        stripped = line.strip()
+        # Skip the alignment row (`| :--- | :---: |` etc.).
+        if set(stripped.replace("|", "").replace(":", "").replace("-", "").replace(" ", "")) == set():
+            continue
+        cells = [c.strip() for c in line.split("|")]
+        if share_col_idx >= len(cells):
+            continue
+        cell = cells[share_col_idx].replace("*", "").strip()
+        m = pct_pattern.search(cell)
+        if not m:
+            continue
+        try:
+            total += float(m.group(1))
+            row_count += 1
+        except ValueError:
+            continue
+
+    if row_count == 0 or total >= 80.0:
+        return None
+    return (
+        f"widget '{wi}': §7b format/channel-performance table covers only "
+        f"{total:.1f}% of reach across {row_count} row(s); the brief requires "
+        f"≥80%. Add cuts (denser categories) or a final 'Other / residual' row "
+        f"so the column sums to ~100%."
+    )
 
 
 # ─── Tool 4 — verify_dashboard ──────────────────────────────────────────────
@@ -660,19 +991,26 @@ def verify_dashboard(
     that final step.
 
     What it catches:
-      - Template-brief leakage: any text widget whose `markdownContent` still
-        contains the template's `Agent instructions.` or `Reference example`
-        markers (the agent forgot to fill that section).
-      - Angle-bracket placeholders left in prose: `<Subject>`, `<Rival1>`,
-        `<TopicA>`, `<wing>`, etc. — these come from the template's reference
-        examples and must be replaced with real values.
-      - SERP-host URLs in markdown links: `google.com/search`, `bing.com/search`,
-        `duckduckgo.com/?q=...` — these prove only that you constructed a query,
-        not that the source exists. Cite the article URL or drop the claim.
-      - `§` symbol in any heading line — the v3 template uses plain numbering
-        (`## 5. Share of voice`, not `## §5 — Share of voice`).
-      - Duplicate `<a id="sec-...">` anchors across the dashboard — symptom of
-        off-by-one widget assignment, breaks intra-page TOC links.
+      - Template-brief leakage (literal): any text widget whose `markdownContent`
+        still contains `Agent instructions`, `Reference example`, the canonical
+        Voice block, or other brief-only phrases.
+      - Template-brief leakage (semantic): widget content whose first 200
+        characters exactly match the source template's same-`i` brief — proves
+        the agent never patched the widget even if the wording shifted.
+      - Angle-bracket placeholders: `<Subject>`, `<Rival1>`, `<TopicA>`, etc.
+      - SERP-host URLs: `google.com/search`, `bing.com/search`, `duckduckgo.com/?q=...`.
+      - Fabricated placeholder URLs: `sample-url`, `example.com`, `your-url`,
+        `placeholder`, etc. — markers the agent invents when it cites a source
+        it never actually retrieved.
+      - English chart titles in a Hebrew dashboard (or vice-versa) — chart
+        `title` must match the body's dominant script.
+      - Section heading level: section widgets must use `##` (H2). `#` (H1) is
+        reserved for the page title.
+      - `§` symbol anywhere — heading OR body prose. Use plain numbering.
+      - Duplicate `<a id="sec-...">` anchors — symptom of off-by-one widget
+        assignment, breaks intra-page TOC links.
+      - Appendix link count: the §App-A web-grounding widget must carry ≥5
+        external markdown links to real articles.
 
     What it does NOT catch:
       - Content quality (depth, accuracy, tone) — those are your judgment.
@@ -708,7 +1046,8 @@ def verify_dashboard(
         1 for w in widgets
         if isinstance(w, dict) and w.get("aggregation") == "text"
     )
-    errors = _check_dashboard_for_publish(widgets)
+    template_widgets = _load_template_widgets(fs, data.get("source_template_id"))
+    errors = _check_dashboard_for_publish(widgets, template_widgets=template_widgets)
 
     if errors:
         logger.info(
@@ -812,7 +1151,11 @@ def publish_dashboard(
     # Hard pre-publish gate — same checks as verify_dashboard. The agent is
     # asked to call verify_dashboard first; this is the safety net for when
     # it doesn't, or when content drifted between verify and publish.
-    pre_publish_errors = _check_dashboard_for_publish(data.get("layout") or [])
+    template_widgets = _load_template_widgets(fs, data.get("source_template_id"))
+    pre_publish_errors = _check_dashboard_for_publish(
+        data.get("layout") or [],
+        template_widgets=template_widgets,
+    )
     if pre_publish_errors:
         logger.info(
             "publish_dashboard: REFUSED layout=%s user=%s defects=%d",

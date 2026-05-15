@@ -1,8 +1,10 @@
-"""Veille branding — logo and footer for slides."""
+"""Scolto branding — logo and footer for slides.
+
+Canonical source for the brand mark is the frontend Logo component
+(frontend/src/components/Logo.tsx). Update both when the brand changes.
+"""
 
 import logging
-import math
-from typing import Optional
 
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
@@ -12,8 +14,11 @@ from api.agent.tools.presentation.theme import TemplateTheme, set_run_font
 
 logger = logging.getLogger(__name__)
 
+BRAND_NAME = "Scolto"
+BRAND_DOT_COLOR = RGBColor(0xD9, 0x77, 0x57)  # matches Logo.tsx BRAND_DOT_COLOR
 
-def draw_veille_logo(
+
+def draw_scolto_logo(
     slide,
     cx: int,
     cy: int,
@@ -21,72 +26,52 @@ def draw_veille_logo(
     theme: TemplateTheme,
     on_accent_bg: bool = False,
 ) -> None:
-    """Draw the Veille radar logo at (cx, cy) with given radius.
+    """Draw the Scolto mark at (cx, cy) with the given half-size in EMU.
 
-    Structure mirrors Logo.tsx:
-      - 3 concentric rings (stroke, no fill)
-      - 3 satellite dots (chart palette colors)
-      - 3 thin lines from center to each satellite
-      - 1 center dot (accent color)
+    Mirrors the SVG in Logo.tsx: four corner brackets framing a solid
+    orange dot. Brackets use the theme's foreground color (or white on an
+    accent background); the centre dot is always the fixed brand orange.
     """
-    ring_color = theme.white if on_accent_bg else theme.muted
-    line_color = theme.white if on_accent_bg else theme.border
+    bracket_color = theme.white if on_accent_bg else theme.fg
 
-    def _oval(x_c, y_c, r, fill_color: Optional[RGBColor], stroke_color: RGBColor,
-              stroke_pt: float = 0.75):
-        from pptx.util import Pt
-        shape = slide.shapes.add_shape(9, x_c - r, y_c - r, r * 2, r * 2)
-        if fill_color:
-            shape.fill.solid()
-            shape.fill.fore_color.rgb = fill_color
-        else:
-            shape.fill.background()
-        shape.line.color.rgb = stroke_color
-        shape.line.width = Pt(stroke_pt)
+    # Geometry derived from the 64-unit viewBox in Logo.tsx. `radius` is
+    # the half-width of the logo's bounding box, so 1 viewBox unit = radius/32.
+    inset = radius // 8                              # 4 viewBox units
+    arm_len = int(radius * 7 / 16)                   # 14 viewBox units
+    stroke_t = max(radius // 16, 9144)               # 2 viewBox units, min 1pt
+    dot_r = max(int(radius * 7 / 32), 30000)         # 7 viewBox units
 
-    def _line(x1, y1, x2, y2, color: RGBColor):
-        from pptx.util import Pt
-        dx, dy = x2 - x1, y2 - y1
-        length = int(math.hypot(dx, dy))
-        angle_rad = math.atan2(dy, dx)
-        thickness = max(int(radius * 0.03), 8000)
-        mid_x = (x1 + x2) // 2
-        mid_y = (y1 + y2) // 2
-        cos_a = math.cos(angle_rad)
-        sin_a = math.sin(angle_rad)
-        left = mid_x - int(length * cos_a / 2) - int(thickness * sin_a / 2)
-        top = mid_y - int(length * sin_a / 2) + int(thickness * cos_a / 2)
-        shape = slide.shapes.add_shape(1, left, top, length, thickness)
+    left, right = cx - radius, cx + radius
+    top, bottom = cy - radius, cy + radius
+
+    def _rect(x, y, w, h, color: RGBColor) -> None:
+        shape = slide.shapes.add_shape(1, x, y, w, h)
         shape.fill.solid()
         shape.fill.fore_color.rgb = color
         shape.line.fill.background()
-        shape.rotation = -math.degrees(angle_rad)
 
-    # Concentric rings
-    for scale in (1.0, 0.65, 0.35):
-        _oval(cx, cy, int(radius * scale), None, ring_color, stroke_pt=0.6)
+    # Four corner brackets: each is a horizontal arm + a vertical arm
+    # meeting at the bracket's elbow, drawn so the elbow is on the *inside*
+    # of the corner (matching the SVG paths in Logo.tsx).
+    tl_x, tl_y = left + inset, top + inset
+    tr_x, tr_y = right - inset, top + inset
+    br_x, br_y = right - inset, bottom - inset
+    bl_x, bl_y = left + inset, bottom - inset
 
-    # Satellite positions (from Logo.tsx viewBox 40x40)
-    vp = radius
-    palette = theme.chart_palette
-    satellites = [
-        (cx + int(vp * 0.40), cy - int(vp * 0.40), palette[4 % len(palette)]),
-        (cx + int(vp * 0.60), cy + int(vp * 0.20), palette[1 % len(palette)]),
-        (cx - int(vp * 0.40), cy + int(vp * 0.40), palette[3 % len(palette)]),
-    ]
-    dot_r = max(int(radius * 0.10), 30000)
+    _rect(tl_x, tl_y, arm_len, stroke_t, bracket_color)
+    _rect(tl_x, tl_y, stroke_t, arm_len, bracket_color)
+    _rect(tr_x - arm_len, tr_y, arm_len, stroke_t, bracket_color)
+    _rect(tr_x - stroke_t, tr_y, stroke_t, arm_len, bracket_color)
+    _rect(br_x - arm_len, br_y - stroke_t, arm_len, stroke_t, bracket_color)
+    _rect(br_x - stroke_t, br_y - arm_len, stroke_t, arm_len, bracket_color)
+    _rect(bl_x, bl_y - stroke_t, arm_len, stroke_t, bracket_color)
+    _rect(bl_x, bl_y - arm_len, stroke_t, arm_len, bracket_color)
 
-    # Lines from center to each satellite
-    for sx, sy, _ in satellites:
-        _line(cx, cy, sx, sy, line_color)
-
-    # Satellite dots
-    for sx, sy, color in satellites:
-        _oval(sx, sy, dot_r, color, color, stroke_pt=0)
-
-    # Center dot
-    center_r = max(int(radius * 0.30), 60000)
-    _oval(cx, cy, center_r, theme.accent, theme.accent, stroke_pt=0)
+    # Centre dot (always the brand orange — matches Logo.tsx)
+    oval = slide.shapes.add_shape(9, cx - dot_r, cy - dot_r, dot_r * 2, dot_r * 2)
+    oval.fill.solid()
+    oval.fill.fore_color.rgb = BRAND_DOT_COLOR
+    oval.line.fill.background()
 
 
 def add_footer(
@@ -96,12 +81,12 @@ def add_footer(
     slide_height: int,
     on_accent_bg: bool = False,
 ) -> None:
-    """Add 'Powered by Veille' footer with logo to bottom-right corner."""
+    """Add 'Powered by Scolto' footer with logo to bottom-right corner."""
     logo_r = Inches(0.115)
     logo_cx = slide_width - Inches(0.18) - logo_r
     logo_cy = slide_height - Inches(0.22)
 
-    draw_veille_logo(slide, logo_cx, logo_cy, logo_r, theme, on_accent_bg=on_accent_bg)
+    draw_scolto_logo(slide, logo_cx, logo_cy, logo_r, theme, on_accent_bg=on_accent_bg)
 
     text_color = theme.white if on_accent_bg else theme.muted
     text_w = Inches(1.85)
@@ -115,5 +100,5 @@ def add_footer(
     para = tf.paragraphs[0]
     para.alignment = PP_ALIGN.RIGHT
     run = para.add_run()
-    run.text = "Powered by Veille"
+    run.text = f"Powered by {BRAND_NAME}"
     set_run_font(run, 7.5, theme, color=text_color)

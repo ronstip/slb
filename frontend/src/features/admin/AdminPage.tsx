@@ -12,6 +12,7 @@ import { UserDetailSection } from './sections/UserDetailSection.tsx';
 import { ActivitySection } from './sections/ActivitySection.tsx';
 import { CollectionsSection } from './sections/CollectionsSection.tsx';
 import { RevenueSection } from './sections/RevenueSection.tsx';
+import { WaitlistSection } from './sections/WaitlistSection.tsx';
 
 const SECTION_TITLES: Record<AdminSection, string> = {
   overview: 'Overview',
@@ -19,6 +20,7 @@ const SECTION_TITLES: Record<AdminSection, string> = {
   activity: 'Activity',
   collections: 'Collections',
   revenue: 'Revenue',
+  waitlist: 'Waitlist',
 };
 
 export function AdminPage() {
@@ -48,7 +50,7 @@ export function AdminPage() {
     );
   }
 
-  const validSections: AdminSection[] = ['overview', 'users', 'activity', 'collections', 'revenue'];
+  const validSections: AdminSection[] = ['overview', 'users', 'activity', 'collections', 'revenue', 'waitlist'];
   const activeSection: AdminSection =
     (params.section && validSections.includes(params.section as AdminSection))
       ? params.section as AdminSection
@@ -107,6 +109,7 @@ export function AdminPage() {
               {activeSection === 'activity' && <ActivitySection />}
               {activeSection === 'collections' && <CollectionsSection />}
               {activeSection === 'revenue' && <RevenueSection />}
+              {activeSection === 'waitlist' && <WaitlistSection />}
             </>
           )}
         </div>
