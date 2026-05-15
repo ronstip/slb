@@ -191,6 +191,31 @@ class SocialWidgetFilters(BaseModel):
     conditions: list[FilterCondition] | None = None
 
 
+class ReportScope(BaseModel):
+    """The data scope a report commits to.
+
+    Stored on the dashboard layout doc when an agent generates a report. Charts
+    apply this as a base filter before viewer-applied filters; viewer filters
+    intersect with the scope (can narrow, cannot widen). Absence (= None) means
+    standalone mode — viewer filters apply freely as today.
+
+    Dimensions mirror `SocialWidgetFilters` minus widget-only `conditions`.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    sentiment: list[str] | None = None
+    emotion: list[str] | None = None
+    platform: list[str] | None = None
+    language: list[str] | None = None
+    content_type: list[str] | None = None
+    collection: list[str] | None = None
+    channels: list[str] | None = None
+    themes: list[str] | None = None
+    entities: list[str] | None = None
+    date_range: DateRange | None = None
+
+
 class TableColumn(BaseModel):
     """One column in a custom table widget. A column is either a metric
     aggregation or a dimension extraction (kind='dimension')."""
@@ -258,6 +283,7 @@ class DashboardLayout(BaseModel):
     layout: list[SocialDashboardWidget] = Field(max_length=MAX_WIDGETS)
     filterBarFilters: list[str] | None = None
     orientation: DashboardOrientation | None = None
+    reportScope: ReportScope | None = None
 
 
 def is_chart_type_valid_for(aggregation: str, chart_type: str) -> bool:

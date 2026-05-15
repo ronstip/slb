@@ -138,6 +138,10 @@ class SharedDashboardDataResponse(BaseModel):
     layout: list[dict[str, Any]] | None = None
     filterBarFilters: list[str] | None = None
     orientation: Literal["horizontal", "vertical"] | None = None
+    # The data scope this dashboard's report committed to (if any). The frontend
+    # locks the filter bar chips for these dimensions; viewer filters intersect
+    # with the scope. Absence = standalone dashboard, no locking.
+    reportScope: dict[str, Any] | None = None
 
 
 class BriefingShareResponse(BaseModel):

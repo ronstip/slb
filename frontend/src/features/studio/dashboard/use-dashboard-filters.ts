@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { DashboardPost } from '../../../api/types.ts';
+import type { ReportScope } from './types-social-dashboard.ts';
 
 export interface DashboardFilters {
   sentiment: string[];
@@ -90,6 +91,62 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
   };
 }
 
+/** Array-dimension intersection: when the scope constrains a dimension, the
+ *  viewer's selection can only NARROW the scope's set, not introduce values
+ *  outside it. Empty viewer selection means "all values within the scope" —
+ *  we promote the scope's list to the active filter. */
+function intersectArrayDimension(
+  scopeValues: string[] | null | undefined,
+  viewerValues: string[],
+): string[] {
+  if (!scopeValues || scopeValues.length === 0) return viewerValues;
+  if (viewerValues.length === 0) return [...scopeValues];
+  const scopeSet = new Set(scopeValues);
+  return viewerValues.filter((v) => scopeSet.has(v));
+}
+
+/** Date intersection: viewer `from` can only move later than scope.from;
+ *  viewer `to` can only move earlier than scope.to. Either or both ends may
+ *  be open on the scope or on the viewer's selection. */
+function intersectDateRange(
+  scope: { from: string | null; to: string | null } | null | undefined,
+  viewer: { from: string | null; to: string | null },
+): { from: string | null; to: string | null } {
+  if (!scope) return viewer;
+  const from =
+    viewer.from && scope.from
+      ? viewer.from > scope.from ? viewer.from : scope.from
+      : (viewer.from ?? scope.from ?? null);
+  const to =
+    viewer.to && scope.to
+      ? viewer.to < scope.to ? viewer.to : scope.to
+      : (viewer.to ?? scope.to ?? null);
+  return { from, to };
+}
+
+/** Combine the report's committed scope with the viewer's current filter
+ *  selections. The scope is the floor — viewer filters can narrow each
+ *  dimension further but never widen past the scope. When no scope is set
+ *  (standalone mode), this is the identity function. */
+function intersectWithScope(
+  viewer: DashboardFilters,
+  scope: ReportScope | null | undefined,
+): DashboardFilters {
+  if (!scope) return viewer;
+  return {
+    sentiment: intersectArrayDimension(scope.sentiment, viewer.sentiment),
+    emotion: intersectArrayDimension(scope.emotion, viewer.emotion),
+    entities: intersectArrayDimension(scope.entities, viewer.entities),
+    language: intersectArrayDimension(scope.language, viewer.language),
+    collection: intersectArrayDimension(scope.collection, viewer.collection),
+    content_type: intersectArrayDimension(scope.content_type, viewer.content_type),
+    platform: intersectArrayDimension(scope.platform, viewer.platform),
+    themes: intersectArrayDimension(scope.themes, viewer.themes),
+    channels: intersectArrayDimension(scope.channels, viewer.channels),
+    date_range: intersectDateRange(scope.date_range, viewer.date_range),
+  };
+}
+
 function applyFilters(posts: DashboardPost[], filters: DashboardFilters): DashboardPost[] {
   return posts.filter((p) => {
     if (filters.sentiment.length > 0 && !filters.sentiment.includes(p.sentiment || '')) return false;
@@ -120,10 +177,24 @@ function applyFilters(posts: DashboardPost[], filters: DashboardFilters): Dashbo
   });
 }
 
-export function useDashboardFilters(allPosts: DashboardPost[]) {
+export function useDashboardFilters(
+  allPosts: DashboardPost[],
+  reportScope?: ReportScope | null,
+) {
   const [filters, setFilters] = useState<DashboardFilters>(INITIAL_FILTERS);
 
-  const filteredPosts = useMemo(() => applyFilters(allPosts, filters), [allPosts, filters]);
+  // The scope is the floor for every chart aggregation. Viewer filters narrow
+  // within it; they cannot widen past it. When no scope is committed (standalone
+  // dashboards), this is the identity transformation and behavior is unchanged.
+  const effectiveFilters = useMemo(
+    () => intersectWithScope(filters, reportScope),
+    [filters, reportScope],
+  );
+
+  const filteredPosts = useMemo(
+    () => applyFilters(allPosts, effectiveFilters),
+    [allPosts, effectiveFilters],
+  );
   const availableOptions = useMemo(() => extractOptions(allPosts), [allPosts]);
 
   const activeFilterCount = useMemo(() => {
@@ -164,5 +235,6 @@ export function useDashboardFilters(allPosts: DashboardPost[]) {
     availableOptions,
     activeFilterCount,
     clearAll,
+    effectiveFilters,
   };
 }

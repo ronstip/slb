@@ -17,6 +17,7 @@ from api.agent.callbacks import (
     dedup_sql_calls,
     enforce_collection_access,
     enforce_data_window_in_sql,
+    enforce_verify_before_publish,
     gate_expensive_tools,
     get_context_injector,
     log_tool_invocation,
@@ -164,6 +165,7 @@ def create_agent(
     )
     before_tool_chain = [
         enforce_data_window_in_sql,
+        enforce_verify_before_publish,
         dedup_sql_calls,
         enforce_collection_access,
         gate_expensive_tools,
