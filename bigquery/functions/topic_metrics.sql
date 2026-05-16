@@ -85,6 +85,7 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.topic_metrics(
             m.is_representative,
             p.platform,
             p.channel_handle,
+            p.title,
             p.posted_at,
             p.media_refs,
             IF(p.channel_handle IS NULL, NULL,
@@ -283,23 +284,63 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.topic_metrics(
         LEFT JOIN enr_asof e ON e.post_id = rep_id
         GROUP BY c.cluster_id
     ),
-    -- ===== Thumbnail: best-ranked member's first media =====
-    thumb_ranked AS (
-        SELECT cluster_id, media_refs,
-               ROW_NUMBER() OVER (
-                   PARTITION BY cluster_id
-                   ORDER BY is_representative DESC, views DESC
-               ) AS rn
+    -- ===== Thumbnail: prefer GCS-backed image, then engagement-weighted =====
+    -- Filters to media_type='image' (videos/audio don't render as thumbnails)
+    -- and prefers posts with a GCS-backed copy (stable, always renderable);
+    -- external-only URLs fall through and are routed via the frontend's
+    -- /media-proxy with onError fallback to the styled placeholder.
+    thumb_candidates AS (
+        SELECT cluster_id, is_representative, views, likes,
+               JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') AS original_url,
+               JSON_EXTRACT_SCALAR(media_refs, '$[0].gcs_uri') AS gcs_uri,
+               JSON_EXTRACT_SCALAR(media_refs, '$[0].media_type') AS media_type
         FROM scoped_members
         WHERE media_refs IS NOT NULL
     ),
+    thumb_ranked AS (
+        SELECT cluster_id, original_url, gcs_uri,
+               ROW_NUMBER() OVER (
+                   PARTITION BY cluster_id
+                   ORDER BY
+                     CASE WHEN gcs_uri IS NOT NULL AND gcs_uri != '' THEN 0 ELSE 1 END,
+                     is_representative DESC,
+                     (views + likes * 10) DESC
+               ) AS rn
+        FROM thumb_candidates
+        WHERE media_type = 'image'
+          AND (
+            (gcs_uri IS NOT NULL AND gcs_uri != '')
+            OR (original_url IS NOT NULL AND original_url != '')
+          )
+    ),
     thumbnails AS (
-        SELECT cluster_id,
-               JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') AS thumbnail_url,
-               JSON_EXTRACT_SCALAR(media_refs, '$[0].gcs_uri') AS thumbnail_gcs_uri
+        SELECT cluster_id, original_url AS thumbnail_url, gcs_uri AS thumbnail_gcs_uri
         FROM thumb_ranked
         WHERE rn = 1
-          AND JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') IS NOT NULL
+    ),
+    -- ===== Sample posts: top-K members per cluster, representative-first.
+    -- Engagement weighting matches the legacy briefing loader so callers can
+    -- swap to the TVF without behaviour shift.
+    sample_ranked AS (
+        SELECT cluster_id, post_id, platform, channel_handle, title, ai_summary,
+               sentiment, views, likes,
+               ROW_NUMBER() OVER (
+                   PARTITION BY cluster_id
+                   ORDER BY is_representative DESC,
+                            (views + likes * 10) DESC
+               ) AS rn
+        FROM scoped_members
+    ),
+    sample_posts_json AS (
+        SELECT cluster_id,
+               TO_JSON(ARRAY_AGG(
+                   STRUCT(post_id, platform, channel_handle AS channel,
+                          title, ai_summary, sentiment, views, likes)
+                   ORDER BY rn
+               )) AS sample_posts
+        FROM sample_ranked
+        WHERE rn <= 10
+        GROUP BY cluster_id
     ),
     -- ===== custom_fields auto-discovery (same shape as entity_metrics) =====
     custom_long AS (
@@ -453,6 +494,12 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.topic_metrics(
         c.estimated_shares,
         SAFE_DIVIDE(c.estimated_post_count, c.post_count) AS blowup_factor,
         c.recency_score,
+        -- Composite signal score (matches legacy Python ranking in briefing.py):
+        -- recency_score + log1p(total_views)*0.4 + log1p(post_count)*1.5.
+        -- Lets callers `ORDER BY signal_score DESC LIMIT N` directly.
+        (c.recency_score
+         + LN(1 + COALESCE(c.total_views, 0)) * 0.4
+         + LN(1 + COALESCE(c.post_count, 0)) * 1.5) AS signal_score,
         -- Derived from pre-materialised
         SAFE_DIVIDE(
             c.positive_count - c.negative_count,
@@ -482,6 +529,9 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.topic_metrics(
         chcj.channel_type_counts,
         -- Representative posts' AI summaries
         rs.representative_summaries,
+        -- Top-K sample posts (JSON array; ordered representative-first, then
+        -- engagement-weighted). Replaces the legacy `load_topic_posts` loader.
+        sp.sample_posts,
         -- Custom fields (auto-discovered, JSON)
         cfpc.custom_fields_stats,
         -- Display helpers
@@ -511,6 +561,7 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.topic_metrics(
     LEFT JOIN channel_type_counts_json  chcj USING (cluster_id)
     LEFT JOIN mass_times                mt   USING (cluster_id)
     LEFT JOIN rep_summaries             rs   USING (cluster_id)
+    LEFT JOIN sample_posts_json         sp   USING (cluster_id)
     LEFT JOIN thumbnails                th   USING (cluster_id)
     LEFT JOIN custom_fields_per_cluster cfpc USING (cluster_id)
 );

@@ -1,25 +1,18 @@
 """Persistence for LLM-taxonomy topics.
 
-Writes two destinations:
+Writes to BigQuery `social_listening.topic_clusters` — one row per topic with
+denormalised membership (member_post_ids ARRAY), real aggregates over
+sampled members (sentiment counts, view/like/comment/share totals,
+earliest/median/latest post time), and extrapolated full-pool metrics
+(per-topic blowup factor = estimated_post_count / post_count).
 
-  1. BigQuery `social_listening.topic_clusters` — one row per topic with
-     denormalised membership (member_post_ids ARRAY), real aggregates over
-     sampled members (sentiment counts, view/like/comment/share totals,
-     earliest/median/latest post time), and extrapolated full-pool metrics
-     (per-topic blowup factor = estimated_post_count / post_count).
+Topic UUIDs are assigned here (not in pass-2) so the same Topic object can be
+re-written without changing IDs.
 
-  2. Firestore `agents/{agent_id}/topics/{cluster_uuid}` — one doc per topic.
-     v1-compat fields (topic_name, topic_summary, topic_keywords, post_count,
-     representative_post_ids, recency_score, algorithm_version, created_at) +
-     v2 fields (header, subheader, beat_type, anchor_*, member_post_ids,
-     estimated_pool_count, estimated_pool_count_ci_low/high).
-
-  Topic UUIDs are assigned here (not in pass-2) so the same Topic object can be
-  re-written without changing IDs.
-
-Side-effects also include `agents/{agent_id}` updates: `topics_count`,
-`topics_generated_at`. Deletes existing topics for the agent before writing
-new ones — there is only ever one current topic snapshot per agent.
+Also updates `agents/{agent_id}` agent-doc fields: `topics_count`,
+`topics_generated_at`, `topics_algorithm_version`. The per-cluster
+`topics/` Firestore subcollection was retired in favour of
+`topic_metrics(@agent_id)`; readers query that TVF directly.
 """
 
 from __future__ import annotations
@@ -69,11 +62,8 @@ def write_topic_results(
 
     pid_to_post = {p["post_id"]: p for p in sampled_posts}
 
-    # Assign topic UUIDs deterministically per call so BQ rows + Firestore docs
-    # share the same cluster_id.
     topic_uuids = [str(uuid.uuid4()) for _ in topics]
 
-    # 1. BQ rows — one per topic, denormalised membership + aggregates.
     cluster_rows = [
         _build_topic_cluster_row(
             agent_id, t, uid, pid_to_post, clustered_at, clustered_at_iso,
@@ -81,38 +71,19 @@ def write_topic_results(
         for t, uid in zip(topics, topic_uuids)
     ]
 
-    # 2. Firestore docs
-    topic_docs = [
-        _build_topic_doc(t, uid, pid_to_post, clustered_at)
-        for t, uid in zip(topics, topic_uuids)
-    ]
-
-    # 3. Execute writes
     cluster_rows_written = 0
     if cluster_rows:
         for i in range(0, len(cluster_rows), 500):
             bq.insert_rows("topic_clusters", cluster_rows[i : i + 500])
         cluster_rows_written = len(cluster_rows)
-        logger.info("Wrote %d topic_clusters rows to BQ for agent %s", cluster_rows_written, agent_id)
+        logger.info(
+            "Wrote %d topic_clusters rows to BQ for agent %s",
+            cluster_rows_written, agent_id,
+        )
 
-    # Firestore: delete-and-replace (one snapshot per agent)
-    topics_ref = (
-        fs._db.collection("agents").document(agent_id).collection("topics")
-    )
-    if delete_existing:
-        deleted = 0
-        for doc in topics_ref.stream():
-            doc.reference.delete()
-            deleted += 1
-        logger.info("Deleted %d existing topic docs for agent %s", deleted, agent_id)
-
-    for doc, uid in zip(topic_docs, topic_uuids):
-        topics_ref.document(uid).set(doc)
-    logger.info(
-        "Wrote %d topic docs to Firestore for agent %s", len(topic_docs), agent_id,
-    )
-
-    # 4. Agent-level metadata
+    # Agent-doc metadata (summary fields the studio header reads). The
+    # per-cluster `topics/` subcollection used to be the readers' source; that
+    # role moved to `topic_metrics(@agent_id)`.
     fs.update_agent(
         agent_id,
         topics_count=len(topics),
@@ -120,43 +91,15 @@ def write_topic_results(
         topics_algorithm_version=ALGORITHM_VERSION,
     )
 
+    # `delete_existing` retained for signature back-compat: there is no
+    # subcollection to delete anymore, but callers (tests, manual runs) may
+    # still pass it.
+    del delete_existing
+
     return {
         "topics_written": len(topics),
         "topic_clusters_written": cluster_rows_written,
         "algorithm_version": ALGORITHM_VERSION,
-    }
-
-
-def _build_topic_doc(
-    t: Topic,
-    cluster_uuid: str,
-    pid_to_post: dict[str, dict],
-    clustered_at: datetime,
-) -> dict[str, Any]:
-    rep_ids = _representative_post_ids(t.member_post_ids, pid_to_post)
-    member_posts = [pid_to_post.get(pid) or {} for pid in t.member_post_ids]
-    return {
-        # v1-compat surface (existing UI / queries read these)
-        "topic_name": t.header,
-        "topic_summary": t.subheader,
-        "topic_keywords": list(t.keywords or []),
-        "post_count": len(t.member_post_ids),
-        "representative_post_ids": rep_ids,
-        "recency_score": _recency_score(member_posts, clustered_at),
-        "algorithm_version": ALGORITHM_VERSION,
-        "created_at": clustered_at,
-        # v2 fields
-        "header": t.header,
-        "subheader": t.subheader,
-        "beat_type": getattr(t, "beat_type", None),
-        "anchor_entities": list(t.anchor_entities or []),
-        "anchor_themes": list(t.anchor_themes or []),
-        "anchor_brands": list(t.anchor_brands or []),
-        "anchor_content_types": list(t.anchor_content_types or []),
-        "member_post_ids": list(t.member_post_ids or []),
-        "estimated_pool_count": t.estimated_pool_count,
-        "estimated_pool_count_ci_low": t.estimated_pool_count_ci_low,
-        "estimated_pool_count_ci_high": t.estimated_pool_count_ci_high,
     }
 
 
