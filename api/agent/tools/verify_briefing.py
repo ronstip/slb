@@ -112,7 +112,12 @@ def verify_briefing(tool_context: ToolContext) -> dict:
 
     # ── 3. LLM verdict ────────────────────────────────────────────────
     try:
-        verdict = _llm_verify(briefing, facts)
+        verdict = _llm_verify(
+            briefing, facts,
+            user_id=state.get("user_id", ""),
+            agent_id=agent_id,
+            session_id=state.get("session_id"),
+        )
     except Exception as e:
         logger.exception(
             "verify_briefing: LLM call failed for agent=%s run=%s", agent_id, run_id,
@@ -264,7 +269,13 @@ def _gather_ground_truth(
 # ─── LLM verification ────────────────────────────────────────────────────
 
 
-def _llm_verify(briefing: dict, facts: dict) -> dict[str, Any]:
+def _llm_verify(
+    briefing: dict,
+    facts: dict,
+    user_id: str = "",
+    agent_id: str | None = None,
+    session_id: str | None = None,
+) -> dict[str, Any]:
     """Call Gemini with structured output to score the briefing.
 
     Mirrors the pattern in `api/agent/evals/judge.py`: bare genai.Client
@@ -297,6 +308,18 @@ def _llm_verify(briefing: dict, facts: dict) -> dict[str, Any]:
         contents=body,
         config={"response_mime_type": "application/json"},
     )
+
+    from api.services.cost_meter import log_gemini_response
+
+    log_gemini_response(
+        resp,
+        feature="verify_briefing",
+        model=settings.meta_agent_model,
+        user_id=user_id,
+        agent_id=agent_id,
+        session_id=session_id,
+    )
+
     raw = resp.text.strip()
     try:
         parsed = json.loads(raw)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { useHead } from '@unhead/react';
 import { AlertTriangle, Download } from 'lucide-react';
 import { Logo } from '../../components/Logo.tsx';
 import { Button } from '../../components/ui/button.tsx';
@@ -40,6 +41,9 @@ function toWidgetData(raw: Record<string, unknown>): WidgetData {
 }
 
 export function SharedArtifactPage() {
+  // Token-gated; must never be indexed.
+  useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
+
   const { token } = useParams<{ token: string }>();
 
   // The app shell sets a global body min-width: 1280px for desktop-only

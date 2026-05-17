@@ -443,6 +443,8 @@ class PipelineRunner:
         """
         try:
             from google.cloud import tasks_v2
+
+            from api.middleware.request_id import outbound_headers
         except Exception:
             logger.exception("Cannot import tasks_v2 — continuation not scheduled for %s", self.collection_id)
             return False
@@ -468,7 +470,7 @@ class PipelineRunner:
             http_request = {
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{worker_url}/collection/run",
-                "headers": {"Content-Type": "application/json"},
+                "headers": outbound_headers({"Content-Type": "application/json"}),
                 "body": json.dumps({
                     "collection_id": self.collection_id,
                     "continuation": True,
@@ -910,23 +912,49 @@ class PipelineRunner:
             # Classify posts and set initial pipeline state
             self.state_manager.mark_collected(in_range)
 
-            # Usage tracking (fire-and-forget)
+            # Usage tracking (fire-and-forget) — group by provider so each
+            # row carries the correct cost-attribution label.
             actual_stored = len(new_posts) - failed_posts
             if owner_user_id and actual_stored > 0:
-                self.fs.increment_usage(owner_user_id, owner_org_id, "posts_collected", actual_stored)
-                def _log_event(uid=owner_user_id, oid=owner_org_id, cid=self.collection_id, cnt=actual_stored):
+                from api.services.usage_service import track_posts_collected
+
+                # `new_posts` here is the still-failed-included slice; we only
+                # want a per-provider tally for posts that actually landed.
+                # `failed_posts` is a count of insert failures, not specific
+                # rows, so we approximate by scaling each provider group.
+                provider_counts: dict[str, int] = {}
+                for p in new_posts:
+                    key = p.crawl_provider or "unknown"
+                    provider_counts[key] = provider_counts.get(key, 0) + 1
+                if failed_posts and sum(provider_counts.values()) > 0:
+                    total = sum(provider_counts.values())
+                    # Distribute failed_posts pro-rata so the totals still sum
+                    # to `actual_stored`. Tiny inaccuracy at the per-provider
+                    # level is acceptable — we're already in BQ-insert-failure
+                    # territory.
+                    remaining = actual_stored
+                    items = list(provider_counts.items())
+                    for i, (prov, cnt) in enumerate(items):
+                        if i == len(items) - 1:
+                            provider_counts[prov] = max(remaining, 0)
+                        else:
+                            scaled = int(round(actual_stored * cnt / total))
+                            provider_counts[prov] = scaled
+                            remaining -= scaled
+
+                for prov, cnt in provider_counts.items():
+                    if cnt <= 0:
+                        continue
                     try:
-                        self.bq.insert_rows("usage_events", [{
-                            "event_id": str(uuid4()),
-                            "event_type": "posts_collected",
-                            "user_id": uid,
-                            "org_id": oid,
-                            "collection_id": cid,
-                            "metadata": json.dumps({"count": cnt}),
-                        }])
+                        track_posts_collected(
+                            owner_user_id, owner_org_id, self.collection_id,
+                            count=cnt, provider=prov,
+                        )
                     except Exception:
-                        logger.warning("Failed to log posts_collected event", exc_info=True)
-                threading.Thread(target=_log_event, daemon=True).start()
+                        logger.warning(
+                            "Failed to track posts_collected for provider=%s",
+                            prov, exc_info=True,
+                        )
 
             # Log progress to task activity feed (every 3 batches to avoid spam)
             if batch_index % 3 == 1 or batch_index == 1:

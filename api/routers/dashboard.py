@@ -328,6 +328,17 @@ async def compose_widget_field(
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
+
+        from api.services.cost_meter import log_gemini_response
+
+        log_gemini_response(
+            response,
+            feature="dashboard_gen",
+            model=settings.gemini_model,
+            user_id=user.uid,
+            agent_id=req.agent_id,
+        )
+
         return (response.text or "").strip()
 
     try:

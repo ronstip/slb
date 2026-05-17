@@ -1,0 +1,65 @@
+# Scolto — Your team of senior AI analysts
+
+## What is Scolto?
+
+Scolto is a team of senior AI analysts that brand, marketing, and competitive-intelligence teams can brief on demand. Instead of hiring or contracting human analysts for every research question, marketing leaders brief Scolto and receive structured findings — social listening reports, trend briefings, campaign analyses, and competitor breakdowns — produced by AI analysts that work continuously and at scale.
+
+The product is available at https://scolto.com.
+
+## Who is Scolto for?
+
+- **Brand and marketing teams** who need ongoing visibility into what people are saying about them, their competitors, and their category.
+- **Insights and strategy leaders** who need analyst-grade outputs without hiring a full in-house research team.
+- **Competitive intelligence functions** that need to track what rival brands ship, say, and how the market reacts.
+- **Agencies and consultancies** who deliver brand insight work to clients and want AI analysts as part of the team.
+
+## What Scolto does
+
+### Social listening
+
+Scolto monitors public conversation across the platforms where brand discourse happens — short-form video, public posts, reviews, forums, and press. It surfaces volume changes, sentiment shifts, emerging narratives, and the specific voices driving each conversation. The analyst output explains what is happening, why it matters, and what to do about it — not just a dashboard of numbers.
+
+### Trend detection
+
+Scolto's analysts watch for the early signals that a new cultural moment, format, or category behavior is forming. They flag trends while the team still has time to act, with context on who is driving them, where they are growing, and how they map to the brand's existing strategy.
+
+### Campaign tracking
+
+When a campaign goes live, Scolto measures reach, sentiment, share-of-voice, and the lift versus pre-launch baseline. It tracks earned conversation as well as paid surfaces, and it can compare against competitor campaigns running in the same window.
+
+### Competitive intelligence
+
+Scolto tracks competing brands continuously — what they ship, what they post, what messaging they test, and how their audiences respond. The result is an always-current view of the competitive set, surfaced in the same analyst format as the rest of the product.
+
+## How Scolto works
+
+Marketing and brand teams brief Scolto the way they would brief a senior analyst: describe the question, the brand context, and the deliverable expected. Scolto's AI analysts plan the research, pull the relevant signals from across the public web, structure the findings, and return a briefing or artifact the team can act on.
+
+Outputs are presented as readable, citable briefings — not raw dashboards — so they can be shared with stakeholders, dropped into decks, or fed into downstream marketing systems.
+
+## Why teams choose Scolto
+
+- **Analyst-grade outputs, on demand.** Scolto returns the kind of synthesis a senior research analyst would produce, not just charts to interpret.
+- **Continuous, not project-based.** Once briefed, Scolto keeps watching — so the team gets ongoing updates as the conversation, the campaign, or the competitor evolves.
+- **Built for brand and marketing context.** The analysts are tuned to brand strategy work: positioning, messaging, audience reaction, share-of-voice — not generic data-science use cases.
+- **Scalable.** A brand team can brief Scolto on dozens of questions in parallel; a single human analyst can only run a few at a time.
+
+## Frequently asked questions
+
+### What is Scolto?
+Scolto is a team of senior AI analysts available on demand to brand, marketing, and competitive-intelligence teams for social listening, trend detection, campaign tracking, and competitive intelligence.
+
+### How do Scolto's AI analysts work?
+Teams brief Scolto with a research question, brand context, and the deliverable they want. The AI analysts plan the research, gather signals from across the public web, and return a structured briefing the team can read, share, and act on.
+
+### What sources does Scolto monitor?
+Scolto monitors public conversation across major social and content platforms, public reviews, forums, and press coverage. Coverage focuses on the surfaces where brand and category conversation actually happens.
+
+### How is Scolto different from a social-listening dashboard?
+Dashboards show numbers; Scolto produces analyst briefings. The output explains what is happening, why it matters for the brand, and what to do — closer to the deliverable from a senior researcher than from a tool.
+
+### Who uses Scolto?
+Brand, marketing, insights, and competitive-intelligence teams at companies that need ongoing analyst-grade visibility into their category, their audience, and their competitors. Agencies and consultancies use Scolto to extend the analyst capacity they offer clients.
+
+### Where can I learn more?
+The home page is https://scolto.com. The short index for AI crawlers is at https://scolto.com/llms.txt.

@@ -1,8 +1,32 @@
 ﻿import { useState, useEffect, type ReactNode, type CSSProperties } from 'react';
+import { useHead } from '@unhead/react';
 import { useAuth } from './useAuth.ts';
 import { captureGoogleEmail } from './firebase.ts';
 import { apiPost } from '../api/client.ts';
 import { ScoltoMark } from '../components/Logo.tsx';
+
+const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
+  {
+    q: 'What is Scolto?',
+    a: 'Scolto is a team of senior AI analysts available on demand to brand, marketing, and competitive-intelligence teams for social listening, trend detection, campaign tracking, and competitive intelligence.',
+  },
+  {
+    q: "How do Scolto's AI analysts work?",
+    a: "Teams brief Scolto with a research question, brand context, and the deliverable they want. The AI analysts plan the research, gather signals from across the public web, and return a structured briefing the team can read, share, and act on.",
+  },
+  {
+    q: 'What sources does Scolto monitor?',
+    a: 'Scolto monitors public conversation across major social and content platforms, public reviews, forums, and press coverage. Coverage focuses on the surfaces where brand and category conversation actually happens.',
+  },
+  {
+    q: 'How is Scolto different from a social-listening dashboard?',
+    a: 'Dashboards show numbers; Scolto produces analyst briefings. The output explains what is happening, why it matters for the brand, and what to do — closer to the deliverable from a senior researcher than from a tool.',
+  },
+  {
+    q: 'Who uses Scolto?',
+    a: 'Brand, marketing, insights, and competitive-intelligence teams at companies that need ongoing analyst-grade visibility into their category, their audience, and their competitors. Agencies and consultancies use Scolto to extend the analyst capacity they offer clients.',
+  },
+];
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const LP_BRAND = {
@@ -2495,9 +2519,86 @@ function WaitlistModal({
   );
 }
 
+// ── FAQ ───────────────────────────────────────────────────────────────────────
+
+const LP_FAQ = () => (
+  <section
+    id="faq"
+    className="lp-section lp-faq"
+    style={{ padding: '88px 64px 96px', background: LP_BRAND.cream2, borderTop: `1px solid ${LP_BRAND.rule}` }}
+  >
+    <div style={{ maxWidth: 880, margin: '0 auto' }}>
+      <LP_Mono color={LP_BRAND.orange} style={{ marginBottom: 16 }}>Frequently asked</LP_Mono>
+      <h2
+        className="lp-section-h2"
+        style={{
+          fontFamily: "'Fraunces',serif",
+          fontWeight: 400,
+          fontSize: 48,
+          lineHeight: 1.05,
+          letterSpacing: -1.2,
+          color: LP_BRAND.ink,
+          margin: '0 0 40px',
+        }}
+      >
+        Questions teams ask before briefing Scolto
+      </h2>
+      <dl style={{ display: 'flex', flexDirection: 'column', gap: 28, margin: 0 }}>
+        {FAQ_ITEMS.map((item) => (
+          <div key={item.q} style={{ borderTop: `1px solid ${LP_BRAND.rule}`, paddingTop: 20 }}>
+            <dt>
+              <h3
+                style={{
+                  fontFamily: "'Inter Tight',sans-serif",
+                  fontWeight: 600,
+                  fontSize: 19,
+                  lineHeight: 1.35,
+                  color: LP_BRAND.ink,
+                  margin: '0 0 10px',
+                }}
+              >
+                {item.q}
+              </h3>
+            </dt>
+            <dd
+              style={{
+                fontFamily: "'Inter Tight',sans-serif",
+                fontSize: 16,
+                lineHeight: 1.6,
+                color: LP_BRAND.slate2,
+                margin: 0,
+              }}
+            >
+              {item.a}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  </section>
+);
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function LandingPage() {
+  // Page-scoped structured data for AI search engines and Google rich results.
+  useHead({
+    script: [
+      {
+        type: 'application/ld+json',
+        innerHTML: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: FAQ_ITEMS.map((item) => ({
+            '@type': 'Question',
+            name: item.q,
+            acceptedAnswer: { '@type': 'Answer', text: item.a },
+          })),
+        }),
+      },
+    ],
+  });
+
   const { signIn, signInWithMicrosoft } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'microsoft' | null>(null);
@@ -2821,6 +2922,7 @@ export function LandingPage() {
       <LP_Deliverables />
       <LP_Channels />
       <LP_WhyScolto />
+      <LP_FAQ />
       <LP_Invite openWaitlist={() => openWaitlist()} />
       <LP_Footer />
 

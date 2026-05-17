@@ -24,6 +24,49 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SL Workers")
 
+# Honor X-Request-ID forwarded from the API (via Cloud Tasks headers) so
+# worker-side cost rows can be paired with the originating user request.
+from api.middleware.request_id import RequestIDMiddleware  # noqa: E402
+
+app.add_middleware(RequestIDMiddleware)
+
+
+def _bind_cost_context_from_collection(collection_id: str):
+    """Look up the owning user/org for a collection and bind it on the
+    cost-meter ContextVar so any downstream Gemini call in this request
+    attributes cost correctly. Returns the contextvar token (or ``None``
+    if the lookup failed — telemetry must never block work).
+    """
+    if not collection_id:
+        return None
+    try:
+        from api.deps import get_fs
+        from api.services.cost_meter import set_collection_context
+
+        status = get_fs().get_collection_status(collection_id) or {}
+        return set_collection_context(
+            user_id=status.get("user_id"),
+            org_id=status.get("org_id"),
+            collection_id=collection_id,
+            agent_id=status.get("agent_id"),
+        )
+    except Exception:
+        logger.debug(
+            "Could not bind cost context for collection %s", collection_id, exc_info=True,
+        )
+        return None
+
+
+def _reset_cost_context(token) -> None:
+    if token is None:
+        return
+    try:
+        from api.services.cost_meter import reset_collection_context
+
+        reset_collection_context(token)
+    except Exception:
+        pass
+
 
 @app.post("/collection/run")
 async def run_collection_handler(request: Request):
@@ -41,6 +84,7 @@ async def run_collection_handler(request: Request):
     logger.info(
         "Starting collection worker for %s (continuation=%s)", collection_id, continuation,
     )
+    cost_token = _bind_cost_context_from_collection(collection_id)
     try:
         from workers.pipeline import run_pipeline
 
@@ -53,6 +97,8 @@ async def run_collection_handler(request: Request):
         # Retrying a failed pipeline causes duplicate BrightData snapshots and wasted money.
         logger.exception("Collection worker failed for %s", collection_id)
         return {"status": "error", "collection_id": collection_id, "error": str(e)}
+    finally:
+        _reset_cost_context(cost_token)
 
 
 @app.post("/enrichment/run")
@@ -64,6 +110,7 @@ async def run_enrichment_handler(request: Request):
     min_likes = body.get("min_likes", 0)
 
     logger.info("Starting enrichment worker (collection=%s, posts=%d)", collection_id, len(post_ids))
+    cost_token = _bind_cost_context_from_collection(collection_id)
     try:
         if post_ids:
             from workers.enrichment.worker import run_enrichment_for_posts
@@ -79,6 +126,8 @@ async def run_enrichment_handler(request: Request):
     except Exception as e:
         logger.exception("Enrichment worker failed")
         return {"status": "error", "error": str(e)}
+    finally:
+        _reset_cost_context(cost_token)
 
 
 @app.post("/engagement/run")

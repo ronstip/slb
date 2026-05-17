@@ -19,6 +19,24 @@
         ]
       },
       {
+        "source": "/@(index.html|)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=300, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/@(robots.txt|sitemap.xml|llms.txt|llms-full.txt|og-image.png)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
+      },
+      {
         "source": "**",
         "headers": [
           {

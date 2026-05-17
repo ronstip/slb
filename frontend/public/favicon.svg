@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="#0F1F4D" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter">
-  <path d="M12 14 V2 H24" />
-  <path d="M40 2 H52 V14" />
-  <path d="M52 50 V62 H40" />
-  <path d="M24 62 H12 V50" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="#0F1F4D" stroke-width="5" stroke-linecap="butt" stroke-linejoin="miter">
+  <path d="M2 14 V2 H14" />
+  <path d="M50 2 H62 V14" />
+  <path d="M62 50 V62 H50" />
+  <path d="M14 62 H2 V50" />
   <circle cx="32" cy="32" r="7" fill="#D97757" stroke="none" />
 </svg>

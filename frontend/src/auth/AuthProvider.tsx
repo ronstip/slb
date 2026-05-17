@@ -43,11 +43,17 @@ interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
+// True while the build-time Puppeteer prerender is capturing static HTML.
+// vite.config.ts injects window.__PRERENDER_INJECTED before scripts evaluate.
+const isPrerender =
+  typeof window !== 'undefined' &&
+  !!(window as unknown as { __PRERENDER_INJECTED?: unknown }).__PRERENDER_INJECTED;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(isFirebaseConfigured);
+  const [loading, setLoading] = useState(isFirebaseConfigured && !isPrerender);
   const anonSignInAttempted = useRef(false);
   // Tracks the previously-observed Firebase uid so we can detect identity
   // transitions (e.g. signed-out → signed-in, or one user → another) and
@@ -83,6 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setTokenGetter(getToken);
+
+    // Skip all auth/profile network calls during the build-time prerender;
+    // Puppeteer just needs to capture LandingPage HTML for SEO crawlers.
+    if (isPrerender) {
+      setLoading(false);
+      return;
+    }
 
     if (!isFirebaseConfigured || !auth) {
       // Dev mode: skip auth, fetch dev profile

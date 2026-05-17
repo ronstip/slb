@@ -1078,6 +1078,182 @@ inject_collection_context = get_context_injector("chat")
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# 7. Cost telemetry — after_model_callback
+# ---------------------------------------------------------------------------
+
+
+def capture_llm_cost(
+    callback_context: CallbackContext,
+    llm_response: LlmResponse,
+) -> None:
+    """Log one cost row per LLM round-trip.
+
+    Fires after every model invocation in chat / autonomous / sub-agents
+    (including ``google_search_agent``). Reads token counts from
+    ``llm_response.usage_metadata`` and pipes through ``cost_meter.log_cost``
+    so the cost is computed from :mod:`config.cost_rates` and the row is
+    streamed to BigQuery on a daemon thread. Returns ``None`` to leave the
+    response unchanged.
+
+    Failure to log NEVER blocks the model response — every step is wrapped
+    in try/except.
+    """
+    try:
+        usage = getattr(llm_response, "usage_metadata", None)
+        if not usage:
+            # Partial / streaming chunks land here too; only the final
+            # response carries usage_metadata. Skip silently.
+            return None
+
+        prompt_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
+        candidates_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
+        cached_tokens = int(getattr(usage, "cached_content_token_count", 0) or 0)
+        thoughts_tokens = int(getattr(usage, "thoughts_token_count", 0) or 0)
+
+        if prompt_tokens == 0 and candidates_tokens == 0 and thoughts_tokens == 0:
+            return None
+
+        # Thinking tokens are billed at the output rate, per Gemini pricing.
+        output_tokens = candidates_tokens + thoughts_tokens
+
+        state = callback_context.state
+        agent_name = callback_context.agent_name or ""
+        # Sub-agent invocations (google_search_agent) carry their own name;
+        # the meta-agent's name is "agent" (chat) or "executor" (autonomous).
+        if agent_name == "agent":
+            feature = "chat"
+        elif agent_name == "executor":
+            feature = "autonomous"
+        elif agent_name:
+            feature = f"subagent:{agent_name}"
+        else:
+            feature = "chat"
+
+        model = (
+            getattr(llm_response, "model_version", None)
+            or state.get("model")
+            or ""
+        )
+
+        session_id: str | None = None
+        try:
+            session_id = (
+                state.get("session_id")
+                or getattr(callback_context, "session", None) and callback_context.session.id
+            )
+        except Exception:
+            session_id = state.get("session_id")
+
+        from api.services.cost_meter import EVENT_LLM, log_cost
+
+        user_id = state.get("user_id") or callback_context.user_id or ""
+        org_id = state.get("org_id")
+        collection_id = state.get("active_collection_id")
+        agent_id = state.get("active_agent_id")
+
+        log_cost(
+            provider="gemini",
+            user_id=user_id,
+            feature=feature,
+            event_type=EVENT_LLM,
+            model=model,
+            input_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            org_id=org_id,
+            session_id=session_id,
+            collection_id=collection_id,
+            agent_id=agent_id,
+        )
+
+        # Google Search Grounding is billed SEPARATELY from tokens. Emit a
+        # second row so the dashboard can distinguish "the model thought
+        # for $X" from "the model grounded for $Y" — they have very
+        # different cost curves.
+        _maybe_log_grounding_cost(
+            llm_response,
+            model=model,
+            user_id=user_id,
+            feature=feature,
+            org_id=org_id,
+            session_id=session_id,
+            collection_id=collection_id,
+            agent_id=agent_id,
+        )
+    except Exception:
+        # Never let cost telemetry crash a model response.
+        logger.warning("capture_llm_cost failed", exc_info=True)
+
+    return None
+
+
+def _maybe_log_grounding_cost(
+    llm_response: LlmResponse,
+    *,
+    model: str,
+    user_id: str,
+    feature: str,
+    org_id: str | None,
+    session_id: str | None,
+    collection_id: str | None,
+    agent_id: str | None,
+) -> None:
+    """If this response used Google Search Grounding, emit a separate
+    cost row priced by the per-query (Gemini 3) or per-prompt (Gemini 2.5)
+    rate in :mod:`config.cost_rates`.
+
+    Detection: ``llm_response.grounding_metadata.web_search_queries`` is
+    populated by the Gemini SDK with the list of search terms the model
+    actually issued. An empty list means grounding was available but the
+    model didn't fire it — no charge.
+    """
+    try:
+        gm = getattr(llm_response, "grounding_metadata", None)
+        if gm is None:
+            return
+
+        queries = getattr(gm, "web_search_queries", None) or []
+        # Strip empties — Google's docs say those don't count for billing.
+        queries = [q for q in queries if q]
+        if not queries:
+            return
+
+        from config.cost_rates import _gemini_family, compute_grounding_cost_micros
+
+        family = _gemini_family(model)
+        if family == "gemini-3":
+            cost_micros = compute_grounding_cost_micros(model, queries_executed=len(queries))
+            units = len(queries)
+            unit_kind = "queries"
+        else:
+            # Gemini 2.5 (and unknown fallback) bill per grounded prompt.
+            cost_micros = compute_grounding_cost_micros(model, prompts_grounded=1)
+            units = 1
+            unit_kind = "prompts"
+
+        from api.services.cost_meter import EVENT_LLM, log_cost
+
+        log_cost(
+            provider="google_search",
+            user_id=user_id,
+            feature=feature,
+            event_type=EVENT_LLM,
+            model=model,
+            sub_kind=family,
+            units=units,
+            unit_kind=unit_kind,
+            cost_micros_override=cost_micros,
+            org_id=org_id,
+            session_id=session_id,
+            collection_id=collection_id,
+            agent_id=agent_id,
+            raw_provider_payload={"queries": queries[:50]},
+        )
+    except Exception:
+        logger.warning("_maybe_log_grounding_cost failed", exc_info=True)
+
+
 def log_tool_invocation(
     tool: BaseTool,
     args: dict[str, Any],

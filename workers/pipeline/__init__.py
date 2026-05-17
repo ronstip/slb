@@ -44,6 +44,8 @@ def dispatch_collection_pipeline(collection_id: str, continuation: bool = False)
 
     from google.cloud import tasks_v2
 
+    from api.middleware.request_id import outbound_headers
+
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(
         settings.gcp_project_id,
@@ -54,7 +56,7 @@ def dispatch_collection_pipeline(collection_id: str, continuation: bool = False)
     http_request = {
         "http_method": tasks_v2.HttpMethod.POST,
         "url": f"{worker_url}/collection/run",
-        "headers": {"Content-Type": "application/json"},
+        "headers": outbound_headers({"Content-Type": "application/json"}),
         "body": json.dumps({"collection_id": collection_id, "continuation": continuation}).encode(),
     }
     if settings.cloud_tasks_service_account:

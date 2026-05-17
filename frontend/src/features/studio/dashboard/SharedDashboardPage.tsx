@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { useHead } from '@unhead/react';
 import { AlertTriangle } from 'lucide-react';
 import { Logo, BRAND_NAME } from '../../../components/Logo.tsx';
 import { Button } from '../../../components/ui/button.tsx';
@@ -13,6 +14,9 @@ import { SocialDashboardView } from './SocialDashboardView.tsx';
 import type { SocialDashboardWidget, ReportScope } from './types-social-dashboard.ts';
 
 export function SharedDashboardPage() {
+  // Token-gated; must never be indexed.
+  useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
+
   const { token } = useParams<{ token: string }>();
   const [filterBarFilters, setFilterBarFilters] = useState<FilterBarFilterId[]>(DEFAULT_FILTER_BAR_FILTERS);
 

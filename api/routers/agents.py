@@ -250,7 +250,11 @@ async def wizard_plan_endpoint(
     }
 
     try:
-        result = plan_wizard(description, user_context, prior_answers=request.prior_answers)
+        result = plan_wizard(
+            description, user_context,
+            prior_answers=request.prior_answers,
+            user_id=user.uid,
+        )
     except ValidationError as e:
         logger.warning("wizard_plan: schema validation failed: %s", e)
         raise HTTPException(status_code=502, detail={"error": "planner_schema_error", "detail": str(e)})

@@ -1,9 +1,7 @@
 // Scolto brand logo — the single source of truth for the app's logo and
 // wordmark. Update the constants below to change the brand everywhere.
 //
-// Mark: four corner brackets in a phone-rect (9:16-ish) frame, around a
-// solid orange dot. Brackets stay the same physical size as the square
-// variant; only the frame narrows.
+// Mark: four corner brackets in a square frame, around a solid orange dot.
 // Wordmark: "Scolto" set in Fraunces italic (loaded in index.html).
 
 export const BRAND_NAME = 'Scolto';
@@ -26,9 +24,9 @@ const SIZES: Record<NonNullable<LogoProps['size']>, { mark: number; text: number
   lg: { mark: 38, text: 50, gap: 14 },
 };
 
-// viewBox dimensions for the mark. Width relaxed from the strict 36:64 phone
-// proportion to a slightly wider 44:64 so the brackets breathe more.
-const MARK_W = 44;
+// viewBox dimensions for the mark. Square 64x64 so the brackets sit at the
+// corners of a perfect square frame.
+const MARK_W = 64;
 const MARK_H = 64;
 const BRACKET_ARM = 14;
 
@@ -38,7 +36,7 @@ export function ScoltoMark({ size = 28 }: { size?: number }) {
   const width = size * (MARK_W / MARK_H);
   // Stroke width: floor keeps brackets readable at small sizes; scales with
   // mark height above the floor.
-  const sw = Math.max(2.5, size / 26);
+  const sw = Math.max(3, size / 22);
   const armRight = MARK_W - BRACKET_ARM; // x where right-side brackets begin
   const armBottom = MARK_H - BRACKET_ARM; // y where bottom brackets begin
   return (

@@ -48,6 +48,17 @@ async def name_session_if_needed(runner: Runner, user_id: str, session_id: str) 
                 f"'{first_message[:300]}'. Reply with ONLY the title, nothing else."
             ),
         )
+
+        from api.services.cost_meter import log_gemini_response
+
+        log_gemini_response(
+            response,
+            feature="session_naming",
+            model=settings.gemini_model,
+            user_id=user_id,
+            session_id=session_id,
+        )
+
         title = response.text.strip().strip('"').strip("'")
         if title and len(title) < 80:
             session.state["session_title"] = title

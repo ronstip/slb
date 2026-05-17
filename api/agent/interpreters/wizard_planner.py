@@ -152,6 +152,7 @@ def plan_wizard(
     description: str,
     user_context: dict,
     prior_answers: dict[str, list[str]] | None = None,
+    user_id: str = "",
 ) -> WizardPlannerResponse:
     """Produce a structured wizard plan (or clarification questions) from a
     free-text description.
@@ -199,6 +200,15 @@ def plan_wizard(
         model=settings.meta_agent_model,
         contents=prompt,
         config=config,
+    )
+
+    from api.services.cost_meter import log_gemini_response
+
+    log_gemini_response(
+        response,
+        feature="wizard",
+        model=settings.meta_agent_model,
+        user_id=user_id,
     )
 
     result = WizardPlannerResponse.model_validate_json(response.text)

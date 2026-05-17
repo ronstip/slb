@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useHead } from '@unhead/react';
 import { AlertTriangle, Check, Copy, Loader2, Share2, Trash2 } from 'lucide-react';
 import { Logo, BRAND_NAME } from '../../components/Logo.tsx';
 import { Button } from '../../components/ui/button.tsx';
@@ -21,6 +22,9 @@ import {
 import { BriefingView } from './BriefingView.tsx';
 
 export function SharedBriefingPage() {
+  // Token-gated; must never be indexed.
+  useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
+
   const { token } = useParams<{ token: string }>();
   const [shareOpen, setShareOpen] = useState(false);
 

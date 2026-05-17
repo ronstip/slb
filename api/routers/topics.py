@@ -260,7 +260,11 @@ def _build_narrative_topics_section(topics: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _generate_narrative(topics: list[dict]) -> _NarrativeResponse | None:
+def _generate_narrative(
+    topics: list[dict],
+    user_id: str = "",
+    agent_id: str | None = None,
+) -> _NarrativeResponse | None:
     """Call Gemini to synthesize a narrative. Returns None on failure."""
     settings = get_settings()
     client = genai.Client(
@@ -280,6 +284,17 @@ def _generate_narrative(topics: list[dict]) -> _NarrativeResponse | None:
                 response_schema=_NarrativeResponse,
             ),
         )
+
+        from api.services.cost_meter import log_gemini_response
+
+        log_gemini_response(
+            response,
+            feature="topics_endpoint",
+            model=settings.enrichment_model,
+            user_id=user_id,
+            agent_id=agent_id,
+        )
+
         if response.parsed:
             return response.parsed
     except Exception:
@@ -327,7 +342,7 @@ async def get_agent_topics_narrative(
     if not topics:
         return None
 
-    result = await asyncio.to_thread(_generate_narrative, topics)
+    result = await asyncio.to_thread(_generate_narrative, topics, user.uid, agent_id)
     if not result:
         raise HTTPException(502, "Narrative synthesis unavailable")
 

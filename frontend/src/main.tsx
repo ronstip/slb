@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createHead, UnheadProvider } from '@unhead/react/client';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './auth/AuthProvider.tsx';
 import { ThemeProvider } from './components/theme-provider.tsx';
@@ -17,17 +18,21 @@ const queryClient = new QueryClient({
   },
 });
 
+const head = createHead();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <TooltipProvider>
-            <App />
-            <Toaster richColors position="bottom-right" />
-          </TooltipProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <UnheadProvider head={head}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <TooltipProvider>
+              <App />
+              <Toaster richColors position="bottom-right" />
+            </TooltipProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </UnheadProvider>
   </StrictMode>,
 );

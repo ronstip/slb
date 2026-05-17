@@ -13,6 +13,7 @@ from google.genai import types as genai_types
 
 from api.agent.callbacks import (
     cap_total_tool_calls,
+    capture_llm_cost,
     collection_state_tracker,
     dedup_sql_calls,
     enforce_collection_access,
@@ -117,6 +118,7 @@ def create_agent(
                 "directly — do not call any tool by name."
             ),
             tools=[google_search],
+            after_model_callback=capture_llm_cost,
         )
         tools.insert(0, GoogleSearchAgentTool(search_subagent))
 
@@ -206,6 +208,7 @@ def create_agent(
         before_tool_callback=before_tool_chain,
         before_model_callback=before_model_chain,
         after_tool_callback=after_tool_chain,
+        after_model_callback=capture_llm_cost,
     )
 
     return meta_agent
