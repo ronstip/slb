@@ -121,7 +121,7 @@ export function AgentOverviewTab({
                 <header className="mb-3 flex items-center gap-2">
                   <h3 className="font-heading text-sm font-semibold text-foreground">Actions</h3>
                 </header>
-                <div className="h-[160px] min-h-0">
+                <div className="h-[160px] min-h-0 overflow-y-auto pr-1">
                   <StudioActionsPanel
                     variant="overview"
                     customFields={task.enrichment_config?.custom_fields}

@@ -1,12 +1,15 @@
 """Topics router — list topics, get analytics, get posts for a topic.
 
 Topics are agent-scoped: they cluster posts across all of an agent's collections.
+Reads from `topic_metrics(@agent_id)` — the single source of truth — with a
+small Python-side shape adapter to preserve the legacy frontend contract.
 """
 
 import asyncio
 import hashlib
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,10 +25,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Shared CTE fragment for latest clustering run (agent-scoped). Reads
-# topic_clusters — the per-cluster table with pre-materialised aggregates.
-# Agents that have not been regenerated since the migration have no rows here;
-# the merge loop in _load_agent_topics tolerates that.
+# Shared CTE fragment for latest clustering run (agent-scoped). Retained for
+# the analytics + paginated-posts endpoints below which still need direct
+# `topic_clusters` access (membership lists, paginated joins on scope_posts).
 _LATEST_CTE = """
     WITH latest AS (
         SELECT MAX(clustered_at) as latest_at
@@ -34,10 +36,6 @@ _LATEST_CTE = """
     )"""
 
 # Single source of truth for the agent's view of posts: scope_posts TVF.
-# Topic post lists span the full corpus (no date / platform gate), so we pass
-# only the agent_id. The TVF returns posts deduped by post_id with this
-# agent's enrichment + latest engagement already merged — supersedes the
-# per-table dedup CTEs we used before.
 _AGENT_POSTS_TVF = "social_listening.scope_posts(@agent_id)"
 
 
@@ -56,133 +54,100 @@ def _check_agent_access(fs, user: CurrentUser, agent_id: str) -> dict:
     raise HTTPException(403, "Access denied")
 
 
+def _platforms_from_breakdown(value) -> list[str]:
+    """Extract platform names from topic_metrics.platforms_breakdown JSON.
+
+    The TVF emits an array of structs `{platform, posts, views, likes,
+    engagement}`. The list endpoint only needs the names (frontend renders
+    logo wall + first-platform icon).
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    if not isinstance(value, list):
+        return []
+    return [p.get("platform") for p in value if isinstance(p, dict) and p.get("platform")]
+
+
+_GENERIC_NAME = re.compile(r"^Topic \d+$")
+
+
 def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
-    """Load all topics for an agent with BQ-enriched summary metrics. Shared by list + narrative endpoints."""
-    topics_ref = (
-        fs._db.collection("agents")
-        .document(agent_id)
-        .collection("topics")
+    """List all topics for an agent (TVF-backed).
+
+    Shape preserves the legacy frontend contract: cluster_id,
+    topic_name/topic_summary/topic_keywords (aliased from header/subheader/
+    keywords), sentiment counts, totals, thumbnails, platforms[], recency.
+    """
+    del fs  # retained for signature back-compat; Firestore no longer read here
+
+    rows = bq.query(
+        """
+        SELECT
+            cluster_id, clustered_at, algorithm_version,
+            header, subheader, beat_type, keywords,
+            anchor_entities, anchor_themes, anchor_brands, anchor_content_types,
+            representative_post_ids, member_post_ids,
+            post_count, recency_score, signal_score,
+            total_views, total_likes,
+            positive_count, negative_count, neutral_count, mixed_count,
+            thumbnail_url, thumbnail_gcs_uri,
+            platforms_breakdown,
+            estimated_post_count
+        FROM social_listening.topic_metrics(@agent_id)
+        """,
+        {"agent_id": agent_id},
     )
 
-    topics = []
-    for doc in topics_ref.stream():
-        data = doc.to_dict()
-        data["cluster_id"] = doc.id
-        # Convert timestamps
-        if "created_at" in data and hasattr(data["created_at"], "isoformat"):
-            data["created_at"] = data["created_at"].isoformat()
-        # Don't send centroid to frontend (768 floats)
-        data.pop("centroid", None)
-        topics.append(data)
+    topics: list[dict] = []
+    for r in rows:
+        topics.append({
+            # identity + definition
+            "cluster_id": r.get("cluster_id"),
+            "created_at": r.get("clustered_at"),
+            "algorithm_version": r.get("algorithm_version"),
+            "topic_name": r.get("header"),
+            "topic_summary": r.get("subheader") or "",
+            "topic_keywords": list(r.get("keywords") or []),
+            "header": r.get("header"),
+            "subheader": r.get("subheader"),
+            "beat_type": r.get("beat_type"),
+            "anchor_entities": list(r.get("anchor_entities") or []),
+            "anchor_themes": list(r.get("anchor_themes") or []),
+            "anchor_brands": list(r.get("anchor_brands") or []),
+            "anchor_content_types": list(r.get("anchor_content_types") or []),
+            "representative_post_ids": list(r.get("representative_post_ids") or []),
+            "member_post_ids": list(r.get("member_post_ids") or []),
+            # aggregates
+            "post_count": r.get("post_count") or 0,
+            "recency_score": r.get("recency_score") or 0,
+            "signal_score": r.get("signal_score") or 0,
+            "total_views": r.get("total_views") or 0,
+            "total_likes": r.get("total_likes") or 0,
+            "positive_count": r.get("positive_count") or 0,
+            "negative_count": r.get("negative_count") or 0,
+            "neutral_count": r.get("neutral_count") or 0,
+            "mixed_count": r.get("mixed_count") or 0,
+            # display
+            "thumbnail_url": r.get("thumbnail_url"),
+            "thumbnail_gcs_uri": r.get("thumbnail_gcs_uri"),
+            "platforms": _platforms_from_breakdown(r.get("platforms_breakdown")),
+            # legacy alias for the post-count headline. CI bounds are not
+            # available from `topic_clusters` today — frontend tolerates
+            # missing fields via `?? 0` and renders without CI.
+            "estimated_pool_count": r.get("estimated_post_count"),
+        })
 
-    if not topics:
-        return topics
-
-    # The three BQ queries below are independent of each other; previously they
-    # ran sequentially, so the endpoint paid 3× the round-trip + BQ slot time
-    # for what is fundamentally three views of the same cluster data. Fire them
-    # in parallel via a small thread pool (bq.query releases the GIL during the
-    # gRPC call, so threads give real parallelism here).
-    # Aggregates are pre-materialised on topic_clusters — no scope_posts join.
-    summary_sql = f"""
-        {_LATEST_CTE}
-        SELECT
-            cluster_id,
-            positive_count, negative_count, neutral_count, mixed_count,
-            total_views, total_likes
-        FROM social_listening.topic_clusters tc, latest
-        WHERE tc.agent_id = @agent_id
-          AND tc.clustered_at = latest.latest_at
-        """
-
-    # Thumbnail query: prefer representative post w/ media, fall back to ANY
-    # cluster member that has media. Twitter clusters often contain only text
-    # tweets in their representative subset, so widening to all members ensures
-    # an image appears whenever any post in the cluster has one.
-    thumb_sql = f"""
-        {_LATEST_CTE},
-        members AS (
-            SELECT tc.cluster_id, post_id,
-                   post_id IN UNNEST(tc.representative_post_ids) as is_representative
-            FROM social_listening.topic_clusters tc, latest,
-                 UNNEST(tc.member_post_ids) as post_id
-            WHERE tc.agent_id = @agent_id
-              AND tc.clustered_at = latest.latest_at
-        ),
-        ranked AS (
-            SELECT m.cluster_id, t.media_refs,
-                   ROW_NUMBER() OVER (
-                     PARTITION BY m.cluster_id
-                     ORDER BY m.is_representative DESC, COALESCE(t.views, 0) DESC
-                   ) as rn
-            FROM members m
-            JOIN {_AGENT_POSTS_TVF} t USING (post_id)
-            WHERE t.media_refs IS NOT NULL
-        )
-        SELECT cluster_id,
-               JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') as thumbnail_url,
-               JSON_EXTRACT_SCALAR(media_refs, '$[0].gcs_uri') as thumbnail_gcs_uri
-        FROM ranked
-        WHERE rn = 1
-          AND JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') IS NOT NULL
-        """
-
-    # Platforms per cluster — used by the frontend to render a logo wall
-    # placeholder for clusters where no post has media.
-    platforms_sql = f"""
-        {_LATEST_CTE},
-        members AS (
-            SELECT tc.cluster_id, post_id
-            FROM social_listening.topic_clusters tc, latest,
-                 UNNEST(tc.member_post_ids) as post_id
-            WHERE tc.agent_id = @agent_id
-              AND tc.clustered_at = latest.latest_at
-        )
-        SELECT m.cluster_id,
-               ARRAY_AGG(DISTINCT t.platform IGNORE NULLS) as platforms
-        FROM members m
-        JOIN {_AGENT_POSTS_TVF} t USING (post_id)
-        GROUP BY m.cluster_id
-        """
-
-    params = {"agent_id": agent_id}
-    from concurrent.futures import ThreadPoolExecutor
-
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        summary_future = pool.submit(bq.query, summary_sql, params)
-        thumb_future = pool.submit(bq.query, thumb_sql, params)
-        platform_future = pool.submit(bq.query, platforms_sql, params)
-        summary_rows = summary_future.result()
-        thumb_rows = thumb_future.result()
-        platform_rows = platform_future.result()
-
-    summary_map = {r["cluster_id"]: r for r in summary_rows}
-    thumb_map = {r["cluster_id"]: r for r in thumb_rows}
-    platform_map = {r["cluster_id"]: r for r in platform_rows}
-
-    # Merge BQ data into Firestore topics
-    for topic in topics:
-        cid = topic["cluster_id"]
-        if cid in summary_map:
-            s = summary_map[cid]
-            topic["positive_count"] = s["positive_count"]
-            topic["negative_count"] = s["negative_count"]
-            topic["neutral_count"] = s["neutral_count"]
-            topic["mixed_count"] = s["mixed_count"]
-            topic["total_views"] = s["total_views"]
-            topic["total_likes"] = s["total_likes"]
-        if cid in thumb_map:
-            topic["thumbnail_url"] = thumb_map[cid].get("thumbnail_url")
-            topic["thumbnail_gcs_uri"] = thumb_map[cid].get("thumbnail_gcs_uri")
-        if cid in platform_map:
-            topic["platforms"] = platform_map[cid].get("platforms") or []
-
-    # Sort: by recency_score desc (trending first), then by post_count desc
-    import re
+    # Frontend ordering rule: real names first (generic "Topic N" demoted),
+    # then by recency_score desc, then post_count desc.
     def _sort_key(t):
-        name = t.get("topic_name", "")
-        is_generic = bool(re.match(r"^Topic \d+$", name))
-        return (is_generic, -t.get("recency_score", 0), -t.get("post_count", 0))
+        name = t.get("topic_name") or ""
+        is_generic = bool(_GENERIC_NAME.match(name))
+        return (is_generic, -(t.get("recency_score") or 0), -(t.get("post_count") or 0))
 
     topics.sort(key=_sort_key)
     return topics
@@ -316,12 +281,25 @@ async def get_agent_topics_narrative(
     bq = get_bq()
     agent = await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
-    # Cheap hash check first: cluster_ids live in Firestore, no BQ needed.
+    # Hash check: pull cluster_ids from the latest clustering run. Cheaper
+    # than the full topic_metrics call below; only the IDs are needed to
+    # decide whether the cached narrative still applies.
     def _fetch_cluster_ids() -> list[str]:
-        return [
-            doc.id
-            for doc in fs._db.collection("agents").document(agent_id).collection("topics").stream()
-        ]
+        rows = bq.query(
+            """
+            WITH latest AS (
+                SELECT MAX(clustered_at) AS latest_at
+                FROM social_listening.topic_clusters
+                WHERE agent_id = @agent_id
+            )
+            SELECT cluster_id
+            FROM social_listening.topic_clusters tc, latest
+            WHERE tc.agent_id = @agent_id
+              AND tc.clustered_at = latest.latest_at
+            """,
+            {"agent_id": agent_id},
+        )
+        return [r["cluster_id"] for r in rows]
 
     cluster_ids = await asyncio.to_thread(_fetch_cluster_ids)
     if not cluster_ids:

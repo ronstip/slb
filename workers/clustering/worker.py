@@ -142,20 +142,17 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
 
     logger.info("Formed %d clusters", len(cluster_groups))
 
-    # 6. Compute centroids, recency scores, and select representatives
+    # 6. Recency scores, and select representatives. (Centroids used to be
+    # persisted to Firestore for similarity lookups; nothing reads them now,
+    # so the computation was dropped along with the Firestore write.)
     now = datetime.now(timezone.utc)
     cluster_ids: dict[int, str] = {}  # cluster_index -> uuid
-    centroids: dict[int, np.ndarray] = {}
     recency_scores: dict[int, float] = {}
     clusters_for_labeling: list[dict[str, Any]] = []
 
     for cid, member_indices in sorted(cluster_groups.items()):
         cluster_uuid = str(uuid.uuid4())
         cluster_ids[cid] = cluster_uuid
-
-        # Centroid
-        member_embeddings = embeddings[member_indices]
-        centroids[cid] = member_embeddings.mean(axis=0)
 
         # Recency score
         recency_scores[cid] = _compute_recency_score(member_indices, full_post_ids, metadata, now)
@@ -207,13 +204,9 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
     for i in range(0, len(cluster_rows), 500):
         bq.insert_rows("topic_clusters", cluster_rows[i : i + 500])
 
-    # 9. Write to Firestore — delete old topics, write new ones
-    _write_firestore_topics(
-        fs, agent_id, cluster_groups, cluster_ids, centroids,
-        recency_scores, label_map, full_post_ids, metadata, clustered_at,
-    )
-
-    # 10. Update agent status
+    # 9. Update agent status. The `topics/` Firestore subcollection used to
+    # mirror each cluster doc here; readers now use `topic_metrics(@agent_id)`
+    # so we only update the agent-level summary fields.
     fs.update_agent(
         agent_id,
         topics_count=len(cluster_groups),
@@ -512,53 +505,3 @@ def _two_pass_assign(
     return full_assignments
 
 
-def _write_firestore_topics(
-    fs: FirestoreClient,
-    agent_id: str,
-    cluster_groups: dict[int, list[int]],
-    cluster_ids: dict[int, str],
-    centroids: dict[int, np.ndarray],
-    recency_scores: dict[int, float],
-    label_map: dict[int, dict],
-    post_ids: list[str],
-    metadata: dict[str, dict],
-    clustered_at: str,
-) -> None:
-    """Delete old topic docs and write new ones to agent-level Firestore subcollection."""
-    db = fs._db
-    topics_ref = (
-        db.collection("agents")
-        .document(agent_id)
-        .collection("topics")
-    )
-
-    # Delete existing topics
-    existing = topics_ref.stream()
-    for doc in existing:
-        doc.reference.delete()
-
-    # Write new topics
-    for cid, member_indices in sorted(cluster_groups.items()):
-        cluster_uuid = cluster_ids[cid]
-        label = label_map.get(cid, {})
-
-        # Representative post IDs
-        member_posts = [(i, metadata[post_ids[i]]) for i in member_indices]
-        member_posts.sort(key=lambda x: x[1].get("engagement_score", 0), reverse=True)
-        rep_post_ids = [post_ids[member_posts[j][0]] for j in range(min(MAX_REPRESENTATIVES, len(member_posts)))]
-
-        topic_doc = {
-            "topic_name": label.get("topic_name", f"Topic {cid + 1}"),
-            "topic_summary": label.get("topic_summary", ""),
-            "topic_keywords": label.get("topic_keywords", []),
-            "post_count": len(member_indices),
-            "representative_post_ids": rep_post_ids,
-            "centroid": centroids[cid].tolist(),
-            "recency_score": recency_scores[cid],
-            "algorithm_version": "brothers_v1",
-            "created_at": datetime.now(timezone.utc),
-        }
-
-        topics_ref.document(cluster_uuid).set(topic_doc)
-
-    logger.info("Wrote %d topic docs to Firestore for agent %s", len(cluster_groups), agent_id)
