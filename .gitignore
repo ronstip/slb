@@ -21,10 +21,17 @@ env/
 # IDE
 .vscode/
 .idea/
-.claude/
 *.swp
 *.swo
 *~
+
+# Claude Code: share skills/agents/commands & shared settings, keep local overrides private
+.claude/*
+!.claude/skills/
+!.claude/agents/
+!.claude/commands/
+!.claude/settings.json
+.claude/settings.local.json
 
 # Firebase cache
 .firebase/
@@ -74,9 +81,6 @@ e2e/screenshots/
 .playwright-mcp/
 screenshots/
 *.png
-
-# Memory Bank - dev-specific context
-memory-bank/active-context.md
 
 # Agent eval harness — keep reports + per-run metadata, drop bulk
 api/agent/evals/runs/_debug/

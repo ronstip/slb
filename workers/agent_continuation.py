@@ -677,6 +677,8 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
     import json
     from google.cloud import tasks_v2
 
+    from api.middleware.request_id import outbound_headers
+
     target_url = (settings.api_service_url or "").rstrip("/")
     if not target_url:
         raise RuntimeError(
@@ -696,7 +698,7 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
     http_request = {
         "http_method": tasks_v2.HttpMethod.POST,
         "url": f"{target_url}/internal/agent/continue",
-        "headers": {"Content-Type": "application/json"},
+        "headers": outbound_headers({"Content-Type": "application/json"}),
         "body": json.dumps({"agent_id": agent_id}).encode(),
     }
     if settings.cloud_tasks_service_account:

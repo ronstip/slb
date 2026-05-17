@@ -10,6 +10,7 @@ filtered to is_related_to_task=TRUE and posted within the last 30 days.
 import logging
 import math
 import re
+import statistics
 import time
 import uuid
 from datetime import datetime, timezone
@@ -24,6 +25,8 @@ from workers.clustering.labeler import label_topics
 from workers.shared.bq_client import BQClient
 from workers.shared.firestore_client import FirestoreClient
 from workers.shared.sql_dedup import DEDUP_EMBEDDINGS
+
+ALGORITHM_VERSION = "brothers_v1"
 
 _SQL_DIR = Path(__file__).resolve().parent.parent.parent / "bigquery"
 
@@ -139,20 +142,17 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
 
     logger.info("Formed %d clusters", len(cluster_groups))
 
-    # 6. Compute centroids, recency scores, and select representatives
+    # 6. Recency scores, and select representatives. (Centroids used to be
+    # persisted to Firestore for similarity lookups; nothing reads them now,
+    # so the computation was dropped along with the Firestore write.)
     now = datetime.now(timezone.utc)
     cluster_ids: dict[int, str] = {}  # cluster_index -> uuid
-    centroids: dict[int, np.ndarray] = {}
     recency_scores: dict[int, float] = {}
     clusters_for_labeling: list[dict[str, Any]] = []
 
     for cid, member_indices in sorted(cluster_groups.items()):
         cluster_uuid = str(uuid.uuid4())
         cluster_ids[cid] = cluster_uuid
-
-        # Centroid
-        member_embeddings = embeddings[member_indices]
-        centroids[cid] = member_embeddings.mean(axis=0)
 
         # Recency score
         recency_scores[cid] = _compute_recency_score(member_indices, full_post_ids, metadata, now)
@@ -180,43 +180,33 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
     labels = label_topics(clusters_for_labeling)
     label_map = {l["cluster_index"]: l for l in labels}
 
-    # 8. Write to BQ (versioned by clustered_at)
-    clustered_at = datetime.now(timezone.utc).isoformat()
-    bq_rows = []
-    for cid, member_indices in cluster_groups.items():
-        cluster_uuid = cluster_ids[cid]
-        centroid = centroids[cid]
+    # 8. Write one row per cluster to topic_clusters (denormalised membership).
+    # brothers_v1 operates on the full pool (with two-pass assignment for the
+    # >5K case), so estimated_* equals real values: factor = 1.0.
+    clustered_at_dt = datetime.now(timezone.utc)
+    clustered_at = clustered_at_dt.isoformat()
+    cluster_rows = [
+        _build_brothers_cluster_row(
+            agent_id=agent_id,
+            cluster_uuid=cluster_ids[cid],
+            member_indices=member_indices,
+            full_post_ids=full_post_ids,
+            metadata=metadata,
+            label=label_map.get(cid, {}),
+            recency_score=recency_scores[cid],
+            clustered_at_dt=clustered_at_dt,
+            clustered_at_iso=clustered_at,
+        )
+        for cid, member_indices in cluster_groups.items()
+    ]
 
-        # Mark representatives
-        member_posts = [(i, metadata[full_post_ids[i]]) for i in member_indices]
-        member_posts.sort(key=lambda x: x[1].get("engagement_score", 0), reverse=True)
-        rep_indices = {member_posts[j][0] for j in range(min(MAX_REPRESENTATIVES, len(member_posts)))}
+    logger.info("Inserting %d topic_clusters rows into BQ", len(cluster_rows))
+    for i in range(0, len(cluster_rows), 500):
+        bq.insert_rows("topic_clusters", cluster_rows[i : i + 500])
 
-        for idx in member_indices:
-            emb = embeddings[idx]
-            dist = float(np.dot(emb - centroid, emb - centroid) ** 0.5)
-            bq_rows.append({
-                "cluster_id": cluster_uuid,
-                "post_id": full_post_ids[idx],
-                "agent_id": agent_id,
-                "collection_id": metadata[full_post_ids[idx]].get("collection_id", ""),
-                "distance_to_centroid": round(dist, 6),
-                "is_representative": idx in rep_indices,
-                "clustered_at": clustered_at,
-            })
-
-    logger.info("Inserting %d membership rows into BQ", len(bq_rows))
-    # Insert in batches of 500
-    for i in range(0, len(bq_rows), 500):
-        bq.insert_rows("topic_cluster_members", bq_rows[i : i + 500])
-
-    # 9. Write to Firestore — delete old topics, write new ones
-    _write_firestore_topics(
-        fs, agent_id, cluster_groups, cluster_ids, centroids,
-        recency_scores, label_map, full_post_ids, metadata, clustered_at,
-    )
-
-    # 10. Update agent status
+    # 9. Update agent status. The `topics/` Firestore subcollection used to
+    # mirror each cluster doc here; readers now use `topic_metrics(@agent_id)`
+    # so we only update the agent-level summary fields.
     fs.update_agent(
         agent_id,
         topics_count=len(cluster_groups),
@@ -231,6 +221,117 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
     }
     logger.info("Clustering complete for agent %s: %s", agent_id, result)
     return result
+
+
+def _build_brothers_cluster_row(
+    agent_id: str,
+    cluster_uuid: str,
+    member_indices: list[int],
+    full_post_ids: list[str],
+    metadata: dict[str, dict],
+    label: dict,
+    recency_score: float,
+    clustered_at_dt: datetime,
+    clustered_at_iso: str,
+) -> dict[str, Any]:
+    """Build one topic_clusters row for a brothers_v1 cluster.
+
+    Same row shape as the v2 writer's `_build_topic_cluster_row`. brothers_v1
+    has no LLM-derived definition fields (header/subheader/beat_type/anchors)
+    so those go in as None / empty arrays. extrapolated_* equals real_* because
+    brothers_v1 clusters the full pool (factor = 1.0).
+    """
+    member_posts = [metadata[full_post_ids[i]] for i in member_indices]
+    member_post_ids = [full_post_ids[i] for i in member_indices]
+
+    # Representatives: top-K by engagement_score (already pre-computed on each
+    # metadata dict). Same as the inline logic in the previous BQ write.
+    sorted_members = sorted(
+        zip(member_indices, member_posts),
+        key=lambda x: x[1].get("engagement_score", 0),
+        reverse=True,
+    )
+    rep_post_ids = [
+        full_post_ids[idx] for idx, _ in sorted_members[:MAX_REPRESENTATIVES]
+    ]
+    post_count = len(member_indices)
+
+    total_views = sum(int(p.get("views") or 0) for p in member_posts)
+    total_likes = sum(int(p.get("likes") or 0) for p in member_posts)
+    total_comments = sum(int(p.get("comments_count") or 0) for p in member_posts)
+    total_shares = sum(int(p.get("shares") or 0) for p in member_posts)
+
+    sent_counts = {"positive": 0, "negative": 0, "neutral": 0, "mixed": 0}
+    for p in member_posts:
+        s = (p.get("sentiment") or "").lower()
+        if s in sent_counts:
+            sent_counts[s] += 1
+
+    earliest, median_t, latest = _post_time_stats(member_posts)
+
+    return {
+        "agent_id": agent_id,
+        "cluster_id": cluster_uuid,
+        "clustered_at": clustered_at_iso,
+        "algorithm_version": ALGORITHM_VERSION,
+        # definition — brothers_v1 only has labeler output, no anchors
+        "header": label.get("topic_name"),
+        "subheader": label.get("topic_summary"),
+        "beat_type": None,
+        "keywords": list(label.get("topic_keywords") or []),
+        "anchor_entities": [],
+        "anchor_themes": [],
+        "anchor_brands": [],
+        "anchor_content_types": [],
+        # membership
+        "member_post_ids": member_post_ids,
+        "representative_post_ids": rep_post_ids,
+        "post_count": post_count,
+        # real aggregates
+        "total_views": total_views,
+        "total_likes": total_likes,
+        "total_comments": total_comments,
+        "total_shares": total_shares,
+        "positive_count": sent_counts["positive"],
+        "negative_count": sent_counts["negative"],
+        "neutral_count": sent_counts["neutral"],
+        "mixed_count": sent_counts["mixed"],
+        "earliest_post": earliest.isoformat() if earliest else None,
+        "median_post_time": median_t.isoformat() if median_t else None,
+        "latest_post": latest.isoformat() if latest else None,
+        # brothers_v1 clusters the full pool — extrapolated equals real.
+        "estimated_post_count": post_count,
+        "estimated_views": total_views,
+        "estimated_likes": total_likes,
+        "estimated_comments": total_comments,
+        "estimated_shares": total_shares,
+        "recency_score": recency_score,
+    }
+
+
+def _post_time_stats(
+    member_posts: list[dict],
+) -> tuple[datetime | None, datetime | None, datetime | None]:
+    """Returns (earliest, median, latest) posted_at. median_low avoids
+    averaging datetimes — fine for "where is the mass" semantics.
+    """
+    times: list[datetime] = []
+    for p in member_posts:
+        pa = p.get("posted_at")
+        if not pa:
+            continue
+        if isinstance(pa, str):
+            try:
+                pa = datetime.fromisoformat(pa.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+        if pa.tzinfo is None:
+            pa = pa.replace(tzinfo=timezone.utc)
+        times.append(pa)
+    if not times:
+        return None, None, None
+    times.sort()
+    return times[0], statistics.median_low(times), times[-1]
 
 
 def _build_embeddings_query(
@@ -250,6 +351,11 @@ def _build_embeddings_query(
             p.collection_id,
             p.posted_at,
             ep.ai_summary,
+            ep.sentiment,
+            COALESCE(eng.views, 0) AS views,
+            COALESCE(eng.likes, 0) AS likes,
+            COALESCE(eng.comments_count, 0) AS comments_count,
+            COALESCE(eng.shares, 0) AS shares,
             COALESCE(eng.views, 0) + COALESCE(eng.likes, 0) * 10
                 + COALESCE(eng.comments_count, 0) * 20 AS engagement_score
         FROM deduped_posts p
@@ -399,53 +505,3 @@ def _two_pass_assign(
     return full_assignments
 
 
-def _write_firestore_topics(
-    fs: FirestoreClient,
-    agent_id: str,
-    cluster_groups: dict[int, list[int]],
-    cluster_ids: dict[int, str],
-    centroids: dict[int, np.ndarray],
-    recency_scores: dict[int, float],
-    label_map: dict[int, dict],
-    post_ids: list[str],
-    metadata: dict[str, dict],
-    clustered_at: str,
-) -> None:
-    """Delete old topic docs and write new ones to agent-level Firestore subcollection."""
-    db = fs._db
-    topics_ref = (
-        db.collection("agents")
-        .document(agent_id)
-        .collection("topics")
-    )
-
-    # Delete existing topics
-    existing = topics_ref.stream()
-    for doc in existing:
-        doc.reference.delete()
-
-    # Write new topics
-    for cid, member_indices in sorted(cluster_groups.items()):
-        cluster_uuid = cluster_ids[cid]
-        label = label_map.get(cid, {})
-
-        # Representative post IDs
-        member_posts = [(i, metadata[post_ids[i]]) for i in member_indices]
-        member_posts.sort(key=lambda x: x[1].get("engagement_score", 0), reverse=True)
-        rep_post_ids = [post_ids[member_posts[j][0]] for j in range(min(MAX_REPRESENTATIVES, len(member_posts)))]
-
-        topic_doc = {
-            "topic_name": label.get("topic_name", f"Topic {cid + 1}"),
-            "topic_summary": label.get("topic_summary", ""),
-            "topic_keywords": label.get("topic_keywords", []),
-            "post_count": len(member_indices),
-            "representative_post_ids": rep_post_ids,
-            "centroid": centroids[cid].tolist(),
-            "recency_score": recency_scores[cid],
-            "algorithm_version": "brothers_v1",
-            "created_at": datetime.now(timezone.utc),
-        }
-
-        topics_ref.document(cluster_uuid).set(topic_doc)
-
-    logger.info("Wrote %d topic docs to Firestore for agent %s", len(cluster_groups), agent_id)

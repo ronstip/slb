@@ -1,0 +1,139 @@
+# Scolto robots.txt
+# https://scolto.com
+
+# Default policy — allow all crawlers, block authenticated and token-gated routes.
+User-agent: *
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+# Explicit allow for major AI / LLM crawlers (public marketing pages only;
+# the Disallow rules above still apply to gated routes).
+User-agent: GPTBot
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: Claude-Web
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: Perplexity-User
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: cohere-ai
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+User-agent: CCBot
+Allow: /
+Disallow: /shared/
+Disallow: /invite/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /agents/
+Disallow: /collections/
+Disallow: /artifact/
+Disallow: /tasks/
+
+Sitemap: https://scolto.com/sitemap.xml

@@ -25,10 +25,11 @@ from urllib.parse import urlparse
 from google.adk.tools import ToolContext
 from pydantic import ValidationError
 
-from api.deps import get_fs
+from api.deps import get_bq, get_fs
 from api.routers.dashboard_schema import (
     DashboardLayout,
     GRID_COLS,
+    ReportScope,
     SocialDashboardWidget,
     is_chart_type_valid_for,
 )
@@ -255,6 +256,7 @@ def read_dashboard(
 def create_dashboard_from_template(
     template_id: str,
     title: str,
+    report_scope: dict | None = None,
     tool_context: ToolContext = None,
 ) -> dict:
     """Clone a template dashboard into a new HIDDEN dashboard for this run.
@@ -281,6 +283,15 @@ def create_dashboard_from_template(
         title: The new dashboard's title — typically includes the report
             period, e.g. "Weekly Competitive Brand Report — 2026-05-04 → 2026-05-11".
             Match the data language.
+        report_scope: Optional data scope this report commits to. When provided,
+            both the chart render path and pre-publish numerical verification
+            treat it as the single source of truth — viewer filters intersect
+            with the scope (can narrow, cannot widen). Keys mirror the global
+            filter bar dimensions: ``date_range`` (object with `from`/`to`),
+            ``sentiment``, ``emotion``, ``platform``, ``themes``, ``entities``,
+            ``language``, ``content_type``, ``channels``, ``collection`` (each
+            a list of strings). Omit when the agent is producing a standalone
+            dashboard with no committed scope.
         tool_context: ADK tool context (injected automatically).
 
     Returns:
@@ -296,6 +307,16 @@ def create_dashboard_from_template(
         return {"status": "error", "message": "template_id is required."}
     if not title or not title.strip():
         return {"status": "error", "message": "title is required and must be non-empty."}
+
+    validated_scope: ReportScope | None = None
+    if report_scope is not None:
+        try:
+            validated_scope = ReportScope.model_validate(report_scope)
+        except ValidationError as exc:
+            return {
+                "status": "error",
+                "message": f"report_scope failed validation: {exc.errors()[:3]}",
+            }
 
     fs = get_fs()
     template_data, err = _verify_dashboard_ownership(fs, template_id, user_id)
@@ -319,7 +340,7 @@ def create_dashboard_from_template(
         }
 
     new_layout_id = uuid.uuid4().hex
-    fs._db.collection(DASHBOARD_LAYOUTS).document(new_layout_id).set({
+    doc_payload: dict[str, Any] = {
         "user_id": user_id,
         "artifact_id": new_layout_id,
         "layout": widgets,
@@ -328,12 +349,17 @@ def create_dashboard_from_template(
         "title": title.strip(),
         "is_template": False,
         "source_template_id": template_id,
-    })
+    }
+    if validated_scope is not None:
+        doc_payload["reportScope"] = validated_scope.model_dump(
+            exclude_none=True, by_alias=True
+        )
+    fs._db.collection(DASHBOARD_LAYOUTS).document(new_layout_id).set(doc_payload)
 
     widget_ids = [w.get("i") for w in widgets if isinstance(w, dict) and w.get("i")]
     logger.info(
-        "create_dashboard_from_template: template=%s new=%s user=%s widgets=%d",
-        template_id, new_layout_id, user_id, len(widgets),
+        "create_dashboard_from_template: template=%s new=%s user=%s widgets=%d scope=%s",
+        template_id, new_layout_id, user_id, len(widgets), bool(validated_scope),
     )
     return {
         "status": "success",
@@ -341,7 +367,9 @@ def create_dashboard_from_template(
         "widget_ids": widget_ids,
         "message": (
             f"Created hidden dashboard '{new_layout_id}' from template '{template_id}' "
-            f"with {len(widgets)} widgets. Fill text widgets via update_dashboard, "
+            f"with {len(widgets)} widgets"
+            + (" and a committed reportScope" if validated_scope else "")
+            + ". Fill text widgets via update_dashboard, "
             f"then call publish_dashboard to make it visible."
         ),
     }
@@ -355,6 +383,7 @@ def update_dashboard(
     patches: list[dict] = None,
     additions: list[dict] = None,
     removals: list[str] = None,
+    report_scope: dict | None = None,
     tool_context: ToolContext = None,
 ) -> dict:
     """Apply one or more edits to a dashboard's widgets. The workhorse tool.
@@ -407,12 +436,18 @@ def update_dashboard(
 
     REMOVALS — removes widgets by `i`. Each item is the widget's `i` string.
 
+    REPORT_SCOPE — optional. Pass to set or refine the dashboard's committed
+        data scope after creation (normally set at create_dashboard_from_template
+        time; this is the escape hatch). Same shape as the create-time argument.
+
     Args:
         layout_id: The dashboard to modify (the new dashboard's ID from
             create_dashboard_from_template — never the template ID).
         patches: Optional list of patch operations.
         additions: Optional list of full widget dicts to append.
         removals: Optional list of widget `i`s to remove.
+        report_scope: Optional new reportScope to persist on this dashboard
+            (replaces the existing one).
         tool_context: ADK tool context (injected automatically).
 
     Returns:
@@ -431,11 +466,23 @@ def update_dashboard(
     patches = patches or []
     additions = additions or []
     removals = removals or []
-    if not patches and not additions and not removals:
+    if not patches and not additions and not removals and report_scope is None:
         return {
             "status": "error",
-            "message": "No edits provided — pass at least one of patches/additions/removals.",
+            "message": (
+                "No edits provided — pass at least one of patches/additions/removals/report_scope."
+            ),
         }
+
+    validated_scope: ReportScope | None = None
+    if report_scope is not None:
+        try:
+            validated_scope = ReportScope.model_validate(report_scope)
+        except ValidationError as exc:
+            return {
+                "status": "error",
+                "message": f"report_scope failed validation: {exc.errors()[:3]}",
+            }
 
     fs = get_fs()
     data, err = _verify_dashboard_ownership(fs, layout_id, user_id)
@@ -522,13 +569,31 @@ def update_dashboard(
         return err
 
     # Persist.
-    fs._db.collection(DASHBOARD_LAYOUTS).document(layout_id).update({
+    now_iso = _now_iso()
+    update_payload: dict[str, Any] = {
         "layout": widgets,
-    })
+        "updated_at": now_iso,
+    }
+    if validated_scope is not None:
+        update_payload["reportScope"] = validated_scope.model_dump(
+            exclude_none=True, by_alias=True
+        )
+    fs._db.collection(DASHBOARD_LAYOUTS).document(layout_id).update(update_payload)
+
+    # Track in session state so `enforce_verify_before_publish` (in callbacks.py)
+    # can refuse a `publish_dashboard` that follows a write without a fresh
+    # passing `verify_dashboard`. Stored as ISO so it's comparable to the
+    # `last_verify_ok` timestamp written by verify_dashboard.
+    state = _state(tool_context)
+    if state is not None:
+        last_update = state.get("dashboard_last_update_ts") or {}
+        last_update[layout_id] = now_iso
+        state["dashboard_last_update_ts"] = last_update
 
     logger.info(
-        "update_dashboard: layout=%s patches=%d adds=%d removes=%d user=%s",
-        layout_id, len(patches), len(additions), len(removals), user_id,
+        "update_dashboard: layout=%s patches=%d adds=%d removes=%d scope=%s user=%s",
+        layout_id, len(patches), len(additions), len(removals),
+        bool(validated_scope), user_id,
     )
     return {
         "status": "success",
@@ -537,9 +602,12 @@ def update_dashboard(
         "applied_additions": len(additions),
         "applied_removals": len(removals),
         "touched_widget_ids": touched,
+        "report_scope_updated": validated_scope is not None,
         "message": (
             f"Applied {len(patches)} patch(es), {len(additions)} addition(s), "
-            f"{len(removals)} removal(s)."
+            f"{len(removals)} removal(s)"
+            + (" and updated reportScope" if validated_scope is not None else "")
+            + "."
         ),
     }
 
@@ -632,13 +700,309 @@ _ANCHOR_PATTERN = re.compile(r'<a\s+id="(sec-[A-Za-z0-9-]+)"\s*>')
 # — add when we see customers in that script.
 _HEBREW_CHAR_PATTERN = re.compile(r"[֐-׿]")
 
-# `<fact src="...">value</fact>` provenance tag for load-bearing numbers. The
-# render layer strips the tags; the verifier audits the `src` attributes against
-# the source TVF / query result the agent cited.
+# `<fact src="metric_key">value</fact>` provenance tag for load-bearing numbers.
+# The render layer strips the tags but keeps the inner value visible; the
+# verifier audits the `src` attribute against the canonical metric re-derived
+# from `scope_posts(@agent_id)` + the dashboard's reportScope.
+#
+# Supported metric_key forms (v1 — keep small and extend as adoption grows):
+#   total_posts                       Total post count in scope.
+#   posts:<dim>:<value>               COUNT where <dim> = <value>.
+#   pct:<dim>:<value>                 100 * COUNT(<dim>=<value>) / total. Compared
+#                                     to a numeric (e.g. 37 or 37.5); tolerance
+#                                     is in percentage points.
+#   unique:<dim>                      COUNT DISTINCT <dim>.
+#
+# Allowed <dim> values: sentiment, emotion, platform, language, content_type,
+# channel_type, channel_handle, theme, entity.
 _FACT_TAG_PATTERN = re.compile(
     r'<fact\s+src="([^"]+)"\s*>([^<]*)</fact>',
     re.IGNORECASE,
 )
+
+# Scalar dimensions on enriched_posts that we can filter by `field = value`.
+# Arrays (themes, entities) need ARRAY_CONTAINS — handled separately.
+_SCOPE_SCALAR_DIMS = (
+    "sentiment",
+    "emotion",
+    "platform",
+    "language",
+    "content_type",
+    "channels",  # maps to channel_type per agent prompt convention
+    "collection",  # maps to collection_id
+)
+
+# Same set, but the verifier accepts singular tokens in `posts:<dim>:<value>` —
+# `theme` and `entity` (singular) → array membership; the others → equality.
+_FACT_DIM_SCALAR = {
+    "sentiment": "sentiment",
+    "emotion": "emotion",
+    "platform": "platform",
+    "language": "language",
+    "content_type": "content_type",
+    "channel_type": "channel_type",
+    "channel_handle": "channel_handle",
+}
+_FACT_DIM_ARRAY = {
+    "theme": "themes",
+    "entity": "entities",
+}
+
+
+def _build_scope_where(report_scope: dict | None) -> tuple[str, dict[str, Any]]:
+    """Translate a reportScope dict into a SQL WHERE-clause fragment + params.
+
+    Returns ``(fragment, params)`` where ``fragment`` is a sequence of
+    `AND <predicate>` lines (empty string if the scope is empty/None) and
+    ``params`` is a dict to merge into the query's parameter bindings.
+
+    Reportscope is treated as an inclusive intersection: every populated
+    dimension narrows; absent dimensions are unconstrained. Empty scope =
+    no narrowing.
+    """
+    if not report_scope:
+        return "", {}
+    parts: list[str] = []
+    params: dict[str, Any] = {}
+
+    dr = report_scope.get("date_range") or {}
+    # `from` is a reserved word in some dict APIs; the Pydantic alias keeps
+    # the JSON key as "from".
+    dr_from = dr.get("from") if isinstance(dr, dict) else None
+    dr_to = dr.get("to") if isinstance(dr, dict) else None
+    if dr_from:
+        parts.append("AND posted_at >= TIMESTAMP(@scope_date_from)")
+        params["scope_date_from"] = dr_from
+    if dr_to:
+        parts.append("AND posted_at <= TIMESTAMP(@scope_date_to)")
+        params["scope_date_to"] = dr_to
+
+    for dim in _SCOPE_SCALAR_DIMS:
+        vals = report_scope.get(dim)
+        if not vals:
+            continue
+        if dim == "channels":
+            parts.append("AND channel_type IN UNNEST(@scope_channels)")
+            params["scope_channels"] = list(vals)
+        elif dim == "collection":
+            parts.append("AND collection_id IN UNNEST(@scope_collection)")
+            params["scope_collection"] = list(vals)
+        else:
+            parts.append(f"AND {dim} IN UNNEST(@scope_{dim})")
+            params[f"scope_{dim}"] = list(vals)
+
+    for dim_key, col in (("themes", "themes"), ("entities", "entities")):
+        vals = report_scope.get(dim_key)
+        if not vals:
+            continue
+        parts.append(
+            f"AND EXISTS (SELECT 1 FROM UNNEST({col}) AS x WHERE x IN UNNEST(@scope_{dim_key}))"
+        )
+        params[f"scope_{dim_key}"] = list(vals)
+
+    return ("\n  " + "\n  ".join(parts)) if parts else "", params
+
+
+def _fact_metric_sql(metric_key: str) -> tuple[str, dict[str, Any]] | None:
+    """Translate a fact `src` metric_key into a SQL fragment that yields one
+    numeric value. The caller wraps this in
+    ``WITH scope AS (SELECT * FROM scope_posts(@agent_id) WHERE 1=1 <scope_filters>)``
+    and runs against BigQuery. Returns ``(value_expression_sql, extra_params)``
+    where the value-expression SQL returns a single column named `v`.
+
+    Returns None for unrecognized metric keys — the verifier silently skips
+    those (untagged or future metrics).
+    """
+    key = metric_key.strip()
+    if not key:
+        return None
+    if key == "total_posts":
+        return ("SELECT CAST(COUNT(*) AS FLOAT64) AS v FROM scope", {})
+
+    parts = key.split(":")
+    head = parts[0]
+
+    if head == "unique" and len(parts) == 2:
+        dim = parts[1]
+        col = _FACT_DIM_SCALAR.get(dim) or _FACT_DIM_ARRAY.get(dim)
+        if col is None:
+            return None
+        if dim in _FACT_DIM_ARRAY:
+            return (
+                f"SELECT CAST(COUNT(DISTINCT x) AS FLOAT64) AS v "
+                f"FROM scope, UNNEST({col}) AS x",
+                {},
+            )
+        return (f"SELECT CAST(COUNT(DISTINCT {col}) AS FLOAT64) AS v FROM scope", {})
+
+    if head in ("posts", "pct") and len(parts) >= 3:
+        dim = parts[1]
+        # Value can itself contain colons (e.g. an entity name); join the tail.
+        value = ":".join(parts[2:])
+        if dim in _FACT_DIM_SCALAR:
+            col = _FACT_DIM_SCALAR[dim]
+            if head == "posts":
+                return (
+                    f"SELECT CAST(COUNTIF({col} = @fact_value) AS FLOAT64) AS v FROM scope",
+                    {"fact_value": value},
+                )
+            return (
+                f"SELECT SAFE_DIVIDE(COUNTIF({col} = @fact_value) * 100.0, COUNT(*)) AS v "
+                f"FROM scope",
+                {"fact_value": value},
+            )
+        if dim in _FACT_DIM_ARRAY:
+            arr = _FACT_DIM_ARRAY[dim]
+            if head == "posts":
+                return (
+                    f"SELECT CAST(COUNTIF(@fact_value IN UNNEST({arr})) AS FLOAT64) AS v "
+                    f"FROM scope",
+                    {"fact_value": value},
+                )
+            return (
+                f"SELECT SAFE_DIVIDE(COUNTIF(@fact_value IN UNNEST({arr})) * 100.0, COUNT(*)) AS v "
+                f"FROM scope",
+                {"fact_value": value},
+            )
+
+    return None
+
+
+def _parse_fact_value(raw: str) -> float | None:
+    """Extract a numeric value from a fact-tag inner text.
+
+    Tolerates thousands separators, percent signs, surrounding whitespace,
+    and trailing notes ("12,345 posts", "37%", "~12.5"). Returns None when
+    the inner text doesn't parse as a number — the verifier reports those
+    as malformed fact tags rather than mismatches.
+    """
+    if not raw:
+        return None
+    s = raw.strip().replace(",", "").rstrip("%").strip()
+    # Strip leading approximate markers ("~", "≈", "≥", "≤", ">", "<").
+    while s and s[0] in "~≈≥≤><":
+        s = s[1:].strip()
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _values_match(metric_key: str, expected: float, actual: float) -> bool:
+    """Compare an agent-committed value to the re-derived value with tolerance.
+
+    Tolerance shape:
+      - Percentages (`pct:...`): ±1 percentage point absolute.
+      - Counts (`total_posts`, `posts:...`, `unique:...`): ±0.5% relative,
+        with a min absolute floor of ±1 to absorb dedup wobble on small Ns.
+    """
+    if metric_key.startswith("pct:"):
+        return abs(expected - actual) <= 1.0
+    abs_floor = 1.0
+    rel = max(abs(actual) * 0.005, abs_floor)
+    return abs(expected - actual) <= rel
+
+
+def _verify_fact_tags(
+    widgets: list[dict],
+    agent_id: str,
+    report_scope: dict | None,
+) -> list[str]:
+    """For each `<fact src="..."`>VALUE</fact>` tag in a text widget, re-derive
+    the canonical value from `scope_posts(@agent_id)` + reportScope and compare.
+
+    Returns a list of error strings (one per mismatch / unknown metric /
+    malformed tag). Empty list means clean.
+
+    Untagged numbers and tags with unknown metric keys are reported with a
+    short hint so the agent learns the vocabulary — but verification only
+    blocks publish when a *known* metric mismatches its committed value. Set
+    of metrics is intentionally small; expand as the report templates adopt
+    more anchors.
+    """
+    errors: list[str] = []
+    # Collect all tags first; we'll batch the SQL by metric_key to keep query
+    # count bounded even on long reports.
+    tags: list[tuple[str, str, str, str]] = []  # (widget_i, src, raw_value, parsed)
+    for w in widgets:
+        if not isinstance(w, dict) or w.get("aggregation") != "text":
+            continue
+        wi = w.get("i") or "<unknown>"
+        mc = w.get("markdownContent") or ""
+        if not isinstance(mc, str):
+            continue
+        for src, inner in _FACT_TAG_PATTERN.findall(mc):
+            tags.append((wi, src.strip(), inner, inner))
+
+    if not tags:
+        return errors  # no anchored numbers → nothing to verify
+
+    scope_where, scope_params = _build_scope_where(report_scope)
+    base_cte = (
+        f"WITH scope AS (\n"
+        f"  SELECT * FROM social_listening.scope_posts(@agent_id)\n"
+        f"  WHERE 1=1{scope_where}\n"
+        f")\n"
+    )
+
+    bq = get_bq()
+    # Cache per-metric-key results — multiple widgets often cite the same
+    # canonical fact (e.g. total_posts cited in §0, §1, §14).
+    metric_cache: dict[str, float | None] = {}
+
+    for widget_i, src, raw_inner, _ in tags:
+        parsed = _parse_fact_value(raw_inner)
+        if parsed is None:
+            errors.append(
+                f"widget '{widget_i}': fact tag src='{src}' inner '{raw_inner.strip()[:40]}' "
+                f"is not a number. Wrap only numeric load-bearing values."
+            )
+            continue
+        sql_pair = _fact_metric_sql(src)
+        if sql_pair is None:
+            errors.append(
+                f"widget '{widget_i}': fact tag src='{src}' is not a recognized "
+                f"metric_key. Supported forms: total_posts, posts:<dim>:<value>, "
+                f"pct:<dim>:<value>, unique:<dim>."
+            )
+            continue
+        cache_key = f"{src}"  # extra params are deterministic from src
+        if cache_key in metric_cache:
+            actual = metric_cache[cache_key]
+        else:
+            value_sql, extra_params = sql_pair
+            full_sql = base_cte + value_sql
+            params: dict[str, Any] = {"agent_id": agent_id}
+            params.update(scope_params)
+            params.update(extra_params)
+            try:
+                rows = bq.query(full_sql, params=params)
+            except Exception as exc:
+                logger.warning(
+                    "verify_fact_tags: BQ query failed for src=%s: %s", src, exc,
+                )
+                metric_cache[cache_key] = None
+                errors.append(
+                    f"widget '{widget_i}': could not verify fact src='{src}' "
+                    f"(BQ query failed). The number may still be wrong — re-run."
+                )
+                continue
+            actual = float(rows[0]["v"]) if rows and rows[0].get("v") is not None else None
+            metric_cache[cache_key] = actual
+        if actual is None:
+            errors.append(
+                f"widget '{widget_i}': fact src='{src}' returned no data from scope_posts. "
+                f"Either the metric doesn't apply here or the scope is empty."
+            )
+            continue
+        if not _values_match(src, parsed, actual):
+            errors.append(
+                f"widget '{widget_i}': fact src='{src}' committed value {parsed:g} "
+                f"does not match the scoped value {actual:g}. Update the number "
+                f"or widen the scope."
+            )
+
+    return errors
 
 
 def _looks_like_serp(url: str) -> bool:
@@ -1012,10 +1376,20 @@ def verify_dashboard(
       - Appendix link count: the §App-A web-grounding widget must carry ≥5
         external markdown links to real articles.
 
+    What it ALSO catches (when ``reportScope`` is set on the dashboard):
+      - Numerical mismatches: every `<fact src="metric_key">VALUE</fact>` tag
+        in text widgets is re-derived from `scope_posts(@agent_id)` filtered
+        by the committed reportScope; values outside the tolerance band block
+        publish. Supported metric_keys: ``total_posts``, ``posts:<dim>:<value>``,
+        ``pct:<dim>:<value>``, ``unique:<dim>`` (dim ∈ sentiment / emotion /
+        platform / language / content_type / channel_type / channel_handle /
+        theme / entity). Untagged numbers are not verified — wrap your
+        load-bearing values in `<fact>` to opt them in.
+
     What it does NOT catch:
       - Content quality (depth, accuracy, tone) — those are your judgment.
-      - Number / date correctness against the underlying SQL — re-run the query
-        if uncertain; verify_dashboard cannot reach the data.
+      - Numbers without a `<fact>` wrapper or with an unsupported metric_key
+        — re-run the query if uncertain.
       - Missing-anchor breakage from removals (intentionally lenient — removing
         a section is allowed and the TOC isn't structurally enforced).
 
@@ -1049,6 +1423,15 @@ def verify_dashboard(
     template_widgets = _load_template_widgets(fs, data.get("source_template_id"))
     errors = _check_dashboard_for_publish(widgets, template_widgets=template_widgets)
 
+    # Numerical verification — only runs when reportScope is committed AND we
+    # have an active agent_id (the TVF needs both). Standalone dashboards and
+    # template-mode runs skip this layer entirely.
+    report_scope = data.get("reportScope")
+    agent_id = _agent_id(tool_context)
+    if report_scope and agent_id:
+        fact_errors = _verify_fact_tags(widgets, agent_id, report_scope)
+        errors.extend(fact_errors)
+
     if errors:
         logger.info(
             "verify_dashboard: layout=%s user=%s defects=%d",
@@ -1066,17 +1449,29 @@ def verify_dashboard(
             ),
         }
 
+    # Record the pass in session state so `enforce_verify_before_publish`
+    # (callbacks.py) can let the next publish through. Matched against
+    # `dashboard_last_update_ts` written by update_dashboard.
+    state = _state(tool_context)
+    if state is not None:
+        last_ok = state.get("dashboard_last_verify_ok") or {}
+        last_ok[layout_id] = _now_iso()
+        state["dashboard_last_verify_ok"] = last_ok
+
     logger.info(
-        "verify_dashboard: layout=%s user=%s OK widgets=%d",
-        layout_id, user_id, text_widget_count,
+        "verify_dashboard: layout=%s user=%s OK widgets=%d scope_checked=%s",
+        layout_id, user_id, text_widget_count, bool(report_scope and agent_id),
     )
     return {
         "status": "ok",
         "layout_id": layout_id,
         "checked_widget_count": text_widget_count,
+        "scope_verified": bool(report_scope and agent_id),
         "message": (
             f"verify_dashboard passed — {text_widget_count} text widget(s) "
-            f"clean. Safe to call publish_dashboard."
+            f"clean"
+            + (" (incl. numerical scope check)" if (report_scope and agent_id) else "")
+            + ". Safe to call publish_dashboard."
         ),
     }
 
@@ -1152,10 +1547,18 @@ def publish_dashboard(
     # asked to call verify_dashboard first; this is the safety net for when
     # it doesn't, or when content drifted between verify and publish.
     template_widgets = _load_template_widgets(fs, data.get("source_template_id"))
+    widgets_for_check = data.get("layout") or []
     pre_publish_errors = _check_dashboard_for_publish(
-        data.get("layout") or [],
+        widgets_for_check,
         template_widgets=template_widgets,
     )
+    # Numerical scope check — same as verify_dashboard but inside the publish
+    # gate so a stale verify-pass can't smuggle drift through.
+    report_scope = data.get("reportScope")
+    if report_scope:
+        pre_publish_errors.extend(
+            _verify_fact_tags(widgets_for_check, agent_id, report_scope)
+        )
     if pre_publish_errors:
         logger.info(
             "publish_dashboard: REFUSED layout=%s user=%s defects=%d",

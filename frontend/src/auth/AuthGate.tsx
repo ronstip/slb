@@ -1,8 +1,12 @@
 import { Navigate, Outlet } from 'react-router';
+import { useHead } from '@unhead/react';
 import { useAuth } from './useAuth.ts';
 import { NewAgentDrawer } from '../features/agents/NewAgentDrawer.tsx';
 
 export function AuthGate() {
+  // Authenticated app surfaces must never be indexed.
+  useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
+
   const { loading, isAnonymous } = useAuth();
 
   if (loading) {

@@ -97,6 +97,15 @@ function InviteRoute() {
 function HomeRoute() {
   const { loading, isAnonymous, devMode } = useAuth();
 
+  // During Puppeteer prerender (build-time SEO snapshot) auth never resolves,
+  // so always serve LandingPage to crawlers. Production users hit normal logic.
+  if (
+    typeof window !== 'undefined' &&
+    (window as unknown as { __PRERENDER_INJECTED?: unknown }).__PRERENDER_INJECTED
+  ) {
+    return <LandingPageRoute />;
+  }
+
   if (loading) {
     return <FullScreenSpinner />;
   }

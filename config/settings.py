@@ -173,7 +173,7 @@ class Settings(BaseSettings):
     # and collection-level default.
     default_vendor_instagram: str = ""
     default_vendor_facebook: str = ""
-    default_vendor_tiktok: str = ""
+    default_vendor_tiktok: str = "apify"
 
     environment: str = "development"
     enable_search_grounding: bool = True

@@ -23,16 +23,16 @@ function deltaIcon(delta?: string | null): React.ElementType | null {
 }
 
 function MiniChart({ spec }: { spec: ChartSpec }) {
+  let body: React.ReactNode = null;
   if (spec.chart_type === 'bar' || spec.chart_type === 'line') {
-    return <MiniBarOrLine spec={spec} />;
+    body = <MiniBarOrLine spec={spec} />;
+  } else if (spec.chart_type === 'pie' || spec.chart_type === 'doughnut') {
+    body = <MiniPie spec={spec} />;
+  } else if (spec.chart_type === 'table') {
+    body = <MiniTable spec={spec} />;
   }
-  if (spec.chart_type === 'pie' || spec.chart_type === 'doughnut') {
-    return <MiniPie spec={spec} />;
-  }
-  if (spec.chart_type === 'table') {
-    return <MiniTable spec={spec} />;
-  }
-  return null;
+  if (body === null) return null;
+  return <div dir="ltr">{body}</div>;
 }
 
 function MiniBarOrLine({ spec }: { spec: ChartSpec }) {
@@ -232,10 +232,16 @@ export function DataHero({ story, onOpen }: { story: DataStory; onOpen?: () => v
             </>
           )}
         </div>
-        <h2 className="mt-3 font-serif text-[36px] font-bold leading-[1.08] tracking-[-0.01em] text-foreground">
+        <h2
+          dir="auto"
+          className="mt-3 font-serif text-[36px] font-bold leading-[1.08] tracking-[-0.01em] text-foreground"
+        >
           {story.headline}
         </h2>
-        <p className="mt-4 font-serif text-[17px] leading-relaxed text-foreground/80">
+        <p
+          dir="auto"
+          className="mt-4 font-serif text-[17px] leading-relaxed text-foreground/80"
+        >
           {story.blurb}
         </p>
         {story.chart && <MetricStrip metrics={story.metrics} size="hero" />}
@@ -294,10 +300,16 @@ export function DataStoryCard({ story, onOpen }: { story: DataStory; onOpen?: ()
             {[story.section_label, story.timeframe].filter(Boolean).join(' · ')}
           </p>
         )}
-        <h3 className="mt-1.5 font-serif text-[20px] font-semibold leading-snug text-foreground group-hover:text-primary">
+        <h3
+          dir="auto"
+          className="mt-1.5 font-serif text-[20px] font-semibold leading-snug text-foreground group-hover:text-primary"
+        >
           {story.headline}
         </h3>
-        <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">
+        <p
+          dir="auto"
+          className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground"
+        >
           {story.blurb}
         </p>
         {story.chart && <MetricStrip metrics={story.metrics} />}
@@ -309,11 +321,11 @@ export function DataStoryCard({ story, onOpen }: { story: DataStory; onOpen?: ()
       <button
         type="button"
         onClick={onOpen}
-        className="group flex flex-col gap-3 text-left transition-all hover:-translate-y-0.5"
+        className="group flex flex-col gap-3 text-start transition-all hover:-translate-y-0.5"
       >
         {inner}
       </button>
     );
   }
-  return <div className="group flex flex-col gap-3 text-left">{inner}</div>;
+  return <div className="group flex flex-col gap-3 text-start">{inner}</div>;
 }

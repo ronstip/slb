@@ -15,6 +15,7 @@ import { UnderlyingDataDialog } from '../UnderlyingDataDialog.tsx';
 import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
+import { useDashboardLayout } from './hooks/useDashboardLayout.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
 import type { DashboardToolbarHandlers } from './SocialDashboardView.tsx';
 import { SocialDashboardToolbar } from './SocialDashboardToolbar.tsx';
@@ -65,6 +66,11 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     staleTime: 5 * 60 * 1000,
   });
 
+  // Pull `reportScope` from the layout doc so the filter hook can intersect it
+  // with viewer selections. Absence = standalone dashboard, no scope lock.
+  const { data: layoutResponse } = useDashboardLayout(artifact.id);
+  const reportScope = layoutResponse?.reportScope ?? null;
+
   const allPosts = response?.posts ?? [];
 
   const {
@@ -75,7 +81,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     availableOptions,
     activeFilterCount,
     clearAll,
-  } = useDashboardFilters(allPosts);
+  } = useDashboardFilters(allPosts, reportScope);
 
   // Consume pending topic filter from TopicCard "Dashboard" button
   const pendingTopicFilter = useStudioStore((s) => s.pendingTopicFilter);
@@ -241,6 +247,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
           onFilterBarChange={(f) => setFilterBarFilters(f as FilterBarFilterId[])}
           allPosts={allPosts}
           noBorder={noBorder}
+          reportScope={reportScope}
         />
       )}
 

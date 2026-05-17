@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { useHead } from '@unhead/react';
 import { AlertTriangle } from 'lucide-react';
 import { Logo, BRAND_NAME } from '../../../components/Logo.tsx';
 import { Button } from '../../../components/ui/button.tsx';
@@ -10,9 +11,12 @@ import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilte
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
-import type { SocialDashboardWidget } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, ReportScope } from './types-social-dashboard.ts';
 
 export function SharedDashboardPage() {
+  // Token-gated; must never be indexed.
+  useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
+
   const { token } = useParams<{ token: string }>();
   const [filterBarFilters, setFilterBarFilters] = useState<FilterBarFilterId[]>(DEFAULT_FILTER_BAR_FILTERS);
 
@@ -25,6 +29,9 @@ export function SharedDashboardPage() {
   });
 
   const allPosts = response?.posts ?? [];
+  // The shared dashboard API copies the owner's `reportScope` through. When
+  // present, the filter bar locks those dimensions for the public viewer too.
+  const reportScope = (response?.reportScope ?? null) as ReportScope | null;
 
   const {
     filters,
@@ -34,7 +41,7 @@ export function SharedDashboardPage() {
     availableOptions,
     activeFilterCount,
     clearAll,
-  } = useDashboardFilters(allPosts);
+  } = useDashboardFilters(allPosts, reportScope);
 
   const handleLayoutLoaded = useCallback((persisted: string[]) => {
     setFilterBarFilters(persisted as FilterBarFilterId[]);
@@ -123,6 +130,7 @@ export function SharedDashboardPage() {
               collectionNames={response.collection_names}
               filterBarFilters={filterBarFilters}
               allPosts={allPosts}
+              reportScope={reportScope}
             />
             </div>
           </div>

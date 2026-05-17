@@ -107,6 +107,10 @@ def _run_pass1_batch(
         logger.exception("Pass-1 Gemini call failed for batch %d", batch_index)
         return []
 
+    from api.services.cost_meter import log_gemini_response
+
+    log_gemini_response(response, feature="topic_cluster", model=model)
+
     # Diagnostic logging when a batch produces zero topics so we can
     # distinguish truncation from "model decided nothing was anchorable".
     finish_reason = None
@@ -325,6 +329,10 @@ def run_pass2(
         logger.exception("Pass-2 Gemini call failed")
         return _fallback_pass2_no_merge(candidates, min_match_score)
 
+    from api.services.cost_meter import log_gemini_response
+
+    log_gemini_response(response, feature="topic_cluster", model=model)
+
     try:
         finish_reason = response.candidates[0].finish_reason
     except (AttributeError, IndexError):
@@ -522,6 +530,10 @@ def _run_pass3_topic(
     except Exception:
         logger.exception("Pass-3 LLM call failed for topic %r — keeping all", topic.header[:60])
         return pids, 0
+
+    from api.services.cost_meter import log_gemini_response
+
+    log_gemini_response(response, feature="topic_cluster", model=model)
 
     parsed: Pass3VerdictResponse | None = getattr(response, "parsed", None)
     if not parsed:

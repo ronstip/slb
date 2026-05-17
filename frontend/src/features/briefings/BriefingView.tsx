@@ -17,6 +17,7 @@ import type {
 } from '../../api/endpoints/briefings.ts';
 import { mediaUrl } from '../../api/client.ts';
 import { formatNumber, timeAgo } from '../../lib/format.ts';
+import { detectDirection } from '../../lib/direction.ts';
 import { DataStoryCard, DataHero } from './DataStoryCard.tsx';
 
 interface BriefingViewProps {
@@ -46,14 +47,32 @@ export function BriefingView({ title, briefing, onOpenStory }: BriefingViewProps
     ? (story: Story) => onOpenStory(story)
     : undefined;
 
+  const direction = useMemo(
+    () =>
+      detectDirection([
+        title,
+        briefing.hero.headline,
+        briefing.hero.blurb,
+        briefing.editors_note,
+        briefing.hero.type === 'topic' ? briefing.hero.topic_name : null,
+        ...briefing.secondary
+          .slice(0, 3)
+          .flatMap((s) => [s.headline, s.blurb]),
+      ]),
+    [title, briefing],
+  );
+
   return (
-    <div className="mx-auto max-w-[1200px] px-8 py-10">
+    <div dir={direction} className="mx-auto max-w-[1200px] px-8 py-10">
       <Masthead title={title} generatedAt={briefing.generated_at} />
 
       {briefing.pulse && <PulseBar pulse={briefing.pulse} />}
 
       {briefing.editors_note && (
-        <p className="mt-6 border-l-2 border-foreground/30 pl-4 font-serif text-[15px] italic leading-relaxed text-foreground/75">
+        <p
+          dir="auto"
+          className="mt-6 border-s-2 border-foreground/30 ps-4 font-serif text-[15px] italic leading-relaxed text-foreground/75"
+        >
           <span className="font-semibold not-italic">Editor's note —</span> {briefing.editors_note}
         </p>
       )}
@@ -89,7 +108,10 @@ function Masthead({ title, generatedAt }: { title: string; generatedAt: string }
           </p>
         )}
       </div>
-      <h1 className="mt-2 truncate font-serif text-[38px] font-bold leading-[1.1] tracking-tight text-foreground">
+      <h1
+        dir="auto"
+        className="mt-2 truncate font-serif text-[38px] font-bold leading-[1.1] tracking-tight text-foreground"
+      >
         {title}
       </h1>
     </header>
@@ -116,7 +138,7 @@ function PulseBar({ pulse }: { pulse: BriefingPulse }) {
         hasSparkline ? 'sm:grid-cols-[auto_1fr_auto]' : 'sm:grid-cols-[auto_1fr]'
       }`}
     >
-      <div className="flex items-center gap-6 sm:border-r sm:border-border sm:pr-6">
+      <div className="flex items-center gap-6 sm:border-e sm:border-border sm:pe-6">
         <PulseNumber value={formatNumber(pulse.total_posts)} label={pulse.total_posts === 1 ? 'Post' : 'Posts'} />
         <PulseNumber value={formatNumber(pulse.total_views)} label="Views" />
         <PulseNumber value={String(pulse.topic_count)} label="Topics" />
@@ -165,7 +187,8 @@ function PostsSparkline({ series }: { series: number[] }) {
 
   return (
     <div
-      className="flex flex-col justify-center sm:border-l sm:border-border sm:pl-6"
+      dir="ltr"
+      className="flex flex-col justify-center sm:border-s sm:border-border sm:ps-6"
       title={`Posts per day (last ${series.length}d) — total ${total}`}
     >
       <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
@@ -378,15 +401,24 @@ function TopicHero({ hero, onOpen }: { hero: TopicStory; onOpen?: () => void }) 
       </div>
       <div className="flex min-w-0 flex-col">
         <TopicHeroMeta hero={hero} />
-        <h2 className="mt-3 font-serif text-[36px] font-bold leading-[1.08] tracking-[-0.01em] text-foreground">
+        <h2
+          dir="auto"
+          className="mt-3 font-serif text-[36px] font-bold leading-[1.08] tracking-[-0.01em] text-foreground"
+        >
           {hero.headline}
         </h2>
         {hero.topic_name && (
-          <p className="mt-2 text-[12px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
+          <p
+            dir="auto"
+            className="mt-2 text-[12px] font-medium uppercase tracking-[0.15em] text-muted-foreground"
+          >
             {hero.topic_name}
           </p>
         )}
-        <p className="mt-4 font-serif text-[17px] leading-relaxed text-foreground/80">
+        <p
+          dir="auto"
+          className="mt-4 font-serif text-[17px] leading-relaxed text-foreground/80"
+        >
           {hero.blurb}
         </p>
         {hero.stats && <HeroStatsStrip stats={hero.stats} />}
@@ -460,14 +492,23 @@ function TopicSecondaryCard({ story, onOpen }: { story: TopicStory; onOpen?: () 
       </div>
       <div>
         {story.topic_name && (
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <p
+            dir="auto"
+            className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
+          >
             {story.topic_name}
           </p>
         )}
-        <h3 className="mt-1.5 font-serif text-[20px] font-semibold leading-snug text-foreground group-hover:text-primary">
+        <h3
+          dir="auto"
+          className="mt-1.5 font-serif text-[20px] font-semibold leading-snug text-foreground group-hover:text-primary"
+        >
           {story.headline}
         </h3>
-        <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">
+        <p
+          dir="auto"
+          className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground"
+        >
           {story.blurb}
         </p>
         {story.stats && <CompactStatsStrip stats={story.stats} />}
@@ -479,13 +520,13 @@ function TopicSecondaryCard({ story, onOpen }: { story: TopicStory; onOpen?: () 
       <button
         type="button"
         onClick={onOpen}
-        className="group flex flex-col gap-3 text-left transition-all hover:-translate-y-0.5"
+        className="group flex flex-col gap-3 text-start transition-all hover:-translate-y-0.5"
       >
         {inner}
       </button>
     );
   }
-  return <div className="group flex flex-col gap-3 text-left">{inner}</div>;
+  return <div className="group flex flex-col gap-3 text-start">{inner}</div>;
 }
 
 // ─── Analytics ──────────────────────────────────────────────────────
@@ -606,7 +647,7 @@ function PlatformMix({ items }: { items: BriefingAnalytics['platform_mix'] }) {
       <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         Platform mix
       </div>
-      <ul className="mt-3 space-y-2.5">
+      <ul dir="ltr" className="mt-3 space-y-2.5">
         {items.map((p) => (
           <li key={p.name} className="flex items-center gap-3 text-[12px] tabular-nums">
             <span className="w-20 shrink-0 truncate font-serif text-[13px] font-semibold text-foreground">
@@ -614,14 +655,14 @@ function PlatformMix({ items }: { items: BriefingAnalytics['platform_mix'] }) {
             </span>
             <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-border/60">
               <span
-                className="absolute inset-y-0 left-0 bg-foreground/70"
+                className="absolute inset-y-0 start-0 bg-foreground/70"
                 style={{ width: `${(p.post_count / max) * 100}%` }}
               />
             </span>
-            <span className="w-10 shrink-0 text-right font-semibold text-foreground">
+            <span className="w-10 shrink-0 text-end font-semibold text-foreground">
               {p.share_pct}%
             </span>
-            <span className="w-14 shrink-0 text-right text-muted-foreground">
+            <span className="w-14 shrink-0 text-end text-muted-foreground">
               {formatNumber(p.post_count)}
             </span>
           </li>
@@ -685,7 +726,7 @@ function SentimentTrend({ series }: { series: BriefingAnalytics['sentiment_trend
   const lastDay = series[series.length - 1]?.day;
 
   return (
-    <div>
+    <div dir="ltr">
       <div className="flex items-baseline justify-between gap-3">
         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           Sentiment trend
@@ -753,10 +794,16 @@ function RailRow({ story, onOpen }: { story: Story; onOpen?: () => void }) {
         {String(story.rank).padStart(2, '0')}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-serif text-[17px] font-semibold leading-snug text-foreground group-hover:text-primary">
+        <span
+          dir="auto"
+          className="block font-serif text-[17px] font-semibold leading-snug text-foreground group-hover:text-primary"
+        >
           {story.headline}
         </span>
-        <span className="mt-0.5 block text-[13px] text-muted-foreground">
+        <span
+          dir="auto"
+          className="mt-0.5 block text-[13px] text-muted-foreground"
+        >
           {story.blurb}
         </span>
         {story.type === 'topic' && story.stats ? (
@@ -766,7 +813,10 @@ function RailRow({ story, onOpen }: { story: Story; onOpen?: () => void }) {
         ) : null}
       </span>
       {story.type === 'topic' && story.topic_name && (
-        <span className="hidden shrink-0 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:block">
+        <span
+          dir="auto"
+          className="hidden shrink-0 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:block"
+        >
           {story.topic_name}
         </span>
       )}
@@ -777,13 +827,13 @@ function RailRow({ story, onOpen }: { story: Story; onOpen?: () => void }) {
       <button
         type="button"
         onClick={onOpen}
-        className="group flex w-full items-start gap-4 py-3.5 text-left"
+        className="group flex w-full items-start gap-4 py-3.5 text-start"
       >
         {inner}
       </button>
     );
   }
-  return <div className="group flex w-full items-start gap-4 py-3.5 text-left">{inner}</div>;
+  return <div className="group flex w-full items-start gap-4 py-3.5 text-start">{inner}</div>;
 }
 
 function RailDataMetrics({ metrics, timeframe }: { metrics: MetricItem[]; timeframe?: string | null }) {

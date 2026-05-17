@@ -11,6 +11,7 @@ from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
 from api.routers.dashboard_schema import (
     DashboardOrientation,
+    ReportScope,
     SocialDashboardWidget,
     MAX_WIDGETS,
     GRID_COLS,
@@ -29,12 +30,14 @@ class LayoutSaveRequest(BaseModel):
     layout: list[SocialDashboardWidget] = Field(max_length=MAX_WIDGETS)
     filterBarFilters: list[str] | None = None
     orientation: DashboardOrientation | None = None
+    reportScope: ReportScope | None = None
 
 
 class LayoutResponse(BaseModel):
     layout: list[dict[str, Any]] | None
     filterBarFilters: list[str] | None = None
     orientation: DashboardOrientation | None = None
+    reportScope: ReportScope | None = None
 
 
 @router.get("/{artifact_id}", response_model=LayoutResponse)
@@ -60,6 +63,7 @@ async def get_dashboard_layout(
         layout=data.get("layout"),
         filterBarFilters=data.get("filterBarFilters"),
         orientation=data.get("orientation"),
+        reportScope=data.get("reportScope"),
     )
 
 
@@ -89,6 +93,11 @@ async def save_dashboard_layout(
             raise HTTPException(status_code=403, detail="Access denied")
 
     serialized_layout = [w.model_dump(exclude_none=True, by_alias=True) for w in request.layout]
+    serialized_scope = (
+        request.reportScope.model_dump(exclude_none=True, by_alias=True)
+        if request.reportScope is not None
+        else None
+    )
     # MERGE the layout fields rather than replacing the whole doc. Without
     # `merge=True`, `.set()` drops every field not in the payload — including
     # `is_template`, `title`, and `source_template_id` — silently demoting docs.
@@ -100,6 +109,7 @@ async def save_dashboard_layout(
             "layout": serialized_layout,
             "filterBarFilters": request.filterBarFilters,
             "orientation": request.orientation,
+            "reportScope": serialized_scope,
         },
         merge=True,
     )
@@ -108,4 +118,5 @@ async def save_dashboard_layout(
         layout=serialized_layout,
         filterBarFilters=request.filterBarFilters,
         orientation=request.orientation,
+        reportScope=request.reportScope,
     )

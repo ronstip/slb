@@ -161,6 +161,8 @@ def _dispatch_cloud_task(settings, collection_id: str) -> None:
     """Dispatch collection worker via Cloud Tasks."""
     from google.cloud import tasks_v2
 
+    from api.middleware.request_id import outbound_headers
+
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(
         settings.gcp_project_id,
@@ -171,7 +173,7 @@ def _dispatch_cloud_task(settings, collection_id: str) -> None:
     http_request = {
         "http_method": tasks_v2.HttpMethod.POST,
         "url": f"{worker_url}/collection/run",
-        "headers": {"Content-Type": "application/json"},
+        "headers": outbound_headers({"Content-Type": "application/json"}),
         "body": json.dumps({"collection_id": collection_id}).encode(),
     }
     if settings.cloud_tasks_service_account:

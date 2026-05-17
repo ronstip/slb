@@ -116,6 +116,10 @@ def label_topics(
                 ),
             )
 
+            from api.services.cost_meter import log_gemini_response
+
+            log_gemini_response(response, feature="cluster_label", model=model)
+
             parsed = response.parsed
             if parsed and parsed.topics:
                 for topic in parsed.topics:
@@ -186,6 +190,11 @@ def _retry_single_cluster(
                 response_schema=TopicLabelsResponse,
             ),
         )
+
+        from api.services.cost_meter import log_gemini_response
+
+        log_gemini_response(response, feature="cluster_label", model=model)
+
         parsed = response.parsed
         if parsed and parsed.topics:
             t = parsed.topics[0]

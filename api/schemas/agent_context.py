@@ -111,4 +111,13 @@ async def refresh_world_context(ctx: AgentContext) -> str:
         config=config,
     )
 
+    from api.services.cost_meter import log_gemini_response
+
+    log_gemini_response(
+        response,
+        feature="world_context_refresh",
+        model=settings.meta_agent_model,
+        agent_id=getattr(ctx, "agent_id", None),
+    )
+
     return response.text.strip()

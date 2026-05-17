@@ -2,6 +2,7 @@ import path from 'path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import prerender from '@prerenderer/rollup-plugin'
 
 // Split heavy npm dependencies into their own chunks so:
 //   1) the main entry bundle stays small (faster first paint),
@@ -77,7 +78,34 @@ function vendorChunk(id: string): string | undefined {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // Build-time prerender for the public landing route so Google and
+    // AI crawlers (GPTBot, ClaudeBot, PerplexityBot, etc.) that don't
+    // run JavaScript still see the full hero content.
+    prerender({
+      routes: ['/'],
+      renderer: '@prerenderer/renderer-puppeteer',
+      rendererOptions: {
+        // HomeRoute checks window.__PRERENDER_INJECTED to skip the auth
+        // loading spinner and render LandingPage directly during snapshot.
+        inject: true,
+        injectProperty: '__PRERENDER_INJECTED',
+        // Capture after a fixed delay — long enough for React to mount,
+        // lazy-load the LandingPage chunk, and render the hero.
+        renderAfterTime: 8_000,
+        maxConcurrentRoutes: 1,
+        timeout: 60_000,
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        consoleHandler: (route: string, msg: { type: () => string; text: () => string }) => {
+          // eslint-disable-next-line no-console
+          console.log(`[prerender ${route}] ${msg.type()}: ${msg.text()}`);
+        },
+      },
+    }),
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

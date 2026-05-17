@@ -1,10 +1,11 @@
 import type { LucideIcon } from 'lucide-react';
-import { FileText, Target, BarChart3, Mail, Presentation, Plus, LayoutDashboard } from 'lucide-react';
+import { FileText, Target, BarChart3, Mail, Presentation, Plus, LayoutDashboard, FileBarChart2 } from 'lucide-react';
 
 export type StudioActionId =
   | 'insight_report'
   | 'strategic_planning'
   | 'dashboard_report'
+  | 'create_report'
   | 'chart'
   | 'send_email'
   | 'deck_slides'
@@ -72,6 +73,19 @@ export const STUDIO_ACTIONS: StudioAction[] = [
       'border-violet-500/40 bg-gradient-to-br from-violet-500 to-violet-700 text-white hover:from-violet-400 hover:to-violet-600',
     iconBubble: 'bg-white/20 text-white ring-white/20',
     // Special: opens DashboardReportDialog rather than sending a prompt directly.
+  },
+  {
+    id: 'create_report',
+    label: 'Create Report',
+    icon: FileBarChart2,
+    iconClass: 'text-teal-600 bg-teal-500/10',
+    hoverClass: 'hover:border-teal-500/40 hover:bg-teal-500/5',
+    tileGradient: 'from-teal-500/20 via-teal-500/5 to-transparent',
+    iconTint: 'text-teal-500',
+    tileTheme:
+      'border-teal-500/40 bg-gradient-to-br from-teal-500 to-teal-700 text-white hover:from-teal-400 hover:to-teal-600',
+    iconBubble: 'bg-white/20 text-white ring-white/20',
+    // Special: opens CreateReportDialog (version B intelligence template) rather than sending a prompt directly.
   },
   {
     id: 'chart',

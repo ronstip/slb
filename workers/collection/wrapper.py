@@ -34,7 +34,7 @@ class DataProviderWrapper:
         else:
             self._providers = []
             mode = "dev" if settings.is_dev else "production"
-            # BrightData first — default for tiktok, youtube, reddit, facebook
+            # BrightData first — default for youtube, reddit, facebook (tiktok now routes to Apify)
             if settings.brightdata_api_token:
                 try:
                     self._providers.append(BrightDataAdapter(snapshot_tracker=snapshot_tracker, max_snapshots=max_snapshots))
@@ -55,9 +55,9 @@ class DataProviderWrapper:
             except ValueError:
                 logger.info("VetricAdapter skipped (no API keys)")
             # Apify — ships AFTER Vetric so the natural first-supporting fallback
-            # keeps existing IG/FB/TikTok routing on Vetric/BrightData. Apify is
-            # only selected when DEFAULT_VENDOR_<PLATFORM> env or per-collection
-            # vendor_config explicitly names "apify".
+            # keeps existing IG/FB routing on Vetric/BrightData. TikTok defaults
+            # to Apify via DEFAULT_VENDOR_TIKTOK; other platforms only select
+            # Apify when env or per-collection vendor_config names "apify".
             if settings.apify_api_token:
                 try:
                     self._providers.append(ApifyAdapter())

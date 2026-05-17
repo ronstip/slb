@@ -1,7 +1,32 @@
 ﻿import { useState, useEffect, type ReactNode, type CSSProperties } from 'react';
+import { useHead } from '@unhead/react';
 import { useAuth } from './useAuth.ts';
 import { captureGoogleEmail } from './firebase.ts';
 import { apiPost } from '../api/client.ts';
+import { ScoltoMark } from '../components/Logo.tsx';
+
+const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
+  {
+    q: 'What is Scolto?',
+    a: 'Scolto is a team of senior AI analysts available on demand to brand, marketing, and competitive-intelligence teams for social listening, trend detection, campaign tracking, and competitive intelligence.',
+  },
+  {
+    q: "How do Scolto's AI analysts work?",
+    a: "Teams brief Scolto with a research question, brand context, and the deliverable they want. The AI analysts plan the research, gather signals from across the public web, and return a structured briefing the team can read, share, and act on.",
+  },
+  {
+    q: 'What sources does Scolto monitor?',
+    a: 'Scolto monitors public conversation across major social and content platforms, public reviews, forums, and press coverage. Coverage focuses on the surfaces where brand and category conversation actually happens.',
+  },
+  {
+    q: 'How is Scolto different from a social-listening dashboard?',
+    a: 'Dashboards show numbers; Scolto produces analyst briefings. The output explains what is happening, why it matters for the brand, and what to do — closer to the deliverable from a senior researcher than from a tool.',
+  },
+  {
+    q: 'Who uses Scolto?',
+    a: 'Brand, marketing, insights, and competitive-intelligence teams at companies that need ongoing analyst-grade visibility into their category, their audience, and their competitors. Agencies and consultancies use Scolto to extend the analyst capacity they offer clients.',
+  },
+];
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const LP_BRAND = {
@@ -73,44 +98,36 @@ const LP_Mono = ({
   </span>
 );
 
-const LP_ScoltoMark = ({ size = 32, onDark = false }: { size?: number; onDark?: boolean }) => {
-  const stroke = onDark ? '#F6F4EF' : '#0F1F4D';
-  const sw = Math.max(1.4, 2 * (size / 32));
-  return (
-    <svg
-      viewBox="0 0 64 64"
-      width={size}
-      height={size}
-      aria-label="Scolto"
-      fill="none"
-      stroke={stroke}
-      strokeWidth={sw}
-      strokeLinecap="round"
-      style={{ display: 'block', flexShrink: 0 }}
-    >
-      <path d="M4 18 V4 H18" />
-      <path d="M46 4 H60 V18" />
-      <path d="M60 46 V60 H46" />
-      <path d="M18 60 H4 V46" />
-      <circle cx="32" cy="32" r="7" fill={LP_BRAND.orange} stroke="none" />
-    </svg>
-  );
-};
+// Thin landing-page wrapper around the shared brand mark. The shared
+// component uses `currentColor` for the brackets, so all we add here is the
+// onDark color toggle.
+const LP_ScoltoMark = ({ size = 32, onDark = false }: { size?: number; onDark?: boolean }) => (
+  <span
+    style={{
+      display: 'inline-flex',
+      color: onDark ? LP_BRAND.cream : '#0F1F4D',
+      flexShrink: 0,
+    }}
+  >
+    <ScoltoMark size={size} />
+  </span>
+);
 
 const LP_ScoltoLogo = ({
   markSize = 44,
   fontSize = 34,
-  gap = 12,
+  gap,
   onDark = false,
   showMark = true,
 }: {
   markSize?: number;
   fontSize?: number;
+  /** Optional override; defaults to markSize × 0.375 (the brand standalone ratio). */
   gap?: number;
   onDark?: boolean;
   showMark?: boolean;
 }) => (
-  <span style={{ display: 'inline-flex', alignItems: 'center', gap, lineHeight: 1 }}>
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: gap ?? markSize * 0.375, lineHeight: 1 }}>
     {showMark && <LP_ScoltoMark size={markSize} onDark={onDark} />}
     <span
       style={{
@@ -118,7 +135,7 @@ const LP_ScoltoLogo = ({
         fontStyle: 'italic',
         fontWeight: 400,
         fontSize,
-        letterSpacing: -0.6,
+        letterSpacing: '-0.026em',
         lineHeight: 1,
         color: onDark ? LP_BRAND.cream : '#0F1F4D',
         display: 'inline-flex',
@@ -2090,7 +2107,7 @@ const LP_Footer = () => (
     <div className="lp-footer-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 48, flexWrap: 'wrap' }}>
       <div style={{ maxWidth: 300 }}>
         <div style={{ marginBottom: 14 }}>
-          <LP_ScoltoLogo markSize={42} fontSize={32} onDark />
+          <LP_ScoltoLogo markSize={32} fontSize={42} onDark />
         </div>
         <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: '#A29A8B', lineHeight: 1.55 }}>
           A researcher that reads the internet so you don't have to.
@@ -2134,7 +2151,7 @@ const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist
     borderBottom: `1px solid ${LP_BRAND.rule}`, background: LP_BRAND.cream,
     position: 'sticky', top: 0, zIndex: 50,
   }}>
-    <LP_ScoltoLogo markSize={46} fontSize={36} />
+    <LP_ScoltoLogo markSize={34} fontSize={44} />
     <nav className="lp-nav-links" style={{ display: 'flex', gap: 32, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink }}>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>How it works</a>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>What it ships</a>
@@ -2502,9 +2519,86 @@ function WaitlistModal({
   );
 }
 
+// ── FAQ ───────────────────────────────────────────────────────────────────────
+
+const LP_FAQ = () => (
+  <section
+    id="faq"
+    className="lp-section lp-faq"
+    style={{ padding: '88px 64px 96px', background: LP_BRAND.cream2, borderTop: `1px solid ${LP_BRAND.rule}` }}
+  >
+    <div style={{ maxWidth: 880, margin: '0 auto' }}>
+      <LP_Mono color={LP_BRAND.orange} style={{ marginBottom: 16 }}>Frequently asked</LP_Mono>
+      <h2
+        className="lp-section-h2"
+        style={{
+          fontFamily: "'Fraunces',serif",
+          fontWeight: 400,
+          fontSize: 48,
+          lineHeight: 1.05,
+          letterSpacing: -1.2,
+          color: LP_BRAND.ink,
+          margin: '0 0 40px',
+        }}
+      >
+        Questions teams ask before briefing Scolto
+      </h2>
+      <dl style={{ display: 'flex', flexDirection: 'column', gap: 28, margin: 0 }}>
+        {FAQ_ITEMS.map((item) => (
+          <div key={item.q} style={{ borderTop: `1px solid ${LP_BRAND.rule}`, paddingTop: 20 }}>
+            <dt>
+              <h3
+                style={{
+                  fontFamily: "'Inter Tight',sans-serif",
+                  fontWeight: 600,
+                  fontSize: 19,
+                  lineHeight: 1.35,
+                  color: LP_BRAND.ink,
+                  margin: '0 0 10px',
+                }}
+              >
+                {item.q}
+              </h3>
+            </dt>
+            <dd
+              style={{
+                fontFamily: "'Inter Tight',sans-serif",
+                fontSize: 16,
+                lineHeight: 1.6,
+                color: LP_BRAND.slate2,
+                margin: 0,
+              }}
+            >
+              {item.a}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  </section>
+);
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function LandingPage() {
+  // Page-scoped structured data for AI search engines and Google rich results.
+  useHead({
+    script: [
+      {
+        type: 'application/ld+json',
+        innerHTML: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: FAQ_ITEMS.map((item) => ({
+            '@type': 'Question',
+            name: item.q,
+            acceptedAnswer: { '@type': 'Answer', text: item.a },
+          })),
+        }),
+      },
+    ],
+  });
+
   const { signIn, signInWithMicrosoft } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'microsoft' | null>(null);
@@ -2828,6 +2922,7 @@ export function LandingPage() {
       <LP_Deliverables />
       <LP_Channels />
       <LP_WhyScolto />
+      <LP_FAQ />
       <LP_Invite openWaitlist={() => openWaitlist()} />
       <LP_Footer />
 

@@ -552,6 +552,36 @@ class ApifyAdapter(DataProviderAdapter):
         with self._stats_lock:
             self._funnel["apify_raw_records"] += len(raw_items)
 
+        # Cost telemetry — Apify reports exact USD cost on the run object.
+        # Key name varies by SDK version, try both.
+        try:
+            from api.services.cost_meter import EVENT_PROVIDER, log_cost
+
+            usage = run.get("usage") or {}
+            reported = usage.get("totalUsageUsd")
+            if reported is None:
+                reported = usage.get("cost")
+            if reported is not None:
+                log_cost(
+                    provider="apify",
+                    user_id="",  # filled from collection_context if bound
+                    feature="scrape",
+                    event_type=EVENT_PROVIDER,
+                    sub_kind=platform,
+                    units=len(raw_items),
+                    unit_kind="records",
+                    provider_reported_cost_usd=float(reported),
+                    raw_provider_payload={
+                        "actor_id": actor_id,
+                        "run_id": run.get("id"),
+                        "platform": platform,
+                        "dataset_id": dataset_id,
+                        "usage": usage,
+                    },
+                )
+        except Exception:
+            logger.warning("Failed to log apify cost", exc_info=True)
+
         return raw_items
 
     def _run_and_parse(
@@ -717,6 +747,26 @@ class ApifyAdapter(DataProviderAdapter):
             return []
 
         self._record_success()
+
+        # Cost telemetry for engagement-refresh runs (same provider-reported pattern).
+        try:
+            from api.services.cost_meter import EVENT_PROVIDER, log_cost
+
+            usage = run.get("usage") or {}
+            reported = usage.get("totalUsageUsd") or usage.get("cost")
+            if reported is not None:
+                log_cost(
+                    provider="apify",
+                    user_id="",
+                    feature="scrape_engagement",
+                    event_type=EVENT_PROVIDER,
+                    sub_kind=platform,
+                    units=len(urls),
+                    unit_kind="records",
+                    provider_reported_cost_usd=float(reported),
+                )
+        except Exception:
+            logger.warning("Failed to log apify engagement-refresh cost", exc_info=True)
 
         parse_post, _ = self._parsers[platform]
         out: list[dict] = []

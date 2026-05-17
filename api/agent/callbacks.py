@@ -387,6 +387,91 @@ def enforce_collection_access(
 
 
 # ---------------------------------------------------------------------------
+# 3a. Publish gate — before_tool_callback
+# ---------------------------------------------------------------------------
+
+
+def enforce_verify_before_publish(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+) -> Optional[dict]:
+    """Refuse `publish_dashboard` if the target dashboard has a committed
+    `reportScope` and `verify_dashboard` has not been called and passed for
+    this `layout_id` since the most recent `update_dashboard`.
+
+    Same surgical-block pattern as `enforce_data_window_in_sql`: this callback
+    does NOT rewrite arguments or rerun anything, it simply refuses calls that
+    skipped the verification step. The agent must call `verify_dashboard`,
+    receive `status: "ok"`, and only then publish.
+
+    State invariants (written by the dashboard tools):
+      - `dashboard_last_update_ts[layout_id]` — ISO timestamp set by
+        `update_dashboard` after a successful persist.
+      - `dashboard_last_verify_ok[layout_id]` — ISO timestamp set by
+        `verify_dashboard` on a passing run (including the numerical scope
+        check when reportScope is set).
+
+    Publish is allowed when `last_verify_ok >= last_update_ts` (or when
+    `last_update_ts` is absent and `last_verify_ok` is present). Standalone
+    dashboards (no reportScope on the doc) do not get the gate — the agent
+    isn't committing any numbers against a scope, so there's nothing for the
+    numerical verify to enforce. Structural defects are still caught by
+    `publish_dashboard`'s internal pre-publish check.
+    """
+    if tool.name != "publish_dashboard":
+        return None
+
+    layout_id = args.get("layout_id")
+    if not layout_id or not isinstance(layout_id, str):
+        # Let the tool itself produce the missing-arg error message.
+        return None
+
+    # Read the dashboard doc to check whether reportScope is committed. If the
+    # doc is unreachable, fall through — the tool will surface the access error.
+    try:
+        from api.deps import get_fs
+
+        fs = get_fs()
+        doc = fs._db.collection("dashboard_layouts").document(layout_id).get()
+    except Exception:
+        return None
+    if not doc.exists:
+        return None
+    data = doc.to_dict() or {}
+    if not data.get("reportScope"):
+        return None  # standalone-mode dashboard — gate doesn't apply
+
+    state = tool_context.state
+    last_update = (state.get("dashboard_last_update_ts") or {}).get(layout_id)
+    last_verify = (state.get("dashboard_last_verify_ok") or {}).get(layout_id)
+
+    if not last_verify:
+        return {
+            "status": "verify_required",
+            "layout_id": layout_id,
+            "message": (
+                f"Refused publish_dashboard('{layout_id}'): this dashboard has a "
+                "committed reportScope but verify_dashboard has not been called "
+                "yet in this session. Call verify_dashboard(layout_id) first; "
+                "fix any errors it reports; then retry publish."
+            ),
+        }
+    if last_update and last_update > last_verify:
+        return {
+            "status": "verify_stale",
+            "layout_id": layout_id,
+            "message": (
+                f"Refused publish_dashboard('{layout_id}'): the dashboard was "
+                "updated after the most recent verify_dashboard pass "
+                f"(last_update={last_update} > last_verify={last_verify}). "
+                "Re-run verify_dashboard(layout_id) and retry publish."
+            ),
+        }
+    return None
+
+
+# ---------------------------------------------------------------------------
 # 3b. Loop bounding — before_tool_callback
 # ---------------------------------------------------------------------------
 
@@ -991,6 +1076,182 @@ inject_collection_context = get_context_injector("chat")
 # ---------------------------------------------------------------------------
 # 5. Observability logging — after_tool_callback
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 7. Cost telemetry — after_model_callback
+# ---------------------------------------------------------------------------
+
+
+def capture_llm_cost(
+    callback_context: CallbackContext,
+    llm_response: LlmResponse,
+) -> None:
+    """Log one cost row per LLM round-trip.
+
+    Fires after every model invocation in chat / autonomous / sub-agents
+    (including ``google_search_agent``). Reads token counts from
+    ``llm_response.usage_metadata`` and pipes through ``cost_meter.log_cost``
+    so the cost is computed from :mod:`config.cost_rates` and the row is
+    streamed to BigQuery on a daemon thread. Returns ``None`` to leave the
+    response unchanged.
+
+    Failure to log NEVER blocks the model response — every step is wrapped
+    in try/except.
+    """
+    try:
+        usage = getattr(llm_response, "usage_metadata", None)
+        if not usage:
+            # Partial / streaming chunks land here too; only the final
+            # response carries usage_metadata. Skip silently.
+            return None
+
+        prompt_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
+        candidates_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
+        cached_tokens = int(getattr(usage, "cached_content_token_count", 0) or 0)
+        thoughts_tokens = int(getattr(usage, "thoughts_token_count", 0) or 0)
+
+        if prompt_tokens == 0 and candidates_tokens == 0 and thoughts_tokens == 0:
+            return None
+
+        # Thinking tokens are billed at the output rate, per Gemini pricing.
+        output_tokens = candidates_tokens + thoughts_tokens
+
+        state = callback_context.state
+        agent_name = callback_context.agent_name or ""
+        # Sub-agent invocations (google_search_agent) carry their own name;
+        # the meta-agent's name is "agent" (chat) or "executor" (autonomous).
+        if agent_name == "agent":
+            feature = "chat"
+        elif agent_name == "executor":
+            feature = "autonomous"
+        elif agent_name:
+            feature = f"subagent:{agent_name}"
+        else:
+            feature = "chat"
+
+        model = (
+            getattr(llm_response, "model_version", None)
+            or state.get("model")
+            or ""
+        )
+
+        session_id: str | None = None
+        try:
+            session_id = (
+                state.get("session_id")
+                or getattr(callback_context, "session", None) and callback_context.session.id
+            )
+        except Exception:
+            session_id = state.get("session_id")
+
+        from api.services.cost_meter import EVENT_LLM, log_cost
+
+        user_id = state.get("user_id") or callback_context.user_id or ""
+        org_id = state.get("org_id")
+        collection_id = state.get("active_collection_id")
+        agent_id = state.get("active_agent_id")
+
+        log_cost(
+            provider="gemini",
+            user_id=user_id,
+            feature=feature,
+            event_type=EVENT_LLM,
+            model=model,
+            input_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            org_id=org_id,
+            session_id=session_id,
+            collection_id=collection_id,
+            agent_id=agent_id,
+        )
+
+        # Google Search Grounding is billed SEPARATELY from tokens. Emit a
+        # second row so the dashboard can distinguish "the model thought
+        # for $X" from "the model grounded for $Y" — they have very
+        # different cost curves.
+        _maybe_log_grounding_cost(
+            llm_response,
+            model=model,
+            user_id=user_id,
+            feature=feature,
+            org_id=org_id,
+            session_id=session_id,
+            collection_id=collection_id,
+            agent_id=agent_id,
+        )
+    except Exception:
+        # Never let cost telemetry crash a model response.
+        logger.warning("capture_llm_cost failed", exc_info=True)
+
+    return None
+
+
+def _maybe_log_grounding_cost(
+    llm_response: LlmResponse,
+    *,
+    model: str,
+    user_id: str,
+    feature: str,
+    org_id: str | None,
+    session_id: str | None,
+    collection_id: str | None,
+    agent_id: str | None,
+) -> None:
+    """If this response used Google Search Grounding, emit a separate
+    cost row priced by the per-query (Gemini 3) or per-prompt (Gemini 2.5)
+    rate in :mod:`config.cost_rates`.
+
+    Detection: ``llm_response.grounding_metadata.web_search_queries`` is
+    populated by the Gemini SDK with the list of search terms the model
+    actually issued. An empty list means grounding was available but the
+    model didn't fire it — no charge.
+    """
+    try:
+        gm = getattr(llm_response, "grounding_metadata", None)
+        if gm is None:
+            return
+
+        queries = getattr(gm, "web_search_queries", None) or []
+        # Strip empties — Google's docs say those don't count for billing.
+        queries = [q for q in queries if q]
+        if not queries:
+            return
+
+        from config.cost_rates import _gemini_family, compute_grounding_cost_micros
+
+        family = _gemini_family(model)
+        if family == "gemini-3":
+            cost_micros = compute_grounding_cost_micros(model, queries_executed=len(queries))
+            units = len(queries)
+            unit_kind = "queries"
+        else:
+            # Gemini 2.5 (and unknown fallback) bill per grounded prompt.
+            cost_micros = compute_grounding_cost_micros(model, prompts_grounded=1)
+            units = 1
+            unit_kind = "prompts"
+
+        from api.services.cost_meter import EVENT_LLM, log_cost
+
+        log_cost(
+            provider="google_search",
+            user_id=user_id,
+            feature=feature,
+            event_type=EVENT_LLM,
+            model=model,
+            sub_kind=family,
+            units=units,
+            unit_kind=unit_kind,
+            cost_micros_override=cost_micros,
+            org_id=org_id,
+            session_id=session_id,
+            collection_id=collection_id,
+            agent_id=agent_id,
+            raw_provider_payload={"queries": queries[:50]},
+        )
+    except Exception:
+        logger.warning("_maybe_log_grounding_cost failed", exc_info=True)
 
 
 def log_tool_invocation(

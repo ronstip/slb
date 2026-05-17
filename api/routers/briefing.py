@@ -21,7 +21,6 @@ briefing (state_of_the_world / open_threads / process_notes) used as input here.
 import asyncio
 import json
 import logging
-import math
 import re
 from typing import Any
 
@@ -90,140 +89,99 @@ def extract_first_image(media_refs_raw: Any) -> tuple[str | None, str | None]:
 
 
 # ─── Topic loaders ──────────────────────────────────────────────────
+#
+# All three loaders read from `social_listening.topic_metrics(@agent_id)` —
+# a single TVF that pre-materialises per-cluster aggregates, thumbnails, and
+# sample posts. The TVF's sample_posts is capped at 10 per cluster; callers
+# requesting more will get 10. `fs` is retained on `load_topics_ranked` for
+# signature back-compat with existing call sites; it is no longer used.
+
+
+def _decode_json(value):
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return value
 
 
 def load_topics_ranked(fs, bq, agent_id: str) -> list[dict]:
-    """Return all topics for an agent, enriched with BQ aggregates and signal-ranked.
+    """Return all topics for an agent, signal-ranked.
 
-    Ranking: composite of recency_score + log(views) + log(posts). Large clusters
-    with lots of volume are not demoted just because they carry a generic
-    "Topic N" auto-label (unlike the topics router which demotes them for UI reasons).
+    Sourced from `topic_metrics(@agent_id)` ordered by the TVF's pre-computed
+    `signal_score` (recency + log(views)·0.4 + log(posts)·1.5). Field names are
+    aliased back to the legacy `topic_name`/`topic_summary`/`topic_keywords`
+    shape so downstream consumers (compose_briefing, refresh_briefing,
+    topics router) are unaffected.
     """
-    topics_ref = (
-        fs._db.collection("agents").document(agent_id).collection("topics")
-    )
-    topics: list[dict] = []
-    for doc in topics_ref.stream():
-        data = doc.to_dict()
-        data["cluster_id"] = doc.id
-        data.pop("centroid", None)
-        topics.append(data)
+    del fs  # retained for signature back-compat; Firestore no longer read here
 
-    if not topics:
-        return topics
-
-    stats_rows = bq.query(
+    rows = bq.query(
         """
-        WITH latest AS (
-            SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
-            WHERE agent_id = @agent_id
-        ),
-        members AS (
-            SELECT tcm.cluster_id, tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
-        )
         SELECT
-            m.cluster_id,
-            COUNTIF(t.sentiment = 'positive') as positive_count,
-            COUNTIF(t.sentiment = 'negative') as negative_count,
-            COUNTIF(t.sentiment = 'neutral') as neutral_count,
-            COUNTIF(t.sentiment = 'mixed') as mixed_count,
-            SUM(COALESCE(t.views, 0)) as total_views,
-            SUM(COALESCE(t.likes, 0)) as total_likes,
-            MIN(t.posted_at) as earliest_post,
-            MAX(t.posted_at) as latest_post
-        FROM members m
-        JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
-        GROUP BY m.cluster_id
+            cluster_id,
+            header,
+            subheader,
+            keywords,
+            post_count,
+            recency_score,
+            total_views,
+            total_likes,
+            positive_count, negative_count, neutral_count, mixed_count,
+            earliest_post,
+            latest_post,
+            signal_score
+        FROM social_listening.topic_metrics(@agent_id)
+        ORDER BY signal_score DESC
         """,
         {"agent_id": agent_id},
     )
-    stats_map = {r["cluster_id"]: r for r in stats_rows}
 
-    for topic in topics:
-        row = stats_map.get(topic["cluster_id"])
-        if row:
-            topic["positive_count"] = row["positive_count"]
-            topic["negative_count"] = row["negative_count"]
-            topic["neutral_count"] = row["neutral_count"]
-            topic["mixed_count"] = row["mixed_count"]
-            topic["total_views"] = row["total_views"]
-            topic["total_likes"] = row["total_likes"]
-            ep = row.get("earliest_post")
-            lp = row.get("latest_post")
-            topic["earliest_post"] = ep.isoformat() if hasattr(ep, "isoformat") else ep
-            topic["latest_post"] = lp.isoformat() if hasattr(lp, "isoformat") else lp
-
-    def _signal_score(t: dict) -> float:
-        recency = t.get("recency_score") or 0.0
-        views = t.get("total_views") or 0
-        posts = t.get("post_count") or 0
-        return recency + math.log1p(views) * 0.4 + math.log1p(posts) * 1.5
-
-    topics.sort(key=lambda t: -_signal_score(t))
-    return topics
+    return [
+        {
+            "cluster_id": r.get("cluster_id"),
+            "topic_name": r.get("header"),
+            "topic_summary": r.get("subheader") or "",
+            "topic_keywords": list(r.get("keywords") or []),
+            "post_count": r.get("post_count") or 0,
+            "recency_score": r.get("recency_score") or 0,
+            "total_views": r.get("total_views") or 0,
+            "total_likes": r.get("total_likes") or 0,
+            "positive_count": r.get("positive_count") or 0,
+            "negative_count": r.get("negative_count") or 0,
+            "neutral_count": r.get("neutral_count") or 0,
+            "mixed_count": r.get("mixed_count") or 0,
+            "earliest_post": r.get("earliest_post"),
+            "latest_post": r.get("latest_post"),
+            "signal_score": r.get("signal_score") or 0,
+        }
+        for r in rows
+    ]
 
 
 def load_best_image_per_topic(bq, agent_id: str) -> dict[str, dict]:
-    """For each cluster, find the best image post.
+    """For each cluster, return its best image URLs.
 
-    Prefers GCS-backed images (stable, always renderable) but falls back to
-    external-only URLs which the frontend routes through /media-proxy. Some
-    external URLs (e.g. TikTok signed URLs) will eventually 403 — the frontend's
-    onError handler falls back to the styled placeholder in that case.
+    The TVF picks an image-only, GCS-preferred, engagement-weighted member
+    per cluster (`thumbnails` CTE in [bigquery/functions/topic_metrics.sql]).
+    External-only URLs fall through and are routed via the frontend
+    /media-proxy with onError fallback to the styled placeholder.
     """
     rows = bq.query(
         """
-        WITH latest AS (
-            SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
-            WHERE agent_id = @agent_id
-        ),
-        members AS (
-            SELECT tcm.cluster_id, tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
-        ),
-        image_posts AS (
-            SELECT
-                m.cluster_id, m.post_id,
-                JSON_EXTRACT_SCALAR(t.media_refs, '$[0].gcs_uri') as gcs_uri,
-                JSON_EXTRACT_SCALAR(t.media_refs, '$[0].original_url') as original_url,
-                JSON_EXTRACT_SCALAR(t.media_refs, '$[0].media_type') as media_type,
-                COALESCE(t.views, 0) + COALESCE(t.likes, 0) * 10 as engagement
-            FROM members m
-            JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
-        ),
-        ranked AS (
-            SELECT cluster_id, post_id, gcs_uri, original_url,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY cluster_id
-                       ORDER BY
-                         CASE WHEN gcs_uri IS NOT NULL AND gcs_uri != '' THEN 0 ELSE 1 END,
-                         engagement DESC
-                   ) as rn
-            FROM image_posts
-            WHERE media_type = 'image'
-              AND (
-                (gcs_uri IS NOT NULL AND gcs_uri != '')
-                OR (original_url IS NOT NULL AND original_url != '')
-              )
-        )
-        SELECT cluster_id, post_id, gcs_uri, original_url
-        FROM ranked
-        WHERE rn = 1
+        SELECT cluster_id, thumbnail_url, thumbnail_gcs_uri
+        FROM social_listening.topic_metrics(@agent_id)
+        WHERE thumbnail_url IS NOT NULL OR thumbnail_gcs_uri IS NOT NULL
         """,
         {"agent_id": agent_id},
     )
     return {
         r["cluster_id"]: {
-            "post_id": r["post_id"],
-            "gcs_uri": r.get("gcs_uri"),
-            "original_url": r.get("original_url"),
+            "gcs_uri": r.get("thumbnail_gcs_uri"),
+            "original_url": r.get("thumbnail_url"),
         }
         for r in rows
     }
@@ -232,62 +190,38 @@ def load_best_image_per_topic(bq, agent_id: str) -> dict[str, dict]:
 def load_topic_posts(
     bq, agent_id: str, cluster_ids: list[str], limit_per_cluster: int
 ) -> dict[str, list[dict]]:
-    """Fetch top representative posts for each cluster in a single batched query.
+    """Top representative posts for each cluster (TVF-backed).
 
     Returns a dict keyed by cluster_id. Clusters with no posts get an empty
     list entry so callers can `.get(cid, [])` safely. Posts within each cluster
-    are ordered by (is_representative DESC, engagement DESC) and capped at
-    `limit_per_cluster`.
+    are ordered representative-first then engagement-weighted (matches the
+    TVF's `sample_posts` ordering). `limit_per_cluster` is capped at 10 — the
+    TVF only stores the top 10 sample posts.
     """
     if not cluster_ids:
         return {}
 
     rows = bq.query(
         """
-        WITH latest AS (
-            SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
-            WHERE agent_id = @agent_id
-        ),
-        members AS (
-            SELECT tcm.cluster_id, tcm.post_id, tcm.is_representative
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.cluster_id IN UNNEST(@cluster_ids)
-              AND tcm.clustered_at = latest.latest_at
-        ),
-        joined AS (
-            SELECT
-                m.cluster_id,
-                m.post_id, t.platform, t.channel_handle, t.title, t.content,
-                t.post_url, t.posted_at, t.media_refs,
-                t.ai_summary, t.sentiment,
-                t.views, t.likes, t.comments_count,
-                m.is_representative,
-                ROW_NUMBER() OVER (
-                    PARTITION BY m.cluster_id
-                    ORDER BY m.is_representative DESC,
-                             COALESCE(t.views, 0) + COALESCE(t.likes, 0) * 10 DESC
-                ) as rn
-            FROM members m
-            JOIN social_listening.scope_posts(@agent_id) t USING (post_id)
-        )
-        SELECT * FROM joined
-        WHERE rn <= @limit_per_cluster
-        ORDER BY cluster_id, rn
+        SELECT cluster_id, sample_posts
+        FROM social_listening.topic_metrics(@agent_id)
+        WHERE cluster_id IN UNNEST(@cluster_ids)
         """,
-        {
-            "agent_id": agent_id,
-            "cluster_ids": cluster_ids,
-            "limit_per_cluster": limit_per_cluster,
-        },
+        {"agent_id": agent_id, "cluster_ids": cluster_ids},
     )
 
     out: dict[str, list[dict]] = {cid: [] for cid in cluster_ids}
     for r in rows:
         cid = r.get("cluster_id")
-        if cid in out:
-            out[cid].append(r)
+        if cid not in out:
+            continue
+        samples = _decode_json(r.get("sample_posts"))[:limit_per_cluster]
+        # Rename `channel` → `channel_handle` so the post dicts match the
+        # shape legacy callers expect (refresh_briefing, etc.).
+        out[cid] = [
+            {**s, "channel_handle": s.get("channel")}
+            for s in samples
+        ]
     return out
 
 
@@ -347,14 +281,15 @@ def load_posts_per_day(bq, agent_id: str, days: int = 7) -> list[int]:
         """
         WITH latest AS (
             SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
+            FROM social_listening.topic_clusters
             WHERE agent_id = @agent_id
         ),
         members AS (
-            SELECT DISTINCT tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT DISTINCT post_id
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.clustered_at = latest.latest_at
         ),
         member_posts AS (
             SELECT DATE(t.posted_at) as day
@@ -402,14 +337,15 @@ def load_briefing_analytics(bq, agent_id: str, trend_days: int = 14) -> dict:
             """
             WITH latest AS (
                 SELECT MAX(clustered_at) as latest_at
-                FROM social_listening.topic_cluster_members
+                FROM social_listening.topic_clusters
                 WHERE agent_id = @agent_id
             ),
             members AS (
-                SELECT DISTINCT tcm.post_id
-                FROM social_listening.topic_cluster_members tcm, latest
-                WHERE tcm.agent_id = @agent_id
-                  AND tcm.clustered_at = latest.latest_at
+                SELECT DISTINCT post_id
+                FROM social_listening.topic_clusters tc, latest,
+                     UNNEST(tc.member_post_ids) as post_id
+                WHERE tc.agent_id = @agent_id
+                  AND tc.clustered_at = latest.latest_at
             ),
             joined AS (
                 SELECT
@@ -512,14 +448,15 @@ def load_briefing_analytics(bq, agent_id: str, trend_days: int = 14) -> dict:
         """
         WITH latest AS (
             SELECT MAX(clustered_at) as latest_at
-            FROM social_listening.topic_cluster_members
+            FROM social_listening.topic_clusters
             WHERE agent_id = @agent_id
         ),
         members AS (
-            SELECT DISTINCT tcm.post_id
-            FROM social_listening.topic_cluster_members tcm, latest
-            WHERE tcm.agent_id = @agent_id
-              AND tcm.clustered_at = latest.latest_at
+            SELECT DISTINCT post_id
+            FROM social_listening.topic_clusters tc, latest,
+                 UNNEST(tc.member_post_ids) as post_id
+            WHERE tc.agent_id = @agent_id
+              AND tc.clustered_at = latest.latest_at
         ),
         joined AS (
             SELECT DATE(t.posted_at) as day, t.sentiment

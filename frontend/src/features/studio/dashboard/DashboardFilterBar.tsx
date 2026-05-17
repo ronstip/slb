@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
-import { X, Filter, Calendar, Plus, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Filter, Calendar, Plus, GripVertical, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover.tsx';
 import { Checkbox } from '../../../components/ui/checkbox.tsx';
 import { Button } from '../../../components/ui/button.tsx';
@@ -8,6 +8,7 @@ import { cn } from '../../../lib/utils.ts';
 import { PLATFORM_LABELS, SENTIMENT_COLORS } from '../../../lib/constants.ts';
 import type { DashboardPost } from '../../../api/types.ts';
 import type { DashboardFilters, FilterOptions } from './use-dashboard-filters.ts';
+import type { ReportScope } from './types-social-dashboard.ts';
 
 export type FilterBarFilterId =
   | 'sentiment'
@@ -63,6 +64,10 @@ interface DashboardFilterBarProps {
   allPosts?: DashboardPost[];
   /** When true, suppresses the bottom border */
   noBorder?: boolean;
+  /** Report scope committed by the report's agent. Dimensions present here
+   *  render as locked pills (viewer can narrow within scope but not widen
+   *  past it). Absence = standalone dashboard, no locking. */
+  reportScope?: ReportScope | null;
 }
 
 type OptionCounts = Record<string, Record<string, number>>;
@@ -106,18 +111,32 @@ interface FilterPillProps {
   searchable?: boolean;
   /** Per-option post counts */
   optionCounts?: Record<string, number>;
+  /** When non-null, the report has committed this dimension to a specific
+   *  set of values. The pill renders as locked, only the listed values
+   *  are offered, and the pill button shows a lock icon. */
+  lockedValues?: string[] | null;
 }
 
 function FilterPill({
   label, count, options, selected, onToggle, onSelectAll, onClearAll: onClearPill,
-  formatLabel, colorDot, searchable, optionCounts,
+  formatLabel, colorDot, searchable, optionCounts, lockedValues,
 }: FilterPillProps) {
   const [search, setSearch] = useState('');
-  const filtered = searchable && search
-    ? options.filter((o) => o.toLowerCase().includes(search.toLowerCase()))
+  // When the dimension is locked by reportScope, restrict the option list to
+  // the scope's values. The viewer can still toggle inside the scope to narrow.
+  const lockedSet = useMemo(
+    () => (lockedValues ? new Set(lockedValues) : null),
+    [lockedValues],
+  );
+  const effectiveOptions = lockedSet
+    ? options.filter((o) => lockedSet.has(o))
     : options;
+  const filtered = searchable && search
+    ? effectiveOptions.filter((o) => o.toLowerCase().includes(search.toLowerCase()))
+    : effectiveOptions;
 
-  const allSelected = options.length > 0 && options.every((o) => selected.includes(o));
+  const allSelected = effectiveOptions.length > 0 && effectiveOptions.every((o) => selected.includes(o));
+  const isLocked = lockedValues != null;
 
   return (
     <Popover>
@@ -125,11 +144,15 @@ function FilterPill({
         <button
           className={cn(
             'flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors whitespace-nowrap',
-            count > 0
-              ? 'border-primary/30 bg-primary/10 text-primary'
-              : 'border-border bg-card text-muted-foreground hover:border-primary/20 hover:text-foreground',
+            isLocked
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+              : count > 0
+                ? 'border-primary/30 bg-primary/10 text-primary'
+                : 'border-border bg-card text-muted-foreground hover:border-primary/20 hover:text-foreground',
           )}
+          title={isLocked ? `${label} is locked by this report's scope — narrow within it, can't widen past it.` : undefined}
         >
+          {isLocked && <Lock className="h-2.5 w-2.5" />}
           {label}
           {count > 0 && (
             <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
@@ -139,6 +162,12 @@ function FilterPill({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+        {isLocked && (
+          <div className="border-b border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+            <Lock className="h-2.5 w-2.5 shrink-0" />
+            Locked by report scope — narrow only.
+          </div>
+        )}
         {/* Search */}
         {searchable && (
           <div className="border-b border-border p-2">
@@ -151,7 +180,7 @@ function FilterPill({
           </div>
         )}
         {/* Select All / Clear */}
-        {options.length > 1 && (
+        {effectiveOptions.length > 1 && (
           <div className="flex items-center justify-between border-b border-border px-2.5 py-1.5">
             <button
               type="button"
@@ -204,14 +233,22 @@ function FilterPill({
 }
 
 function DateRangePill({
-  dateRange, dateMin, dateMax, onChange,
+  dateRange, dateMin, dateMax, onChange, scopeRange,
 }: {
   dateRange: { from: string | null; to: string | null };
   dateMin: string | null;
   dateMax: string | null;
   onChange: (range: { from: string | null; to: string | null }) => void;
+  scopeRange?: { from: string | null; to: string | null } | null;
 }) {
   const active = dateRange.from || dateRange.to;
+  // When the report scope locks a date range, clamp the date-input bounds so
+  // the viewer cannot pick a wider window. The intersection in
+  // useDashboardFilters enforces the cap on the data side too, but constraining
+  // the UI prevents the confusing "I asked for April but charts show May" state.
+  const isLocked = !!(scopeRange && (scopeRange.from || scopeRange.to));
+  const minBound = scopeRange?.from || dateMin || undefined;
+  const maxBound = scopeRange?.to || dateMax || undefined;
 
   return (
     <Popover>
@@ -219,23 +256,32 @@ function DateRangePill({
         <button
           className={cn(
             'flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors whitespace-nowrap',
-            active
-              ? 'border-primary/30 bg-primary/10 text-primary'
-              : 'border-border bg-card text-muted-foreground hover:border-primary/20 hover:text-foreground',
+            isLocked
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+              : active
+                ? 'border-primary/30 bg-primary/10 text-primary'
+                : 'border-border bg-card text-muted-foreground hover:border-primary/20 hover:text-foreground',
           )}
+          title={isLocked ? "Date range is locked by this report's scope — narrow within it, can't widen past it." : undefined}
         >
-          <Calendar className="h-3 w-3" />
+          {isLocked ? <Lock className="h-2.5 w-2.5" /> : <Calendar className="h-3 w-3" />}
           Date Range
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-3">
+        {isLocked && (
+          <div className="mb-2 -mt-1 -mx-1 rounded-md bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+            <Lock className="h-2.5 w-2.5 shrink-0" />
+            Locked by report scope — narrow only.
+          </div>
+        )}
         <div className="flex flex-col gap-2">
           <label className="text-[11px] font-medium text-muted-foreground">From</label>
           <Input
             type="date"
             value={dateRange.from || ''}
-            min={dateMin || undefined}
-            max={dateRange.to || dateMax || undefined}
+            min={minBound}
+            max={dateRange.to || maxBound}
             onChange={(e) => onChange({ ...dateRange, from: e.target.value || null })}
             className="h-7 text-xs"
           />
@@ -243,8 +289,8 @@ function DateRangePill({
           <Input
             type="date"
             value={dateRange.to || ''}
-            min={dateRange.from || dateMin || undefined}
-            max={dateMax || undefined}
+            min={dateRange.from || minBound}
+            max={maxBound}
             onChange={(e) => onChange({ ...dateRange, to: e.target.value || null })}
             className="h-7 text-xs"
           />
@@ -277,10 +323,34 @@ export function DashboardFilterBar({
   onFilterBarChange,
   allPosts,
   noBorder,
+  reportScope,
 }: DashboardFilterBarProps) {
   const optionCounts = useMemo(() => allPosts ? computeOptionCounts(allPosts) : undefined, [allPosts]);
   // Active filter pill IDs (ordered)
   const activeFilters: FilterBarFilterId[] = (filterBarFilters ?? DEFAULT_FILTER_BAR_FILTERS) as FilterBarFilterId[];
+
+  // Map FilterBarFilterId → the scope's locked values for that dimension (or
+  // null when the dimension is unconstrained). Memoized so pill props stay
+  // referentially stable across re-renders.
+  const scopeLockMap = useMemo(() => {
+    const m: Partial<Record<FilterBarFilterId, string[] | null>> = {};
+    if (!reportScope) return m;
+    const dims: Array<[FilterBarFilterId, string[] | null | undefined]> = [
+      ['sentiment', reportScope.sentiment],
+      ['emotion', reportScope.emotion],
+      ['platform', reportScope.platform],
+      ['themes', reportScope.themes],
+      ['entities', reportScope.entities],
+      ['language', reportScope.language],
+      ['content_type', reportScope.content_type],
+      ['channels', reportScope.channels],
+      ['collection', reportScope.collection],
+    ];
+    for (const [id, values] of dims) {
+      if (values && values.length > 0) m[id] = values;
+    }
+    return m;
+  }, [reportScope]);
 
   // ── Scroll with arrow buttons ──
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -375,6 +445,7 @@ export function DashboardFilterBar({
           dateMin={availableOptions.dateMin}
           dateMax={availableOptions.dateMax}
           onChange={(range) => onSetFilter('date_range', range)}
+          scopeRange={reportScope?.date_range}
         />
       );
     }
@@ -419,6 +490,7 @@ export function DashboardFilterBar({
     if (!isEditMode && cfg.opts.length === 0 && cfg.sel.length === 0) return null;
 
     const key = id as ArrayFilterKey;
+    const locked = scopeLockMap[id] ?? null;
     return (
       <FilterPill
         label={FILTER_LABELS[id]}
@@ -427,7 +499,11 @@ export function DashboardFilterBar({
         selected={cfg.sel}
         onToggle={(v) => onToggle(key, v)}
         onSelectAll={() => {
-          const toAdd = cfg.opts.filter((o) => !cfg.sel.includes(o));
+          // When locked, "select all" should only target the scope's values,
+          // not the full option list — otherwise the viewer's selection state
+          // diverges from what the chart aggregator actually applies.
+          const candidateOpts = locked ? cfg.opts.filter((o) => locked.includes(o)) : cfg.opts;
+          const toAdd = candidateOpts.filter((o) => !cfg.sel.includes(o));
           toAdd.forEach((v) => onToggle(key, v));
         }}
         onClearAll={() => onSetFilter(key, [])}
@@ -435,6 +511,7 @@ export function DashboardFilterBar({
         colorDot={cfg.color}
         searchable={cfg.search}
         optionCounts={optionCounts?.[id]}
+        lockedValues={locked}
       />
     );
   };

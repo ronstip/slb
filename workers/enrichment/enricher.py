@@ -538,6 +538,10 @@ def _enrich_single_post(
             finally:
                 semaphore.release()
 
+            from api.services.cost_meter import log_gemini_response
+
+            log_gemini_response(response, feature="enrich", model=model)
+
             result = EnrichmentResult.model_validate_json(response.text)
             return (post.post_id, result)
 

@@ -19,6 +19,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from api.middleware.request_id import RequestIDMiddleware
 from api.rate_limiting import limiter
 from api.routers import admin as admin_router
 from api.routers import agents as agents_router
@@ -79,6 +80,10 @@ app = FastAPI(title="Scolto", version="0.1.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Request-ID middleware — must run before handlers so request_id is bound for
+# the entire request lifecycle (cost telemetry, logs, downstream propagation).
+app.add_middleware(RequestIDMiddleware)
 
 # Include routers
 app.include_router(settings_router.router)

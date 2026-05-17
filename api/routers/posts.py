@@ -144,7 +144,10 @@ async def draft_post_override(
         )
 
     custom_fields = _read_agent_custom_fields(body.agent_id)
-    proposed = await asyncio.to_thread(_call_llm_draft, current, body.instruction, custom_fields)
+    proposed = await asyncio.to_thread(
+        _call_llm_draft, current, body.instruction, custom_fields,
+        user.uid, body.collection_id, body.agent_id,
+    )
     return _to_response(post_id, proposed, source=None)
 
 
@@ -311,6 +314,9 @@ def _call_llm_draft(
     current: dict,
     instruction: str,
     custom_fields: list[CustomFieldDef] | None,
+    user_id: str = "",
+    collection_id: str | None = None,
+    agent_id: str | None = None,
 ) -> EnrichmentResult:
     """Call Gemini once to propose an updated EnrichmentResult.
 
@@ -361,4 +367,16 @@ def _call_llm_draft(
         contents=types.Content(role="user", parts=[types.Part.from_text(text=prompt)]),
         config=config,
     )
+
+    from api.services.cost_meter import log_gemini_response
+
+    log_gemini_response(
+        response,
+        feature="posts_endpoint",
+        model=settings.enrichment_model,
+        user_id=user_id,
+        collection_id=collection_id,
+        agent_id=agent_id,
+    )
+
     return EnrichmentResult.model_validate_json(response.text)
