@@ -8,7 +8,7 @@ import { ScoltoMark } from '../components/Logo.tsx';
 const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   {
     q: 'What is Scolto?',
-    a: "An AI coworker for your brand, native to social. You ask it anything about your category; it listens, watches the video, reads the comments, and ships the brief, the dashboard, the deck or the digest your team already reads.",
+    a: "An AI agent for your brand, native to social. You ask it anything about your category; it listens, watches the video, reads the comments, and ships the brief, the dashboard, the deck or the digest your team already reads.",
   },
   {
     q: 'Who is Scolto for?',
@@ -24,11 +24,11 @@ const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'How is hallucination handled?',
-    a: "Every claim cites the post, clip or comment it came from — timecoded for video. If Scolto can't source it, it doesn't say it. The receipts sit next to the read-out.",
+    a: "Every claim cites the post, clip or comment it came from — timecoded for video. If Scolto can't source it, it flags the gap instead of guessing. The receipts sit next to the read-out.",
   },
   {
     q: 'What does it cost?',
-    a: "Usage-based. Pay for the work, not a seat. Briefs from roughly $49. No annual contract. Detailed pricing on the way in.",
+    a: "Usage-based. Pay for the work, not a seat. Briefs from $49. No annual contract. Detailed pricing on the way in.",
   },
   {
     q: "How is this different from a social-listening dashboard?",
@@ -335,7 +335,7 @@ const ROTATING_DELIVERABLES = [
   'Spots the competitors.',
   'Ships the slide deck.',
   'Delivers the deep-dive.',
-  'Schedules the read.',
+  'Pings the team.',
 ];
 
 const RotatingWord = ({
@@ -662,12 +662,6 @@ const LP_BeachUmbrellaWatermark = ({ size = 240 }: { size?: number }) => {
 // MeetScolto and the Friday preview. Editorial pull-line on the left,
 // four Fraunces big stats on the right, divided by warm 1px rules.
 const LP_Credibility = () => {
-  const STATS = [
-    { v: '27.4M', l: 'mentions read · 7 d' },
-    { v: '312',   l: 'clips watched · frame-by-frame' },
-    { v: '6 + 1', l: 'platforms · one inbox' },
-    { v: '100%',  l: 'sourced · every claim cites' },
-  ];
   return (
     <section className="lp-section" style={{ padding: '32px 64px 8px' }}>
       <div className="lp-credibility-row" style={{
@@ -683,32 +677,29 @@ const LP_Credibility = () => {
               boxShadow: `0 0 0 4px ${LP_BRAND.orange}33`,
               animation: 'lp-pulse 1.8s ease-in-out infinite',
             }} />
-            <LP_Mono color={LP_BRAND.orangeDeep}>Running this week</LP_Mono>
+            <LP_Mono color={LP_BRAND.orangeDeep}>Built to be trusted</LP_Mono>
           </div>
           <div style={{
             fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 26, lineHeight: 1.2,
             color: LP_BRAND.ink, letterSpacing: -0.4, maxWidth: 340,
           }}>
-            Briefs in flight for{' '}
-            <span style={{ fontStyle: 'italic', color: LP_BRAND.orangeDeep }}>brand &amp; insights teams</span>
-            {' '}at consumer companies, two major sports leagues and a Big-3 agency network.
+            Scolto's job is{' '}
+            <span style={{ fontStyle: 'italic', color: LP_BRAND.orangeDeep }}>to be right.</span>
+            {' '}If it can't source a claim, it doesn't make one.
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
-          {STATS.map((s, i) => (
-            <div key={s.l} style={{
-              paddingLeft: i === 0 ? 0 : 24,
-              borderLeft: i === 0 ? 'none' : `1px solid ${LP_BRAND.rule}`,
-              minWidth: 0,
-            }}>
-              <div style={{
-                fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 56,
-                letterSpacing: -1.6, lineHeight: 0.95, color: LP_BRAND.ink,
-                fontVariantNumeric: 'tabular-nums',
-              }}>{s.v}</div>
-              <LP_Mono size={9.5} style={{ display: 'block', marginTop: 10 }}>{s.l}</LP_Mono>
-            </div>
-          ))}
+        <div className="lp-cred-stat" style={{ display: 'flex', alignItems: 'baseline', gap: 28 }}>
+          <div className="lp-cred-num" style={{
+            fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 140,
+            letterSpacing: -4, lineHeight: 0.9, color: LP_BRAND.ink,
+            fontVariantNumeric: 'tabular-nums',
+          }}>100%</div>
+          <div className="lp-cred-caption" style={{
+            fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 300,
+            fontSize: 22, lineHeight: 1.3, color: LP_BRAND.ink, maxWidth: 280,
+          }}>
+            of claims cited to the post, clip or comment they came from.
+          </div>
         </div>
       </div>
     </section>
@@ -731,7 +722,7 @@ const LP_FridayPreview = () => (
           fontVariationSettings: "'opsz' 64", maxWidth: 720,
         }}
       >
-        It reads the internet. <span style={{ color: LP_BRAND.orangeDeep }}>You skim the answer.</span>
+        Scolto reads the week. <span style={{ color: LP_BRAND.orangeDeep }}>You read the brief.</span>
       </h2>
 
       <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
@@ -778,7 +769,7 @@ const LP_FridayPreview = () => (
 const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) => {
   const [brief, setBrief] = useState('');
   const [focused, setFocused] = useState(false);
-  const PLACEHOLDER = "Brief Scolto in a sentence — it'll scope the work before you finish typing.";
+  const PLACEHOLDER = "Describe to Scolto what you need.";
 
   return (
     <section className="lp-section lp-hero-section" style={{ padding: '56px 64px 0', position: 'relative', overflow: 'hidden' }}>
@@ -800,7 +791,7 @@ const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) =
           padding: '6px 14px 6px 8px', borderRadius: 99, background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`,
         }}>
           <LP_AgentBot hue={LP_BRAND.orange} variant={1} size={24} />
-          <LP_Mono size={10} color={LP_BRAND.orangeDeep}>Private beta · for brand &amp; insights teams</LP_Mono>
+          <LP_Mono size={10} color={LP_BRAND.orangeDeep}>Built for brand &amp; insights teams</LP_Mono>
         </div>
 
         <h1 className="lp-hero-h1" style={{
@@ -821,7 +812,7 @@ const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) =
           lineHeight: 1.4, color: LP_BRAND.ink, letterSpacing: '-0.018em',
           fontVariationSettings: "'opsz' 24",
         }}>
-          Scolto Watches the <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>video.</span>{' '}
+          Scolto watches the <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>video.</span>{' '}
           Reads the <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>comments.</span>{' '}
           <RotatingWord words={ROTATING_DELIVERABLES} color={LP_BRAND.orangeDeep} />
         </p>
@@ -922,7 +913,7 @@ const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) =
             boxShadow: `0 0 0 4px ${LP_BRAND.orange}33`,
             animation: 'lp-pulse 1.8s ease-in-out infinite',
           }} />
-          <LP_Mono size={10.5}>62 brand teams hired Scolto this week</LP_Mono>
+          <LP_Mono size={10.5}>on the desk of brand teams across consumer, entertainment &amp; agencies</LP_Mono>
         </div>
       </div>
     </section>
@@ -1429,7 +1420,7 @@ const LP_MeetScolto = () => {
             fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 20, lineHeight: 1.4,
             color: LP_BRAND.ink, letterSpacing: -0.1,
           }}>
-            Doesn't wait to be asked. Reads what's happening, decides what matters, and drops the answer before the question hits your head.
+            Doesn't wait to be asked. Reads what's happening, decides what matters, and drops the answer before you ask.
           </p>
         </div>
         <div className="lp-meet-roster" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, paddingBottom: 8 }}>
@@ -1441,9 +1432,9 @@ const LP_MeetScolto = () => {
             }} />
             <LP_Mono size={9.5} color={LP_BRAND.orangeDeep}>on the desk · this week</LP_Mono>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+          <div className="lp-meet-cards" style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
             {ASSIGNMENTS.map((a, i) => (
-              <div key={i} style={{
+              <div key={i} className="lp-meet-card" style={{
                 padding: '18px 12px 12px', borderRadius: 14, background: '#FFFFFF',
                 border: `1px solid ${LP_BRAND.rule}`,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 132,
@@ -1473,7 +1464,7 @@ const LP_MeetScolto = () => {
       <div className="lp-3col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
         <MR3_JobCard
           n="01" head="Watches the" hi="field."
-          body="Every platform, every format, every entity — around the clock. Posts, replies, video frames, audio, on-screen text, logos, prices. Already indexed. Table stakes, handled."
+          body="Every platform, every format, every entity — around the clock. Posts, replies, video frames, audio, on-screen text, logos, prices. Indexed and ready, nothing for you to set up."
           demo={<MR3_FieldDemo />}
         />
         <MR3_JobCard
@@ -2393,7 +2384,7 @@ const LP_WhyScolto = () => (
           margin: '22px 0 0', maxWidth: 460, fontFamily: "'Inter Tight',sans-serif", fontSize: 15,
           color: LP_BRAND.muted, lineHeight: 1.6,
         }}>
-          Brandwatch, Sprinklr, Talkwalker - they all ship the same thing in the end: a dashboard with a search bar, and a deal that asks you to fill it. Scolto ships a coworker that fills it for you, and tells you what it found.
+          Brandwatch, Sprinklr, Talkwalker — they all ship the same thing in the end: a dashboard with a search bar, and a deal that asks you to fill it. Scolto ships an agent that fills it for you, and tells you what it found.
         </p>
       </div>
 
@@ -2402,7 +2393,7 @@ const LP_WhyScolto = () => (
           { a: 'Hands you a dashboard.',                 b: 'Hands you a brief, a deck, a dashboard, and a digest.' },
           { a: 'Counts mentions and scores sentiment.',  b: 'Reads the post, watches the video, weighs the comment thread.' },
           { a: 'Surfaces a spike. You investigate why.', b: 'Tells you why, and which creator is the swing voter.' },
-          { a: 'Locks you into a $30k annual seat.',     b: 'Briefs from ~$49. Usage-based, no annual contract.' },
+          { a: 'Locks you into a $30k annual seat.',     b: 'Briefs from $49. Usage-based, no annual contract.' },
           { a: 'Wants a kickoff call.',                  b: 'Wants a sentence.' },
         ].map((row, i) => (
           <div key={i} className="lp-why-row" style={{
@@ -2444,7 +2435,7 @@ const LP_Invite = ({ openWaitlist }: { openWaitlist: () => void }) => (
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 28 }}>
         <LP_ScoltoMark size={140} />
       </div>
-      <LP_Mono color={LP_BRAND.orangeDeep}>Come build your first agent</LP_Mono>
+      <LP_Mono color={LP_BRAND.orangeDeep}>Brief your first agent</LP_Mono>
       <h2 className="lp-invite-h2" style={{
         margin: '18px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 104,
         letterSpacing: -3, lineHeight: 0.95, color: LP_BRAND.ink,
@@ -2456,14 +2447,14 @@ const LP_Invite = ({ openWaitlist }: { openWaitlist: () => void }) => (
         fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 20, lineHeight: 1.4,
         color: LP_BRAND.ink, letterSpacing: -0.1,
       }}>
-        Type one sentence. It'll spend the rest of the week reading the internet about it, and write you back what it found.
+        Type one sentence. Scolto spends the week reading the internet. Friday it writes you back.
       </p>
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 10, marginTop: 32, padding: 8, paddingLeft: 20,
         background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99,
         boxShadow: '0 24px 50px -28px rgba(40,30,20,0.24)',
       }}>
-        <LP_Mono size={11}>get the email when it's your turn →</LP_Mono>
+        <LP_Mono size={11}>ping me the moment a seat opens →</LP_Mono>
         <button
           onClick={openWaitlist}
           style={{
@@ -2479,7 +2470,7 @@ const LP_Invite = ({ openWaitlist }: { openWaitlist: () => void }) => (
           </svg>
         </button>
       </div>
-      <div style={{ marginTop: 18 }}><LP_Mono size={10}>private beta · one click with Google · no spam</LP_Mono></div>
+      <div style={{ marginTop: 18 }}><LP_Mono size={10}>one click with Google · no spam, ever</LP_Mono></div>
     </div>
   </section>
 );
@@ -2494,7 +2485,7 @@ const LP_Footer = () => (
           <LP_ScoltoLogo markSize={32} fontSize={42} onDark />
         </div>
         <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: '#A29A8B', lineHeight: 1.55 }}>
-          An AI coworker that reads the internet so you don't have to.
+          The first AI agent on social — reads the internet so you don't have to.
         </div>
       </div>
       <div className="lp-footer-links" style={{ display: 'flex', gap: 64, fontFamily: "'Inter Tight',sans-serif", fontSize: 13 }}>
@@ -2521,7 +2512,7 @@ const LP_Footer = () => (
       marginTop: 36, paddingTop: 18, borderTop: '1px solid #2A2520',
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     }}>
-      <LP_Mono size={9.5} color="#7E7666">© 2026 Scolto - the first AI coworker on social</LP_Mono>
+      <LP_Mono size={9.5} color="#7E7666">© 2026 Scolto — the first AI agent on social</LP_Mono>
       <LP_Mono size={9.5} color="#7E7666">made for people who'd rather read than scroll</LP_Mono>
     </div>
   </footer>
@@ -2538,7 +2529,7 @@ const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist
     <LP_ScoltoLogo markSize={34} fontSize={44} />
     <nav className="lp-nav-links" style={{ display: 'flex', gap: 32, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink }}>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>How it works</a>
-      <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>What it ships</a>
+      <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>What it ships you</a>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>Manifesto</a>
     </nav>
     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -2554,11 +2545,13 @@ const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist
       </button>
       <button
         onClick={openWaitlist}
+        className="lp-nav-cta"
         style={{
           padding: '10px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
           background: LP_BRAND.ink, color: '#F4EFE3',
           fontFamily: "'Inter Tight',sans-serif", fontSize: 13, fontWeight: 600,
           display: 'inline-flex', alignItems: 'center', gap: 8,
+          whiteSpace: 'nowrap',
         }}
       >
         Get early access
@@ -2843,7 +2836,7 @@ function WaitlistModal({
         ) : (
           <>
             <div style={{ textAlign: 'center' }}>
-              <LP_Mono color={LP_BRAND.orangeDeep}>Private beta · join the waitlist</LP_Mono>
+              <LP_Mono color={LP_BRAND.orangeDeep}>Join the waitlist</LP_Mono>
               <h3 style={{
                 margin: '10px 0 6px', fontFamily: "'Fraunces',serif", fontWeight: 400, fontSize: 30,
                 letterSpacing: -0.6, lineHeight: 1.1, color: LP_BRAND.ink,
@@ -3060,6 +3053,13 @@ export function LandingPage() {
         /* ── Mobile responsive overrides ─────────────────────────────────────
            These only apply below 768px. Desktop rendering is unchanged. */
         @media (max-width: 768px) {
+          /* Kill page-wide horizontal scroll. Several sections place
+             decorative absolute/rotated children that bleed past the
+             viewport (lp-friday-glow, lp-invite-bg, the rotated friday
+             card). Clipping at the root is cheaper than chasing each one. */
+          .lp-root {
+            overflow-x: hidden !important;
+          }
           .lp-root .lp-section {
             padding-left: 20px !important;
             padding-right: 20px !important;
@@ -3084,13 +3084,20 @@ export function LandingPage() {
             display: none !important;
           }
           .lp-root .lp-nav {
-            padding-left: 18px !important;
-            padding-right: 18px !important;
+            padding-left: 16px !important;
+            padding-right: 16px !important;
             gap: 10px !important;
           }
           .lp-root .lp-nav-links,
           .lp-root .lp-nav-signin {
             display: none !important;
+          }
+          /* Keep the nav CTA on one line at narrow widths and trim its
+             padding so the wordmark + button comfortably share the bar. */
+          .lp-root .lp-nav-cta {
+            padding: 9px 12px !important;
+            font-size: 12.5px !important;
+            gap: 6px !important;
           }
           /* minmax(0, 1fr) — without the 0 min, a child's min-content can
              expand the column past the container and cause horizontal scroll. */
@@ -3147,7 +3154,54 @@ export function LandingPage() {
           }
           .lp-root .lp-meet-roster {
             justify-content: flex-start !important;
+            align-items: flex-start !important;
             flex-wrap: wrap !important;
+          }
+          /* Roster: 4 fixed-width cards in a row blow past viewport.
+             Wrap 2x2 and let each card share the column. */
+          .lp-root .lp-meet-cards {
+            flex-wrap: wrap !important;
+            justify-content: flex-start !important;
+            gap: 10px !important;
+            width: 100%;
+          }
+          .lp-root .lp-meet-card {
+            width: calc(50% - 5px) !important;
+            transform: none !important;
+          }
+          /* Credibility row: 2-col → stacked; shrink the 140px stat so it
+             fits the viewport and the caption gets its own line. */
+          .lp-root .lp-credibility-row {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 20px !important;
+            padding: 22px 0 !important;
+          }
+          .lp-root .lp-cred-stat {
+            align-items: center !important;
+            gap: 16px !important;
+            flex-wrap: wrap;
+          }
+          .lp-root .lp-cred-num {
+            font-size: 88px !important;
+            letter-spacing: -2px !important;
+          }
+          .lp-root .lp-cred-caption {
+            font-size: 17px !important;
+            max-width: 100% !important;
+          }
+          /* Friday card: drop the -1.2deg tilt (it overhangs the column
+             on a narrow viewport) and tame the radial glow so it stays
+             inside the gutter instead of bleeding ±120px. */
+          .lp-root .lp-friday-card-wrap {
+            transform: none !important;
+          }
+          .lp-root .lp-friday-glow {
+            inset: -20px -20px !important;
+          }
+          .lp-root .lp-friday-live-pill {
+            left: 12px !important;
+            top: -22px !important;
+            transform: none !important;
           }
           .lp-root .lp-sticky {
             position: static !important;
