@@ -81,6 +81,8 @@ e2e/screenshots/
 .playwright-mcp/
 screenshots/
 *.png
+# ...but keep the social-card image used by Open Graph / Twitter meta tags.
+!frontend/public/og-image.png
 
 # Agent eval harness — keep reports + per-run metadata, drop bulk
 api/agent/evals/runs/_debug/
