@@ -11,6 +11,7 @@ RUN uv sync --no-dev --no-install-project
 
 # Copy application code
 COPY config/ config/
+COPY api/ api/
 COPY workers/ workers/
 COPY bigquery/ bigquery/
 
