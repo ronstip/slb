@@ -8,23 +8,35 @@ import { ScoltoMark } from '../components/Logo.tsx';
 const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   {
     q: 'What is Scolto?',
-    a: 'Scolto is a team of senior AI analysts available on demand to brand, marketing, and competitive-intelligence teams for social listening, trend detection, campaign tracking, and competitive intelligence.',
+    a: "An AI coworker for your brand, native to social. You ask it anything about your category; it listens, watches the video, reads the comments, and ships the brief, the dashboard, the deck or the digest your team already reads.",
   },
   {
-    q: "How do Scolto's AI analysts work?",
-    a: "Teams brief Scolto with a research question, brand context, and the deliverable they want. The AI analysts plan the research, gather signals from across the public web, and return a structured briefing the team can read, share, and act on.",
+    q: 'Who is Scolto for?',
+    a: "Brand and insights leads at consumer companies. Agencies and competitive-intel teams use it too — anyone who walks into a room and has to explain what just happened in their category.",
   },
   {
-    q: 'What sources does Scolto monitor?',
-    a: 'Scolto monitors public conversation across major social and content platforms, public reviews, forums, and press coverage. Coverage focuses on the surfaces where brand and category conversation actually happens.',
+    q: 'How does Scolto work?',
+    a: "Brief it like a teammate: question, context, deliverable. It plans the research, pulls signals from the public web, watches the video frame-by-frame, weighs the comment thread, and writes back the read-out.",
   },
   {
-    q: 'How is Scolto different from a social-listening dashboard?',
-    a: 'Dashboards show numbers; Scolto produces analyst briefings. The output explains what is happening, why it matters for the brand, and what to do — closer to the deliverable from a senior researcher than from a tool.',
+    q: 'Where does the data come from?',
+    a: "Public social, comments, video, reviews, forums and press — across TikTok, Instagram, YouTube, X, Reddit, Facebook and the open web. Licensed providers where required. No private DMs, ever.",
   },
   {
-    q: 'Who uses Scolto?',
-    a: 'Brand, marketing, insights, and competitive-intelligence teams at companies that need ongoing analyst-grade visibility into their category, their audience, and their competitors. Agencies and consultancies use Scolto to extend the analyst capacity they offer clients.',
+    q: 'How is hallucination handled?',
+    a: "Every claim cites the post, clip or comment it came from — timecoded for video. If Scolto can't source it, it doesn't say it. The receipts sit next to the read-out.",
+  },
+  {
+    q: 'What does it cost?',
+    a: "Usage-based. Pay for the work, not a seat. Briefs from roughly $49. No annual contract. Detailed pricing on the way in.",
+  },
+  {
+    q: "How is this different from a social-listening dashboard?",
+    a: "Dashboards count mentions and ask you to interpret them. Scolto ships the interpretation — what happened, why it matters, what to do — with the dashboard as a side artifact when you want one.",
+  },
+  {
+    q: 'What about privacy?',
+    a: "Only public conversation. Your briefs, outputs and workspace stay yours — we don't train on them or share them. Single sign-on with Google or Microsoft.",
   },
 ];
 
@@ -33,7 +45,7 @@ const LP_BRAND = {
   orange:     '#D97757',
   orangeDeep: '#C25E3F',
   orangeSoft: '#F2D5C4',
-  ink:        '#1B1815',
+  ink:        '#0F1F4D',
   slate:      '#29261B',
   slate2:     '#3A352A',
   cream:      '#F6F4EF',
@@ -159,8 +171,8 @@ const LP_AgentBot = ({
   size?: number;
 }) => {
   const v = ((variant % 4) + 4) % 4;
-  const ink = '#1B1815';
-  const dark = `color-mix(in oklab, ${hue} 80%, #1B1815)`;
+  const ink = '#0F1F4D';
+  const dark = `color-mix(in oklab, ${hue} 80%, #0F1F4D)`;
   const figures: BotFig[] = [
     {
       body: <path d="M14 24 Q14 12 24 12 Q34 12 34 24 V44 Q34 50 28 50 H20 Q14 50 14 44 Z" fill={hue} />,
@@ -250,23 +262,29 @@ const LP_AgentBot = ({
 };
 
 // ── Platform badges ──
+// Brand glyphs lifted from the Scolto Design System marketing kit
+// (ui_kits/marketing/shared.jsx). Real-brand 24x24 SVGs, rounded squares
+// at 22% radius, with the production PLATFORM_COLORS palette.
 type PlatformId =
-  | 'instagram' | 'tiktok' | 'youtube' | 'facebook' | 'x' | 'reddit'
+  | 'instagram' | 'tiktok' | 'youtube' | 'facebook' | 'x' | 'reddit' | 'web'
   | 'slack' | 'whatsapp' | 'gmail' | 'notion';
 
 const PLATFORMS: { id: PlatformId; label: string; color: string; glyph: ReactNode }[] = [
-  { id: 'instagram', label: 'Instagram', color: '#E4405F',
-    glyph: (<><rect x="6" y="6" width="12" height="12" rx="3.5" fill="none" stroke="#FFF" strokeWidth="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="#FFF" strokeWidth="1.8"/><circle cx="15.6" cy="8.4" r="0.9" fill="#FFF"/></>) },
-  { id: 'tiktok', label: 'TikTok', color: '#0F0F0F',
-    glyph: (<><path d="M13.5 5v8.6a2.7 2.7 0 1 1-2.7-2.7" stroke="#FFF" strokeWidth="1.8" fill="none" strokeLinecap="round"/><path d="M13.5 5c.2 1.7 1.5 3.1 3.3 3.3" stroke="#FFF" strokeWidth="1.8" fill="none" strokeLinecap="round"/></>) },
-  { id: 'youtube', label: 'YouTube', color: '#FF1F1F',
-    glyph: (<><rect x="4.5" y="7.5" width="15" height="9" rx="2.5" fill="#FFF"/><path d="M10.5 10.2v3.6l3.2-1.8z" fill="#FF1F1F"/></>) },
+  { id: 'instagram', label: 'Instagram',
+    color: 'radial-gradient(circle at 72% 108%, #FEDA77 0%, #F58529 40%, #DD2A7B 72%, #8134AF 94%, #515BD4 112%)',
+    glyph: (<path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" fill="#FFF" />) },
+  { id: 'tiktok', label: 'TikTok', color: '#57534E',
+    glyph: (<path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.88-2.88 2.89 2.89 0 012.88-2.88c.3 0 .59.05.86.12V9.01a6.32 6.32 0 00-.86-.06 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.98a8.21 8.21 0 004.77 1.52V7.05a4.83 4.83 0 01-1-.36z" fill="#FFF" />) },
+  { id: 'youtube', label: 'YouTube', color: '#E03030',
+    glyph: (<path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#FFF" />) },
   { id: 'facebook', label: 'Facebook', color: '#1877F2',
-    glyph: (<path d="M13.5 19v-6h2l.3-2.4h-2.3V9.1c0-.7.2-1.2 1.2-1.2h1.3V5.7c-.2 0-1-.1-1.9-.1-1.9 0-3.2 1.1-3.2 3.2v1.8H8.7v2.4h2.2V19h2.6z" fill="#FFF"/>) },
+    glyph: (<path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="#FFF" />) },
   { id: 'x', label: 'X (Twitter)', color: '#0F0F0F',
-    glyph: (<path d="M5.5 5h2.8l3.3 4.3L15.5 5h2.3l-4.9 6.1L18 19h-2.8l-3.5-4.5L7.7 19H5.4l5.2-6.5L5.5 5z" fill="#FFF"/>) },
-  { id: 'reddit', label: 'Reddit', color: '#FF4500',
-    glyph: (<><circle cx="12" cy="13" r="5.8" fill="#FFF"/><circle cx="9.8" cy="12.7" r="0.9" fill="#FF4500"/><circle cx="14.2" cy="12.7" r="0.9" fill="#FF4500"/><path d="M9.5 15.2c.7.6 1.6.9 2.5.9s1.8-.3 2.5-.9" stroke="#FF4500" strokeWidth="1.2" fill="none" strokeLinecap="round"/><circle cx="17" cy="9" r="1.4" fill="#FFF"/><path d="M14.2 9.5c.6-1 1.6-1.7 2.8-1.6" stroke="#FFF" strokeWidth="0.9" fill="none"/></>) },
+    glyph: (<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="#FFF" />) },
+  { id: 'reddit', label: 'Reddit', color: '#E05A00',
+    glyph: (<path d="M12 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 01-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 01.042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 014.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 01.14-.197.35.35 0 01.238-.042l2.906.617a1.214 1.214 0 011.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 00-.231.094.33.33 0 000 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 00.029-.463.33.33 0 00-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 00-.232-.095z" fill="#FFF" />) },
+  { id: 'web', label: 'Web', color: '#4285F4',
+    glyph: (<><circle cx="12" cy="12" r="10" fill="none" stroke="#FFF" strokeWidth="2"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" fill="none" stroke="#FFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>) },
   { id: 'slack', label: 'Slack', color: '#4A154B',
     glyph: (<><rect x="6" y="10" width="3" height="8" rx="1.5" fill="#ECB22E"/><rect x="10" y="14" width="8" height="3" rx="1.5" fill="#2EB67D"/><rect x="15" y="6" width="3" height="8" rx="1.5" fill="#E01E5A"/><rect x="6" y="7" width="8" height="3" rx="1.5" fill="#36C5F0"/></>) },
   { id: 'whatsapp', label: 'WhatsApp', color: '#25D366',
@@ -285,15 +303,17 @@ const LP_PlatformBadge = ({ id, size = 32 }: { id: PlatformId; size?: number }) 
       style={{
         width: size,
         height: size,
-        borderRadius: Math.round(size * 0.28),
+        borderRadius: Math.round(size * 0.22),
         background: p.color,
         display: 'inline-grid',
         placeItems: 'center',
         flexShrink: 0,
-        boxShadow: '0 4px 10px -4px rgba(0,0,0,0.25)',
+        color: '#FFFFFF',
+        boxShadow: '0 1px 2px rgba(15,12,8,0.18)',
+        outline: '1px solid rgba(0,0,0,0.05)',
       }}
     >
-      <svg viewBox="0 0 24 24" width={size * 0.7} height={size * 0.7} aria-label={p.label}>
+      <svg viewBox="0 0 24 24" width={size * 0.6} height={size * 0.6} aria-label={p.label} style={{ display: 'block' }}>
         {p.glyph}
       </svg>
     </span>
@@ -315,7 +335,7 @@ const ROTATING_DELIVERABLES = [
   'Spots the competitors.',
   'Ships the slide deck.',
   'Delivers the deep-dive.',
-  'Schedules the listening.',
+  'Schedules the read.',
 ];
 
 const RotatingWord = ({
@@ -353,7 +373,7 @@ const RotatingWord = ({
             left: 0,
             top: 0,
             whiteSpace: 'nowrap',
-            fontStyle: 'italic',
+            fontWeight: 500,
             color,
             opacity: idx === i ? 1 : 0,
             transform: idx === i ? 'translateY(0)' : 'translateY(0.4em)',
@@ -593,201 +613,278 @@ const LP_DailyRead = () => {
   );
 };
 
-const LP_HeroCharacter = () => (
-  <div className="lp-hero-illustration" style={{ position: 'relative', height: 660, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-    <div className="lp-hero-glow" style={{
-      position: 'absolute', inset: '30px 20px 30px 20px', borderRadius: 28,
-      background: `radial-gradient(120% 90% at 65% 30%, ${LP_BRAND.orange}24 0%, ${LP_BRAND.orange}0d 40%, transparent 75%)`,
-    }} />
-    <div className="lp-hero-paper" style={{
-      position: 'absolute', right: 0, top: 18, width: 460, height: 600,
-      background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 18,
-      transform: 'rotate(2.5deg)', opacity: 0.55,
-      boxShadow: '0 30px 60px -40px rgba(40,30,20,0.2)',
-    }} />
-    <div className="lp-hero-card-wrap" style={{
-      position: 'relative', zIndex: 2,
-      transform: 'rotate(-1.4deg)',
-      filter: 'drop-shadow(0 30px 60px rgba(40,30,20,0.18))',
-    }}>
-      <LP_DailyRead />
-      <div className="lp-hero-live-pill" style={{
-        position: 'absolute', top: -30, left: 38, display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 13px 6px 9px', background: LP_BRAND.ink, color: LP_BRAND.cream, borderRadius: 99,
-        boxShadow: '0 14px 28px -16px rgba(40,30,20,0.45)', zIndex: 4, transform: 'rotate(-0.6deg)',
-      }}>
-        <span style={{
-          width: 6, height: 6, borderRadius: 99, background: LP_BRAND.orange,
-          boxShadow: `0 0 0 4px ${LP_BRAND.orange}44`,
-          animation: 'lp-pulse 1.6s ease-in-out infinite',
-        }} />
-        <LP_Mono size={9.5} color={LP_BRAND.cream}>live · 27.4M mentions / 7d</LP_Mono>
-      </div>
+// Top-down beach umbrella — 8 scalloped fabric petals alternating rust / cream,
+// with a tiny ink finial. The petal edges bulge outward (not straight radial
+// lines) so it reads as canopy fabric, not a cog. Lifted from the design kit.
+const LP_BeachUmbrellaWatermark = ({ size = 240 }: { size?: number }) => {
+  const panels = 8;
+  const step = 360 / panels;
+  const R = 44;
+  const bulge = 1.18;
+  const petals: ReactNode[] = [];
+  for (let i = 0; i < panels; i++) {
+    const a0 = ((i * step - 90) * Math.PI) / 180;
+    const a1 = (((i + 1) * step - 90) * Math.PI) / 180;
+    const am = (a0 + a1) / 2;
+    const x0 = Math.cos(a0) * R, y0 = Math.sin(a0) * R;
+    const x1 = Math.cos(a1) * R, y1 = Math.sin(a1) * R;
+    const cx = Math.cos(am) * R * bulge * 1.35;
+    const cy = Math.sin(am) * R * bulge * 1.35;
+    const fill = i % 2 === 0 ? LP_BRAND.orange : '#F6F1E4';
+    petals.push(
+      <path key={i}
+        d={`M0,0 L${x0.toFixed(2)},${y0.toFixed(2)} Q${cx.toFixed(2)},${cy.toFixed(2)} ${x1.toFixed(2)},${y1.toFixed(2)} Z`}
+        fill={fill}
+        stroke={LP_BRAND.orangeDeep}
+        strokeOpacity="0.32"
+        strokeWidth="0.5"
+        strokeLinejoin="round" />
+    );
+  }
+  return (
+    <div style={{
+      position: 'relative', width: size, height: size,
+      opacity: 0.22,
+      transform: 'translateY(calc(-8px + 1cm)) rotate(-8deg)',
+    }} aria-hidden="true">
+      <svg viewBox="-60 -60 120 120" style={{ width: '100%', height: '100%', display: 'block', overflow: 'visible' }}>
+        <ellipse cx="2" cy="3" rx="52" ry="50" fill={LP_BRAND.orangeDeep} opacity="0.06" />
+        {petals}
+        <circle cx="0" cy="0" r="7" fill={LP_BRAND.orange} stroke={LP_BRAND.orangeDeep} strokeOpacity="0.45" strokeWidth="0.5" />
+        <circle cx="0" cy="0" r="3.5" fill={LP_BRAND.cream} />
+        <circle cx="0" cy="0" r="1.6" fill={LP_BRAND.ink} />
+      </svg>
     </div>
+  );
+};
 
-    <div className="lp-hero-popup" style={{ position: 'absolute', bottom: 8, right: -4, width: 248, zIndex: 5, transform: 'rotate(3deg)' }}>
-      <div style={{
-        background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 12,
-        padding: '10px 12px', boxShadow: '0 24px 40px -22px rgba(40,30,20,0.35)',
+// Credibility strip — single-row "by the numbers" beat. Sits between
+// MeetScolto and the Friday preview. Editorial pull-line on the left,
+// four Fraunces big stats on the right, divided by warm 1px rules.
+const LP_Credibility = () => {
+  const STATS = [
+    { v: '27.4M', l: 'mentions read · 7 d' },
+    { v: '312',   l: 'clips watched · frame-by-frame' },
+    { v: '6 + 1', l: 'platforms · one inbox' },
+    { v: '100%',  l: 'sourced · every claim cites' },
+  ];
+  return (
+    <section className="lp-section" style={{ padding: '32px 64px 8px' }}>
+      <div className="lp-credibility-row" style={{
+        maxWidth: 1180, margin: '0 auto',
+        borderTop: `1px solid ${LP_BRAND.rule}`, borderBottom: `1px solid ${LP_BRAND.rule}`,
+        padding: '28px 0',
+        display: 'grid', gridTemplateColumns: '1.05fr 1.95fr', gap: 56, alignItems: 'center',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <img src={OSCARS.dicaprio} alt="" referrerPolicy="no-referrer"
-            style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0, lineHeight: 1.15 }}>
-            <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 11.5, fontWeight: 600, color: LP_BRAND.ink }}>@PopCrave</div>
-            <LP_Mono size={8.5}>x · 24s ago · +1.2k</LP_Mono>
+        <div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: 99, background: LP_BRAND.orange,
+              boxShadow: `0 0 0 4px ${LP_BRAND.orange}33`,
+              animation: 'lp-pulse 1.8s ease-in-out infinite',
+            }} />
+            <LP_Mono color={LP_BRAND.orangeDeep}>Running this week</LP_Mono>
           </div>
-          <span style={{
-            width: 6, height: 6, borderRadius: 99, background: LP_BRAND.orange,
-            boxShadow: `0 0 0 4px ${LP_BRAND.orange}33`,
-            animation: 'lp-pulse 1.6s ease-in-out infinite',
-          }} />
+          <div style={{
+            fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 26, lineHeight: 1.2,
+            color: LP_BRAND.ink, letterSpacing: -0.4, maxWidth: 340,
+          }}>
+            Briefs in flight for{' '}
+            <span style={{ fontStyle: 'italic', color: LP_BRAND.orangeDeep }}>brand &amp; insights teams</span>
+            {' '}at consumer companies, two major sports leagues and a Big-3 agency network.
+          </div>
         </div>
-        <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 12, color: LP_BRAND.ink, lineHeight: 1.4 }}>
-          leo's "TFW you didn't agree to this" face when Conan put him on the jumbotron ðŸ’€
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
+          {STATS.map((s, i) => (
+            <div key={s.l} style={{
+              paddingLeft: i === 0 ? 0 : 24,
+              borderLeft: i === 0 ? 'none' : `1px solid ${LP_BRAND.rule}`,
+              minWidth: 0,
+            }}>
+              <div style={{
+                fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 56,
+                letterSpacing: -1.6, lineHeight: 0.95, color: LP_BRAND.ink,
+                fontVariantNumeric: 'tabular-nums',
+              }}>{s.v}</div>
+              <LP_Mono size={9.5} style={{ display: 'block', marginTop: 10 }}>{s.l}</LP_Mono>
+            </div>
+          ))}
         </div>
       </div>
-    </div>
+    </section>
+  );
+};
 
-    <div className="lp-hero-popup" style={{ position: 'absolute', top: 80, right: -18, width: 230, zIndex: 3, transform: 'rotate(4deg)' }}>
-      <div style={{
-        background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 12,
-        padding: '10px 12px', boxShadow: '0 22px 36px -22px rgba(40,30,20,0.32)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-          <LP_PlatformBadge id="reddit" size={20} />
-          <div style={{ flex: 1, minWidth: 0, lineHeight: 1.15 }}>
-            <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 11, fontWeight: 600, color: LP_BRAND.ink }}>r/oscars</div>
-            <LP_Mono size={8.5}>u/kpopstandkr · 4.8k ↑</LP_Mono>
+// "What Friday looks like" — anchors its own beat below the centered hero.
+// The Weekly Read card, rotated -1.2°, with a Live pill rotated -0.6°.
+const LP_FridayPreview = () => (
+  <section className="lp-section lp-friday-section" style={{ padding: '96px 64px 80px', position: 'relative' }}>
+    <div style={{ maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <LP_Mono size={10.5} color={LP_BRAND.orangeDeep} style={{ marginBottom: 14 }}>What Friday looks like</LP_Mono>
+      <h2
+        className="lp-section-h2 lp-friday-h2"
+        style={{
+          margin: '0 0 64px',
+          fontFamily: "'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif",
+          fontWeight: 500, fontSize: 56,
+          lineHeight: 1.0, letterSpacing: '-0.04em', color: LP_BRAND.ink, textAlign: 'center',
+          fontVariationSettings: "'opsz' 64", maxWidth: 720,
+        }}
+      >
+        It reads the internet. <span style={{ color: LP_BRAND.orangeDeep }}>You skim the answer.</span>
+      </h2>
+
+      <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
+        <div
+          className="lp-friday-glow"
+          style={{
+            position: 'absolute', inset: '-40px -120px',
+            background: `radial-gradient(60% 80% at 50% 40%, ${LP_BRAND.orange}1f 0%, ${LP_BRAND.orange}08 40%, transparent 75%)`,
+            borderRadius: 32, pointerEvents: 'none',
+          }}
+        />
+        <div
+          className="lp-friday-card-wrap"
+          style={{
+            position: 'relative', zIndex: 2,
+            transform: 'rotate(-1.2deg)',
+            filter: 'drop-shadow(0 30px 60px rgba(40,30,20,0.18))',
+          }}
+        >
+          <LP_DailyRead />
+          <div
+            className="lp-friday-live-pill"
+            style={{
+              position: 'absolute', top: -30, left: 38, display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 13px 6px 9px', background: LP_BRAND.ink, color: LP_BRAND.cream, borderRadius: 99,
+              boxShadow: '0 14px 28px -16px rgba(40,30,20,0.45)', zIndex: 4, transform: 'rotate(-0.6deg)',
+            }}
+          >
+            <span
+              style={{
+                width: 6, height: 6, borderRadius: 99, background: LP_BRAND.orange,
+                boxShadow: `0 0 0 4px ${LP_BRAND.orange}44`,
+                animation: 'lp-pulse 1.6s ease-in-out infinite',
+              }}
+            />
+            <LP_Mono size={9.5} color={LP_BRAND.cream}>live · 27.4M mentions / 7d</LP_Mono>
           </div>
-        </div>
-        <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 11.5, color: LP_BRAND.ink, lineHeight: 1.4 }}>
-          why did they cut Yu Han Lee off mid-speech? first K-pop Oscar in history and this is how they handle it…
         </div>
       </div>
     </div>
-  </div>
+  </section>
 );
 
 const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) => {
   const [brief, setBrief] = useState('');
-  const PLACEHOLDERS = [
-    'Track how the 98th Oscars are landing across every platform this week…',
-    'Tell me the moment sentiment turns on the KPop Demon Hunters speech cut-off…',
-    "Find every reaction video to Michael B. Jordan's upset Best Actor win…",
-    'Compare buzz for One Battle After Another vs. Sinners after Sunday night…',
-  ];
-  const [phIdx, setPhIdx] = useState(0);
-  useEffect(() => {
-    if (brief) return;
-    const id = setInterval(() => setPhIdx(v => (v + 1) % PLACEHOLDERS.length), 3800);
-    return () => clearInterval(id);
-  }, [brief]);
+  const [focused, setFocused] = useState(false);
+  const PLACEHOLDER = "Brief Scolto in a sentence — it'll scope the work before you finish typing.";
 
   return (
-    <section className="lp-section lp-hero-section" style={{ padding: '48px 64px 80px', position: 'relative' }}>
-      <div className="lp-hero-grid" style={{ display: 'grid', gridTemplateColumns: '1.08fr 0.92fr', gap: 56, alignItems: 'center' }}>
-        <div>
-          <div className="lp-hero-badge" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 22,
-            padding: '6px 14px 6px 8px', borderRadius: 99, background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`,
-          }}>
-            <LP_AgentBot hue={LP_BRAND.orange} variant={1} size={24} />
-            <LP_Mono size={10} color={LP_BRAND.orangeDeep}>Open beta · meet Scolto</LP_Mono>
-            <span className="lp-hero-badge-extra" style={{ width: 1, height: 14, background: LP_BRAND.rule }} />
-            <span className="lp-hero-badge-extra"><LP_Mono size={10}>AI social listening</LP_Mono></span>
-          </div>
+    <section className="lp-section lp-hero-section" style={{ padding: '56px 64px 0', position: 'relative', overflow: 'hidden' }}>
+      <div className="lp-hero-watermark" aria-hidden="true" style={{
+        position: 'absolute', inset: 0,
+        pointerEvents: 'none', zIndex: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <LP_BeachUmbrellaWatermark size={240} />
+      </div>
 
-          <h1 className="lp-hero-h1" style={{
-            margin: 0, fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 92,
-            lineHeight: 0.94, letterSpacing: -2.6, color: LP_BRAND.ink,
-          }}>
-            Your first<br />
-            <span style={{ fontStyle: 'italic', fontWeight: 400, color: LP_BRAND.orangeDeep }}>AI brand researcher.</span>
-          </h1>
+      <div className="lp-hero-stack" style={{
+        position: 'relative', zIndex: 2,
+        maxWidth: 880, margin: '0 auto',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
+      }}>
+        <div className="lp-hero-badge" style={{
+          display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 28,
+          padding: '6px 14px 6px 8px', borderRadius: 99, background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`,
+        }}>
+          <LP_AgentBot hue={LP_BRAND.orange} variant={1} size={24} />
+          <LP_Mono size={10} color={LP_BRAND.orangeDeep}>Private beta · for brand &amp; insights teams</LP_Mono>
+        </div>
 
-          <p style={{
-            margin: '24px 0 0', maxWidth: 560,
-            fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 23,
-            lineHeight: 1.35, color: LP_BRAND.ink, letterSpacing: -0.2,
-          }}>
-            Watches the <em style={{ color: LP_BRAND.orangeDeep }}>video.</em>{' '}
-            Reads the <em style={{ color: LP_BRAND.orangeDeep }}>comments.</em>{' '}
-            <RotatingWord words={ROTATING_DELIVERABLES} color={LP_BRAND.orangeDeep} />
-          </p>
+        <h1 className="lp-hero-h1" style={{
+          margin: 0,
+          fontFamily: "'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif",
+          fontWeight: 400, fontSize: 88,
+          lineHeight: 1.0, letterSpacing: '-0.035em', color: LP_BRAND.ink,
+          fontVariationSettings: "'opsz' 88",
+        }}>
+          The first <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>AI&nbsp;agent</span>
+          <br />on social.
+        </h1>
 
-          <p style={{
-            margin: '16px 0 0', maxWidth: 520, fontFamily: "'Inter Tight',sans-serif", fontSize: 15.5,
-            color: LP_BRAND.muted, lineHeight: 1.55,
-          }}>
-            Scolto is a team of senior AI analysts that listens across every social platform - and ships you the report, the dashboard, the deck and the digest. All from one sentence.
-          </p>
+        <p className="lp-hero-lede" style={{
+          margin: '24px 0 0', maxWidth: 640,
+          fontFamily: "'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif",
+          fontWeight: 400, fontSize: 22,
+          lineHeight: 1.4, color: LP_BRAND.ink, letterSpacing: '-0.018em',
+          fontVariationSettings: "'opsz' 24",
+        }}>
+          Scolto Watches the <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>video.</span>{' '}
+          Reads the <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>comments.</span>{' '}
+          <RotatingWord words={ROTATING_DELIVERABLES} color={LP_BRAND.orangeDeep} />
+        </p>
 
-          <form onSubmit={(e) => { e.preventDefault(); openWaitlist(brief.trim() || undefined); }} className="lp-hero-form" style={{ marginTop: 32, maxWidth: 620 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <span style={{
-                width: 7, height: 7, borderRadius: 99, background: '#3DA37D',
-                boxShadow: '0 0 0 3px rgba(61,163,125,0.2)',
-              }} />
-              <LP_Mono size={10.5} color={LP_BRAND.ink}>Brief Scolto · it'll scope the work before you finish typing</LP_Mono>
-            </div>
-            <div
-              style={{
-                display: 'flex', flexDirection: 'column', gap: 10,
-                background: '#FFFFFF', border: `2px solid ${LP_BRAND.rule}`, borderRadius: 18,
-                padding: '18px 18px 16px',
-                boxShadow: '0 24px 60px -28px rgba(40,30,20,0.28)',
-                transition: 'border-color 160ms ease, box-shadow 160ms ease',
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = LP_BRAND.orange;
-                e.currentTarget.style.boxShadow = `0 0 0 6px ${LP_BRAND.orange}1f, 0 24px 60px -28px rgba(40,30,20,0.28)`;
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = LP_BRAND.rule;
-                e.currentTarget.style.boxShadow = '0 24px 60px -28px rgba(40,30,20,0.28)';
-              }}
-            >
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+          <form
+            onSubmit={(e) => { e.preventDefault(); openWaitlist(brief.trim() || undefined); }}
+            className="lp-hero-form"
+            style={{ marginTop: 32, maxWidth: 540, width: '100%' }}
+          >
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 8,
+              background: '#FFFFFF',
+              border: `2px solid ${LP_BRAND.orange}`,
+              borderRadius: 14, padding: '12px 14px 10px',
+              boxShadow: focused
+                ? `0 0 0 5px ${LP_BRAND.orange}24, 0 18px 44px -22px rgba(40,30,20,0.22)`
+                : `0 0 0 3px ${LP_BRAND.orange}14, 0 18px 44px -22px rgba(40,30,20,0.22)`,
+              transition: 'box-shadow 160ms ease',
+              textAlign: 'left',
+            }}>
               <textarea
-                rows={3}
+                rows={2}
                 value={brief}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
                 onChange={(e) => setBrief(e.target.value)}
-                placeholder={PLACEHOLDERS[phIdx]}
+                placeholder={PLACEHOLDER}
                 style={{
                   border: 'none', outline: 'none', background: 'transparent', resize: 'none',
-                  fontFamily: "'Inter Tight',sans-serif", fontSize: 18, color: LP_BRAND.ink,
-                  lineHeight: 1.45, padding: 0, minHeight: 78,
+                  fontFamily: "'Inter Tight',sans-serif", fontSize: 15.5, color: LP_BRAND.ink,
+                  lineHeight: 1.45, padding: 0, minHeight: 46,
                 }}
               />
               <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                paddingTop: 12, borderTop: `1px solid ${LP_BRAND.rule}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                paddingTop: 8, borderTop: `1px solid ${LP_BRAND.rule}`,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <LP_Mono size={9.5}>listens on</LP_Mono>
-                  {(['instagram','tiktok','youtube','x','reddit','facebook'] as PlatformId[]).map(p => (
-                    <LP_PlatformBadge key={p} id={p} size={20} />
+                  <LP_Mono size={9}>listens on</LP_Mono>
+                  {(['instagram', 'tiktok', 'youtube', 'x', 'reddit', 'facebook'] as PlatformId[]).map(p => (
+                    <LP_PlatformBadge key={p} id={p} size={18} />
                   ))}
                 </div>
                 <button
                   type="submit"
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    padding: '13px 22px', borderRadius: 11, border: 'none', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 7,
+                    padding: '9px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
                     background: LP_BRAND.ink, color: '#F4EFE3',
-                    fontFamily: "'Inter Tight',sans-serif", fontSize: 14.5, fontWeight: 600,
-                    whiteSpace: 'nowrap', boxShadow: '0 8px 20px -8px rgba(40,30,20,0.5)',
+                    fontFamily: "'Inter Tight',sans-serif", fontSize: 13, fontWeight: 600,
+                    whiteSpace: 'nowrap', boxShadow: '0 6px 16px -8px rgba(40,30,20,0.5)',
                   }}
                 >
                   Get early access
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M13 6l6 6-6 6" />
                   </svg>
                 </button>
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14, justifyContent: 'center' }}>
               {LP_TEMPLATES.map(t => (
                 <button
                   key={t.label}
@@ -808,243 +905,509 @@ const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) =
               ))}
             </div>
           </form>
-
-          <div style={{ marginTop: 30, display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ display: 'flex' }}>
-              {[PEOPLE.creator1, PEOPLE.creator3, PEOPLE.creator4, PEOPLE.creator5].map((src, i) => (
-                <img key={i} src={src} alt="" referrerPolicy="no-referrer"
-                  style={{
-                    width: 30, height: 30, borderRadius: '50%', objectFit: 'cover',
-                    border: `2px solid ${LP_BRAND.cream}`, marginLeft: i === 0 ? 0 : -8,
-                  }} />
-              ))}
-            </div>
-            <LP_Mono size={10.5}>62 brand teams hired Scolto this week</LP_Mono>
-          </div>
         </div>
 
-        <div className="lp-hero-char">
-          <LP_HeroCharacter />
+        <div style={{ marginTop: 30, display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ display: 'flex' }}>
+            {[PEOPLE.creator1, PEOPLE.creator3, PEOPLE.creator4, PEOPLE.creator5].map((src, i) => (
+              <img key={i} src={src} alt="" referrerPolicy="no-referrer"
+                style={{
+                  width: 30, height: 30, borderRadius: '50%', objectFit: 'cover',
+                  border: `2px solid ${LP_BRAND.cream}`, marginLeft: i === 0 ? 0 : -8,
+                }} />
+            ))}
+          </div>
+          <span style={{
+            width: 6, height: 6, borderRadius: 99, background: LP_BRAND.orange,
+            boxShadow: `0 0 0 4px ${LP_BRAND.orange}33`,
+            animation: 'lp-pulse 1.8s ease-in-out infinite',
+          }} />
+          <LP_Mono size={10.5}>62 brand teams hired Scolto this week</LP_Mono>
         </div>
       </div>
     </section>
   );
 };
 
-// ── Capabilities (Meet Scolto) ────────────────────────────────────────────────
+// ── Meet your researcher (v3) ─────────────────────────────────────────────────
+// Three cards: 01 watches the FIELD · 02 reads the ROOM · 03 briefs the TEAM.
+// Lifted from ui_kits/marketing/MeetResearcherV3.jsx in the design bundle.
 
-const ListensDemo = () => {
-  const FEED: { p: PlatformId; h: string; c: string; t: string; hi?: boolean }[] = [
-    { p: 'tiktok',    h: '@rundotmaya',                  c: 'first run in the Drift is wild',     t: '+218' },
-    { p: 'reddit',    h: 'u/easydaze · r/RunningShoes',  c: '$180 for a tempo is steep…',         t: '+2.1k' },
-    { p: 'instagram', h: '@marathon.caro',               c: 'tempo day in the volt drift',        t: '+412' },
-    { p: 'youtube',   h: '@running.deep',                c: '100 mi review · Halo Drift',         t: '+88k', hi: true },
-    { p: 'x',         h: '@velo_run',                    c: 'drift runs ½ size small btw',        t: '+33' },
-  ];
+const MR3_Tick = () => (
+  <svg viewBox="0 0 16 16" width="13" height="13" style={{ flexShrink: 0 }}>
+    <path d="M3 8.5l3 3 7-8" fill="none" stroke={LP_BRAND.orangeDeep}
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const MR3_FmtIcon = ({ id }: { id: 'video' | 'audio' | 'image' | 'text' | 'live' }) => {
+  const map = {
+    video: 'M5 4l10 6-10 6V4z',
+    audio: 'M3 7v6h3l5 4V3l-5 4H3z',
+    image: 'M3 4h14v12H3z M3 13l4-4 3 3 4-5 3 4',
+    text:  'M4 5h12 M4 9h12 M4 13h7',
+    live:  'M10 4a6 6 0 100 12 6 6 0 000-12z M10 8v4 M10 12.5h.01',
+  };
   return (
-    <div className="lp-listens-demo" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
-        <span style={{ width: 6, height: 6, borderRadius: 99, background: '#3DA37D', animation: 'lp-pulse 1.6s ease-in-out infinite' }} />
-        <LP_Mono size={9} color={LP_BRAND.muted}>live · 1,204 new mentions in the last hour</LP_Mono>
+    <svg viewBox="0 0 20 20" width="14" height="14" style={{ flexShrink: 0 }}>
+      <path d={map[id]} fill="none" stroke={LP_BRAND.ink} strokeWidth="1.3"
+        strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
+
+const MR3_FieldDemo = () => {
+  const tag = (txt: string) => (
+    <span style={{
+      fontFamily: "'JetBrains Mono', ui-monospace",
+      fontSize: 8.5, color: LP_BRAND.muted, letterSpacing: 0.5,
+      padding: '2px 6px', borderRadius: 99,
+      background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`,
+      whiteSpace: 'nowrap',
+    }}>{txt}</span>
+  );
+  const NOW = 14;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <MR3_Tick />
+        <LP_Mono size={9} color={LP_BRAND.ink} style={{ minWidth: 88 }}>every platform</LP_Mono>
+        <div style={{ display: 'flex', gap: 5 }}>
+          {(['tiktok','instagram','youtube','x','reddit','facebook','web'] as PlatformId[]).map(p => (
+            <LP_PlatformBadge key={p} id={p} size={18} />
+          ))}
+        </div>
       </div>
-      {FEED.map((r, i) => (
-        <div key={i} className="lp-listens-row" style={{
-          display: 'flex', alignItems: 'center', gap: 9, padding: '6px 9px', borderRadius: 8,
-          background: r.hi ? '#FFF7F1' : LP_BRAND.paper,
-          border: r.hi ? `1px solid ${LP_BRAND.orange}` : `1px solid ${LP_BRAND.rule}`,
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <MR3_Tick />
+        <LP_Mono size={9} color={LP_BRAND.ink} style={{ minWidth: 88 }}>every format</LP_Mono>
+        <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
+          {(['video','audio','image','text','live'] as const).map(k => (
+            <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <MR3_FmtIcon id={k} /><LP_Mono size={8.5}>{k}</LP_Mono>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <MR3_Tick />
+        <LP_Mono size={9} color={LP_BRAND.ink} style={{ minWidth: 88, paddingTop: 3 }}>every entity</LP_Mono>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {['logos','products','prices','faces','on-screen text','scenes','hashtags','handles'].map(t => (
+            <span key={t}>{tag(t)}</span>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginTop: 4, paddingTop: 14, borderTop: `1px dashed ${LP_BRAND.rule}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <MR3_Tick />
+            <LP_Mono size={9} color={LP_BRAND.ink}>every hour</LP_Mono>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: 99, background: LP_BRAND.orange,
+              boxShadow: `0 0 0 4px ${LP_BRAND.orange}33`,
+              animation: 'lp-pulse 1.6s ease-in-out infinite',
+            }} />
+            <LP_Mono size={8.5} color={LP_BRAND.orangeDeep}>now · 2:14pm</LP_Mono>
+          </div>
+        </div>
+        <div style={{ position: 'relative', height: 22, marginBottom: 4 }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
+            {Array.from({ length: 24 }).map((_, i) => {
+              const isNow = i === NOW;
+              return (
+                <div key={i} style={{
+                  flex: 1,
+                  height: isNow ? '100%' : (i % 6 === 0 ? '70%' : '55%'),
+                  background: isNow ? LP_BRAND.orange : `${LP_BRAND.orange}66`,
+                  borderRadius: 1,
+                }} />
+              );
+            })}
+          </div>
+          <span style={{
+            position: 'absolute',
+            left: `${(NOW + 0.5) / 24 * 100}%`, top: -4, transform: 'translateX(-50%)',
+            width: 7, height: 7, borderRadius: 99, background: LP_BRAND.orange,
+            boxShadow: `0 0 0 3px ${LP_BRAND.orange}33, 0 0 0 6px ${LP_BRAND.orange}11`,
+            animation: 'lp-pulse 1.6s ease-in-out infinite',
+          }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <LP_Mono size={7.5}>12am</LP_Mono><LP_Mono size={7.5}>6am</LP_Mono>
+          <LP_Mono size={7.5}>12pm</LP_Mono><LP_Mono size={7.5}>6pm</LP_Mono><LP_Mono size={7.5}>12am</LP_Mono>
+        </div>
+        <div style={{
+          marginTop: 10,
+          fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 300,
+          fontSize: 13.5, color: LP_BRAND.muted, lineHeight: 1.3,
         }}>
-          <LP_PlatformBadge id={r.p} size={16} />
-          <span className="lp-listens-handle" style={{ minWidth: 96, display: 'inline-block' }}>
-            <LP_Mono size={9}>{r.h}</LP_Mono>
-          </span>
-          <span className="lp-listens-text" style={{
-            flex: 1, minWidth: 0, fontFamily: "'Inter Tight',sans-serif", fontSize: 11.5,
-            color: LP_BRAND.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{r.c}</span>
-          <LP_Mono size={9} color={r.hi ? LP_BRAND.orangeDeep : LP_BRAND.muted}>{r.t}</LP_Mono>
+          3.2k posts/hr · 47 hr of content indexed/week · never off the desk.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MR3_RoomTopicsDemo = () => {
+  type Topic = {
+    name: string;
+    count: number;
+    trend: 'up' | 'down' | 'flat';
+    heat?: 'hot';
+    posts: { img: string; plat: PlatformId; lang: string; cap: string }[];
+  };
+  const TOPICS: Topic[] = [
+    {
+      name: 'fit / sizing', count: 47, trend: 'down', heat: 'hot',
+      posts: [
+        { img: PEOPLE.athlete,  plat: 'tiktok',    lang: 'KO', cap: '발이 작게 나와요' },
+        { img: PEOPLE.sneakers, plat: 'instagram', lang: 'ES', cap: 'se sale del talón' },
+        { img: PEOPLE.runner,   plat: 'youtube',   lang: 'EN', cap: 'runs half a size small' },
+      ],
+    },
+    {
+      name: 'price', count: 12, trend: 'flat',
+      posts: [
+        { img: PEOPLE.sportPair, plat: 'reddit', lang: 'EN', cap: '$180 for a tempo is steep' },
+        { img: PEOPLE.athlete,   plat: 'x',      lang: 'JP', cap: '高すぎる' },
+      ],
+    },
+    {
+      name: 'volt colorway', count: 38, trend: 'up',
+      posts: [
+        { img: PEOPLE.sneakers,  plat: 'tiktok',    lang: 'EN', cap: 'the volt is unreal in person' },
+        { img: PEOPLE.sportPair, plat: 'instagram', lang: 'EN', cap: 'lime green era' },
+      ],
+    },
+  ];
+  const trendArrow = (t: Topic['trend']) => t === 'up' ? '↗' : t === 'down' ? '↘' : '→';
+  const trendColor = (t: Topic['trend']) =>
+    t === 'up' ? '#3DA37D' : t === 'down' ? LP_BRAND.orangeDeep : LP_BRAND.muted;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {TOPICS.map((topic, ti) => (
+        <div key={ti} style={{
+          paddingBottom: ti < TOPICS.length - 1 ? 14 : 0,
+          borderBottom: ti < TOPICS.length - 1 ? `1px dashed ${LP_BRAND.rule}` : 'none',
+          display: 'flex', flexDirection: 'column', gap: 9,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: 99,
+                background: topic.heat === 'hot' ? LP_BRAND.orange : LP_BRAND.muted,
+                ...(topic.heat === 'hot' ? { boxShadow: `0 0 0 3px ${LP_BRAND.orange}22` } : {}),
+              }} />
+              <span style={{
+                fontFamily: "'Fraunces',serif", fontStyle: 'italic',
+                fontSize: 17, color: LP_BRAND.ink, letterSpacing: -0.3, lineHeight: 1,
+              }}>{topic.name}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <LP_Mono size={8.5}>{topic.count} posts</LP_Mono>
+              <span style={{
+                fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 9, fontWeight: 700,
+                color: trendColor(topic.trend), letterSpacing: 0.4,
+              }}>{trendArrow(topic.trend)} sent.</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 7 }}>
+            {topic.posts.map((p, pi) => (
+              <div key={pi} style={{
+                flex: 1, minWidth: 0,
+                background: '#FFFFFF',
+                border: `1px solid ${LP_BRAND.rule}`,
+                borderRadius: 6,
+                overflow: 'hidden',
+                boxShadow: '0 2px 4px -2px rgba(40,30,20,0.12)',
+              }}>
+                <div style={{ position: 'relative', height: 56, background: '#000' }}>
+                  <img src={p.img} alt="" referrerPolicy="no-referrer"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.5) 100%)' }} />
+                  <div style={{ position: 'absolute', top: 4, left: 4 }}><LP_PlatformBadge id={p.plat} size={13} /></div>
+                  <div style={{
+                    position: 'absolute', top: 4, right: 4,
+                    fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 7,
+                    color: '#FFF', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+                    padding: '1px 4px', borderRadius: 3, letterSpacing: 0.6, fontWeight: 700,
+                  }}>{p.lang}</div>
+                </div>
+                <div style={{
+                  padding: '5px 7px 6px',
+                  fontFamily: "'Fraunces',serif", fontSize: 10.5, fontWeight: 400,
+                  color: LP_BRAND.ink, lineHeight: 1.2, letterSpacing: -0.1,
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  minHeight: 28,
+                }}>{p.cap}</div>
+              </div>
+            ))}
+            {topic.posts.length < 3 && Array.from({ length: 3 - topic.posts.length }).map((_, k) => (
+              <div key={'sp' + k} style={{ flex: 1, minWidth: 0 }} />
+            ))}
+          </div>
         </div>
       ))}
-    </div>
-  );
-};
-
-const SeesDemo = () => {
-  const frames = [
-    {
-      photo: PEOPLE.athlete, t: '0:08', kind: 'creator',
-      overlay: (
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-          padding: '2px 6px', borderRadius: 4, background: 'rgba(217,119,87,0.95)',
-          fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 7.5, color: '#FFF',
-          fontWeight: 700, letterSpacing: 0.3, whiteSpace: 'nowrap',
-        }}>@running.deep</div>
-      ),
-    },
-    {
-      photo: PEOPLE.sneakers, t: '0:14', kind: 'product',
-      overlay: (
-        <div style={{
-          position: 'absolute', top: '38%', left: '22%',
-          padding: '1.5px 5px', borderRadius: 3, background: 'rgba(217,119,87,0.95)',
-          fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 7, color: '#FFF',
-          fontWeight: 700, letterSpacing: 0.3, whiteSpace: 'nowrap',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
-        }}>DRIFT V2</div>
-      ),
-    },
-    {
-      photo: PEOPLE.sportPair, t: '0:22', kind: 'text',
-      overlay: (
-        <div style={{
-          position: 'absolute', top: '42%', left: '50%', transform: 'translate(-50%,-50%) rotate(-3deg)',
-          padding: '3px 6px', borderRadius: 3, background: '#FFFFFF',
-          fontFamily: "'Inter Tight', sans-serif", fontSize: 8.5, color: '#1B1815',
-          fontWeight: 800, letterSpacing: 0.2, whiteSpace: 'nowrap', lineHeight: 1.05,
-          textAlign: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
-        }}>RUNS ½<br />SIZE SMALL</div>
-      ),
-    },
-    {
-      photo: PEOPLE.runner, t: '0:31', kind: 'scene',
-      overlay: (
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-          padding: '2px 5px', borderRadius: 3, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)',
-          fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 7, color: '#FFF',
-          fontWeight: 600, letterSpacing: 0.4, whiteSpace: 'nowrap',
-        }}>TREADMILL · 8'/MI</div>
-      ),
-    },
-  ];
-  const log = [
-    { k: 'logo',    v: 'Halo wordmark · tongue',    c: 96 },
-    { k: 'product', v: 'Drift Vol. 2 · volt',       c: 94 },
-    { k: 'text',    v: '"runs ½ size small"',       c: 89 },
-    { k: 'scene',   v: 'treadmill · pace test',     c: 91 },
-  ];
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, borderRadius: 8,
-        overflow: 'hidden', border: `1px solid ${LP_BRAND.rule}`, background: '#0F0F0F',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        paddingTop: 10, marginTop: 2, borderTop: `1px dashed ${LP_BRAND.rule}`,
       }}>
-        {frames.map((f, i) => (
-          <div key={i} style={{ position: 'relative', aspectRatio: '3 / 4', overflow: 'hidden' }}>
-            <img src={f.photo} alt="" referrerPolicy="no-referrer"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.7) 100%)' }} />
-            {f.overlay}
-            <div style={{
-              position: 'absolute', top: 4, left: 4, padding: '1px 4px', borderRadius: 3,
-              background: 'rgba(0,0,0,0.55)', fontFamily: "'JetBrains Mono', ui-monospace",
-              fontSize: 7.5, color: '#FFF', letterSpacing: 0.4, fontWeight: 600,
-            }}>{f.t}</div>
-            <div style={{
-              position: 'absolute', bottom: 4, left: 4, right: 4,
-              fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 7.5, color: '#FFF',
-              letterSpacing: 0.3, lineHeight: 1.2, fontWeight: 600, textTransform: 'uppercase',
-              textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-            }}>{f.kind}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 2 }}>
-        <span style={{ width: 6, height: 6, borderRadius: 99, background: LP_BRAND.orange, animation: 'lp-pulse 1.6s ease-in-out infinite' }} />
-        <LP_Mono size={9} color={LP_BRAND.muted}>extracted from 47 sec review · 4 entities found</LP_Mono>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {log.map((row, i) => (
-          <div key={i} style={{
-            display: 'grid', gridTemplateColumns: '54px 1fr auto', alignItems: 'center', gap: 8,
-            padding: '5px 8px', background: LP_BRAND.paper, border: `1px solid ${LP_BRAND.rule}`, borderRadius: 6,
-          }}>
-            <LP_Mono size={8.5}>{row.k}</LP_Mono>
-            <span style={{
-              fontFamily: "'Inter Tight',sans-serif", fontSize: 11, color: LP_BRAND.ink,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>{row.v}</span>
-            <span style={{
-              fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 9,
-              color: row.c >= 90 ? LP_BRAND.orangeDeep : LP_BRAND.muted, fontWeight: 600,
-            }}>{row.c}%</span>
-          </div>
-        ))}
+        <LP_Mono size={8.5}>+ 14 more topics this week</LP_Mono>
+        <LP_Mono size={8.5} color={LP_BRAND.orangeDeep}>same conversation, every language</LP_Mono>
       </div>
     </div>
   );
 };
 
-const DeliversDemo = () => (
-  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-    {[
-      { k: 'the memo',      sub: '2-page brief',          icon: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z M14 3v6h6' },
-      { k: 'the dashboard', sub: 'live metrics',          icon: 'M4 4h16v6H4z M4 14h7v6H4z M13 14h7v6h-7z' },
-      { k: 'the slides',    sub: 'deck for Friday',       icon: 'M4 5h16v11H4z M9 20h6 M12 16v4' },
-      { k: 'the digest',    sub: 'email + Slack + WA',    icon: 'M3 7l9 6 9-6 M3 7v10h18V7' },
-    ].map((d, i) => (
-      <div key={i} style={{
-        background: LP_BRAND.paper, border: `1px solid ${LP_BRAND.rule}`, borderRadius: 9,
-        padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 9,
+const MR3_BriefsDemo = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{
+      background: '#FFF7F1',
+      border: `1px solid ${LP_BRAND.orange}`,
+      borderRadius: 8,
+      padding: '8px 11px',
+      display: 'flex', alignItems: 'center', gap: 9,
+    }}>
+      <LP_Mono size={8} color={LP_BRAND.orangeDeep} style={{ flexShrink: 0 }}>one finding ↓</LP_Mono>
+      <span style={{
+        flex: 1,
+        fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 400,
+        fontSize: 13, color: LP_BRAND.ink, lineHeight: 1.2, letterSpacing: -0.2,
+      }}>Fit issue forming on Drift V2 — same pattern as V1.</span>
+    </div>
+
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      <div style={{
+        background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 8,
+        padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4,
       }}>
-        <span style={{
-          width: 28, height: 28, borderRadius: 8, background: `${LP_BRAND.orange}1a`,
-          display: 'grid', placeItems: 'center', flexShrink: 0,
-        }}>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
-            stroke={LP_BRAND.orangeDeep} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-            <path d={d.icon} />
-          </svg>
-        </span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontSize: 13, color: LP_BRAND.ink, lineHeight: 1.1 }}>{d.k}</div>
-          <LP_Mono size={8.5}>{d.sub}</LP_Mono>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <LP_Mono size={8} color={LP_BRAND.muted}># brand-leads</LP_Mono>
+          <LP_Mono size={7.5} color={LP_BRAND.orangeDeep}>slack</LP_Mono>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+          <span style={{
+            width: 16, height: 16, borderRadius: 4, background: LP_BRAND.orange,
+            display: 'grid', placeItems: 'center', flexShrink: 0,
+            fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 500,
+            fontSize: 11, color: '#FFF',
+          }}>S</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+              <span style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 10, fontWeight: 700, color: LP_BRAND.ink }}>Scolto</span>
+              <LP_Mono size={7}>4:22pm</LP_Mono>
+            </div>
+            <div style={{
+              fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink,
+              lineHeight: 1.3, marginTop: 1,
+            }}>Heads up — sizing pattern forming. Suggest comms hold.</div>
+          </div>
         </div>
       </div>
-    ))}
+
+      <div style={{
+        background: '#F2F8F2', border: `1px solid #C9DDC9`, borderRadius: 8,
+        padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 5,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 5, height: 5, borderRadius: 99, background: '#3DA37D' }} />
+            <LP_Mono size={8} color={LP_BRAND.muted}>Sarah (CMO)</LP_Mono>
+          </span>
+          <LP_Mono size={7.5} color="#2C7A4F">whatsapp</LP_Mono>
+        </div>
+        <div style={{
+          alignSelf: 'flex-end',
+          background: '#DCF3D8',
+          borderRadius: '8px 8px 2px 8px',
+          padding: '4px 7px 5px',
+          maxWidth: '92%',
+          fontFamily: "'Inter Tight',sans-serif", fontSize: 9.5,
+          color: LP_BRAND.ink, lineHeight: 1.3,
+        }}>
+          fyi — sizing pattern, V1 redux. brief Fri 9? <span style={{ color: '#3DA37D', marginLeft: 2 }}>✓✓</span>
+        </div>
+      </div>
+
+      <div style={{
+        background: '#FFFFFF', border: `1px solid ${LP_BRAND.rule}`, borderRadius: 8,
+        padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 3,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <LP_Mono size={8} color={LP_BRAND.muted}>from: scolto</LP_Mono>
+          <LP_Mono size={7.5} color={LP_BRAND.orangeDeep}>email</LP_Mono>
+        </div>
+        <div style={{
+          fontFamily: "'Fraunces',serif", fontWeight: 500, fontSize: 11.5,
+          color: LP_BRAND.ink, lineHeight: 1.2, letterSpacing: -0.2,
+        }}>Friday Brief — Drift V2 sizing</div>
+        <div style={{
+          fontFamily: "'Inter Tight',sans-serif", fontSize: 9, color: LP_BRAND.muted,
+          lineHeight: 1.3,
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+        }}>This week a fit-complaint pattern formed across 47 posts in 4 languages…</div>
+      </div>
+
+      <div style={{
+        background: LP_BRAND.paper, border: `1px solid ${LP_BRAND.rule}`, borderRadius: 8,
+        padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 9,
+      }}>
+        <div style={{
+          width: 30, height: 36, background: '#FFFFFF',
+          border: `1px solid ${LP_BRAND.rule}`, borderRadius: 3,
+          position: 'relative', flexShrink: 0,
+          boxShadow: '0 2px 4px -2px rgba(40,30,20,0.18)',
+        }}>
+          <div style={{ position: 'absolute', top: 4, left: 4, right: 4, height: 2, background: LP_BRAND.orange }} />
+          <div style={{ position: 'absolute', top: 9, left: 4, right: 4, height: 1, background: LP_BRAND.rule }} />
+          <div style={{ position: 'absolute', top: 12, left: 4, right: 6, height: 1, background: LP_BRAND.rule }} />
+          <div style={{ position: 'absolute', top: 15, left: 4, right: 9, height: 1, background: LP_BRAND.rule }} />
+          <div style={{ position: 'absolute', top: 19, left: 4, right: 4, height: 1, background: LP_BRAND.rule }} />
+          <div style={{ position: 'absolute', top: 22, left: 4, right: 6, height: 1, background: LP_BRAND.rule }} />
+          <div style={{ position: 'absolute', top: 25, left: 4, right: 11, height: 1, background: LP_BRAND.rule }} />
+          <LP_Mono size={5.5} style={{
+            position: 'absolute', bottom: 1, right: 2, color: LP_BRAND.orangeDeep,
+          }}>pdf</LP_Mono>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <LP_Mono size={8} color={LP_BRAND.muted}>2-page memo</LP_Mono>
+          <div style={{
+            fontFamily: "'Fraunces',serif", fontStyle: 'italic',
+            fontSize: 11, color: LP_BRAND.ink, lineHeight: 1.2,
+          }}>Drift V2 — Friday Brief</div>
+          <LP_Mono size={7.5} color={LP_BRAND.orangeDeep} style={{ display: 'block', marginTop: 2 }}>for CMO · Fri 9am</LP_Mono>
+        </div>
+      </div>
+
+      <div style={{
+        background: LP_BRAND.paper, border: `1px solid ${LP_BRAND.rule}`, borderRadius: 8,
+        padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 9,
+      }}>
+        <div style={{
+          width: 40, height: 26, background: '#FFFFFF',
+          border: `1px solid ${LP_BRAND.rule}`, borderRadius: 3,
+          position: 'relative', flexShrink: 0,
+          boxShadow: '0 2px 4px -2px rgba(40,30,20,0.18)',
+        }}>
+          <div style={{
+            position: 'absolute', top: 3, left: 3, right: 3, height: 3,
+            background: LP_BRAND.orange, borderRadius: 1,
+          }} />
+          <div style={{ position: 'absolute', top: 9, left: 3, right: 12, height: 1, background: LP_BRAND.rule }} />
+          <div style={{ position: 'absolute', top: 12, left: 3, right: 18, height: 1, background: LP_BRAND.rule }} />
+          <div style={{
+            position: 'absolute', bottom: 3, left: 3, width: 7, height: 8,
+            background: `${LP_BRAND.orange}66`, borderRadius: 1,
+          }} />
+          <div style={{
+            position: 'absolute', bottom: 3, left: 13, width: 7, height: 5,
+            background: `${LP_BRAND.orange}66`, borderRadius: 1,
+          }} />
+          <div style={{
+            position: 'absolute', bottom: 3, left: 23, width: 7, height: 10,
+            background: LP_BRAND.orange, borderRadius: 1,
+          }} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <LP_Mono size={8} color={LP_BRAND.muted}>12-slide deck</LP_Mono>
+          <div style={{
+            fontFamily: "'Fraunces',serif", fontStyle: 'italic',
+            fontSize: 11, color: LP_BRAND.ink, lineHeight: 1.2,
+          }}>Drift V2 — QBR</div>
+          <LP_Mono size={7.5} color={LP_BRAND.orangeDeep} style={{ display: 'block', marginTop: 2 }}>for QBR · Mon</LP_Mono>
+        </div>
+      </div>
+
+      <div style={{
+        background: '#FFF7F1', border: `1px solid ${LP_BRAND.orange}`, borderRadius: 8,
+        padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4,
+        position: 'relative',
+      }}>
+        <span style={{
+          position: 'absolute', top: 7, right: 9,
+          width: 5, height: 5, borderRadius: 99, background: LP_BRAND.orange,
+          boxShadow: `0 0 0 3px ${LP_BRAND.orange}33`,
+          animation: 'lp-pulse 1.6s ease-in-out infinite',
+        }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <svg viewBox="0 0 14 14" width="11" height="11">
+            <path d="M7 1.5a3.5 3.5 0 00-3.5 3.5v2.7L2 9.5h10l-1.5-1.8V5A3.5 3.5 0 007 1.5z M5.5 11.5a1.5 1.5 0 003 0"
+              fill="none" stroke={LP_BRAND.orangeDeep} strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" />
+          </svg>
+          <LP_Mono size={8} color={LP_BRAND.orangeDeep}>push alert</LP_Mono>
+        </div>
+        <div style={{
+          fontFamily: "'Inter Tight',sans-serif", fontSize: 10, fontWeight: 600,
+          color: LP_BRAND.ink, lineHeight: 1.25,
+        }}>Drift V2 fit pattern crossed threshold.</div>
+        <LP_Mono size={7.5} color={LP_BRAND.muted}>to: brand lead · now</LP_Mono>
+      </div>
+    </div>
+
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      paddingTop: 10, marginTop: 0, borderTop: `1px dashed ${LP_BRAND.rule}`,
+    }}>
+      <LP_Mono size={8.5}>same finding · every room</LP_Mono>
+      <LP_Mono size={8.5} color={LP_BRAND.orangeDeep}>nothing to copy-paste →</LP_Mono>
+    </div>
   </div>
 );
 
-const LP_JobCard = ({
-  n, verb, noun, body, demo, accent,
+const MR3_JobCard = ({
+  n, head, hi, body, demo, accent,
 }: {
-  n: string; verb: string; noun: string; body: string; demo: ReactNode; accent?: boolean;
+  n: string; head: string; hi: string; body: string; demo: ReactNode; accent?: boolean;
 }) => (
   <article style={{
-    background: '#FFFFFF',
+    background: LP_BRAND.paper,
     border: accent ? `1px solid ${LP_BRAND.orange}` : `1px solid ${LP_BRAND.rule}`,
-    borderRadius: 18, padding: '26px 26px 24px',
-    boxShadow: accent ? '0 24px 60px -36px rgba(217,119,87,0.45)' : '0 18px 40px -32px rgba(40,30,20,0.16)',
-    display: 'flex', flexDirection: 'column', gap: 18,
+    borderRadius: 16,
+    padding: '24px 26px 24px',
+    position: 'relative',
+    boxShadow: accent
+      ? '0 24px 60px -36px rgba(217,119,87,0.45)'
+      : '0 18px 40px -32px rgba(40,30,20,0.14)',
+    display: 'flex', flexDirection: 'column', gap: 16,
+    overflow: 'hidden',
   }}>
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
-      <span style={{
-        fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontSize: 40, fontWeight: 300,
-        color: accent ? LP_BRAND.orange : LP_BRAND.muted, lineHeight: 1,
-      }}>{n}</span>
+    <div style={{
+      position: 'absolute', top: 0, left: 0, right: 0, height: 4,
+      background: `repeating-linear-gradient(90deg, ${accent ? LP_BRAND.orange : LP_BRAND.rule} 0 8px, transparent 8px 14px)`,
+    }} />
+    <div>
+      <div style={{
+        fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 300,
+        fontSize: 48, lineHeight: 0.9,
+        color: accent ? LP_BRAND.orange : LP_BRAND.muted,
+        marginBottom: 6,
+      }}>{n}</div>
       <h3 style={{
-        margin: 0, fontFamily: "'Fraunces',serif", fontWeight: 400, fontSize: 32,
+        margin: 0, fontFamily: "'Fraunces',serif", fontWeight: 400, fontSize: 28,
         letterSpacing: -0.6, color: LP_BRAND.ink, lineHeight: 1.05,
       }}>
-        {verb} <span style={{ fontStyle: 'italic', color: LP_BRAND.orangeDeep }}>{noun}</span>
+        {head}{' '}<span style={{ fontStyle: 'italic', color: LP_BRAND.orangeDeep }}>{hi}</span>
       </h3>
     </div>
     <p style={{
-      margin: 0, fontFamily: "'Inter Tight',sans-serif", fontSize: 14.5,
+      margin: 0, fontFamily: "'Inter Tight',sans-serif", fontSize: 14,
       color: LP_BRAND.ink, opacity: 0.78, lineHeight: 1.55,
     }}>{body}</p>
-    <div style={{ marginTop: 'auto', borderTop: `1px solid ${LP_BRAND.rule}`, paddingTop: 16 }}>
+    <div style={{ marginTop: 'auto', paddingTop: 14, borderTop: `1px dashed ${LP_BRAND.rule}` }}>
       {demo}
     </div>
   </article>
 );
 
 const LP_MeetScolto = () => {
-  const VARIANTS = [
-    { hue: LP_BRAND.orange, v: 1, name: 'Scolto', role: 'social listening' },
-    { hue: LP_BRAND.purple, v: 0, name: 'Scolto', role: 'trend detection' },
-    { hue: LP_BRAND.green,  v: 3, name: 'Scolto', role: 'campaign tracking' },
-    { hue: LP_BRAND.blue,   v: 2, name: 'Scolto', role: 'competitive intel' },
+  const ASSIGNMENTS = [
+    { hue: LP_BRAND.orange, v: 1, name: 'Drift V2 launch',  meta: 'since Mon · 1.4k posts' },
+    { hue: LP_BRAND.blue,   v: 2, name: 'Volt colorway',    meta: 'since 7am · 312 posts' },
+    { hue: LP_BRAND.purple, v: 0, name: 'Pricing chatter',  meta: 'rolling · 47/day' },
+    { hue: LP_BRAND.green,  v: 3, name: '3P reviewers',     meta: 'live · 11 creators' },
   ];
   return (
     <section className="lp-section" style={{
@@ -1055,59 +1418,80 @@ const LP_MeetScolto = () => {
         <div>
           <LP_Mono>Meet your researcher</LP_Mono>
           <h2 className="lp-section-h2" style={{
-            margin: '14px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 72,
-            letterSpacing: -1.8, lineHeight: 0.95, color: LP_BRAND.ink,
+            margin: '14px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 68,
+            letterSpacing: -1.8, lineHeight: 0.98, color: LP_BRAND.ink,
           }}>
-            A team of senior analysts<br />
-            in <span style={{ fontStyle: 'italic', fontWeight: 400, color: LP_BRAND.orangeDeep }}>one sentence.</span>
+            You don't need another dashboard.<br />
+            You need a <span style={{ fontStyle: 'italic', fontWeight: 400, color: LP_BRAND.orangeDeep }}>researcher.</span>
           </h2>
           <p style={{
             margin: '22px 0 0', maxWidth: 520,
             fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 20, lineHeight: 1.4,
             color: LP_BRAND.ink, letterSpacing: -0.1,
           }}>
-            Scolto is an <em>AI social-listening platform</em> built as a roster of senior analyst agents. You hand them a brief; they go to work across every platform - listening, watching, analyzing, enriching - and deliver the read-out in whatever shape your team needs.
+            Doesn't wait to be asked. Reads what's happening, decides what matters, and drops the answer before the question hits your head.
           </p>
         </div>
-        <div className="lp-meet-roster" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', gap: 8, paddingBottom: 8 }}>
-          {VARIANTS.map((v, i) => (
-            <div key={i} style={{
-              padding: '18px 14px 12px', borderRadius: 14, background: '#FFFFFF',
-              border: `1px solid ${LP_BRAND.rule}`,
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, minWidth: 128,
-              transform: i % 2 ? 'translateY(-6px)' : 'none',
-            }}>
-              <LP_AgentBot hue={v.hue} variant={v.v} size={64} />
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontSize: 16, color: LP_BRAND.ink }}>{v.name}</div>
-                <LP_Mono size={9} style={{ display: 'block', marginTop: 2 }}>{v.role}</LP_Mono>
+        <div className="lp-meet-roster" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, paddingBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 2 }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: 99, background: LP_BRAND.orange,
+              boxShadow: `0 0 0 4px ${LP_BRAND.orange}33`,
+              animation: 'lp-pulse 1.6s ease-in-out infinite',
+            }} />
+            <LP_Mono size={9.5} color={LP_BRAND.orangeDeep}>on the desk · this week</LP_Mono>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+            {ASSIGNMENTS.map((a, i) => (
+              <div key={i} style={{
+                padding: '18px 12px 12px', borderRadius: 14, background: '#FFFFFF',
+                border: `1px solid ${LP_BRAND.rule}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 132,
+                transform: i % 2 ? 'translateY(-6px)' : 'none',
+                position: 'relative',
+              }}>
+                <span style={{
+                  position: 'absolute', top: 9, right: 9,
+                  width: 6, height: 6, borderRadius: 99, background: '#3DA37D',
+                  boxShadow: '0 0 0 3px #3DA37D22',
+                  animation: 'lp-pulse 1.6s ease-in-out infinite',
+                }} />
+                <LP_AgentBot hue={a.hue} variant={a.v} size={56} />
+                <div style={{ textAlign: 'center', lineHeight: 1.1 }}>
+                  <div style={{
+                    fontFamily: "'Fraunces',serif", fontStyle: 'italic',
+                    fontSize: 14, color: LP_BRAND.ink,
+                  }}>{a.name}</div>
+                  <LP_Mono size={8} style={{ display: 'block', marginTop: 3 }}>{a.meta}</LP_Mono>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="lp-3col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
-        <LP_JobCard
-          n="01" verb="Listens" noun="on every platform."
-          body="Scolto runs continuous social listening across TikTok, Instagram, YouTube, X, Reddit, Facebook and the open web. It doesn't sample - it ingests the whole conversation, including the replies under the replies."
-          demo={<ListensDemo />}
+        <MR3_JobCard
+          n="01" head="Watches the" hi="field."
+          body="Every platform, every format, every entity — around the clock. Posts, replies, video frames, audio, on-screen text, logos, prices. Already indexed. Table stakes, handled."
+          demo={<MR3_FieldDemo />}
         />
-        <LP_JobCard
-          n="02" verb="Sees" noun="what's in the frame."
-          body="Its vision agents watch the video frame-by-frame - detecting logos, products, packaging and on-screen text. It tells you which brand showed up, for how long, where in the frame, and how visible it was."
-          demo={<SeesDemo />}
+        <MR3_JobCard
+          n="02" head="Reads the" hi="room."
+          body="Groups every mention by what it's actually about — across languages, formats, platforms. The fit complaint in Korean and the heel-slip reel in Spanish go in the same column, not different feeds."
+          demo={<MR3_RoomTopicsDemo />}
         />
-        <LP_JobCard
-          n="03" verb="Delivers" noun="in any shape."
-          body="Then its writer-agent ships the read-out. A two-page memo. An executive dashboard. A slide deck for Friday. A scheduled brief by email, Slack, or WhatsApp. Same intelligence, every room."
-          demo={<DeliversDemo />}
+        <MR3_JobCard
+          n="03" head="Briefs the" hi="team."
+          body="Same finding, every room. Slack for the brand lead, WhatsApp for the CMO, a 2-page memo for the board, a deck for the QBR, a push when it matters. Picks the channel, picks the form, picks the time."
+          demo={<MR3_BriefsDemo />}
           accent
         />
       </div>
     </section>
   );
 };
+
 
 // ── Competitive ───────────────────────────────────────────────────────────────
 
@@ -1748,7 +2132,7 @@ const DigestPreview = () => (
 const LP_Deliverables = () => {
   const [active, setActive] = useState<DeliverableId>('brief');
   return (
-    <section className="lp-section" style={{ padding: '96px 64px 80px' }}>
+    <section id="sample-brief" className="lp-section" style={{ padding: '96px 64px 80px' }}>
       <div className="lp-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'end', marginBottom: 36 }}>
         <div>
           <LP_Mono>What it ships you</LP_Mono>
@@ -2009,7 +2393,7 @@ const LP_WhyScolto = () => (
           margin: '22px 0 0', maxWidth: 460, fontFamily: "'Inter Tight',sans-serif", fontSize: 15,
           color: LP_BRAND.muted, lineHeight: 1.6,
         }}>
-          Brandwatch, Sprinklr, Talkwalker - they all ship the same thing in the end: a dashboard with a search bar, and a deal that asks you to fill it. Scolto ships a researcher that fills it for you, and tells you what it found.
+          Brandwatch, Sprinklr, Talkwalker - they all ship the same thing in the end: a dashboard with a search bar, and a deal that asks you to fill it. Scolto ships a coworker that fills it for you, and tells you what it found.
         </p>
       </div>
 
@@ -2018,7 +2402,7 @@ const LP_WhyScolto = () => (
           { a: 'Hands you a dashboard.',                 b: 'Hands you a brief, a deck, a dashboard, and a digest.' },
           { a: 'Counts mentions and scores sentiment.',  b: 'Reads the post, watches the video, weighs the comment thread.' },
           { a: 'Surfaces a spike. You investigate why.', b: 'Tells you why, and which creator is the swing voter.' },
-          { a: 'Locks you into a $30k annual seat.',     b: 'Pay only for the work it does - usage-based, no annual contract.' },
+          { a: 'Locks you into a $30k annual seat.',     b: 'Briefs from ~$49. Usage-based, no annual contract.' },
           { a: 'Wants a kickoff call.',                  b: 'Wants a sentence.' },
         ].map((row, i) => (
           <div key={i} className="lp-why-row" style={{
@@ -2110,7 +2494,7 @@ const LP_Footer = () => (
           <LP_ScoltoLogo markSize={32} fontSize={42} onDark />
         </div>
         <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: '#A29A8B', lineHeight: 1.55 }}>
-          A researcher that reads the internet so you don't have to.
+          An AI coworker that reads the internet so you don't have to.
         </div>
       </div>
       <div className="lp-footer-links" style={{ display: 'flex', gap: 64, fontFamily: "'Inter Tight',sans-serif", fontSize: 13 }}>
@@ -2137,7 +2521,7 @@ const LP_Footer = () => (
       marginTop: 36, paddingTop: 18, borderTop: '1px solid #2A2520',
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     }}>
-      <LP_Mono size={9.5} color="#7E7666">© 2026 Scolto - your AI brand researcher</LP_Mono>
+      <LP_Mono size={9.5} color="#7E7666">© 2026 Scolto - the first AI coworker on social</LP_Mono>
       <LP_Mono size={9.5} color="#7E7666">made for people who'd rather read than scroll</LP_Mono>
     </div>
   </footer>
@@ -2541,7 +2925,7 @@ const LP_FAQ = () => (
           margin: '0 0 40px',
         }}
       >
-        Questions teams ask before briefing Scolto
+        Before you brief it.
       </h2>
       <dl style={{ display: 'flex', flexDirection: 'column', gap: 28, margin: 0 }}>
         {FAQ_ITEMS.map((item) => (
@@ -2918,6 +3302,8 @@ export function LandingPage() {
       <LP_Nav openAuth={openAuth} openWaitlist={() => openWaitlist()} />
       <LP_Hero openWaitlist={openWaitlist} />
       <LP_MeetScolto />
+      <LP_FridayPreview />
+      <LP_Credibility />
       <LP_Competitive />
       <LP_Deliverables />
       <LP_Channels />
