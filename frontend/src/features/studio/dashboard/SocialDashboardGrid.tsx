@@ -6,6 +6,7 @@ import 'react-resizable/css/styles.css';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
 import { SocialWidgetRenderer } from './SocialWidgetRenderer.tsx';
+import { buildCompactLayout } from './buildCompactLayout.ts';
 
 function mergeRefs<T>(...refs: Array<React.Ref<T | null> | undefined | null>) {
   return (node: T | null) => {
@@ -21,28 +22,6 @@ const BREAKPOINTS = { lg: 600, md: 480, sm: 360, xs: 0 };
 const COLS = { lg: 12, md: 8, sm: 4, xs: 2 };
 const ROW_HEIGHT = 48;
 const MARGIN: [number, number] = [6, 6];
-
-function buildCompactLayout(widgets: SocialDashboardWidget[], cols: number): LayoutItem[] {
-  const isNumberCard = (w: SocialDashboardWidget) => w.chartType === 'number-card';
-  const cards = widgets.filter(isNumberCard);
-  const charts = widgets.filter((w) => !isNumberCard(w));
-
-  const layout: LayoutItem[] = [];
-  let y = 0;
-
-  const cardW = Math.max(1, Math.floor(cols / Math.max(cards.length, 1)));
-  cards.forEach((w, i) => {
-    layout.push({ i: w.i, x: i * cardW, y: 0, w: cardW, h: 2 });
-  });
-  if (cards.length > 0) y = 2;
-
-  charts.forEach((w) => {
-    layout.push({ i: w.i, x: 0, y, w: cols, h: Math.max(w.h, 4) });
-    y += Math.max(w.h, 4);
-  });
-
-  return layout;
-}
 
 interface SocialDashboardGridProps {
   widgets: SocialDashboardWidget[];
