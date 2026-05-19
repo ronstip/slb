@@ -570,6 +570,9 @@ export interface SharedDashboardDataResponse {
    *  loosely here for the same reason as `layout`; the consumer casts to
    *  `ReportScope`. Absence = standalone dashboard. */
   reportScope?: Record<string, unknown> | null;
+  /** Editor toggle: when true, the public viewer should not render the
+   *  filter bar at all. */
+  filterBarHidden?: boolean | null;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────

@@ -8,6 +8,13 @@ import {
 import { Input } from '../../components/ui/input.tsx';
 import { Checkbox } from '../../components/ui/checkbox.tsx';
 import { Button } from '../../components/ui/button.tsx';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select.tsx';
 import { cn } from '../../lib/utils.ts';
 
 /* ------------------------------------------------------------------ */
@@ -166,6 +173,122 @@ interface TextFilterProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
+}
+
+/* ------------------------------------------------------------------ */
+/* Number range filter header (min / max)                              */
+/* ------------------------------------------------------------------ */
+
+export interface NumberRange {
+  min?: number;
+  max?: number;
+}
+
+interface NumberRangeFilterProps {
+  label: string;
+  value: NumberRange;
+  onChange: (value: NumberRange) => void;
+}
+
+export function NumberRangeFilterHeader({ label, value, onChange }: NumberRangeFilterProps) {
+  const hasFilter = value.min != null || value.max != null;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            'inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors',
+            hasFilter ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {label}
+          {hasFilter ? (
+            <Filter className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3 opacity-40" />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-52 p-2.5 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="number"
+            value={value.min == null ? '' : value.min}
+            onChange={(e) => onChange({ ...value, min: e.target.value === '' ? undefined : Number(e.target.value) })}
+            placeholder="min"
+            className="h-7 text-xs"
+          />
+          <span className="text-xs text-muted-foreground">–</span>
+          <Input
+            type="number"
+            value={value.max == null ? '' : value.max}
+            onChange={(e) => onChange({ ...value, max: e.target.value === '' ? undefined : Number(e.target.value) })}
+            placeholder="max"
+            className="h-7 text-xs"
+          />
+        </div>
+        {hasFilter && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-full text-[10px] text-muted-foreground"
+            onClick={() => onChange({})}
+          >
+            <X className="mr-1 h-3 w-3" /> Clear
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Bool filter header (true / false / any)                             */
+/* ------------------------------------------------------------------ */
+
+interface BoolFilterProps {
+  label: string;
+  value: boolean | undefined;
+  onChange: (value: boolean | undefined) => void;
+}
+
+export function BoolFilterHeader({ label, value, onChange }: BoolFilterProps) {
+  const hasFilter = value !== undefined;
+  const display = value === undefined ? 'any' : value === true ? 'true' : 'false';
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            'inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors',
+            hasFilter ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {label}
+          {hasFilter ? (
+            <Filter className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3 opacity-40" />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-32 p-1.5" onClick={(e) => e.stopPropagation()}>
+        <Select
+          value={display}
+          onValueChange={(v) => onChange(v === 'any' ? undefined : v === 'true')}
+        >
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any" className="text-xs">Any</SelectItem>
+            <SelectItem value="true" className="text-xs">True</SelectItem>
+            <SelectItem value="false" className="text-xs">False</SelectItem>
+          </SelectContent>
+        </Select>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function TextFilterHeader({ label, value, onChange }: TextFilterProps) {

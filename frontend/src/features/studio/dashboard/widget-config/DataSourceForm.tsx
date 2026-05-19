@@ -176,7 +176,7 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Time Bucket</Label>
           <div className="flex items-center gap-1.5">
-            {(['day', 'week', 'month'] as const).map((bucket) => (
+            {(['hour', 'day', 'week', 'month'] as const).map((bucket) => (
               <button
                 key={bucket}
                 type="button"

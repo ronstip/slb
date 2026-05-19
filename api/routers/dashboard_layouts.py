@@ -31,6 +31,7 @@ class LayoutSaveRequest(BaseModel):
     filterBarFilters: list[str] | None = None
     orientation: DashboardOrientation | None = None
     reportScope: ReportScope | None = None
+    filterBarHidden: bool | None = None
 
 
 class LayoutResponse(BaseModel):
@@ -38,6 +39,7 @@ class LayoutResponse(BaseModel):
     filterBarFilters: list[str] | None = None
     orientation: DashboardOrientation | None = None
     reportScope: ReportScope | None = None
+    filterBarHidden: bool | None = None
 
 
 @router.get("/{artifact_id}", response_model=LayoutResponse)
@@ -64,6 +66,7 @@ async def get_dashboard_layout(
         filterBarFilters=data.get("filterBarFilters"),
         orientation=data.get("orientation"),
         reportScope=data.get("reportScope"),
+        filterBarHidden=data.get("filterBarHidden"),
     )
 
 
@@ -110,6 +113,7 @@ async def save_dashboard_layout(
             "filterBarFilters": request.filterBarFilters,
             "orientation": request.orientation,
             "reportScope": serialized_scope,
+            "filterBarHidden": request.filterBarHidden,
         },
         merge=True,
     )
@@ -119,4 +123,5 @@ async def save_dashboard_layout(
         filterBarFilters=request.filterBarFilters,
         orientation=request.orientation,
         reportScope=request.reportScope,
+        filterBarHidden=request.filterBarHidden,
     )

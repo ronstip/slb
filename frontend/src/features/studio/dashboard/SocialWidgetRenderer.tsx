@@ -218,10 +218,21 @@ export function applyWidgetFilters(
     if (filters.platform?.length && !filters.platform.includes(p.platform)) return false;
     if (filters.language?.length && !filters.language.includes(p.language || '')) return false;
     if (filters.content_type?.length && !filters.content_type.includes(p.content_type || '')) return false;
+    if (filters.channel_type?.length && !filters.channel_type.includes(p.channel_type || '')) return false;
     if (filters.collection?.length && !filters.collection.includes(p.collection_id)) return false;
     if (filters.channels?.length && !filters.channels.includes(p.channel_handle || '')) return false;
     if (filters.themes?.length && !filters.themes.some((t) => (p.themes ?? []).includes(t))) return false;
     if (filters.entities?.length && !filters.entities.some((e) => (p.entities ?? []).includes(e))) return false;
+    if (filters.brands?.length && !filters.brands.some((b) => (p.detected_brands ?? []).includes(b))) return false;
+    if (filters.custom_fields) {
+      for (const [name, selected] of Object.entries(filters.custom_fields)) {
+        if (!selected?.length) continue;
+        const raw = p.custom_fields?.[name];
+        if (raw == null) return false;
+        const postVals = Array.isArray(raw) ? raw.map((v) => String(v)) : [String(raw)];
+        if (!selected.some((s) => postVals.includes(s))) return false;
+      }
+    }
     if (filters.date_range?.from || filters.date_range?.to) {
       const d = p.posted_at?.slice(0, 10) ?? '';
       if (filters.date_range?.from && d < filters.date_range.from) return false;
@@ -512,6 +523,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
         seriesColorOverrides={widget.styleOverrides?.seriesColors}
         barOrientation={widget.customConfig?.barOrientation}
         stacked={widget.customConfig?.stacked ?? true}
+        timeBucket={widget.customConfig?.timeBucket}
       />
     </SocialWidgetFrame>
   );

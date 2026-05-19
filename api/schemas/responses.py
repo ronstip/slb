@@ -142,6 +142,9 @@ class SharedDashboardDataResponse(BaseModel):
     # locks the filter bar chips for these dimensions; viewer filters intersect
     # with the scope. Absence = standalone dashboard, no locking.
     reportScope: dict[str, Any] | None = None
+    # Editor toggle: when true, the public viewer should not render the filter
+    # bar at all (this is a curated report, not an exploration surface).
+    filterBarHidden: bool | None = None
 
 
 class BriefingShareResponse(BaseModel):

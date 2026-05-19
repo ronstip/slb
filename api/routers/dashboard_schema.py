@@ -7,9 +7,9 @@ Schema parity between TS and Python is enforced by
 `api/tests/test_dashboard_schema_parity.py`.
 """
 
-from typing import Literal
+from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 # ─── Enums (keep in sync with types-social-dashboard.ts) ──────────────────────
 
@@ -57,6 +57,14 @@ CustomDimension = Literal[
     "entities",
     "brands",
 ]
+
+# Agent-defined enrichment fields are exposed as dynamically-named dimensions
+# with a `custom:<field_name>` prefix. Mirrors the TS template-literal arm
+# `\`custom:${string}\`` in CustomDimension. Kept separate from the Literal so
+# the parity test (which compares the Literal set against TS string literals)
+# stays meaningful.
+CustomFieldDimension = Annotated[str, StringConstraints(pattern=r"^custom:[^\s]+$")]
+CustomDimensionField = Union[CustomDimension, CustomFieldDimension]
 
 CustomMetric = Literal[
     "post_count",
@@ -121,12 +129,12 @@ DashboardOrientation = Literal["horizontal", "vertical"]
 class CustomChartConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    dimension: CustomDimension | None = None
+    dimension: CustomDimensionField | None = None
     metric: CustomMetric = "post_count"
     metricAgg: Literal["sum", "avg", "min", "max", "count"] | None = None
-    timeBucket: Literal["day", "week", "month"] | None = None
+    timeBucket: Literal["hour", "day", "week", "month"] | None = None
     barOrientation: Literal["horizontal", "vertical"] | None = None
-    breakdownDimension: CustomDimension | None = None
+    breakdownDimension: CustomDimensionField | None = None
     topN: int | None = Field(default=None, ge=1, le=100)
     includeOthers: bool | None = None
     stacked: bool | None = None
@@ -183,10 +191,15 @@ class SocialWidgetFilters(BaseModel):
     platform: list[str] | None = None
     language: list[str] | None = None
     content_type: list[str] | None = None
+    channel_type: list[str] | None = None
     collection: list[str] | None = None
     channels: list[str] | None = None
     themes: list[str] | None = None
     entities: list[str] | None = None
+    brands: list[str] | None = None
+    # Agent-defined enrichment fields, keyed by field name. Selected values are
+    # ORed within a field and ANDed across fields, matching widget UI semantics.
+    custom_fields: dict[str, list[str]] | None = None
     date_range: DateRange | None = None
     conditions: list[FilterCondition] | None = None
 
@@ -226,7 +239,7 @@ class TableColumn(BaseModel):
     kind: Literal["metric", "dimension"] | None = None
     metric: CustomMetric | None = None
     agg: Literal["sum", "avg", "min", "max", "count"] | None = None
-    dimension: CustomDimension | None = None
+    dimension: CustomDimensionField | None = None
     dimensionAgg: Literal["top", "distinct_count"] | None = None
     header: str | None = None
 
@@ -234,7 +247,7 @@ class TableColumn(BaseModel):
 class CustomTableConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    dimension: CustomDimension
+    dimension: CustomDimensionField
     columns: list[TableColumn]
     sortBy: str | None = None
     sortDir: Literal["asc", "desc"] | None = None
@@ -273,6 +286,8 @@ class SocialDashboardWidget(BaseModel):
     customConfig: CustomChartConfig | None = None
     tableConfig: CustomTableConfig | None = None
     markdownContent: str | None = None
+    figureText: str | None = None
+    numberSize: Literal["small", "medium", "big"] | None = None
 
 
 class DashboardLayout(BaseModel):
@@ -284,6 +299,9 @@ class DashboardLayout(BaseModel):
     filterBarFilters: list[str] | None = None
     orientation: DashboardOrientation | None = None
     reportScope: ReportScope | None = None
+    # When true, hide the dashboard's filter bar entirely. Editors set this on
+    # reports where viewer filtering would be misleading.
+    filterBarHidden: bool | None = None
 
 
 def is_chart_type_valid_for(aggregation: str, chart_type: str) -> bool:

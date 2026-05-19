@@ -104,7 +104,7 @@ export interface CustomChartConfig {
   /** default 'sum' */
   metricAgg?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   /** only applies when dimension === 'posted_at' */
-  timeBucket?: 'day' | 'week' | 'month';
+  timeBucket?: 'hour' | 'day' | 'week' | 'month';
   /** Bar orientation — default 'horizontal' */
   barOrientation?: 'horizontal' | 'vertical';
   /** Optional second dimension to split bars/slices into sub-groups */
@@ -400,10 +400,16 @@ export interface SocialWidgetFilters {
   platform?: string[];
   language?: string[];
   content_type?: string[];
+  channel_type?: string[];
   collection?: string[];
   channels?: string[];
   themes?: string[];
   entities?: string[];
+  brands?: string[];
+  /** Per-agent custom enrichment fields. Keyed by field name; selected values
+   *  match scalar fields exactly or, for array fields, "any value in selected
+   *  intersects post value". */
+  custom_fields?: Record<string, string[]>;
   date_range?: { from: string | null; to: string | null };
   conditions?: FilterCondition[];
 }

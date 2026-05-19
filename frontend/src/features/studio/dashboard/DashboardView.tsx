@@ -162,11 +162,13 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
                 isEditMode={toolbarHandlers.isEditMode}
                 isSaving={toolbarHandlers.isSaving}
                 orientation={toolbarHandlers.orientation}
+                filterBarHidden={toolbarHandlers.filterBarHidden}
                 onEdit={toolbarHandlers.onEdit}
                 onDone={toolbarHandlers.onDone}
                 onAddWidget={toolbarHandlers.onAddWidget}
                 onResetToDefaults={toolbarHandlers.onResetToDefaults}
                 onOrientationChange={toolbarHandlers.onOrientationChange}
+                onFilterBarHiddenChange={toolbarHandlers.onFilterBarHiddenChange}
               />
               <div className="h-4 w-px bg-border shrink-0" />
             </>
@@ -232,8 +234,10 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
         agentId={artifact.agentId}
       />
 
-      {/* Filter bar */}
-      {!isLoading && !error && (
+      {/* Filter bar — hidden when the editor disabled viewer filtering for this
+       *  report (toolbarHandlers.filterBarHidden), unless we're currently in
+       *  edit mode where the editor still needs to see/configure it. */}
+      {!isLoading && !error && (!toolbarHandlers?.filterBarHidden || isEditMode) && (
         <DashboardFilterBar
           filters={filters}
           availableOptions={availableOptions}

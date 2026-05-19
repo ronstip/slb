@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
 import { AGGREGATION_META, DEFAULT_DASHBOARD_ORIENTATION } from './types-social-dashboard.ts';
@@ -41,6 +42,8 @@ export interface DashboardToolbarHandlers {
   onResetToDefaults: () => void;
   orientation: DashboardOrientation;
   onOrientationChange: (orientation: DashboardOrientation) => void;
+  filterBarHidden: boolean;
+  onFilterBarHiddenChange: (hidden: boolean) => void;
   isSaving: boolean;
   isEditMode: boolean;
 }
@@ -104,6 +107,7 @@ export function SocialDashboardView({
 
   const [widgets, setWidgets] = useState<SocialDashboardWidget[]>([]);
   const [orientation, setOrientation] = useState<DashboardOrientation>(DEFAULT_DASHBOARD_ORIENTATION);
+  const [filterBarHidden, setFilterBarHidden] = useState<boolean>(false);
   // Single config dialog for both add + edit
   const [configWidget, setConfigWidget] = useState<SocialDashboardWidget | null>(null);
   const [configMode, setConfigMode] = useState<'add' | 'edit'>('edit');
@@ -125,6 +129,7 @@ export function SocialDashboardView({
     const persistedOrientation = layoutData?.orientation ?? defaultOrientation ?? DEFAULT_DASHBOARD_ORIENTATION;
     setOrientation(persistedOrientation);
     onOrientationChange?.(persistedOrientation);
+    setFilterBarHidden(layoutData?.filterBarHidden ?? false);
     if (onLayoutLoaded) {
       const persisted = layoutData?.filterBarFilters;
       onLayoutLoaded(persisted && persisted.length > 0 ? persisted : DEFAULT_FILTER_BAR_FILTERS);
@@ -139,6 +144,8 @@ export function SocialDashboardView({
   useEffect(() => { widgetsRef.current = widgets; }, [widgets]);
   const orientationRef = useRef(orientation);
   useEffect(() => { orientationRef.current = orientation; }, [orientation]);
+  const filterBarHiddenRef = useRef(filterBarHidden);
+  useEffect(() => { filterBarHiddenRef.current = filterBarHidden; }, [filterBarHidden]);
 
   // Debounced auto-save
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,6 +161,7 @@ export function SocialDashboardView({
           layout: updatedWidgets,
           filterBarFilters: updatedFilterBar ?? filterBarFiltersRef.current,
           orientation: updatedOrientation ?? orientationRef.current,
+          filterBarHidden: filterBarHiddenRef.current,
         });
       }, 800);
     },
@@ -225,10 +233,14 @@ export function SocialDashboardView({
         layout: widgetsRef.current,
         filterBarFilters: filterBarFiltersRef.current,
         orientation: orientationRef.current,
+        filterBarHidden: filterBarHiddenRef.current,
       });
       setEditMode(false);
-    } catch {
-      // Save failed — stay in edit mode so the user can retry.
+    } catch (err) {
+      // Stay in edit mode so the user can retry, but surface the failure.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[dashboard] save layout failed', err);
+      toast.error('Failed to save dashboard layout', { description: msg });
     }
   }, [setEditMode, saveLayoutAsync]);
 
@@ -320,8 +332,18 @@ export function SocialDashboardView({
       layout: next,
       filterBarFilters: filterBarFiltersRef.current,
       orientation: orientationRef.current,
+      filterBarHidden: filterBarHiddenRef.current,
     });
   }, [saveLayout]);
+
+  const handleFilterBarHiddenChange = useCallback(
+    (hidden: boolean) => {
+      setFilterBarHidden(hidden);
+      filterBarHiddenRef.current = hidden;
+      scheduleAutoSave(widgetsRef.current);
+    },
+    [scheduleAutoSave],
+  );
 
   const handleFilterToggle = useCallback(
     (key: string, value: string) => toggleFilterValue(key as ArrayFilterKey, value),
@@ -340,11 +362,13 @@ export function SocialDashboardView({
       onResetToDefaults: handleResetToDefaults,
       orientation,
       onOrientationChange: handleOrientationChange,
+      filterBarHidden,
+      onFilterBarHiddenChange: handleFilterBarHiddenChange,
       isSaving,
       isEditMode,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditMode, isSaving, handleDone, handleOpenAdd, handleResetToDefaults, handleOrientationChange, orientation, readOnly]);
+  }, [isEditMode, isSaving, handleDone, handleOpenAdd, handleResetToDefaults, handleOrientationChange, orientation, filterBarHidden, handleFilterBarHiddenChange, readOnly]);
 
   if (layoutLoading || widgets.length === 0) {
     return (

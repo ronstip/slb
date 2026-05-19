@@ -122,3 +122,86 @@ def test_aggregation_defaults_chart_types_are_valid():
             f"AGGREGATION_DEFAULTS['{agg}'].chartType='{chart_type}' "
             f"not in VALID_CHART_TYPES['{agg}']={VALID_CHART_TYPES[agg]}"
         )
+
+
+def test_widget_round_trip_preserves_figure_text_and_number_size():
+    """`figureText` (figcaption under a chart) and `numberSize` (KPI scale)
+    are persisted on `SocialDashboardWidget` in the frontend. The backend
+    Pydantic model uses `extra='ignore'`, so any field missing from the model
+    is silently dropped on save — round-tripping the widget would lose the
+    user's caption / size. Both must be declared on the model."""
+    from api.routers.dashboard_schema import SocialDashboardWidget
+
+    payload = {
+        "i": "w1",
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4,
+        "aggregation": "custom",
+        "chartType": "bar",
+        "title": "Posts by platform",
+        "figureText": "Volume skewed to Twitter on launch day.",
+        "numberSize": "big",
+    }
+    w = SocialDashboardWidget.model_validate(payload)
+    assert w.figureText == "Volume skewed to Twitter on launch day."
+    assert w.numberSize == "big"
+    # Serialized form must keep the field so it lands in Firestore.
+    dumped = w.model_dump(exclude_none=True, by_alias=True)
+    assert dumped["figureText"] == "Volume skewed to Twitter on launch day."
+    assert dumped["numberSize"] == "big"
+
+
+def test_custom_config_accepts_custom_field_dimension():
+    """Frontend `CustomDimension` includes `custom:<name>` for agent-defined
+    enrichment fields (see TS definition). The Pydantic model must accept these
+    on `customConfig.dimension`, `customConfig.breakdownDimension`, and the
+    table-config dimensions — otherwise saving a layout with a custom-field
+    group-by 422s the Done button."""
+    from api.routers.dashboard_schema import (
+        CustomChartConfig,
+        CustomTableConfig,
+        TableColumn,
+    )
+
+    cfg = CustomChartConfig.model_validate(
+        {"dimension": "custom:reaction_type", "metric": "post_count"}
+    )
+    assert cfg.dimension == "custom:reaction_type"
+
+    cfg2 = CustomChartConfig.model_validate(
+        {
+            "dimension": "platform",
+            "metric": "post_count",
+            "breakdownDimension": "custom:sub_genre",
+        }
+    )
+    assert cfg2.breakdownDimension == "custom:sub_genre"
+
+    tbl = CustomTableConfig.model_validate(
+        {
+            "dimension": "custom:audience",
+            "columns": [
+                {"id": "c1", "kind": "metric", "metric": "post_count", "agg": "sum"}
+            ],
+        }
+    )
+    assert tbl.dimension == "custom:audience"
+
+    tcol = TableColumn.model_validate(
+        {"id": "d1", "kind": "dimension", "dimension": "custom:tone"}
+    )
+    assert tcol.dimension == "custom:tone"
+
+    # Sanity: standard literal still works.
+    std = CustomChartConfig.model_validate(
+        {"dimension": "themes", "metric": "post_count"}
+    )
+    assert std.dimension == "themes"
+
+    # Garbage rejected.
+    with pytest.raises(Exception):
+        CustomChartConfig.model_validate(
+            {"dimension": "not_a_real_dimension", "metric": "post_count"}
+        )

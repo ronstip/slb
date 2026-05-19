@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, Database, Download, LayoutGrid, Search, Table2, X } from 'lucide-react';
 import { downloadCsv, FEED_POST_CSV_COLUMNS } from '../../lib/download-csv.ts';
@@ -7,6 +7,7 @@ import { Input } from '../../components/ui/input.tsx';
 import { Checkbox } from '../../components/ui/checkbox.tsx';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { getCollectionStats } from '../../api/endpoints/collections.ts';
+import { getAgent } from '../../api/endpoints/agents.ts';
 import { DataTable } from '../../components/DataTable/DataTable.tsx';
 import { ExpandedPostRow } from '../../components/DataTable/ExpandedPostRow.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
@@ -26,13 +27,22 @@ import {
   collectionsPostColumns,
   createEmptyFilters,
   applyColumnFilters,
-  extractFilterOptions,
   hasActiveFilters,
   type ColumnFilters,
 } from './collectionsPostColumns.tsx';
 import { PLATFORMS, PLATFORM_LABELS, SENTIMENT_COLORS } from '../../lib/constants.ts';
 import type { Source } from '../../stores/sources-store.ts';
 import { DateTimeRangeFilter, type DateTimeRange } from './DateTimeRangeFilter.tsx';
+import { buildFieldRegistry } from './fieldRegistry.ts';
+import {
+  ColumnPicker,
+  mergeColumnPrefs,
+  defaultPrefsFor,
+  loadColumnPrefs,
+  saveColumnPrefs,
+  clearColumnPrefs,
+  type ColumnPref,
+} from './ColumnPicker.tsx';
 
 interface PostsDataPanelProps {
   selectedCollectionIds: string[];
@@ -77,6 +87,49 @@ export function PostsDataPanel({
   const [channelFilter, setChannelFilter] = useState<Set<string>>(new Set());
   const [channelSearch, setChannelSearch] = useState('');
   const [dateRange, setDateRange] = useState<DateTimeRange>({ from: null, to: null });
+
+  // Fetch agent doc to read custom_fields schema for the field registry.
+  // Only when `agentId` is set — collections viewed without an agent context
+  // just get built-in fields (the registry still works, custom fields are
+  // simply absent).
+  const { data: agentDoc } = useQuery({
+    queryKey: ['agent-detail', agentId],
+    queryFn: () => getAgent(agentId!),
+    enabled: !!agentId,
+    staleTime: 5 * 60_000,
+  });
+
+  const customFields = agentDoc?.enrichment_config?.custom_fields ?? null;
+  const registry = useMemo(() => buildFieldRegistry(customFields), [customFields]);
+
+  // Column visibility / order — persisted per-agent in localStorage. Use
+  // 'default' when no agent is in scope (e.g. ad-hoc collection viewing).
+  const prefsScope = agentId ?? 'default';
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(
+    () => mergeColumnPrefs(loadColumnPrefs(prefsScope), buildFieldRegistry(null)),
+  );
+
+  // Re-merge prefs whenever the registry changes (new custom fields appear, or
+  // the user switches between agents with different schemas).
+  useEffect(() => {
+    setColumnPrefs((prev) => mergeColumnPrefs(prev, registry));
+  }, [registry]);
+
+  // Reload from storage when the scope changes (switching agents).
+  useEffect(() => {
+    setColumnPrefs(mergeColumnPrefs(loadColumnPrefs(prefsScope), registry));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefsScope]);
+
+  const updateColumnPrefs = useCallback((next: ColumnPref[]) => {
+    setColumnPrefs(next);
+    saveColumnPrefs(prefsScope, next);
+  }, [prefsScope]);
+
+  const resetColumnPrefs = useCallback(() => {
+    clearColumnPrefs(prefsScope);
+    setColumnPrefs(defaultPrefsFor(registry));
+  }, [prefsScope, registry]);
 
   // Compute effective collection IDs based on source filter
   const effectiveCollectionIds = useMemo(() => {
@@ -125,13 +178,13 @@ export function PostsDataPanel({
   const totalAvailable = data?.total ?? allPosts.length;
   const isTruncated = !showAll && totalAvailable > allPosts.length;
 
-  // Apply top-level channel filter + column-level filters (both client-side)
+  // Apply top-level channel filter + per-column filters (all client-side, ANDed).
   const afterColumnFilters = useMemo(() => {
     const base = channelFilter.size === 0
       ? allPosts
       : allPosts.filter((p) => channelFilter.has(p.channel_handle));
-    return applyColumnFilters(base, columnFilters);
-  }, [allPosts, columnFilters, channelFilter]);
+    return applyColumnFilters(base, columnFilters, registry);
+  }, [allPosts, columnFilters, channelFilter, registry]);
 
   // Apply global search on top
   const filteredPosts = useMemo(() => {
@@ -146,8 +199,18 @@ export function PostsDataPanel({
     });
   }, [afterColumnFilters, globalSearch]);
 
-  // Extract unique values for filter dropdowns from ALL posts
-  const filterOptions = useMemo(() => extractFilterOptions(allPosts), [allPosts]);
+  // Distinct channel handles for the top-bar channel-handle multi-select.
+  // (Channel-handle filtering stays in the toolbar — it's a high-traffic
+  // top-level filter that doesn't fit as a per-column header.)
+  const channelOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of allPosts) {
+      counts.set(p.channel_handle, (counts.get(p.channel_handle) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [allPosts]);
 
   const clearAllFilters = useCallback(() => {
     setColumnFilters(createEmptyFilters());
@@ -168,16 +231,18 @@ export function PostsDataPanel({
     dateRange.to !== null;
   const hasAnyFilter = hasAnyTopFilter || hasActiveFilters(columnFilters);
 
-  // Build columns
+  // Build columns from the registry, filtered + ordered by user prefs.
   const columns = useMemo(
     () =>
       collectionsPostColumns({
         filters: columnFilters,
         onFiltersChange: setColumnFilters,
-        filterOptions,
+        registry,
+        columnPrefs,
+        allPosts,
         agentId,
       }),
-    [columnFilters, filterOptions, agentId],
+    [columnFilters, registry, columnPrefs, allPosts, agentId],
   );
 
   // Fetch collection stats for status panel data (daily_volume, enrichment, freshness)
@@ -334,7 +399,7 @@ export function PostsDataPanel({
             className="flex w-64 max-h-80 flex-col overflow-hidden p-0"
             onClick={(e) => e.stopPropagation()}
           >
-            {filterOptions.handles.length > 5 && (
+            {channelOptions.length > 5 && (
               <div className="shrink-0 border-b border-border/40 p-2">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
@@ -352,8 +417,8 @@ export function PostsDataPanel({
                 {(() => {
                   const q = channelSearch.trim().toLowerCase();
                   const filtered = q
-                    ? filterOptions.handles.filter((o) => o.value.toLowerCase().includes(q))
-                    : filterOptions.handles;
+                    ? channelOptions.filter((o) => o.value.toLowerCase().includes(q))
+                    : channelOptions;
                   if (filtered.length === 0) {
                     return <div className="py-4 text-center text-xs text-muted-foreground">No matches</div>;
                   }
@@ -397,8 +462,8 @@ export function PostsDataPanel({
                 onClick={() => {
                   const q = channelSearch.trim().toLowerCase();
                   const filtered = q
-                    ? filterOptions.handles.filter((o) => o.value.toLowerCase().includes(q))
-                    : filterOptions.handles;
+                    ? channelOptions.filter((o) => o.value.toLowerCase().includes(q))
+                    : channelOptions;
                   setChannelFilter(new Set(filtered.map((o) => o.value)));
                 }}
               >
@@ -417,8 +482,14 @@ export function PostsDataPanel({
           </PopoverContent>
         </Popover>
 
-        {/* Right-side controls: clear-all + export + view toggle */}
+        {/* Right-side controls: columns + clear-all + export + view toggle */}
         <div className="ml-auto flex items-center gap-2">
+          <ColumnPicker
+            registry={registry}
+            prefs={columnPrefs}
+            onChange={updateColumnPrefs}
+            onReset={resetColumnPrefs}
+          />
           {hasAnyFilter && (
             <Button
               variant="ghost"

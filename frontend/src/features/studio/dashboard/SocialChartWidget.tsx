@@ -274,9 +274,12 @@ interface SocialChartWidgetProps {
   seriesColorOverrides?: Record<string, string>;
   barOrientation?: 'horizontal' | 'vertical';
   stacked?: boolean;
+  /** For time-series line charts: controls the Chart.js x-axis unit and display
+   *  format. Defaults to 'day' for backwards compatibility. */
+  timeBucket?: 'hour' | 'day' | 'week' | 'month';
 }
 
-export function SocialChartWidget({ chartType, data, accent, seriesColorOverrides, barOrientation = 'horizontal', stacked = true }: SocialChartWidgetProps) {
+export function SocialChartWidget({ chartType, data, accent, seriesColorOverrides, barOrientation = 'horizontal', stacked = true, timeBucket = 'day' }: SocialChartWidgetProps) {
   const { accentColor, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -290,6 +293,35 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     // Extend the 5-color palette to 15 by cycling with slight alpha variation
     return Array.from({ length: 15 }, (_, i) => basePalette[i % basePalette.length]);
   }, [accent, accentColor, themeIsDark]);
+
+  const timeScale = useMemo(() => {
+    if (timeBucket === 'hour') {
+      return {
+        unit: 'hour' as const,
+        displayFormats: { hour: 'MMM d, HH:mm', day: 'MMM d', month: 'MMM yyyy' },
+        tooltipFormat: 'MMM d, yyyy HH:mm',
+      };
+    }
+    if (timeBucket === 'month') {
+      return {
+        unit: 'month' as const,
+        displayFormats: { day: 'MMM d', month: 'MMM yyyy' },
+        tooltipFormat: 'MMM yyyy',
+      };
+    }
+    if (timeBucket === 'week') {
+      return {
+        unit: 'week' as const,
+        displayFormats: { day: 'MMM d', week: 'MMM d', month: 'MMM yyyy' },
+        tooltipFormat: 'MMM d, yyyy',
+      };
+    }
+    return {
+      unit: 'day' as const,
+      displayFormats: { day: 'MMM d', month: 'MMM yyyy' },
+      tooltipFormat: 'MMM d, yyyy',
+    };
+  }, [timeBucket]);
 
   const lineRef = useRef<ChartJS<'line'> | null>(null);
   const barRef = useRef<ChartJS<'bar'> | null>(null);
@@ -410,7 +442,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       scales: {
         x: {
           type: 'time' as const,
-          time: { unit: 'day' as const, displayFormats: { day: 'MMM d', month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' },
+          time: timeScale,
           ...getAxisStyle(),
         },
         y: {
@@ -462,7 +494,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       scales: {
         x: {
           type: 'time' as const,
-          time: { unit: 'day' as const, displayFormats: { day: 'MMM d', month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' },
+          time: timeScale,
           ...getAxisStyle(),
         },
         y: {

@@ -1,4 +1,4 @@
-import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, RectangleHorizontal, RectangleVertical } from 'lucide-react';
+import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, RectangleHorizontal, RectangleVertical, Filter, FilterX } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -13,22 +13,26 @@ interface SocialDashboardToolbarProps {
   isEditMode: boolean;
   isSaving?: boolean;
   orientation: DashboardOrientation;
+  filterBarHidden: boolean;
   onEdit: () => void;
   onDone: () => void;
   onAddWidget: (kind: AddWidgetKind) => void;
   onResetToDefaults: () => void;
   onOrientationChange: (orientation: DashboardOrientation) => void;
+  onFilterBarHiddenChange: (hidden: boolean) => void;
 }
 
 export function SocialDashboardToolbar({
   isEditMode,
   isSaving,
   orientation,
+  filterBarHidden,
   onEdit,
   onDone,
   onAddWidget,
   onResetToDefaults,
   onOrientationChange,
+  onFilterBarHiddenChange,
 }: SocialDashboardToolbarProps) {
   if (!isEditMode) {
     return (
@@ -58,6 +62,20 @@ export function SocialDashboardToolbar({
       >
         <OrientationIcon className="h-3.5 w-3.5" />
         {orientation === 'horizontal' ? 'Landscape' : 'Portrait'}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        onClick={() => onFilterBarHiddenChange(!filterBarHidden)}
+        title={filterBarHidden ? 'Show the dashboard filter bar' : 'Hide the dashboard filter bar'}
+      >
+        {filterBarHidden ? (
+          <FilterX className="h-3.5 w-3.5" />
+        ) : (
+          <Filter className="h-3.5 w-3.5" />
+        )}
+        {filterBarHidden ? 'Filters off' : 'Filters on'}
       </Button>
       <Button
         variant="outline"

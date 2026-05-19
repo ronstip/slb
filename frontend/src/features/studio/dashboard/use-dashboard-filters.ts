@@ -22,9 +22,14 @@ export interface FilterOptions {
   language: string[];
   collection: string[];
   content_type: string[];
+  channel_type: string[];
   platform: string[];
   themes: string[];
   channels: string[];
+  brands: string[];
+  /** Distinct values per agent-defined custom enrichment field. Only used by
+   *  widget-level filter UI; the global filter bar ignores these. */
+  custom_fields: Record<string, string[]>;
   dateMin: string | null;
   dateMax: string | null;
 }
@@ -52,10 +57,13 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
     language: new Set(),
     collection: new Set(),
     content_type: new Set(),
+    channel_type: new Set(),
     platform: new Set(),
     themes: new Set(),
     channels: new Set(),
+    brands: new Set(),
   };
+  const customSets: Record<string, Set<string>> = {};
   let dateMin: string | null = null;
   let dateMax: string | null = null;
 
@@ -64,16 +72,34 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
     if (p.emotion && p.emotion !== 'unknown') sets.emotion.add(p.emotion);
     if (p.language) sets.language.add(p.language);
     if (p.content_type) sets.content_type.add(p.content_type);
+    if (p.channel_type) sets.channel_type.add(p.channel_type);
     sets.platform.add(p.platform);
     sets.collection.add(p.collection_id);
     if (p.channel_handle) sets.channels.add(p.channel_handle);
     for (const t of p.themes ?? []) sets.themes.add(t);
     for (const e of p.entities ?? []) sets.entities.add(e);
+    for (const b of p.detected_brands ?? []) sets.brands.add(b);
+    if (p.custom_fields) {
+      for (const [name, raw] of Object.entries(p.custom_fields)) {
+        if (raw == null) continue;
+        const target = customSets[name] ?? (customSets[name] = new Set());
+        if (Array.isArray(raw)) {
+          for (const v of raw) if (v != null) target.add(String(v));
+        } else {
+          target.add(String(raw));
+        }
+      }
+    }
     if (p.posted_at) {
       const d = p.posted_at.slice(0, 10);
       if (!dateMin || d < dateMin) dateMin = d;
       if (!dateMax || d > dateMax) dateMax = d;
     }
+  }
+
+  const custom_fields: Record<string, string[]> = {};
+  for (const [name, values] of Object.entries(customSets)) {
+    custom_fields[name] = [...values].sort();
   }
 
   return {
@@ -83,9 +109,12 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
     language: [...sets.language].sort(),
     collection: [...sets.collection].sort(),
     content_type: [...sets.content_type].sort(),
+    channel_type: [...sets.channel_type].sort(),
     platform: [...sets.platform].sort(),
     themes: [...sets.themes].sort(),
     channels: [...sets.channels].sort(),
+    brands: [...sets.brands].sort(),
+    custom_fields,
     dateMin,
     dateMax,
   };

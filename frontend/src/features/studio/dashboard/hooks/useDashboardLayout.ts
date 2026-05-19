@@ -11,6 +11,7 @@ export interface LayoutSavePayload {
   filterBarFilters?: string[];
   orientation?: DashboardOrientation;
   reportScope?: ReportScope | null;
+  filterBarHidden?: boolean;
 }
 
 export interface LayoutResponse {
@@ -18,6 +19,7 @@ export interface LayoutResponse {
   filterBarFilters?: string[] | null;
   orientation?: DashboardOrientation | null;
   reportScope?: ReportScope | null;
+  filterBarHidden?: boolean | null;
 }
 
 export function useDashboardLayout(artifactId: string) {

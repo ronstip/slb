@@ -117,23 +117,25 @@ export function SharedDashboardPage() {
       {/* Dashboard content */}
       {!isLoading && !error && response && (
         <>
-          {/* Filter bar */}
-          <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-            <div className="mx-auto max-w-6xl">
-            <DashboardFilterBar
-              filters={filters}
-              availableOptions={availableOptions}
-              activeFilterCount={activeFilterCount}
-              onToggle={toggleFilterValue}
-              onSetFilter={setFilter}
-              onClearAll={clearAll}
-              collectionNames={response.collection_names}
-              filterBarFilters={filterBarFilters}
-              allPosts={allPosts}
-              reportScope={reportScope}
-            />
+          {/* Filter bar — editor can hide it for curated reports. */}
+          {!response.filterBarHidden && (
+            <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
+              <div className="mx-auto max-w-6xl">
+              <DashboardFilterBar
+                filters={filters}
+                availableOptions={availableOptions}
+                activeFilterCount={activeFilterCount}
+                onToggle={toggleFilterValue}
+                onSetFilter={setFilter}
+                onClearAll={clearAll}
+                collectionNames={response.collection_names}
+                filterBarFilters={filterBarFilters}
+                allPosts={allPosts}
+                reportScope={reportScope}
+              />
+              </div>
             </div>
-          </div>
+          )}
 
           <main className="mx-auto max-w-6xl">
             <SocialDashboardView

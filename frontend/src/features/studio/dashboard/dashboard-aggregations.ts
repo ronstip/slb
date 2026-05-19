@@ -502,6 +502,15 @@ function getMetricValue(p: DashboardPost, metric: CustomChartConfig['metric']): 
 
 function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartConfig['timeBucket']>): string {
   if (!dateStr) return 'unknown';
+  if (timeBucket === 'hour') {
+    // ISO-8601 hour resolution: YYYY-MM-DDTHH:00:00 (local), kept parseable by `new Date`.
+    const d = new Date(dateStr);
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const da = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    return `${y}-${mo}-${da}T${h}:00:00`;
+  }
   if (timeBucket === 'day') return dateStr.slice(0, 10);
   const d = new Date(dateStr);
   if (timeBucket === 'week') {

@@ -23,7 +23,7 @@ import {
 } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 
-type ArrayFilterKey = Exclude<keyof SocialWidgetFilters, 'date_range' | 'conditions'>;
+type ArrayFilterKey = Exclude<keyof SocialWidgetFilters, 'date_range' | 'conditions' | 'custom_fields'>;
 
 const FILTER_SECTIONS: Array<{ label: string; key: ArrayFilterKey; placeholder: string }> = [
   { label: 'Sentiment', key: 'sentiment', placeholder: 'All sentiments' },
@@ -31,11 +31,17 @@ const FILTER_SECTIONS: Array<{ label: string; key: ArrayFilterKey; placeholder: 
   { label: 'Platform', key: 'platform', placeholder: 'All platforms' },
   { label: 'Language', key: 'language', placeholder: 'All languages' },
   { label: 'Content Type', key: 'content_type', placeholder: 'All types' },
+  { label: 'Channel Type', key: 'channel_type', placeholder: 'All channel types' },
   { label: 'Themes', key: 'themes', placeholder: 'All themes' },
   { label: 'Entities', key: 'entities', placeholder: 'All entities' },
+  { label: 'Brands', key: 'brands', placeholder: 'All brands' },
   { label: 'Channels', key: 'channels', placeholder: 'All channels' },
   { label: 'Collection', key: 'collection', placeholder: 'All collections' },
 ];
+
+function humanizeFieldName(name: string): string {
+  return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 function getOperatorsForField(field: FilterConditionField): FilterConditionOperator[] {
   if (NUMERIC_CONDITION_FIELDS.includes(field)) return NUMERIC_OPERATORS;
@@ -59,8 +65,16 @@ export function WidgetFilterForm({ filters, availableOptions, onChange }: Widget
   const activeCount = Object.entries(filters).reduce((n, [k, v]) => {
     if (k === 'date_range') return n + (((v as SocialWidgetFilters['date_range'])?.from || (v as SocialWidgetFilters['date_range'])?.to) ? 1 : 0);
     if (k === 'conditions') return n + ((v as FilterCondition[])?.length ?? 0);
+    if (k === 'custom_fields') {
+      const cf = (v as SocialWidgetFilters['custom_fields']) ?? {};
+      return n + Object.values(cf).reduce((m, vals) => m + (vals?.length ?? 0), 0);
+    }
     return n + ((v as string[])?.length ?? 0);
   }, 0);
+
+  const customFieldEntries = Object.entries(availableOptions.custom_fields ?? {})
+    .filter(([, values]) => values.length > 0)
+    .sort(([a], [b]) => a.localeCompare(b));
 
   const conditions = filters.conditions ?? [];
 
@@ -146,6 +160,39 @@ export function WidgetFilterForm({ filters, availableOptions, onChange }: Widget
           </div>
         );
       })}
+
+      {/* Custom enrichment fields — one MultiSelect per agent-defined field */}
+      {customFieldEntries.length > 0 && (
+        <>
+          <Separator />
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Custom Fields
+          </Label>
+          {customFieldEntries.map(([name, options]) => {
+            const selected = filters.custom_fields?.[name] ?? [];
+            return (
+              <div key={name} className="flex items-center gap-3">
+                <Label className="text-xs w-24 shrink-0" title={name}>{humanizeFieldName(name)}</Label>
+                <MultiSelect
+                  value={selected}
+                  options={options.map((o) => ({ label: o, value: o }))}
+                  onChange={(next) => {
+                    const cf = { ...(filters.custom_fields ?? {}) };
+                    if (next.length) cf[name] = next;
+                    else delete cf[name];
+                    onChange({
+                      ...filters,
+                      custom_fields: Object.keys(cf).length ? cf : undefined,
+                    });
+                  }}
+                  placeholder={`All ${humanizeFieldName(name).toLowerCase()}`}
+                  className="flex-1"
+                />
+              </div>
+            );
+          })}
+        </>
+      )}
 
       {/* ── Advanced Conditions ── */}
       <Separator />
