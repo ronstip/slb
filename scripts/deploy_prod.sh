@@ -40,6 +40,33 @@ fi
 PROJECT_ID="social-listening-pl"
 REGION="us-central1"
 
+# Source .env (data-provider tokens live here — keep this script in sync with
+# .github/workflows/deploy.yml so manual + CI deploys produce identical env)
+if [ -f "$ROOT_DIR/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$ROOT_DIR/.env"
+    set +a
+fi
+
+# Fail fast if any required data-provider token is missing — otherwise the
+# Cloud Run revision boots with no adapter for twitter/instagram and every
+# collection silently fails with "No posts were collected."
+REQUIRED_VARS=(
+    BRIGHTDATA_API_TOKEN
+    X_API_BEARER_TOKEN
+    APIFY_API_TOKEN
+    VETRIC_API_KEY_TWITTER
+    VETRIC_API_KEY_INSTAGRAM
+    VETRIC_API_KEY_TIKTOK
+)
+for v in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!v:-}" ]; then
+        echo "ERROR: $v is not set. Add it to $ROOT_DIR/.env before deploying."
+        exit 1
+    fi
+done
+
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
 echo "║   Social Listening Platform — Prod Deployment    ║"
@@ -162,7 +189,7 @@ gcloud run deploy sl-api \
     --region "$REGION" \
     --platform managed \
     --service-account "$API_SA" \
-    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|ENABLE_SEARCH_GROUNDING=true|SUPER_ADMIN_EMAILS=saharmalka@gmail.com,ronneeman19@gmail.com|VETRIC_API_KEY_TWITTER=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMDA5OTU3OH0.dUu3YUzSUSQ9Zgmao0ppw4urE35_DUtdFUPN6H_oopE|VETRIC_API_KEY_INSTAGRAM=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMTE5ODcwMn0.pfAvrft_yfxwUMO0ekWFKoSXGKx6cAPYkDxT84D0iFs|VETRIC_API_KEY_TIKTOK=eyJoc0lEIjoiNTEyNDM4MjQzMjUiLCJjcmVhdGVkQXQiOjE3MzM4MzgzNTQwNzd9" \
+    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|ENABLE_SEARCH_GROUNDING=true|SUPER_ADMIN_EMAILS=saharmalka@gmail.com,ronneeman19@gmail.com|VETRIC_API_KEY_TWITTER=$VETRIC_API_KEY_TWITTER|VETRIC_API_KEY_INSTAGRAM=$VETRIC_API_KEY_INSTAGRAM|VETRIC_API_KEY_TIKTOK=$VETRIC_API_KEY_TIKTOK" \
     --min-instances 1 \
     --max-instances 10 \
     --memory 1Gi \
@@ -195,7 +222,7 @@ gcloud run deploy sl-worker \
     --region "$REGION" \
     --platform managed \
     --service-account "$WORKER_SA" \
-    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|VETRIC_API_KEY_TWITTER=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMDA5OTU3OH0.dUu3YUzSUSQ9Zgmao0ppw4urE35_DUtdFUPN6H_oopE|VETRIC_API_KEY_INSTAGRAM=eyJzY29wZSI6InZldHJpYy5pbyIsImlhdCI6MTcyMTE5ODcwMn0.pfAvrft_yfxwUMO0ekWFKoSXGKx6cAPYkDxT84D0iFs|VETRIC_API_KEY_TIKTOK=eyJoc0lEIjoiNTEyNDM4MjQzMjUiLCJjcmVhdGVkQXQiOjE3MzM4MzgzNTQwNzd9" \
+    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|BRIGHTDATA_API_TOKEN=$BRIGHTDATA_API_TOKEN|X_API_BEARER_TOKEN=$X_API_BEARER_TOKEN|APIFY_API_TOKEN=$APIFY_API_TOKEN|APIFY_ACTOR_INSTAGRAM=apidojo/instagram-hashtag-scraper|APIFY_ACTOR_FACEBOOK=scrapeforge/facebook-search-posts|APIFY_ACTOR_TIKTOK=clockworks/tiktok-scraper|DEFAULT_VENDOR_INSTAGRAM=apify|ENRICHMENT_MODEL=gemini-3-flash-preview|ENRICHMENT_VIDEO_FPS=0.5|ENRICHMENT_VIDEO_END_OFFSET=180s|ENRICHMENT_MAX_OUTPUT_TOKENS=4096|VETRIC_API_KEY_TWITTER=$VETRIC_API_KEY_TWITTER|VETRIC_API_KEY_INSTAGRAM=$VETRIC_API_KEY_INSTAGRAM|VETRIC_API_KEY_TIKTOK=$VETRIC_API_KEY_TIKTOK" \
     --min-instances 0 \
     --max-instances 5 \
     --memory 2Gi \
