@@ -49,6 +49,16 @@ without dragging in shadcn/Tailwind transitively.
 — three cases: KPI between charts preserves order; consecutive KPIs stay
 side-by-side; non-KPI widgets stack full-width in designed order.
 
+## Related: mobile side-margin / width
+
+Same area, separate symptom — on mobile, vertical-orientation dashboards
+rendered with ~31% of the viewport as side margin. Cause: the A4-portrait
+container clamp (`maxWidth: 69%`) was applied at every breakpoint. Now gated to
+`currentBreakpoint === 'lg'`. Also lowered `containerPadding` from `[12, 8]` to
+`[4, 8]` below `lg` so widgets get a few more pixels.
+
+Both in [frontend/src/features/studio/dashboard/SocialDashboardGrid.tsx](frontend/src/features/studio/dashboard/SocialDashboardGrid.tsx).
+
 ## Commit
 
 Branch `dev` (uncommitted at time of writing).

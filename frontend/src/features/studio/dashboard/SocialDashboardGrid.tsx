@@ -97,9 +97,17 @@ export function SocialDashboardGrid({
 
   const canInteract = isEditMode && currentBreakpoint === 'lg';
 
-  const containerStyle: React.CSSProperties = orientation === 'vertical'
-    ? { maxWidth: `${VERTICAL_WIDTH_RATIO * 100}%`, marginLeft: 'auto', marginRight: 'auto' }
-    : {};
+  // The vertical (A4 portrait) clamp is for desktop PDF parity. On mobile/
+  // tablet breakpoints it would shrink the dashboard to ~69% of an already
+  // narrow viewport — apply only at `lg`.
+  const containerStyle: React.CSSProperties =
+    orientation === 'vertical' && currentBreakpoint === 'lg'
+      ? { maxWidth: `${VERTICAL_WIDTH_RATIO * 100}%`, marginLeft: 'auto', marginRight: 'auto' }
+      : {};
+
+  // Tighter side padding on mobile so widgets get more of the viewport.
+  const containerPadding: [number, number] =
+    currentBreakpoint === 'lg' ? [12, 8] : [4, 8];
 
   return (
     <div
@@ -115,7 +123,7 @@ export function SocialDashboardGrid({
         cols={COLS}
         rowHeight={ROW_HEIGHT}
         margin={MARGIN}
-        containerPadding={[12, 8]}
+        containerPadding={containerPadding}
         dragConfig={{ enabled: canInteract, handle: '.drag-handle' }}
         resizeConfig={{ enabled: canInteract }}
         onBreakpointChange={(bp) => setCurrentBreakpoint(bp)}
