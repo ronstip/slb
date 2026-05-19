@@ -759,9 +759,17 @@ def recover_stuck_agents(stale_minutes: int = 10) -> int:
     if not stuck:
         return 0
 
+    from workers.shared.stuck_detector import (
+        SIGNAL_MISSED_HANDOFF,
+        SIGNAL_ORPHANED_RUNNING,
+        SIGNAL_TERMINAL_INCONSISTENT,
+    )
+    from workers.shared.workflow_steps import progress_automated_steps
+
     handled = 0
     for agent in stuck:
         agent_id = agent["agent_id"]
+        signal = agent.get("_signal", SIGNAL_ORPHANED_RUNNING)
         attempts = int(agent.get("continuation_attempts") or 0)
 
         if attempts >= MAX_CONTINUATION_ATTEMPTS:
@@ -771,13 +779,13 @@ def recover_stuck_agents(stale_minutes: int = 10) -> int:
                     status="failed",
                     completed_at=datetime.now(timezone.utc),
                     context_summary=(
-                        f"Continuation runtime crashed {attempts}× — giving up. "
+                        f"Watchdog gave up after {attempts} attempts (signal={signal}). "
                         "Use the Resume button to retry manually."
                     ),
                 )
                 fs.add_agent_log(
                     agent_id,
-                    f"Watchdog: marking failed after {attempts} continuation attempts",
+                    f"Watchdog: marking failed after {attempts} attempts (signal={signal})",
                     source="watchdog", level="error",
                 )
                 handled += 1
@@ -785,16 +793,32 @@ def recover_stuck_agents(stale_minutes: int = 10) -> int:
                 logger.exception("Watchdog: failed to mark agent %s failed", agent_id)
             continue
 
+        update_kwargs: dict = {
+            "continuation_ready": True,
+            "continuation_attempts": attempts + 1,
+            "completed_at": None,
+        }
+        # terminal_inconsistent / missed_handoff: continuation never ran the
+        # collection-complete bookkeeping, so flip status back to running
+        # and progress the automated todos before re-dispatch.
+        if signal in (SIGNAL_TERMINAL_INCONSISTENT, SIGNAL_MISSED_HANDOFF):
+            update_kwargs["status"] = "running"
+            if not agent.get("continuation_ready_at"):
+                update_kwargs["continuation_ready_at"] = datetime.now(timezone.utc).isoformat()
+            todos = agent.get("todos") or []
+            if todos:
+                progressed = progress_automated_steps(
+                    todos, phase="collection_complete", status="success"
+                )
+                if progressed != todos:
+                    update_kwargs["todos"] = progressed
+
         try:
-            fs.update_agent(
-                agent_id,
-                continuation_ready=True,
-                continuation_attempts=attempts + 1,
-                completed_at=None,
-            )
+            fs.update_agent(agent_id, **update_kwargs)
             fs.add_agent_log(
                 agent_id,
-                f"Watchdog: re-dispatching continuation (attempt {attempts + 1}/{MAX_CONTINUATION_ATTEMPTS})",
+                f"Watchdog: re-dispatching continuation "
+                f"(signal={signal}, attempt {attempts + 1}/{MAX_CONTINUATION_ATTEMPTS})",
                 source="watchdog", level="warning",
             )
         except Exception:
@@ -813,8 +837,8 @@ def recover_stuck_agents(stale_minutes: int = 10) -> int:
                 _dispatch_continuation_task(settings, agent_id, delay_seconds=10)
             handled += 1
             logger.warning(
-                "Watchdog: re-dispatched stuck agent %s (attempt %d/%d)",
-                agent_id, attempts + 1, MAX_CONTINUATION_ATTEMPTS,
+                "Watchdog: re-dispatched stuck agent %s signal=%s (attempt %d/%d)",
+                agent_id, signal, attempts + 1, MAX_CONTINUATION_ATTEMPTS,
             )
         except Exception:
             logger.exception("Watchdog: re-dispatch failed for agent %s", agent_id)

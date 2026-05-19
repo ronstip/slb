@@ -294,50 +294,66 @@ class FirestoreClient:
         logger.debug("Updated agent %s: %s", agent_id, list(fields.keys()))
 
     def get_stuck_agents(self, stale_minutes: int = 10) -> list[dict]:
-        """Find agents whose continuation died mid-flight.
+        """Find agents stuck in any inconsistent state.
 
-        A stuck agent has status='running' AND has already entered the
-        continuation phase (continuation_ready_at is set) AND has not
-        updated its parent doc for stale_minutes. Agents still in the
-        collection phase are excluded — their parent doc legitimately
-        idles for long stretches while collections run.
+        Returns agents matching one of three signals (each entry has a
+        ``_signal`` key naming which one fired):
+
+          - ``orphaned_running``: status=running, continuation entered but
+            doc idle.
+          - ``terminal_inconsistent``: status=success, completed_at missing.
+          - ``missed_handoff``: status=running, all collections terminal but
+            continuation never fired.
+
+        See :mod:`workers.shared.stuck_detector` for the rules.
         """
-        from datetime import timedelta
+        from workers.shared.stuck_detector import classify_stuck
 
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
-        stuck: list[dict] = []
-        try:
-            docs = (
-                self._db.collection("agents")
-                .where("status", "==", "running")
-                .stream()
-            )
-        except Exception:
-            logger.warning("Failed to query stuck agents", exc_info=True)
-            return stuck
+        now = datetime.now(timezone.utc)
+        found: list[dict] = []
 
-        for doc in docs:
-            data = doc.to_dict()
-            # Must have entered continuation phase at least once
-            if not data.get("continuation_ready_at"):
+        for status_val in ("running", "success"):
+            try:
+                docs = (
+                    self._db.collection("agents")
+                    .where("status", "==", status_val)
+                    .stream()
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to query agents with status=%s", status_val, exc_info=True
+                )
                 continue
-            updated_at = data.get("updated_at")
-            if hasattr(updated_at, "timestamp"):
-                ts = updated_at if updated_at.tzinfo else updated_at.replace(tzinfo=timezone.utc)
-            elif isinstance(updated_at, str):
-                try:
-                    ts = datetime.fromisoformat(updated_at)
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=timezone.utc)
-                except ValueError:
-                    continue
-            else:
-                continue
-            if ts >= cutoff:
-                continue
-            data["agent_id"] = doc.id
-            stuck.append(data)
-        return stuck
+
+            for doc in docs:
+                data = doc.to_dict()
+                data["agent_id"] = doc.id
+
+                # Only fetch collection statuses for the missed-handoff path
+                # — it's the only signal that needs them, and the fetch is
+                # pricey (one read per collection).
+                collection_statuses: list[dict] | None = None
+                if (
+                    status_val == "running"
+                    and not data.get("continuation_ready_at")
+                    and data.get("collection_ids")
+                ):
+                    collection_statuses = [
+                        self.get_collection_status(cid) or {}
+                        for cid in data["collection_ids"]
+                    ]
+
+                signal = classify_stuck(
+                    data,
+                    collection_statuses,
+                    now=now,
+                    stale_minutes=stale_minutes,
+                )
+                if signal:
+                    data["_signal"] = signal
+                    found.append(data)
+
+        return found
 
     def list_user_agents(self, user_id: str, org_id: str | None = None) -> list[dict]:
         """List agents visible to the user: own + org-shared."""
