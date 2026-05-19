@@ -1,8 +1,5 @@
 import { useMemo } from 'react';
-import {
-  FileText, Eye, Zap, TrendingUp, BarChart3,
-  MoreVertical, Settings2, Trash2, Copy,
-} from 'lucide-react';
+import { MoreVertical, Settings2, Trash2, Copy } from 'lucide-react';
 import { Card } from '../../../components/ui/card.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import {
@@ -18,45 +15,29 @@ import { generateChartPalette } from '../../../lib/accent-colors.ts';
 import type { NumberSize } from './types-social-dashboard.ts';
 import { DEFAULT_NUMBER_SIZE } from './types-social-dashboard.ts';
 
-const ICON_MAP = {
-  posts: FileText,
-  views: Eye,
-  engagement: Zap,
-  rate: TrendingUp,
-  avg: BarChart3,
-};
-
 const SIZE_STYLES: Record<NumberSize, {
   container: string;
-  iconWrapper: string;
-  icon: string;
   label: string;
   value: string;
   skeleton: string;
 }> = {
   small: {
-    container: 'gap-2 pl-2.5 pr-2 py-1',
-    iconWrapper: 'h-7 w-7',
-    icon: 'h-3.5 w-3.5',
-    label: 'text-[9px]',
-    value: 'text-sm',
-    skeleton: 'h-4 w-12',
+    container: 'pl-3 pr-2 py-1',
+    label: 'text-[9px] mb-0.5',
+    value: 'text-[13px]',
+    skeleton: 'h-3.5 w-12',
   },
   medium: {
-    container: 'gap-2.5 pl-4 pr-3 py-2',
-    iconWrapper: 'h-8 w-8',
-    icon: 'h-4 w-4',
-    label: 'text-[10px] mb-1',
-    value: 'text-xl',
-    skeleton: 'h-6 w-14',
+    container: 'pl-5 pr-4 py-2.5',
+    label: 'text-[10px] mb-1.5',
+    value: 'text-2xl',
+    skeleton: 'h-7 w-16',
   },
   big: {
-    container: 'gap-3 pl-5 pr-4 py-3',
-    iconWrapper: 'h-12 w-12',
-    icon: 'h-6 w-6',
-    label: 'text-[11px] mb-1.5',
-    value: 'text-3xl',
-    skeleton: 'h-8 w-20',
+    container: 'pl-6 pr-5 py-3.5',
+    label: 'text-[11px] mb-2',
+    value: 'text-[2rem]',
+    skeleton: 'h-9 w-24',
   },
 };
 
@@ -80,7 +61,6 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
   const palette = useMemo(() => generateChartPalette(accentColor, isDark), [accentColor, isDark]);
   // Use per-widget accent if explicitly set, otherwise derive from theme palette
   const color = accent ?? palette[kpiIndex % palette.length];
-  const IconComponent = kpi ? (ICON_MAP[kpi.icon] ?? BarChart3) : BarChart3;
   const styles = SIZE_STYLES[size ?? DEFAULT_NUMBER_SIZE];
 
   const displayValue = kpi
@@ -90,12 +70,12 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
     : '—';
 
   return (
-    <Card className={`h-full relative group overflow-hidden ${
+    <Card className={`h-full relative group overflow-hidden py-0 gap-0 transition-shadow hover:shadow-md ${
       isEditMode ? 'drag-handle ring-1 ring-dashed ring-primary/30 cursor-grab active:cursor-grabbing' : ''
     }`}>
       {/* Left accent bar */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-[var(--radius)]"
+        className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full"
         style={{ backgroundColor: color }}
       />
 
@@ -132,28 +112,17 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
         </div>
       )}
 
-      <div className={`flex items-center h-full ${styles.container}`}>
-        <div
-          className={`shrink-0 flex items-center justify-center rounded-lg ${styles.iconWrapper}`}
-          style={{
-            background: `linear-gradient(135deg, ${color}33, ${color}15)`,
-            boxShadow: `inset 0 0 0 1.5px ${color}30`,
-          }}
-        >
-          <IconComponent className={styles.icon} style={{ color }} />
+      <div className={`flex flex-col justify-center h-full ${styles.container}`}>
+        <div className={`font-semibold text-muted-foreground/80 uppercase tracking-[0.08em] leading-none ${styles.label}`}>
+          {kpi?.label ?? '—'}
         </div>
-        <div className="min-w-0 flex-1">
-          <div className={`font-medium text-muted-foreground uppercase tracking-wider leading-none ${styles.label}`}>
-            {kpi?.label ?? '—'}
+        {!kpi ? (
+          <div className={`rounded bg-muted animate-pulse ${styles.skeleton}`} />
+        ) : (
+          <div className={`font-bold tracking-tight text-foreground leading-none tabular-nums ${styles.value}`}>
+            {displayValue}
           </div>
-          {!kpi ? (
-            <div className={`rounded bg-muted animate-pulse ${styles.skeleton}`} />
-          ) : (
-            <div className={`font-bold tracking-tight text-foreground leading-none tabular-nums ${styles.value}`}>
-              {displayValue}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </Card>
   );
