@@ -312,9 +312,26 @@ class ApifyAdapter(DataProviderAdapter):
         time_range = config.get("time_range", {}) or {}
         n_posts = config.get("max_posts_per_keyword") or 0
 
-        hashtag_urls = [_hashtag_url(k) for k in keywords if k]
-        if not hashtag_urls:
+        single_word_kws: list[str] = []
+        for k in keywords:
+            cleaned = (k or "").lstrip("#").strip()
+            if not cleaned:
+                continue
+            if any(c.isspace() for c in cleaned):
+                logger.warning(
+                    "[apify/instagram] dropping multi-word keyword %r — IG hashtag "
+                    "search needs contiguous tokens; split into single words "
+                    "(other platforms keep multi-word search intact)",
+                    k,
+                )
+                continue
+            single_word_kws.append(k)
+
+        if not single_word_kws:
+            logger.info("[apify/instagram] no single-word keywords after filter — skipping")
             return []
+
+        hashtag_urls = [_hashtag_url(k) for k in single_word_kws]
 
         run_input: dict = {
             "startUrls": hashtag_urls,
