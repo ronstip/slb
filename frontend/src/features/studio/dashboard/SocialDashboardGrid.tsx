@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import type { Layout, LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
@@ -62,6 +62,21 @@ export function SocialDashboardGrid({
   const isDragging = useRef(false);
   const { width, containerRef } = useContainerWidth({ initialWidth: 1280 });
 
+  // Viewport-based mobile flag. Independent of the grid's measured container
+  // width so toggling the vertical clamp can't feed back into the breakpoint
+  // calculation and oscillate. The 600 threshold matches BREAKPOINTS.lg.
+  const [isNarrowViewport, setIsNarrowViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 600 : false,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 599px)');
+    const update = () => setIsNarrowViewport(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
   const lgLayout: LayoutItem[] = widgets.map((w) => ({
     i: w.i,
     x: w.x,
@@ -97,17 +112,17 @@ export function SocialDashboardGrid({
 
   const canInteract = isEditMode && currentBreakpoint === 'lg';
 
-  // The vertical (A4 portrait) clamp is for desktop PDF parity. On mobile/
-  // tablet breakpoints it would shrink the dashboard to ~69% of an already
-  // narrow viewport — apply only at `lg`.
+  // The vertical (A4 portrait) clamp is for desktop PDF parity. On a narrow
+  // viewport it would shrink the dashboard to ~69% of an already small screen
+  // — skip it. Gated on viewport width (not the RGL-derived breakpoint) so the
+  // clamp can't toggle its own input width and oscillate.
   const containerStyle: React.CSSProperties =
-    orientation === 'vertical' && currentBreakpoint === 'lg'
+    orientation === 'vertical' && !isNarrowViewport
       ? { maxWidth: `${VERTICAL_WIDTH_RATIO * 100}%`, marginLeft: 'auto', marginRight: 'auto' }
       : {};
 
   // Tighter side padding on mobile so widgets get more of the viewport.
-  const containerPadding: [number, number] =
-    currentBreakpoint === 'lg' ? [12, 8] : [4, 8];
+  const containerPadding: [number, number] = isNarrowViewport ? [4, 8] : [12, 8];
 
   return (
     <div
