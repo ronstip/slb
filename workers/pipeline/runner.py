@@ -1015,6 +1015,15 @@ class PipelineRunner:
             run_log=run_log,
         )
 
+        # 0 posts is only a *collection failure* if nothing actually ran
+        # (silent platform skip, missing adapter) or every platform errored.
+        # A clean run with no matches is a valid empty result — the rest of
+        # the pipeline will short-circuit to status=success via
+        # _set_final_status.
+        attempted = bool(stats)
+        all_errored = bool(errors) and total_posts == 0
+        run_failed = total_posts == 0 and (not attempted or all_errored)
+
         # Task activity: crawl complete summary
         if errors:
             error_platforms = [e.get("platform", "unknown") for e in errors]
@@ -1029,12 +1038,25 @@ class PipelineRunner:
                 f"Data collection complete: {total_posts} posts ({platform_summary}). Processing...",
                 metadata={"phase": "processing", "posts_collected": total_posts},
             )
+        elif attempted:
+            self._log_task(
+                "Data collection complete: 0 posts. Sources returned no matches for the current keywords.",
+                metadata={"phase": "processing", "posts_collected": 0},
+            )
 
-        if total_posts == 0:
+        if run_failed:
+            if not attempted:
+                error_message = (
+                    "No collection ran — no adapter on this worker supports the requested platforms. "
+                    "Check worker env (data-provider tokens) and platform routing."
+                )
+            else:
+                error_platforms = ", ".join(e.get("platform", "?") for e in errors)
+                error_message = f"All requested platforms errored: {error_platforms}"
             self.fs.update_collection_status(
                 self.collection_id,
                 status="failed",
-                error_message="No posts were collected.",
+                error_message=error_message,
                 run_log=run_log,
             )
 

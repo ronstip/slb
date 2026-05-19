@@ -312,26 +312,15 @@ class ApifyAdapter(DataProviderAdapter):
         time_range = config.get("time_range", {}) or {}
         n_posts = config.get("max_posts_per_keyword") or 0
 
-        single_word_kws: list[str] = []
-        for k in keywords:
-            cleaned = (k or "").lstrip("#").strip()
-            if not cleaned:
-                continue
-            if any(c.isspace() for c in cleaned):
-                logger.warning(
-                    "[apify/instagram] dropping multi-word keyword %r — IG hashtag "
-                    "search needs contiguous tokens; split into single words "
-                    "(other platforms keep multi-word search intact)",
-                    k,
-                )
-                continue
-            single_word_kws.append(k)
-
-        if not single_word_kws:
-            logger.info("[apify/instagram] no single-word keywords after filter — skipping")
+        # Multi-word phrases get collapsed by `_hashtag_url` (spaces removed).
+        # IG falls back to prefix-match when the concat isn't a real hashtag —
+        # noisy but not silent — so we send the run anyway and let enrichment
+        # filter. A multi-word phrase that IS a real hashtag (#sociallistening)
+        # works as expected.
+        hashtag_urls = [_hashtag_url(k) for k in keywords if (k or "").strip()]
+        if not hashtag_urls:
+            logger.info("[apify/instagram] no usable keywords — skipping")
             return []
-
-        hashtag_urls = [_hashtag_url(k) for k in single_word_kws]
 
         run_input: dict = {
             "startUrls": hashtag_urls,
