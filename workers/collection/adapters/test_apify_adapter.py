@@ -370,6 +370,45 @@ def test_collect_instagram_warns_and_ignores_channel_urls():
     ]
 
 
+def test_collect_instagram_drops_multi_word_keywords():
+    """IG hashtag scraper matches contiguous hashtag tokens only. Joining a
+    multi-word phrase ("حقيبة هيرميس" -> "حقيبةهيرميس") returns off-topic
+    noise. Multi-word keywords must be filtered out with a warn log; the run
+    should proceed with only the single-word ones."""
+    adapter = _build_ig_adapter()
+
+    raw_calls: list[dict] = []
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=lambda p, ri: raw_calls.append(ri) or []), \
+         patch.object(adapter, "_parse_results", return_value=[]):
+        adapter._collect_instagram({
+            "keywords": ["Hermès", "هيرميس", "حقيبة هيرميس", "  ", "euphoria hbo"],
+            "max_posts_per_keyword": 10,
+        })
+
+    assert len(raw_calls) == 1
+    assert raw_calls[0]["startUrls"] == [
+        "https://www.instagram.com/explore/tags/Hermès/",
+        "https://www.instagram.com/explore/tags/هيرميس/",
+    ]
+    # maxItems caps to filtered count, not original.
+    assert raw_calls[0]["maxItems"] == 10 * 2
+
+
+def test_collect_instagram_skips_when_all_keywords_multi_word():
+    """If every keyword is multi-word, nothing to crawl — skip without
+    spending an actor run."""
+    adapter = _build_ig_adapter()
+    with patch.object(adapter, "_run_actor_collect_raw") as raw, \
+         patch.object(adapter, "_parse_results") as parse:
+        result = adapter._collect_instagram({
+            "keywords": ["climate change", "global warming"],
+            "max_posts_per_keyword": 10,
+        })
+    assert result == []
+    raw.assert_not_called()
+    parse.assert_not_called()
+
+
 def test_collect_instagram_skips_when_no_keywords():
     """Empty keywords short-circuits without spending an actor run, even when
     channel_urls is set (those are now ignored)."""
