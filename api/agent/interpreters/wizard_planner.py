@@ -123,6 +123,7 @@ def _build_prompt(
     description: str,
     user_context: dict,
     prior_answers: dict[str, list[str]] | None = None,
+    research: str | None = None,
 ) -> str:
     shortlist = _render_shortlist(user_context.get("collections", []))
     now = user_context.get("now", "")
@@ -135,6 +136,14 @@ def _build_prompt(
         f"User's description:\n\"\"\"\n{description.strip()}\n\"\"\"\n\n"
     )
 
+    if research:
+        prompt += (
+            "Background research (gathered via web search on the user's topic — "
+            "use this to ground identity, mission, scope_and_relevance, and "
+            "enrichment_context with real-world context):\n"
+            f"\"\"\"\n{research.strip()}\n\"\"\"\n\n"
+        )
+
     if prior_answers:
         answers_text = "\n".join(
             f"- {qid}: {', '.join(vals)}" for qid, vals in prior_answers.items()
@@ -146,6 +155,73 @@ def _build_prompt(
 
     prompt += "Return a single WizardPlannerResponse JSON object."
     return prompt
+
+
+_RESEARCH_PROMPT = """\
+You are a research assistant for a social-listening agent-creation wizard. The \
+user described an agent they want to build. Use Google Search to gather \
+real-world context that will help compose the agent's identity, mission, and \
+relevance criteria.
+
+Output ONLY a tight, factual research brief (200–400 words, plain prose, no \
+headings). Cover, where applicable:
+- What the brand / product / topic is, and any very recent events (launches, \
+  rebrands, controversies, leadership changes).
+- Key competitors or adjacent players worth tracking.
+- The audience and where they typically discuss this online.
+- Common content angles (reviews, hauls, ads, complaints, memes, news, etc.).
+- Anything specifically named in the user's description that benefits from \
+  verification (e.g. a logo change, a campaign, a person).
+
+Be concrete. Cite specifics when search returns them (dates, names, numbers). \
+Do not invent. If the topic is vague or unknown, say so plainly and keep the \
+brief short. Do not return JSON. Do not give advice on the agent's config — \
+just the factual context.
+
+User's description:
+\"\"\"
+{description}
+\"\"\"
+"""
+
+
+def _research_context(
+    client: genai.Client,
+    description: str,
+    model: str,
+    user_id: str,
+) -> str | None:
+    """Call 1: search-grounded free-text research brief.
+
+    Returns the research text, or None if the call fails. Failure is non-fatal
+    — the planner falls back to its un-grounded prompt.
+    """
+    from api.services.cost_meter import log_gemini_response
+
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=_RESEARCH_PROMPT.format(description=description.strip()),
+            config=types.GenerateContentConfig(
+                temperature=1,
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            ),
+        )
+        log_gemini_response(
+            response,
+            feature="wizard_research",
+            model=model,
+            user_id=user_id,
+        )
+        text = (response.text or "").strip()
+        if not text:
+            logger.warning("wizard_planner: research call returned empty text")
+            return None
+        logger.info("wizard_planner: research brief length=%d chars", len(text))
+        return text
+    except Exception as e:
+        logger.warning("wizard_planner: research call failed (%s); proceeding without", e)
+        return None
 
 
 def plan_wizard(
@@ -182,20 +258,32 @@ def plan_wizard(
         http_options=types.HttpOptions(timeout=60_000),
     )
 
-    prompt = _build_prompt(description, user_context, prior_answers)
+    # Two-call pattern: Gemini's response_schema (controlled generation) is
+    # incompatible with the google_search tool. So we first run a search-
+    # grounded research call (free text), then feed its output into a
+    # schema-strict synthesis call (no tools).
+    research = None
+    if settings.enable_search_grounding and not prior_answers:
+        research = _research_context(
+            client=client,
+            description=description,
+            model=settings.meta_agent_model,
+            user_id=user_id,
+        )
 
-    tools = []
-    if settings.enable_search_grounding:
-        tools.append(types.Tool(google_search=types.GoogleSearch()))
+    prompt = _build_prompt(description, user_context, prior_answers, research=research)
 
     config = types.GenerateContentConfig(
         temperature=1,
         response_mime_type="application/json",
         response_schema=WizardPlannerResponse,
-        tools=tools or None,
     )
 
-    logger.info("wizard_planner: generating plan for description of %d chars", len(description))
+    logger.info(
+        "wizard_planner: generating plan for description of %d chars (research=%s)",
+        len(description),
+        "yes" if research else "no",
+    )
     response = client.models.generate_content(
         model=settings.meta_agent_model,
         contents=prompt,

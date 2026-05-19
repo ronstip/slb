@@ -145,16 +145,19 @@ validates it strictly — stick to the schema.
       Example: "Analyze from the consumer's perspective. Prioritize emerging
       complaints and influencer sentiment shifts. Frame findings in terms of
       brand health and purchase intent impact."
-    Use your web search grounding to inform the identity and mission with
-    real-world context about the domain, but write the constitution as timeless
-    principles — do not embed specific dates or current events.
+    When a background research brief is provided below, use it to inform the
+    identity, mission, and scope_and_relevance with real-world context — but
+    write the constitution as timeless principles. Do not embed specific dates
+    or current events into the constitution itself.
 
-## Web search grounding
+## Background research
 
-You have access to Google Search grounding. It triggers automatically when you
-need external context — brand info, platform presence, recent events, competitor
-landscape. Do not attempt to call search explicitly; just write your response
-normally and the system will inject web context when relevant.
+When a "Background research" block appears below, it contains facts gathered
+via web search on the user's topic (brand, competitors, recent events,
+audience). Use it to make the plan concrete — especially the constitution
+identity/mission/scope and the enrichment_context. If the block is absent or
+says the topic is unknown, fall back to general defaults and keep the plan
+generic rather than inventing facts.
 
 ## Clarification questions
 
