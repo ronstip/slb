@@ -15,6 +15,7 @@ interface TaskExplorerTabProps {
 
 export function AgentExplorerTab({ task, activeLayoutId = null, startInEditMode = false }: TaskExplorerTabProps) {
   const clearStartInEditMode = useExplorerLayoutStore((s) => s.clearStartInEditMode);
+  const agentLayouts = useExplorerLayoutStore((s) => s.agentLayouts);
   const editModeTriggered = useRef(false);
 
   // Auto-enter edit mode for newly created layouts
@@ -38,15 +39,20 @@ export function AgentExplorerTab({ task, activeLayoutId = null, startInEditMode 
     ? (activeLayoutId === DASHBOARD_DEFAULT_ID ? `${task.agent_id}__dashboard_default` : task.agent_id)
     : activeLayoutId;
 
+  const namedLayoutTitle = !isBuiltIn
+    ? agentLayouts.find((l) => l.layout_id === activeLayoutId)?.title
+    : undefined;
+  const artifactTitle = namedLayoutTitle ?? task.title;
+
   const artifact = useMemo(() => ({
     id: artifactId,
     type: 'dashboard' as const,
-    title: task.title,
+    title: artifactTitle,
     collectionIds: task.collection_ids ?? [],
     collectionNames: {} as Record<string, string>,
     createdAt: new Date(task.created_at),
     agentId: task.agent_id,
-  }), [artifactId, task.title, task.collection_ids, task.created_at, task.agent_id]);
+  }), [artifactId, artifactTitle, task.collection_ids, task.created_at, task.agent_id]);
 
   if (!task.collection_ids?.length) {
     return (

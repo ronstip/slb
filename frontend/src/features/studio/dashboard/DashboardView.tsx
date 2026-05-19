@@ -5,6 +5,7 @@ import { useStudioStore } from '../../../stores/studio-store.ts';
 import type { DashboardArtifact } from '../../../stores/studio-store.ts';
 import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { updateArtifact } from '../../../api/endpoints/artifacts.ts';
+import { updateExplorerLayout } from '../../../api/endpoints/explorer-layouts.ts';
 import { Input } from '../../../components/ui/input.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
@@ -47,12 +48,20 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   const commitTitle = () => {
     const trimmed = titleDraft.trim();
     if (trimmed && trimmed !== displayTitle) {
+      const previousTitle = displayTitle;
       setDisplayTitle(trimmed);
       updateArtifactTitle(artifact.id, trimmed);
-      updateArtifact(artifact.id, { title: trimmed }).catch(() => {
-        // revert on failure
-        setDisplayTitle(displayTitle);
-        updateArtifactTitle(artifact.id, displayTitle);
+      // Named explorer layouts persist their title via the explorer-layouts
+      // endpoint; the `artifacts` Firestore collection has no doc for them so
+      // PATCH /artifacts/{layout_id} would 404 and the rename would revert.
+      const { agentLayouts, upsertLayout } = useExplorerLayoutStore.getState();
+      const layout = agentLayouts.find((l) => l.layout_id === artifact.id);
+      const persist = layout
+        ? updateExplorerLayout(artifact.id, { title: trimmed }).then((updated) => upsertLayout(updated))
+        : updateArtifact(artifact.id, { title: trimmed });
+      persist.catch(() => {
+        setDisplayTitle(previousTitle);
+        updateArtifactTitle(artifact.id, previousTitle);
       });
     } else {
       setTitleDraft(displayTitle);
