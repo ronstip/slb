@@ -464,6 +464,7 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.topic_metrics(
         -- Identity & definition
         c.cluster_id,
         c.clustered_at,
+        c.algorithm_version,
         c.header,
         c.subheader,
         c.beat_type,
