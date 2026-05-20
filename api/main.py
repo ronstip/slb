@@ -19,6 +19,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from api.errors import unhandled_exception_handler
 from api.middleware.request_id import RequestIDMiddleware
 from api.rate_limiting import limiter
 from api.routers import admin as admin_router
@@ -56,6 +57,21 @@ logger = logging.getLogger(__name__)
 async def lifespan(app_: FastAPI):
     settings = get_settings()
 
+    # Fail-closed startup gates — prod refuses to boot if the signup gate is
+    # set to "allowlist" but `ALLOWED_EMAILS` is empty (would otherwise let
+    # every Google account in silently), or if `SUPER_ADMIN_EMAILS` is empty
+    # (admin endpoints would have nobody to authorise). Dev mode is exempt
+    # so local backends don't require these to be populated.
+    if not settings.is_dev:
+        if settings.signup_gate == "allowlist" and not settings.allowed_emails.strip():
+            raise RuntimeError(
+                "SIGNUP_GATE=allowlist but ALLOWED_EMAILS is empty — refusing to start"
+            )
+        if not settings.super_admin_emails.strip():
+            raise RuntimeError(
+                "SUPER_ADMIN_EMAILS is empty in production — refusing to start"
+            )
+
     async def _bg_cleanup() -> None:
         try:
             await asyncio.to_thread(cleanup_stuck_collections)
@@ -80,6 +96,12 @@ app = FastAPI(title="Scolto", version="0.1.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Global safety net for unhandled exceptions — keep AFTER more specific
+# handlers (e.g. RateLimitExceeded). FastAPI runs `HTTPException` through
+# its own built-in handler, so router-level raises with shaped detail
+# bodies are unaffected.
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 # Request-ID middleware — must run before handlers so request_id is bound for
 # the entire request lifecycle (cost telemetry, logs, downstream propagation).

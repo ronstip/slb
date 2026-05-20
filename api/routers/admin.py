@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from api.auth.admin import is_super_admin_email, require_super_admin
 from api.auth.dependencies import CurrentUser, get_current_user, get_real_user
 from api.deps import get_bq, get_fs
+from api.services.logging_utils import redact_email
 
 logger = logging.getLogger(__name__)
 
@@ -778,7 +779,7 @@ async def impersonate_stop(
             )
 
     _write_audit_entry("stop", real_user, target_uid, target_email, request)
-    logger.info("Impersonation STOP: %s", real_user.email)
+    logger.info("Impersonation STOP: %s", redact_email(real_user.email))
 
 
 # ---------------------------------------------------------------------------
@@ -841,4 +842,4 @@ async def admin_waitlist_delete(
     await asyncio.to_thread(
         fs._db.collection("waitlist").document(entry_id).delete
     )
-    logger.info("admin %s deleted waitlist entry %s", user.email, entry_id)
+    logger.info("admin %s deleted waitlist entry %s", redact_email(user.email), entry_id)

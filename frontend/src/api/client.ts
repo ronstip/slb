@@ -4,9 +4,68 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const IMPERSONATION_STORAGE_KEY = 'slb-impersonation';
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
+let signOutHandler: (() => Promise<void>) | null = null;
+let navigateHandler: ((path: string) => void) | null = null;
 
 export function setTokenGetter(getter: () => Promise<string | null>) {
   tokenGetter = getter;
+}
+
+export function setSignOutHandler(fn: () => Promise<void>) {
+  signOutHandler = fn;
+}
+
+export function setNavigateHandler(fn: (path: string) => void) {
+  navigateHandler = fn;
+}
+
+export class ApiError extends Error {
+  status: number;
+  body: string;
+
+  constructor(status: number, body: string) {
+    super(`API Error ${status}: ${body}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/**
+ * Centralised response handler for every API call (REST + SSE).
+ *
+ * - 401 → sign out + redirect to `/`. Skipped when already at `/` so anonymous
+ *   landing-page calls (e.g. `/me` returning 401) don't trigger an infinite
+ *   redirect loop with `AuthGate`.
+ * - 403 → redirect to `/access-denied`. Stays signed in (non-admin hitting
+ *   `/admin/*` should not be logged out).
+ * - Other non-2xx → throw `ApiError` with body, let callers handle.
+ *
+ * `signOutHandler` and `navigateHandler` are registered at app boot via
+ * `setSignOutHandler` / `setNavigateHandler`. Using module-level handles
+ * mirrors the existing `setTokenGetter` pattern and avoids threading React
+ * Context through transport code.
+ */
+export async function handleResponse(res: Response): Promise<Response> {
+  if (res.ok) return res;
+
+  if (res.status === 401) {
+    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+      await signOutHandler?.();
+      navigateHandler?.('/');
+    }
+    throw new ApiError(401, 'Session expired');
+  }
+
+  if (res.status === 403) {
+    const body = await res.text();
+    if (typeof window !== 'undefined' && window.location.pathname !== '/access-denied') {
+      navigateHandler?.('/access-denied');
+    }
+    throw new ApiError(403, body);
+  }
+
+  throw new ApiError(res.status, await res.text());
 }
 
 /**
@@ -65,22 +124,20 @@ export async function apiGet<T>(path: string, params?: Record<string, string>): 
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   }
-  const res = await fetch(url.toString(), { headers: await getHeaders() });
-  if (!res.ok) {
-    throw new ApiError(res.status, await res.text());
-  }
+  const res = await handleResponse(
+    await fetch(url.toString(), { headers: await getHeaders() }),
+  );
   return res.json();
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: await getHeaders(),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new ApiError(res.status, await res.text());
-  }
+  const res = await handleResponse(
+    await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: await getHeaders(),
+      body: JSON.stringify(body),
+    }),
+  );
   // 204 No Content — no body to parse
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -88,22 +145,20 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
 export async function apiGetBlob(path: string): Promise<Blob> {
   const url = new URL(`${API_BASE}${path}`, window.location.origin);
-  const res = await fetch(url.toString(), { headers: await getHeaders() });
-  if (!res.ok) {
-    throw new ApiError(res.status, await res.text());
-  }
+  const res = await handleResponse(
+    await fetch(url.toString(), { headers: await getHeaders() }),
+  );
   return res.blob();
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'PATCH',
-    headers: await getHeaders(),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new ApiError(res.status, await res.text());
-  }
+  const res = await handleResponse(
+    await fetch(`${API_BASE}${path}`, {
+      method: 'PATCH',
+      headers: await getHeaders(),
+      body: JSON.stringify(body),
+    }),
+  );
   return res.json();
 }
 
@@ -112,25 +167,23 @@ export async function apiUploadFile<T>(path: string, file: File): Promise<T> {
   const headers = await buildAuthHeaders();
   const formData = new FormData();
   formData.append('file', file);
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
-  if (!res.ok) {
-    throw new ApiError(res.status, await res.text());
-  }
+  const res = await handleResponse(
+    await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    }),
+  );
   return res.json();
 }
 
 export async function apiDelete<T = void>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'DELETE',
-    headers: await getHeaders(),
-  });
-  if (!res.ok) {
-    throw new ApiError(res.status, await res.text());
-  }
+  const res = await handleResponse(
+    await fetch(`${API_BASE}${path}`, {
+      method: 'DELETE',
+      headers: await getHeaders(),
+    }),
+  );
   return res.json();
 }
 
@@ -150,16 +203,4 @@ export function mediaUrl(gcsUri?: string, originalUrl?: string): string {
     return `${API_BASE}/media-proxy?url=${encodeURIComponent(originalUrl)}`;
   }
   return '';
-}
-
-export class ApiError extends Error {
-  status: number;
-  body: string;
-
-  constructor(status: number, body: string) {
-    super(`API Error ${status}: ${body}`);
-    this.name = 'ApiError';
-    this.status = status;
-    this.body = body;
-  }
 }

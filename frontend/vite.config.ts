@@ -131,6 +131,8 @@ export default defineConfig({
     },
   },
   build: {
+    // Flip to 'hidden' once Sentry source-map upload lands (§C.1).
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: vendorChunk,

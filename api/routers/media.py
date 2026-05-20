@@ -11,6 +11,8 @@ from fastapi.responses import StreamingResponse
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs, get_gcs
+from api.errors import safe_error_detail
+from api.middleware.request_id import get_request_id
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -49,11 +51,9 @@ async def serve_media(path: str):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        # Opaque GCS errors should surface as 500 rather than crash the
-        # request handler. The exception log has the detail.
+    except Exception:
         logger.exception("Error serving media: %s", path)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(get_request_id()))
 
 
 @router.get("/media-proxy")
@@ -83,11 +83,9 @@ async def proxy_media(url: str = Query(...)):
     except http_requests.RequestException as e:
         logger.warning("Media proxy failed for %.80s...: %s", url, e)
         raise HTTPException(status_code=502, detail="Failed to fetch media")
-    except Exception as e:
-        # Unexpected non-requests failure — log and surface 500 rather than
-        # leak an exception through the streaming response.
+    except Exception:
         logger.exception("Media proxy error: %.80s...", url)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(get_request_id()))
 
 
 @router.post("/upload/ppt-template")
@@ -202,8 +200,6 @@ async def download_presentation(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        # GCS access failure during streaming setup — surface as 500 with
-        # the opaque detail; the log has the real exception.
+    except Exception:
         logger.exception("Error downloading presentation %s", presentation_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(get_request_id()))

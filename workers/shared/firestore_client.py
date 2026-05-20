@@ -1142,15 +1142,43 @@ class FirestoreClient:
     def get_dashboard_share_by_dashboard(
         self, dashboard_id: str, owner_uid: str
     ) -> dict | None:
-        """Find an active (non-revoked) share for a dashboard+owner pair.
+        """Find an active (non-revoked) random-token share for a dashboard+owner pair.
+
+        Custom-slug shares are intentionally excluded — they live in the same
+        collection but are managed via the separate admin endpoint, so the
+        regular share dialog's idempotency lookup must not return them.
 
         NOTE: Requires a Firestore composite index on
-        (dashboard_id, owner_uid, revoked) for the dashboard_shares collection.
+        (dashboard_id, owner_uid, revoked, is_custom_slug) for dashboard_shares.
         """
         docs = (
             self._db.collection("dashboard_shares")
             .where("dashboard_id", "==", dashboard_id)
             .where("owner_uid", "==", owner_uid)
+            .where("revoked", "==", False)
+            .where("is_custom_slug", "==", False)
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            data["token"] = doc.id
+            for key in ("created_at", "revoked_at", "last_accessed_at"):
+                if key in data and hasattr(data[key], "isoformat"):
+                    data[key] = data[key].isoformat()
+            return data
+        return None
+
+    def get_custom_share_by_dashboard(self, dashboard_id: str) -> dict | None:
+        """Find the single active custom-slug share for a dashboard (any owner).
+
+        NOTE: Requires a Firestore composite index on
+        (dashboard_id, is_custom_slug, revoked) for dashboard_shares.
+        """
+        docs = (
+            self._db.collection("dashboard_shares")
+            .where("dashboard_id", "==", dashboard_id)
+            .where("is_custom_slug", "==", True)
             .where("revoked", "==", False)
             .limit(1)
             .stream()

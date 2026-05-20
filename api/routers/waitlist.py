@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_fs
 from api.rate_limiting import limiter
+from api.services.logging_utils import redact_email
 
 logger = logging.getLogger(__name__)
 
@@ -70,5 +71,5 @@ async def join_waitlist(request: Request, body: WaitlistRequest):
         doc_ref.set(payload)
         already = False
 
-    logger.info("waitlist signup: %s (already=%s)", email, already)
+    logger.info("waitlist signup: %s (already=%s)", redact_email(email), already)
     return {"status": "ok", "already": already}

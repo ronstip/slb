@@ -63,17 +63,22 @@ export const PLATFORM_LABELS: Record<string, string> = {
 };
 
 export const SENTIMENT_COLORS: Record<string, string> = {
-  positive: '#5FB88A',
-  negative: '#C75A62',
-  neutral: '#94999F',
-  mixed: '#D4A054',
+  // Editorial palette — warm-toned, brand-tuned. Tracks the Claude Design
+  // sentiment family so widgets, donut charts, and the channel-mix stacked
+  // bar stay consistent with the rest of the cream/ink/terracotta surface.
+  positive: '#2F8E6C',
+  negative: '#C25E3F',
+  neutral: '#8A8275',
+  mixed: '#B6843A',
+  confused: '#B6843A',
+  sarcastic: '#7B5BD9',
   // Stance / reception variants — kept distinct in hue (not just value) so
   // adjacent segments in a stacked bar remain readable. supportive=green,
-  // opposed=red, skeptical=amber matches the positive/negative/mixed mapping
-  // used elsewhere.
-  supportive: '#5FB88A',
-  opposed: '#C75A62',
-  skeptical: '#D4A054',
+  // opposed=terracotta, skeptical=amber matches the positive/negative/mixed
+  // mapping used elsewhere.
+  supportive: '#2F8E6C',
+  opposed: '#C25E3F',
+  skeptical: '#B6843A',
 };
 
 export const PLATFORMS = ['instagram', 'tiktok', 'facebook', 'twitter', 'reddit', 'youtube'] as const;

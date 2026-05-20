@@ -2,15 +2,20 @@
 
 import asyncio
 import logging
+import re
 import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from api.auth.admin import is_super_admin_email
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs
 from api.rate_limiting import limiter
-from api.schemas.requests import CreateDashboardShareRequest
+from api.schemas.requests import (
+    CreateCustomSlugShareRequest,
+    CreateDashboardShareRequest,
+)
 from api.schemas.responses import (
     DashboardShareResponse,
     SharedDashboardDataResponse,
@@ -52,6 +57,46 @@ def resolve_current_dashboard_title(fs_db, dashboard_id: str, fallback: str) -> 
     return fallback
 
 
+# Slugs must look like marketing-friendly URL segments: lowercase alnum + single
+# hyphens, 3–64 chars, no leading/trailing hyphen, no consecutive hyphens.
+_SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])?$")
+
+# Reserved to avoid colliding with current/future route segments under /shared/.
+_RESERVED_SLUGS: frozenset[str] = frozenset({"public", "admin", "api", "new", "create"})
+
+
+def validate_custom_slug(slug: str) -> None:
+    """Reject slugs that don't fit the URL-segment shape or are reserved.
+
+    Raises HTTPException(422) on any failure.
+    """
+    if not isinstance(slug, str) or len(slug) < 3 or len(slug) > 64:
+        raise HTTPException(status_code=422, detail="slug_invalid_length")
+    if "--" in slug:
+        raise HTTPException(status_code=422, detail="slug_invalid_format")
+    if not _SLUG_RE.match(slug):
+        raise HTTPException(status_code=422, detail="slug_invalid_format")
+    if slug in _RESERVED_SLUGS:
+        raise HTTPException(status_code=422, detail="slug_reserved")
+
+
+def _assert_can_access_collections(
+    fs, user: CurrentUser, collection_ids: list[str]
+) -> None:
+    """Common access check shared by both share-creation endpoints."""
+    for cid in collection_ids:
+        status = fs.get_collection_status(cid)
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Collection {cid} not found")
+        if status.get("user_id") != user.uid:
+            if not (
+                user.org_id
+                and status.get("org_id") == user.org_id
+                and status.get("visibility") == "org"
+            ):
+                raise HTTPException(status_code=403, detail=f"Access denied for collection {cid}")
+
+
 def _build_share_response(share: dict) -> DashboardShareResponse:
     settings = get_settings()
     base_url = settings.frontend_url.rstrip("/")
@@ -77,19 +122,7 @@ async def create_share(
     """Create a shareable link for a dashboard. Idempotent — returns existing if active."""
     fs = get_fs()
 
-    # Validate caller can access each collection
-    for cid in request.collection_ids:
-        status = fs.get_collection_status(cid)
-        if not status:
-            raise HTTPException(status_code=404, detail=f"Collection {cid} not found")
-        if status.get("user_id") != user.uid:
-            # Also allow org members with org visibility
-            if not (
-                user.org_id
-                and status.get("org_id") == user.org_id
-                and status.get("visibility") == "org"
-            ):
-                raise HTTPException(status_code=403, detail=f"Access denied for collection {cid}")
+    _assert_can_access_collections(fs, user, request.collection_ids)
 
     # Idempotency: return existing active share if one exists
     existing = fs.get_dashboard_share_by_dashboard(request.dashboard_id, user.uid)
@@ -111,10 +144,78 @@ async def create_share(
         "revoked_at": None,
         "last_accessed_at": None,
         "access_count": 0,
+        "is_custom_slug": False,
     }
     fs.create_dashboard_share(token, data)
 
     return _build_share_response({"token": token, **data, "created_at": now.isoformat()})
+
+
+# --- Custom-slug shares (super-admin only) ---
+
+
+@router.post("/custom", response_model=DashboardShareResponse)
+async def create_custom_slug_share(
+    request: CreateCustomSlugShareRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Create a vanity-URL shareable link. Super-admin only.
+
+    Replaces any previous custom slug for the same dashboard. Coexists with
+    the standard random-token share — the random link keeps working untouched.
+    """
+    if user.impersonated_by is not None or not is_super_admin_email(user.email):
+        raise HTTPException(status_code=403, detail="Super admin access required")
+
+    validate_custom_slug(request.slug)
+
+    fs = get_fs()
+    _assert_can_access_collections(fs, user, request.collection_ids)
+
+    # Reject if the slug is already used as a doc ID (random token OR another
+    # custom slug). Collision with a random token is astronomically unlikely
+    # but the check is free.
+    if fs.get_dashboard_share(request.slug):
+        raise HTTPException(status_code=409, detail="slug_taken")
+
+    # One custom slug per dashboard — revoke the previous one if it exists.
+    previous = fs.get_custom_share_by_dashboard(request.dashboard_id)
+    if previous:
+        fs.revoke_dashboard_share(previous["token"])
+
+    now = datetime.now(timezone.utc)
+    data = {
+        "owner_uid": user.uid,
+        "dashboard_id": request.dashboard_id,
+        "collection_ids": request.collection_ids,
+        "agent_id": request.agent_id,
+        "title": request.title,
+        "created_at": now,
+        "revoked": False,
+        "revoked_at": None,
+        "last_accessed_at": None,
+        "access_count": 0,
+        "is_custom_slug": True,
+    }
+    fs.create_dashboard_share(request.slug, data)
+
+    return _build_share_response({"token": request.slug, **data, "created_at": now.isoformat()})
+
+
+@router.get("/custom/{dashboard_id}")
+async def get_custom_slug_share(
+    dashboard_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Return the active custom-slug share for a dashboard, or null. Super-admin only."""
+    if user.impersonated_by is not None or not is_super_admin_email(user.email):
+        raise HTTPException(status_code=403, detail="Super admin access required")
+
+    fs = get_fs()
+    share = fs.get_custom_share_by_dashboard(dashboard_id)
+    if not share:
+        return None
+    return _build_share_response(share)
 
 
 @router.get("/{dashboard_id}")

@@ -1,7 +1,8 @@
-import { Suspense, lazy, type ComponentType } from 'react';
-import { createBrowserRouter, Navigate, useParams } from 'react-router';
+import { Suspense, lazy, useEffect, type ComponentType } from 'react';
+import { createBrowserRouter, Navigate, Outlet, useNavigate, useParams } from 'react-router';
 import { AuthGate } from './auth/AuthGate.tsx';
 import { useAuth } from './auth/useAuth.ts';
+import { setNavigateHandler } from './api/client.ts';
 
 // Route-level code splitting. Each lazy() call produces a separate JS chunk
 // that is only fetched when the user navigates to that route. Keeps the
@@ -52,6 +53,9 @@ const AgentDetailPage = lazy(() =>
 const CollectionsPage = lazy(() =>
   import('./features/collections/CollectionsPage.tsx').then((m) => ({ default: m.CollectionsPage })),
 );
+const AccessDeniedPage = lazy(() =>
+  import('./features/access-denied/AccessDeniedPage.tsx').then((m) => ({ default: m.AccessDeniedPage })),
+);
 
 function FullScreenSpinner() {
   return (
@@ -85,6 +89,34 @@ const AgentsPageRoute = withSuspense(AgentsPage);
 const AgentHomeRoute = withSuspense(AgentHome);
 const AgentDetailPageRoute = withSuspense(AgentDetailPage);
 const CollectionsPageRoute = withSuspense(CollectionsPage);
+const AccessDeniedPageRoute = withSuspense(AccessDeniedPage);
+
+/**
+ * Registers the react-router `navigate` function with the API client so
+ * transport-layer code (REST + SSE) can route 401/403 responses without
+ * threading React Context. Renders nothing.
+ */
+function NavigationBridge() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    setNavigateHandler((path) => navigate(path));
+  }, [navigate]);
+  return null;
+}
+
+/**
+ * Pathless layout route mounted at the top of the router tree so
+ * `NavigationBridge` lives inside the RouterProvider context but above
+ * every route, and the bridge survives navigations between routes.
+ */
+function RootLayout() {
+  return (
+    <>
+      <NavigationBridge />
+      <Outlet />
+    </>
+  );
+}
 
 // Wrapper for invite handler to extract code from params
 function InviteRoute() {
@@ -122,78 +154,91 @@ function LegacyTaskRedirect() {
 }
 
 // Static router — never recreated. Auth is handled by the AuthGate layout route.
+// All routes live under RootLayout so NavigationBridge mounts once and the
+// API client's navigate handle stays registered across route transitions.
 export const router = createBrowserRouter([
   {
-    // Smart home: landing page or app depending on auth state
-    path: '/',
-    element: <HomeRoute />,
-  },
-  {
-    // Legacy /about → redirect home (landing page now lives at /)
-    path: '/about',
-    element: <Navigate to="/" replace />,
-  },
-  {
-    path: '/shared/briefing/:token',
-    element: <SharedBriefingPageRoute />,
-  },
-  {
-    path: '/shared/artifact/:token',
-    element: <SharedArtifactPageRoute />,
-  },
-  {
-    path: '/shared/:token',
-    element: <SharedDashboardPageRoute />,
-  },
-  {
-    // All app routes go through AuthGate (redirects anonymous users to /)
-    element: <AuthGate />,
+    element: <RootLayout />,
     children: [
       {
-        path: '/invite/:code',
-        element: <InviteRoute />,
+        // Smart home: landing page or app depending on auth state
+        path: '/',
+        element: <HomeRoute />,
       },
       {
-        path: '/settings/:section',
-        element: <SettingsPageRoute />,
+        // Legacy /about → redirect home (landing page now lives at /)
+        path: '/about',
+        element: <Navigate to="/" replace />,
       },
       {
-        path: '/settings',
-        element: <Navigate to="/settings/account" replace />,
+        // Public — must live OUTSIDE AuthGate so a 403 redirect doesn't
+        // bounce back to '/' via AuthGate's anonymous-user redirect.
+        path: '/access-denied',
+        element: <AccessDeniedPageRoute />,
       },
       {
-        path: '/admin/:section?',
-        element: <AdminPageRoute />,
+        path: '/shared/briefing/:token',
+        element: <SharedBriefingPageRoute />,
       },
       {
-        path: '/artifact/:artifactId',
-        element: <StandaloneArtifactPageRoute />,
+        path: '/shared/artifact/:token',
+        element: <SharedArtifactPageRoute />,
       },
       {
-        path: '/agents',
-        element: <AgentsPageRoute />,
+        path: '/shared/:token',
+        element: <SharedDashboardPageRoute />,
       },
       {
-        path: '/agents/:taskId',
-        element: <AgentDetailPageRoute />,
+        // All app routes go through AuthGate (redirects anonymous users to /)
+        element: <AuthGate />,
+        children: [
+          {
+            path: '/invite/:code',
+            element: <InviteRoute />,
+          },
+          {
+            path: '/settings/:section',
+            element: <SettingsPageRoute />,
+          },
+          {
+            path: '/settings',
+            element: <Navigate to="/settings/account" replace />,
+          },
+          {
+            path: '/admin/:section?',
+            element: <AdminPageRoute />,
+          },
+          {
+            path: '/artifact/:artifactId',
+            element: <StandaloneArtifactPageRoute />,
+          },
+          {
+            path: '/agents',
+            element: <AgentsPageRoute />,
+          },
+          {
+            path: '/agents/:taskId',
+            element: <AgentDetailPageRoute />,
+          },
+          // Backward-compat redirects for old /tasks URLs
+          {
+            path: '/tasks',
+            element: <Navigate to="/agents" replace />,
+          },
+          {
+            path: '/tasks/:taskId',
+            element: <LegacyTaskRedirect />,
+          },
+          {
+            path: '/collections',
+            element: <CollectionsPageRoute />,
+          },
+        ],
       },
-      // Backward-compat redirects for old /tasks URLs
       {
-        path: '/tasks',
-        element: <Navigate to="/agents" replace />,
-      },
-      {
-        path: '/tasks/:taskId',
-        element: <LegacyTaskRedirect />,
-      },
-      {
-        path: '/collections',
-        element: <CollectionsPageRoute />,
+        path: '*',
+        element: <Navigate to="/" replace />,
       },
     ],
-  },
-  {
-    path: '*',
-    element: <Navigate to="/" replace />,
   },
 ]);

@@ -18,7 +18,7 @@ import {
 } from 'firebase/auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { auth, googleProvider, microsoftProvider, isFirebaseConfigured, signInAnonymously } from './firebase.ts';
-import { setTokenGetter } from '../api/client.ts';
+import { setTokenGetter, setSignOutHandler } from '../api/client.ts';
 import { apiGet, apiPost } from '../api/client.ts';
 import type { UserProfile } from '../api/types.ts';
 import { useAgentStore } from '../stores/agent-store.ts';
@@ -89,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setTokenGetter(getToken);
+    setSignOutHandler(signOut);
 
     // Skip all auth/profile network calls during the build-time prerender;
     // Puppeteer just needs to capture LandingPage HTML for SEO crawlers.

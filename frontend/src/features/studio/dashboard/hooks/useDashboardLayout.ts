@@ -22,12 +22,20 @@ export interface LayoutResponse {
   filterBarHidden?: boolean | null;
 }
 
-export function useDashboardLayout(artifactId: string) {
+export function useDashboardLayout(
+  artifactId: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery<LayoutResponse>({
     queryKey: ['dashboard-layout', artifactId],
     queryFn: () => apiGet<LayoutResponse>(`/dashboard/layouts/${artifactId}`),
     staleTime: 5 * 60 * 1000,
     retry: false,
+    // Shared/public dashboards inline the layout in the share response and have
+    // no auth token — the authed endpoint 401s, which with the global 401
+    // handler now redirects the public viewer to the landing page. Caller
+    // passes `enabled: false` to skip the call entirely on read-only mounts.
+    enabled: options?.enabled ?? true,
   });
 }
 

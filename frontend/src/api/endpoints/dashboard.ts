@@ -29,6 +29,24 @@ export async function revokeDashboardShare(token: string): Promise<void> {
   await apiDelete(`/dashboard/shares/${token}`);
 }
 
+// Custom-slug shares (super-admin only)
+
+export async function getCustomSlugShare(
+  dashboardId: string,
+): Promise<DashboardShareInfo | null> {
+  return apiGet<DashboardShareInfo | null>(`/dashboard/shares/custom/${dashboardId}`);
+}
+
+export async function createCustomSlugShare(payload: {
+  dashboard_id: string;
+  collection_ids: string[];
+  title: string;
+  agent_id?: string;
+  slug: string;
+}): Promise<DashboardShareInfo> {
+  return apiPost('/dashboard/shares/custom', payload);
+}
+
 export async function getSharedDashboardData(
   token: string,
 ): Promise<SharedDashboardDataResponse> {

@@ -62,33 +62,40 @@ export function hslToHex(h: number, s: number, l: number): string {
 // ── Palette generation ──
 
 /**
- * Generate 5 monochromatic chart colors from a single accent.
- * Varies lightness and slight saturation to create professional tonal shades.
- * Dark mode adjusts for visibility on dark backgrounds.
+ * Editorial categorical chart palette — warm, brand-tuned, distinct in hue
+ * so adjacent series in stacked bars and donut slices stay readable. Used as
+ * the default for `--chart-1` … `--chart-5` and as the seed palette for
+ * widget chart series. When the user picks a non-default accent we lead the
+ * palette with their accent and fill the rest with editorial categoricals so
+ * the brand colour still anchors the first series. Dark mode lifts each hue
+ * slightly so they don't muddy on the ink background.
  */
+const EDITORIAL_PALETTE_LIGHT = [
+  '#D97757', // terracotta (primary)
+  '#2F8E6C', // green
+  '#3A6FB6', // blue
+  '#7B5BD9', // purple
+  '#B6843A', // amber
+] as const;
+
+const EDITORIAL_PALETTE_DARK = [
+  '#E68B6E', // terracotta lifted
+  '#56B58D', // green lifted
+  '#6A95D8', // blue lifted
+  '#A488F0', // purple lifted
+  '#D8A45A', // amber lifted
+] as const;
+
 export function generateChartPalette(accentHex: string, isDark: boolean): string[] {
-  const { h, s } = hexToHsl(accentHex);
-
-  // Monochromatic: same hue, varying lightness/saturation
-  const shades = isDark
-    ? [
-        { l: 0.55, sFactor: 1.0 },   // base (medium)
-        { l: 0.70, sFactor: 0.75 },   // lighter, muted
-        { l: 0.40, sFactor: 1.1 },    // darker, slightly richer
-        { l: 0.62, sFactor: 0.60 },   // soft mid-tone
-        { l: 0.48, sFactor: 0.85 },   // deep muted
-      ]
-    : [
-        { l: 0.35, sFactor: 0.90 },   // deep (primary)
-        { l: 0.50, sFactor: 0.75 },   // medium
-        { l: 0.25, sFactor: 1.0 },    // darkest
-        { l: 0.62, sFactor: 0.55 },   // soft/light
-        { l: 0.42, sFactor: 0.65 },   // mid muted
-      ];
-
-  return shades.map(({ l, sFactor }) =>
-    hslToHex(h, Math.min(s * sFactor, 0.85), l),
-  );
+  const editorial = isDark ? [...EDITORIAL_PALETTE_DARK] : [...EDITORIAL_PALETTE_LIGHT];
+  // If the user customised the accent away from the default terracotta, lead
+  // with their accent so the first series keeps brand alignment, then fill
+  // with the remaining editorial hues for hue separation.
+  const normalised = accentHex.toLowerCase();
+  if (normalised !== DEFAULT_ACCENT.toLowerCase()) {
+    return [accentHex, ...editorial.slice(1)];
+  }
+  return editorial;
 }
 
 /**

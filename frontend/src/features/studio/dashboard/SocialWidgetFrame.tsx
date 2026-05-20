@@ -32,7 +32,7 @@ export function SocialWidgetFrame({
   children,
 }: SocialWidgetFrameProps) {
   return (
-    <Card className={`h-full flex flex-col overflow-hidden relative group py-0 gap-0 rounded-md ${
+    <Card className={`h-full flex flex-col overflow-hidden relative group py-0 gap-0 rounded-lg transition-colors hover:border-foreground/20 ${
       isEditMode ? 'ring-1 ring-dashed ring-primary/30' : ''
     }`}>
       {isEditMode && (
@@ -63,13 +63,17 @@ export function SocialWidgetFrame({
         </div>
       )}
 
-      <CardHeader className={`flex-row items-center gap-2 space-y-0 shrink-0 pt-1.5 pb-1 px-3 !pb-1 border-b border-border/40 ${
+      <CardHeader className={`flex-row items-start gap-3 space-y-0 shrink-0 pt-3 pb-2.5 px-4 !pb-2.5 border-b border-border/40 ${
         isEditMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''
       }`}>
         <div className="flex-1 min-w-0">
-          <CardTitle className="text-sm font-semibold truncate leading-normal">{title}</CardTitle>
+          <CardTitle className="font-serif font-normal text-[15px] tracking-[-0.01em] truncate leading-tight">
+            {title}
+          </CardTitle>
           {description && (
-            <CardDescription className="text-xs mt-0.5 truncate leading-normal">{description}</CardDescription>
+            <CardDescription className="text-[11.5px] mt-1 truncate leading-snug">
+              {description}
+            </CardDescription>
           )}
         </div>
         {headerAction && (
@@ -79,15 +83,18 @@ export function SocialWidgetFrame({
         )}
       </CardHeader>
 
-      <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden px-3 pb-1.5 pt-1">
+      <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden px-4 pb-3 pt-2.5">
         <div className="flex-1 min-h-0 flex flex-col">{children}</div>
         {figureText && (
           <figcaption
-            className="mt-2 text-[11px] text-muted-foreground shrink-0"
+            className="mt-3 pt-2.5 border-t border-dashed border-border/70 text-[11px] leading-snug text-muted-foreground shrink-0"
             dir="auto"
             style={{ overflowWrap: 'anywhere' }}
           >
-            <span className="font-semibold text-foreground">Figure:</span> {figureText}
+            <span className="font-mono uppercase tracking-[0.1em] text-[10px] text-muted-foreground/80 mr-1.5">
+              Figure ·
+            </span>
+            {figureText}
           </figcaption>
         )}
       </CardContent>

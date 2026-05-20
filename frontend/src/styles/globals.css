@@ -379,6 +379,252 @@
   margin: 32px 0;
 }
 
+/* ── Dashboard editorial text widget ─────────────────────────── */
+/* Scoped uplift for the markdown text widget inside dashboards.
+   Stacks on top of .agent-prose so the agent chat surface is untouched.
+   Mirrors the Scolto editorial pattern: serif italic display headings,
+   mono uppercase eyebrows, generous breathing room. */
+.dashboard-text {
+  font-family: var(--font-sans);
+}
+.dashboard-text h1,
+.dashboard-text h2,
+.dashboard-text h3 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.dashboard-text h1 {
+  font-size: 26px;
+  font-weight: 300;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+.dashboard-text h2 {
+  font-size: 19px;
+  line-height: 1.2;
+  margin-top: 18px;
+  margin-bottom: 8px;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.dashboard-text h3 {
+  font-size: 15px;
+  font-style: italic;
+  color: var(--primary);
+  margin-top: 14px;
+  margin-bottom: 6px;
+}
+.dashboard-text p,
+.dashboard-text li {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+  opacity: 1;
+}
+.dashboard-text p {
+  margin-bottom: 12px;
+}
+.dashboard-text strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.dashboard-text em {
+  font-style: italic;
+  color: var(--primary);
+}
+.dashboard-text blockquote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 16px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: color-mix(in srgb, var(--foreground) 80%, transparent);
+  border-inline-start-width: 2px;
+  border-inline-start-color: var(--primary);
+  padding-inline-start: 14px;
+  margin: 14px 0;
+}
+.dashboard-text code:not(pre code) {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: color-mix(in srgb, var(--primary) 95%, var(--foreground));
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.dashboard-text hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
+
+/* Findings-style ordered list — big italic serif numerals beside each row.
+   Uses absolute positioning for the counter so the body flows normally
+   regardless of whether the markdown produces a "tight" list (inline content
+   directly inside <li>) or a "loose" one (each block wrapped in <p>). A
+   grid-based layout would otherwise auto-flow tight-list text fragments
+   into the narrow counter column. */
+.dashboard-text ol {
+  list-style: none;
+  padding-inline-start: 0;
+  margin: 12px 0 0;
+  border-top: 1px solid var(--border);
+  counter-reset: finding;
+}
+.dashboard-text ol > li {
+  counter-increment: finding;
+  position: relative;
+  display: block;
+  padding: 18px 0 18px 78px;
+  border-bottom: 1px solid var(--border);
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+}
+.dashboard-text ol > li::before {
+  content: counter(finding, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 14px;
+  width: 56px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 38px;
+  line-height: 1;
+  color: var(--primary);
+  letter-spacing: -0.03em;
+  text-align: left;
+}
+.dashboard-text ol > li > p {
+  margin: 0 0 6px;
+}
+.dashboard-text ol > li > p:last-child {
+  margin-bottom: 0;
+}
+/* First <strong> in a finding row becomes the editorial lead headline.
+   Works for both list forms: a tight `<li><strong>Lead.</strong> body…</li>`
+   and a loose `<li><p><strong>Lead.</strong> body…</p></li>`. */
+.dashboard-text ol > li > strong:first-child,
+.dashboard-text ol > li > p:first-child > strong:first-child {
+  display: block;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+  margin-bottom: 4px;
+}
+/* Nested lists inside a finding row stay tighter and lose the heavy counter. */
+.dashboard-text ol ol,
+.dashboard-text ol ul {
+  margin: 6px 0 0;
+  border-top: none;
+  counter-reset: none;
+  padding-inline-start: 1.2em;
+  list-style: disc;
+}
+.dashboard-text ol ol > li,
+.dashboard-text ol ul > li {
+  display: list-item;
+  position: static;
+  padding: 2px 0;
+  border-bottom: none;
+  counter-increment: none;
+}
+.dashboard-text ol ol > li::before,
+.dashboard-text ol ul > li::before {
+  content: none;
+}
+
+/* Inline highlight marks — write `<mark class="mark-pos">82% positive</mark>`
+   in markdown (rehype-raw passes the tag through) for the sentiment underline
+   treatment. Bare <mark> falls back to primary orange. */
+.dashboard-text mark {
+  background: transparent;
+  color: var(--primary);
+  font-weight: 600;
+  padding: 0 2px;
+  position: relative;
+  isolation: isolate;
+}
+.dashboard-text mark::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 1px;
+  height: 6px;
+  opacity: 0.3;
+  border-radius: 2px;
+  background: currentColor;
+  z-index: -1;
+}
+.dashboard-text mark.mark-pos { color: var(--color-sentiment-positive); }
+.dashboard-text mark.mark-neg { color: var(--color-sentiment-negative); }
+.dashboard-text mark.mark-warn { color: var(--color-accent-amber); }
+
+/* Section heading flourish: thin gradient rule under each <h2>, mirroring
+   the design's `.section-head .rule`. Painted via background-image rather
+   than grid + ::after so inline `**bold**`/`*em*` markup inside the heading
+   doesn't fragment into separate flex/grid items. Authors prefix titles
+   manually (e.g. `## § 01 Insights`) to get the §-number kicker. */
+.dashboard-text h2 {
+  display: block;
+  margin-top: 18px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  background-image: linear-gradient(90deg, var(--border) 0%, transparent 70%);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 1px;
+}
+
+/* Pull-quote / verdict block — render as a markdown blockquote and it gets the
+   ink-on-cream editorial treatment with an oversized opening curly. */
+.dashboard-text blockquote {
+  position: relative;
+  background: var(--foreground);
+  color: var(--background);
+  border-radius: 14px;
+  padding: 18px 22px 18px 56px;
+  border: none;
+  margin: 16px 0;
+  font-family: var(--font-serif);
+  font-weight: 300;
+  font-style: normal;
+  font-size: 17px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+.dashboard-text blockquote::before {
+  content: "\201C";
+  position: absolute;
+  left: 18px;
+  top: 30px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 56px;
+  line-height: 0;
+  color: var(--primary);
+}
+.dashboard-text blockquote em {
+  color: var(--primary);
+  font-style: italic;
+}
+.dashboard-text blockquote p {
+  margin: 0;
+  color: var(--background);
+}
+
 /* Shimmer animation for progress bars */
 @keyframes shimmer {
   100% { transform: translateX(200%); }

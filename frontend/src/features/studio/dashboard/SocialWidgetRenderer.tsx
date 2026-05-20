@@ -679,7 +679,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
               autoDir
               stripComments={false}
               headingIds
-              className="agent-prose max-w-none break-words text-sm leading-relaxed"
+              className="agent-prose dashboard-text max-w-none break-words text-sm leading-relaxed"
             >
               {content}
             </Markdown>

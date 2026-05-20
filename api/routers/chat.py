@@ -14,6 +14,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from api.agent.runner_factory import get_runner, resolve_model_alias
 from api.auth.dependencies import CurrentUser, get_current_user
+from api.middleware.request_id import get_request_id
 from api.rate_limiting import limiter
 from api.schemas.requests import ChatRequest
 from api.services.artifact_service import (
@@ -196,11 +197,15 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 restore_and_flush(runner, session, trimmed_prefix)
                 _flushed = True
 
-        except Exception as e:
+        except Exception:
             logger.exception("Error in event stream")
             yield {
                 "event": "error",
-                "data": json.dumps({"event_type": "error", "content": str(e)}),
+                "data": json.dumps({
+                    "event_type": "error",
+                    "content": "stream_error",
+                    "request_id": get_request_id() or "unknown",
+                }),
             }
         finally:
             if not _flushed:

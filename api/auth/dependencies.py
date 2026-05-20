@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from firebase_admin import auth as firebase_auth
 
 from api.deps import get_fs
+from api.services.logging_utils import redact_email
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -71,11 +72,21 @@ async def _resolve_real_user(request: Request) -> CurrentUser:
     firebase_info = decoded.get("firebase", {})
     is_anonymous = firebase_info.get("sign_in_provider") == "anonymous"
 
-    # Email allowlist — skip for anonymous users; if set, reject anyone not on the list
-    if settings.allowed_emails and not is_anonymous:
+    # Signup-gate check — anonymous Firebase users (landing-page chat preview)
+    # always bypass; for everyone else, the behaviour depends on `signup_gate`:
+    #   - "open"         → no check (dev default).
+    #   - "allowlist"    → reject emails not in ALLOWED_EMAILS.
+    #   - "entitlements" → reserved for §E per-user Firestore tiers; treated
+    #                      as "open" here until that lands.
+    if settings.signup_gate == "allowlist" and not is_anonymous:
+        if not settings.allowed_emails:
+            # Defense in depth — `lifespan()` should have hardfailed at boot.
+            raise HTTPException(
+                status_code=503, detail={"error": "service_misconfigured"}
+            )
         allowed = {e.strip().lower() for e in settings.allowed_emails.split(",") if e.strip()}
         if email.lower() not in allowed:
-            logger.warning("Email not in allowlist: %s", email)
+            logger.warning("Email not in allowlist: %s", redact_email(email))
             raise HTTPException(status_code=403, detail="Access restricted to approved users")
 
     # Check in-memory cache first
@@ -135,7 +146,7 @@ async def get_current_user(request: Request) -> CurrentUser:
     if not is_super_admin_email(real_user.email):
         logger.warning(
             "Non-admin %s attempted to impersonate %s — ignoring header",
-            real_user.email, target_uid,
+            redact_email(real_user.email), target_uid,
         )
         raise HTTPException(status_code=403, detail="Impersonation requires super admin")
 
@@ -209,5 +220,5 @@ def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = Fals
     }
 
     fs.create_user(uid, user_data)
-    logger.info("Provisioned new user %s (%s)", uid, email)
+    logger.info("Provisioned new user %s (%s)", uid, redact_email(email))
     return user_data

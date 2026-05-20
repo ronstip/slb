@@ -176,6 +176,18 @@ class Settings(BaseSettings):
     default_vendor_tiktok: str = "apify"
 
     environment: str = "development"
+
+    # Signup gate mode (controls who can sign in once a Firebase token is verified):
+    #   "open"         — no gate beyond Firebase auth itself (dev default).
+    #   "allowlist"    — only emails in `allowed_emails` may sign in.
+    #                    `lifespan()` hard-fails at startup in production if
+    #                    this mode is set with an empty `allowed_emails`.
+    #   "entitlements" — placeholder for §E per-user Firestore tiers.
+    #
+    # Designed so flipping from "allowlist" → "entitlements" later is an env
+    # change, not a code change.
+    signup_gate: str = "open"
+
     enable_search_grounding: bool = True
     agent_engine_id: str = ""  # Vertex AI Agent Engine ID for Memory Bank (prod only)
     google_genai_use_vertexai: bool = True

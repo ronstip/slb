@@ -112,8 +112,13 @@ export function SocialDashboardView({
   const [configWidget, setConfigWidget] = useState<SocialDashboardWidget | null>(null);
   const [configMode, setConfigMode] = useState<'add' | 'edit'>('edit');
 
-  // Load persisted layout
-  const { data: layoutData, isLoading: layoutLoading } = useDashboardLayout(artifactId);
+  // Load persisted layout. Skipped in readOnly (shared) mode — the layout is
+  // already inlined in the public share response and the authed endpoint 401s
+  // for unauthenticated viewers, which now globally redirects to landing.
+  const { data: layoutData, isLoading: layoutLoading } = useDashboardLayout(
+    artifactId,
+    { enabled: !readOnly },
+  );
   const { mutate: saveLayout, mutateAsync: saveLayoutAsync, isPending: isSaving } = useSaveDashboardLayout(artifactId);
 
   // Initialise widgets from persisted layout or defaults

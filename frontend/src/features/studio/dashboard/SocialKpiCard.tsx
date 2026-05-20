@@ -29,7 +29,7 @@ const SIZE_STYLES: Record<NumberSize, {
   small: {
     container: 'pl-3 pr-2 py-1',
     label: 'text-[9px] mb-0.5',
-    value: 'text-[13px]',
+    value: 'text-[15px]',
     skeleton: 'h-3.5 w-12',
     icon: 'h-2.5 w-2.5',
     iconWrap: 'h-4 w-4',
@@ -37,23 +37,23 @@ const SIZE_STYLES: Record<NumberSize, {
     showSparkline: false,
   },
   medium: {
-    container: 'pl-5 pr-4 pt-2.5 pb-1',
-    label: 'text-[10px] mb-1',
-    value: 'text-2xl',
+    container: 'pl-5 pr-4 pt-3 pb-1.5',
+    label: 'text-[10px] mb-1.5',
+    value: 'text-[2.25rem]',
     skeleton: 'h-7 w-16',
     icon: 'h-3 w-3',
     iconWrap: 'h-6 w-6',
-    sparkH: 22,
+    sparkH: 26,
     showSparkline: true,
   },
   big: {
-    container: 'pl-6 pr-5 pt-3.5 pb-1.5',
-    label: 'text-[11px] mb-1.5',
-    value: 'text-[2rem]',
+    container: 'pl-6 pr-5 pt-4 pb-2',
+    label: 'text-[11px] mb-2',
+    value: 'text-[3rem]',
     skeleton: 'h-9 w-24',
     icon: 'h-3.5 w-3.5',
     iconWrap: 'h-7 w-7',
-    sparkH: 30,
+    sparkH: 34,
     showSparkline: true,
   },
 };
@@ -142,20 +142,17 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
 
   return (
     <Card
-      className={`h-full relative group overflow-hidden py-0 gap-0 rounded-md transition-all hover:shadow-md hover:-translate-y-px ${
+      className={`h-full relative group overflow-hidden py-0 gap-0 rounded-lg transition-all hover:border-foreground/20 hover:-translate-y-px ${
         isEditMode ? 'drag-handle ring-1 ring-dashed ring-primary/30 cursor-grab active:cursor-grabbing' : ''
       }`}
       style={{
-        backgroundImage: `linear-gradient(135deg, ${color}14 0%, transparent 55%)`,
+        backgroundImage: `linear-gradient(135deg, ${color}0F 0%, transparent 55%)`,
       }}
     >
-      {/* Left accent bar with subtle glow */}
+      {/* Soft left accent rule — quieter than a heavy bar, still anchors the card */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-1"
-        style={{
-          backgroundColor: color,
-          boxShadow: `0 0 12px ${color}66`,
-        }}
+        className="absolute left-0 top-3 bottom-3 w-px"
+        style={{ backgroundColor: color, opacity: 0.55 }}
       />
 
       {/* Edit controls */}
@@ -194,11 +191,11 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
       {/* Top-right icon chip (hidden when edit menu visible) */}
       {kpi && size !== 'small' && (
         <div
-          className={`absolute top-2 right-2 ${styles.iconWrap} flex items-center justify-center rounded-sm ${
-            isEditMode ? 'opacity-0 group-hover:opacity-0' : 'opacity-80'
+          className={`absolute top-2.5 right-2.5 ${styles.iconWrap} flex items-center justify-center rounded-[6px] ${
+            isEditMode ? 'opacity-0 group-hover:opacity-0' : 'opacity-90'
           }`}
           style={{
-            backgroundColor: `${color}1F`,
+            backgroundColor: `${color}22`,
             color,
           }}
         >
@@ -207,21 +204,20 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
       )}
 
       <div className={`flex flex-col justify-center h-full ${styles.container}`}>
-        <div className={`font-semibold text-muted-foreground/70 uppercase tracking-[0.1em] leading-none ${styles.label}`}>
+        <div className={`font-mono font-medium text-muted-foreground uppercase tracking-[0.12em] leading-none ${styles.label}`}>
           {kpi?.label ?? '—'}
         </div>
         {!kpi ? (
           <div className={`rounded bg-muted animate-pulse ${styles.skeleton}`} />
         ) : (
           <div
-            className={`font-bold tracking-tight leading-none tabular-nums ${styles.value}`}
-            style={{ color: isDark ? undefined : undefined }}
+            className={`font-serif font-light tracking-[-0.035em] leading-none tabular-nums text-foreground ${styles.value}`}
           >
             {displayValue}
           </div>
         )}
         {hasSparkline && kpi && (
-          <div className="mt-1.5 -mx-1 opacity-90">
+          <div className="mt-auto pt-2 -mx-1 opacity-95">
             <Sparkline data={kpi.sparklineData} color={color} height={styles.sparkH} />
           </div>
         )}

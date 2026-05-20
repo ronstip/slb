@@ -92,6 +92,14 @@ class CreateDashboardShareRequest(BaseModel):
     agent_id: str | None = None  # Stored on the share so public renders use the same agent scope
 
 
+class CreateCustomSlugShareRequest(BaseModel):
+    dashboard_id: str
+    collection_ids: list[str]
+    title: str
+    agent_id: str | None = None
+    slug: str  # Validated server-side; becomes the Firestore doc ID and URL path segment
+
+
 class CreateBriefingShareRequest(BaseModel):
     agent_id: str
     title: str

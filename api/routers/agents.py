@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
+from api.middleware.request_id import get_request_id
 from api.rate_limiting import limiter
 from api.schemas.requests import CreateFromWizardRequest, RunSourcesRequest
 from config.settings import get_settings
@@ -257,10 +258,16 @@ async def wizard_plan_endpoint(
         )
     except ValidationError as e:
         logger.warning("wizard_plan: schema validation failed: %s", e)
-        raise HTTPException(status_code=502, detail={"error": "planner_schema_error", "detail": str(e)})
-    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail={"error": "planner_schema_error", "request_id": get_request_id() or "unknown"},
+        )
+    except Exception:
         logger.exception("wizard_plan: planner call failed")
-        raise HTTPException(status_code=502, detail={"error": "planner_failed", "detail": str(e)})
+        raise HTTPException(
+            status_code=502,
+            detail={"error": "planner_failed", "request_id": get_request_id() or "unknown"},
+        )
 
     return result.model_dump()
 

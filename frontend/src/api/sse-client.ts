@@ -1,5 +1,5 @@
 import type { ChatRequest, SSEEvent } from './types.ts';
-import { buildAuthHeaders } from './client.ts';
+import { buildAuthHeaders, handleResponse } from './client.ts';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -50,16 +50,14 @@ export async function* streamChat(
       Accept: 'text/event-stream',
     });
 
-    const response = await fetch(`${API_BASE}/chat`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Chat request failed: ${response.status}`);
-    }
+    const response = await handleResponse(
+      await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }),
+    );
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error('No response body');
