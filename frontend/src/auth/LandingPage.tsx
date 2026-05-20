@@ -322,13 +322,6 @@ const LP_PlatformBadge = ({ id, size = 32 }: { id: PlatformId; size?: number }) 
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
 
-const LP_TEMPLATES = [
-  { label: 'Track my brand',          hint: 'weekly read across every platform' },
-  { label: 'Watch a campaign',        hint: 'before / during / after window' },
-  { label: 'Compare two competitors', hint: 'side-by-side qualitative read' },
-  { label: 'Spot a rising trend',     hint: 'early-signal listening' },
-];
-
 const ROTATING_DELIVERABLES = [
   'Writes the brief.',
   'Builds the dashboard.',
@@ -338,51 +331,64 @@ const ROTATING_DELIVERABLES = [
   'Pings the team.',
 ];
 
+// Typewriter rotator: types a word, holds it, deletes back to empty, advances.
+// Renders as plain inline text (no absolute positioning + no `overflow: hidden`)
+// so the baseline matches surrounding inline text on every line wrap — that's
+// what previously raised the rotator above "Reads the comments." on mobile.
+const TYPE_MS = 65;
+const DELETE_MS = 35;
+const HOLD_MS = 2000;
+
 const RotatingWord = ({
   words,
   color,
-  interval = 2200,
 }: {
   words: string[];
   color: string;
-  interval?: number;
 }) => {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setI(v => (v + 1) % words.length), interval);
-    return () => clearInterval(id);
-  }, [words.length, interval]);
+  const [wordIdx, setWordIdx] = useState(0);
+  const [text, setText] = useState('');
+  const [phase, setPhase] = useState<'typing' | 'holding' | 'deleting'>('typing');
 
-  const longest = words.reduce((a, b) => (b.length > a.length ? b : a), '');
+  useEffect(() => {
+    const current = words[wordIdx] ?? '';
+    let id: number;
+    if (phase === 'typing') {
+      if (text.length < current.length) {
+        id = window.setTimeout(() => setText(current.slice(0, text.length + 1)), TYPE_MS);
+      } else {
+        id = window.setTimeout(() => setPhase('holding'), 0);
+      }
+    } else if (phase === 'holding') {
+      id = window.setTimeout(() => setPhase('deleting'), HOLD_MS);
+    } else {
+      if (text.length > 0) {
+        id = window.setTimeout(() => setText(text.slice(0, -1)), DELETE_MS);
+      } else {
+        id = window.setTimeout(() => {
+          setWordIdx((idx) => (idx + 1) % words.length);
+          setPhase('typing');
+        }, 0);
+      }
+    }
+    return () => clearTimeout(id);
+  }, [text, phase, wordIdx, words]);
+
   return (
-    <span
-      style={{
-        position: 'relative',
-        display: 'inline-block',
-        verticalAlign: 'baseline',
-        overflow: 'hidden',
-        minWidth: '0.001px',
-      }}
-    >
-      <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>{longest}</span>
-      {words.map((w, idx) => (
-        <span
-          key={w}
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            whiteSpace: 'nowrap',
-            fontWeight: 500,
-            color,
-            opacity: idx === i ? 1 : 0,
-            transform: idx === i ? 'translateY(0)' : 'translateY(0.4em)',
-            transition: 'opacity 480ms ease, transform 520ms cubic-bezier(.2,.7,.2,1)',
-          }}
-        >
-          {w}
-        </span>
-      ))}
+    <span style={{ color, fontWeight: 500 }}>
+      {text}
+      <span
+        aria-hidden="true"
+        style={{
+          display: 'inline-block',
+          width: '0.08em',
+          height: '0.95em',
+          marginLeft: '0.05em',
+          background: color,
+          verticalAlign: '-0.12em',
+          animation: 'lp-caret-blink 1s steps(1) infinite',
+        }}
+      />
     </span>
   );
 };
@@ -773,14 +779,6 @@ const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) =
 
   return (
     <section className="lp-section lp-hero-section" style={{ padding: '56px 64px 0', position: 'relative', overflow: 'hidden' }}>
-      <div className="lp-hero-watermark" aria-hidden="true" style={{
-        position: 'absolute', inset: 0,
-        pointerEvents: 'none', zIndex: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <LP_BeachUmbrellaWatermark size={240} />
-      </div>
-
       <div className="lp-hero-stack" style={{
         position: 'relative', zIndex: 2,
         maxWidth: 880, margin: '0 auto',
@@ -813,15 +811,37 @@ const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) =
           fontVariationSettings: "'opsz' 24",
         }}>
           Scolto watches the <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>video.</span>{' '}
-          Reads the <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>comments.</span>{' '}
+          Reads the <span style={{ color: LP_BRAND.orangeDeep, fontWeight: 500 }}>comments.</span>
+          <br />
           <RotatingWord words={ROTATING_DELIVERABLES} color={LP_BRAND.orangeDeep} />
         </p>
 
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+        <div
+          className="lp-hero-form-wrap"
+          style={{
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'center',
+            position: 'relative',
+            marginTop: 120,
+          }}
+        >
+          <div
+            className="lp-hero-watermark"
+            aria-hidden="true"
+            style={{
+              position: 'absolute', inset: 0,
+              pointerEvents: 'none', zIndex: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transform: 'translateY(-151px)',
+            }}
+          >
+            <LP_BeachUmbrellaWatermark size={240} />
+          </div>
           <form
             onSubmit={(e) => { e.preventDefault(); openWaitlist(brief.trim() || undefined); }}
             className="lp-hero-form"
-            style={{ marginTop: 32, maxWidth: 540, width: '100%' }}
+            style={{ maxWidth: 540, width: '100%', position: 'relative', zIndex: 1 }}
           >
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 8,
@@ -875,30 +895,10 @@ const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) =
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14, justifyContent: 'center' }}>
-              {LP_TEMPLATES.map(t => (
-                <button
-                  key={t.label}
-                  type="button"
-                  onClick={() => setBrief(t.label + ' - ' + t.hint)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '8px 13px', borderRadius: 99,
-                    border: `1px solid ${LP_BRAND.rule}`, background: '#FFFFFF', cursor: 'pointer',
-                    fontFamily: "'Inter Tight',sans-serif", fontSize: 12.5, color: LP_BRAND.ink,
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = LP_BRAND.orange; e.currentTarget.style.color = LP_BRAND.orangeDeep; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = LP_BRAND.rule; e.currentTarget.style.color = LP_BRAND.ink; }}
-                >
-                  <span style={{ color: LP_BRAND.orange, fontFamily: "'JetBrains Mono', ui-monospace", fontSize: 11 }}>+</span>
-                  {t.label}
-                </button>
-              ))}
-            </div>
           </form>
         </div>
 
-        <div style={{ marginTop: 30, display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ marginTop: 68, display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ display: 'flex' }}>
             {[PEOPLE.creator1, PEOPLE.creator3, PEOPLE.creator4, PEOPLE.creator5].map((src, i) => (
               <img key={i} src={src} alt="" referrerPolicy="no-referrer"
@@ -3057,6 +3057,9 @@ export function LandingPage() {
           from { opacity: 0; }
           to   { opacity: 1; }
         }
+        @keyframes lp-caret-blink {
+          50% { opacity: 0; }
+        }
 
         /* ── Mobile responsive overrides ─────────────────────────────────────
            These only apply below 768px. Desktop rendering is unchanged. */
@@ -3130,6 +3133,8 @@ export function LandingPage() {
             letter-spacing: -1.2px !important;
           }
           .lp-root .lp-hero-form { max-width: 100% !important; }
+          .lp-root .lp-hero-form-wrap { margin-top: 56px !important; }
+          .lp-root .lp-hero-watermark { transform: translateY(-75px) !important; }
           /* Hero illustration on mobile: drop the rotations, hide the
              decorative paper-behind + side popups, fit the DailyRead card
              to the viewport instead of scale-transforming the whole rig
