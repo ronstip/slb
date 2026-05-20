@@ -32,7 +32,7 @@ export function SocialWidgetFrame({
   children,
 }: SocialWidgetFrameProps) {
   return (
-    <Card className={`h-full flex flex-col overflow-hidden relative group py-0 gap-0 ${
+    <Card className={`h-full flex flex-col overflow-hidden relative group py-0 gap-0 rounded-md ${
       isEditMode ? 'ring-1 ring-dashed ring-primary/30' : ''
     }`}>
       {isEditMode && (
