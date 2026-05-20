@@ -30,6 +30,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard/shares", tags=["dashboard-shares"])
 
 
+def resolve_current_dashboard_title(fs_db, dashboard_id: str, fallback: str) -> str:
+    """Resolve the live title for a shared dashboard.
+
+    The share doc stores the title at create time and never re-syncs on rename,
+    so we look it up from the authoritative source: the explorer layout (named
+    dashboards) or the artifact doc (auto-generated dashboards). Falls back to
+    the frozen `share["title"]` when neither lookup yields a non-empty title.
+    """
+    for collection in ("explorer_layouts", "artifacts"):
+        try:
+            doc = fs_db.collection(collection).document(dashboard_id).get()
+        except Exception:  # noqa: BLE001 — best-effort lookup
+            continue
+        if not doc.exists:
+            continue
+        data = doc.to_dict() or {}
+        title = (data.get("title") or "").strip()
+        if title:
+            return title
+    return fallback
+
+
 def _build_share_response(share: dict) -> DashboardShareResponse:
     settings = get_settings()
     base_url = settings.frontend_url.rstrip("/")
@@ -142,6 +164,16 @@ async def get_shared_dashboard(
     if not share or share.get("revoked"):
         raise HTTPException(status_code=404, detail="Dashboard not found or link has been revoked")
 
+    # Resolve live title — the share doc freezes the title at create time;
+    # owner renames go to explorer_layouts / artifacts and never touch the
+    # share doc. Look up the current title so renames propagate to the link.
+    current_title = await asyncio.to_thread(
+        resolve_current_dashboard_title,
+        fs._db,
+        share["dashboard_id"],
+        share["title"],
+    )
+
     # Load owner's saved widget layout for this dashboard. The share token has
     # already authorized public access, so we bypass the ownership check that
     # the authenticated /dashboard/layouts route enforces.
@@ -202,7 +234,7 @@ async def get_shared_dashboard(
             collection_names=collection_names,
             truncated=False,
             meta=SharedDashboardMetaResponse(
-                title=share["title"],
+                title=current_title,
                 created_at=share["created_at"],
             ),
             layout=layout,
