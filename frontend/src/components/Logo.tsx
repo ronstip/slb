@@ -6,6 +6,9 @@
 
 export const BRAND_NAME = 'Scolto';
 const BRAND_DOT_COLOR = '#D97757'; // matches LP_BRAND.orange on the landing page
+// Brand ink — dark navy used for the wordmark + headings on light surfaces.
+// Mirrors LP_BRAND.ink on the landing page; single source of truth for both.
+export const BRAND_INK = '#0F1F4D';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';

@@ -3,7 +3,7 @@ import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useHead } from '@unhead/react';
 import { AlertTriangle } from 'lucide-react';
-import { Logo, BRAND_NAME } from '../../../components/Logo.tsx';
+import { Logo, BRAND_NAME, BRAND_INK } from '../../../components/Logo.tsx';
 import { SharePageHeaderActions } from '../../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
@@ -77,25 +77,33 @@ export function SharedDashboardPage() {
     >
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5">
-          <a href="/" aria-label={BRAND_NAME} className="shrink-0">
+        <div className="mx-auto grid max-w-6xl grid-cols-3 items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5">
+          <a
+            href="/"
+            aria-label={BRAND_NAME}
+            className="shrink-0 justify-self-start"
+            style={{ color: BRAND_INK }}
+          >
             <Logo size="sm" />
           </a>
-          {response?.meta.title && (
-            <>
-              <div className="h-4 w-px bg-border shrink-0 hidden sm:block" />
-              <h1 className="text-sm font-semibold text-foreground truncate flex-1">
-                {response.meta.title}
-              </h1>
-            </>
+          {response?.meta.title ? (
+            <h1
+              className="text-sm font-semibold truncate text-center min-w-0 justify-self-center"
+              style={{ color: BRAND_INK }}
+            >
+              {response.meta.title}
+            </h1>
+          ) : (
+            <div />
           )}
-          {!response?.meta.title && <div className="flex-1" />}
-          <SharePageHeaderActions
-            downloading={downloading}
-            copied={copied}
-            onDownload={handleDownload}
-            onShare={handleShare}
-          />
+          <div className="justify-self-end">
+            <SharePageHeaderActions
+              downloading={downloading}
+              copied={copied}
+              onDownload={handleDownload}
+              onShare={handleShare}
+            />
+          </div>
         </div>
       </header>
 

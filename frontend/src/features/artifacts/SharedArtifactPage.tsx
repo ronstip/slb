@@ -3,7 +3,7 @@ import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useHead } from '@unhead/react';
 import { AlertTriangle, Download } from 'lucide-react';
-import { Logo, BRAND_NAME } from '../../components/Logo.tsx';
+import { Logo, BRAND_NAME, BRAND_INK } from '../../components/Logo.tsx';
 import { SharePageHeaderActions } from '../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
@@ -88,7 +88,7 @@ export function SharedArtifactPage() {
     >
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">
         <div className="mx-auto flex max-w-6xl items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5">
-          <a href="/" aria-label={BRAND_NAME} className="shrink-0">
+          <a href="/" aria-label={BRAND_NAME} className="shrink-0" style={{ color: BRAND_INK }}>
             <Logo size="sm" />
           </a>
           <div className="flex-1" />
