@@ -66,7 +66,13 @@ export function SharedArtifactPage() {
   const style = data ? ARTIFACT_STYLES[data.meta.type] ?? ARTIFACT_STYLES.chart : null;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div
+      className="min-h-screen bg-background flex flex-col"
+      style={{
+        backgroundImage:
+          'radial-gradient(1200px 1200px at 50% 0%, color-mix(in oklab, var(--primary) 12%, transparent) 0%, transparent 60%)',
+      }}
+    >
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5 sm:px-6">
           <Logo size="sm" />
