@@ -173,6 +173,10 @@ async def get_shared_dashboard(
         share["dashboard_id"],
         share["title"],
     )
+    meta = SharedDashboardMetaResponse(
+        title=current_title,
+        created_at=share["created_at"],
+    )
 
     # Load owner's saved widget layout for this dashboard. The share token has
     # already authorized public access, so we bypass the ownership check that
@@ -233,10 +237,7 @@ async def get_shared_dashboard(
             posts=[],
             collection_names=collection_names,
             truncated=False,
-            meta=SharedDashboardMetaResponse(
-                title=current_title,
-                created_at=share["created_at"],
-            ),
+            meta=meta,
             layout=layout,
             filterBarFilters=filter_bar_filters,
             orientation=orientation,
@@ -260,10 +261,7 @@ async def get_shared_dashboard(
         posts=posts,
         collection_names=collection_names,
         truncated=truncated,
-        meta=SharedDashboardMetaResponse(
-            title=share["title"],
-            created_at=share["created_at"],
-        ),
+        meta=meta,
         layout=layout,
         filterBarFilters=filter_bar_filters,
         orientation=orientation,

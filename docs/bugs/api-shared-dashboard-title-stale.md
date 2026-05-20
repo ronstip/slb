@@ -39,3 +39,15 @@ robustness.
 ## Fix commit
 
 Branch `dev` (HEAD at fix time eb824da → next commit).
+
+## Follow-up: incomplete first fix (2026-05-20)
+
+Commit 62700f3 computed `current_title` but only wired it into the orphan
+return path (no agent_id). The main return path still returned
+`share["title"]`, so renames were still stale on any share with an
+`agent_id` — which is the typical case.
+
+Refixed by hoisting one `meta = SharedDashboardMetaResponse(title=current_title, ...)`
+above both branches so both returns reference the same object. The dual-site
+construction that allowed the regression is gone — structurally impossible to
+diverge again.
