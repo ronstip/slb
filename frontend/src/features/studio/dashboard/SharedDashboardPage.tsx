@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useHead } from '@unhead/react';
 import { AlertTriangle } from 'lucide-react';
 import { Logo, BRAND_NAME } from '../../../components/Logo.tsx';
+import { SharePageHeaderActions } from '../../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
+import { useSharePageActions } from '../../../lib/share-actions.ts';
 import { getSharedDashboardData } from '../../../api/endpoints/dashboard.ts';
 import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
@@ -19,6 +21,7 @@ export function SharedDashboardPage() {
 
   const { token } = useParams<{ token: string }>();
   const [filterBarFilters, setFilterBarFilters] = useState<FilterBarFilterId[]>(DEFAULT_FILTER_BAR_FILTERS);
+  const gridRef = useRef<HTMLElement | null>(null);
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['shared-dashboard', token],
@@ -58,6 +61,12 @@ export function SharedDashboardPage() {
     }
   }, [response?.filterBarFilters]);
 
+  const { downloading, copied, handleDownload, handleShare } = useSharePageActions({
+    title: response?.meta.title || 'Dashboard',
+    getTarget: () => gridRef.current,
+    orientation: response?.orientation ?? 'horizontal',
+  });
+
   return (
     <div
       className="min-h-screen bg-background"
@@ -68,24 +77,25 @@ export function SharedDashboardPage() {
     >
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-2.5">
-          <Logo size="sm" />
+        <div className="mx-auto flex max-w-6xl items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5">
+          <a href="/" aria-label={BRAND_NAME} className="shrink-0">
+            <Logo size="sm" />
+          </a>
           {response?.meta.title && (
             <>
-              <div className="h-4 w-px bg-border shrink-0" />
+              <div className="h-4 w-px bg-border shrink-0 hidden sm:block" />
               <h1 className="text-sm font-semibold text-foreground truncate flex-1">
                 {response.meta.title}
               </h1>
             </>
           )}
           {!response?.meta.title && <div className="flex-1" />}
-          <Button
-            size="sm"
-            onClick={() => window.open('/', '_blank')}
-            className="h-7 text-xs shrink-0"
-          >
-            Create your own
-          </Button>
+          <SharePageHeaderActions
+            downloading={downloading}
+            copied={copied}
+            onDownload={handleDownload}
+            onShare={handleShare}
+          />
         </div>
       </header>
 
@@ -156,6 +166,7 @@ export function SharedDashboardPage() {
               onLayoutLoaded={handleLayoutLoaded}
               defaultLayout={response.layout as SocialDashboardWidget[] | undefined ?? undefined}
               defaultOrientation={response.orientation ?? undefined}
+              gridRef={gridRef}
               readOnly
             />
           </main>

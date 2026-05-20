@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useHead } from '@unhead/react';
 import { AlertTriangle, Download } from 'lucide-react';
-import { Logo } from '../../components/Logo.tsx';
+import { Logo, BRAND_NAME } from '../../components/Logo.tsx';
+import { SharePageHeaderActions } from '../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
+import { useSharePageActions } from '../../lib/share-actions.ts';
 import {
   getPublicArtifact,
   type SharedArtifactResponse,
@@ -45,6 +47,7 @@ export function SharedArtifactPage() {
   useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
 
   const { token } = useParams<{ token: string }>();
+  const contentRef = useRef<HTMLElement | null>(null);
 
   // The app shell sets a global body min-width: 1280px for desktop-only
   // surfaces. The public share page is a viral landing surface that must
@@ -65,6 +68,16 @@ export function SharedArtifactPage() {
 
   const style = data ? ARTIFACT_STYLES[data.meta.type] ?? ARTIFACT_STYLES.chart : null;
 
+  // Presentation shares are downloadable .pptx files — no DOM to capture as
+  // PDF. Hide the Download button for that type; the body renders its own
+  // .pptx download link.
+  const supportsPdf = data?.meta.type === 'chart' || data?.meta.type === 'data_export';
+  const { downloading, copied, handleDownload, handleShare } = useSharePageActions({
+    title: data?.meta.title || 'Artifact',
+    getTarget: () => contentRef.current,
+    orientation: 'vertical',
+  });
+
   return (
     <div
       className="min-h-screen bg-background flex flex-col"
@@ -74,16 +87,19 @@ export function SharedArtifactPage() {
       }}
     >
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5 sm:px-6">
-          <Logo size="sm" />
+        <div className="mx-auto flex max-w-6xl items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5">
+          <a href="/" aria-label={BRAND_NAME} className="shrink-0">
+            <Logo size="sm" />
+          </a>
           <div className="flex-1" />
-          <Button
-            size="sm"
-            onClick={() => window.open('/', '_blank')}
-            className="shrink-0"
-          >
-            Create your own
-          </Button>
+          {data && (
+            <SharePageHeaderActions
+              downloading={downloading}
+              copied={copied}
+              onDownload={supportsPdf ? handleDownload : undefined}
+              onShare={handleShare}
+            />
+          )}
         </div>
       </header>
 
@@ -125,9 +141,25 @@ export function SharedArtifactPage() {
               </div>
             </div>
           </div>
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
+          <main ref={contentRef} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
             <SharedArtifactBody data={data} token={token!} />
           </main>
+
+          <footer className="mt-12 border-t border-border bg-card shrink-0">
+            <div className="mx-auto max-w-6xl px-6 py-10 text-center">
+              <h2 className="text-base font-semibold">Like what you see?</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {BRAND_NAME} gives you AI-powered social intelligence artifacts like this one &mdash; no coding required.
+              </p>
+              <Button
+                className="mt-4"
+                size="lg"
+                onClick={() => window.open('/', '_blank')}
+              >
+                Start for free
+              </Button>
+            </div>
+          </footer>
         </>
       )}
     </div>

@@ -1,24 +1,14 @@
-import { useState } from 'react';
+import { useRef } from 'react';
 import { useParams } from 'react-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useHead } from '@unhead/react';
-import { AlertTriangle, Check, Copy, Loader2, Share2, Trash2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Logo, BRAND_NAME } from '../../components/Logo.tsx';
+import { SharePageHeaderActions } from '../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../components/ui/button.tsx';
-import { Input } from '../../components/ui/input.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../../components/ui/dialog.tsx';
-import {
-  getPublicBriefing,
-  revokeBriefingShare,
-} from '../../api/endpoints/briefings.ts';
+import { useSharePageActions } from '../../lib/share-actions.ts';
+import { getPublicBriefing } from '../../api/endpoints/briefings.ts';
 import { BriefingView } from './BriefingView.tsx';
 
 export function SharedBriefingPage() {
@@ -26,7 +16,7 @@ export function SharedBriefingPage() {
   useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
 
   const { token } = useParams<{ token: string }>();
-  const [shareOpen, setShareOpen] = useState(false);
+  const contentRef = useRef<HTMLElement | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['shared-briefing', token],
@@ -34,6 +24,12 @@ export function SharedBriefingPage() {
     enabled: !!token,
     staleTime: 5 * 60 * 1000,
     retry: 1,
+  });
+
+  const { downloading, copied, handleDownload, handleShare } = useSharePageActions({
+    title: data?.meta.title || 'Briefing',
+    getTarget: () => contentRef.current,
+    orientation: 'vertical',
   });
 
   return (
@@ -45,34 +41,25 @@ export function SharedBriefingPage() {
       }}
     >
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-2.5">
-          <Logo size="sm" />
+        <div className="mx-auto flex max-w-6xl items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5">
+          <a href="/" aria-label={BRAND_NAME} className="shrink-0">
+            <Logo size="sm" />
+          </a>
           {data?.meta.title && (
             <>
-              <div className="h-4 w-px bg-border shrink-0" />
+              <div className="h-4 w-px bg-border shrink-0 hidden sm:block" />
               <h1 className="text-sm font-semibold text-foreground truncate flex-1">
                 {data.meta.title}
               </h1>
             </>
           )}
           {!data?.meta.title && <div className="flex-1" />}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShareOpen(true)}
-            className="h-7 gap-1.5 text-xs shrink-0"
-            disabled={!token || isLoading}
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            Share
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => window.open('/', '_blank')}
-            className="h-7 text-xs shrink-0"
-          >
-            Create your own
-          </Button>
+          <SharePageHeaderActions
+            downloading={downloading}
+            copied={copied}
+            onDownload={handleDownload}
+            onShare={handleShare}
+          />
         </div>
       </header>
 
@@ -102,7 +89,7 @@ export function SharedBriefingPage() {
 
       {!isLoading && !error && data && (
         <>
-          <main>
+          <main ref={contentRef}>
             <BriefingView title={data.meta.title} briefing={data.layout} />
           </main>
 
@@ -124,111 +111,6 @@ export function SharedBriefingPage() {
         </>
       )}
 
-      {token && (
-        <BriefingShareLinkDialog
-          open={shareOpen}
-          onOpenChange={setShareOpen}
-          token={token}
-          createdAt={data?.meta.created_at}
-        />
-      )}
     </div>
-  );
-}
-
-function BriefingShareLinkDialog({
-  open,
-  onOpenChange,
-  token,
-  createdAt,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  token: string;
-  createdAt?: string;
-}) {
-  const queryClient = useQueryClient();
-  const [copied, setCopied] = useState(false);
-  const [revokeError, setRevokeError] = useState<string | null>(null);
-  const url = window.location.href;
-
-  const revokeMutation = useMutation({
-    mutationFn: () => revokeBriefingShare(token),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shared-briefing', token] });
-      onOpenChange(false);
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to revoke';
-      setRevokeError(msg);
-    },
-  });
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Share2 className="h-4 w-4" />
-            Share Briefing
-          </DialogTitle>
-          <DialogDescription>
-            Anyone with the link can view this briefing without signing in.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="py-2">
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-2">
-              <Input value={url} readOnly className="h-8 text-xs font-mono" />
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0 gap-1.5"
-                onClick={handleCopy}
-              >
-                {copied ? (
-                  <Check className="h-3.5 w-3.5 text-green-600" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )}
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
-            </div>
-            {createdAt && (
-              <p className="text-xs text-muted-foreground">
-                Created {new Date(createdAt).toLocaleDateString()}
-              </p>
-            )}
-            {revokeError && (
-              <p className="text-xs text-destructive">{revokeError}</p>
-            )}
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            onClick={() => revokeMutation.mutate()}
-            disabled={revokeMutation.isPending}
-          >
-            {revokeMutation.isPending ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="mr-2 h-3.5 w-3.5" />
-            )}
-            Revoke link
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
