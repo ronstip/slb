@@ -775,7 +775,7 @@ const LP_FridayPreview = () => (
 const LP_Hero = ({ openWaitlist }: { openWaitlist: (brief?: string) => void }) => {
   const [brief, setBrief] = useState('');
   const [focused, setFocused] = useState(false);
-  const PLACEHOLDER = "Describe to Scolto what you need.";
+  const PLACEHOLDER = "Describe to Scolto what you need...";
 
   return (
     <section className="lp-section lp-hero-section" style={{ padding: '56px 64px 0', position: 'relative', overflow: 'hidden' }}>
