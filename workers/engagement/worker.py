@@ -87,7 +87,10 @@ def refresh_engagements(payload: dict) -> None:
                     "comments_count": r.get("comments_count"),
                     "views": r.get("views"),
                     "saves": r.get("saves"),
-                    "comments": json.dumps(r.get("comments", [])),
+                    # Deprecated: comments now live in social_listening.comments,
+                    # fetched per-post via workers/comments/worker.py. The column
+                    # stays for historical reads.
+                    "comments": None,
                     "platform_engagements": None,
                     "source": "refresh",
                 }

@@ -42,3 +42,17 @@ export async function draftPostOverride(
 ): Promise<EnrichmentOverride> {
   return apiPost(`/posts/${encodeURIComponent(postId)}/draft-override`, body);
 }
+
+export interface FetchCommentsResponse {
+  status: string;
+  post_id: string;
+}
+
+export async function fetchPostComments(
+  postId: string,
+  agentId?: string,
+): Promise<FetchCommentsResponse> {
+  return apiPost(`/posts/${encodeURIComponent(postId)}/fetch-comments`, {
+    agent_id: agentId,
+  });
+}

@@ -23,12 +23,16 @@ from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.x_api_client import XAPIClient, XAPIError
 from workers.collection.adapters.x_api_parsers import (
     _index_tweets_by_id as _index_includes_tweets,
+    _index_users_by_id,
     extract_twitter_id,
     extract_twitter_username,
+    parse_comment,
+    parse_comment_author,
     parse_x_channel,
     parse_x_post,
+    resolve_comment_roots,
 )
-from workers.collection.models import Batch, Channel, Post
+from workers.collection.models import Batch, Channel, Comment, CommentBatch, Post
 
 logger = logging.getLogger(__name__)
 
@@ -504,6 +508,96 @@ class XAPIAdapter(DataProviderAdapter):
                     "comments": [],
                 })
         return results
+
+    # ------------------------------------------------------------------
+    # Comments fetch — /2/tweets/search/all conversation_id:<id>
+    # ------------------------------------------------------------------
+
+    # Narrower field set than DEFAULT_TWEET_FIELDS — context_annotations would
+    # force max_results <= 100 (PAYG quirk); we already cap there, and the
+    # `note_tweet` + `referenced_tweets` fields are what matters for replies.
+    _COMMENT_TWEET_FIELDS = (
+        "created_at,lang,public_metrics,referenced_tweets,"
+        "conversation_id,author_id,in_reply_to_user_id,note_tweet,possibly_sensitive"
+    )
+    _COMMENT_USER_FIELDS = (
+        "username,name,verified,public_metrics,profile_image_url,description,created_at,location"
+    )
+    _COMMENT_EXPANSIONS = "author_id,referenced_tweets.id,in_reply_to_user_id"
+    _COMMENT_PAGE_SIZE = 100  # PAYG cap on /search/all when context_annotations isn't requested
+    # X /search/all defaults to "recency" — wrong choice when we sample a
+    # subset of a large thread (would yield only the newest 500). "relevancy"
+    # surfaces top/engaged replies first; full-tree fetches still come in
+    # whatever order, just with the high-signal slice up front.
+    _COMMENT_SORT_ORDER = "relevancy"
+
+    def fetch_comments(self, post: dict) -> CommentBatch:
+        post_id = post.get("post_id") or extract_twitter_id(post.get("post_url") or "")
+        if not post_id:
+            logger.warning("X API: cannot extract tweet id from %s", post)
+            return CommentBatch()
+
+        settings = get_settings()
+        max_pages = max(1, int(settings.x_api_max_comment_pages))
+
+        # 1. Resolve conversation_id (defensive: falls back to post_id if lookup fails).
+        try:
+            root_resp = self._client.get(
+                f"tweets/{post_id}",
+                params={"tweet.fields": "conversation_id"},
+            )
+            conversation_id = (root_resp.get("data") or {}).get("conversation_id") or post_id
+        except (XAPIError, requests.RequestException) as e:
+            logger.warning("X API: root tweet lookup failed for %s (%s) — using post_id as conversation_id", post_id, e)
+            conversation_id = post_id
+
+        # 2. Page /search/all conversation_id:<id>.
+        comments: list[Comment] = []
+        channels_by_id: dict[str, Channel] = {}
+        next_token: str | None = None
+        for page in range(max_pages):
+            params = {
+                "query": f"conversation_id:{conversation_id}",
+                "max_results": self._COMMENT_PAGE_SIZE,
+                "sort_order": self._COMMENT_SORT_ORDER,
+                "tweet.fields": self._COMMENT_TWEET_FIELDS,
+                "user.fields": self._COMMENT_USER_FIELDS,
+                "expansions": self._COMMENT_EXPANSIONS,
+            }
+            if next_token:
+                params["pagination_token"] = next_token
+            try:
+                resp = self._client.get("tweets/search/all", params=params)
+            except (XAPIError, requests.RequestException) as e:
+                logger.warning("X API: search/all failed on page %d for %s: %s", page, post_id, e)
+                break
+
+            includes = resp.get("includes") or {}
+            users_by_id = _index_users_by_id(includes)
+            for user in includes.get("users") or []:
+                uid = str(user.get("id") or "")
+                if uid and uid not in channels_by_id:
+                    channels_by_id[uid] = parse_comment_author(user)
+
+            for tweet in resp.get("data") or []:
+                comments.append(parse_comment(tweet, users_by_id))
+
+            next_token = (resp.get("meta") or {}).get("next_token")
+            if not next_token:
+                break
+
+        # 3. Resolve thread roots in-memory.
+        resolve_comment_roots(comments, post_id=post_id)
+
+        # 4. Stamp crawl_provider.
+        for c in comments:
+            c.crawl_provider = "xapi"
+
+        logger.info(
+            "X API: fetched %d comments + %d authors for post %s",
+            len(comments), len(channels_by_id), post_id,
+        )
+        return CommentBatch(comments=comments, channels=list(channels_by_id.values()))
 
 
 # ---------------------------------------------------------------------------

@@ -56,5 +56,12 @@ DEDUP_EMBEDDINGS = """deduped_embeddings AS (
     FROM social_listening.post_embeddings
 )"""
 
+DEDUP_COMMENTS = """deduped_comments AS (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY post_id, comment_id ORDER BY fetched_at DESC
+    ) AS _rn
+    FROM social_listening.comments
+)"""
+
 # Convenience: all four CTEs in a single WITH block.
 DEDUP_CTES = f"WITH {DEDUP_POSTS},\n{DEDUP_ENRICHED},\n{DEDUP_ENGAGEMENTS},\n{DEDUP_EMBEDDINGS}"

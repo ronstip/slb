@@ -45,7 +45,7 @@ from config.settings import get_settings
 from workers.collection.adapters.apify_client import ApifyAdapterClient, ApifyAPIError
 from workers.collection.adapters.apify_parsers import get_parsers
 from workers.collection.adapters.base import DataProviderAdapter
-from workers.collection.models import Batch, Channel, Post
+from workers.collection.models import Batch, Channel, CommentBatch, Post
 
 logger = logging.getLogger(__name__)
 
@@ -714,6 +714,11 @@ class ApifyAdapter(DataProviderAdapter):
             except Exception:  # noqa: BLE001
                 logger.exception("Apify engagement refresh failed for %s", platform)
         return results
+
+    def fetch_comments(self, post: dict) -> CommentBatch:
+        raise NotImplementedError(
+            f"fetch_comments not supported by ApifyAdapter on {post.get('platform', '<unknown>')}"
+        )
 
     def _refresh_platform_engagements(self, platform: str, urls: list[str]) -> list[dict]:
         if not self._claim_run():

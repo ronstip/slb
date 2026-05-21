@@ -28,7 +28,7 @@ from workers.collection.adapters.vetric_parsers import (
     parse_youtube_channel,
     parse_youtube_post,
 )
-from workers.collection.models import Batch, Channel, Post
+from workers.collection.models import Batch, Channel, CommentBatch, Post
 
 logger = logging.getLogger(__name__)
 
@@ -584,6 +584,11 @@ class VetricAdapter(DataProviderAdapter):
                 if result:
                     results.append(result)
         return results
+
+    def fetch_comments(self, post: dict) -> CommentBatch:
+        raise NotImplementedError(
+            f"fetch_comments not supported by VetricAdapter on {post.get('platform', '<unknown>')}"
+        )
 
     def _fetch_single_engagement(self, platform: str, url: str) -> dict | None:
         if platform == "twitter":

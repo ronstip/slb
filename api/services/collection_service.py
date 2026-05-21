@@ -159,33 +159,7 @@ def create_collection_from_request(
 
 def _dispatch_cloud_task(settings, collection_id: str) -> None:
     """Dispatch collection worker via Cloud Tasks."""
-    from google.cloud import tasks_v2
+    from api.services.cloud_tasks import dispatch_worker_task
 
-    from api.middleware.request_id import outbound_headers
-
-    client = tasks_v2.CloudTasksClient()
-    parent = client.queue_path(
-        settings.gcp_project_id,
-        settings.gcp_region,
-        settings.cloud_tasks_queue,
-    )
-    worker_url = settings.worker_service_url.rstrip("/")
-    http_request = {
-        "http_method": tasks_v2.HttpMethod.POST,
-        "url": f"{worker_url}/collection/run",
-        "headers": outbound_headers({"Content-Type": "application/json"}),
-        "body": json.dumps({"collection_id": collection_id}).encode(),
-    }
-    if settings.cloud_tasks_service_account:
-        http_request["oidc_token"] = {
-            "service_account_email": settings.cloud_tasks_service_account,
-            "audience": worker_url,
-        }
-    task = {
-        "http_request": http_request,
-        # Max allowed by Cloud Tasks (30min). Worker always returns 200
-        # so retries won't happen, but this prevents premature timeout.
-        "dispatch_deadline": {"seconds": 1800},
-    }
-    client.create_task(parent=parent, task=task)
-    logger.info("Dispatched Cloud Task for collection %s", collection_id)
+    dispatch_worker_task("/collection/run", {"collection_id": collection_id})
+    logger.info("Dispatched collection task for %s", collection_id)

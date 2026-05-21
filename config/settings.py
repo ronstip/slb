@@ -146,6 +146,10 @@ class Settings(BaseSettings):
     # When False, only the defensive `platform_metadata.referenced_post` snapshot is
     # populated; no extra Posts are emitted.
     x_api_unpack_referenced_posts: bool = False
+    # Comment fetching: cap pages of /search/all conversation_id results.
+    # Each page returns up to 100 replies (PAYG cap for /search/all without
+    # context_annotations). Default 1 = up to 100 comments per fetch.
+    x_api_max_comment_pages: int = 1
 
     # Bright Data
     brightdata_api_token: str = ""

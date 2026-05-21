@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { MoreHorizontal, EyeOff, Pencil } from 'lucide-react';
+import { MoreHorizontal, EyeOff, Pencil, MessagesSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -20,7 +20,7 @@ import {
 } from '../../components/ui/alert-dialog.tsx';
 import { cn } from '../../lib/utils.ts';
 import type { FeedPost } from '../../api/types.ts';
-import { overridePostEnrichment } from '../../api/endpoints/posts.ts';
+import { fetchPostComments, overridePostEnrichment } from '../../api/endpoints/posts.ts';
 import { EditPostDrawer } from './EditPostDrawer.tsx';
 
 interface PostActionsMenuProps {
@@ -40,8 +40,10 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
   const [open, setOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [excludeConfirmOpen, setExcludeConfirmOpen] = useState(false);
+  const [fetchCommentsConfirmOpen, setFetchCommentsConfirmOpen] = useState(false);
   const qc = useQueryClient();
   const collectionId = collectionIdOverride ?? post.collection_id;
+  const commentsSupported = post.platform === 'twitter';
 
   const excludeMutation = useMutation({
     mutationFn: () => {
@@ -81,6 +83,13 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
     },
   });
 
+  const fetchCommentsMutation = useMutation({
+    mutationFn: () => fetchPostComments(post.post_id, agentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['collection-posts'] });
+    },
+  });
+
   if (!agentId || !collectionId) return null;
 
   const requestExclude = () => {
@@ -105,6 +114,27 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
       },
       onError: (err) => {
         toast.error('Could not exclude post', {
+          description: err instanceof Error ? err.message : 'Unknown error',
+        });
+      },
+    });
+  };
+
+  const requestFetchComments = () => {
+    setOpen(false);
+    setFetchCommentsConfirmOpen(true);
+  };
+
+  const confirmFetchComments = () => {
+    setFetchCommentsConfirmOpen(false);
+    fetchCommentsMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast('Fetching comments…', {
+          description: "We'll add replies to this post once they arrive.",
+        });
+      },
+      onError: (err) => {
+        toast.error('Could not fetch comments', {
           description: err instanceof Error ? err.message : 'Unknown error',
         });
       },
@@ -150,6 +180,13 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
             Edit enrichment…
           </DropdownMenuItem>
           <DropdownMenuItem
+            onSelect={requestFetchComments}
+            disabled={!commentsSupported || fetchCommentsMutation.isPending}
+          >
+            <MessagesSquare className="mr-2 h-4 w-4" />
+            Fetch comments
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onSelect={requestExclude}
             disabled={excludeMutation.isPending}
             className="text-destructive focus:text-destructive"
@@ -181,6 +218,24 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmExclude}>
               Exclude
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={fetchCommentsConfirmOpen} onOpenChange={setFetchCommentsConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fetch comments?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pulls the full reply tree for this post via the X API. May take
+              ~30 seconds and counts against your X API quota.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmFetchComments}>
+              Fetch
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
