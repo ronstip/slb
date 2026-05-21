@@ -70,35 +70,18 @@ export function SocialProgressListWidget({
             const total = rowTotals[rowIdx];
             const barPct = (total / maxTotal) * 100;
             const sharePct = grandTotal > 0 ? (total / grandTotal) * 100 : 0;
-            const isLead = rowIdx === 0;
             return (
               <div key={label}>
                 <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80 w-5 text-right tabular-nums shrink-0">
-                      {String(rowIdx + 1).padStart(2, '0')}
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-[11px] text-muted-foreground w-5 text-right tabular-nums shrink-0 font-medium">
+                      {rowIdx + 1}.
                     </span>
-                    {isLead ? (
-                      <span className="font-serif italic text-[15px] font-normal text-primary truncate">{label}</span>
-                    ) : (
-                      <span className="text-sm font-medium text-foreground truncate">{label}</span>
-                    )}
+                    <span className="text-sm font-medium text-foreground truncate">{label}</span>
                   </div>
                   <div className="flex items-center gap-2 ml-3 shrink-0">
-                    <span
-                      className={`tabular-nums ${
-                        isLead
-                          ? 'font-serif italic text-[16px] font-normal text-primary'
-                          : 'font-mono text-[12px] font-semibold text-foreground'
-                      }`}
-                    >
-                      {fmt(total)}
-                    </span>
-                    <span
-                      className={`font-mono text-[10px] tabular-nums w-10 text-right ${
-                        isLead ? 'text-primary font-semibold' : 'text-muted-foreground'
-                      }`}
-                    >
+                    <span className="text-sm font-semibold text-foreground tabular-nums">{fmt(total)}</span>
+                    <span className="text-[11px] text-muted-foreground tabular-nums w-10 text-right">
                       {sharePct.toFixed(0)}%
                     </span>
                   </div>
@@ -118,7 +101,7 @@ export function SocialProgressListWidget({
                         style={{
                           width: `${segPct}%`,
                           backgroundColor: segmentColors[segIdx],
-                          opacity: isLead ? 1 : 0.85,
+                          opacity: 0.85,
                         }}
                         title={`${ds.label}: ${fmt(segVal)}`}
                       />
@@ -129,7 +112,7 @@ export function SocialProgressListWidget({
             );
           })}
         </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 pt-2 mt-2 border-t border-dashed border-border/70 shrink-0">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 pt-2 mt-2 border-t border-border/60 shrink-0">
           {datasets.map((ds, i) => (
             <div key={ds.label} className="flex items-center gap-1.5 min-w-0">
               <div
@@ -184,36 +167,19 @@ export function SocialProgressListWidget({
         const barPct = (value / maxValue) * 100;
         const totalPct = total > 0 ? (value / total) * 100 : 0;
         const color = getColor(label, index);
-        const isLead = index === 0;
         return (
           <div key={label}>
             <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80 w-5 text-right tabular-nums shrink-0">
-                  {String(index + 1).padStart(2, '0')}
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-[11px] text-muted-foreground w-5 text-right tabular-nums shrink-0 font-medium">
+                  {index + 1}.
                 </span>
                 <div className="shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                {isLead ? (
-                  <span className="font-serif italic text-[15px] font-normal text-primary truncate">{label}</span>
-                ) : (
-                  <span className="text-sm font-medium text-foreground truncate">{label}</span>
-                )}
+                <span className="text-sm font-medium text-foreground truncate">{label}</span>
               </div>
               <div className="flex items-center gap-2 ml-3 shrink-0">
-                <span
-                  className={`tabular-nums ${
-                    isLead
-                      ? 'font-serif italic text-[16px] font-normal text-primary'
-                      : 'font-mono text-[12px] font-semibold text-foreground'
-                  }`}
-                >
-                  {fmt(value)}
-                </span>
-                <span
-                  className={`font-mono text-[10px] tabular-nums w-10 text-right ${
-                    isLead ? 'text-primary font-semibold' : 'text-muted-foreground'
-                  }`}
-                >
+                <span className="text-sm font-semibold text-foreground tabular-nums">{fmt(value)}</span>
+                <span className="text-[11px] text-muted-foreground tabular-nums w-10 text-right">
                   {totalPct.toFixed(0)}%
                 </span>
               </div>
@@ -221,7 +187,7 @@ export function SocialProgressListWidget({
             <div className="h-2 w-full rounded-full bg-muted/50 overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${barPct}%`, backgroundColor: color, opacity: isLead ? 1 : 0.85 }}
+                style={{ width: `${barPct}%`, backgroundColor: color, opacity: 0.85 }}
               />
             </div>
           </div>

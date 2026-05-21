@@ -103,21 +103,18 @@ function resolveThemeColor(varName: string): string {
   return '#808080';
 }
 
-const CHART_SANS = "'Inter Tight', 'Inter', system-ui, -apple-system, sans-serif";
-const CHART_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace";
-
 function getTooltipStyle() {
   const dark = isDarkMode();
   return {
-    backgroundColor: dark ? '#1F1B17' : '#FBFAF6',
-    titleColor: dark ? '#F2EEE6' : '#1B1815',
-    bodyColor: dark ? '#F2EEE6' : '#1B1815',
-    borderColor: dark ? '#2A2521' : '#E5DFD2',
+    backgroundColor: dark ? '#1f1f1f' : '#ffffff',
+    titleColor: dark ? '#fafafa' : '#1a1a1a',
+    bodyColor: dark ? '#fafafa' : '#1a1a1a',
+    borderColor: dark ? '#3a3a3a' : '#e5e5e5',
     borderWidth: 1,
-    cornerRadius: 10,
+    cornerRadius: 8,
     padding: 12,
-    titleFont: { size: 12, weight: 600 as const, family: CHART_SANS },
-    bodyFont: { size: 12, family: CHART_SANS },
+    titleFont: { size: 12, weight: 'bold' as const },
+    bodyFont: { size: 12 },
     displayColors: true,
     boxPadding: 4,
   };
@@ -125,11 +122,11 @@ function getTooltipStyle() {
 
 function getAxisStyle() {
   const dark = isDarkMode();
-  const gridColor = dark ? 'rgba(255,255,255,0.06)' : 'rgba(27,24,21,0.06)';
-  const tickColor = dark ? '#A39A88' : '#6E665A';
+  const gridColor = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  const tickColor = dark ? '#a0a0a0' : '#737373';
   return {
-    grid: { color: gridColor, drawBorder: false, borderDash: [2, 4] as number[] },
-    ticks: { color: tickColor, font: { size: 10.5, family: CHART_MONO } },
+    grid: { color: gridColor, drawBorder: false, borderDash: [3, 3] as number[] },
+    ticks: { color: tickColor, font: { size: 11 } },
     border: { display: false },
   };
 }
@@ -178,7 +175,7 @@ const pieDatalabelsPlugin = {
     if (total === 0) return;
 
     ctx.save();
-    ctx.font = `600 11px ${CHART_SANS}`;
+    ctx.font = '600 11px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
@@ -230,7 +227,7 @@ const barDatalabelsPlugin = {
         );
 
         ctx.save();
-        ctx.font = `600 10px ${CHART_MONO}`;
+        ctx.font = '600 10px system-ui, sans-serif';
 
         if (isStacked && multiDataset) {
           const segSize = isHorizontalBar
@@ -429,8 +426,8 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
           position: 'bottom' as const,
           labels: {
             color: resolveThemeColor('--foreground'),
-            font: { size: 10.5, family: CHART_SANS },
-            boxWidth: 8, boxHeight: 8, padding: 10,
+            font: { size: 10 },
+            boxWidth: 8, boxHeight: 8, padding: 8,
             borderRadius: 2, useBorderRadius: true,
           },
         },
@@ -568,7 +565,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
           position: 'bottom' as const,
           labels: {
             color: resolveThemeColor('--foreground'),
-            font: { size: 11, family: CHART_SANS },
+            font: { size: 11 },
             boxWidth: 10, boxHeight: 10, padding: 14,
             borderRadius: 2, useBorderRadius: true,
           },
@@ -632,7 +629,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
             position: legendPosition,
             labels: {
               color: resolveThemeColor('--foreground'),
-              font: { size: 11, family: CHART_SANS },
+              font: { size: 11 },
               padding: 10, boxWidth: 10, boxHeight: 10,
               borderRadius: 2, useBorderRadius: true,
               generateLabels: (chart: ChartJS) => {
@@ -748,14 +745,14 @@ const DoughnutWithCenter = forwardRef<ChartJS<'doughnut'>, DoughnutWithCenterPro
           const mfg = resolveThemeColor('--muted-foreground');
           const cx = (chartArea.left + chartArea.right) / 2;
           const cy = (chartArea.top + chartArea.bottom) / 2;
-          ctx.font = `300 26px 'Fraunces', Georgia, serif`;
+          ctx.font = 'bold 20px system-ui, sans-serif';
           ctx.fillStyle = fg;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(formatNumber(total), cx, cy - 6);
-          ctx.font = `500 9px ${CHART_MONO}`;
+          ctx.fillText(formatNumber(total), cx, cy - 8);
+          ctx.font = '400 11px system-ui, sans-serif';
           ctx.fillStyle = mfg;
-          ctx.fillText('TOTAL', cx, cy + 14);
+          ctx.fillText('total', cx, cy + 10);
           ctx.restore();
         },
       },
