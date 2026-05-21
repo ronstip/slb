@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from workers.collection.adapters.base import DataProviderAdapter
-from workers.collection.models import Batch, Channel, Post
+from workers.collection.models import Batch, Channel, Comment, CommentBatch, Post
 
 # -- Fake content pools --
 
@@ -237,6 +237,81 @@ class MockAdapter(DataProviderAdapter):
                 "comments": _generate_comments(random.randint(0, 5), []),
             })
         return results
+
+    def fetch_comments(self, post: dict) -> CommentBatch:
+        """Canned reply tree for dev. Three comments under post, two authors."""
+        from datetime import datetime, timezone
+
+        platform = post.get("platform", "twitter")
+        now = datetime.now(timezone.utc)
+        authors = [
+            Channel(
+                channel_id="mock_user_a",
+                platform=platform,
+                channel_handle="alice_mock",
+                subscribers=_power_law_int(100, 100000),
+                total_posts=_power_law_int(10, 10000),
+                channel_url="https://mock/alice_mock",
+                channel_metadata={"name": "Alice Mock"},
+            ),
+            Channel(
+                channel_id="mock_user_b",
+                platform=platform,
+                channel_handle="bob_mock",
+                subscribers=_power_law_int(100, 100000),
+                total_posts=_power_law_int(10, 10000),
+                channel_url="https://mock/bob_mock",
+                channel_metadata={"name": "Bob Mock"},
+            ),
+        ]
+        c1 = Comment(
+            comment_id="mock_c1",
+            platform=platform,
+            channel_handle="alice_mock",
+            channel_id="mock_user_a",
+            content="Great take!",
+            commented_at=now,
+            likes=_power_law_int(0, 200),
+            shares=0,
+            replies_count=1,
+            views=_power_law_int(10, 5000),
+            platform_metadata={"platform": platform},
+            crawl_provider="mock",
+        )
+        c2 = Comment(
+            comment_id="mock_c2",
+            platform=platform,
+            channel_handle="bob_mock",
+            channel_id="mock_user_b",
+            content="Disagree — here's why…",
+            commented_at=now,
+            likes=_power_law_int(0, 200),
+            shares=0,
+            replies_count=0,
+            views=_power_law_int(10, 5000),
+            platform_metadata={"platform": platform},
+            crawl_provider="mock",
+            replied_to_id="mock_c1",
+        )
+        c3 = Comment(
+            comment_id="mock_c3",
+            platform=platform,
+            channel_handle="alice_mock",
+            channel_id="mock_user_a",
+            content="+1",
+            commented_at=now,
+            likes=0,
+            shares=0,
+            replies_count=0,
+            views=_power_law_int(5, 1000),
+            platform_metadata={"platform": platform},
+            crawl_provider="mock",
+        )
+        # Roots: c1 is direct reply (root=self), c2 nested under c1 (root=c1), c3 direct (root=self).
+        c1.root_comment_id = "mock_c1"
+        c2.root_comment_id = "mock_c1"
+        c3.root_comment_id = "mock_c3"
+        return CommentBatch(comments=[c1, c2, c3], channels=authors)
 
     def _get_handles(self, platform: str) -> list[str]:
         return {

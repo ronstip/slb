@@ -10,7 +10,7 @@ from workers.collection.adapters.brightdata import BrightDataAdapter
 from workers.collection.adapters.mock_adapter import MockAdapter
 from workers.collection.adapters.vetric import VetricAdapter
 from workers.collection.adapters.x_api import XAPIAdapter
-from workers.collection.models import Batch
+from workers.collection.models import Batch, CommentBatch
 
 logger = logging.getLogger(__name__)
 
@@ -252,3 +252,7 @@ class DataProviderWrapper:
     def fetch_engagements(self, platform: str, post_urls: list[str]) -> list[dict]:
         adapter = self._get_adapter(platform)
         return adapter.fetch_engagements(post_urls)
+
+    def fetch_comments(self, platform: str, post: dict) -> CommentBatch:
+        adapter = self._get_adapter(platform)
+        return adapter.fetch_comments(post)

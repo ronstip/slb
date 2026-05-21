@@ -147,6 +147,28 @@ async def run_engagement_handler(request: Request):
         return {"status": "error", "error": str(e)}
 
 
+@app.post("/comments/run")
+async def run_comments_handler(request: Request):
+    """Fetch the full reply tree for one post (mirrors /engagement/run)."""
+    body = await request.json()
+    collection_id = body.get("collection_id", "")
+    post_id = body.get("post_id", "")
+
+    logger.info("Starting comments worker (post=%s, collection=%s)", post_id, collection_id)
+    cost_token = _bind_cost_context_from_collection(collection_id)
+    try:
+        from workers.comments.worker import fetch_post_comments
+
+        fetch_post_comments(body)
+        logger.info("Comments worker completed for post %s", post_id)
+        return {"status": "ok"}
+    except Exception as e:
+        logger.exception("Comments worker failed for post %s", post_id)
+        return {"status": "error", "error": str(e)}
+    finally:
+        _reset_cost_context(cost_token)
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

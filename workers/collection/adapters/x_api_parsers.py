@@ -13,7 +13,7 @@ import logging
 import re
 from datetime import datetime
 
-from workers.collection.models import Channel, Post
+from workers.collection.models import Channel, Comment, Post
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +169,103 @@ def parse_x_channel(user: dict) -> Channel:
             "listed_count": metrics.get("listed_count"),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Comments
+# ---------------------------------------------------------------------------
+
+def parse_comment(tweet: dict, users_by_id: dict[str, dict]) -> Comment:
+    """Parse a reply tweet (from /2/tweets/search/all conversation_id:<id>)
+    into a Comment. `users_by_id` is the indexed includes.users block.
+
+    Sets `replied_to_id` to the direct parent (post or comment) — root
+    resolution is done in a second pass via resolve_comment_roots.
+    """
+    author_id = str(tweet.get("author_id", ""))
+    author = users_by_id.get(author_id, {})
+    handle = author.get("username", "")
+
+    note_tweet = tweet.get("note_tweet") or {}
+    content = note_tweet.get("text") or tweet.get("text", "")
+    metrics = tweet.get("public_metrics") or {}
+
+    replied_to_id: str | None = None
+    for ref in tweet.get("referenced_tweets") or []:
+        if ref.get("type") == "replied_to" and ref.get("id"):
+            replied_to_id = str(ref["id"])
+            break
+
+    media_keys = (tweet.get("attachments") or {}).get("media_keys") or []
+    # Replies media isn't expanded today; if it ever is, the existing
+    # _extract_media helper would slot in here. For now leave URLs empty.
+    media_urls: list[str] = []
+    if media_keys:
+        media_urls = [k for k in media_keys if isinstance(k, str)]
+
+    platform_metadata: dict = {
+        "platform": "twitter",
+        "author": handle,
+        "author_id": author_id or None,
+        "lang": tweet.get("lang"),
+        "conversation_id": tweet.get("conversation_id"),
+        "in_reply_to_user_id": tweet.get("in_reply_to_user_id"),
+        "referenced_tweets": tweet.get("referenced_tweets"),
+        "possibly_sensitive": tweet.get("possibly_sensitive"),
+    }
+    if note_tweet.get("text"):
+        platform_metadata["has_note_tweet"] = True
+
+    return Comment(
+        comment_id=str(tweet.get("id", "")),
+        platform="twitter",
+        channel_handle=handle,
+        channel_id=author_id or None,
+        content=content,
+        commented_at=_parse_iso8601(tweet.get("created_at")),
+        likes=metrics.get("like_count"),
+        shares=metrics.get("retweet_count"),
+        replies_count=metrics.get("reply_count"),
+        views=metrics.get("impression_count"),
+        media_urls=media_urls,
+        platform_metadata=platform_metadata,
+        replied_to_id=replied_to_id,
+    )
+
+
+def parse_comment_author(user: dict) -> Channel:
+    """Shim onto parse_x_channel — comment authors are X channels."""
+    return parse_x_channel(user)
+
+
+def resolve_comment_roots(comments: list[Comment], post_id: str) -> None:
+    """Set `root_comment_id` on each comment in-place.
+
+    Root = the in-batch ancestor whose `replied_to_id == post_id` (a direct
+    reply to the original post). A comment that itself replies to the post
+    is its own root. If the chain can't be resolved within the batch (the
+    middle ancestor wasn't paged in), fall back to root = self so the row
+    is never NULL.
+    """
+    by_id = {c.comment_id: c for c in comments}
+    for c in comments:
+        cur = c
+        visited: set[str] = set()
+        while True:
+            if cur.comment_id in visited:
+                # Cycle — defensive; X shouldn't produce one
+                c.root_comment_id = c.comment_id
+                break
+            visited.add(cur.comment_id)
+            if not cur.replied_to_id or cur.replied_to_id == post_id:
+                c.root_comment_id = cur.comment_id
+                break
+            parent = by_id.get(cur.replied_to_id)
+            if parent is None:
+                # Ancestor not in this batch — fall back to self
+                c.root_comment_id = c.comment_id
+                break
+            cur = parent
 
 
 # ---------------------------------------------------------------------------

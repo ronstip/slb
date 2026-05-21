@@ -52,3 +52,32 @@ class Channel:
 class Batch:
     posts: list[Post] = field(default_factory=list)
     channels: list[Channel] = field(default_factory=list)
+
+
+@dataclass
+class Comment:
+    comment_id: str
+    platform: str
+    channel_handle: str
+    commented_at: datetime
+    channel_id: str | None = None
+    content: str | None = None
+    root_comment_id: str | None = None
+    likes: int | None = None
+    shares: int | None = None
+    replies_count: int | None = None
+    views: int | None = None
+    media_urls: list[str] = field(default_factory=list)
+    media_refs: list[dict] = field(default_factory=list)
+    platform_metadata: dict | None = None
+    crawl_provider: str | None = None
+    # Pipeline-only: direct parent id (the comment/post this reply targets).
+    # Used by resolve_comment_roots to walk up to the thread root; not persisted
+    # as a column (the BQ-persisted truth is root_comment_id + platform_metadata).
+    replied_to_id: str | None = None
+
+
+@dataclass
+class CommentBatch:
+    comments: list[Comment] = field(default_factory=list)
+    channels: list[Channel] = field(default_factory=list)

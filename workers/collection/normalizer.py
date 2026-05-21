@@ -1,23 +1,37 @@
 import json
 from datetime import datetime, timezone
 
-from workers.collection.models import Channel, Post
+from workers.collection.models import Channel, Comment, Post
 
 
 _VIDEO_EXTENSIONS = (".mp4", ".mov", ".webm", "mime_type=video", "googlevideo.com", "videoplayback", "v.redd.it")
 
 
+def _build_media_refs_from_urls(urls: list[str]) -> list[dict]:
+    return [
+        {
+            "original_url": url,
+            "media_type": "video" if any(ext in url.lower() for ext in _VIDEO_EXTENSIONS) else "image",
+            "content_type": "",
+        }
+        for url in urls
+    ]
+
+
 def seed_media_refs(post: Post) -> None:
     """Populate media_refs from media_urls if not already set."""
     if post.media_urls and not post.media_refs:
-        post.media_refs = [
-            {
-                "original_url": url,
-                "media_type": "video" if any(ext in url.lower() for ext in _VIDEO_EXTENSIONS) else "image",
-                "content_type": "",
-            }
-            for url in post.media_urls
-        ]
+        post.media_refs = _build_media_refs_from_urls(post.media_urls)
+
+
+def seed_comment_media_refs(comment: Comment) -> None:
+    """Populate comment media_refs from media_urls if not already set.
+
+    Mirrors seed_media_refs for posts. Comments stay URL-only in v1 — no GCS
+    download — so this is the entire media pipeline for a comment.
+    """
+    if comment.media_urls and not comment.media_refs:
+        comment.media_refs = _build_media_refs_from_urls(comment.media_urls)
 
 
 def post_to_bq_row(post: Post, collection_id: str) -> dict:
@@ -57,6 +71,29 @@ def post_to_engagement_row(post: Post) -> dict:
         "comments": json.dumps(post.comments) if post.comments else "[]",
         "platform_engagements": None,
         "source": "initial",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def comment_to_bq_row(comment: Comment, post_id: str, agent_id: str | None) -> dict:
+    """Convert a Comment to a BigQuery row dict for the `comments` table."""
+    return {
+        "comment_id": comment.comment_id,
+        "post_id": post_id,
+        "agent_id": agent_id,
+        "platform": comment.platform,
+        "root_comment_id": comment.root_comment_id,
+        "channel_handle": comment.channel_handle,
+        "channel_id": comment.channel_id,
+        "content": comment.content,
+        "commented_at": comment.commented_at.isoformat() if comment.commented_at else None,
+        "likes": comment.likes,
+        "shares": comment.shares,
+        "replies_count": comment.replies_count,
+        "views": comment.views,
+        "media_refs": json.dumps(comment.media_refs) if comment.media_refs else "[]",
+        "platform_metadata": json.dumps(comment.platform_metadata) if comment.platform_metadata else None,
+        "crawl_provider": comment.crawl_provider,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
 

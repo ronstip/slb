@@ -58,6 +58,20 @@ class DraftRequest(BaseModel):
     instruction: str
 
 
+class FetchCommentsRequest(BaseModel):
+    """Body for POST /posts/{post_id}/fetch-comments.
+
+    agent_id is optional — when present it's stamped on every comment row
+    so per-agent cost/audit views work. The post itself is located by post_id;
+    collection_id is read from the post row in BQ (single source of truth).
+    """
+
+    agent_id: str | None = None
+
+
+_COMMENTS_SUPPORTED_PLATFORMS = {"twitter"}
+
+
 class EnrichmentResponse(BaseModel):
     """Subset of EnrichmentResult fields the UI cares about, plus source flag."""
 
@@ -176,6 +190,85 @@ def _read_agent_custom_fields(agent_id: str) -> list[CustomFieldDef] | None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@router.post("/posts/{post_id}/fetch-comments")
+async def fetch_post_comments_endpoint(
+    post_id: str,
+    body: FetchCommentsRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Manually fetch the full reply tree for one post.
+
+    Dispatches a Cloud Task to the worker service (`/comments/run`), which
+    runs the platform adapter's `fetch_comments` and appends rows to the
+    `comments` + `channels` tables. Fire-and-forget — UI refetches once done.
+    """
+    post = await asyncio.to_thread(_read_post_for_comments, post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
+    _check_collection_access(user, post["collection_id"])
+
+    platform = post.get("platform")
+    if platform not in _COMMENTS_SUPPORTED_PLATFORMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Comments fetch not supported for platform {platform}",
+        )
+
+    if not post.get("post_url"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Post {post_id} has no post_url — cannot fetch comments",
+        )
+
+    payload = {
+        "post_id": post_id,
+        "collection_id": post["collection_id"],
+        "agent_id": body.agent_id,
+        "platform": platform,
+        "post_url": post["post_url"],
+        "crawl_provider": post.get("crawl_provider"),
+    }
+
+    settings = get_settings()
+    if settings.is_dev:
+        # Mirror collection_service: run inline in a daemon thread so dev
+        # works without a Cloud Tasks queue + worker service.
+        import threading
+        from workers.comments.worker import fetch_post_comments
+
+        logger.info("DEV MODE: running comments fetch in background thread for post %s", post_id)
+        threading.Thread(target=fetch_post_comments, args=(payload,), daemon=True).start()
+    else:
+        from api.services.cloud_tasks import dispatch_worker_task
+
+        await asyncio.to_thread(dispatch_worker_task, "/comments/run", payload)
+
+    logger.info("Queued comments fetch for post %s (agent=%s)", post_id, body.agent_id)
+    return {"status": "queued", "post_id": post_id}
+
+
+def _read_post_for_comments(post_id: str) -> dict | None:
+    """Read the latest dedup-winning row for one post.
+
+    Returns the minimal fields the comments worker + access check need.
+    """
+    bq = get_bq()
+    sql = """
+    SELECT post_id, collection_id, platform, post_url, crawl_provider
+    FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (
+                   PARTITION BY post_id ORDER BY collected_at DESC
+               ) AS _rn
+        FROM social_listening.posts
+        WHERE post_id = @post_id
+    )
+    WHERE _rn = 1
+    """
+    rows = bq.query(sql, {"post_id": post_id})
+    return rows[0] if rows else None
 
 
 def _check_collection_access(user: CurrentUser, collection_id: str) -> None:

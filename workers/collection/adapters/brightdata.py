@@ -29,7 +29,7 @@ from workers.collection.adapters.brightdata_parsers import (
     parse_brightdata_youtube_channel,
     parse_brightdata_youtube_post,
 )
-from workers.collection.models import Batch, Channel, Post
+from workers.collection.models import Batch, Channel, CommentBatch, Post
 
 logger = logging.getLogger(__name__)
 
@@ -626,6 +626,11 @@ class BrightDataAdapter(DataProviderAdapter):
                 logger.error("BrightData engagement refresh failed for %s: %s", platform, e)
 
         return results
+
+    def fetch_comments(self, post: dict) -> CommentBatch:
+        raise NotImplementedError(
+            f"fetch_comments not supported by BrightDataAdapter on {post.get('platform', '<unknown>')}"
+        )
 
     def _extract_engagement(self, platform: str, item: dict) -> dict | None:
         """Extract engagement metrics from a Bright Data response item."""
