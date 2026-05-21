@@ -1,4 +1,4 @@
-import { apiPost } from '../client.ts';
+import { apiGet, apiPost } from '../client.ts';
 
 export interface EnrichmentOverride {
   post_id: string;
@@ -55,4 +55,25 @@ export async function fetchPostComments(
   return apiPost(`/posts/${encodeURIComponent(postId)}/fetch-comments`, {
     agent_id: agentId,
   });
+}
+
+export interface CommentItem {
+  comment_id: string;
+  root_comment_id: string | null;
+  channel_handle: string;
+  channel_id: string | null;
+  content: string | null;
+  commented_at: string | null;
+  likes: number | null;
+  replies_count: number | null;
+  views: number | null;
+}
+
+export interface CommentsResponse {
+  post_id: string;
+  comments: CommentItem[];
+}
+
+export async function listPostComments(postId: string): Promise<CommentsResponse> {
+  return apiGet(`/posts/${encodeURIComponent(postId)}/comments`);
 }

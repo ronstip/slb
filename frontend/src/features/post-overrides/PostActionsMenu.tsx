@@ -20,8 +20,9 @@ import {
 } from '../../components/ui/alert-dialog.tsx';
 import { cn } from '../../lib/utils.ts';
 import type { FeedPost } from '../../api/types.ts';
-import { fetchPostComments, overridePostEnrichment } from '../../api/endpoints/posts.ts';
+import { overridePostEnrichment } from '../../api/endpoints/posts.ts';
 import { EditPostDrawer } from './EditPostDrawer.tsx';
+import { CommentsDrawer } from './CommentsDrawer.tsx';
 
 interface PostActionsMenuProps {
   post: FeedPost;
@@ -39,8 +40,8 @@ interface PostActionsMenuProps {
 export function PostActionsMenu({ post, agentId, collectionIdOverride, className }: PostActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [excludeConfirmOpen, setExcludeConfirmOpen] = useState(false);
-  const [fetchCommentsConfirmOpen, setFetchCommentsConfirmOpen] = useState(false);
   const qc = useQueryClient();
   const collectionId = collectionIdOverride ?? post.collection_id;
   const commentsSupported = post.platform === 'twitter';
@@ -83,13 +84,6 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
     },
   });
 
-  const fetchCommentsMutation = useMutation({
-    mutationFn: () => fetchPostComments(post.post_id, agentId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['collection-posts'] });
-    },
-  });
-
   if (!agentId || !collectionId) return null;
 
   const requestExclude = () => {
@@ -120,25 +114,9 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
     });
   };
 
-  const requestFetchComments = () => {
+  const openComments = () => {
     setOpen(false);
-    setFetchCommentsConfirmOpen(true);
-  };
-
-  const confirmFetchComments = () => {
-    setFetchCommentsConfirmOpen(false);
-    fetchCommentsMutation.mutate(undefined, {
-      onSuccess: () => {
-        toast('Fetching comments…', {
-          description: "We'll add replies to this post once they arrive.",
-        });
-      },
-      onError: (err) => {
-        toast.error('Could not fetch comments', {
-          description: err instanceof Error ? err.message : 'Unknown error',
-        });
-      },
-    });
+    setCommentsOpen(true);
   };
 
   return (
@@ -180,11 +158,11 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
             Edit enrichment…
           </DropdownMenuItem>
           <DropdownMenuItem
-            onSelect={requestFetchComments}
-            disabled={!commentsSupported || fetchCommentsMutation.isPending}
+            onSelect={openComments}
+            disabled={!commentsSupported}
           >
             <MessagesSquare className="mr-2 h-4 w-4" />
-            Fetch comments
+            View comments
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={requestExclude}
@@ -205,6 +183,13 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
         collectionId={collectionId}
       />
 
+      <CommentsDrawer
+        open={commentsOpen}
+        onOpenChange={setCommentsOpen}
+        post={post}
+        agentId={agentId}
+      />
+
       <AlertDialog open={excludeConfirmOpen} onOpenChange={setExcludeConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -223,23 +208,6 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={fetchCommentsConfirmOpen} onOpenChange={setFetchCommentsConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Fetch comments?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Pulls the full reply tree for this post via the X API. May take
-              ~30 seconds and counts against your X API quota.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmFetchComments}>
-              Fetch
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

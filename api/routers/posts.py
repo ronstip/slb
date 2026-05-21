@@ -72,6 +72,25 @@ class FetchCommentsRequest(BaseModel):
 _COMMENTS_SUPPORTED_PLATFORMS = {"twitter"}
 
 
+class CommentItem(BaseModel):
+    """One reply row, flat. UI nests via `root_comment_id`."""
+
+    comment_id: str
+    root_comment_id: str | None = None
+    channel_handle: str
+    channel_id: str | None = None
+    content: str | None = None
+    commented_at: str | None = None
+    likes: int | None = None
+    replies_count: int | None = None
+    views: int | None = None
+
+
+class CommentsResponse(BaseModel):
+    post_id: str
+    comments: list[CommentItem]
+
+
 class EnrichmentResponse(BaseModel):
     """Subset of EnrichmentResult fields the UI cares about, plus source flag."""
 
@@ -247,6 +266,70 @@ async def fetch_post_comments_endpoint(
 
     logger.info("Queued comments fetch for post %s (agent=%s)", post_id, body.agent_id)
     return {"status": "queued", "post_id": post_id}
+
+
+@router.get("/posts/{post_id}/comments", response_model=CommentsResponse)
+async def list_post_comments(
+    post_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """List replies fetched for one post.
+
+    Dedup by comment_id (latest fetched_at wins, since fetch-comments is
+    append-only). Top-level comments ordered by likes desc; replies grouped
+    by root_comment_id and ordered by commented_at asc within a thread.
+    Frontend nests via root_comment_id.
+    """
+    post = await asyncio.to_thread(_read_post_for_comments, post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
+    _check_collection_access(user, post["collection_id"])
+
+    rows = await asyncio.to_thread(_read_comments_for_post, post_id)
+    return CommentsResponse(post_id=post_id, comments=rows)
+
+
+def _read_comments_for_post(post_id: str) -> list[CommentItem]:
+    bq = get_bq()
+    sql = """
+    WITH deduped AS (
+        SELECT *,
+               ROW_NUMBER() OVER (
+                   PARTITION BY comment_id ORDER BY fetched_at DESC
+               ) AS _rn
+        FROM social_listening.comments
+        WHERE post_id = @post_id
+    )
+    SELECT
+        comment_id,
+        root_comment_id,
+        channel_handle,
+        channel_id,
+        content,
+        commented_at,
+        likes,
+        replies_count,
+        views
+    FROM deduped
+    WHERE _rn = 1
+    ORDER BY commented_at ASC
+    """
+    rows = bq.query(sql, {"post_id": post_id})
+    out: list[CommentItem] = []
+    for r in rows:
+        ts = r.get("commented_at")
+        out.append(CommentItem(
+            comment_id=r["comment_id"],
+            root_comment_id=r.get("root_comment_id"),
+            channel_handle=r["channel_handle"],
+            channel_id=r.get("channel_id"),
+            content=r.get("content"),
+            commented_at=ts.isoformat() if ts is not None and hasattr(ts, "isoformat") else (ts if isinstance(ts, str) else None),
+            likes=r.get("likes"),
+            replies_count=r.get("replies_count"),
+            views=r.get("views"),
+        ))
+    return out
 
 
 def _read_post_for_comments(post_id: str) -> dict | None:
