@@ -1,5 +1,5 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { CustomChartConfig, CustomDimension, CustomTableConfig, WidgetData } from './types-social-dashboard.ts';
+import type { CustomChartConfig, CustomDimension, CustomTableConfig, TableColumn, WidgetData } from './types-social-dashboard.ts';
 import { isCustomFieldDimension, customFieldName, isDimensionColumn, normalizeTableConfig } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
