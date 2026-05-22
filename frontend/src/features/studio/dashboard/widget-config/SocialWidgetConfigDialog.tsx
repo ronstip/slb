@@ -24,14 +24,14 @@ const MarkdownArtifactEditor = lazy(() =>
 import { cn } from '../../../../lib/utils.ts';
 import type { DashboardPost } from '../../../../api/types.ts';
 import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize } from '../types-social-dashboard.ts';
-import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, getDimensionMeta, defaultTableConfigFor, NUMBER_SIZE_GRID } from '../types-social-dashboard.ts';
+import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, getDimensionMeta, defaultTableConfigFor, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
 import { TableDataForm } from './TableDataForm.tsx';
 import { WidgetFilterForm } from './WidgetFilterForm.tsx';
 import { WidgetStyleForm } from './WidgetStyleForm.tsx';
 import { ChartStyleEditor } from './ChartStyleEditor.tsx';
-import { aggregateCustom, aggregatePlatforms, aggregateSentiment } from '../dashboard-aggregations.ts';
+import { aggregateCustom, aggregatePlatforms, aggregateSentiment, aggregateTable } from '../dashboard-aggregations.ts';
 import { extractChartSeriesLabels } from '../chart-series-labels.ts';
 import { SocialWidgetRenderer, applyWidgetFilters } from '../SocialWidgetRenderer.tsx';
 import { composeWidgetField, type WidgetDataSummary } from '../../../../api/endpoints/dashboard.ts';
@@ -556,12 +556,42 @@ function StyleTab({
     );
   }
 
-  // Tables: minimal set — density + stripes. Accent / per-series colors don't
-  // apply (rows aren't colored series).
+  // Tables: density + stripes + rename row values. Accent / per-series colors
+  // don't apply (rows aren't colored series), but renames carry over from the
+  // shared `styleOverrides.seriesLabels` map so a table & a chart on the same
+  // dimension share renames.
   if (draft.chartType === 'table') {
-    const tableConfig =
-      draft.tableConfig ?? defaultTableConfigFor(draft.customConfig?.dimension ?? 'channel_handle');
-    return <TableStyleForm config={tableConfig} onChange={onTableConfigChange} />;
+    const tableConfig = normalizeTableConfig(
+      draft.tableConfig ?? defaultTableConfigFor(draft.customConfig?.dimension ?? 'channel_handle'),
+    );
+    const filteredPreviewPosts = applyWidgetFilters(previewPosts, draft.filters);
+    const rows = aggregateTable(filteredPreviewPosts, tableConfig);
+    // Distinct raw values from the first dim column drive the rename UI —
+    // matches what the user sees in the leading group-by column.
+    const firstDimCol = tableConfig.columns.find(isDimensionColumn);
+    const seen = new Set<string>();
+    const dimLabels: string[] = [];
+    if (firstDimCol) {
+      for (const r of rows) {
+        const v = r[firstDimCol.id];
+        if (typeof v === 'string' && v !== '' && !seen.has(v)) {
+          seen.add(v);
+          dimLabels.push(v);
+        }
+      }
+    }
+    const firstDimLabel = firstDimCol?.dimension ? getDimensionMeta(firstDimCol.dimension).label : 'group';
+    const tableStyleOverrides: ChartStyleOverrides = draft.styleOverrides ?? {};
+    return (
+      <TableStyleForm
+        config={tableConfig}
+        onChange={onTableConfigChange}
+        dimLabels={dimLabels}
+        dimColumnLabel={firstDimLabel}
+        styleOverrides={tableStyleOverrides}
+        onStyleChange={onStyleChange}
+      />
+    );
   }
 
   // Charts: compute the labels the chart will render so the per-series picker
@@ -585,42 +615,105 @@ function StyleTab({
 function TableStyleForm({
   config,
   onChange,
+  dimLabels,
+  dimColumnLabel,
+  styleOverrides,
+  onStyleChange,
 }: {
   config: CustomTableConfig;
   onChange: (config: CustomTableConfig) => void;
+  dimLabels: string[];
+  dimColumnLabel: string;
+  styleOverrides: ChartStyleOverrides;
+  onStyleChange: (overrides: ChartStyleOverrides) => void;
 }) {
+  const setRowLabel = (raw: string, name: string | undefined) => {
+    const next = { ...(styleOverrides.seriesLabels ?? {}) };
+    if (name === undefined || name.trim() === '') delete next[raw];
+    else next[raw] = name;
+    onStyleChange({
+      ...styleOverrides,
+      seriesLabels: Object.keys(next).length > 0 ? next : undefined,
+    });
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Label className="text-xs w-24 shrink-0">Density</Label>
-        <div className="flex items-center gap-1.5">
-          {(['compact', 'comfortable'] as const).map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => onChange({ ...config, density: d })}
-              className={cn(
-                'rounded-md border px-2.5 py-1 text-xs font-medium transition-all capitalize',
-                (config.density ?? 'compact') === d
-                  ? 'border-primary bg-primary/5 text-primary'
-                  : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
-              )}
-            >
-              {d}
-            </button>
-          ))}
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Density</Label>
+          <div className="flex items-center gap-1.5">
+            {(['compact', 'comfortable'] as const).map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => onChange({ ...config, density: d })}
+                className={cn(
+                  'rounded-md border px-2.5 py-1 text-xs font-medium transition-all capitalize',
+                  (config.density ?? 'compact') === d
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
         </div>
+
+        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={config.striped ?? true}
+            onChange={(e) => onChange({ ...config, striped: e.target.checked })}
+            className="h-3.5 w-3.5 cursor-pointer"
+          />
+          Striped rows
+        </label>
       </div>
 
-      <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={config.striped ?? true}
-          onChange={(e) => onChange({ ...config, striped: e.target.checked })}
-          className="h-3.5 w-3.5 cursor-pointer"
-        />
-        Striped rows
-      </label>
+      {dimLabels.length > 0 && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Rename Row Values
+          </Label>
+          <p className="text-xs text-muted-foreground/80">
+            Override the display name for each unique value in the {dimColumnLabel} column. Leave blank to keep the raw value.
+          </p>
+          <div className="space-y-1.5">
+            {dimLabels.map((raw) => {
+              const current = styleOverrides.seriesLabels?.[raw] ?? '';
+              return (
+                <div key={raw} className="flex items-center gap-2">
+                  <span
+                    className="w-1/3 shrink-0 truncate text-xs text-muted-foreground"
+                    title={raw}
+                  >
+                    {raw}
+                  </span>
+                  <Input
+                    type="text"
+                    value={current}
+                    placeholder={raw}
+                    onChange={(e) => setRowLabel(raw, e.target.value)}
+                    className="h-7 flex-1 min-w-0 text-xs"
+                  />
+                  {current !== '' && (
+                    <button
+                      type="button"
+                      onClick={() => setRowLabel(raw, undefined)}
+                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title="Reset"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

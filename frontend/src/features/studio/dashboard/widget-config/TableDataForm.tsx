@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, BarChart3, ChevronDown, Grid3x3, Minus, Plus, X } from 'lucide-react';
 import { Label } from '../../../../components/ui/label.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { Button } from '../../../../components/ui/button.tsx';
@@ -23,7 +23,8 @@ import type {
   CustomTableConfig,
   TableColumn,
   TableColumnAgg,
-  TableDimensionAgg,
+  TableColumnDisplay,
+  TableColumnViz,
 } from '../types-social-dashboard.ts';
 import {
   DIMENSION_META,
@@ -32,6 +33,7 @@ import {
   CUSTOM_DIM_PREFIX,
   autoColumnHeader,
   isDimensionColumn,
+  normalizeTableConfig,
 } from '../types-social-dashboard.ts';
 
 const STANDARD_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
@@ -45,9 +47,16 @@ const AGG_OPTIONS: Array<{ value: TableColumnAgg; label: string }> = [
   { value: 'count', label: 'Count' },
 ];
 
-const DIM_AGG_OPTIONS: Array<{ value: TableDimensionAgg; label: string }> = [
-  { value: 'top',            label: 'Most common' },
-  { value: 'distinct_count', label: 'Distinct count' },
+const VIZ_OPTIONS: Array<{ value: TableColumnViz; label: string; Icon: typeof Minus }> = [
+  { value: 'none',    label: 'Plain number',   Icon: Minus },
+  { value: 'bar',     label: 'Inline bar',     Icon: BarChart3 },
+  { value: 'heatmap', label: 'Heatmap shade',  Icon: Grid3x3 },
+];
+
+const DISPLAY_OPTIONS: Array<{ value: TableColumnDisplay; label: string; title: string }> = [
+  { value: 'abs',     label: '#',     title: 'Absolute number' },
+  { value: 'pct',     label: '%',     title: '% of column total' },
+  { value: 'abs_pct', label: '# (%)', title: 'Number with percent of column total' },
 ];
 
 interface TableDataFormProps {
@@ -64,7 +73,16 @@ function uniqueColumnId(existing: TableColumn[], seed: string): string {
   return `${seed}_${n}`;
 }
 
-export function TableDataForm({ config, onChange, customFieldNames }: TableDataFormProps) {
+export function TableDataForm({ config: rawConfig, onChange, customFieldNames }: TableDataFormProps) {
+  // Migrate legacy `dimension` slot into a first dim column so the form only
+  // has to think about one model.
+  const config = useMemo(() => normalizeTableConfig(rawConfig), [rawConfig]);
+  // The legacy field is now redundant — strip it on any mutation so saved
+  // widgets converge on the canonical shape.
+  const emit = (next: CustomTableConfig) => {
+    const { dimension: _drop, ...rest } = next;
+    onChange(rest);
+  };
   const allDimensions = useMemo<CustomDimension[]>(() => {
     const customDims = (customFieldNames ?? []).map(
       (n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension,
@@ -74,7 +92,7 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
 
   const updateColumn = (idx: number, patch: Partial<TableColumn>) => {
     const next = config.columns.map((c, i) => (i === idx ? { ...c, ...patch } : c));
-    onChange({ ...config, columns: next });
+    emit({ ...config, columns: next });
   };
 
   const removeColumn = (idx: number) => {
@@ -82,7 +100,7 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
     const next = config.columns.filter((_, i) => i !== idx);
     // If we removed the sort column, fall back to the first remaining column.
     const sortBy = config.sortBy === removed?.id ? next[0]?.id : config.sortBy;
-    onChange({ ...config, columns: next, sortBy });
+    emit({ ...config, columns: next, sortBy });
   };
 
   const moveColumn = (idx: number, dir: -1 | 1) => {
@@ -90,12 +108,12 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
     if (target < 0 || target >= config.columns.length) return;
     const next = config.columns.slice();
     [next[idx], next[target]] = [next[target], next[idx]];
-    onChange({ ...config, columns: next });
+    emit({ ...config, columns: next });
   };
 
   const addMetricColumn = () => {
     const id = uniqueColumnId(config.columns, 'col');
-    onChange({
+    emit({
       ...config,
       columns: [...config.columns, { id, kind: 'metric', metric: 'like_count', agg: 'sum' }],
     });
@@ -103,11 +121,11 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
 
   const addDimensionColumn = () => {
     const id = uniqueColumnId(config.columns, 'dim');
-    onChange({
+    emit({
       ...config,
       columns: [
         ...config.columns,
-        { id, kind: 'dimension', dimension: 'sentiment', dimensionAgg: 'top' },
+        { id, kind: 'dimension', dimension: 'sentiment' },
       ],
     });
   };
@@ -118,35 +136,15 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
     const cur = config.columns[idx];
     if (!cur) return;
     const next: TableColumn = kind === 'dimension'
-      ? { id: cur.id, kind: 'dimension', dimension: cur.dimension ?? 'sentiment', dimensionAgg: cur.dimensionAgg ?? 'top', header: cur.header }
-      : { id: cur.id, kind: 'metric',    metric: cur.metric ?? 'like_count',     agg: cur.agg ?? 'sum',                   header: cur.header };
+      ? { id: cur.id, kind: 'dimension', dimension: cur.dimension ?? 'sentiment', header: cur.header }
+      : { id: cur.id, kind: 'metric',    metric: cur.metric ?? 'like_count', agg: cur.agg ?? 'sum', header: cur.header };
     const columns = config.columns.map((c, i) => (i === idx ? next : c));
-    onChange({ ...config, columns });
+    emit({ ...config, columns });
   };
 
   return (
     <div className="space-y-4">
-      {/* Group By — single dimension that defines each row */}
-      <div className="flex items-center gap-3">
-        <Label className="text-xs w-24 shrink-0">Group By</Label>
-        <Select
-          value={config.dimension}
-          onValueChange={(v) => onChange({ ...config, dimension: v as CustomDimension })}
-        >
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {allDimensions.map((dim) => (
-              <SelectItem key={dim} value={dim}>
-                {getDimensionMeta(dim).label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Columns list */}
+      {/* Columns list — dimension columns define grouping (cross product); metric columns aggregate within each group. */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -189,7 +187,10 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
               const kind: 'metric' | 'dimension' = isDim ? 'dimension' : 'metric';
               const isPostCount = !isDim && col.metric === 'post_count';
               const effectiveAgg: TableColumnAgg = isPostCount ? 'count' : (col.agg ?? 'sum');
-              const effectiveDimAgg: TableDimensionAgg = col.dimensionAgg ?? 'top';
+              // Viz/format toggles only make sense for numeric cells (metric columns).
+              const isNumericCol = !isDim;
+              const effectiveViz: TableColumnViz = col.viz ?? 'none';
+              const effectiveDisplay: TableColumnDisplay = col.display ?? 'abs';
               return (
                 <div
                   key={col.id}
@@ -266,23 +267,12 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
                     </Select>
                   )}
 
-                  {/* Aggregation — metric agg or dimension agg */}
+                  {/* Aggregation — metric only. Dimension columns always
+                       contribute to the group-by compound key (one value per row). */}
                   {isDim ? (
-                    <Select
-                      value={effectiveDimAgg}
-                      onValueChange={(v) => updateColumn(idx, { dimensionAgg: v as TableDimensionAgg })}
-                    >
-                      <SelectTrigger className="h-7 text-xs w-[120px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DIM_AGG_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <span className="text-[11px] text-muted-foreground w-[120px] px-1 truncate">
+                      Group by
+                    </span>
                   ) : (
                     <Select
                       value={effectiveAgg}
@@ -312,6 +302,60 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
                     className="h-7 text-xs flex-1 min-w-0"
                   />
 
+                  {/* In-cell viz toggle — numeric columns only */}
+                  {isNumericCol && (
+                    <div className="flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
+                      {VIZ_OPTIONS.map(({ value, label, Icon }) => {
+                        const active = effectiveViz === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() =>
+                              updateColumn(idx, { viz: value === 'none' ? undefined : value })
+                            }
+                            title={label}
+                            className={cn(
+                              'flex h-6 w-6 items-center justify-center rounded transition-colors',
+                              active
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            <Icon className="h-3 w-3" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Numeric display format toggle — numeric columns only */}
+                  {isNumericCol && (
+                    <div className="flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
+                      {DISPLAY_OPTIONS.map(({ value, label, title }) => {
+                        const active = effectiveDisplay === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() =>
+                              updateColumn(idx, { display: value === 'abs' ? undefined : value })
+                            }
+                            title={title}
+                            className={cn(
+                              'flex h-6 items-center justify-center rounded px-1.5 text-[10px] font-medium tabular-nums transition-colors',
+                              active
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Remove */}
                   <button
                     type="button"
@@ -332,14 +376,13 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
       <div className="flex items-center gap-3">
         <Label className="text-xs w-24 shrink-0">Sort by</Label>
         <Select
-          value={config.sortBy ?? config.columns[0]?.id ?? '__dim'}
-          onValueChange={(v) => onChange({ ...config, sortBy: v })}
+          value={config.sortBy ?? config.columns[0]?.id ?? ''}
+          onValueChange={(v) => emit({ ...config, sortBy: v })}
         >
           <SelectTrigger className="h-8 text-xs flex-1">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__dim">{getDimensionMeta(config.dimension).label} (label)</SelectItem>
             {config.columns.map((col) => (
               <SelectItem key={col.id} value={col.id}>
                 {col.header || autoColumnHeader(col)}
@@ -352,7 +395,7 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
             <button
               key={dir}
               type="button"
-              onClick={() => onChange({ ...config, sortDir: dir })}
+              onClick={() => emit({ ...config, sortDir: dir })}
               className={cn(
                 'rounded-md border px-2.5 py-1 text-xs font-medium transition-all capitalize',
                 (config.sortDir ?? 'desc') === dir
@@ -378,12 +421,12 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
           onChange={(e) => {
             const raw = e.target.value;
             if (raw === '') {
-              onChange({ ...config, rowLimit: undefined });
+              emit({ ...config, rowLimit: undefined });
               return;
             }
             const n = Math.max(1, Math.min(500, Math.floor(Number(raw))));
             if (!Number.isFinite(n)) return;
-            onChange({ ...config, rowLimit: n });
+            emit({ ...config, rowLimit: n });
           }}
           placeholder="25"
           className="h-8 w-24 text-xs"
@@ -396,7 +439,7 @@ export function TableDataForm({ config, onChange, customFieldNames }: TableDataF
         <input
           type="checkbox"
           checked={config.showRank ?? true}
-          onChange={(e) => onChange({ ...config, showRank: e.target.checked })}
+          onChange={(e) => emit({ ...config, showRank: e.target.checked })}
           className="h-3.5 w-3.5 cursor-pointer"
         />
         Show rank # column

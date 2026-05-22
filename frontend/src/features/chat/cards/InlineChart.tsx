@@ -145,6 +145,7 @@ export function InlineChart({ data }: InlineChartProps) {
           data={widgetData}
           accent={styleOverrides.accent}
           seriesColorOverrides={styleOverrides.seriesColors}
+          seriesLabelOverrides={styleOverrides.seriesLabels}
           barOrientation={(barOrientation as 'horizontal' | 'vertical') ?? 'horizontal'}
           stacked={stacked ?? true}
         />

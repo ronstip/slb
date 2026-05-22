@@ -129,6 +129,7 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
           data={widgetData}
           accent={artifact.styleOverrides?.accent}
           seriesColorOverrides={artifact.styleOverrides?.seriesColors}
+          seriesLabelOverrides={artifact.styleOverrides?.seriesLabels}
           barOrientation={(artifact.barOrientation as 'horizontal' | 'vertical') ?? 'horizontal'}
           stacked={artifact.stacked ?? true}
         />

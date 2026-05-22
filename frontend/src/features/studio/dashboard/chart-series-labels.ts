@@ -32,7 +32,18 @@ export function extractChartSeriesLabels(
 
   if (data.groupedCategorical) {
     if (chartType === 'bar' || chartType === 'progress-list') {
-      return data.groupedCategorical.datasets.map((d) => d.label);
+      // Grouped bar / progress-list legend = dataset labels, axis = primary
+      // labels. User may want to rename either, so include both (primary axis
+      // first, then dataset labels — de-duped).
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const l of data.groupedCategorical.labels) {
+        if (l && !seen.has(l)) { seen.add(l); out.push(l); }
+      }
+      for (const d of data.groupedCategorical.datasets) {
+        if (d.label && !seen.has(d.label)) { seen.add(d.label); out.push(d.label); }
+      }
+      return out;
     }
     // Pie/doughnut: SocialChartWidget flattens to "Primary – Breakdown" labels.
     const { labels: primary, datasets } = data.groupedCategorical;

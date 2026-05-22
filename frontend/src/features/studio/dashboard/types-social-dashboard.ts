@@ -211,6 +211,16 @@ export type TableColumnAgg = 'sum' | 'avg' | 'min' | 'max' | 'count';
  *  - 'distinct_count': count of distinct values as a number. */
 export type TableDimensionAgg = 'top' | 'distinct_count';
 
+/** In-cell visualization for numeric columns. 'none' (default) shows raw value;
+ *  'bar' adds an inline horizontal bar scaled to the column max; 'heatmap'
+ *  shades the cell background by value. Ignored for string dimension cells. */
+export type TableColumnViz = 'none' | 'bar' | 'heatmap';
+
+/** Numeric format for a column. 'abs' (default) = raw number; 'pct' = the
+ *  cell's share of the column's total across visible rows; 'abs_pct' = both,
+ *  e.g. "1,234 (12.3%)". Ignored for string dimension cells. */
+export type TableColumnDisplay = 'abs' | 'pct' | 'abs_pct';
+
 export interface TableColumn {
   /** Stable key — also used as the sort key. */
   id: string;
@@ -226,6 +236,10 @@ export interface TableColumn {
   dimensionAgg?: TableDimensionAgg;
   /** Optional header override. Falls back to `autoColumnHeader(col)`. */
   header?: string;
+  /** Per-cell visualization for numeric columns. Default 'none'. */
+  viz?: TableColumnViz;
+  /** Numeric display format. Default 'abs'. */
+  display?: TableColumnDisplay;
 }
 
 export function isDimensionColumn(col: TableColumn): boolean {
@@ -233,11 +247,14 @@ export function isDimensionColumn(col: TableColumn): boolean {
 }
 
 export interface CustomTableConfig {
-  /** Row grouping — required for tables. */
-  dimension: CustomDimension;
-  /** 1..N metric columns (excludes the auto rank + dimension cell). */
+  /** @deprecated — legacy single group-by. New configs put all dimensions in
+   *  `columns` with `kind: 'dimension'`. Kept optional for back-compat; we
+   *  normalize at render time via {@link normalizeTableConfig}. */
+  dimension?: CustomDimension;
+  /** All columns. Dimension columns (`kind: 'dimension'`) jointly define the
+   *  row grouping (compound key); metric columns aggregate within each group. */
   columns: TableColumn[];
-  /** Column id to sort by. Special: '__rank' (insertion order), '__dim' (label). Default = first metric column id. */
+  /** Column id to sort by. Special: '__rank' (insertion order). Default = first column id. */
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
   /** Cap on rows kept after sort. Default 25. */
@@ -247,6 +264,34 @@ export interface CustomTableConfig {
   /** Style — minimal subset; chart accent / palette do not apply to tables. */
   density?: 'compact' | 'comfortable';
   striped?: boolean;
+}
+
+/** Migrate a legacy `dimension`-on-config table into the canonical form where
+ *  all dimensions live in `columns`. If the config already has at least one
+ *  `kind: 'dimension'` column, returns it as-is. Otherwise prepends a synthetic
+ *  dimension column built from `config.dimension`. Idempotent. */
+export function normalizeTableConfig(config: CustomTableConfig): CustomTableConfig {
+  const hasDimCol = config.columns.some(isDimensionColumn);
+  if (hasDimCol) return config;
+  if (!config.dimension) return config;
+  const seedId = '__group_0';
+  const dimCol: TableColumn = {
+    id: seedId,
+    kind: 'dimension',
+    dimension: config.dimension,
+  };
+  return {
+    ...config,
+    columns: [dimCol, ...config.columns],
+    // Legacy `sortBy: '__dim'` → sort by the synthesized dim col.
+    sortBy: config.sortBy === '__dim' ? seedId : config.sortBy,
+  };
+}
+
+/** All dimension columns in render order. After normalization these are the
+ *  group-by key parts; the compound key is the cross product of their values. */
+export function getGroupByDimensionColumns(config: CustomTableConfig): TableColumn[] {
+  return normalizeTableConfig(config).columns.filter(isDimensionColumn);
 }
 
 export function autoColumnHeader(col: TableColumn): string {
@@ -270,12 +315,14 @@ export function autoColumnHeader(col: TableColumn): string {
 
 /** Bootstrap a sensible table config for a dimension. Matches the Top
  *  Channels / Top Entities designs for known dims; falls back to a single
- *  post-count column for everything else. */
+ *  post-count column for everything else. Dimensions live in `columns` as
+ *  the first column (kind: 'dimension'). */
 export function defaultTableConfigFor(dimension: CustomDimension): CustomTableConfig {
+  const dimCol: TableColumn = { id: '__group_0', kind: 'dimension', dimension };
   if (dimension === 'channel_handle') {
     return {
-      dimension,
       columns: [
+        dimCol,
         { id: 'posts',    metric: 'post_count' },
         { id: 'avglikes', metric: 'like_count', agg: 'avg' },
         { id: 'avgviews', metric: 'view_count', agg: 'avg' },
@@ -288,8 +335,8 @@ export function defaultTableConfigFor(dimension: CustomDimension): CustomTableCo
   }
   if (dimension === 'entities') {
     return {
-      dimension,
       columns: [
+        dimCol,
         { id: 'mentions', metric: 'post_count', header: 'Mentions' },
         { id: 'views',    metric: 'view_count' },
         { id: 'likes',    metric: 'like_count' },
@@ -301,8 +348,7 @@ export function defaultTableConfigFor(dimension: CustomDimension): CustomTableCo
     };
   }
   return {
-    dimension,
-    columns: [{ id: 'posts', metric: 'post_count' }],
+    columns: [dimCol, { id: 'posts', metric: 'post_count' }],
     sortBy: 'posts',
     sortDir: 'desc',
     rowLimit: 25,
@@ -317,6 +363,10 @@ export interface ChartStyleOverrides {
   accent?: string;
   /** Per-label color overrides — keyed by the exact label in the data. */
   seriesColors?: Record<string, string>;
+  /** Per-label display-name overrides — keyed by the exact raw label in the
+   *  data, value is the user-facing name shown in legends, axes, table cells,
+   *  tooltips, etc. Empty/missing → fall back to humanised raw label. */
+  seriesLabels?: Record<string, string>;
 }
 
 /** Aggregations that were superseded by `aggregation: 'custom'` with the right

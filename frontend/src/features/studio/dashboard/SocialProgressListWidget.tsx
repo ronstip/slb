@@ -16,16 +16,23 @@ function resolveColor(label: string, fallback: string, overrides?: Record<string
   return fallback;
 }
 
+function resolveLabel(raw: string, overrides?: Record<string, string>): string {
+  const renamed = overrides?.[raw];
+  return renamed != null && renamed !== '' ? renamed : raw;
+}
+
 interface SocialProgressListWidgetProps {
   data: WidgetData | undefined;
   accent?: string;
   seriesColorOverrides?: Record<string, string>;
+  seriesLabelOverrides?: Record<string, string>;
 }
 
 export function SocialProgressListWidget({
   data,
   accent,
   seriesColorOverrides,
+  seriesLabelOverrides,
 }: SocialProgressListWidgetProps) {
   const { accentColor, theme } = useTheme();
   const isDark =
@@ -77,7 +84,7 @@ export function SocialProgressListWidget({
                     <span className="text-[11px] text-muted-foreground w-5 text-right tabular-nums shrink-0 font-medium">
                       {rowIdx + 1}.
                     </span>
-                    <span className="text-sm font-medium text-foreground truncate">{label}</span>
+                    <span className="text-sm font-medium text-foreground truncate">{resolveLabel(label, seriesLabelOverrides)}</span>
                   </div>
                   <div className="flex items-center gap-2 ml-3 shrink-0">
                     <span className="text-sm font-semibold text-foreground tabular-nums">{fmt(total)}</span>
@@ -103,7 +110,7 @@ export function SocialProgressListWidget({
                           backgroundColor: segmentColors[segIdx],
                           opacity: 0.85,
                         }}
-                        title={`${ds.label}: ${fmt(segVal)}`}
+                        title={`${resolveLabel(ds.label, seriesLabelOverrides)}: ${fmt(segVal)}`}
                       />
                     );
                   })}
@@ -121,9 +128,9 @@ export function SocialProgressListWidget({
               />
               <span
                 className="text-[11px] text-muted-foreground truncate max-w-[140px]"
-                title={ds.label}
+                title={resolveLabel(ds.label, seriesLabelOverrides)}
               >
-                {ds.label}
+                {resolveLabel(ds.label, seriesLabelOverrides)}
               </span>
             </div>
           ))}
@@ -175,7 +182,7 @@ export function SocialProgressListWidget({
                   {index + 1}.
                 </span>
                 <div className="shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                <span className="text-sm font-medium text-foreground truncate">{label}</span>
+                <span className="text-sm font-medium text-foreground truncate">{resolveLabel(label, seriesLabelOverrides)}</span>
               </div>
               <div className="flex items-center gap-2 ml-3 shrink-0">
                 <span className="text-sm font-semibold text-foreground tabular-nums">{fmt(value)}</span>

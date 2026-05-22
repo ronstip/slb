@@ -152,6 +152,14 @@ function formatLabel(raw: string): string {
     .join('-');
 }
 
+// User rename override > formatLabel humanisation. Both lookups are by the
+// raw label as it appears in the data (same key used for color overrides).
+function displayLabel(raw: string, overrides?: Record<string, string>): string {
+  const renamed = overrides?.[raw];
+  if (renamed != null && renamed !== '') return renamed;
+  return formatLabel(raw);
+}
+
 // ── Datalabel plugins ─────────────────────────────────────────────────────────
 
 type ArcGetProps = (
@@ -272,14 +280,19 @@ interface SocialChartWidgetProps {
   /** Per-label color overrides — keyed by exact label as it appears in the data
    *  (group name for grouped/multi-series, category label otherwise). */
   seriesColorOverrides?: Record<string, string>;
+  /** Per-label display-name overrides — same key shape as `seriesColorOverrides`.
+   *  Wins over the default `formatLabel` humanisation in legends, axes, tooltips. */
+  seriesLabelOverrides?: Record<string, string>;
   barOrientation?: 'horizontal' | 'vertical';
   stacked?: boolean;
   /** For time-series line charts: controls the Chart.js x-axis unit and display
    *  format. Defaults to 'day' for backwards compatibility. */
   timeBucket?: 'hour' | 'day' | 'week' | 'month';
+  /** Label shown under the centered total in doughnut charts. Defaults to 'total'. */
+  centerLabel?: string;
 }
 
-export function SocialChartWidget({ chartType, data, accent, seriesColorOverrides, barOrientation = 'horizontal', stacked = true, timeBucket = 'day' }: SocialChartWidgetProps) {
+export function SocialChartWidget({ chartType, data, accent, seriesColorOverrides, seriesLabelOverrides, barOrientation = 'horizontal', stacked = true, timeBucket = 'day', centerLabel }: SocialChartWidgetProps) {
   const { accentColor, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -403,7 +416,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     const seriesColors = resolveSeriesColors(groups.map(([n]) => n), colors, seriesColorOverrides);
     const chartData = {
       datasets: groups.map(([name, series], i) => ({
-        label: name,
+        label: displayLabel(name, seriesLabelOverrides),
         data: series.map((p) => ({ x: new Date(p.date), y: p.value })),
         borderColor: seriesColors[i],
         backgroundColor: seriesColors[i] + '15',
@@ -532,11 +545,11 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     );
     const chartData = {
       labels: labels.map((l) => {
-        const f = formatLabel(l);
+        const f = displayLabel(l, seriesLabelOverrides);
         return f.length > 30 ? f.substring(0, 30) + '…' : f;
       }),
       datasets: datasets.map((ds, i) => ({
-        label: formatLabel(ds.label),
+        label: displayLabel(ds.label, seriesLabelOverrides),
         data: ds.values,
         backgroundColor: datasetColors[i],
         borderWidth: 0,
@@ -607,7 +620,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       const cardBg = resolveThemeColor('--card');
       const legendPosition = labels.length <= 6 ? 'bottom' as const : 'right' as const;
 
-      const formattedLabels = labels.map(formatLabel);
+      const formattedLabels = labels.map((l) => displayLabel(l, seriesLabelOverrides));
       const chartData = {
         labels: formattedLabels,
         datasets: [{
@@ -663,6 +676,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
           data={chartData}
           options={options as ChartOptions<'doughnut'>}
           total={total}
+          label={centerLabel ?? 'total'}
         />
       );
     }
@@ -671,7 +685,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     const isHorizontal = barOrientation !== 'horizontal';
     const chartData = {
       labels: labels.map((l) => {
-        const f = formatLabel(l);
+        const f = displayLabel(l, seriesLabelOverrides);
         return f.length > 30 ? f.substring(0, 30) + '…' : f;
       }),
       datasets: [{
@@ -730,38 +744,49 @@ interface DoughnutWithCenterProps {
   data: Parameters<typeof Doughnut>[0]['data'];
   options: ChartOptions<'doughnut'>;
   total: number;
+  label: string;
 }
 
+// Static plugin reads total/label from chart.options each draw so toggling
+// metrics (which changes the React `label`/`total` props) updates the center
+// text without depending on react-chartjs-2 re-registering plugins.
+const doughnutCenterTextPlugin = {
+  id: 'doughnutCenterText',
+  beforeDraw(chart: ChartJS) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    const cfg = (chart.options.plugins as { doughnutCenterText?: { total: number; label: string } } | undefined)?.doughnutCenterText;
+    if (!cfg) return;
+    ctx.save();
+    const fg = resolveThemeColor('--foreground');
+    const mfg = resolveThemeColor('--muted-foreground');
+    const cx = (chartArea.left + chartArea.right) / 2;
+    const cy = (chartArea.top + chartArea.bottom) / 2;
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.fillStyle = fg;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(formatNumber(cfg.total), cx, cy - 8);
+    ctx.font = '400 11px system-ui, sans-serif';
+    ctx.fillStyle = mfg;
+    ctx.fillText(cfg.label, cx, cy + 10);
+    ctx.restore();
+  },
+};
+
 const DoughnutWithCenter = forwardRef<ChartJS<'doughnut'>, DoughnutWithCenterProps>(
-  function DoughnutWithCenter({ data, options, total }, ref) {
-    const plugins = useMemo(() => [
-      {
-        id: 'doughnutCenterText',
-        beforeDraw(chart: ChartJS) {
-          const { ctx, chartArea } = chart;
-          if (!chartArea) return;
-          ctx.save();
-          const fg = resolveThemeColor('--foreground');
-          const mfg = resolveThemeColor('--muted-foreground');
-          const cx = (chartArea.left + chartArea.right) / 2;
-          const cy = (chartArea.top + chartArea.bottom) / 2;
-          ctx.font = 'bold 20px system-ui, sans-serif';
-          ctx.fillStyle = fg;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(formatNumber(total), cx, cy - 8);
-          ctx.font = '400 11px system-ui, sans-serif';
-          ctx.fillStyle = mfg;
-          ctx.fillText('total', cx, cy + 10);
-          ctx.restore();
-        },
+  function DoughnutWithCenter({ data, options, total, label }, ref) {
+    const mergedOptions = useMemo(() => ({
+      ...options,
+      plugins: {
+        ...(options.plugins ?? {}),
+        doughnutCenterText: { total, label },
       },
-      pieDatalabelsPlugin,
-    ], [total]);
+    }), [options, total, label]);
 
     return (
       <div className="h-full w-full">
-        <Doughnut ref={ref as never} data={data} options={options} plugins={plugins} />
+        <Doughnut ref={ref as never} data={data} options={mergedOptions} plugins={[doughnutCenterTextPlugin, pieDatalabelsPlugin]} />
       </div>
     );
   },

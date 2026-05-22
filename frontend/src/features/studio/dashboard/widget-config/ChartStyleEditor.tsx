@@ -54,6 +54,16 @@ export function ChartStyleEditor({ seriesLabels, value, onChange }: ChartStyleEd
     });
   };
 
+  const setSeriesLabel = (label: string, name: string | undefined) => {
+    const next = { ...(value.seriesLabels ?? {}) };
+    if (name === undefined || name.trim() === '') delete next[label];
+    else next[label] = name;
+    onChange({
+      ...value,
+      seriesLabels: Object.keys(next).length > 0 ? next : undefined,
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Accent (palette base) */}
@@ -109,36 +119,49 @@ export function ChartStyleEditor({ seriesLabels, value, onChange }: ChartStyleEd
       {seriesLabels.length > 0 && (
         <div className="space-y-2">
           <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Series Colors
+            Series
           </Label>
+          <p className="text-xs text-muted-foreground/80">
+            Change the color and display name for each value. Renames apply to legends, axes, tooltips, and tables.
+          </p>
           <div className="space-y-1.5">
             {seriesLabels.map((label, i) => {
-              const override = value.seriesColors?.[label];
+              const colorOverride = value.seriesColors?.[label];
               const fallback = computeDefaultColor(label, i, palette);
-              const current = override ?? fallback;
+              const currentColor = colorOverride ?? fallback;
+              const nameOverride = value.seriesLabels?.[label] ?? '';
+              const hasOverride = colorOverride !== undefined || nameOverride !== '';
               return (
                 <div key={label} className="flex items-center gap-2">
                   <Input
                     type="color"
-                    className="h-7 w-10 cursor-pointer p-0.5"
-                    value={current}
+                    className="h-7 w-10 shrink-0 cursor-pointer p-0.5"
+                    value={currentColor}
                     onChange={(e) => setSeriesColor(label, e.target.value)}
                   />
-                  <span className="flex-1 truncate text-xs text-foreground" title={label}>
-                    {label}
-                  </span>
-                  {override !== undefined ? (
+                  <Input
+                    type="text"
+                    value={nameOverride}
+                    placeholder={label}
+                    onChange={(e) => setSeriesLabel(label, e.target.value)}
+                    className="h-7 flex-1 min-w-0 text-xs"
+                    title={`Raw: ${label}`}
+                  />
+                  {hasOverride ? (
                     <button
                       type="button"
-                      onClick={() => setSeriesColor(label, undefined)}
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={() => {
+                        setSeriesColor(label, undefined);
+                        setSeriesLabel(label, undefined);
+                      }}
+                      className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       title="Reset to default"
                     >
                       <RotateCcw className="h-3 w-3" />
                       Reset
                     </button>
                   ) : (
-                    <span className="text-[10px] text-muted-foreground/60">auto</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground/60">auto</span>
                   )}
                 </div>
               );

@@ -146,6 +146,7 @@ class ChartStyleOverrides(BaseModel):
 
     accent: str | None = None
     seriesColors: dict[str, str] | None = None
+    seriesLabels: dict[str, str] | None = None
 
 
 class FilterCondition(BaseModel):
@@ -242,12 +243,17 @@ class TableColumn(BaseModel):
     dimension: CustomDimensionField | None = None
     dimensionAgg: Literal["top", "distinct_count"] | None = None
     header: str | None = None
+    viz: Literal["none", "bar", "heatmap"] | None = None
+    display: Literal["abs", "pct", "abs_pct"] | None = None
 
 
 class CustomTableConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    dimension: CustomDimensionField
+    # Legacy single group-by. New configs put all dimensions in `columns` with
+    # `kind='dimension'`; the frontend normalizes legacy widgets at render time.
+    # Kept optional so existing stored layouts round-trip cleanly.
+    dimension: CustomDimensionField | None = None
     columns: list[TableColumn]
     sortBy: str | None = None
     sortDir: Literal["asc", "desc"] | None = None

@@ -31,6 +31,7 @@ export function getArtifact(id: string): Promise<ArtifactDetail> {
 export interface ChartStyleOverridesPayload {
   accent?: string;
   seriesColors?: Record<string, string>;
+  seriesLabels?: Record<string, string>;
 }
 
 export function updateArtifact(

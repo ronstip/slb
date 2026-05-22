@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, CustomTableConfig, CustomDimension } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, getDimensionMeta, isDimensionColumn } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, CustomTableConfig, CustomDimension, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, isDimensionColumn, normalizeTableConfig } from './types-social-dashboard.ts';
 import { aggregateCustom, aggregateTable, type TableRow } from './dashboard-aggregations.ts';
 import {
   aggregateSentiment,
@@ -36,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu.tsx';
 import { Copy, MoreVertical, Settings2, Trash2 } from 'lucide-react';
+import { cn } from '../../../lib/utils.ts';
 
 // ── Configurable table widget ─────────────────────────────────────────────────
 
@@ -56,8 +57,105 @@ function filterKeyForDimension(dim: CustomDimension): string | undefined {
   }
 }
 
+interface ColumnStats {
+  max: number;
+  total: number;
+}
+
+/** Per-column max + total over the rendered rows. Max scales bar/heatmap viz;
+ *  total is the denominator for `display: 'pct' | 'abs_pct'`. Skipped for
+ *  non-numeric columns (dimension cols with 'top' agg). */
+function computeColumnStats(
+  tableConfig: CustomTableConfig,
+  rows: TableRow[],
+): Record<string, ColumnStats> {
+  const stats: Record<string, ColumnStats> = {};
+  for (const col of tableConfig.columns) {
+    const isDim = isDimensionColumn(col);
+    const isNumeric = !isDim;
+    if (!isNumeric) continue;
+    const needsMax = col.viz === 'bar' || col.viz === 'heatmap';
+    const needsTotal = col.display === 'pct' || col.display === 'abs_pct';
+    if (!needsMax && !needsTotal) continue;
+    let max = 0;
+    let total = 0;
+    for (const row of rows) {
+      const v = Number(row[col.id] ?? 0);
+      if (!Number.isFinite(v)) continue;
+      if (v > max) max = v;
+      total += v;
+    }
+    stats[col.id] = { max, total };
+  }
+  return stats;
+}
+
+function formatPct(value: number, total: number): string {
+  if (!Number.isFinite(total) || total <= 0) return '0%';
+  const p = (value / total) * 100;
+  // 1dp under 10%, none above — keeps narrow columns tidy.
+  return `${p < 10 ? p.toFixed(1) : p.toFixed(0)}%`;
+}
+
+/** Format a numeric cell's text per `display`. Default 'abs'. */
+function formatCell(value: number, display: TableColumnDisplay | undefined, total: number): string {
+  if (display === 'pct') return formatPct(value, total);
+  if (display === 'abs_pct') return `${formatNumber(value)} (${formatPct(value, total)})`;
+  return formatNumber(value);
+}
+
+/** Render a numeric cell. When `viz` is set and `max > 0`, overlay an inline
+ *  bar (right-aligned, scaled to column max) or shade the cell as a heatmap.
+ *  Negative margins escape the DataTable's `cellPadX`/`cellPadY` so the bar /
+ *  shading reach the cell edges for a clean column-spanning look. */
+function renderNumericCell(
+  value: number,
+  viz: TableColumnViz | undefined,
+  display: TableColumnDisplay | undefined,
+  stats: ColumnStats | undefined,
+) {
+  const max = stats?.max ?? 0;
+  const total = stats?.total ?? 0;
+  const text = formatCell(value, display, total);
+  if (viz === 'bar' && max > 0) {
+    const pct = Math.max(0, Math.min(1, value / max)) * 100;
+    return (
+      <div className="relative -mx-2 -my-1.5 px-2 py-1.5">
+        <div
+          className="absolute inset-y-1 left-2 right-2 rounded-sm bg-primary/15 pointer-events-none"
+          style={{ width: `calc(${pct}% - 1rem)`, maxWidth: 'calc(100% - 1rem)' }}
+        />
+        <span className="relative tabular-nums">{text}</span>
+      </div>
+    );
+  }
+  if (viz === 'heatmap' && max > 0) {
+    const pct = Math.max(0, Math.min(1, value / max));
+    // 4% baseline so even zero rows are tinted; primary token = theme accent.
+    // color-mix is used everywhere else in globals.css — --primary is hex, not
+    // an hsl triplet, so `hsl(var(--primary) / alpha)` does not work.
+    const mix = (4 + pct * 36).toFixed(1);
+    return (
+      <div
+        className="relative -mx-2 -my-1.5 px-2 py-1.5 text-right"
+        style={{ backgroundColor: `color-mix(in srgb, var(--primary) ${mix}%, transparent)` }}
+      >
+        <span className="tabular-nums">{text}</span>
+      </div>
+    );
+  }
+  return <span className="tabular-nums">{text}</span>;
+}
+
+function renameValue(raw: string, overrides?: Record<string, string>): string {
+  const renamed = overrides?.[raw];
+  return renamed != null && renamed !== '' ? renamed : raw;
+}
+
 function buildTableColumns(
   tableConfig: CustomTableConfig,
+  columnStats: Record<string, ColumnStats>,
+  labelOverrides?: Record<string, string>,
 ): ColumnDef<TableRow>[] {
   const cols: ColumnDef<TableRow>[] = [];
 
@@ -73,45 +171,47 @@ function buildTableColumns(
     });
   }
 
-  const isChannel = tableConfig.dimension === 'channel_handle';
-  cols.push({
-    key: '__dim',
-    header: getDimensionMeta(tableConfig.dimension).label,
-    // Dimension is a string; DataTable's sort is numeric-only (apart from a
-    // hardcoded posted_at branch), so we don't expose a header-click sort
-    // here. Sort by label is still achievable via the config dialog (Sort by
-    // → "Label"), and `aggregateTable` pre-sorts the rows before render.
-    sortable: false,
-    render: (row) =>
-      isChannel ? (
-        <div className="flex items-center gap-2 min-w-0">
-          {row.__platform && <PlatformIcon platform={row.__platform} className="h-3.5 w-3.5 shrink-0" />}
-          <span className="text-[12px] font-medium text-foreground truncate">@{row.__label}</span>
-        </div>
-      ) : (
-        <span className="text-[12px] font-medium text-foreground truncate">{row.__label}</span>
-      ),
-  });
-
+  // First dim column (if any) gets the channel/platform-icon treatment when
+  // its dimension is `channel_handle`. Subsequent dim columns render plain.
+  let dimColSeen = false;
   for (const col of tableConfig.columns) {
     if (isDimensionColumn(col)) {
-      const dimAgg = col.dimensionAgg ?? 'top';
-      const isCount = dimAgg === 'distinct_count';
+      const isFirstDim = !dimColSeen;
+      dimColSeen = true;
+      const isChannel = col.dimension === 'channel_handle';
       cols.push({
         key: col.id,
         header: col.header || autoColumnHeader(col),
-        align: isCount ? 'right' : 'left',
-        // String values (top): DataTable's header sort is numeric-only and
-        // would scramble — fall back to aggregateTable's pre-sort by setting
-        // sortBy via the config dialog. distinct_count is numeric → sortable.
-        sortable: isCount,
+        align: 'left',
+        // String values: DataTable's header sort is numeric-only and would
+        // scramble — fall back to aggregateTable's pre-sort by picking this
+        // column in the config dialog's Sort by.
+        sortable: false,
         render: (row) => {
-          const v = row[col.id];
-          if (isCount) {
-            return <span className="tabular-nums">{formatNumber(Number(v ?? 0))}</span>;
+          const raw = String(row[col.id] ?? '');
+          const text = raw === '' ? '—' : renameValue(raw, labelOverrides);
+          if (isChannel) {
+            return (
+              <div className="flex items-center gap-2 min-w-0">
+                {isFirstDim && row.__platform && (
+                  <PlatformIcon platform={row.__platform} className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <span className="text-[12px] font-medium text-foreground truncate">
+                  {raw === '' ? text : `@${text}`}
+                </span>
+              </div>
+            );
           }
-          const text = v == null || v === '' ? '—' : String(v);
-          return <span className="text-[12px] text-foreground truncate">{text}</span>;
+          return (
+            <span
+              className={cn(
+                'text-[12px] truncate',
+                isFirstDim ? 'font-medium text-foreground' : 'text-foreground',
+              )}
+            >
+              {text}
+            </span>
+          );
         },
       });
     } else {
@@ -120,11 +220,8 @@ function buildTableColumns(
         header: col.header || autoColumnHeader(col),
         align: 'right',
         sortable: true,
-        render: (row) => (
-          <span className="tabular-nums">
-            {formatNumber(Number(row[col.id] ?? 0))}
-          </span>
-        ),
+        render: (row) =>
+          renderNumericCell(Number(row[col.id] ?? 0), col.viz, col.display, columnStats[col.id]),
       });
     }
   }
@@ -134,24 +231,33 @@ function buildTableColumns(
 
 function ConfigurableTableWidget({
   posts,
-  tableConfig,
+  tableConfig: rawTableConfig,
   onFilterToggle,
+  labelOverrides,
 }: {
   posts: DashboardPost[];
   tableConfig: CustomTableConfig;
   onFilterToggle?: (key: string, value: string) => void;
+  labelOverrides?: Record<string, string>;
 }) {
+  const tableConfig = useMemo(() => normalizeTableConfig(rawTableConfig), [rawTableConfig]);
   const rows = useMemo(() => aggregateTable(posts, tableConfig), [posts, tableConfig]);
-  const columns = useMemo(() => buildTableColumns(tableConfig), [tableConfig]);
-  const filterKey = filterKeyForDimension(tableConfig.dimension);
-  // When the active sort key produces strings (the dimension label, or a
-  // dimension column with 'top' agg), rely on aggregateTable's pre-sort —
-  // DataTable's sort is numeric-only and would scramble the order.
+  const columnStats = useMemo(() => computeColumnStats(tableConfig, rows), [tableConfig, rows]);
+  const columns = useMemo(
+    () => buildTableColumns(tableConfig, columnStats, labelOverrides),
+    [tableConfig, columnStats, labelOverrides],
+  );
+  // Row-click filtering: use the first dim column whose dimension maps to a
+  // filter key. With multiple group-by dims, only the first single-valued
+  // dim is wired — keeps click semantics unambiguous.
+  const firstDimCol = tableConfig.columns.find(isDimensionColumn);
+  const filterKey = firstDimCol?.dimension ? filterKeyForDimension(firstDimCol.dimension) : undefined;
+  // When the active sort key produces strings (any dim column), rely on
+  // aggregateTable's pre-sort — DataTable's sort is numeric-only and would
+  // scramble the order.
   const sortBy = tableConfig.sortBy ?? tableConfig.columns[0]?.id;
   const sortCol = tableConfig.columns.find((c) => c.id === sortBy);
-  const sortIsString =
-    sortBy === '__dim' ||
-    (sortCol != null && isDimensionColumn(sortCol) && (sortCol.dimensionAgg ?? 'top') === 'top');
+  const sortIsString = sortCol != null && isDimensionColumn(sortCol);
   const defaultSortKey = sortIsString ? undefined : sortBy;
 
   return (
@@ -169,8 +275,11 @@ function ConfigurableTableWidget({
       striped={tableConfig.striped ?? false}
       emptyMessage="No data"
       onRowClick={
-        filterKey && onFilterToggle
-          ? (r) => onFilterToggle(filterKey, r.__key)
+        filterKey && firstDimCol && onFilterToggle
+          ? (r) => {
+              const v = r[firstDimCol.id];
+              if (typeof v === 'string' && v) onFilterToggle(filterKey, v);
+            }
           : undefined
       }
     />
@@ -179,7 +288,13 @@ function ConfigurableTableWidget({
 
 // ── Generic table for custom widgets ──────────────────────────────────────────
 
-function GenericTableView({ data }: { data: WidgetData | undefined }) {
+function GenericTableView({
+  data,
+  labelOverrides,
+}: {
+  data: WidgetData | undefined;
+  labelOverrides?: Record<string, string>;
+}) {
   if (!data?.labels || !data.values || data.labels.length === 0) {
     return <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No data</div>;
   }
@@ -195,7 +310,7 @@ function GenericTableView({ data }: { data: WidgetData | undefined }) {
         <tbody>
           {data.labels.map((label, i) => (
             <tr key={label} className="border-b border-border/50 hover:bg-muted/30">
-              <td className="px-2 py-1.5 truncate max-w-[200px]">{label}</td>
+              <td className="px-2 py-1.5 truncate max-w-[200px]">{renameValue(label, labelOverrides)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums font-medium">{data.values![i].toLocaleString()}</td>
             </tr>
           ))}
@@ -355,13 +470,17 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
           posts={posts}
           tableConfig={tableConfig}
           onFilterToggle={onFilterToggle}
+          labelOverrides={widget.styleOverrides?.seriesLabels}
         />
       </SocialWidgetFrame>
     );
   }
   return (
     <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
-      <SocialProgressListWidget data={listData} />
+      <SocialProgressListWidget
+        data={listData}
+        seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
+      />
     </SocialWidgetFrame>
   );
 }
@@ -381,13 +500,17 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
           posts={posts}
           tableConfig={tableConfig}
           onFilterToggle={onFilterToggle}
+          labelOverrides={widget.styleOverrides?.seriesLabels}
         />
       </SocialWidgetFrame>
     );
   }
   return (
     <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
-      <SocialProgressListWidget data={listData} />
+      <SocialProgressListWidget
+        data={listData}
+        seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
+      />
     </SocialWidgetFrame>
   );
 }
@@ -484,6 +607,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
           data={data ?? undefined}
           accent={widget.styleOverrides?.accent ?? widget.accent}
           seriesColorOverrides={widget.styleOverrides?.seriesColors}
+          seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
         />
       </SocialWidgetFrame>
     );
@@ -503,13 +627,14 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
             posts={posts}
             tableConfig={tableConfig}
             onFilterToggle={onFilterToggle}
+            labelOverrides={widget.styleOverrides?.seriesLabels}
           />
         </SocialWidgetFrame>
       );
     }
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
-        <GenericTableView data={data ?? undefined} />
+        <GenericTableView data={data ?? undefined} labelOverrides={widget.styleOverrides?.seriesLabels} />
       </SocialWidgetFrame>
     );
   }
@@ -521,9 +646,11 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
         data={data ?? undefined}
         accent={widget.styleOverrides?.accent ?? widget.accent}
         seriesColorOverrides={widget.styleOverrides?.seriesColors}
+        seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
         barOrientation={widget.customConfig?.barOrientation}
         stacked={widget.customConfig?.stacked ?? true}
         timeBucket={widget.customConfig?.timeBucket}
+        centerLabel={METRIC_META[activeMetric]?.label}
       />
     </SocialWidgetFrame>
   );
@@ -572,7 +699,10 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
   if (widget.chartType === 'progress-list') {
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
-        <SocialProgressListWidget data={chartData ?? undefined} />
+        <SocialProgressListWidget
+          data={chartData ?? undefined}
+          seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
+        />
       </SocialWidgetFrame>
     );
   }
@@ -584,7 +714,9 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
         data={chartData ?? undefined}
         accent={widget.styleOverrides?.accent ?? widget.accent}
         seriesColorOverrides={widget.styleOverrides?.seriesColors}
+        seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
         barOrientation={widget.customConfig?.barOrientation}
+        centerLabel="Posts"
       />
     </SocialWidgetFrame>
   );

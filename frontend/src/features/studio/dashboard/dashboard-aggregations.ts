@@ -1,6 +1,6 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { CustomChartConfig, CustomDimension, CustomTableConfig, WidgetData } from './types-social-dashboard.ts';
-import { isCustomFieldDimension, customFieldName, isDimensionColumn } from './types-social-dashboard.ts';
+import { isCustomFieldDimension, customFieldName, isDimensionColumn, normalizeTableConfig } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
 
@@ -766,60 +766,79 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
 // ─── Table aggregation ────────────────────────────────────────────────────────
 
 export interface TableRow {
-  /** Stable key for React + sort. */
+  /** Stable key for React + sort. Compound key joining all group-by dimension
+   *  values (one row = one cross-product cell). */
   __key: string;
-  /** Display label for the dimension cell (e.g. channel handle, theme name). */
-  __label: string;
   /** Platform attached to channel rows so the dimension cell can render a
-   *  platform icon. Picked from the most recent post in the group. */
+   *  platform icon. Set when one of the group-by dimensions is `channel_handle`. */
   __platform?: string;
-  /** Per-column resolved values, keyed by TableColumn.id. */
+  /** Per-column resolved values, keyed by TableColumn.id. Dimension columns
+   *  hold the row's dimension value (string); metric columns hold the agg. */
   [columnId: string]: number | string | undefined;
 }
 
-/** Multi-column aggregation: one row per dimension value, with each table
- *  column resolved against the column's own metric + agg. Single pass over
- *  posts; reuses the same metric extractor as `aggregateCustom` so chart and
- *  table widgets agree on numbers. */
-export function aggregateTable(posts: DashboardPost[], config: CustomTableConfig): TableRow[] {
-  const { dimension, columns, sortBy, sortDir = 'desc', rowLimit = 25 } = config;
+const COMPOUND_SEP = '';
 
-  // dimension key -> per-metric-column Stats
+/** Cross-product key for a post across multiple dimensions. Returns one or
+ *  more compound keys: e.g. dims = [platform, sentiment] and a post on
+ *  twitter with two themes → 1 compound key (platform single-valued); but
+ *  dims = [themes, sentiment] over a post with 2 themes → 2 compound keys.
+ *  Each compound key carries its component values so we can populate dim
+ *  columns without re-extracting. */
+function compoundDimensionKeys(
+  p: DashboardPost,
+  dimCols: TableColumn[],
+): Array<{ key: string; values: string[] }> {
+  if (dimCols.length === 0) return [{ key: '__all__', values: [] }];
+  let combos: Array<{ key: string; values: string[] }> = [{ key: '', values: [] }];
+  for (const col of dimCols) {
+    if (!col.dimension) continue;
+    const vs = getDimensionKeys(p, col.dimension, 'day');
+    if (vs.length === 0) return [];
+    const next: Array<{ key: string; values: string[] }> = [];
+    for (const combo of combos) {
+      for (const v of vs) {
+        next.push({
+          key: combo.key === '' ? v : `${combo.key}${COMPOUND_SEP}${v}`,
+          values: [...combo.values, v],
+        });
+      }
+    }
+    combos = next;
+  }
+  return combos;
+}
+
+/** Multi-column aggregation: rows keyed by the cross product of all dimension
+ *  columns; each metric column resolved against its own metric + agg. Single
+ *  pass over posts; reuses the same metric extractor as `aggregateCustom` so
+ *  chart and table widgets agree on numbers. */
+export function aggregateTable(posts: DashboardPost[], rawConfig: CustomTableConfig): TableRow[] {
+  const config = normalizeTableConfig(rawConfig);
+  const { columns, sortBy, sortDir = 'desc', rowLimit = 25 } = config;
+  const dimCols = columns.filter(isDimensionColumn);
+  const channelDimCol = dimCols.find((c) => c.dimension === 'channel_handle');
+
+  // compound key -> per-metric-column Stats
   const metricAcc = new Map<string, Map<string, Stats>>();
-  // dimension key -> per-dim-column -> value -> count (frequency)
-  const dimAcc = new Map<string, Map<string, Map<string, number>>>();
+  // compound key -> dim values (parallel to dimCols)
+  const dimValuesOf = new Map<string, string[]>();
   const platformOf = new Map<string, string>();
 
   for (const p of posts) {
-    const keys = getDimensionKeys(p, dimension, 'day');
-    if (keys.length === 0) continue;
-    for (const key of keys) {
+    const combos = compoundDimensionKeys(p, dimCols);
+    for (const { key, values } of combos) {
       let perMetric = metricAcc.get(key);
       if (!perMetric) {
         perMetric = new Map();
         metricAcc.set(key, perMetric);
+        dimValuesOf.set(key, values);
       }
-      let perDim = dimAcc.get(key);
       for (const col of columns) {
-        if (isDimensionColumn(col) && col.dimension) {
-          if (!perDim) {
-            perDim = new Map();
-            dimAcc.set(key, perDim);
-          }
-          let counts = perDim.get(col.id);
-          if (!counts) {
-            counts = new Map();
-            perDim.set(col.id, counts);
-          }
-          const values = getDimensionKeys(p, col.dimension, 'day');
-          for (const v of values) {
-            counts.set(v, (counts.get(v) ?? 0) + 1);
-          }
-        } else if (col.metric) {
-          addToStats(perMetric, col.id, getMetricValue(p, col.metric));
-        }
+        if (isDimensionColumn(col)) continue;
+        if (col.metric) addToStats(perMetric, col.id, getMetricValue(p, col.metric));
       }
-      if (dimension === 'channel_handle' && p.platform && !platformOf.has(key)) {
+      if (channelDimCol && p.platform && !platformOf.has(key)) {
         platformOf.set(key, p.platform);
       }
     }
@@ -827,29 +846,14 @@ export function aggregateTable(posts: DashboardPost[], config: CustomTableConfig
 
   const rows: TableRow[] = [];
   for (const [key, perMetric] of metricAcc) {
-    const row: TableRow = { __key: key, __label: key };
+    const row: TableRow = { __key: key };
     if (platformOf.has(key)) row.__platform = platformOf.get(key);
-    const perDim = dimAcc.get(key);
+    const dimValues = dimValuesOf.get(key) ?? [];
+    let dimIdx = 0;
     for (const col of columns) {
-      if (isDimensionColumn(col) && col.dimension) {
-        const counts = perDim?.get(col.id);
-        const dimAggKind = col.dimensionAgg ?? 'top';
-        if (dimAggKind === 'distinct_count') {
-          row[col.id] = counts?.size ?? 0;
-        } else {
-          // 'top' — most frequent value; ties broken alphabetically.
-          let topVal = '';
-          let topCount = -1;
-          if (counts) {
-            for (const [v, c] of counts) {
-              if (c > topCount || (c === topCount && v < topVal)) {
-                topVal = v;
-                topCount = c;
-              }
-            }
-          }
-          row[col.id] = topVal;
-        }
+      if (isDimensionColumn(col)) {
+        row[col.id] = dimValues[dimIdx] ?? '';
+        dimIdx += 1;
       } else if (col.metric) {
         const stats = perMetric.get(col.id) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity };
         const agg = col.metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
@@ -863,9 +867,6 @@ export function aggregateTable(posts: DashboardPost[], config: CustomTableConfig
   if (sortKey) {
     const dir = sortDir === 'asc' ? 1 : -1;
     rows.sort((a, b) => {
-      if (sortKey === '__dim') {
-        return dir * String(a.__label).localeCompare(String(b.__label));
-      }
       const av = a[sortKey];
       const bv = b[sortKey];
       if (typeof av === 'string' || typeof bv === 'string') {
