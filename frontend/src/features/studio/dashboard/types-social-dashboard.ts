@@ -59,13 +59,21 @@ export type StandardCustomDimension = Exclude<CustomDimension, `custom:${string}
 /** Prefix used to namespace agent-defined enrichment fields as group-by dimensions. */
 export const CUSTOM_DIM_PREFIX = 'custom:';
 
-export function isCustomFieldDimension(dim: CustomDimension): dim is `custom:${string}` {
-  return dim.startsWith(CUSTOM_DIM_PREFIX);
+export function isCustomFieldDimension(
+  dim: CustomDimension | undefined | null,
+): dim is `custom:${string}` {
+  return typeof dim === 'string' && dim.startsWith(CUSTOM_DIM_PREFIX);
 }
 
 export function customFieldName(dim: `custom:${string}`): string {
   return dim.slice(CUSTOM_DIM_PREFIX.length);
 }
+
+const UNKNOWN_DIMENSION_META: DimensionMeta = {
+  label: 'Unknown',
+  icon: 'HelpCircle',
+  description: 'Dimension is missing or unrecognized',
+};
 
 function humanizeFieldName(name: string): string {
   return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -77,7 +85,8 @@ export interface DimensionMeta {
   description: string;
 }
 
-export function getDimensionMeta(dim: CustomDimension): DimensionMeta {
+export function getDimensionMeta(dim: CustomDimension | undefined | null): DimensionMeta {
+  if (!dim) return UNKNOWN_DIMENSION_META;
   if (isCustomFieldDimension(dim)) {
     const name = customFieldName(dim);
     return {
@@ -86,7 +95,7 @@ export function getDimensionMeta(dim: CustomDimension): DimensionMeta {
       description: `Group by custom enrichment field "${name}"`,
     };
   }
-  return DIMENSION_META[dim];
+  return DIMENSION_META[dim] ?? UNKNOWN_DIMENSION_META;
 }
 
 export type CustomMetric =
