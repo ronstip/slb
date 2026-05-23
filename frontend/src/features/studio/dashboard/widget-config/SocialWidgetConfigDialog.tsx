@@ -110,8 +110,9 @@ export function SocialWidgetConfigDialog({
 // ── Preset → custom conversion ─────────────────────────────────────────────────
 
 function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
-  // Text widgets have no data/chart config — pass through untouched.
+  // Text and embed widgets have no data/chart config — pass through untouched.
   if (widget.aggregation === 'text') return widget;
+  if (widget.aggregation === 'embeds') return widget;
   // Preserve the preset's chart type if it was set — e.g. channels/entities
   // ship with `chartType: 'table'` and the rich table view should survive the
   // round-trip through the edit dialog. Without this, opening any 'channels'
@@ -270,6 +271,7 @@ function SocialWidgetConfigDialogInner({
   const previewWidget: SocialDashboardWidget = { ...draft, x: 0, y: 0, w: 6, h: 6 };
 
   const isTextMode = draft.aggregation === 'text';
+  const isEmbedMode = draft.aggregation === 'embeds';
 
   // MDXEditor portals its toolbar popups (block-type dropdown, link dialog)
   // into this host. Keeping it inside DialogContent puts the popups in the
@@ -281,7 +283,7 @@ function SocialWidgetConfigDialogInner({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
-        className={`${isTextMode ? 'sm:max-w-[min(1600px,95vw)]' : 'sm:max-w-[1100px]'} max-h-[88vh] flex flex-col p-0 gap-0`}
+        className={`${isTextMode ? 'sm:max-w-[min(1600px,95vw)]' : 'sm:max-w-[1100px]'} ${isEmbedMode ? 'sm:max-w-[1200px]' : ''} max-h-[88vh] flex flex-col p-0 gap-0`}
         style={{ marginLeft: dragOffset.x, marginTop: dragOffset.y }}
       >
         <DialogHeader
@@ -298,8 +300,10 @@ function SocialWidgetConfigDialogInner({
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* ── Left: config (wider in text mode for the markdown editor) ── */}
-          <div className={`${isTextMode ? 'w-[65%]' : 'w-[55%]'} border-r border-border flex flex-col min-h-0 bg-white dark:bg-zinc-950`}>
-            {isTextMode ? (
+          <div className={`${isTextMode || isEmbedMode ? 'w-[55%]' : 'w-[55%]'} border-r border-border flex flex-col min-h-0 bg-white dark:bg-zinc-950`}>
+            {isEmbedMode ? (
+              <EmbedConfigPanel draft={draft} setDraft={setDraft} />
+            ) : isTextMode ? (
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
                 <div className="flex items-center gap-3">
                   <Label className="text-xs w-24 shrink-0">Title</Label>
@@ -976,5 +980,80 @@ function ComposeButton({
       )}
       <span className="hidden sm:inline">AI</span>
     </Button>
+  );
+}
+
+// ── Embed Posts config panel ─────────────────────────────────────────────────
+// One URL per line. Render mode (single vs carousel) is auto-derived from the
+// list length at render time — the user does not pick.
+
+function EmbedConfigPanel({
+  draft,
+  setDraft,
+}: {
+  draft: SocialDashboardWidget;
+  setDraft: React.Dispatch<React.SetStateAction<SocialDashboardWidget>>;
+}) {
+  const urls = draft.embedUrls ?? [];
+  // Local text mirrors the textarea so users can type blank lines / partial
+  // URLs without them being stripped mid-edit; we normalize on blur.
+  const [text, setText] = useState(() => urls.join('\n'));
+
+  const commit = (raw: string) => {
+    const next = raw
+      .split(/\r?\n/)
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0);
+    setDraft((prev) => ({ ...prev, embedUrls: next }));
+  };
+
+  const mode = urls.length <= 1 ? 'Single' : `Carousel (${urls.length})`;
+
+  return (
+    <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Title</Label>
+        <Input
+          value={draft.title}
+          onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
+          className="h-8 text-xs"
+          placeholder="Widget title"
+        />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Description</Label>
+        <Input
+          value={draft.description ?? ''}
+          onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value || undefined }))}
+          className="h-8 text-xs"
+          placeholder="Optional subtitle"
+        />
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Post URLs
+          </Label>
+          <span className="text-[11px] text-muted-foreground">{mode}</span>
+        </div>
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => commit(text)}
+          placeholder={'https://x.com/user/status/123\nhttps://www.instagram.com/p/abc/\nhttps://www.tiktok.com/@user/video/123'}
+          className="text-xs font-mono min-h-[180px]"
+          rows={8}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          One URL per line. Supported: X / Twitter, Instagram, TikTok, YouTube,
+          Facebook, LinkedIn. Other URLs render as a link card. Add 2+ to switch
+          to carousel automatically.
+        </p>
+      </div>
+    </div>
   );
 }

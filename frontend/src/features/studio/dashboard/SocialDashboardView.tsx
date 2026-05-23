@@ -34,7 +34,7 @@ function migrateWidgets(widgets: SocialDashboardWidget[]): SocialDashboardWidget
   });
 }
 
-export type AddWidgetKind = 'chart' | 'text';
+export type AddWidgetKind = 'chart' | 'text' | 'embeds';
 
 export interface DashboardToolbarHandlers {
   onEdit: () => void;
@@ -319,32 +319,49 @@ export function SocialDashboardView({
     }
   }, []);
 
-  // Open config dialog for a new widget. Chart starts as custom; text starts blank markdown.
+  // Open config dialog for a new widget. Chart starts as custom; text starts
+  // blank markdown; embeds starts with an empty URL list.
   const handleOpenAdd = useCallback((kind: AddWidgetKind = 'chart') => {
-    const meta = AGGREGATION_META[kind === 'text' ? 'text' : 'custom'];
-    const draft: SocialDashboardWidget = kind === 'text'
-      ? {
-          i: nanoid(),
-          x: 0,
-          y: Infinity,
-          w: meta.defaultSize.w,
-          h: meta.defaultSize.h,
-          aggregation: 'text',
-          chartType: meta.defaultChartType,
-          title: meta.defaultTitle,
-          markdownContent: '',
-        }
-      : {
-          i: nanoid(),
-          x: 0,
-          y: Infinity,
-          w: meta.defaultSize.w,
-          h: meta.defaultSize.h,
-          aggregation: 'custom',
-          chartType: meta.defaultChartType,
-          title: meta.defaultTitle,
-          customConfig: { metric: 'post_count' },
-        };
+    const metaKey = kind === 'text' ? 'text' : kind === 'embeds' ? 'embeds' : 'custom';
+    const meta = AGGREGATION_META[metaKey];
+    let draft: SocialDashboardWidget;
+    if (kind === 'text') {
+      draft = {
+        i: nanoid(),
+        x: 0,
+        y: Infinity,
+        w: meta.defaultSize.w,
+        h: meta.defaultSize.h,
+        aggregation: 'text',
+        chartType: meta.defaultChartType,
+        title: meta.defaultTitle,
+        markdownContent: '',
+      };
+    } else if (kind === 'embeds') {
+      draft = {
+        i: nanoid(),
+        x: 0,
+        y: Infinity,
+        w: meta.defaultSize.w,
+        h: meta.defaultSize.h,
+        aggregation: 'embeds',
+        chartType: meta.defaultChartType,
+        title: meta.defaultTitle,
+        embedUrls: [],
+      };
+    } else {
+      draft = {
+        i: nanoid(),
+        x: 0,
+        y: Infinity,
+        w: meta.defaultSize.w,
+        h: meta.defaultSize.h,
+        aggregation: 'custom',
+        chartType: meta.defaultChartType,
+        title: meta.defaultTitle,
+        customConfig: { metric: 'post_count' },
+      };
+    }
     setConfigWidget(draft);
     setConfigMode('add');
   }, []);

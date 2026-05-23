@@ -39,6 +39,8 @@ import { DataTable } from '../../../components/DataTable/DataTable.tsx';
 import { postColumns } from '../../../components/DataTable/columns.tsx';
 import { ExpandedPostRow } from '../../../components/DataTable/ExpandedPostRow.tsx';
 import { Markdown } from '../../../components/Markdown.tsx';
+import { PostEmbed } from './PostEmbed.tsx';
+import { EmbedCarousel } from './EmbedCarousel.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -1010,6 +1012,68 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
   );
 }
 
+// ── Embed Posts widget ────────────────────────────────────────────────────────
+// Single URL → one embed; 2+ URLs → carousel. Mode is auto-derived, the user
+// never picks. Uses SocialWidgetFrame for chrome and auto-size like TextWidget.
+
+function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize }: FrameProps) {
+  const urls = (widget.embedUrls ?? []).filter((u) => typeof u === 'string' && u.trim().length > 0);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!onAutoSize || !contentRef.current) return;
+    const ROW_HEIGHT_PX = 48;
+    const MARGIN_Y_PX = 6;
+    const BOTTOM_PAD_PX = 24;
+    let raf = 0;
+    const recompute = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        if (!contentRef.current) return;
+        const contentH = contentRef.current.scrollHeight;
+        const cellPx = contentH + BOTTOM_PAD_PX;
+        const targetH = Math.max(4, Math.ceil(cellPx / (ROW_HEIGHT_PX + MARGIN_Y_PX)));
+        if (Math.abs(targetH - widget.h) >= 1) {
+          onAutoSize(widget.i, targetH);
+        }
+      });
+    };
+    const observer = new ResizeObserver(recompute);
+    observer.observe(contentRef.current);
+    recompute();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [widget.i, widget.h, urls.length, onAutoSize]);
+
+  return (
+    <SocialWidgetFrame
+      title={widget.title}
+      description={widget.description}
+      figureText={widget.figureText}
+      isEditMode={isEditMode}
+      onConfigure={onConfigure}
+      onRemove={onRemove}
+      onDuplicate={onDuplicate}
+    >
+      <div ref={contentRef} className="w-full">
+        {urls.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-xs text-muted-foreground italic">
+            Empty embed card — click the gear to add post URLs
+          </div>
+        ) : urls.length === 1 ? (
+          <div className="flex justify-center">
+            <PostEmbed url={urls[0]} />
+          </div>
+        ) : (
+          <EmbedCarousel urls={urls} />
+        )}
+      </div>
+    </SocialWidgetFrame>
+  );
+}
+
 // ── Posts table widget ────────────────────────────────────────────────────────
 
 interface PostTableRow {
@@ -1125,7 +1189,11 @@ export function SocialWidgetRenderer({
   // through the custom path which knows how to read topic data.
   const widget = useMemo(() => {
     const normalized = normalizeWidgetAggregation(rawWidget);
-    if ((normalized.dataSource ?? 'posts') === 'topics' && normalized.aggregation !== 'text') {
+    if (
+      (normalized.dataSource ?? 'posts') === 'topics'
+      && normalized.aggregation !== 'text'
+      && normalized.aggregation !== 'embeds'
+    ) {
       return { ...normalized, aggregation: 'custom' as const };
     }
     return normalized;
@@ -1140,6 +1208,9 @@ export function SocialWidgetRenderer({
 
   if (widget.aggregation === 'text') {
     return <TextWidget {...frameProps} />;
+  }
+  if (widget.aggregation === 'embeds') {
+    return <EmbedsWidget {...frameProps} />;
   }
   if (widget.aggregation === 'posts') {
     return <PostsTableWidget {...frameProps} posts={widgetPosts} />;

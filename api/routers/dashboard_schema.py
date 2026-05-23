@@ -30,6 +30,7 @@ SocialAggregation = Literal[
     "posts",
     "custom",
     "text",
+    "embeds",
 ]
 
 SocialChartType = Literal[
@@ -42,6 +43,7 @@ SocialChartType = Literal[
     "number-card",
     "progress-list",
     "data-table",
+    "embed",
 ]
 
 CustomDimension = Literal[
@@ -165,6 +167,7 @@ VALID_CHART_TYPES: dict[str, tuple[str, ...]] = {
     "posts": ("data-table",),
     "custom": ("bar", "pie", "doughnut", "line", "number-card", "progress-list", "word-cloud", "table"),
     "text": ("table",),
+    "embeds": ("embed",),
 }
 
 # Per-aggregation defaults — mirrors AGGREGATION_META in TS.
@@ -187,6 +190,7 @@ AGGREGATION_DEFAULTS: dict[str, dict] = {
     "posts": {"chartType": "data-table", "title": "Posts", "w": 12, "h": 10},
     "custom": {"chartType": "bar", "title": "Custom Chart", "w": 6, "h": 6},
     "text": {"chartType": "table", "title": "Text", "w": 6, "h": 3},
+    "embeds": {"chartType": "embed", "title": "Embedded Posts", "w": 4, "h": 8},
 }
 
 GRID_COLS = 12
@@ -376,6 +380,7 @@ class SocialDashboardWidget(BaseModel):
     customConfig: CustomChartConfig | None = None
     tableConfig: CustomTableConfig | None = None
     markdownContent: str | None = None
+    embedUrls: list[str] | None = None
     figureText: str | None = None
     numberSize: Literal["small", "medium", "big"] | None = None
 

@@ -27,7 +27,8 @@ export type SocialAggregation =
   | 'engagement-rate'
   | 'posts'
   | 'custom'
-  | 'text';
+  | 'text'
+  | 'embeds';
 
 export type SocialChartType =
   | 'bar'
@@ -38,7 +39,8 @@ export type SocialChartType =
   | 'table'
   | 'number-card'
   | 'progress-list'
-  | 'data-table';
+  | 'data-table'
+  | 'embed';
 
 // ─── Custom chart config (used when aggregation === 'custom') ─────────────────
 
@@ -799,6 +801,9 @@ export interface SocialDashboardWidget {
   tableConfig?: CustomTableConfig;
   /** Markdown body — set when aggregation === 'text' */
   markdownContent?: string;
+  /** Post URLs to embed — set when aggregation === 'embeds'. Mode (single vs
+   *  carousel) is derived from length at render time; user does not choose. */
+  embedUrls?: string[];
   /** Optional figure-style caption rendered below the chart body (figcaption).
    *  The widget's `title` doubles as the figure header — there's only one. */
   figureText?: string;
@@ -858,6 +863,7 @@ export const VALID_CHART_TYPES: Record<SocialAggregation, SocialChartType[]> = {
   'posts': ['data-table'],
   'custom': ['bar', 'pie', 'doughnut', 'line', 'number-card', 'progress-list', 'word-cloud', 'table'],
   'text': ['table'],
+  'embeds': ['embed'],
 };
 
 // ─── Aggregation metadata (for UI display) ────────────────────────────────────
@@ -999,6 +1005,14 @@ export const AGGREGATION_META: Record<SocialAggregation, AggregationMeta> = {
     defaultChartType: 'table',
     defaultTitle: 'Text',
     defaultSize: { w: 6, h: 3 },
+  },
+  'embeds': {
+    label: 'Embed Posts',
+    description: 'Embed one or more social posts by URL — single view or auto-carousel',
+    icon: 'Quote',
+    defaultChartType: 'embed',
+    defaultTitle: 'Embedded Posts',
+    defaultSize: { w: 4, h: 8 },
   },
 };
 
