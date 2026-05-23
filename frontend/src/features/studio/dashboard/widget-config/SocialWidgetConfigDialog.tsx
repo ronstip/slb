@@ -131,7 +131,7 @@ function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
     } else {
       const seedDim =
         (widget.customConfig?.dimension as CustomDimension | undefined)
-        ?? presetToCustomConfig(widget.aggregation, widget.kpiIndex).customConfig.dimension
+        ?? (presetToCustomConfig(widget.aggregation, widget.kpiIndex).customConfig.dimension as CustomDimension | undefined)
         ?? 'channel_handle';
       seededTableConfig = defaultTableConfigFor(seedDim);
     }
@@ -231,7 +231,13 @@ function SocialWidgetConfigDialogInner({
   const updateConfig = (config: CustomChartConfig) => {
     setDraft((prev) => {
       const next = { ...prev, customConfig: config };
-      const valid = getValidChartTypesForCustom(config.dimension, config.metric);
+      // getValidChartTypesForCustom takes post-side narrow types; for topic
+      // widgets the chart-type gating runs through validChartTypes in the
+      // dialog, so passing through `as` here is safe.
+      const valid = getValidChartTypesForCustom(
+        config.dimension as CustomDimension | undefined,
+        config.metric as CustomMetric,
+      );
       if (!valid.includes(next.chartType as SocialChartType)) next.chartType = valid[0];
       return next;
     });

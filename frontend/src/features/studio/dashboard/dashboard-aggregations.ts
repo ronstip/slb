@@ -1,5 +1,5 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { CustomChartConfig, CustomDimension, CustomTableConfig, PostField, TableColumn, WidgetData } from './types-social-dashboard.ts';
+import type { CustomChartConfig, CustomDimension, CustomMetric, CustomTableConfig, PostField, TableColumn, WidgetData } from './types-social-dashboard.ts';
 import { isCustomFieldDimension, customFieldName, isCustomPostField, isDimensionColumn, isPostFieldColumn, normalizeTableConfig } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
@@ -489,7 +489,7 @@ export function computeEnhancedKpis(posts: DashboardPost[], serverKpis?: Dashboa
 
 // ─── Custom chart aggregation ──────────────────────────────────────────────────
 
-function getMetricValue(p: DashboardPost, metric: CustomChartConfig['metric']): number {
+function getMetricValue(p: DashboardPost, metric: CustomMetric): number {
   switch (metric) {
     case 'post_count':       return 1;
     case 'like_count':       return p.like_count;
@@ -579,10 +579,15 @@ const DEFAULT_TOP_N = 50;
 const DEFAULT_BREAKDOWN_LIMIT = 10;
 
 export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfig): WidgetData {
-  const {
-    dimension, metric, metricAgg = 'sum', timeBucket = 'day',
-    breakdownDimension, topN, includeOthers,
-  } = config;
+  // CustomChartConfig.dimension/metric are widened to AnyDimension/AnyMetric
+  // to carry topic widgets through the same shape. This aggregator is the
+  // post-side path — only invoked when widget.dataSource === 'posts'. The
+  // caller guarantees these narrow to the post-side vocabulary; cast at the
+  // boundary so internal helpers can keep their narrow signatures.
+  const dimension = config.dimension as CustomDimension | undefined;
+  const breakdownDimension = config.breakdownDimension as CustomDimension | undefined;
+  const metric = config.metric as CustomMetric;
+  const { metricAgg = 'sum', timeBucket = 'day', topN, includeOthers } = config;
 
   if (!dimension) {
     if (metricAgg === 'count') return { value: posts.length, labels: ['Count'], values: [posts.length] };
@@ -870,7 +875,9 @@ function compoundDimensionKeys(
   let combos: Array<{ key: string; values: string[] }> = [{ key: '', values: [] }];
   for (const col of dimCols) {
     if (!col.dimension) continue;
-    const vs = getDimensionKeys(p, col.dimension, 'day');
+    // TableColumn.dimension is widened to AnyDimension for topic-table reuse.
+    // aggregateTable is the post-side path — cast back to CustomDimension.
+    const vs = getDimensionKeys(p, col.dimension as CustomDimension, 'day');
     if (vs.length === 0) return [];
     const next: Array<{ key: string; values: string[] }> = [];
     for (const combo of combos) {
@@ -914,7 +921,9 @@ export function aggregateTable(posts: DashboardPost[], rawConfig: CustomTableCon
       }
       for (const col of columns) {
         if (isDimensionColumn(col)) continue;
-        if (col.metric) addToStats(perMetric, col.id, getMetricValue(p, col.metric));
+        // TableColumn.metric is widened to AnyMetric for topic-table reuse.
+        // aggregateTable is the post-side path — cast to CustomMetric.
+        if (col.metric) addToStats(perMetric, col.id, getMetricValue(p, col.metric as CustomMetric));
       }
       if (channelDimCol && p.platform && !platformOf.has(key)) {
         platformOf.set(key, p.platform);
