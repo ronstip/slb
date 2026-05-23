@@ -20,9 +20,12 @@ from api.routers.dashboard_schema import (
     VALID_CHART_TYPES,
     CustomDimension,
     CustomMetric,
+    DataSource,
     PostField,
     SocialAggregation,
     SocialChartType,
+    TopicDimension,
+    TopicMetric,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -92,6 +95,31 @@ def test_custom_metric_matches():
     ts = _ts_source()
     ts_set = _extract_union(ts, "CustomMetric")
     py_set = set(get_args(CustomMetric))
+    assert ts_set == py_set
+
+
+def test_topic_dimension_matches():
+    ts = _ts_source()
+    ts_set = _extract_union(ts, "TopicDimension")
+    py_set = set(get_args(TopicDimension))
+    assert ts_set == py_set, (
+        f"TopicDimension drift — TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
+    )
+
+
+def test_topic_metric_matches():
+    ts = _ts_source()
+    ts_set = _extract_union(ts, "TopicMetric")
+    py_set = set(get_args(TopicMetric))
+    assert ts_set == py_set, (
+        f"TopicMetric drift — TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
+    )
+
+
+def test_data_source_matches():
+    ts = _ts_source()
+    ts_set = _extract_union(ts, "DataSource")
+    py_set = set(get_args(DataSource))
     assert ts_set == py_set
 
 
@@ -218,3 +246,89 @@ def test_custom_config_accepts_custom_field_dimension():
         CustomChartConfig.model_validate(
             {"dimension": "not_a_real_dimension", "metric": "post_count"}
         )
+
+
+def test_custom_config_accepts_topic_dimensions_and_metrics():
+    """Topic widgets persist with their own dim/metric vocabulary (e.g.
+    `dimension: 'topic'`, `metric: 'signal_score'`). The widened union must
+    accept these so saving a topic widget doesn't 422."""
+    from api.routers.dashboard_schema import (
+        CustomChartConfig,
+        CustomTableConfig,
+        SocialDashboardWidget,
+        TableColumn,
+    )
+
+    cfg = CustomChartConfig.model_validate(
+        {"dimension": "topic", "metric": "signal_score", "metricAgg": "avg"}
+    )
+    assert cfg.dimension == "topic"
+    assert cfg.metric == "signal_score"
+
+    # JSON-unnested topic dim + ratio metric (UI blocks this, but stored
+    # configs from other entry points must round-trip).
+    cfg2 = CustomChartConfig.model_validate(
+        {"dimension": "platform", "metric": "topic_count"}
+    )
+    assert cfg2.metric == "topic_count"
+
+    cfg3 = CustomChartConfig.model_validate(
+        {
+            "dimension": "topic",
+            "metric": "topic_count",
+            "metricToggle": ["topic_count", "post_count", "total_views"],
+        }
+    )
+    assert cfg3.metricToggle == ["topic_count", "post_count", "total_views"]
+
+    # Topic dim on a table column.
+    tcol = TableColumn.model_validate(
+        {"id": "d1", "kind": "dimension", "dimension": "beat_type"}
+    )
+    assert tcol.dimension == "beat_type"
+
+    # Topic metric on a metric column.
+    tmcol = TableColumn.model_validate(
+        {"id": "m1", "kind": "metric", "metric": "sov_views"}
+    )
+    assert tmcol.metric == "sov_views"
+
+    # `dataSource` on the widget round-trips.
+    w = SocialDashboardWidget.model_validate(
+        {
+            "i": "w1",
+            "x": 0, "y": 0, "w": 6, "h": 4,
+            "dataSource": "topics",
+            "aggregation": "custom",
+            "chartType": "bar",
+            "title": "Top topics",
+            "customConfig": {"dimension": "topic", "metric": "signal_score"},
+        }
+    )
+    assert w.dataSource == "topics"
+
+    # Legacy widgets (no dataSource field) still validate; defaults to None
+    # (renderer treats absent as 'posts').
+    w2 = SocialDashboardWidget.model_validate(
+        {
+            "i": "w2",
+            "x": 0, "y": 0, "w": 6, "h": 4,
+            "aggregation": "custom",
+            "chartType": "bar",
+            "title": "Posts by platform",
+            "customConfig": {"dimension": "platform", "metric": "post_count"},
+        }
+    )
+    assert w2.dataSource is None
+
+    tbl = CustomTableConfig.model_validate(
+        {
+            "columns": [
+                {"id": "d1", "kind": "dimension", "dimension": "topic"},
+                {"id": "m1", "kind": "metric", "metric": "post_count"},
+                {"id": "m2", "kind": "metric", "metric": "signal_score"},
+            ],
+        }
+    )
+    assert tbl.columns[0].dimension == "topic"
+    assert tbl.columns[2].metric == "signal_score"

@@ -75,6 +75,51 @@ CustomMetric = Literal[
     "engagement_total",
 ]
 
+# ─── Topic widget vocabulary (when widget.dataSource === 'topics') ────────────
+# Mirrors TopicDimension / TopicMetric in types-social-dashboard.ts. Topic
+# widgets read from `social_listening.topic_metrics(@agent_id)` — see
+# api/services/dashboard_service.py — and have their own dim/metric vocabularies
+# distinct from the post-side `Custom*` literals.
+
+TopicDimension = Literal[
+    "topic",
+    "beat_type",
+    "top_content_type",
+    "top_emotion",
+    "platform",
+    "theme",
+    "entity",
+    "brand",
+    "channel_type",
+    "emotion",
+]
+
+TopicMetric = Literal[
+    "topic_count",
+    "post_count",
+    "total_views",
+    "total_likes",
+    "total_engagement",
+    "avg_engagement_per_post",
+    "signal_score",
+    "recency_score",
+    "net_sentiment",
+    "sov_posts",
+    "sov_views",
+    "sov_engagement",
+    "estimated_post_count",
+    "estimated_views",
+    "unique_channels",
+]
+
+# Widened types used in CustomChartConfig / TableColumn. The runtime branches
+# on the widget's `dataSource` to decide which arm of the union is active;
+# Pydantic validates against the union so both vocabularies round-trip.
+AnyDimension = Union[CustomDimensionField, TopicDimension]
+AnyMetric = Union[CustomMetric, TopicMetric]
+
+DataSource = Literal["posts", "topics"]
+
 # Post-level field — used in post-mode tables (one row per post). Mirrors
 # the PostField union in types-social-dashboard.ts.
 PostField = Literal[
@@ -156,16 +201,20 @@ DashboardOrientation = Literal["horizontal", "vertical"]
 class CustomChartConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    dimension: CustomDimensionField | None = None
-    metric: CustomMetric = "post_count"
+    # Vocabulary depends on the widget's `dataSource`:
+    # - 'posts' (default): CustomDimension / CustomMetric (post-level).
+    # - 'topics': TopicDimension / TopicMetric (topic_metrics rows).
+    # Pydantic validates against the union; the runtime aggregator branches.
+    dimension: AnyDimension | None = None
+    metric: AnyMetric = "post_count"
     metricAgg: Literal["sum", "avg", "min", "max", "count"] | None = None
     timeBucket: Literal["hour", "day", "week", "month"] | None = None
     barOrientation: Literal["horizontal", "vertical"] | None = None
-    breakdownDimension: CustomDimensionField | None = None
+    breakdownDimension: AnyDimension | None = None
     topN: int | None = Field(default=None, ge=1, le=100)
     includeOthers: bool | None = None
     stacked: bool | None = None
-    metricToggle: list[CustomMetric] | None = None
+    metricToggle: list[AnyMetric] | None = None
 
 
 class ChartStyleOverrides(BaseModel):
@@ -265,9 +314,9 @@ class TableColumn(BaseModel):
 
     id: str = Field(min_length=1)
     kind: Literal["metric", "dimension", "post-field"] | None = None
-    metric: CustomMetric | None = None
+    metric: AnyMetric | None = None
     agg: Literal["sum", "avg", "min", "max", "count"] | None = None
-    dimension: CustomDimensionField | None = None
+    dimension: AnyDimension | None = None
     dimensionAgg: Literal["top", "distinct_count"] | None = None
     postField: PostFieldRef | None = None
     header: str | None = None
@@ -285,7 +334,7 @@ class CustomTableConfig(BaseModel):
     # Legacy single group-by. New configs put all dimensions in `columns` with
     # `kind='dimension'`; the frontend normalizes legacy widgets at render time.
     # Kept optional so existing stored layouts round-trip cleanly.
-    dimension: CustomDimensionField | None = None
+    dimension: AnyDimension | None = None
     columns: list[TableColumn]
     sortBy: str | None = None
     sortDir: Literal["asc", "desc"] | None = None
@@ -313,6 +362,9 @@ class SocialDashboardWidget(BaseModel):
     y: int = Field(ge=0)
     w: int = Field(ge=1, le=GRID_COLS)
     h: int = Field(ge=1)
+    # Which BigQuery source the widget reads. Absent → 'posts' (back-compat).
+    # 'topics' widgets read from `social_listening.topic_metrics(@agent_id)`.
+    dataSource: DataSource | None = None
     aggregation: SocialAggregation
     chartType: SocialChartType
     title: str

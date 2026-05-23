@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, CustomTableConfig, CustomDimension, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, normalizeTableConfig } from './types-social-dashboard.ts';
+import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
+import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, normalizeTableConfig } from './types-social-dashboard.ts';
+import { aggregateTopicsCustom, aggregateTopicsTable } from './topic-aggregations.ts';
 import {
   ExternalLinkCell,
   PlatformCell,
@@ -350,17 +351,29 @@ function buildPostTableColumns(
 
 function ConfigurableTableWidget({
   posts,
+  topics,
+  dataSource = 'posts',
   tableConfig: rawTableConfig,
   onFilterToggle,
+  onTopicNavigate,
   labelOverrides,
 }: {
   posts: DashboardPost[];
+  topics?: TopicMetric[];
+  dataSource?: DataSource;
   tableConfig: CustomTableConfig;
   onFilterToggle?: (key: string, value: string) => void;
+  onTopicNavigate?: (clusterId: string) => void;
   labelOverrides?: Record<string, string>;
 }) {
   const tableConfig = useMemo(() => normalizeTableConfig(rawTableConfig), [rawTableConfig]);
-  const rows = useMemo(() => aggregateTable(posts, tableConfig), [posts, tableConfig]);
+  const isTopicsSource = dataSource === 'topics';
+  const rows = useMemo(
+    () => (isTopicsSource
+      ? aggregateTopicsTable(topics ?? [], tableConfig)
+      : aggregateTable(posts, tableConfig)),
+    [isTopicsSource, posts, topics, tableConfig],
+  );
   const columnStats = useMemo(() => computeColumnStats(tableConfig, rows), [tableConfig, rows]);
   const isPostMode = tableConfig.mode === 'post';
   const columns = useMemo(
@@ -373,7 +386,13 @@ function ConfigurableTableWidget({
   // dimension maps to a filter key. Post mode rows have no group identity to
   // filter on; clicks fall through to the link cell instead.
   const firstDimCol = isPostMode ? undefined : tableConfig.columns.find(isDimensionColumn);
-  const filterKey = firstDimCol?.dimension ? filterKeyForDimension(firstDimCol.dimension) : undefined;
+  // For topic widgets, the row's __key IS the cluster_id (set by
+  // aggregateTopicsTable). When `onTopicNavigate` is supplied, route row
+  // clicks to navigation; otherwise (e.g. public share with no auth) they
+  // are inert.
+  const filterKey = !isTopicsSource && firstDimCol?.dimension
+    ? filterKeyForDimension(firstDimCol.dimension as CustomDimension)
+    : undefined;
   // When the active sort key produces strings (any dim column), rely on
   // aggregateTable's pre-sort — DataTable's sort is numeric-only and would
   // scramble the order.
@@ -400,12 +419,16 @@ function ConfigurableTableWidget({
       striped={tableConfig.striped ?? false}
       emptyMessage="No data"
       onRowClick={
-        filterKey && firstDimCol && onFilterToggle
+        isTopicsSource && onTopicNavigate
           ? (r) => {
-              const v = r[firstDimCol.id];
-              if (typeof v === 'string' && v) onFilterToggle(filterKey, v);
+              if (r.__key) onTopicNavigate(r.__key);
             }
-          : undefined
+          : filterKey && firstDimCol && onFilterToggle
+            ? (r) => {
+                const v = r[firstDimCol.id];
+                if (typeof v === 'string' && v) onFilterToggle(filterKey, v);
+              }
+            : undefined
       }
     />
   );
@@ -640,13 +663,30 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
   );
 }
 
-function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, onFilterToggle }: FrameProps & { posts: DashboardPost[]; onFilterToggle?: (key: string, value: string) => void }) {
+function CustomWidget({
+  widget,
+  posts,
+  topics,
+  isEditMode,
+  onConfigure,
+  onRemove,
+  onDuplicate,
+  onFilterToggle,
+  onTopicNavigate,
+}: FrameProps & {
+  posts: DashboardPost[];
+  topics?: TopicMetric[];
+  onFilterToggle?: (key: string, value: string) => void;
+  onTopicNavigate?: (clusterId: string) => void;
+}) {
   const config = widget.customConfig;
+  const dataSource: DataSource = widget.dataSource ?? 'posts';
+  const isTopicsSource = dataSource === 'topics';
 
   // Optional viewer-facing metric toggle. The persisted `metric` is the
   // initial selection; the toggle list normally contains it.
   const toggleMetrics = (config?.metricToggle?.length ?? 0) >= 2 ? config!.metricToggle! : undefined;
-  const [activeMetric, setActiveMetric] = useState<CustomMetric>(() => config?.metric ?? 'post_count');
+  const [activeMetric, setActiveMetric] = useState<AnyMetric>(() => config?.metric ?? 'post_count');
   // Reset when the underlying widget config changes (e.g. user opens a
   // different widget that reuses this dispatch path).
   useEffect(() => {
@@ -661,8 +701,10 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
 
   const data = useMemo<WidgetData | null>(() => {
     if (!effectiveConfig) return null;
-    return aggregateCustom(posts, effectiveConfig);
-  }, [posts, effectiveConfig]);
+    return isTopicsSource
+      ? aggregateTopicsCustom(topics ?? [], effectiveConfig)
+      : aggregateCustom(posts, effectiveConfig);
+  }, [isTopicsSource, posts, topics, effectiveConfig]);
 
   const cloudData = useMemo(() => {
     if (!data?.labels || !data.values) return [];
@@ -674,11 +716,18 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     [widget.title, data?.value],
   );
 
+  const metricLabel = (m: AnyMetric): string => {
+    if (isTopicsSource) {
+      return TOPIC_METRIC_META[m as keyof typeof TOPIC_METRIC_META]?.label ?? String(m);
+    }
+    return METRIC_META[m as CustomMetric]?.label ?? String(m);
+  };
+
   const headerAction = toggleMetrics ? (
     <div className="inline-flex rounded-md border border-border overflow-hidden text-[11px]">
       {toggleMetrics.map((m, i) => (
         <button
-          key={m}
+          key={m as string}
           type="button"
           onClick={() => setActiveMetric(m)}
           className={`px-2 py-0.5 transition-colors ${i > 0 ? 'border-l border-border' : ''} ${
@@ -687,7 +736,7 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
               : 'bg-background hover:bg-muted text-muted-foreground'
           }`}
         >
-          {METRIC_META[m].label}
+          {metricLabel(m)}
         </button>
       ))}
     </div>
@@ -743,15 +792,24 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     // If the widget has no tableConfig but its dimension matches a known
     // preset (channel_handle / entities), synthesize defaults so legacy
     // widgets keep rendering the rich design without losing functionality.
+    // For topics widgets, defaultTableConfigFor is post-side; fall through to
+    // a topics-aware default below.
     const tableConfig = widget.tableConfig
-      ?? (config.dimension ? defaultTableConfigFor(config.dimension) : undefined);
+      ?? (!isTopicsSource && config.dimension
+        ? defaultTableConfigFor(config.dimension as CustomDimension)
+        : isTopicsSource
+          ? defaultTopicTableConfig()
+          : undefined);
     if (tableConfig) {
       return (
         <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
           <ConfigurableTableWidget
             posts={posts}
+            topics={topics}
+            dataSource={dataSource}
             tableConfig={tableConfig}
             onFilterToggle={onFilterToggle}
+            onTopicNavigate={onTopicNavigate}
             labelOverrides={widget.styleOverrides?.seriesLabels}
           />
         </SocialWidgetFrame>
@@ -775,11 +833,12 @@ function CustomWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
         barOrientation={widget.customConfig?.barOrientation}
         stacked={widget.customConfig?.stacked ?? true}
         timeBucket={widget.customConfig?.timeBucket}
-        centerLabel={METRIC_META[activeMetric]?.label}
+        centerLabel={metricLabel(activeMetric)}
       />
     </SocialWidgetFrame>
   );
 }
+
 
 function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
   const chartData = useMemo<WidgetData | null>(() => {
@@ -1031,11 +1090,17 @@ interface SocialWidgetRendererProps {
   widget: SocialDashboardWidget;
   /** Already globally filtered posts */
   filteredPosts: DashboardPost[];
+  /** Agent-scoped topic_metrics rows. Optional — widgets with
+   *  `dataSource: 'posts'` ignore this. Empty array when no agent context. */
+  topics?: TopicMetric[];
   isEditMode: boolean;
   onConfigure: () => void;
   onRemove: () => void;
   onDuplicate?: () => void;
   onFilterToggle?: (key: string, value: string) => void;
+  /** Called when a topic widget item is clicked. Undefined disables
+   *  click-through (e.g. on public/shared dashboards). */
+  onTopicNavigate?: (clusterId: string) => void;
   serverKpis?: DashboardKpis;
   onAutoSize?: (i: string, h: number) => void;
 }
@@ -1043,17 +1108,28 @@ interface SocialWidgetRendererProps {
 export function SocialWidgetRenderer({
   widget: rawWidget,
   filteredPosts,
+  topics,
   isEditMode,
   onConfigure,
   onRemove,
   onDuplicate,
   onFilterToggle,
+  onTopicNavigate,
   serverKpis,
   onAutoSize,
 }: SocialWidgetRendererProps) {
   // Legacy aggregations (`volume`, `sentiment-over-time`) are rewritten to
   // `aggregation: 'custom'` here so the dispatch below stays uniform.
-  const widget = useMemo(() => normalizeWidgetAggregation(rawWidget), [rawWidget]);
+  // Topic widgets are always custom — coerce here so any stale config
+  // (e.g. an agent-emitted layout that set `aggregation: 'kpi'`) routes
+  // through the custom path which knows how to read topic data.
+  const widget = useMemo(() => {
+    const normalized = normalizeWidgetAggregation(rawWidget);
+    if ((normalized.dataSource ?? 'posts') === 'topics' && normalized.aggregation !== 'text') {
+      return { ...normalized, aggregation: 'custom' as const };
+    }
+    return normalized;
+  }, [rawWidget]);
 
   const widgetPosts = useMemo(
     () => applyWidgetFilters(filteredPosts, widget.filters),
@@ -1069,7 +1145,15 @@ export function SocialWidgetRenderer({
     return <PostsTableWidget {...frameProps} posts={widgetPosts} />;
   }
   if (widget.aggregation === 'custom') {
-    return <CustomWidget {...frameProps} posts={widgetPosts} onFilterToggle={onFilterToggle} />;
+    return (
+      <CustomWidget
+        {...frameProps}
+        posts={widgetPosts}
+        topics={topics}
+        onFilterToggle={onFilterToggle}
+        onTopicNavigate={onTopicNavigate}
+      />
+    );
   }
   if (widget.chartType === 'number-card') {
     return <KpiWidget {...frameProps} posts={widgetPosts} serverKpis={serverKpis} />;

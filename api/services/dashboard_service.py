@@ -16,7 +16,12 @@ empty result.
 import json
 import logging
 
-from api.schemas.responses import DashboardPostResponse
+from api.schemas.responses import (
+    DashboardPostResponse,
+    TopicBreakdownEntry,
+    TopicMetricsResponse,
+    TopicPlatformEntry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +116,69 @@ def build_dashboard_sql(
     return sql, {"agent_id": agent_id, "collection_ids": collection_ids}
 
 
+def build_topics_sql(
+    agent_id: str | None,
+) -> tuple[str | None, dict | None]:
+    """Return (sql, params) for the agent's topic_metrics rows, or (None, None)
+    when no agent context is recoverable.
+
+    Topic widgets are agent-scoped (not collection-scoped) since topic_metrics
+    clusters across all of an agent's collections in the latest run. Filtering
+    by collection_ids would slice a snapshot meant to be read whole.
+    """
+    if not agent_id:
+        return None, None
+
+    sql = """
+    SELECT
+        cluster_id,
+        header,
+        subheader,
+        beat_type,
+        keywords,
+        thumbnail_url,
+        thumbnail_gcs_uri,
+        top_content_type,
+        top_emotion,
+        post_count,
+        total_views,
+        total_likes,
+        total_comments,
+        total_shares,
+        total_engagement,
+        avg_engagement_per_post,
+        positive_count,
+        negative_count,
+        neutral_count,
+        mixed_count,
+        net_sentiment,
+        recency_score,
+        signal_score,
+        sov_posts,
+        sov_views,
+        sov_engagement,
+        estimated_post_count,
+        estimated_views,
+        unique_channels,
+        unique_channels_ugc,
+        unique_channels_official,
+        unique_channels_media,
+        unique_channels_influencers,
+        earliest_post,
+        median_post_time,
+        latest_post,
+        platforms_breakdown,
+        themes_counts,
+        emotion_counts,
+        entities_counts,
+        detected_brands_counts,
+        channel_type_counts,
+        content_type_counts
+    FROM social_listening.topic_metrics(@agent_id)
+    """
+    return sql, {"agent_id": agent_id}
+
+
 def build_dashboard_kpis_sql(
     collection_ids: list[str],
     agent_id: str | None,
@@ -170,6 +238,105 @@ def _serialize_media_refs(value) -> str | None:
         return json.dumps(value)
     except (TypeError, ValueError):
         return None
+
+
+def _parse_breakdown_entries(value) -> list[TopicBreakdownEntry]:
+    """Parse a topic_metrics breakdown column (themes_counts, emotion_counts,
+    entities_counts, detected_brands_counts, channel_type_counts,
+    content_type_counts) into typed entries.
+
+    Each TVF emits a JSON array of `{value, count}` structs.
+    """
+    items = parse_json_field(value)
+    out: list[TopicBreakdownEntry] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        v = item.get("value")
+        if v is None or v == "":
+            continue
+        out.append(TopicBreakdownEntry(value=str(v), count=int(item.get("count") or 0)))
+    return out
+
+
+def _parse_platforms_breakdown(value) -> list[TopicPlatformEntry]:
+    """Parse topic_metrics.platforms_breakdown — array of structs with per-
+    platform posts/views/likes/engagement."""
+    items = parse_json_field(value)
+    out: list[TopicPlatformEntry] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        platform = item.get("platform")
+        if not platform:
+            continue
+        out.append(
+            TopicPlatformEntry(
+                platform=str(platform),
+                posts=int(item.get("posts") or 0),
+                views=int(item.get("views") or 0),
+                likes=int(item.get("likes") or 0),
+                engagement=int(item.get("engagement") or 0),
+            )
+        )
+    return out
+
+
+def _isoformat_or_none(value) -> str | None:
+    if value is None:
+        return None
+    s = str(value)
+    return s if s else None
+
+
+def build_topic_response(row: dict) -> TopicMetricsResponse:
+    return TopicMetricsResponse(
+        cluster_id=row["cluster_id"],
+        header=row.get("header"),
+        subheader=row.get("subheader"),
+        beat_type=row.get("beat_type"),
+        keywords=list(row.get("keywords") or []),
+        thumbnail_url=row.get("thumbnail_url"),
+        thumbnail_gcs_uri=row.get("thumbnail_gcs_uri"),
+        top_content_type=row.get("top_content_type"),
+        top_emotion=row.get("top_emotion"),
+        post_count=int(row.get("post_count") or 0),
+        total_views=int(row.get("total_views") or 0),
+        total_likes=int(row.get("total_likes") or 0),
+        total_comments=int(row.get("total_comments") or 0),
+        total_shares=int(row.get("total_shares") or 0),
+        total_engagement=int(row.get("total_engagement") or 0),
+        avg_engagement_per_post=float(row.get("avg_engagement_per_post") or 0),
+        positive_count=int(row.get("positive_count") or 0),
+        negative_count=int(row.get("negative_count") or 0),
+        neutral_count=int(row.get("neutral_count") or 0),
+        mixed_count=int(row.get("mixed_count") or 0),
+        net_sentiment=(
+            float(row["net_sentiment"]) if row.get("net_sentiment") is not None else None
+        ),
+        recency_score=float(row.get("recency_score") or 0),
+        signal_score=float(row.get("signal_score") or 0),
+        sov_posts=float(row.get("sov_posts") or 0),
+        sov_views=float(row.get("sov_views") or 0),
+        sov_engagement=float(row.get("sov_engagement") or 0),
+        estimated_post_count=int(row.get("estimated_post_count") or 0),
+        estimated_views=int(row.get("estimated_views") or 0),
+        unique_channels=int(row.get("unique_channels") or 0),
+        unique_channels_ugc=int(row.get("unique_channels_ugc") or 0),
+        unique_channels_official=int(row.get("unique_channels_official") or 0),
+        unique_channels_media=int(row.get("unique_channels_media") or 0),
+        unique_channels_influencers=int(row.get("unique_channels_influencers") or 0),
+        earliest_post=_isoformat_or_none(row.get("earliest_post")),
+        median_post_time=_isoformat_or_none(row.get("median_post_time")),
+        latest_post=_isoformat_or_none(row.get("latest_post")),
+        platforms_breakdown=_parse_platforms_breakdown(row.get("platforms_breakdown")),
+        themes_counts=_parse_breakdown_entries(row.get("themes_counts")),
+        emotion_counts=_parse_breakdown_entries(row.get("emotion_counts")),
+        entities_counts=_parse_breakdown_entries(row.get("entities_counts")),
+        detected_brands_counts=_parse_breakdown_entries(row.get("detected_brands_counts")),
+        channel_type_counts=_parse_breakdown_entries(row.get("channel_type_counts")),
+        content_type_counts=_parse_breakdown_entries(row.get("content_type_counts")),
+    )
 
 
 def build_post_response(row: dict) -> DashboardPostResponse:

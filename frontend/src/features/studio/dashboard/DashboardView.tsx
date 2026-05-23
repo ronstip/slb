@@ -306,6 +306,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             artifactId={artifact.id}
             filteredPosts={filteredPosts}
             allPosts={allPosts}
+            topics={response?.topics ?? []}
             availableOptions={availableOptions}
             truncated={response?.truncated}
             activeFilterCount={activeFilterCount}

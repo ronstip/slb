@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
-import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
+import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
 import { AGGREGATION_META, DEFAULT_DASHBOARD_ORIENTATION } from './types-social-dashboard.ts';
 import type { DashboardFilters, FilterOptions } from './use-dashboard-filters.ts';
@@ -52,6 +53,8 @@ interface SocialDashboardViewProps {
   artifactId: string;
   filteredPosts: DashboardPost[];
   allPosts: DashboardPost[];
+  /** Agent-scoped topic_metrics rows. Empty when no agent context. */
+  topics?: TopicMetric[];
   availableOptions: FilterOptions;
   truncated?: boolean;
   activeFilterCount: number;
@@ -82,6 +85,7 @@ export function SocialDashboardView({
   artifactId,
   filteredPosts,
   allPosts,
+  topics = [],
   availableOptions,
   truncated: _truncated,
   activeFilterCount: _activeFilterCount,
@@ -99,6 +103,16 @@ export function SocialDashboardView({
   externalSyncKey = 0,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
+  const navigate = useNavigate();
+  // Topic widgets navigate to the topic detail page on item click. Only wired
+  // when an agent context is available (orphan dashboards have no detail
+  // route to land on); public/shared dashboards pass no navigate.
+  const onTopicNavigate = useMemo(
+    () => (agentId ? (clusterId: string) =>
+      navigate(`/agents/${agentId}/topics/${clusterId}/analytics`)
+      : undefined),
+    [agentId, navigate],
+  );
 
   // Distinct custom enrichment field names present on the dataset — surfaced
   // as additional Group by options in the widget config dialog.
@@ -413,6 +427,7 @@ export function SocialDashboardView({
       <SocialDashboardGrid
         widgets={widgets}
         filteredPosts={filteredPosts}
+        topics={topics}
         isEditMode={isEditMode && !readOnly}
         orientation={orientation}
         onLayoutChange={handleLayoutChange}
@@ -420,6 +435,7 @@ export function SocialDashboardView({
         onRemove={handleRemoveWidget}
         onDuplicate={!readOnly ? handleDuplicateWidget : undefined}
         onFilterToggle={handleFilterToggle}
+        onTopicNavigate={onTopicNavigate}
         gridRef={gridRef}
         serverKpis={serverKpis}
         onAutoSize={handleAutoSize}
@@ -437,6 +453,7 @@ export function SocialDashboardView({
         onClose={() => setConfigWidget(null)}
         customFieldNames={customFieldNames}
         agentId={agentId}
+        topics={topics}
       />
     </div>
   );

@@ -39,13 +39,13 @@ export function ReportAIAssistant({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant="default"
           size="sm"
-          className="h-7 gap-1.5 text-xs"
+          className="h-7 gap-1.5 text-xs border-0 text-white shadow-sm bg-gradient-to-r from-primary from-60% to-accent-blue hover:from-primary/90 hover:to-accent-blue/90"
           title="Co-author this report with AI"
         >
           <Sparkles className="h-3.5 w-3.5" />
-          AI
+          Co-author AI
         </Button>
       </PopoverTrigger>
       <PopoverContent

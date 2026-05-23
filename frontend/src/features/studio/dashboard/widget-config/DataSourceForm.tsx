@@ -9,17 +9,34 @@ import {
   SelectValue,
 } from '../../../../components/ui/select.tsx';
 import { cn } from '../../../../lib/utils.ts';
-import type { CustomChartConfig, CustomDimension, CustomMetric, SocialChartType } from '../types-social-dashboard.ts';
+import type {
+  AnyDimension,
+  AnyMetric,
+  CustomChartConfig,
+  CustomDimension,
+  CustomMetric,
+  DataSource,
+  SocialChartType,
+  TopicDimension,
+  TopicMetric,
+} from '../types-social-dashboard.ts';
 import {
+  CUSTOM_DIM_PREFIX,
   DIMENSION_META,
   METRIC_META,
+  TOPIC_DIMENSION_META,
+  TOPIC_JSON_UNNESTED_DIMENSIONS,
+  TOPIC_METRIC_META,
+  TOPIC_RATIO_METRICS,
   getDimensionMeta,
+  getTopicDimensionMeta,
   getValidChartTypesForCustom,
-  CUSTOM_DIM_PREFIX,
 } from '../types-social-dashboard.ts';
 
 const STANDARD_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
-const ALL_METRICS = Object.keys(METRIC_META) as CustomMetric[];
+const ALL_POST_METRICS = Object.keys(METRIC_META) as CustomMetric[];
+const TOPIC_DIMENSIONS = Object.keys(TOPIC_DIMENSION_META) as TopicDimension[];
+const ALL_TOPIC_METRICS = Object.keys(TOPIC_METRIC_META) as TopicMetric[];
 
 const AGG_OPTIONS: Array<{ value: CustomChartConfig['metricAgg']; label: string }> = [
   { value: 'sum', label: 'Total (Sum)' },
@@ -28,6 +45,10 @@ const AGG_OPTIONS: Array<{ value: CustomChartConfig['metricAgg']; label: string 
   { value: 'max', label: 'Maximum' },
   { value: 'count', label: 'Count' },
 ];
+
+const RATIO_AGG_OPTIONS = AGG_OPTIONS.filter(
+  (o) => o.value === 'avg' || o.value === 'min' || o.value === 'max',
+);
 
 interface DataSourceFormProps {
   config: CustomChartConfig;
@@ -41,43 +62,83 @@ interface DataSourceFormProps {
    * `custom:<name>` group-by dimensions.
    */
   customFieldNames?: string[];
+  /** Which BigQuery source the widget reads. Default 'posts'. The widget-level
+   *  Data Source toggle lives in the dialog, not the form. */
+  dataSource?: DataSource;
 }
 
-export function DataSourceForm({ config, onChange, onChartTypeChange, chartType, customFieldNames }: DataSourceFormProps) {
-  const allDimensions = useMemo<CustomDimension[]>(() => {
+export function DataSourceForm({
+  config,
+  onChange,
+  onChartTypeChange,
+  chartType,
+  customFieldNames,
+  dataSource = 'posts',
+}: DataSourceFormProps) {
+  const isTopics = dataSource === 'topics';
+  const isJsonUnnestedTopicDim =
+    isTopics && TOPIC_JSON_UNNESTED_DIMENSIONS.has(config.dimension as TopicDimension);
+
+  const allPostDimensions = useMemo<CustomDimension[]>(() => {
     const customDims = (customFieldNames ?? []).map(
       (n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension,
     );
     return [...STANDARD_DIMENSIONS, ...customDims];
   }, [customFieldNames]);
 
-  const handleMetricChange = (metric: CustomMetric) => {
-    const next: CustomChartConfig = { ...config, metric };
-    // Ensure chart type is still valid
-    const validTypes = getValidChartTypesForCustom(config.dimension, metric);
-    onChartTypeChange(validTypes[0]);
-    onChange(next);
-  };
+  const metricMeta = isTopics ? TOPIC_METRIC_META : METRIC_META;
+  const allMetrics: AnyMetric[] = isTopics ? ALL_TOPIC_METRICS : ALL_POST_METRICS;
+  const allDimensions: AnyDimension[] = isTopics ? TOPIC_DIMENSIONS : allPostDimensions;
+  const renderDimMeta = (dim: AnyDimension) =>
+    isTopics ? getTopicDimensionMeta(dim as TopicDimension) : getDimensionMeta(dim as CustomDimension);
 
-  const handleDimensionChange = (dimension: CustomDimension | undefined) => {
-    const next: CustomChartConfig = { ...config, dimension };
-    // Reset timeBucket when not on date
-    if (dimension !== 'posted_at') {
-      delete next.timeBucket;
-    } else if (!next.timeBucket) {
-      next.timeBucket = 'day';
-    }
-    // Clear breakdown if it conflicts with the new dimension
-    if (!dimension || dimension === 'posted_at' || next.breakdownDimension === dimension) {
-      delete next.breakdownDimension;
-    }
-    // Ensure chart type is valid for new dimension
-    const validTypes = getValidChartTypesForCustom(dimension, config.metric);
-    if (!validTypes.includes(config.metric as unknown as SocialChartType)) {
+  const handleMetricChange = (metric: AnyMetric) => {
+    const next: CustomChartConfig = { ...config, metric };
+    if (isTopics) {
+      // Ratio metrics can't decompose per breakdown entry → block JSON-unnested
+      // dims when the user lands on a ratio. Falls back to `topic` dim.
+      if (
+        TOPIC_RATIO_METRICS.has(metric as TopicMetric) &&
+        TOPIC_JSON_UNNESTED_DIMENSIONS.has(next.dimension as TopicDimension)
+      ) {
+        next.dimension = 'topic';
+      }
+      // Reset metricAgg when switching between ratio/non-ratio metrics so the
+      // old aggregation doesn't carry over into a non-meaningful state.
+      delete next.metricAgg;
+    } else {
+      const validTypes = getValidChartTypesForCustom(config.dimension as CustomDimension | undefined, metric as CustomMetric);
       onChartTypeChange(validTypes[0]);
     }
     onChange(next);
   };
+
+  const handleDimensionChange = (dimension: AnyDimension | undefined) => {
+    const next: CustomChartConfig = { ...config, dimension };
+    if (isTopics) {
+      // Topics: no time bucket, no breakdown in phase 1.
+      delete next.timeBucket;
+      delete next.breakdownDimension;
+    } else {
+      if (dimension !== 'posted_at') {
+        delete next.timeBucket;
+      } else if (!next.timeBucket) {
+        next.timeBucket = 'day';
+      }
+      if (!dimension || dimension === 'posted_at' || next.breakdownDimension === dimension) {
+        delete next.breakdownDimension;
+      }
+      const validTypes = getValidChartTypesForCustom(dimension as CustomDimension | undefined, config.metric as CustomMetric);
+      if (!validTypes.includes(config.metric as unknown as SocialChartType)) {
+        onChartTypeChange(validTypes[0]);
+      }
+    }
+    onChange(next);
+  };
+
+  const aggOptions = isTopics && TOPIC_RATIO_METRICS.has(config.metric as TopicMetric)
+    ? RATIO_AGG_OPTIONS
+    : AGG_OPTIONS;
 
   return (
     <div className="space-y-3">
@@ -85,16 +146,16 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
       <div className="flex items-center gap-3">
         <Label className="text-xs w-24 shrink-0">Metric</Label>
         <Select
-          value={config.metric}
-          onValueChange={(v) => handleMetricChange(v as CustomMetric)}
+          value={config.metric as string}
+          onValueChange={(v) => handleMetricChange(v as AnyMetric)}
         >
           <SelectTrigger className="h-8 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ALL_METRICS.map((metric) => (
+            {allMetrics.map((metric) => (
               <SelectItem key={metric} value={metric}>
-                {METRIC_META[metric].label}
+                {metricMeta[metric as keyof typeof metricMeta]?.label ?? metric}
               </SelectItem>
             ))}
           </SelectContent>
@@ -106,14 +167,14 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Aggregation</Label>
           <Select
-            value={config.metricAgg ?? 'sum'}
+            value={config.metricAgg ?? (isTopics && TOPIC_RATIO_METRICS.has(config.metric as TopicMetric) ? 'avg' : 'sum')}
             onValueChange={(v) => onChange({ ...config, metricAgg: v as CustomChartConfig['metricAgg'] })}
           >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {AGG_OPTIONS.map((opt) => (
+              {aggOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value!}>
                   {opt.label}
                 </SelectItem>
@@ -127,9 +188,9 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
       <div className="flex items-center gap-3">
         <Label className="text-xs w-24 shrink-0">Group By</Label>
         <Select
-          value={config.dimension ?? 'none'}
+          value={(config.dimension as string | undefined) ?? 'none'}
           onValueChange={(v) =>
-            handleDimensionChange(v === 'none' ? undefined : (v as CustomDimension))
+            handleDimensionChange(v === 'none' ? undefined : (v as AnyDimension))
           }
         >
           <SelectTrigger className="h-8 text-xs">
@@ -137,21 +198,32 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">None (single value)</SelectItem>
-            {allDimensions.map((dim) => (
-              <SelectItem key={dim} value={dim}>
-                {getDimensionMeta(dim).label}
-              </SelectItem>
-            ))}
+            {allDimensions.map((dim) => {
+              const disabled =
+                isTopics &&
+                TOPIC_RATIO_METRICS.has(config.metric as TopicMetric) &&
+                TOPIC_JSON_UNNESTED_DIMENSIONS.has(dim as TopicDimension);
+              return (
+                <SelectItem
+                  key={dim as string}
+                  value={dim as string}
+                  disabled={disabled}
+                >
+                  {renderDimMeta(dim).label}
+                  {disabled ? ' (not supported with ratio metrics)' : ''}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Breakdown (hue) — available for any primary dimension */}
-      {config.dimension && (
+      {/* Breakdown (hue) — posts-mode only; topics defer breakdown to phase 2 */}
+      {!isTopics && config.dimension && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Breakdown</Label>
           <Select
-            value={config.breakdownDimension ?? 'none'}
+            value={(config.breakdownDimension as string | undefined) ?? 'none'}
             onValueChange={(v) =>
               onChange({ ...config, breakdownDimension: v === 'none' ? undefined : (v as CustomDimension) })
             }
@@ -161,7 +233,7 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">None</SelectItem>
-              {allDimensions.filter((d) => d !== config.dimension && d !== 'posted_at').map((dim) => (
+              {allPostDimensions.filter((d) => d !== config.dimension && d !== 'posted_at').map((dim) => (
                 <SelectItem key={dim} value={dim}>
                   {getDimensionMeta(dim).label}
                 </SelectItem>
@@ -171,8 +243,8 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
         </div>
       )}
 
-      {/* Time bucket (only when grouped by posted_at) */}
-      {config.dimension === 'posted_at' && (
+      {/* Time bucket — posts-mode only (topic_metrics is a snapshot) */}
+      {!isTopics && config.dimension === 'posted_at' && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Time Bucket</Label>
           <div className="flex items-center gap-1.5">
@@ -196,7 +268,7 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
       )}
 
       {/* Stacked vs grouped — bar only, when a breakdown is set */}
-      {chartType === 'bar' && config.breakdownDimension && (
+      {!isTopics && chartType === 'bar' && config.breakdownDimension && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Bars</Label>
           <div className="flex items-center gap-1.5">
@@ -228,18 +300,17 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
           <Label className="text-xs w-24 shrink-0 pt-1.5">Quick toggle</Label>
           <div className="flex flex-col gap-1.5 flex-1">
             <div className="flex flex-wrap gap-1.5">
-              {ALL_METRICS.map((m) => {
+              {allMetrics.map((m) => {
                 const checked = config.metricToggle?.includes(m) ?? false;
                 const isPrimary = m === config.metric;
                 return (
                   <button
-                    key={m}
+                    key={m as string}
                     type="button"
                     onClick={() => {
                       const current = new Set(config.metricToggle ?? []);
                       if (current.has(m)) current.delete(m);
                       else current.add(m);
-                      // Always include the primary metric if any other is checked.
                       if (current.size > 0) current.add(config.metric);
                       const next = current.size >= 2 ? Array.from(current) : undefined;
                       onChange({ ...config, metricToggle: next });
@@ -251,9 +322,13 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
                         : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
                       isPrimary && 'ring-1 ring-primary/20',
                     )}
-                    title={isPrimary ? 'Primary metric (always included when toggle is on)' : METRIC_META[m].description}
+                    title={
+                      isPrimary
+                        ? 'Primary metric (always included when toggle is on)'
+                        : metricMeta[m as keyof typeof metricMeta]?.description ?? ''
+                    }
                   >
-                    {METRIC_META[m].label}
+                    {metricMeta[m as keyof typeof metricMeta]?.label ?? (m as string)}
                   </button>
                 );
               })}
@@ -293,11 +368,9 @@ export function DataSourceForm({ config, onChange, onChartTypeChange, chartType,
                 className="h-8 w-20 text-xs"
               />
               <span className="text-[11px] text-muted-foreground">
-                {config.dimension === 'posted_at' ? 'series' : 'categories'}
+                {config.dimension === 'posted_at' ? 'series' : isJsonUnnestedTopicDim ? 'values' : 'categories'}
               </span>
             </div>
-            {/* Others toggle: only meaningful when topN is set AND primary is categorical
-             *  (time series "Others" rolls tail series into one extra line). */}
             {config.topN !== undefined && (
               <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
                 <input

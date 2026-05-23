@@ -18,22 +18,30 @@ import {
 } from '../../../../components/ui/dropdown-menu.tsx';
 import { cn } from '../../../../lib/utils.ts';
 import type {
+  AnyDimension,
+  AnyMetric,
   CustomDimension,
   CustomMetric,
   CustomTableConfig,
+  DataSource,
   PostField,
   StandardPostField,
   TableColumn,
   TableColumnAgg,
   TableColumnDisplay,
   TableColumnViz,
+  TopicDimension,
+  TopicMetric,
 } from '../types-social-dashboard.ts';
 import {
   DIMENSION_META,
   METRIC_META,
   POST_FIELD_META,
+  TOPIC_DIMENSION_META,
+  TOPIC_METRIC_META,
   getDimensionMeta,
   getPostFieldMeta,
+  getTopicDimensionMeta,
   CUSTOM_DIM_PREFIX,
   autoColumnHeader,
   isDimensionColumn,
@@ -45,6 +53,8 @@ import {
 const STANDARD_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
 const ALL_METRICS = Object.keys(METRIC_META) as CustomMetric[];
 const STANDARD_POST_FIELDS = Object.keys(POST_FIELD_META) as StandardPostField[];
+const TOPIC_DIMENSIONS = Object.keys(TOPIC_DIMENSION_META) as TopicDimension[];
+const ALL_TOPIC_METRICS = Object.keys(TOPIC_METRIC_META) as TopicMetric[];
 
 const AGG_OPTIONS: Array<{ value: TableColumnAgg; label: string }> = [
   { value: 'sum',   label: 'Total (Sum)' },
@@ -70,6 +80,10 @@ interface TableDataFormProps {
   config: CustomTableConfig;
   onChange: (config: CustomTableConfig) => void;
   customFieldNames?: string[];
+  /** Which BigQuery source the widget reads. Default 'posts'. When 'topics',
+   *  the dimension/metric pickers swap to topic vocabulary and post-mode is
+   *  unavailable (topic_metrics rows are 1:1 with topics, no per-post mode). */
+  dataSource?: DataSource;
 }
 
 function uniqueColumnId(existing: TableColumn[], seed: string): string {
@@ -80,7 +94,8 @@ function uniqueColumnId(existing: TableColumn[], seed: string): string {
   return `${seed}_${n}`;
 }
 
-export function TableDataForm({ config: rawConfig, onChange, customFieldNames }: TableDataFormProps) {
+export function TableDataForm({ config: rawConfig, onChange, customFieldNames, dataSource = 'posts' }: TableDataFormProps) {
+  const isTopics = dataSource === 'topics';
   // Migrate legacy `dimension` slot into a first dim column so the form only
   // has to think about one model.
   const config = useMemo(() => normalizeTableConfig(rawConfig), [rawConfig]);
@@ -90,12 +105,23 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
     const { dimension: _drop, ...rest } = next;
     onChange(rest);
   };
-  const allDimensions = useMemo<CustomDimension[]>(() => {
+  const allDimensions = useMemo<AnyDimension[]>(() => {
+    if (isTopics) return TOPIC_DIMENSIONS;
     const customDims = (customFieldNames ?? []).map(
       (n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension,
     );
     return [...STANDARD_DIMENSIONS, ...customDims];
-  }, [customFieldNames]);
+  }, [isTopics, customFieldNames]);
+  const allMetrics: AnyMetric[] = isTopics ? ALL_TOPIC_METRICS : ALL_METRICS;
+  const dimMetaFor = (dim: AnyDimension) =>
+    isTopics ? getTopicDimensionMeta(dim as TopicDimension) : getDimensionMeta(dim as CustomDimension);
+  const metricLabel = (m: AnyMetric): string =>
+    isTopics
+      ? TOPIC_METRIC_META[m as keyof typeof TOPIC_METRIC_META]?.label ?? String(m)
+      : METRIC_META[m as CustomMetric]?.label ?? String(m);
+  // Sensible defaults when adding a new column on a topic table.
+  const defaultDim: AnyDimension = isTopics ? 'topic' : 'sentiment';
+  const defaultMetric: AnyMetric = isTopics ? 'post_count' : 'like_count';
 
   const updateColumn = (idx: number, patch: Partial<TableColumn>) => {
     const next = config.columns.map((c, i) => (i === idx ? { ...c, ...patch } : c));
@@ -122,7 +148,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
     const id = uniqueColumnId(config.columns, 'col');
     emit({
       ...config,
-      columns: [...config.columns, { id, kind: 'metric', metric: 'like_count', agg: 'sum' }],
+      columns: [...config.columns, { id, kind: 'metric', metric: defaultMetric, agg: 'sum' }],
     });
   };
 
@@ -132,7 +158,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
       ...config,
       columns: [
         ...config.columns,
-        { id, kind: 'dimension', dimension: 'sentiment' },
+        { id, kind: 'dimension', dimension: defaultDim },
       ],
     });
   };
@@ -185,42 +211,46 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
     const cur = config.columns[idx];
     if (!cur) return;
     const next: TableColumn = kind === 'dimension'
-      ? { id: cur.id, kind: 'dimension', dimension: cur.dimension ?? 'sentiment', header: cur.header }
-      : { id: cur.id, kind: 'metric',    metric: cur.metric ?? 'like_count', agg: cur.agg ?? 'sum', header: cur.header };
+      ? { id: cur.id, kind: 'dimension', dimension: cur.dimension ?? defaultDim, header: cur.header }
+      : { id: cur.id, kind: 'metric',    metric: cur.metric ?? defaultMetric, agg: cur.agg ?? 'sum', header: cur.header };
     const columns = config.columns.map((c, i) => (i === idx ? next : c));
     emit({ ...config, columns });
   };
 
   return (
     <div className="space-y-4">
-      {/* Mode toggle — Group (cross-product rows) vs Post (one row per post). */}
-      <div className="flex items-center gap-3">
-        <Label className="text-xs w-24 shrink-0">Mode</Label>
-        <div className="flex items-center gap-1.5">
-          {([
-            { v: 'group', label: 'Group by', title: 'One row per dimension group; metric columns aggregate' },
-            { v: 'post',  label: 'Post',     title: 'One row per post; columns read raw post fields' },
-          ] as const).map(({ v, label, title }) => {
-            const active = (config.mode ?? 'group') === v;
-            return (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setMode(v)}
-                title={title}
-                className={cn(
-                  'rounded-md border px-2.5 py-1 text-xs font-medium transition-all',
-                  active
-                    ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
+      {/* Mode toggle — Group (cross-product rows) vs Post (one row per post).
+          Hidden for topic widgets: topic_metrics rows are already 1:1 with
+          topics, so "post mode" doesn't apply. */}
+      {!isTopics && (
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Mode</Label>
+          <div className="flex items-center gap-1.5">
+            {([
+              { v: 'group', label: 'Group by', title: 'One row per dimension group; metric columns aggregate' },
+              { v: 'post',  label: 'Post',     title: 'One row per post; columns read raw post fields' },
+            ] as const).map(({ v, label, title }) => {
+              const active = (config.mode ?? 'group') === v;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setMode(v)}
+                  title={title}
+                  className={cn(
+                    'rounded-md border px-2.5 py-1 text-xs font-medium transition-all',
+                    active
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Columns list — group mode: dimension cols define grouping, metric cols
           aggregate. Post mode: each col reads one raw post field. */}
@@ -353,32 +383,32 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
                     </Select>
                   ) : isDim ? (
                     <Select
-                      value={col.dimension ?? 'sentiment'}
-                      onValueChange={(v) => updateColumn(idx, { dimension: v as CustomDimension })}
+                      value={(col.dimension as string | undefined) ?? (defaultDim as string)}
+                      onValueChange={(v) => updateColumn(idx, { dimension: v as AnyDimension })}
                     >
                       <SelectTrigger className="h-7 text-xs w-[140px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {allDimensions.map((dim) => (
-                          <SelectItem key={dim} value={dim}>
-                            {getDimensionMeta(dim).label}
+                          <SelectItem key={dim as string} value={dim as string}>
+                            {dimMetaFor(dim).label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   ) : (
                     <Select
-                      value={col.metric ?? 'like_count'}
-                      onValueChange={(v) => updateColumn(idx, { metric: v as CustomMetric })}
+                      value={(col.metric as string | undefined) ?? (defaultMetric as string)}
+                      onValueChange={(v) => updateColumn(idx, { metric: v as AnyMetric })}
                     >
                       <SelectTrigger className="h-7 text-xs w-[140px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {ALL_METRICS.map((m) => (
-                          <SelectItem key={m} value={m}>
-                            {METRIC_META[m].label}
+                        {allMetrics.map((m) => (
+                          <SelectItem key={m as string} value={m as string}>
+                            {metricLabel(m)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -387,14 +417,19 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
 
                   {/* Aggregation — group-mode metric columns only. Dimensions
                        contribute to the compound key; post-field columns read
-                       raw values with no agg. */}
+                       raw values with no agg. Topic widgets have 1:1 rows
+                       (no grouping) — metric columns also read raw values. */}
                   {isPost ? (
                     <span className="text-[11px] text-muted-foreground w-[120px] px-1 truncate">
                       Raw value
                     </span>
                   ) : isDim ? (
                     <span className="text-[11px] text-muted-foreground w-[120px] px-1 truncate">
-                      Group by
+                      {isTopics ? 'Topic field' : 'Group by'}
+                    </span>
+                  ) : isTopics ? (
+                    <span className="text-[11px] text-muted-foreground w-[120px] px-1 truncate">
+                      Raw value
                     </span>
                   ) : (
                     <Select

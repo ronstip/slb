@@ -94,8 +94,68 @@ class DashboardKpis(BaseModel):
     total_shares: int = 0
 
 
+class TopicBreakdownEntry(BaseModel):
+    value: str
+    count: int = 0
+
+
+class TopicPlatformEntry(BaseModel):
+    platform: str
+    posts: int = 0
+    views: int = 0
+    likes: int = 0
+    engagement: int = 0
+
+
+class TopicMetricsResponse(BaseModel):
+    cluster_id: str
+    header: str | None = None
+    subheader: str | None = None
+    beat_type: str | None = None
+    keywords: list[str] = []
+    thumbnail_url: str | None = None
+    thumbnail_gcs_uri: str | None = None
+    top_content_type: str | None = None
+    top_emotion: str | None = None
+    post_count: int = 0
+    total_views: int = 0
+    total_likes: int = 0
+    total_comments: int = 0
+    total_shares: int = 0
+    total_engagement: int = 0
+    avg_engagement_per_post: float = 0
+    positive_count: int = 0
+    negative_count: int = 0
+    neutral_count: int = 0
+    mixed_count: int = 0
+    net_sentiment: float | None = None
+    recency_score: float = 0
+    signal_score: float = 0
+    sov_posts: float = 0
+    sov_views: float = 0
+    sov_engagement: float = 0
+    estimated_post_count: int = 0
+    estimated_views: int = 0
+    unique_channels: int = 0
+    unique_channels_ugc: int = 0
+    unique_channels_official: int = 0
+    unique_channels_media: int = 0
+    unique_channels_influencers: int = 0
+    earliest_post: str | None = None
+    median_post_time: str | None = None
+    latest_post: str | None = None
+    platforms_breakdown: list[TopicPlatformEntry] = []
+    themes_counts: list[TopicBreakdownEntry] = []
+    emotion_counts: list[TopicBreakdownEntry] = []
+    entities_counts: list[TopicBreakdownEntry] = []
+    detected_brands_counts: list[TopicBreakdownEntry] = []
+    channel_type_counts: list[TopicBreakdownEntry] = []
+    content_type_counts: list[TopicBreakdownEntry] = []
+
+
 class DashboardDataResponse(BaseModel):
     posts: list[DashboardPostResponse]
+    topics: list[TopicMetricsResponse] = []
     collection_names: dict[str, str]
     truncated: bool = False
     kpis: DashboardKpis | None = None
@@ -129,6 +189,7 @@ class SharedDashboardMetaResponse(BaseModel):
 
 class SharedDashboardDataResponse(BaseModel):
     posts: list[DashboardPostResponse]
+    topics: list[TopicMetricsResponse] = []
     collection_names: dict[str, str]
     truncated: bool = False
     meta: SharedDashboardMetaResponse

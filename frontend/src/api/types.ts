@@ -519,8 +519,68 @@ export interface DashboardKpis {
   total_shares: number;
 }
 
+export interface TopicBreakdownEntry {
+  value: string;
+  count: number;
+}
+
+export interface TopicPlatformEntry {
+  platform: string;
+  posts: number;
+  views: number;
+  likes: number;
+  engagement: number;
+}
+
+export interface TopicMetric {
+  cluster_id: string;
+  header?: string | null;
+  subheader?: string | null;
+  beat_type?: string | null;
+  keywords: string[];
+  thumbnail_url?: string | null;
+  thumbnail_gcs_uri?: string | null;
+  top_content_type?: string | null;
+  top_emotion?: string | null;
+  post_count: number;
+  total_views: number;
+  total_likes: number;
+  total_comments: number;
+  total_shares: number;
+  total_engagement: number;
+  avg_engagement_per_post: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  mixed_count: number;
+  net_sentiment?: number | null;
+  recency_score: number;
+  signal_score: number;
+  sov_posts: number;
+  sov_views: number;
+  sov_engagement: number;
+  estimated_post_count: number;
+  estimated_views: number;
+  unique_channels: number;
+  unique_channels_ugc: number;
+  unique_channels_official: number;
+  unique_channels_media: number;
+  unique_channels_influencers: number;
+  earliest_post?: string | null;
+  median_post_time?: string | null;
+  latest_post?: string | null;
+  platforms_breakdown: TopicPlatformEntry[];
+  themes_counts: TopicBreakdownEntry[];
+  emotion_counts: TopicBreakdownEntry[];
+  entities_counts: TopicBreakdownEntry[];
+  detected_brands_counts: TopicBreakdownEntry[];
+  channel_type_counts: TopicBreakdownEntry[];
+  content_type_counts: TopicBreakdownEntry[];
+}
+
 export interface DashboardDataResponse {
   posts: DashboardPost[];
+  topics?: TopicMetric[];
   collection_names: Record<string, string>;
   truncated: boolean;
   kpis?: DashboardKpis;
@@ -561,6 +621,7 @@ export interface BriefingMetaResponse {
 
 export interface SharedDashboardDataResponse {
   posts: DashboardPost[];
+  topics?: TopicMetric[];
   collection_names: Record<string, string>;
   truncated: boolean;
   meta: {

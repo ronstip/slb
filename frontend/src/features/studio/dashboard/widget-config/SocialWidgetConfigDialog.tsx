@@ -22,9 +22,9 @@ const MarkdownArtifactEditor = lazy(() =>
   import('../../MarkdownArtifactEditor.tsx').then((m) => ({ default: m.MarkdownArtifactEditor })),
 );
 import { cn } from '../../../../lib/utils.ts';
-import type { DashboardPost } from '../../../../api/types.ts';
-import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize } from '../types-social-dashboard.ts';
-import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, getDimensionMeta, defaultTableConfigFor, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig } from '../types-social-dashboard.ts';
+import type { DashboardPost, TopicMetric } from '../../../../api/types.ts';
+import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension } from '../types-social-dashboard.ts';
+import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
 import { TableDataForm } from './TableDataForm.tsx';
@@ -32,6 +32,7 @@ import { WidgetFilterForm } from './WidgetFilterForm.tsx';
 import { WidgetStyleForm } from './WidgetStyleForm.tsx';
 import { ChartStyleEditor } from './ChartStyleEditor.tsx';
 import { aggregateCustom, aggregatePlatforms, aggregateSentiment, aggregateTable } from '../dashboard-aggregations.ts';
+import { aggregateTopicsCustom, aggregateTopicsTable } from '../topic-aggregations.ts';
 import { extractChartSeriesLabels } from '../chart-series-labels.ts';
 import { SocialWidgetRenderer, applyWidgetFilters } from '../SocialWidgetRenderer.tsx';
 import { composeWidgetField, type WidgetDataSummary } from '../../../../api/endpoints/dashboard.ts';
@@ -49,6 +50,10 @@ const ALL_CHART_TYPES: Array<{ type: SocialChartType; label: string; icon: React
   { type: 'table',         label: 'Table',   icon: Table2 },
 ];
 
+/** Chart types unavailable for topic widgets in phase 1. topic_metrics is a
+ *  snapshot — no time series, so `line` doesn't apply. */
+const TOPIC_DISABLED_CHART_TYPES: ReadonlySet<SocialChartType> = new Set(['line']);
+
 // ── Public wrapper ─────────────────────────────────────────────────────────────
 
 interface SocialWidgetConfigDialogProps {
@@ -64,6 +69,9 @@ interface SocialWidgetConfigDialogProps {
   customFieldNames?: string[];
   /** Agent context used to ground AI compose with task title + description. */
   agentId?: string;
+  /** Agent-scoped topic_metrics rows. Empty when no agent context (in which
+   *  case the data-source toggle's Topics option is disabled). */
+  topics?: TopicMetric[];
 }
 
 export function SocialWidgetConfigDialog({
@@ -77,6 +85,7 @@ export function SocialWidgetConfigDialog({
   onClose,
   customFieldNames,
   agentId,
+  topics,
 }: SocialWidgetConfigDialogProps) {
   if (!open || !widget) return null;
 
@@ -93,6 +102,7 @@ export function SocialWidgetConfigDialog({
       onClose={onClose}
       customFieldNames={customFieldNames}
       agentId={agentId}
+      topics={topics}
     />
   );
 }
@@ -116,11 +126,15 @@ function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
   // round-trip. Uses dimension-aware defaults for known presets.
   let seededTableConfig = widget.tableConfig;
   if (!seededTableConfig && resolvedChartType === 'table') {
-    const seedDim =
-      widget.customConfig?.dimension
-      ?? presetToCustomConfig(widget.aggregation, widget.kpiIndex).customConfig.dimension
-      ?? 'channel_handle';
-    seededTableConfig = defaultTableConfigFor(seedDim);
+    if ((widget.dataSource ?? 'posts') === 'topics') {
+      seededTableConfig = defaultTopicTableConfig();
+    } else {
+      const seedDim =
+        (widget.customConfig?.dimension as CustomDimension | undefined)
+        ?? presetToCustomConfig(widget.aggregation, widget.kpiIndex).customConfig.dimension
+        ?? 'channel_handle';
+      seededTableConfig = defaultTableConfigFor(seedDim);
+    }
   }
 
   if (widget.aggregation === 'custom' && widget.customConfig) {
@@ -149,8 +163,12 @@ function SocialWidgetConfigDialogInner({
   onClose,
   customFieldNames,
   agentId,
+  topics = [],
 }: SocialWidgetConfigDialogProps & { widget: SocialDashboardWidget }) {
   const [draft, setDraft] = useState<SocialDashboardWidget>(() => toCustomDraft(widget));
+  const dataSource: DataSource = draft.dataSource ?? 'posts';
+  const isTopics = dataSource === 'topics';
+  const topicsAvailable = Boolean(agentId);
 
   // ── Drag state ──
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -174,11 +192,41 @@ function SocialWidgetConfigDialogInner({
 
   const onDragPointerUp = useCallback(() => { dragRef.current.active = false; }, []);
 
-  // Recompute valid chart types whenever dimension/metric changes
-  const validChartTypes = getValidChartTypesForCustom(
-    draft.customConfig?.dimension,
-    draft.customConfig?.metric ?? 'post_count',
-  );
+  // Recompute valid chart types whenever dimension/metric changes. For topic
+  // widgets, drop the chart types we don't support in phase 1 (line — no time
+  // series in topic_metrics).
+  const validChartTypes = (isTopics
+    ? getValidChartTypesForCustom(
+        draft.customConfig?.dimension as CustomDimension | undefined,
+        (draft.customConfig?.metric ?? 'post_count') as CustomMetric,
+      ).filter((t) => !TOPIC_DISABLED_CHART_TYPES.has(t))
+    : getValidChartTypesForCustom(
+        draft.customConfig?.dimension as CustomDimension | undefined,
+        (draft.customConfig?.metric ?? 'post_count') as CustomMetric,
+      ));
+
+  const updateDataSource = (next: DataSource) => {
+    setDraft((prev) => {
+      if ((prev.dataSource ?? 'posts') === next) return prev;
+      // Switching source: clear customConfig + tableConfig + breakdown + time
+      // bucket so we don't carry an invalid dimension/metric across vocabularies.
+      const seed: CustomChartConfig =
+        next === 'topics'
+          ? { metric: 'topic_count' as CustomChartConfig['metric'] }
+          : { metric: 'post_count' };
+      const fallbackChart: SocialChartType = next === 'topics' && prev.chartType === 'line'
+        ? 'bar'
+        : prev.chartType;
+      return {
+        ...prev,
+        dataSource: next,
+        aggregation: 'custom',
+        customConfig: seed,
+        tableConfig: undefined,
+        chartType: fallbackChart,
+      };
+    });
+  };
 
   const updateConfig = (config: CustomChartConfig) => {
     setDraft((prev) => {
@@ -194,7 +242,10 @@ function SocialWidgetConfigDialogInner({
       // When switching INTO table mode, seed tableConfig if missing so the
       // Data tab opens populated and the preview renders immediately.
       if (chartType === 'table' && !prev.tableConfig) {
-        const seedDim = prev.customConfig?.dimension ?? 'channel_handle';
+        if ((prev.dataSource ?? 'posts') === 'topics') {
+          return { ...prev, chartType, tableConfig: defaultTopicTableConfig() };
+        }
+        const seedDim = (prev.customConfig?.dimension as CustomDimension | undefined) ?? 'channel_handle';
         return { ...prev, chartType, tableConfig: defaultTableConfigFor(seedDim) };
       }
       return { ...prev, chartType };
@@ -328,6 +379,7 @@ function SocialWidgetConfigDialogInner({
                       target="header"
                       draft={draft}
                       previewPosts={previewPosts}
+                      topics={topics}
                       agentId={agentId}
                       onResult={(text) => setDraft((prev) => ({ ...prev, title: text }))}
                     />
@@ -361,12 +413,43 @@ function SocialWidgetConfigDialogInner({
                       target="figure_text"
                       draft={draft}
                       previewPosts={previewPosts}
+                      topics={topics}
                       agentId={agentId}
                       onResult={(text) => setDraft((prev) => ({ ...prev, figureText: text }))}
                     />
                   </div>
 
                   <Separator />
+
+                  {/* Data Source toggle — widget-level. Hoisted above the
+                       chart/table form fork so it's visible regardless of
+                       chart type. */}
+                  <div className="flex items-center gap-3">
+                    <Label className="text-xs w-24 shrink-0">Data Source</Label>
+                    <div className="flex items-center gap-1.5">
+                      {(['posts', 'topics'] as const).map((src) => {
+                        const disabled = src === 'topics' && !topicsAvailable;
+                        return (
+                          <button
+                            key={src}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => updateDataSource(src)}
+                            title={disabled ? 'Topics require an agent context on this dashboard' : undefined}
+                            className={cn(
+                              'rounded-md border px-2.5 py-1 text-xs font-medium transition-all capitalize',
+                              dataSource === src
+                                ? 'border-primary bg-primary/5 text-primary'
+                                : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                              disabled && 'opacity-50 cursor-not-allowed hover:border-border hover:text-muted-foreground',
+                            )}
+                          >
+                            {src}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   {/* Chart type selector — grid layout with icon on top, all types visible */}
                   <div className="space-y-2.5">
@@ -435,9 +518,12 @@ function SocialWidgetConfigDialogInner({
                      * The chart-flavored Metric / Breakdown / Top-N / Stacked
                      * controls don't apply here, so we render a dedicated form. */
                     <TableDataForm
-                      config={draft.tableConfig ?? defaultTableConfigFor(draft.customConfig?.dimension ?? 'channel_handle')}
+                      config={draft.tableConfig ?? (isTopics
+                        ? defaultTopicTableConfig()
+                        : defaultTableConfigFor(draft.customConfig?.dimension as CustomDimension | undefined ?? 'channel_handle'))}
                       onChange={updateTableConfig}
                       customFieldNames={customFieldNames}
+                      dataSource={dataSource}
                     />
                   ) : (
                     /* Data source: Metric → Aggregation → Group By → Time Bucket */
@@ -447,6 +533,7 @@ function SocialWidgetConfigDialogInner({
                       onChartTypeChange={updateChartType}
                       chartType={draft.chartType}
                       customFieldNames={customFieldNames}
+                      dataSource={dataSource}
                     />
                   )}
                 </TabsContent>
@@ -463,6 +550,7 @@ function SocialWidgetConfigDialogInner({
                   <StyleTab
                     draft={draft}
                     previewPosts={previewPosts}
+                    topics={topics}
                     onKpiIndexChange={(kpiIndex) => setDraft((prev) => ({ ...prev, kpiIndex }))}
                     onStyleChange={(styleOverrides) =>
                       setDraft((prev) => ({ ...prev, styleOverrides, accent: undefined }))
@@ -496,6 +584,7 @@ function SocialWidgetConfigDialogInner({
                 <SocialWidgetRenderer
                   widget={previewWidget}
                   filteredPosts={previewPosts}
+                  topics={topics}
                   isEditMode={false}
                   onConfigure={() => {}}
                   onRemove={() => {}}
@@ -527,6 +616,7 @@ function SocialWidgetConfigDialogInner({
 function StyleTab({
   draft,
   previewPosts,
+  topics,
   onKpiIndexChange,
   onStyleChange,
   onAccentChange,
@@ -535,12 +625,14 @@ function StyleTab({
 }: {
   draft: SocialDashboardWidget;
   previewPosts: DashboardPost[];
+  topics: TopicMetric[];
   onKpiIndexChange: (i: number) => void;
   onStyleChange: (overrides: ChartStyleOverrides) => void;
   onAccentChange: (accent: string | undefined) => void;
   onTableConfigChange: (config: CustomTableConfig) => void;
   onNumberSizeChange: (size: NumberSize) => void;
 }) {
+  const isTopicsSource = (draft.dataSource ?? 'posts') === 'topics';
   // KPI cards: size + accent + (optional) KPI index picker.
   if (draft.chartType === 'number-card') {
     return (
@@ -562,32 +654,46 @@ function StyleTab({
   // dimension share renames.
   if (draft.chartType === 'table') {
     const tableConfig = normalizeTableConfig(
-      draft.tableConfig ?? defaultTableConfigFor(draft.customConfig?.dimension ?? 'channel_handle'),
+      draft.tableConfig ?? (isTopicsSource
+        ? defaultTopicTableConfig()
+        : defaultTableConfigFor((draft.customConfig?.dimension as CustomDimension | undefined) ?? 'channel_handle')),
     );
-    const filteredPreviewPosts = applyWidgetFilters(previewPosts, draft.filters);
-    const rows = aggregateTable(filteredPreviewPosts, tableConfig);
-    // Distinct raw values from the first dim column drive the rename UI —
-    // matches what the user sees in the leading group-by column.
-    const firstDimCol = tableConfig.columns.find(isDimensionColumn);
-    const seen = new Set<string>();
-    const dimLabels: string[] = [];
-    if (firstDimCol) {
+    // Topic tables read from the topic_metrics rows directly; post tables run
+    // the post aggregator. Filter bar doesn't apply to topics (snapshot data).
+    const rows = isTopicsSource
+      ? aggregateTopicsTable(topics, tableConfig)
+      : aggregateTable(applyWidgetFilters(previewPosts, draft.filters), tableConfig);
+
+    // Build a rename group per dimension column — for topic widgets the
+    // typical case is one group ("Topic") but other dims (beat_type,
+    // top_emotion, ...) work the same. For post tables, multi-group tables
+    // (e.g. channel × platform) also get one section per dim.
+    const dimGroups: Array<{ columnId: string; label: string; values: string[] }> = [];
+    for (const col of tableConfig.columns) {
+      if (!isDimensionColumn(col) || !col.dimension) continue;
+      const dim = col.dimension;
+      const colLabel = isTopicsSource
+        ? getTopicDimensionMeta(dim as never).label
+        : getDimensionMeta(dim as CustomDimension).label;
+      const seen = new Set<string>();
+      const values: string[] = [];
       for (const r of rows) {
-        const v = r[firstDimCol.id];
+        const v = r[col.id];
         if (typeof v === 'string' && v !== '' && !seen.has(v)) {
           seen.add(v);
-          dimLabels.push(v);
+          values.push(v);
         }
       }
+      if (values.length > 0) {
+        dimGroups.push({ columnId: col.id, label: colLabel, values });
+      }
     }
-    const firstDimLabel = firstDimCol?.dimension ? getDimensionMeta(firstDimCol.dimension).label : 'group';
     const tableStyleOverrides: ChartStyleOverrides = draft.styleOverrides ?? {};
     return (
       <TableStyleForm
         config={tableConfig}
         onChange={onTableConfigChange}
-        dimLabels={dimLabels}
-        dimColumnLabel={firstDimLabel}
+        dimGroups={dimGroups}
         styleOverrides={tableStyleOverrides}
         onStyleChange={onStyleChange}
       />
@@ -597,7 +703,9 @@ function StyleTab({
   // Charts: compute the labels the chart will render so the per-series picker
   // matches the legend 1:1.
   const previewData = draft.customConfig
-    ? aggregateCustom(previewPosts, draft.customConfig)
+    ? (isTopicsSource
+        ? aggregateTopicsCustom(topics, draft.customConfig)
+        : aggregateCustom(previewPosts, draft.customConfig))
     : undefined;
   const seriesLabels = extractChartSeriesLabels(draft.chartType, previewData);
   const styleOverrides: ChartStyleOverrides = draft.styleOverrides
@@ -615,15 +723,18 @@ function StyleTab({
 function TableStyleForm({
   config,
   onChange,
-  dimLabels,
-  dimColumnLabel,
+  dimGroups,
   styleOverrides,
   onStyleChange,
 }: {
   config: CustomTableConfig;
   onChange: (config: CustomTableConfig) => void;
-  dimLabels: string[];
-  dimColumnLabel: string;
+  /** One entry per dimension column on the table. Each carries the distinct
+   *  raw values present in the rendered preview rows, so the user can rename
+   *  them. Renames are written to the shared `styleOverrides.seriesLabels`
+   *  map — keyed by raw value, so renames apply consistently wherever the
+   *  same value appears (table cells, chart legends). */
+  dimGroups: Array<{ columnId: string; label: string; values: string[] }>;
   styleOverrides: ChartStyleOverrides;
   onStyleChange: (overrides: ChartStyleOverrides) => void;
 }) {
@@ -672,46 +783,50 @@ function TableStyleForm({
         </label>
       </div>
 
-      {dimLabels.length > 0 && (
-        <div className="space-y-2">
-          <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Rename Row Values
-          </Label>
-          <p className="text-xs text-muted-foreground/80">
-            Override the display name for each unique value in the {dimColumnLabel} column. Leave blank to keep the raw value.
-          </p>
-          <div className="space-y-1.5">
-            {dimLabels.map((raw) => {
-              const current = styleOverrides.seriesLabels?.[raw] ?? '';
-              return (
-                <div key={raw} className="flex items-center gap-2">
-                  <span
-                    className="w-1/3 shrink-0 truncate text-xs text-muted-foreground"
-                    title={raw}
-                  >
-                    {raw}
-                  </span>
-                  <Input
-                    type="text"
-                    value={current}
-                    placeholder={raw}
-                    onChange={(e) => setRowLabel(raw, e.target.value)}
-                    className="h-7 flex-1 min-w-0 text-xs"
-                  />
-                  {current !== '' && (
-                    <button
-                      type="button"
-                      onClick={() => setRowLabel(raw, undefined)}
-                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      title="Reset"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+      {dimGroups.length > 0 && (
+        <div className="space-y-5">
+          {dimGroups.map((group) => (
+            <div key={group.columnId} className="space-y-2">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Rename {group.label} Values
+              </Label>
+              <p className="text-xs text-muted-foreground/80">
+                Override the display name for each unique value in the {group.label} column. Leave blank to keep the raw value.
+              </p>
+              <div className="space-y-1.5">
+                {group.values.map((raw) => {
+                  const current = styleOverrides.seriesLabels?.[raw] ?? '';
+                  return (
+                    <div key={raw} className="flex items-center gap-2">
+                      <span
+                        className="w-1/3 shrink-0 truncate text-xs text-muted-foreground"
+                        title={raw}
+                      >
+                        {raw}
+                      </span>
+                      <Input
+                        type="text"
+                        value={current}
+                        placeholder={raw}
+                        onChange={(e) => setRowLabel(raw, e.target.value)}
+                        className="h-7 flex-1 min-w-0 text-xs"
+                      />
+                      {current !== '' && (
+                        <button
+                          type="button"
+                          onClick={() => setRowLabel(raw, undefined)}
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          title="Reset"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -723,8 +838,10 @@ function TableStyleForm({
 function buildDataSummary(
   previewPosts: DashboardPost[],
   widget: SocialDashboardWidget,
+  topics: TopicMetric[],
 ): WidgetDataSummary {
   const summary: WidgetDataSummary = { post_count: previewPosts.length };
+  const isTopicsSource = (widget.dataSource ?? 'posts') === 'topics';
 
   // Time range from posted_at
   if (previewPosts.length > 0) {
@@ -740,11 +857,18 @@ function buildDataSummary(
   // Widget-specific buckets via the same aggregator the chart uses
   const cfg = widget.customConfig;
   if (cfg) {
-    summary.metric_label = METRIC_META[cfg.metric]?.label;
+    summary.metric_label = isTopicsSource
+      ? TOPIC_METRIC_META[cfg.metric as keyof typeof TOPIC_METRIC_META]?.label ?? String(cfg.metric)
+      : METRIC_META[cfg.metric as CustomMetric]?.label;
     if (cfg.dimension) {
-      summary.dimension_label = getDimensionMeta(cfg.dimension).label;
+      summary.dimension_label = isTopicsSource
+        ? TOPIC_DIMENSION_META[cfg.dimension as keyof typeof TOPIC_DIMENSION_META]?.label
+          ?? getTopicDimensionMeta(cfg.dimension as never).label
+        : getDimensionMeta(cfg.dimension as CustomDimension).label;
     }
-    const data = aggregateCustom(previewPosts, cfg);
+    const data = isTopicsSource
+      ? aggregateTopicsCustom(topics, cfg)
+      : aggregateCustom(previewPosts, cfg);
     if (!cfg.dimension && typeof data.value === 'number') {
       summary.kpi_value = data.value;
     } else if (data.labels && data.values) {
@@ -785,12 +909,14 @@ function ComposeButton({
   target,
   draft,
   previewPosts,
+  topics,
   agentId,
   onResult,
 }: {
   target: 'header' | 'figure_text';
   draft: SocialDashboardWidget;
   previewPosts: DashboardPost[];
+  topics: TopicMetric[];
   agentId?: string;
   onResult: (text: string) => void;
 }) {
@@ -816,7 +942,7 @@ function ComposeButton({
             : null,
           figure_text: draft.figureText,
         },
-        data_summary: buildDataSummary(previewPosts, draft),
+        data_summary: buildDataSummary(previewPosts, draft, topics),
         agent_id: agentId,
       });
       onResult(result.text);

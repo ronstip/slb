@@ -1,5 +1,12 @@
 // ─── Core enums ──────────────────────────────────────────────────────────────
 
+/** Which BigQuery source a widget reads from. `posts` (default) = post-level
+ *  rows from `scope_posts`. `topics` = topic cluster rows from `topic_metrics`
+ *  (one row per cluster in the agent's latest clustering run). */
+export type DataSource = 'posts' | 'topics';
+
+export const DEFAULT_DATA_SOURCE: DataSource = 'posts';
+
 export type DashboardOrientation = 'horizontal' | 'vertical';
 
 export const DEFAULT_DASHBOARD_ORIENTATION: DashboardOrientation = 'horizontal';
@@ -106,18 +113,126 @@ export type CustomMetric =
   | 'share_count'
   | 'engagement_total';
 
+// ─── Topic dimensions & metrics (used when widget.dataSource === 'topics') ─────
+
+/** Group-by dimension for topic widgets. `topic` groups by cluster header (1
+ *  row per cluster). The JSON-unnested dims expand each topic's breakdown
+ *  arrays (platforms_breakdown, themes_counts, ...) into rows. */
+export type TopicDimension =
+  | 'topic'
+  | 'beat_type'
+  | 'top_content_type'
+  | 'top_emotion'
+  | 'platform'
+  | 'theme'
+  | 'entity'
+  | 'brand'
+  | 'channel_type'
+  | 'emotion';
+
+/** Metric for topic widgets. `topic_count` is 1-per-row (count of topics).
+ *  Ratio metrics (signal_score, sov_*, net_sentiment, avg_engagement_per_post,
+ *  recency_score) default to `avg` aggregation; sum is not meaningful. */
+export type TopicMetric =
+  | 'topic_count'
+  | 'post_count'
+  | 'total_views'
+  | 'total_likes'
+  | 'total_engagement'
+  | 'avg_engagement_per_post'
+  | 'signal_score'
+  | 'recency_score'
+  | 'net_sentiment'
+  | 'sov_posts'
+  | 'sov_views'
+  | 'sov_engagement'
+  | 'estimated_post_count'
+  | 'estimated_views'
+  | 'unique_channels';
+
+/** Widened union for CustomChartConfig — the runtime branches on
+ *  widget.dataSource to decide which dimension/metric vocabulary applies. */
+export type AnyDimension = CustomDimension | TopicDimension;
+export type AnyMetric = CustomMetric | TopicMetric;
+
+export const TOPIC_DIMENSION_META: Record<TopicDimension, DimensionMeta> = {
+  topic:            { label: 'Topic',         icon: 'Sparkles',     description: 'Group by topic cluster (one row per topic)' },
+  beat_type:        { label: 'Beat Type',     icon: 'Newspaper',    description: 'Group by topic beat classification' },
+  top_content_type: { label: 'Content Type',  icon: 'LayoutGrid',   description: 'Group by the topic’s dominant content type' },
+  top_emotion:      { label: 'Top Emotion',   icon: 'Smile',        description: 'Group by the topic’s dominant emotion' },
+  platform:         { label: 'Platform',      icon: 'Globe',        description: 'Group by platform across topic platforms_breakdown' },
+  theme:            { label: 'Theme',         icon: 'Tag',          description: 'Group by theme across topic themes_counts' },
+  entity:           { label: 'Entity',        icon: 'Users',        description: 'Group by entity across topic entities_counts' },
+  brand:            { label: 'Brand',         icon: 'Sparkles',     description: 'Group by brand across topic detected_brands_counts' },
+  channel_type:     { label: 'Channel Type',  icon: 'Radio',        description: 'Group by channel type across topic channel_type_counts' },
+  emotion:          { label: 'Emotion',       icon: 'Smile',        description: 'Group by emotion across topic emotion_counts' },
+};
+
+/** Topic dimensions whose values come from per-topic JSON breakdown arrays.
+ *  Aggregations unnest the array and accumulate weights per (topic, entry). */
+export const TOPIC_JSON_UNNESTED_DIMENSIONS: ReadonlySet<TopicDimension> = new Set<TopicDimension>([
+  'platform', 'theme', 'entity', 'brand', 'channel_type', 'emotion',
+]);
+
+/** Metrics whose value is a per-topic ratio. Sum is not meaningful — these
+ *  default to `avg` aggregation and are blocked from JSON-unnested dims (since
+ *  they can't decompose per breakdown entry). */
+export const TOPIC_RATIO_METRICS: ReadonlySet<TopicMetric> = new Set<TopicMetric>([
+  'signal_score', 'recency_score', 'net_sentiment',
+  'sov_posts', 'sov_views', 'sov_engagement',
+  'avg_engagement_per_post',
+]);
+
+export const TOPIC_METRIC_META: Record<TopicMetric, { label: string; description: string; supportsAvg: boolean }> = {
+  topic_count:             { label: 'Topic Count',          description: 'Number of topics',                                     supportsAvg: false },
+  post_count:              { label: 'Posts',                description: 'Posts per topic (pre-aggregated)',                     supportsAvg: true },
+  total_views:             { label: 'Views',                description: 'Total views per topic',                                supportsAvg: true },
+  total_likes:             { label: 'Likes',                description: 'Total likes per topic',                                supportsAvg: true },
+  total_engagement:        { label: 'Engagement',           description: 'Likes + comments + shares + saves per topic',         supportsAvg: true },
+  avg_engagement_per_post: { label: 'Avg Engagement/Post',  description: 'Engagement ÷ post_count per topic',              supportsAvg: false },
+  signal_score:            { label: 'Signal Score',         description: 'recency + log(views) + log(post_count) composite',     supportsAvg: false },
+  recency_score:           { label: 'Recency Score',        description: 'How recent the topic’s posts are',               supportsAvg: false },
+  net_sentiment:           { label: 'Net Sentiment',        description: '(positive − negative) ÷ total per topic',   supportsAvg: false },
+  sov_posts:               { label: 'SOV (Posts)',          description: 'Share of voice by post volume within the run',         supportsAvg: false },
+  sov_views:               { label: 'SOV (Views)',          description: 'Share of voice by views within the run',               supportsAvg: false },
+  sov_engagement:          { label: 'SOV (Engagement)',     description: 'Share of voice by engagement within the run',          supportsAvg: false },
+  estimated_post_count:    { label: 'Est. Posts',           description: 'Post-stratified post-count estimate',                  supportsAvg: true },
+  estimated_views:         { label: 'Est. Views',           description: 'Post-stratified view estimate',                        supportsAvg: true },
+  unique_channels:         { label: 'Unique Channels',      description: 'Distinct channels in the topic',                       supportsAvg: true },
+};
+
+/** Default metricAgg for a topic metric. Ratios default to avg; counts to sum. */
+export function defaultTopicMetricAgg(
+  metric: TopicMetric,
+): 'sum' | 'avg' | 'min' | 'max' | 'count' {
+  if (metric === 'topic_count') return 'count';
+  return TOPIC_RATIO_METRICS.has(metric) ? 'avg' : 'sum';
+}
+
+export function getTopicDimensionMeta(
+  dim: TopicDimension | undefined | null,
+): DimensionMeta {
+  if (!dim) return UNKNOWN_DIMENSION_META;
+  return TOPIC_DIMENSION_META[dim] ?? UNKNOWN_DIMENSION_META;
+}
+
 export interface CustomChartConfig {
-  /** What to group by. undefined = no groupBy → number-card */
-  dimension?: CustomDimension;
-  metric: CustomMetric;
+  /** What to group by. undefined = no groupBy → number-card.
+   *  Vocabulary depends on the widget's `dataSource`:
+   *  - `'posts'` (default): values are {@link CustomDimension}.
+   *  - `'topics'`: values are {@link TopicDimension}. */
+  dimension?: AnyDimension;
+  /** Vocabulary depends on `dataSource` — see `dimension`. */
+  metric: AnyMetric;
   /** default 'sum' */
   metricAgg?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   /** only applies when dimension === 'posted_at' */
   timeBucket?: 'hour' | 'day' | 'week' | 'month';
   /** Bar orientation — default 'horizontal' */
   barOrientation?: 'horizontal' | 'vertical';
-  /** Optional second dimension to split bars/slices into sub-groups */
-  breakdownDimension?: CustomDimension;
+  /** Optional second dimension to split bars/slices into sub-groups. For topic
+   *  widgets, phase 1 ignores this (no breakdown support). */
+  breakdownDimension?: AnyDimension;
   /** Max number of primary categories to show. Undefined = show all (capped at 50). */
   topN?: number;
   /** Roll remaining categories beyond topN into an "Others" bucket. Only meaningful
@@ -129,7 +244,7 @@ export interface CustomChartConfig {
    *  viewer can swap the active metric without entering edit mode. The
    *  primary `metric` field is the initial selection; the toggle list should
    *  contain it. */
-  metricToggle?: CustomMetric[];
+  metricToggle?: AnyMetric[];
 }
 
 export const DIMENSION_META: Record<StandardCustomDimension, DimensionMeta> = {
@@ -319,12 +434,14 @@ export interface TableColumn {
   id: string;
   /** 'metric' (default — back-compat) | 'dimension' | 'post-field' (post mode). */
   kind?: 'metric' | 'dimension' | 'post-field';
-  /** Metric column: which post field to aggregate. */
-  metric?: CustomMetric;
+  /** Metric column: which field to aggregate. Vocabulary depends on the
+   *  widget's `dataSource` (see {@link CustomChartConfig}). */
+  metric?: AnyMetric;
   /** Metric column: default 'sum'. Forced to 'count' for `post_count`. */
   agg?: TableColumnAgg;
-  /** Dimension column: which dimension to extract from posts in the row's group. */
-  dimension?: CustomDimension;
+  /** Dimension column: which dimension to extract. Vocabulary depends on
+   *  `dataSource`. */
+  dimension?: AnyDimension;
   /** Dimension column: default 'top'. */
   dimensionAgg?: TableDimensionAgg;
   /** Post-field column: which raw post field to read. Post mode only. */
@@ -402,13 +519,25 @@ export function autoColumnHeader(col: TableColumn): string {
     return getPostFieldMeta(col.postField).label;
   }
   if (isDimensionColumn(col) && col.dimension) {
-    const base = getDimensionMeta(col.dimension).label;
+    const dim = col.dimension;
+    // Topic dimensions don't exist in DIMENSION_META — try the topic registry
+    // first, fall through to post-side. Either way getDimensionMeta returns
+    // UNKNOWN_DIMENSION_META rather than crashing if we miss.
+    const topicMeta = (dim as string) in TOPIC_DIMENSION_META
+      ? TOPIC_DIMENSION_META[dim as TopicDimension]
+      : undefined;
+    const base = topicMeta?.label ?? getDimensionMeta(dim as CustomDimension).label;
     const dimAgg = col.dimensionAgg ?? 'top';
     return dimAgg === 'distinct_count' ? `# ${base}s` : base;
   }
   const metric = col.metric ?? 'post_count';
+  // Topic metric → topic label. Post-side metrics fall through.
+  const topicMetricMeta = (metric as string) in TOPIC_METRIC_META
+    ? TOPIC_METRIC_META[metric as TopicMetric]
+    : undefined;
+  if (topicMetricMeta) return topicMetricMeta.label;
   const agg: TableColumnAgg = metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
-  const base = METRIC_META[metric]?.label ?? metric;
+  const base = METRIC_META[metric as CustomMetric]?.label ?? (metric as string);
   if (metric === 'post_count') return 'Posts';
   switch (agg) {
     case 'avg': return `Avg ${base}`;
@@ -456,6 +585,23 @@ export function defaultTableConfigFor(dimension: CustomDimension): CustomTableCo
   return {
     columns: [dimCol, { id: 'posts', metric: 'post_count' }],
     sortBy: 'posts',
+    sortDir: 'desc',
+    rowLimit: 25,
+    showRank: true,
+  };
+}
+
+/** Bootstrap a topics-backed table — leaderboard layout: topic header,
+ *  post_count, total_engagement, signal_score. One row per topic. */
+export function defaultTopicTableConfig(): CustomTableConfig {
+  return {
+    columns: [
+      { id: '__group_0',        kind: 'dimension', dimension: 'topic' },
+      { id: 'post_count',       metric: 'post_count' },
+      { id: 'total_engagement', metric: 'total_engagement' },
+      { id: 'signal_score',     metric: 'signal_score' },
+    ],
+    sortBy: 'signal_score',
     sortDir: 'desc',
     rowLimit: 25,
     showRank: true,
@@ -623,6 +769,11 @@ export interface SocialDashboardWidget {
   y: number;
   w: number;
   h: number;
+  /** Which BigQuery source the widget reads. Undefined → 'posts' (back-compat).
+   *  When 'topics', `customConfig.dimension/metric` are interpreted as
+   *  {@link TopicDimension}/{@link TopicMetric} and aggregation runs against
+   *  the topics array instead of posts. */
+  dataSource?: DataSource;
   /** Which aggregation to run */
   aggregation: SocialAggregation;
   /** 0–4 for kpi type (selects which EnhancedKpi to show) */
@@ -683,6 +834,9 @@ export interface WidgetData {
     labels: string[];
     datasets: GroupedCategoricalDataset[];
   };
+  /** Topic widgets only: cluster_id aligned 1:1 with `labels`. Undefined entries
+   *  (e.g. the "Others" bucket) suppress click-through for that index. */
+  clusterIds?: (string | undefined)[];
 }
 
 // ─── Valid chart types per aggregation ───────────────────────────────────────

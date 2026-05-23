@@ -26,6 +26,8 @@ from api.services.dashboard_service import (
     MAX_ROWS,
     build_dashboard_sql,
     build_post_response,
+    build_topic_response,
+    build_topics_sql,
     derive_agent_id_for_collections,
 )
 from config.settings import get_settings
@@ -336,6 +338,7 @@ async def get_shared_dashboard(
         asyncio.create_task(_record_access(fs, token))
         return SharedDashboardDataResponse(
             posts=[],
+            topics=[],
             collection_names=collection_names,
             truncated=False,
             meta=meta,
@@ -347,19 +350,26 @@ async def get_shared_dashboard(
         )
 
     posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
-    rows = await asyncio.to_thread(bq.query, posts_sql, posts_params)
+    topics_sql, topics_params = build_topics_sql(agent_id)
+
+    rows, topic_rows = await asyncio.gather(
+        asyncio.to_thread(bq.query, posts_sql, posts_params),
+        asyncio.to_thread(bq.query, topics_sql, topics_params),
+    )
 
     truncated = len(rows) > MAX_ROWS
     if truncated:
         rows = rows[:MAX_ROWS]
 
     posts = [build_post_response(row) for row in rows]
+    topics = [build_topic_response(row) for row in topic_rows]
 
     # Fire-and-forget telemetry update
     asyncio.create_task(_record_access(fs, token))
 
     return SharedDashboardDataResponse(
         posts=posts,
+        topics=topics,
         collection_names=collection_names,
         truncated=truncated,
         meta=meta,

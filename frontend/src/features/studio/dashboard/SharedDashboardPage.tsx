@@ -174,6 +174,7 @@ export function SharedDashboardPage() {
               artifactId={token!}
               filteredPosts={filteredPosts}
               allPosts={allPosts}
+              topics={response.topics ?? []}
               availableOptions={availableOptions}
               truncated={response.truncated}
               activeFilterCount={activeFilterCount}

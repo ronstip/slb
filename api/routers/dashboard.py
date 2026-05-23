@@ -19,6 +19,8 @@ from api.services.dashboard_service import (
     build_dashboard_kpis_sql,
     build_dashboard_sql,
     build_post_response,
+    build_topic_response,
+    build_topics_sql,
     derive_agent_id_for_collections,
 )
 from config.settings import get_settings
@@ -83,6 +85,7 @@ async def get_dashboard_data(
         }
         return DashboardDataResponse(
             posts=[],
+            topics=[],
             collection_names=collection_names,
             truncated=False,
             kpis=DashboardKpis(
@@ -98,10 +101,12 @@ async def get_dashboard_data(
     kpis_sql, kpis_params = build_dashboard_kpis_sql(
         request.collection_ids, agent_id
     )
+    topics_sql, topics_params = build_topics_sql(agent_id)
 
-    rows, kpi_rows, name_rows = await asyncio.gather(
+    rows, kpi_rows, topic_rows, name_rows = await asyncio.gather(
         asyncio.to_thread(bq.query, posts_sql, posts_params),
         asyncio.to_thread(bq.query, kpis_sql, kpis_params),
+        asyncio.to_thread(bq.query, topics_sql, topics_params),
         asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, {"collection_ids": request.collection_ids}),
     )
 
@@ -115,6 +120,7 @@ async def get_dashboard_data(
     }
 
     posts = [build_post_response(row) for row in rows]
+    topics = [build_topic_response(row) for row in topic_rows]
 
     kpi_row = kpi_rows[0] if kpi_rows else {}
     kpis = DashboardKpis(
@@ -127,6 +133,7 @@ async def get_dashboard_data(
 
     return DashboardDataResponse(
         posts=posts,
+        topics=topics,
         collection_names=collection_names,
         truncated=truncated,
         kpis=kpis,

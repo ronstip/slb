@@ -3,7 +3,7 @@ import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import type { Layout, LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
+import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
 import { SocialWidgetRenderer } from './SocialWidgetRenderer.tsx';
 import { buildCompactLayout } from './buildCompactLayout.ts';
@@ -26,6 +26,8 @@ const MARGIN: [number, number] = [6, 6];
 interface SocialDashboardGridProps {
   widgets: SocialDashboardWidget[];
   filteredPosts: DashboardPost[];
+  /** Agent-scoped topic_metrics rows. Forwarded to topic widgets. */
+  topics?: TopicMetric[];
   isEditMode: boolean;
   orientation?: DashboardOrientation;
   onLayoutChange: (widgets: SocialDashboardWidget[]) => void;
@@ -33,6 +35,9 @@ interface SocialDashboardGridProps {
   onRemove: (widgetId: string) => void;
   onDuplicate?: (widgetId: string) => void;
   onFilterToggle?: (key: string, value: string) => void;
+  /** Click-through handler for topic widget items. Undefined disables it
+   *  (e.g. on shared/public dashboards or when no agent context). */
+  onTopicNavigate?: (clusterId: string) => void;
   gridRef?: React.RefObject<HTMLElement | null>;
   serverKpis?: DashboardKpis;
   /** When set, text widgets call this with a measured ideal grid-row height. */
@@ -47,6 +52,7 @@ const VERTICAL_WIDTH_RATIO = 0.69;
 export function SocialDashboardGrid({
   widgets,
   filteredPosts,
+  topics,
   isEditMode,
   orientation = 'horizontal',
   onLayoutChange,
@@ -54,6 +60,7 @@ export function SocialDashboardGrid({
   onRemove,
   onDuplicate,
   onFilterToggle,
+  onTopicNavigate,
   gridRef,
   serverKpis,
   onAutoSize,
@@ -151,11 +158,13 @@ export function SocialDashboardGrid({
             <SocialWidgetRenderer
               widget={widget}
               filteredPosts={filteredPosts}
+              topics={topics}
               isEditMode={isEditMode}
               onConfigure={() => onConfigure(widget.i)}
               onRemove={() => onRemove(widget.i)}
               onDuplicate={onDuplicate ? () => onDuplicate(widget.i) : undefined}
               onFilterToggle={onFilterToggle}
+              onTopicNavigate={onTopicNavigate}
               serverKpis={serverKpis}
               onAutoSize={onAutoSize}
             />
