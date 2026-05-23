@@ -142,7 +142,7 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
 
   return (
     <Card
-      className={`h-full relative group overflow-hidden py-0 gap-0 rounded-md transition-all hover:shadow-md hover:-translate-y-px ${
+      className={`h-full relative group overflow-hidden py-0 gap-0 rounded-md transition-[box-shadow,transform] hover:shadow-md hover:-translate-y-px ${
         isEditMode ? 'drag-handle ring-1 ring-dashed ring-primary/30 cursor-grab active:cursor-grabbing' : ''
       }`}
       style={{
