@@ -21,6 +21,8 @@ import type {
   CustomDimension,
   CustomMetric,
   CustomTableConfig,
+  PostField,
+  StandardPostField,
   TableColumn,
   TableColumnAgg,
   TableColumnDisplay,
@@ -29,15 +31,20 @@ import type {
 import {
   DIMENSION_META,
   METRIC_META,
+  POST_FIELD_META,
   getDimensionMeta,
+  getPostFieldMeta,
   CUSTOM_DIM_PREFIX,
   autoColumnHeader,
   isDimensionColumn,
+  isPostFieldColumn,
+  defaultPostTableConfig,
   normalizeTableConfig,
 } from '../types-social-dashboard.ts';
 
 const STANDARD_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
 const ALL_METRICS = Object.keys(METRIC_META) as CustomMetric[];
+const STANDARD_POST_FIELDS = Object.keys(POST_FIELD_META) as StandardPostField[];
 
 const AGG_OPTIONS: Array<{ value: TableColumnAgg; label: string }> = [
   { value: 'sum',   label: 'Total (Sum)' },
@@ -130,6 +137,48 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
     });
   };
 
+  const addPostFieldColumn = () => {
+    const id = uniqueColumnId(config.columns, 'field');
+    emit({
+      ...config,
+      columns: [
+        ...config.columns,
+        { id, kind: 'post-field', postField: 'content' },
+      ],
+    });
+  };
+
+  const isPostMode = config.mode === 'post';
+
+  /** Switch the whole table between group-by and post-level modes. Replaces
+   *  columns with the new mode's defaults; preserves cosmetic settings only
+   *  — column shapes are incompatible across modes. */
+  const setMode = (next: 'group' | 'post') => {
+    if (next === (config.mode ?? 'group')) return;
+    if (next === 'post') {
+      const seeded = defaultPostTableConfig();
+      emit({
+        ...seeded,
+        density: config.density,
+        striped: config.striped,
+      });
+    } else {
+      emit({
+        mode: 'group',
+        columns: [
+          { id: '__group_0', kind: 'dimension', dimension: 'channel_handle' },
+          { id: 'posts', metric: 'post_count' },
+        ],
+        sortBy: 'posts',
+        sortDir: 'desc',
+        rowLimit: 25,
+        showRank: true,
+        density: config.density,
+        striped: config.striped,
+      });
+    }
+  };
+
   /** Switch a column between metric and dimension while preserving its id and
    *  optional header so existing sort/header settings survive the toggle. */
   const setColumnKind = (idx: number, kind: 'metric' | 'dimension') => {
@@ -144,36 +193,79 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
 
   return (
     <div className="space-y-4">
-      {/* Columns list — dimension columns define grouping (cross product); metric columns aggregate within each group. */}
+      {/* Mode toggle — Group (cross-product rows) vs Post (one row per post). */}
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Mode</Label>
+        <div className="flex items-center gap-1.5">
+          {([
+            { v: 'group', label: 'Group by', title: 'One row per dimension group; metric columns aggregate' },
+            { v: 'post',  label: 'Post',     title: 'One row per post; columns read raw post fields' },
+          ] as const).map(({ v, label, title }) => {
+            const active = (config.mode ?? 'group') === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setMode(v)}
+                title={title}
+                className={cn(
+                  'rounded-md border px-2.5 py-1 text-xs font-medium transition-all',
+                  active
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Columns list — group mode: dimension cols define grouping, metric cols
+          aggregate. Post mode: each col reads one raw post field. */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Columns
           </Label>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs gap-1"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add column
-                <ChevronDown className="h-3 w-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={addMetricColumn} className="text-xs">
-                Metric
-                <span className="ml-auto text-[10px] text-muted-foreground">number</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={addDimensionColumn} className="text-xs">
-                Dimension
-                <span className="ml-auto text-[10px] text-muted-foreground">label</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {isPostMode ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs gap-1"
+              onClick={addPostFieldColumn}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add field
+            </Button>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs gap-1"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add column
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={addMetricColumn} className="text-xs">
+                  Metric
+                  <span className="ml-auto text-[10px] text-muted-foreground">number</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={addDimensionColumn} className="text-xs">
+                  Dimension
+                  <span className="ml-auto text-[10px] text-muted-foreground">label</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {config.columns.length === 0 ? (
@@ -184,11 +276,14 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
           <div className="space-y-1.5">
             {config.columns.map((col, idx) => {
               const isDim = isDimensionColumn(col);
+              const isPost = isPostFieldColumn(col);
               const kind: 'metric' | 'dimension' = isDim ? 'dimension' : 'metric';
-              const isPostCount = !isDim && col.metric === 'post_count';
+              const isPostCount = !isDim && !isPost && col.metric === 'post_count';
               const effectiveAgg: TableColumnAgg = isPostCount ? 'count' : (col.agg ?? 'sum');
-              // Viz/format toggles only make sense for numeric cells (metric columns).
-              const isNumericCol = !isDim;
+              // Post-field numeric flag — drives viz/display toggle visibility in post mode.
+              const postRender = isPost ? getPostFieldMeta(col.postField).render : null;
+              // Viz/format toggles only make sense for numeric cells.
+              const isNumericCol = (!isDim && !isPost) || postRender === 'numeric';
               const effectiveViz: TableColumnViz = col.viz ?? 'none';
               const effectiveDisplay: TableColumnDisplay = col.display ?? 'abs';
               return (
@@ -218,22 +313,45 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
                     </button>
                   </div>
 
-                  {/* Kind toggle */}
-                  <Select
-                    value={kind}
-                    onValueChange={(v) => setColumnKind(idx, v as 'metric' | 'dimension')}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-[100px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="metric">Metric</SelectItem>
-                      <SelectItem value="dimension">Dimension</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {/* Kind toggle — group mode only; post mode columns are all
+                       post-field, no inter-kind switching. */}
+                  {isPost ? (
+                    <span className="text-[11px] font-medium text-muted-foreground w-[100px] px-1 truncate">
+                      Post field
+                    </span>
+                  ) : (
+                    <Select
+                      value={kind}
+                      onValueChange={(v) => setColumnKind(idx, v as 'metric' | 'dimension')}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-[100px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="metric">Metric</SelectItem>
+                        <SelectItem value="dimension">Dimension</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
 
-                  {/* Field selector — metric or dimension based on kind */}
-                  {isDim ? (
+                  {/* Field selector — post-field, dimension, or metric */}
+                  {isPost ? (
+                    <Select
+                      value={col.postField ?? 'content'}
+                      onValueChange={(v) => updateColumn(idx, { postField: v as PostField })}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-[160px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STANDARD_POST_FIELDS.map((f) => (
+                          <SelectItem key={f} value={f}>
+                            {POST_FIELD_META[f].label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : isDim ? (
                     <Select
                       value={col.dimension ?? 'sentiment'}
                       onValueChange={(v) => updateColumn(idx, { dimension: v as CustomDimension })}
@@ -267,9 +385,14 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames }:
                     </Select>
                   )}
 
-                  {/* Aggregation — metric only. Dimension columns always
-                       contribute to the group-by compound key (one value per row). */}
-                  {isDim ? (
+                  {/* Aggregation — group-mode metric columns only. Dimensions
+                       contribute to the compound key; post-field columns read
+                       raw values with no agg. */}
+                  {isPost ? (
+                    <span className="text-[11px] text-muted-foreground w-[120px] px-1 truncate">
+                      Raw value
+                    </span>
+                  ) : isDim ? (
                     <span className="text-[11px] text-muted-foreground w-[120px] px-1 truncate">
                       Group by
                     </span>

@@ -75,6 +75,33 @@ CustomMetric = Literal[
     "engagement_total",
 ]
 
+# Post-level field — used in post-mode tables (one row per post). Mirrors
+# the PostField union in types-social-dashboard.ts.
+PostField = Literal[
+    "post_url",
+    "posted_at",
+    "platform",
+    "channel_handle",
+    "channel_type",
+    "title",
+    "content",
+    "ai_summary",
+    "language",
+    "content_type",
+    "sentiment",
+    "emotion",
+    "themes",
+    "entities",
+    "brands",
+    "like_count",
+    "view_count",
+    "comment_count",
+    "share_count",
+    "engagement_total",
+]
+CustomFieldPost = Annotated[str, StringConstraints(pattern=r"^custom:[^\s]+$")]
+PostFieldRef = Union[PostField, CustomFieldPost]
+
 # Valid chart types per aggregation — mirrors VALID_CHART_TYPES in TS.
 VALID_CHART_TYPES: dict[str, tuple[str, ...]] = {
     "kpi": ("number-card",),
@@ -237,11 +264,12 @@ class TableColumn(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str = Field(min_length=1)
-    kind: Literal["metric", "dimension"] | None = None
+    kind: Literal["metric", "dimension", "post-field"] | None = None
     metric: CustomMetric | None = None
     agg: Literal["sum", "avg", "min", "max", "count"] | None = None
     dimension: CustomDimensionField | None = None
     dimensionAgg: Literal["top", "distinct_count"] | None = None
+    postField: PostFieldRef | None = None
     header: str | None = None
     viz: Literal["none", "bar", "heatmap"] | None = None
     display: Literal["abs", "pct", "abs_pct"] | None = None
@@ -250,6 +278,10 @@ class TableColumn(BaseModel):
 class CustomTableConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
+    # 'group' (default): cross-product rows from dimension columns; metric
+    # columns aggregate within each group. 'post': one row per post; all
+    # columns are kind='post-field'.
+    mode: Literal["group", "post"] | None = None
     # Legacy single group-by. New configs put all dimensions in `columns` with
     # `kind='dimension'`; the frontend normalizes legacy widgets at render time.
     # Kept optional so existing stored layouts round-trip cleanly.

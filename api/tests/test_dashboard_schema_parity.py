@@ -20,6 +20,7 @@ from api.routers.dashboard_schema import (
     VALID_CHART_TYPES,
     CustomDimension,
     CustomMetric,
+    PostField,
     SocialAggregation,
     SocialChartType,
 )
@@ -92,6 +93,18 @@ def test_custom_metric_matches():
     ts_set = _extract_union(ts, "CustomMetric")
     py_set = set(get_args(CustomMetric))
     assert ts_set == py_set
+
+
+def test_post_field_matches():
+    ts = _ts_source()
+    ts_set = _extract_union(ts, "PostField")
+    # PostField also has the `custom:${string}` template-literal arm in TS;
+    # _extract_union returns only string-literal members. Strip the custom
+    # template-literal arm by intersecting with the static Python set.
+    py_set = set(get_args(PostField))
+    assert ts_set == py_set, (
+        f"PostField drift — TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
+    )
 
 
 def test_valid_chart_types_matches():

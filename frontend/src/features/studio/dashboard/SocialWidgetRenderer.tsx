@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, CustomTableConfig, CustomDimension, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, isDimensionColumn, normalizeTableConfig } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, normalizeTableConfig } from './types-social-dashboard.ts';
+import {
+  ExternalLinkCell,
+  PlatformCell,
+  HandleCell,
+  SentimentBadge,
+  ThemeChips,
+  EntityChips,
+  TimeAgoCell,
+  ContentPreview,
+} from '../../../components/DataTable/cells.tsx';
 import { aggregateCustom, aggregateTable, type TableRow } from './dashboard-aggregations.ts';
 import {
   aggregateSentiment,
@@ -229,6 +239,115 @@ function buildTableColumns(
   return cols;
 }
 
+/** Post-mode column builder: one row per post, columns read raw post fields.
+ *  Render kind comes from `getPostFieldMeta(col.postField).render` so cell
+ *  components stay in sync with the field set. */
+function buildPostTableColumns(
+  tableConfig: CustomTableConfig,
+  columnStats: Record<string, ColumnStats>,
+): ColumnDef<TableRow>[] {
+  const cols: ColumnDef<TableRow>[] = [];
+  if (tableConfig.showRank === true) {
+    cols.push({
+      key: '__rank',
+      header: '#',
+      width: 'w-10',
+      sortable: false,
+      render: (_row, idx) => (
+        <span className="text-[11px] tabular-nums text-muted-foreground/50">{idx + 1}</span>
+      ),
+    });
+  }
+  for (const col of tableConfig.columns) {
+    if (!isPostFieldColumn(col) || !col.postField) continue;
+    const meta = getPostFieldMeta(col.postField);
+    const header = col.header || meta.label;
+    const id = col.id;
+    switch (meta.render) {
+      case 'link':
+        cols.push({
+          key: id, header: header || '', width: 'w-8', sortable: false,
+          render: (row) => <ExternalLinkCell url={String(row[id] ?? '')} />,
+        });
+        break;
+      case 'date':
+        cols.push({
+          key: id, header, width: 'w-[8%]', sortable: true,
+          render: (row) => <TimeAgoCell date={String(row[id] ?? '')} />,
+        });
+        break;
+      case 'platform':
+        cols.push({
+          key: id, header, width: 'w-[9%]', sortable: false,
+          render: (row) => <PlatformCell platform={String(row[id] ?? '')} />,
+        });
+        break;
+      case 'handle':
+        cols.push({
+          key: id, header, width: 'w-[11%]', sortable: false,
+          render: (row) => <HandleCell handle={String(row[id] ?? '')} />,
+        });
+        break;
+      case 'sentiment':
+        cols.push({
+          key: id, header, width: 'w-[8%]', sortable: false,
+          render: (row) => <SentimentBadge sentiment={String(row[id] ?? '') || undefined} />,
+        });
+        break;
+      case 'badge':
+        cols.push({
+          key: id, header, sortable: false,
+          render: (row) => {
+            const v = String(row[id] ?? '');
+            if (!v) return <span className="text-muted-foreground/40">—</span>;
+            return (
+              <span className="inline-block truncate rounded-full bg-muted px-2 py-0.5 text-[10px] capitalize text-muted-foreground">
+                {v}
+              </span>
+            );
+          },
+        });
+        break;
+      case 'array': {
+        const useTheme = col.postField === 'themes';
+        cols.push({
+          key: id, header, sortable: false,
+          render: (row) => {
+            const v = row[id];
+            const arr = Array.isArray(v) ? v : (v ? [String(v)] : []);
+            return useTheme
+              ? <ThemeChips themes={arr} max={3} />
+              : <EntityChips entities={arr} max={3} />;
+          },
+        });
+        break;
+      }
+      case 'content':
+        cols.push({
+          key: id, header, sortable: false,
+          render: (row) => <ContentPreview text={typeof row[id] === 'string' ? (row[id] as string) : ''} />,
+        });
+        break;
+      case 'numeric':
+        cols.push({
+          key: id, header, align: 'right', sortable: true,
+          render: (row) => renderNumericCell(Number(row[id] ?? 0), col.viz, col.display, columnStats[id]),
+        });
+        break;
+      default:
+        cols.push({
+          key: id, header, sortable: false,
+          render: (row) => {
+            const v = row[id];
+            if (v == null || v === '') return <span className="text-muted-foreground/40">—</span>;
+            return <span className="truncate text-[12px]">{Array.isArray(v) ? v.join(', ') : String(v)}</span>;
+          },
+        });
+    }
+  }
+  return cols;
+}
+
 function ConfigurableTableWidget({
   posts,
   tableConfig: rawTableConfig,
@@ -243,21 +362,27 @@ function ConfigurableTableWidget({
   const tableConfig = useMemo(() => normalizeTableConfig(rawTableConfig), [rawTableConfig]);
   const rows = useMemo(() => aggregateTable(posts, tableConfig), [posts, tableConfig]);
   const columnStats = useMemo(() => computeColumnStats(tableConfig, rows), [tableConfig, rows]);
+  const isPostMode = tableConfig.mode === 'post';
   const columns = useMemo(
-    () => buildTableColumns(tableConfig, columnStats, labelOverrides),
-    [tableConfig, columnStats, labelOverrides],
+    () => isPostMode
+      ? buildPostTableColumns(tableConfig, columnStats)
+      : buildTableColumns(tableConfig, columnStats, labelOverrides),
+    [isPostMode, tableConfig, columnStats, labelOverrides],
   );
-  // Row-click filtering: use the first dim column whose dimension maps to a
-  // filter key. With multiple group-by dims, only the first single-valued
-  // dim is wired — keeps click semantics unambiguous.
-  const firstDimCol = tableConfig.columns.find(isDimensionColumn);
+  // Row-click filtering (group mode only): use the first dim column whose
+  // dimension maps to a filter key. Post mode rows have no group identity to
+  // filter on; clicks fall through to the link cell instead.
+  const firstDimCol = isPostMode ? undefined : tableConfig.columns.find(isDimensionColumn);
   const filterKey = firstDimCol?.dimension ? filterKeyForDimension(firstDimCol.dimension) : undefined;
   // When the active sort key produces strings (any dim column), rely on
   // aggregateTable's pre-sort — DataTable's sort is numeric-only and would
   // scramble the order.
   const sortBy = tableConfig.sortBy ?? tableConfig.columns[0]?.id;
   const sortCol = tableConfig.columns.find((c) => c.id === sortBy);
-  const sortIsString = sortCol != null && isDimensionColumn(sortCol);
+  const sortIsString = sortCol != null && (
+    isDimensionColumn(sortCol)
+    || (isPostMode && isPostFieldColumn(sortCol) && getPostFieldMeta(sortCol.postField).render !== 'numeric')
+  );
   const defaultSortKey = sortIsString ? undefined : sortBy;
 
   return (
@@ -267,7 +392,7 @@ function ConfigurableTableWidget({
       getRowKey={(r) => r.__key}
       defaultSortKey={defaultSortKey}
       defaultSortDir={tableConfig.sortDir ?? 'desc'}
-      pageSize={tableConfig.rowLimit ?? 25}
+      pageSize={tableConfig.rowLimit ?? (isPostMode ? 50 : 25)}
       // Defaults chosen to match the original Top Channels look:
       // generous row padding, no stripes — the user can tweak both in the
       // Style tab.

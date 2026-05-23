@@ -1,6 +1,6 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { CustomChartConfig, CustomDimension, CustomTableConfig, TableColumn, WidgetData } from './types-social-dashboard.ts';
-import { isCustomFieldDimension, customFieldName, isDimensionColumn, normalizeTableConfig } from './types-social-dashboard.ts';
+import type { CustomChartConfig, CustomDimension, CustomTableConfig, PostField, TableColumn, WidgetData } from './types-social-dashboard.ts';
+import { isCustomFieldDimension, customFieldName, isCustomPostField, isDimensionColumn, isPostFieldColumn, normalizeTableConfig } from './types-social-dashboard.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
 
@@ -763,18 +763,95 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
   return { value: total, labels, values };
 }
 
+// ─── Post-field value extraction (post-mode tables) ─────────────────────────
+
+/** Read a raw post field for a post-mode table cell. Returns the value typed
+ *  for direct rendering: numbers for counts, strings for text/badges/links,
+ *  string[] for chip arrays, or undefined when the field is missing. */
+function getPostFieldValue(p: DashboardPost, field: PostField): number | string | string[] | undefined {
+  switch (field) {
+    case 'post_url':         return p.post_url ?? '';
+    case 'posted_at':        return p.posted_at;
+    case 'platform':         return p.platform;
+    case 'channel_handle':   return p.channel_handle;
+    case 'channel_type':     return p.channel_type;
+    case 'title':            return p.title;
+    case 'content':          return p.content;
+    case 'ai_summary':       return p.ai_summary;
+    case 'language':         return p.language;
+    case 'content_type':     return p.content_type;
+    case 'sentiment':        return p.sentiment;
+    case 'emotion':          return p.emotion;
+    case 'themes':           return p.themes ?? [];
+    case 'entities':         return p.entities ?? [];
+    case 'brands':           return p.detected_brands ?? [];
+    case 'like_count':       return p.like_count;
+    case 'view_count':       return p.view_count;
+    case 'comment_count':    return p.comment_count;
+    case 'share_count':      return p.share_count;
+    case 'engagement_total': return p.like_count + p.comment_count + p.share_count;
+  }
+  if (isCustomPostField(field)) {
+    const raw = p.custom_fields?.[customFieldName(field)];
+    if (raw == null) return undefined;
+    if (Array.isArray(raw)) return raw.filter((v) => v != null).map((v) => String(v));
+    if (typeof raw === 'number') return raw;
+    return String(raw);
+  }
+  return undefined;
+}
+
+/** Comparable sort key for a post-field value. Arrays compare by length;
+ *  undefined/empty sort last in desc, first in asc. */
+function postFieldSortValue(v: number | string | string[] | undefined): number | string {
+  if (v == null) return '';
+  if (Array.isArray(v)) return v.length;
+  return v;
+}
+
+/** Post-mode: one row per post, columns read raw post fields. No grouping,
+ *  no metric aggregation; sort by selected col then slice to rowLimit. */
+function aggregateTablePostMode(posts: DashboardPost[], config: CustomTableConfig): TableRow[] {
+  const { columns, sortBy, sortDir = 'desc', rowLimit = 50 } = config;
+  const rows: TableRow[] = posts.map((p) => {
+    const row: TableRow = { __key: p.post_id, __platform: p.platform };
+    for (const col of columns) {
+      if (!isPostFieldColumn(col) || !col.postField) continue;
+      const v = getPostFieldValue(p, col.postField);
+      if (v !== undefined) row[col.id] = v;
+    }
+    return row;
+  });
+
+  const sortKey = sortBy ?? columns[0]?.id;
+  if (sortKey) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      const av = postFieldSortValue(a[sortKey]);
+      const bv = postFieldSortValue(b[sortKey]);
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return dir * String(av ?? '').localeCompare(String(bv ?? ''));
+      }
+      return dir * (Number(av ?? 0) - Number(bv ?? 0));
+    });
+  }
+  return rows.slice(0, rowLimit);
+}
+
 // ─── Table aggregation ────────────────────────────────────────────────────────
 
 export interface TableRow {
   /** Stable key for React + sort. Compound key joining all group-by dimension
-   *  values (one row = one cross-product cell). */
+   *  values (one row = one cross-product cell); or post_id in post mode. */
   __key: string;
   /** Platform attached to channel rows so the dimension cell can render a
-   *  platform icon. Set when one of the group-by dimensions is `channel_handle`. */
+   *  platform icon. Set when one of the group-by dimensions is `channel_handle`,
+   *  or always in post mode. */
   __platform?: string;
   /** Per-column resolved values, keyed by TableColumn.id. Dimension columns
-   *  hold the row's dimension value (string); metric columns hold the agg. */
-  [columnId: string]: number | string | undefined;
+   *  hold the row's dimension value (string); metric columns hold the agg.
+   *  Post-field columns hold the raw value — strings, numbers, or arrays. */
+  [columnId: string]: number | string | string[] | undefined;
 }
 
 const COMPOUND_SEP = '';
@@ -815,6 +892,7 @@ function compoundDimensionKeys(
  *  chart and table widgets agree on numbers. */
 export function aggregateTable(posts: DashboardPost[], rawConfig: CustomTableConfig): TableRow[] {
   const config = normalizeTableConfig(rawConfig);
+  if (config.mode === 'post') return aggregateTablePostMode(posts, config);
   const { columns, sortBy, sortDir = 'desc', rowLimit = 25 } = config;
   const dimCols = columns.filter(isDimensionColumn);
   const channelDimCol = dimCols.find((c) => c.dimension === 'channel_handle');

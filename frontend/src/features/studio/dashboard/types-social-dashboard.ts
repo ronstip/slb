@@ -230,11 +230,95 @@ export type TableColumnViz = 'none' | 'bar' | 'heatmap';
  *  e.g. "1,234 (12.3%)". Ignored for string dimension cells. */
 export type TableColumnDisplay = 'abs' | 'pct' | 'abs_pct';
 
+/** Post-level field — used when `CustomTableConfig.mode === 'post'`. One row per
+ *  post, each column reads a raw field off `DashboardPost`. `custom:<name>` reads
+ *  `post.custom_fields[name]`. */
+export type PostField =
+  | 'post_url'
+  | 'posted_at'
+  | 'platform'
+  | 'channel_handle'
+  | 'channel_type'
+  | 'title'
+  | 'content'
+  | 'ai_summary'
+  | 'language'
+  | 'content_type'
+  | 'sentiment'
+  | 'emotion'
+  | 'themes'
+  | 'entities'
+  | 'brands'
+  | 'like_count'
+  | 'view_count'
+  | 'comment_count'
+  | 'share_count'
+  | 'engagement_total'
+  | `custom:${string}`;
+
+export type StandardPostField = Exclude<PostField, `custom:${string}`>;
+
+export function isCustomPostField(field: PostField | undefined | null): field is `custom:${string}` {
+  return typeof field === 'string' && field.startsWith(CUSTOM_DIM_PREFIX);
+}
+
+/** How a post-field cell renders. Drives the column builder in
+ *  SocialWidgetRenderer; keeps rendering decisions out of config. */
+export type PostFieldRender =
+  | 'link'      // ExternalLinkCell
+  | 'date'      // TimeAgoCell
+  | 'platform'  // PlatformCell
+  | 'handle'    // HandleCell
+  | 'content'   // ContentPreview
+  | 'sentiment' // SentimentBadge
+  | 'badge'     // generic small badge (emotion, language, content_type)
+  | 'array'     // chip list (themes/entities/brands/custom array)
+  | 'numeric'   // numeric — supports viz/display
+  | 'text';     // plain string fallback
+
+export interface PostFieldMeta {
+  label: string;
+  render: PostFieldRender;
+}
+
+export const POST_FIELD_META: Record<StandardPostField, PostFieldMeta> = {
+  post_url:         { label: 'Link',         render: 'link' },
+  posted_at:        { label: 'Posted',       render: 'date' },
+  platform:         { label: 'Platform',     render: 'platform' },
+  channel_handle:   { label: 'Handle',       render: 'handle' },
+  channel_type:     { label: 'Channel Type', render: 'badge' },
+  title:            { label: 'Title',        render: 'content' },
+  content:          { label: 'Content',      render: 'content' },
+  ai_summary:       { label: 'AI Summary',   render: 'content' },
+  language:         { label: 'Language',     render: 'badge' },
+  content_type:     { label: 'Content Type', render: 'badge' },
+  sentiment:        { label: 'Sentiment',    render: 'sentiment' },
+  emotion:          { label: 'Emotion',      render: 'badge' },
+  themes:           { label: 'Themes',       render: 'array' },
+  entities:         { label: 'Entities',     render: 'array' },
+  brands:           { label: 'Brands',       render: 'array' },
+  like_count:       { label: 'Likes',        render: 'numeric' },
+  view_count:       { label: 'Views',        render: 'numeric' },
+  comment_count:    { label: 'Comments',     render: 'numeric' },
+  share_count:      { label: 'Shares',       render: 'numeric' },
+  engagement_total: { label: 'Engagement',   render: 'numeric' },
+};
+
+const UNKNOWN_POST_FIELD_META: PostFieldMeta = { label: 'Unknown', render: 'text' };
+
+export function getPostFieldMeta(field: PostField | undefined | null): PostFieldMeta {
+  if (!field) return UNKNOWN_POST_FIELD_META;
+  if (isCustomPostField(field)) {
+    return { label: humanizeFieldName(customFieldName(field)), render: 'text' };
+  }
+  return POST_FIELD_META[field] ?? UNKNOWN_POST_FIELD_META;
+}
+
 export interface TableColumn {
   /** Stable key — also used as the sort key. */
   id: string;
-  /** 'metric' (default — back-compat) or 'dimension'. */
-  kind?: 'metric' | 'dimension';
+  /** 'metric' (default — back-compat) | 'dimension' | 'post-field' (post mode). */
+  kind?: 'metric' | 'dimension' | 'post-field';
   /** Metric column: which post field to aggregate. */
   metric?: CustomMetric;
   /** Metric column: default 'sum'. Forced to 'count' for `post_count`. */
@@ -243,6 +327,8 @@ export interface TableColumn {
   dimension?: CustomDimension;
   /** Dimension column: default 'top'. */
   dimensionAgg?: TableDimensionAgg;
+  /** Post-field column: which raw post field to read. Post mode only. */
+  postField?: PostField;
   /** Optional header override. Falls back to `autoColumnHeader(col)`. */
   header?: string;
   /** Per-cell visualization for numeric columns. Default 'none'. */
@@ -255,7 +341,15 @@ export function isDimensionColumn(col: TableColumn): boolean {
   return col.kind === 'dimension';
 }
 
+export function isPostFieldColumn(col: TableColumn): boolean {
+  return col.kind === 'post-field';
+}
+
 export interface CustomTableConfig {
+  /** Aggregation mode. 'group' (default — back-compat): rows = cross product of
+   *  dimension columns, metric columns aggregate within each group. 'post':
+   *  rows = one per post, all columns are `kind: 'post-field'`. */
+  mode?: 'group' | 'post';
   /** @deprecated — legacy single group-by. New configs put all dimensions in
    *  `columns` with `kind: 'dimension'`. Kept optional for back-compat; we
    *  normalize at render time via {@link normalizeTableConfig}. */
@@ -304,6 +398,9 @@ export function getGroupByDimensionColumns(config: CustomTableConfig): TableColu
 }
 
 export function autoColumnHeader(col: TableColumn): string {
+  if (isPostFieldColumn(col) && col.postField) {
+    return getPostFieldMeta(col.postField).label;
+  }
   if (isDimensionColumn(col) && col.dimension) {
     const base = getDimensionMeta(col.dimension).label;
     const dimAgg = col.dimensionAgg ?? 'top';
@@ -362,6 +459,30 @@ export function defaultTableConfigFor(dimension: CustomDimension): CustomTableCo
     sortDir: 'desc',
     rowLimit: 25,
     showRank: true,
+  };
+}
+
+/** Bootstrap a post-level (one-row-per-post) table config. Picks a sensible
+ *  default column set; user can tweak in TableDataForm. */
+export function defaultPostTableConfig(): CustomTableConfig {
+  const col = (id: string, postField: PostField, header?: string): TableColumn => ({
+    id, kind: 'post-field', postField, header,
+  });
+  return {
+    mode: 'post',
+    columns: [
+      col('link',      'post_url'),
+      col('posted',    'posted_at'),
+      col('handle',    'channel_handle'),
+      col('content',   'content'),
+      col('sentiment', 'sentiment'),
+      col('likes',     'like_count'),
+      col('views',     'view_count'),
+    ],
+    sortBy: 'posted',
+    sortDir: 'desc',
+    rowLimit: 50,
+    showRank: false,
   };
 }
 
