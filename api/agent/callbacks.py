@@ -823,6 +823,41 @@ def _build_chat_context(state: dict) -> Optional[str]:
     return "\n\n".join(blocks) if blocks else None
 
 
+def _build_report_editor_context(state: dict) -> Optional[str]:
+    """Build context for report_editor mode — active dashboard + agent scope.
+
+    Lighter than chat mode: no todo list (rarely used by the popover UX),
+    no agent profile (the agent isn't doing analysis-from-scratch), no PPT
+    template (no presentations from this surface). Just:
+      - operational context (agent ID + data window — needed for execute_sql
+        grounding and list_topics scoping)
+      - the active dashboard ID + widget summary (the *thing* being edited)
+    """
+    blocks: list[str] = []
+
+    # Agent identity + dates + data window (reused as-is).
+    operational_block = _build_operational_context(state)
+    if operational_block:
+        blocks.append(operational_block)
+
+    # Active dashboard — the only thing the editor is allowed to touch.
+    # `active_dashboard_id` is written into session state by setup_chat_session
+    # when the chat request carries mode="report_editor". The summary is
+    # cached at session init too so we don't re-read Firestore per LLM turn.
+    dashboard_id = state.get("active_dashboard_id")
+    if dashboard_id:
+        lines = [
+            "## Active Dashboard",
+            f"**layout_id (pass to read_dashboard / update_dashboard):** `{dashboard_id}`",
+        ]
+        summary = state.get("active_dashboard_summary")
+        if summary:
+            lines.append(f"**Current widgets:** {summary}")
+        blocks.append("\n".join(lines))
+
+    return "\n\n".join(blocks) if blocks else None
+
+
 def _build_autonomous_context(state: dict) -> Optional[str]:
     """Build context for autonomous mode — full plan execution context."""
     blocks: list[str] = []
@@ -1048,6 +1083,8 @@ def get_context_injector(mode: AgentMode):
         # ── Context injection ───────────────────────────────────────
         if mode == "autonomous":
             context_block = _build_autonomous_context(state)
+        elif mode == "report_editor":
+            context_block = _build_report_editor_context(state)
         else:
             context_block = _build_chat_context(state)
 

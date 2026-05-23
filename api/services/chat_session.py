@@ -130,11 +130,93 @@ async def setup_chat_session(
                 session.state.pop(key, None)
 
     _maybe_load_agent_context(session, chat_request, user, session_id)
+    _maybe_load_dashboard_context(session, chat_request, user)
 
     return session, FlowFlags(
         is_ask_user_response=is_ask_user_response,
         is_continuation=is_continuation,
     )
+
+
+def _maybe_load_dashboard_context(session, chat_request: ChatRequest, user: CurrentUser) -> None:
+    """Bind the report-editor session to one dashboard.
+
+    Writes `active_dashboard_id` + a one-line widget summary into session
+    state so the `report_editor` context injector (callbacks.py) can surface
+    them in the system prompt without re-reading Firestore on every LLM turn.
+
+    Only fires when mode="report_editor". For mode="chat" we deliberately
+    leave these keys absent — the broad chat agent doesn't need them.
+    """
+    if chat_request.mode != "report_editor" or not chat_request.active_dashboard_id:
+        return
+
+    layout_id = chat_request.active_dashboard_id
+
+    # If the same session is reused for the same dashboard, skip the refetch.
+    if session.state.get("active_dashboard_id") == layout_id and session.state.get("active_dashboard_summary"):
+        return
+
+    try:
+        doc = get_fs()._db.collection("dashboard_layouts").document(layout_id).get()
+    except Exception:
+        # Firestore hiccup — proceed with just the ID, no summary. The agent
+        # can still call read_dashboard to discover the layout.
+        session.state["active_dashboard_id"] = layout_id
+        session.state.pop("active_dashboard_summary", None)
+        return
+
+    if not doc.exists:
+        # Don't pin a non-existent dashboard — the agent will see the ID is
+        # absent from operational context and the user's first prompt will
+        # error cleanly from read_dashboard ("not found").
+        session.state.pop("active_dashboard_id", None)
+        session.state.pop("active_dashboard_summary", None)
+        return
+
+    data = doc.to_dict() or {}
+    if data.get("user_id") != user.uid:
+        # Cross-user dashboard access is rejected at the tool layer too, but
+        # surfacing it here means the operational context won't show an ID
+        # the agent doesn't actually own.
+        session.state.pop("active_dashboard_id", None)
+        session.state.pop("active_dashboard_summary", None)
+        return
+
+    session.state["active_dashboard_id"] = layout_id
+    session.state["active_dashboard_summary"] = _summarize_widgets(data.get("layout") or [])
+
+
+def _summarize_widgets(widgets: list) -> str:
+    """One-line widget census: '12 widgets — 4 KPI cards, 3 charts (bar, line), 2 markdown, 1 table'.
+
+    Cheap to produce; helps the agent answer questions like "what's in the
+    report?" without an extra `read_dashboard` round-trip. The agent still
+    calls `read_dashboard` when it needs widget-level detail (IDs, content).
+    """
+    if not widgets:
+        return "Empty dashboard — no widgets yet."
+
+    total = len(widgets)
+    by_agg: dict[str, int] = {}
+    chart_types: list[str] = []
+    for w in widgets:
+        if not isinstance(w, dict):
+            continue
+        agg = w.get("aggregation") or "unknown"
+        by_agg[agg] = by_agg.get(agg, 0) + 1
+        ct = w.get("chartType")
+        if ct and ct not in ("text", "markdown") and ct not in chart_types:
+            chart_types.append(ct)
+
+    parts = [f"{total} widget{'s' if total != 1 else ''}"]
+    # Most common aggregations first
+    for agg, count in sorted(by_agg.items(), key=lambda kv: -kv[1]):
+        parts.append(f"{count} {agg}")
+    summary = ", ".join(parts[:1]) + " — " + ", ".join(parts[1:])
+    if chart_types:
+        summary += f" (chart types: {', '.join(chart_types[:6])})"
+    return summary
 
 
 def _maybe_load_agent_context(session, chat_request: ChatRequest, user: CurrentUser, session_id: str) -> None:

@@ -71,6 +71,11 @@ interface SocialDashboardViewProps {
   serverKpis?: DashboardKpis;
   /** Agent context — used to ground AI compose for widget annotations. */
   agentId?: string;
+  /** Bumped by the parent when an external mutation (e.g. AI co-author writes
+   *  via update_dashboard) lands. Triggers a re-sync of local `widgets` state
+   *  from the freshly-refetched layout. Without this, the one-shot
+   *  initialisation guard below keeps the grid showing stale local state. */
+  externalSyncKey?: number;
 }
 
 export function SocialDashboardView({
@@ -91,6 +96,7 @@ export function SocialDashboardView({
   defaultOrientation,
   serverKpis,
   agentId,
+  externalSyncKey = 0,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
 
@@ -141,6 +147,24 @@ export function SocialDashboardView({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutData, layoutLoading]);
+
+  // External re-sync: when the AI co-author (or any external writer) has
+  // mutated the layout via update_dashboard, the parent invalidates the
+  // dashboard-layout query and bumps `externalSyncKey`. Once the refetch
+  // completes and React Query gives us fresh `layoutData`, copy the new
+  // widget array into local state. Skipped on the first render (key starts
+  // at 0) so we don't fight the one-shot initialiser above.
+  const lastSyncedKey = useRef(0);
+  useEffect(() => {
+    if (externalSyncKey === 0 || externalSyncKey === lastSyncedKey.current) return;
+    if (!layoutData?.layout) return;
+    lastSyncedKey.current = externalSyncKey;
+    setWidgets(migrateWidgets(layoutData.layout));
+    if (layoutData.orientation) setOrientation(layoutData.orientation);
+    if (typeof layoutData.filterBarHidden === 'boolean') {
+      setFilterBarHidden(layoutData.filterBarHidden);
+    }
+  }, [externalSyncKey, layoutData]);
 
   // Refs so callbacks always capture latest values without re-creating
   const filterBarFiltersRef = useRef(filterBarFilters ?? DEFAULT_FILTER_BAR_FILTERS);

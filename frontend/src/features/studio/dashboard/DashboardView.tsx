@@ -13,6 +13,7 @@ import { getDashboardData } from '../../../api/endpoints/dashboard.ts';
 import { exportDashboardPdf } from './exportDashboardPdf.ts';
 import { ShareDashboardDialog } from './ShareDashboardDialog.tsx';
 import { UnderlyingDataDialog } from '../UnderlyingDataDialog.tsx';
+import { ReportAIAssistant } from './ReportAIAssistant.tsx';
 import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
@@ -42,6 +43,10 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   const [editingTitle, setEditingTitle] = useState(false);
   const [displayTitle, setDisplayTitle] = useState(artifact.title);
   const [titleDraft, setTitleDraft] = useState(artifact.title);
+  // Bumped by ReportAIAssistant after every successful update_dashboard so
+  // SocialDashboardView re-syncs its local widget state from the refetched
+  // layout. Without this the AI's additions don't appear until a refresh.
+  const [externalSyncKey, setExternalSyncKey] = useState(0);
 
   const isEditMode = toolbarHandlers?.isEditMode ?? false;
 
@@ -213,6 +218,11 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             <Share2 className="h-3.5 w-3.5" />
             Share
           </Button>
+          <ReportAIAssistant
+            artifactId={artifact.id}
+            agentId={artifact.agentId}
+            onLayoutChanged={() => setExternalSyncKey((k) => k + 1)}
+          />
           <Button
             variant="outline"
             size="sm"
@@ -307,6 +317,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             defaultLayout={defaultLayout}
             serverKpis={activeFilterCount === 0 ? response?.kpis : undefined}
             agentId={artifact.agentId}
+            externalSyncKey={externalSyncKey}
           />
         )}
       </div>

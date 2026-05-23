@@ -17,6 +17,11 @@ class ChatRequest(BaseModel):
     is_system: bool = False  # True for system-generated messages (e.g., collection continuation)
     accent_color: str | None = None  # User's selected accent hex, e.g. "#4A7C8F"
     theme: str | None = None  # Resolved theme: "light" or "dark"
+    # Agent persona. "chat" (default) is the broad analyst. "report_editor" is
+    # the in-place dashboard co-author used by the AI button in the report
+    # top bar; requires `active_dashboard_id`.
+    mode: Literal["chat", "report_editor"] = "chat"
+    active_dashboard_id: str | None = None
 
 
 class VendorConfig(BaseModel):

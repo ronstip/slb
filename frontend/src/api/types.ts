@@ -8,6 +8,8 @@
 export type ChatModelKey = 'flash' | 'pro';
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high';
 
+export type ChatMode = 'chat' | 'report_editor';
+
 export interface ChatRequest {
   message: string;
   session_id?: string;
@@ -18,6 +20,12 @@ export interface ChatRequest {
   is_system?: boolean;
   accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
   theme?: 'light' | 'dark';  // resolved theme (never "system")
+  /** Agent persona. 'chat' (default) = broad analyst. 'report_editor' = the
+   *  AI button in the report top bar — co-authors the open dashboard. */
+  mode?: ChatMode;
+  /** Required when mode='report_editor'. The dashboard_layouts doc id the
+   *  agent is scoped to. */
+  active_dashboard_id?: string;
 }
 
 export interface UserPreferences {

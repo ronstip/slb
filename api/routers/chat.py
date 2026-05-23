@@ -44,6 +44,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
         model=resolve_model_alias(chat_request.model),
         thinking_level=chat_request.thinking_level,
         search_grounding=chat_request.search_grounding,
+        mode=chat_request.mode,
     )
     user_id = user.uid
     session_id = chat_request.session_id or str(uuid4())

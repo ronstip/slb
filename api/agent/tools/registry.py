@@ -33,7 +33,7 @@ from api.agent.tools.list_topics import list_topics
 from api.agent.tools.update_todos import update_todos
 from api.agent.tools.verify_briefing import verify_briefing
 
-AgentMode = Literal["chat", "autonomous"]
+AgentMode = Literal["chat", "autonomous", "report_editor"]
 
 
 @dataclass(frozen=True)
@@ -108,6 +108,15 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
         "validate_deck_plan", "generate_presentation", "compose_email",
         # Briefing (sequential exit: reflection → verification → publication)
         "generate_briefing", "verify_briefing", "compose_briefing",
+    },
+    "report_editor": {
+        # In-place widget editing on an already-published dashboard.
+        # Narrow on purpose — no create-from-template / publish (the dashboard
+        # already exists). list_topics grounds suggestions in real data.
+        "read_dashboard", "update_dashboard",
+        "list_topics",
+        "ask_user",
+        "update_todos",
     },
 }
 

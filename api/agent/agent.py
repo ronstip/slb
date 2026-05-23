@@ -63,6 +63,13 @@ def create_agent(
         )
         static_prompt = CHAT_STATIC_PROMPT
         dynamic_template = CHAT_DYNAMIC_PROMPT
+    elif mode == "report_editor":
+        from api.agent.prompts.report_editor_prompt import (
+            REPORT_EDITOR_DYNAMIC_PROMPT,
+            REPORT_EDITOR_STATIC_PROMPT,
+        )
+        static_prompt = REPORT_EDITOR_STATIC_PROMPT
+        dynamic_template = REPORT_EDITOR_DYNAMIC_PROMPT
     else:
         from api.agent.prompts.autonomous_prompt import (
             AUTONOMOUS_DYNAMIC_PROMPT,
@@ -146,6 +153,12 @@ def create_agent(
     if mode == "chat":
         name = "agent"
         description = "The user's configured social listening agent."
+    elif mode == "report_editor":
+        name = "report_editor"
+        description = (
+            "Co-author for the active report — adds, modifies, or removes "
+            "widgets on the user's request."
+        )
     else:
         name = "executor"
         description = (
