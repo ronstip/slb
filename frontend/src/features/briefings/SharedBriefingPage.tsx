@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useHead } from '@unhead/react';
 import { AlertTriangle } from 'lucide-react';
 import { Logo, BRAND_NAME, BRAND_INK } from '../../components/Logo.tsx';
+import { PlatformIcon } from '../../components/PlatformIcon.tsx';
 import { SharePageHeaderActions } from '../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
@@ -103,17 +104,40 @@ export function SharedBriefingPage() {
           </main>
 
           <footer className="mt-16 border-t border-border bg-card">
-            <div className="mx-auto max-w-6xl px-6 py-10 text-center">
-              <h2 className="text-base font-semibold">Like what you see?</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {BRAND_NAME} gives you AI-powered social intelligence briefings like this one &mdash; no coding required.
+            <div className="mx-auto max-w-2xl px-6 py-12 text-center">
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-primary font-semibold">
+                Like what you see?
+              </span>
+              <h2
+                className="mt-3 text-[clamp(1.75rem,3.4vw,2.5rem)] leading-[1.02] tracking-[-0.025em] font-bold"
+                style={{ fontFamily: "'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif" }}
+              >
+                Briefs like this cost agencies{' '}
+                <span className="text-primary">3 weeks.</span>
+                <br />
+                {BRAND_NAME} ships yours in{' '}
+                <span className="text-primary">minutes.</span>
+              </h2>
+              <p
+                className="mt-4 text-sm text-muted-foreground max-w-lg mx-auto leading-[1.6]"
+                style={{ fontFamily: "'Inter Tight', ui-sans-serif, system-ui, sans-serif" }}
+              >
+                You don't need a tool &mdash; you need a researcher.
+                {' '}{BRAND_NAME}'s the AI agent on social: brief it in plain
+                English, it writes you back in minutes. Any format your team
+                reads in.
               </p>
+              <div className="mt-5 flex items-center justify-center gap-4">
+                {(['instagram', 'twitter', 'tiktok', 'youtube', 'reddit', 'facebook'] as const).map((p) => (
+                  <PlatformIcon key={p} platform={p} className="h-5 w-5" />
+                ))}
+              </div>
               <Button
-                className="mt-4"
+                className="mt-5 font-bold"
                 size="lg"
                 onClick={() => window.open('/', '_blank')}
               >
-                Start for free
+                Create your own
               </Button>
             </div>
           </footer>

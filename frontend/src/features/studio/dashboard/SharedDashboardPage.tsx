@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useHead } from '@unhead/react';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { Logo, BRAND_NAME, BRAND_INK } from '../../../components/Logo.tsx';
+import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 import { SharePageHeaderActions } from '../../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
@@ -14,14 +15,6 @@ import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
 import type { SocialDashboardWidget, ReportScope } from './types-social-dashboard.ts';
-
-/** Five-color brand-tuned avatar set for the footer's decorative social-proof row. */
-const PROOF_AVATARS: ReadonlyArray<{ bg: string; initial: string }> = [
-  { bg: '#D97757', initial: 'A' },
-  { bg: '#2F8E6C', initial: 'M' },
-  { bg: '#3A6FB6', initial: 'K' },
-  { bg: '#7B5BD9', initial: 'R' },
-];
 
 export function SharedDashboardPage() {
   // Token-gated; must never be indexed.
@@ -203,77 +196,60 @@ function EditorialFooter() {
       className="mt-16 px-4 sm:px-6 py-12 sm:py-14"
       style={{ background: BRAND_INK, color: '#F6F4EF' }}
     >
-      <div className="mx-auto max-w-6xl grid md:grid-cols-[1.4fr_1fr] gap-10 md:gap-12 pb-10 border-b border-white/10">
-        <div className="flex flex-col gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-primary font-semibold">
-            Like what you see?
-          </span>
-          <h2 className="font-serif font-light text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.05] tracking-[-0.02em] mt-1">
-            <span className="italic font-normal text-primary">Brand intelligence</span>
-            <br />
-            that ships itself.
-          </h2>
-          <p className="font-sans text-[15px] leading-[1.55] text-white/75 max-w-[540px] mt-2">
-            {BRAND_NAME} gives you AI-powered social intelligence dashboards like
-            this one - no coding required. Brief in plain English, get the
-            dashboard, deck, and digest back in minutes.
-          </p>
-          <div className="flex flex-wrap items-center gap-3 mt-3">
-            <Button
-              size="lg"
-              className="rounded-xl px-5 gap-2 font-semibold"
-              onClick={() => window.open('/', '_blank')}
-            >
-              Create your own
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="lg"
-              className="rounded-xl border border-white/20 text-white/85 hover:bg-white/5 hover:text-white"
-              onClick={() => window.open('/', '_blank')}
-            >
-              See a live demo
-            </Button>
-          </div>
+      <div className="mx-auto max-w-3xl flex flex-col items-center text-center gap-5 pb-10 border-b border-white/10">
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-primary font-semibold">
+          Like what you see?
+        </span>
+        <h2
+          className="text-[clamp(2.25rem,4.8vw,3.75rem)] leading-[1] tracking-[-0.03em] font-bold max-w-2xl"
+          style={{ fontFamily: "'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif" }}
+        >
+          Briefs like this cost agencies{' '}
+          <span className="text-primary">3 weeks.</span>
+          <br />
+          {BRAND_NAME} ships yours in{' '}
+          <span className="text-primary">minutes.</span>
+        </h2>
+        <p
+          className="text-[16px] leading-[1.55] text-white/80 max-w-[560px]"
+          style={{ fontFamily: "'Inter Tight', ui-sans-serif, system-ui, sans-serif" }}
+        >
+          You don't need another dashboard - you need a researcher.
+          {' '}{BRAND_NAME} is the AI agent on social: brief it in plain
+          English, it watches, reads, and writes you back in minutes.
+          Any format your team reads in.
+        </p>
+
+        <div className="flex items-center gap-4 mt-1 text-white/85">
+          {(['instagram', 'twitter', 'tiktok', 'youtube', 'reddit', 'facebook'] as const).map((p) => (
+            <PlatformIcon key={p} platform={p} className="h-5 w-5" color="#F6F4EF" />
+          ))}
         </div>
 
-        <aside className="flex flex-col gap-5 pt-2">
-          <div className="flex items-center gap-3 pb-4 border-b border-white/10">
-            <div className="inline-flex">
-              {PROOF_AVATARS.map((a, i) => (
-                <span
-                  key={a.initial}
-                  className="inline-grid place-items-center h-7 w-7 rounded-full font-sans text-[11px] font-bold text-[#F6F4EF]"
-                  style={{
-                    background: a.bg,
-                    border: `2px solid ${BRAND_INK}`,
-                    marginLeft: i === 0 ? 0 : -8,
-                  }}
-                >
-                  {a.initial}
-                </span>
-              ))}
-            </div>
-            <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-white/85">
-              62 brand teams hired {BRAND_NAME} this week
-            </span>
-          </div>
-          <ul className="flex flex-col gap-2.5 font-sans text-[13.5px] text-white/75">
-            <li className="flex gap-2.5">
-              <span className="font-mono text-primary">→</span>
-              <span>Listens across every major social platform</span>
-            </li>
-            <li className="flex gap-2.5">
-              <span className="font-mono text-primary">→</span>
-              <span>Ships in 4 formats: dashboard · deck · memo · digest</span>
-            </li>
-            <li className="flex gap-2.5">
-              <span className="font-mono text-primary">→</span>
-              <span>Brief in plain English, get results in minutes</span>
-            </li>
-          </ul>
-        </aside>
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
+          <Button
+            size="lg"
+            className="rounded-xl px-6 gap-2 font-bold"
+            onClick={() => window.open('/', '_blank')}
+          >
+            Create your own
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <ul
+          className="mt-6 grid sm:grid-cols-2 gap-x-10 gap-y-2 text-[13px] text-white/70 max-w-2xl"
+          style={{ fontFamily: "'Inter Tight', ui-sans-serif, system-ui, sans-serif" }}
+        >
+          <li className="flex gap-2 items-start justify-center sm:justify-start">
+            <span className="font-mono text-primary shrink-0">→</span>
+            <span>Ships in any format your team reads in</span>
+          </li>
+          <li className="flex gap-2 items-start justify-center sm:justify-start">
+            <span className="font-mono text-primary shrink-0">→</span>
+            <span>Research anything on social.</span>
+          </li>
+        </ul>
       </div>
 
       <div className="mx-auto max-w-6xl mt-6 flex items-center justify-between gap-4">
