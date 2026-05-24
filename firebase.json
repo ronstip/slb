@@ -4,6 +4,14 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
+        "source": "/shared/**",
+        "run": { "serviceId": "sl-api", "region": "us-central1" }
+      },
+      {
+        "source": "/og-image/**",
+        "run": { "serviceId": "sl-api", "region": "us-central1" }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

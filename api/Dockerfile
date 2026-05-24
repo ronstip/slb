@@ -2,6 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# fonts-dejavu-core is required by the share-html OG image renderer
+# (api/routers/share_html.py uses Pillow to overlay the share title on the
+# brand template; without a TTF Pillow falls back to a tiny bitmap font).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv
 RUN pip install uv --no-cache-dir
 
