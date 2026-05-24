@@ -27,6 +27,7 @@ dependencies = [
     "markdown>=3.6",
     "python-pptx>=1.0.0",
     "pillow>=10.0.0",
+    "python-bidi>=0.5.1",
     "apify-client>=1.7,<2",
 ]
 

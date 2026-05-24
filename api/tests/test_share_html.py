@@ -101,3 +101,30 @@ def test_render_og_png_returns_valid_png_bytes():
     # Verify renderable
     out_img = Image.open(io.BytesIO(png))
     assert out_img.size == (1200, 630)
+
+
+def test_render_og_png_hebrew_title_does_not_crash():
+    """Hebrew titles must render via BiDi reshape — Pillow draws LTR otherwise."""
+    from PIL import Image
+    import io
+
+    template_img = Image.new("RGB", (1200, 630), (24, 28, 40))
+    buf = io.BytesIO()
+    template_img.save(buf, format="PNG")
+    template_bytes = buf.getvalue()
+
+    png = share_html._render_og_png_sync("dashboard", "דוח ניתוח רבעוני", template_bytes)
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_is_rtl_detection():
+    assert share_html._is_rtl("שלום עולם") is True
+    assert share_html._is_rtl("Hello world") is False
+    assert share_html._is_rtl("Q4 ניתוח") is True  # mixed
+
+
+def test_dashboard_share_type_renders_brief_label():
+    """Dashboard share_type must NOT leak the word 'dashboard' to crawlers —
+    customer-facing label is 'BRIEF'."""
+    assert share_html._TYPE_LABEL["dashboard"] == "BRIEF"
+    assert share_html._TYPE_TITLE_PREFIX["dashboard"] == "Brief: "

@@ -236,6 +236,31 @@ def _load_font(size: int):
     return ImageFont.load_default()
 
 
+def _is_rtl(text: str) -> bool:
+    """True if text contains any Hebrew / Arabic / Syriac / Thaana char.
+
+    Range U+0590–U+08FF covers the right-to-left scripts we expect customer
+    titles to use. A single RTL char flips the whole line to right-anchored
+    rendering — mixed Latin+Hebrew titles look more natural that way.
+    """
+    return any("֐" <= ch <= "ࣿ" for ch in text)
+
+
+def _bidi_reshape(text: str) -> str:
+    """Apply Unicode BiDi algorithm so Pillow's LTR draw renders RTL correctly.
+
+    Pillow draws glyphs strictly left-to-right; without reordering, Hebrew
+    appears character-reversed. `python-bidi` is in our prod deps; if the
+    import fails (dev env without it) we degrade to raw text rather than crash.
+    """
+    try:
+        from bidi.algorithm import get_display
+
+        return get_display(text)
+    except Exception:
+        return text
+
+
 def _wrap_lines(text: str, font, draw, max_width: int, max_lines: int) -> list[str]:
     words = text.split()
     lines: list[str] = []
@@ -262,6 +287,22 @@ def _wrap_lines(text: str, font, draw, max_width: int, max_lines: int) -> list[s
     return lines
 
 
+# Per share-type labels used in the badge + title prefix. Dashboards are
+# customer-facing "briefs" — the internal "dashboard" wording leaks otherwise.
+_TYPE_LABEL: dict[str, str] = {
+    "briefing": "BRIEFING",
+    "artifact": "ARTIFACT",
+    "dashboard": "BRIEF",
+}
+_TYPE_TITLE_PREFIX: dict[str, str] = {
+    "briefing": "Briefing: ",
+    "artifact": "Artifact: ",
+    "dashboard": "Brief: ",
+}
+# Brand orange used for the badge row.
+_BRAND_ORANGE = (255, 145, 60, 255)
+
+
 def _render_og_png_sync(share_type: str, title: str, template: bytes) -> bytes:
     from PIL import Image, ImageDraw
 
@@ -269,7 +310,12 @@ def _render_og_png_sync(share_type: str, title: str, template: bytes) -> bytes:
     W, H = base.size  # template is 1200x630
     draw = ImageDraw.Draw(base, "RGBA")
 
-    title = (title or "Scolto").strip()
+    raw_title = (title or "Scolto").strip()
+    label = _TYPE_LABEL.get(share_type, share_type.upper())
+    # Prefix only for LTR titles — adding "Report: " to a Hebrew title forces
+    # an LTR base direction and the Hebrew portion ends up reversed-looking.
+    rtl = _is_rtl(raw_title)
+    display_title = raw_title if rtl else f"{_TYPE_TITLE_PREFIX.get(share_type, '')}{raw_title}"
     padding_x = 72
 
     # Dark legibility band across the bottom 45% of the image.
@@ -278,13 +324,12 @@ def _render_og_png_sync(share_type: str, title: str, template: bytes) -> bytes:
     overlay = Image.new("RGBA", (W, band_h), (8, 10, 18, 215))
     base.alpha_composite(overlay, (0, band_y))
 
-    # Type badge
     badge_font = _load_font(28)
-    badge = share_type.upper()
+    badge = f"SCOLTO · {label}"
     draw.text(
         (padding_x, band_y + 36),
         badge,
-        fill=(180, 200, 255, 255),
+        fill=_BRAND_ORANGE,
         font=badge_font,
     )
 
@@ -293,18 +338,24 @@ def _render_og_png_sync(share_type: str, title: str, template: bytes) -> bytes:
     title_font_size = 68
     while title_font_size >= 36:
         font = _load_font(title_font_size)
-        lines = _wrap_lines(title, font, draw, title_max_width, max_lines=2)
+        lines = _wrap_lines(display_title, font, draw, title_max_width, max_lines=2)
         if lines:
             break
         title_font_size -= 6
     else:
         font = _load_font(36)
-        lines = _wrap_lines(title, font, draw, title_max_width, max_lines=2)
+        lines = _wrap_lines(display_title, font, draw, title_max_width, max_lines=2)
 
     line_h = title_font_size + 12
     text_y = band_y + 90
     for line in lines:
-        draw.text((padding_x, text_y), line, fill=(255, 255, 255, 255), font=font)
+        rendered = _bidi_reshape(line) if rtl else line
+        if rtl:
+            line_w = draw.textlength(rendered, font=font)
+            x = W - padding_x - line_w
+        else:
+            x = padding_x
+        draw.text((x, text_y), rendered, fill=(255, 255, 255, 255), font=font)
         text_y += line_h
 
     out = io.BytesIO()
