@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useStore } from 'zustand';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
@@ -6,6 +7,11 @@ import type { SocialDashboardWidget, DashboardOrientation } from './types-social
 import { AGGREGATION_META, DEFAULT_DASHBOARD_ORIENTATION } from './types-social-dashboard.ts';
 import type { DashboardFilters, FilterOptions } from './use-dashboard-filters.ts';
 import { useSocialDashboardStore } from './social-dashboard-store.ts';
+import {
+  getReportHistoryStore,
+  hydrateReportHistory,
+  useTemporalSelector,
+} from './dashboard-history-store.ts';
 import { getDefaultLayout } from './defaults-social-dashboard.ts';
 import { DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import { useDashboardLayout, useSaveDashboardLayout } from './hooks/useDashboardLayout.ts';
@@ -47,6 +53,10 @@ export interface DashboardToolbarHandlers {
   onFilterBarHiddenChange: (hidden: boolean) => void;
   isSaving: boolean;
   isEditMode: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 interface SocialDashboardViewProps {
@@ -125,9 +135,19 @@ export function SocialDashboardView({
     return [...names].sort();
   }, [allPosts]);
 
-  const [widgets, setWidgets] = useState<SocialDashboardWidget[]>([]);
-  const [orientation, setOrientation] = useState<DashboardOrientation>(DEFAULT_DASHBOARD_ORIENTATION);
-  const [filterBarHidden, setFilterBarHidden] = useState<boolean>(false);
+  // Undo/redo-backed state. One store per artifactId; the cache survives
+  // remounts so the user's edit history persists across edit-mode toggles
+  // and tab switches.
+  const historyStore = useMemo(
+    () => getReportHistoryStore(artifactId),
+    [artifactId],
+  );
+  const widgets = useStore(historyStore, (s) => s.widgets);
+  const orientation = useStore(historyStore, (s) => s.orientation);
+  const filterBarHidden = useStore(historyStore, (s) => s.filterBarHidden);
+  const canUndo = useTemporalSelector(historyStore, (s) => s.pastStates.length > 0);
+  const canRedo = useTemporalSelector(historyStore, (s) => s.futureStates.length > 0);
+
   // Single config dialog for both add + edit
   const [configWidget, setConfigWidget] = useState<SocialDashboardWidget | null>(null);
   const [configMode, setConfigMode] = useState<'add' | 'edit'>('edit');
@@ -141,20 +161,22 @@ export function SocialDashboardView({
   );
   const { mutate: saveLayout, mutateAsync: saveLayoutAsync, isPending: isSaving } = useSaveDashboardLayout(artifactId);
 
-  // Initialise widgets from persisted layout or defaults
+  // Initialise widgets from persisted layout or defaults. Hydrates the
+  // history store without recording an entry (initial load isn't undoable).
   const initialised = useRef(false);
   useEffect(() => {
     if (layoutLoading || initialised.current) return;
     initialised.current = true;
-    if (layoutData?.layout && layoutData.layout.length > 0) {
-      setWidgets(migrateWidgets(layoutData.layout));
-    } else {
-      setWidgets(defaultLayout ?? getDefaultLayout());
-    }
     const persistedOrientation = layoutData?.orientation ?? defaultOrientation ?? DEFAULT_DASHBOARD_ORIENTATION;
-    setOrientation(persistedOrientation);
+    hydrateReportHistory(historyStore, {
+      widgets:
+        layoutData?.layout && layoutData.layout.length > 0
+          ? migrateWidgets(layoutData.layout)
+          : (defaultLayout ?? getDefaultLayout()),
+      orientation: persistedOrientation,
+      filterBarHidden: layoutData?.filterBarHidden ?? false,
+    });
     onOrientationChange?.(persistedOrientation);
-    setFilterBarHidden(layoutData?.filterBarHidden ?? false);
     if (onLayoutLoaded) {
       const persisted = layoutData?.filterBarFilters;
       onLayoutLoaded(persisted && persisted.length > 0 ? persisted : DEFAULT_FILTER_BAR_FILTERS);
@@ -164,21 +186,26 @@ export function SocialDashboardView({
 
   // External re-sync: when the AI co-author (or any external writer) has
   // mutated the layout via update_dashboard, the parent invalidates the
-  // dashboard-layout query and bumps `externalSyncKey`. Once the refetch
-  // completes and React Query gives us fresh `layoutData`, copy the new
-  // widget array into local state. Skipped on the first render (key starts
-  // at 0) so we don't fight the one-shot initialiser above.
+  // dashboard-layout query and bumps `externalSyncKey`. We push the new
+  // snapshot through `applyExternalSnapshot` so the change lands as a
+  // single undo step — user hits Cmd+Z once to revert an AI edit, even
+  // when it touched multiple widgets at once. Skipped on the first render
+  // (key starts at 0) so we don't fight the one-shot initialiser above.
   const lastSyncedKey = useRef(0);
   useEffect(() => {
     if (externalSyncKey === 0 || externalSyncKey === lastSyncedKey.current) return;
     if (!layoutData?.layout) return;
     lastSyncedKey.current = externalSyncKey;
-    setWidgets(migrateWidgets(layoutData.layout));
-    if (layoutData.orientation) setOrientation(layoutData.orientation);
-    if (typeof layoutData.filterBarHidden === 'boolean') {
-      setFilterBarHidden(layoutData.filterBarHidden);
-    }
-  }, [externalSyncKey, layoutData]);
+    const current = historyStore.getState();
+    current.applyExternalSnapshot({
+      widgets: migrateWidgets(layoutData.layout),
+      orientation: layoutData.orientation ?? current.orientation,
+      filterBarHidden:
+        typeof layoutData.filterBarHidden === 'boolean'
+          ? layoutData.filterBarHidden
+          : current.filterBarHidden,
+    });
+  }, [externalSyncKey, layoutData, historyStore]);
 
   // Refs so callbacks always capture latest values without re-creating
   const filterBarFiltersRef = useRef(filterBarFilters ?? DEFAULT_FILTER_BAR_FILTERS);
@@ -224,10 +251,10 @@ export function SocialDashboardView({
 
   const handleLayoutChange = useCallback(
     (updated: SocialDashboardWidget[]) => {
-      setWidgets(updated);
+      historyStore.getState().setWidgets(updated);
       if (isEditMode) scheduleAutoSave(updated);
     },
-    [isEditMode, scheduleAutoSave],
+    [historyStore, isEditMode, scheduleAutoSave],
   );
 
   // Auto-size handler for text widgets: when a widget reports its measured
@@ -236,7 +263,7 @@ export function SocialDashboardView({
   // multi-column rows fall back to a stable minimum y advancement.
   const handleAutoSize = useCallback(
     (widgetId: string, newH: number) => {
-      setWidgets((prev) => {
+      historyStore.getState().setWidgets((prev) => {
         const idx = prev.findIndex((w) => w.i === widgetId);
         if (idx === -1) return prev;
         if (prev[idx].h === newH) return prev;
@@ -266,7 +293,7 @@ export function SocialDashboardView({
         return repacked;
       });
     },
-    [],
+    [historyStore],
   );
 
   const handleDone = useCallback(async () => {
@@ -289,26 +316,26 @@ export function SocialDashboardView({
 
   const handleOrientationChange = useCallback(
     (next: DashboardOrientation) => {
-      setOrientation(next);
+      historyStore.getState().setOrientation(next);
       onOrientationChange?.(next);
       scheduleAutoSave(widgetsRef.current, filterBarFiltersRef.current, next);
     },
-    [onOrientationChange, scheduleAutoSave],
+    [historyStore, onOrientationChange, scheduleAutoSave],
   );
 
   const handleResetToDefaults = useCallback(() => {
     const defaults = defaultLayout ?? getDefaultLayout();
-    setWidgets(defaults);
+    historyStore.getState().setWidgets(defaults);
     scheduleAutoSave(defaults);
-  }, [defaultLayout, scheduleAutoSave]);
+  }, [defaultLayout, historyStore, scheduleAutoSave]);
 
   const handleRemoveWidget = useCallback((widgetId: string) => {
-    setWidgets((prev) => {
+    historyStore.getState().setWidgets((prev) => {
       const updated = prev.filter((w) => w.i !== widgetId);
       scheduleAutoSave(updated);
       return updated;
     });
-  }, [scheduleAutoSave]);
+  }, [historyStore, scheduleAutoSave]);
 
   // Open config dialog for an existing widget
   const handleOpenEdit = useCallback((widgetId: string) => {
@@ -370,12 +397,12 @@ export function SocialDashboardView({
     const w = widgetsRef.current.find((w) => w.i === widgetId);
     if (!w) return;
     const clone: SocialDashboardWidget = { ...w, i: nanoid(), y: Infinity };
-    setWidgets((prev) => {
+    historyStore.getState().setWidgets((prev) => {
       const next = [...prev, clone];
       scheduleAutoSave(next);
       return next;
     });
-  }, [scheduleAutoSave]);
+  }, [historyStore, scheduleAutoSave]);
 
   // Save from config dialog (handles both add and update) — save immediately, don't rely on debounce
   const handleSaveWidget = useCallback((saved: SocialDashboardWidget) => {
@@ -386,7 +413,7 @@ export function SocialDashboardView({
       ? prev.map((w) => (w.i === saved.i ? saved : w))
       : [...prev, saved];
     widgetsRef.current = next;
-    setWidgets(next);
+    historyStore.getState().setWidgets(next);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveLayout({
       layout: next,
@@ -394,21 +421,66 @@ export function SocialDashboardView({
       orientation: orientationRef.current,
       filterBarHidden: filterBarHiddenRef.current,
     });
-  }, [saveLayout]);
+  }, [historyStore, saveLayout]);
 
   const handleFilterBarHiddenChange = useCallback(
     (hidden: boolean) => {
-      setFilterBarHidden(hidden);
+      historyStore.getState().setFilterBarHidden(hidden);
       filterBarHiddenRef.current = hidden;
       scheduleAutoSave(widgetsRef.current);
     },
-    [scheduleAutoSave],
+    [historyStore, scheduleAutoSave],
   );
 
   const handleFilterToggle = useCallback(
     (key: string, value: string) => toggleFilterValue(key as ArrayFilterKey, value),
     [toggleFilterValue],
   );
+
+  // Undo/redo. Both mutate the history store, then nudge autosave so the
+  // restored state lands in Firestore — without this, the user undoes
+  // locally but the next reload brings the un-undone version back.
+  const handleUndo = useCallback(() => {
+    const temporalState = historyStore.temporal.getState();
+    if (temporalState.pastStates.length === 0) return;
+    temporalState.undo();
+    const next = historyStore.getState();
+    scheduleAutoSave(next.widgets, undefined, next.orientation);
+  }, [historyStore, scheduleAutoSave]);
+
+  const handleRedo = useCallback(() => {
+    const temporalState = historyStore.temporal.getState();
+    if (temporalState.futureStates.length === 0) return;
+    temporalState.redo();
+    const next = historyStore.getState();
+    scheduleAutoSave(next.widgets, undefined, next.orientation);
+  }, [historyStore, scheduleAutoSave]);
+
+  // Keyboard shortcuts — only active while editing the report. Cmd/Ctrl+Z
+  // undoes, Cmd/Ctrl+Shift+Z or Ctrl+Y redoes. Suppressed inside form
+  // fields so widget-title inputs still get native undo.
+  useEffect(() => {
+    if (readOnly || !isEditMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readOnly, isEditMode, handleUndo, handleRedo]);
 
   // Publish toolbar handlers to parent when they change
   const onToolbarReadyRef = useRef(onToolbarReady);
@@ -426,9 +498,13 @@ export function SocialDashboardView({
       onFilterBarHiddenChange: handleFilterBarHiddenChange,
       isSaving,
       isEditMode,
+      onUndo: handleUndo,
+      onRedo: handleRedo,
+      canUndo,
+      canRedo,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditMode, isSaving, handleDone, handleOpenAdd, handleResetToDefaults, handleOrientationChange, orientation, filterBarHidden, handleFilterBarHiddenChange, readOnly]);
+  }, [isEditMode, isSaving, handleDone, handleOpenAdd, handleResetToDefaults, handleOrientationChange, orientation, filterBarHidden, handleFilterBarHiddenChange, readOnly, handleUndo, handleRedo, canUndo, canRedo]);
 
   if (layoutLoading || widgets.length === 0) {
     return (

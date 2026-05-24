@@ -1,4 +1,4 @@
-import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, Quote, RectangleHorizontal, RectangleVertical, Filter, FilterX } from 'lucide-react';
+import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, Quote, RectangleHorizontal, RectangleVertical, Filter, FilterX, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -20,7 +20,17 @@ interface SocialDashboardToolbarProps {
   onResetToDefaults: () => void;
   onOrientationChange: (orientation: DashboardOrientation) => void;
   onFilterBarHiddenChange: (hidden: boolean) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
+
+// Cmd on macOS, Ctrl elsewhere. Pure heuristic — fine for tooltip copy.
+const MOD_KEY =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+    ? '⌘'
+    : 'Ctrl';
 
 export function SocialDashboardToolbar({
   isEditMode,
@@ -33,6 +43,10 @@ export function SocialDashboardToolbar({
   onResetToDefaults,
   onOrientationChange,
   onFilterBarHiddenChange,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }: SocialDashboardToolbarProps) {
   if (!isEditMode) {
     return (
@@ -53,6 +67,26 @@ export function SocialDashboardToolbar({
 
   return (
     <div className="flex items-center gap-1.5">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 w-7 p-0"
+        onClick={onUndo}
+        disabled={!canUndo}
+        title={`Undo (${MOD_KEY}+Z)`}
+      >
+        <Undo2 className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 w-7 p-0"
+        onClick={onRedo}
+        disabled={!canRedo}
+        title={`Redo (${MOD_KEY}+Shift+Z)`}
+      >
+        <Redo2 className="h-3.5 w-3.5" />
+      </Button>
       <Button
         variant="outline"
         size="sm"

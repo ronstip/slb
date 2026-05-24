@@ -183,6 +183,10 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
                 onResetToDefaults={toolbarHandlers.onResetToDefaults}
                 onOrientationChange={toolbarHandlers.onOrientationChange}
                 onFilterBarHiddenChange={toolbarHandlers.onFilterBarHiddenChange}
+                onUndo={toolbarHandlers.onUndo}
+                onRedo={toolbarHandlers.onRedo}
+                canUndo={toolbarHandlers.canUndo}
+                canRedo={toolbarHandlers.canRedo}
               />
               <div className="h-4 w-px bg-border shrink-0" />
             </>

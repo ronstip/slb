@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { streamChat } from '../../../../api/sse-client.ts';
 import { apiPost } from '../../../../api/client.ts';
+import { getReportHistoryStore } from '../dashboard-history-store.ts';
 import type {
   LayoutResponse,
   LayoutSavePayload,
@@ -228,19 +229,19 @@ export function useReportAIChat({
 }
 
 /**
- * Snapshot the prior layout, refetch, notify the parent, show toast with Undo.
- *
- * Snapshotting from the cache rather than re-fetching means we capture the
- * state the user actually saw, which is what they expect Undo to restore.
+ * Refetch the new layout, notify the parent, show toast with Undo.
  *
  * We `await refetchQueries` (not just `invalidateQueries`) before pulsing
  * `onLayoutChanged` so the grid's re-sync effect can read fresh widgets from
  * the cache. Invalidate alone makes the refetch happen in the background —
  * the parent would race ahead and re-sync to stale state.
  *
- * Toast duration is intentionally longer than the sonner default so a user
- * who needs a moment to read "AI updated the report" still has time to click
- * Undo without rushing.
+ * Once the resync runs, the per-artifact history store records the AI's
+ * change as one undo step via `applyExternalSnapshot`. The toast's Undo
+ * button piggybacks on that — it pops the entry and persists the restored
+ * state — so it shares a single source of truth with Cmd+Z. Toast duration
+ * is intentionally longer than the sonner default so a user has time to
+ * read and click without rushing.
  */
 async function handleUpdateApplied(
   queryClient: ReturnType<typeof useQueryClient>,
@@ -248,7 +249,6 @@ async function handleUpdateApplied(
   onLayoutChanged?: () => void,
 ): Promise<void> {
   const queryKey = ['dashboard-layout', artifactId];
-  const snapshot = queryClient.getQueryData<LayoutResponse>(queryKey);
 
   try {
     await queryClient.refetchQueries({ queryKey });
@@ -259,35 +259,49 @@ async function handleUpdateApplied(
   }
   onLayoutChanged?.();
 
-  if (!snapshot?.layout) {
-    toast.success('AI updated the report', { duration: UPDATE_TOAST_DURATION_MS });
-    return;
-  }
-
   toast.success('AI updated the report', {
     duration: UPDATE_TOAST_DURATION_MS,
     action: {
       label: 'Undo',
       onClick: () => {
-        void undoLayoutChange(queryClient, artifactId, snapshot, onLayoutChanged);
+        void undoAILayoutChange(queryClient, artifactId);
       },
     },
   });
 }
 
-async function undoLayoutChange(
+/** Pop the AI's edit off the history stack and persist the restored state.
+ *  Triggered from the toast — Cmd+Z goes through the toolbar handler in
+ *  SocialDashboardView. Both call the same temporal store so the stacks
+ *  stay coherent regardless of which path the user picks.
+ *
+ *  We deliberately update the React Query cache via setQueryData rather
+ *  than pulsing onLayoutChanged (which would bump externalSyncKey and
+ *  trigger the resync effect to push *another* past-state for the
+ *  same logical edit). The temporal.undo() already updated the local
+ *  store, so the grid re-renders correctly without any cache invalidation. */
+async function undoAILayoutChange(
   queryClient: ReturnType<typeof useQueryClient>,
   artifactId: string,
-  snapshot: LayoutResponse,
-  onLayoutChanged?: () => void,
 ): Promise<void> {
-  if (!snapshot.layout) return;
+  const store = getReportHistoryStore(artifactId);
+  const temporalState = store.temporal.getState();
+  if (temporalState.pastStates.length === 0) {
+    toast.error('Nothing left to undo');
+    return;
+  }
+  temporalState.undo();
+  const restored = store.getState();
+  const cached = queryClient.getQueryData<LayoutResponse>([
+    'dashboard-layout',
+    artifactId,
+  ]);
   const payload: LayoutSavePayload = {
-    layout: snapshot.layout,
-    filterBarFilters: snapshot.filterBarFilters ?? undefined,
-    orientation: snapshot.orientation ?? undefined,
-    reportScope: snapshot.reportScope ?? null,
-    filterBarHidden: snapshot.filterBarHidden ?? undefined,
+    layout: restored.widgets,
+    filterBarFilters: cached?.filterBarFilters ?? undefined,
+    orientation: restored.orientation,
+    reportScope: cached?.reportScope ?? null,
+    filterBarHidden: restored.filterBarHidden,
   };
   try {
     const updated = await apiPost<LayoutResponse>(
@@ -298,10 +312,6 @@ async function undoLayoutChange(
       ['dashboard-layout', artifactId],
       updated,
     );
-    // Pulse the sync key so the grid re-applies the restored layout —
-    // otherwise undo restores in Firestore but the user keeps seeing the
-    // AI's new widget on screen.
-    onLayoutChanged?.();
     toast.success('Undone');
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Undo failed';
