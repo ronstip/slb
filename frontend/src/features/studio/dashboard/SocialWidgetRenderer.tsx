@@ -1057,7 +1057,7 @@ function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, 
       onRemove={onRemove}
       onDuplicate={onDuplicate}
     >
-      <div ref={contentRef} className="w-full">
+      <div ref={contentRef} className="w-full" data-embed-widget="1">
         {urls.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-xs text-muted-foreground italic">
             Empty embed card — click the gear to add post URLs

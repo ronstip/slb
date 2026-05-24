@@ -73,6 +73,7 @@ export function SharedDashboardPage() {
     title: response?.meta.title || 'Dashboard',
     getTarget: () => gridRef.current,
     orientation: response?.orientation ?? 'horizontal',
+    generatedAt: response?.meta.created_at ?? null,
   });
 
   return (

@@ -175,6 +175,57 @@ async function waitForRenderReady(root: HTMLElement): Promise<void> {
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
 }
 
+/** Tables in widgets use `table-fixed` + `.truncate` so cells fit cramped grid
+ *  cells with ellipsis. Under html2canvas that ellipsis is baked into the PDF
+ *  ("@RonenMane…", "ת", "re…"), losing the actual values. For capture only,
+ *  switch tables to `table-auto`, kill truncation, and let cells wrap. */
+function applyPdfCaptureStyles(root: HTMLElement): () => void {
+  const style = document.createElement('style')
+  style.setAttribute('data-pdf-capture', '1')
+  style.textContent = `
+    .pdf-capturing table { table-layout: auto !important; width: 100% !important; }
+    .pdf-capturing table col { width: auto !important; }
+    .pdf-capturing table td,
+    .pdf-capturing table th { white-space: normal !important; overflow: visible !important; word-break: break-word; }
+    .pdf-capturing .truncate {
+      overflow: visible !important;
+      text-overflow: clip !important;
+      white-space: normal !important;
+      max-width: none !important;
+    }
+    .pdf-capturing [class*="overflow-hidden"] { overflow: visible !important; }
+  `
+  document.head.appendChild(style)
+  root.classList.add('pdf-capturing')
+  return () => {
+    root.classList.remove('pdf-capturing')
+    style.remove()
+  }
+}
+
+/** Embed widgets render third-party iframes (X/YouTube/FB/LinkedIn) that
+ *  html2canvas can't capture — they come out blank. Swap their contents with a
+ *  short placeholder for capture, then restore. */
+function swapEmbedWidgets(root: HTMLElement): () => void {
+  const embeds = Array.from(root.querySelectorAll<HTMLElement>('[data-embed-widget]'))
+  const restores: Array<() => void> = []
+  for (const el of embeds) {
+    const originalDisplay = el.style.display
+    const originalHtml = el.innerHTML
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;padding:24px;
+                  font-size:12px;color:${BRAND_MUTED};font-style:italic;text-align:center;">
+        Interactive embedded posts — view in the live brief.
+      </div>
+    `
+    restores.push(() => {
+      el.innerHTML = originalHtml
+      el.style.display = originalDisplay
+    })
+  }
+  return () => restores.forEach((r) => r())
+}
+
 /** The markdown widget puts per-paragraph dir="rtl" on Hebrew blocks but leaves
  *  the parent <ul>/<ol> LTR — so list bullets land on the far-left edge.
  *  Flip dir on the prose wrapper for capture only. */
@@ -200,6 +251,7 @@ export async function exportDashboardPdf(
   gridElement: HTMLElement,
   reportTitle: string,
   orientation: DashboardOrientation = 'horizontal',
+  generatedAt?: string | null,
 ) {
   const pdfOrientation = orientation === 'vertical' ? 'portrait' : 'landscape'
   const pdf = new jsPDF({
@@ -233,11 +285,15 @@ export async function exportDashboardPdf(
     letterSpacing: 1.8,
   })
 
-  const dateStr = new Date().toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
+  // Prefer the brief's own generation date; fall back to "now" only when the
+  // caller has no timestamp (legacy callers / standalone editor exports).
+  const headerDate = generatedAt ? new Date(generatedAt) : new Date()
+  const dateStr = (isNaN(headerDate.getTime()) ? new Date() : headerDate)
+    .toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
   const dateImg = renderTextToImage(dateStr.toUpperCase(), {
     fontSize: 7.5,
     fontFamily: MONO_STACK,
@@ -341,8 +397,12 @@ export async function exportDashboardPdf(
 
   // ── Capture ──────────────────────────────────────────────────────────────
   const restoreRtl = applyRtlListFixup(gridElement)
+  const restoreCaptureStyles = applyPdfCaptureStyles(gridElement)
+  const restoreEmbeds = swapEmbedWidgets(gridElement)
 
   try {
+    // Layout/reflow after the capture-only style + embed swaps land.
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
     await waitForRenderReady(gridElement)
 
     const canvas = await html2canvas(gridElement, {
@@ -435,6 +495,8 @@ export async function exportDashboardPdf(
         .slice(0, 80) || 'Dashboard'
     pdf.save(`Scolto - ${cleanTitle} - ${dateStr}.pdf`)
   } finally {
+    restoreEmbeds()
+    restoreCaptureStyles()
     restoreRtl()
   }
 }

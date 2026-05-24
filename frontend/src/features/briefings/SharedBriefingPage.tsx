@@ -30,6 +30,7 @@ export function SharedBriefingPage() {
     title: data?.meta.title || 'Briefing',
     getTarget: () => contentRef.current,
     orientation: 'vertical',
+    generatedAt: data?.meta.created_at ?? null,
   });
 
   return (

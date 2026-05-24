@@ -5,12 +5,16 @@ interface UseSharePageActionsArgs {
   title: string;
   getTarget: () => HTMLElement | null;
   orientation?: DashboardOrientation;
+  /** Brief generation timestamp (ISO). Used for the PDF header date so a
+   *  re-download tomorrow still shows the brief's original date, not "today". */
+  generatedAt?: string | null;
 }
 
 export function useSharePageActions({
   title,
   getTarget,
   orientation = 'horizontal',
+  generatedAt,
 }: UseSharePageActionsArgs) {
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -23,11 +27,11 @@ export function useSharePageActions({
       const { exportDashboardPdf } = await import(
         '../features/studio/dashboard/exportDashboardPdf.ts'
       );
-      await exportDashboardPdf(el, title, orientation);
+      await exportDashboardPdf(el, title, orientation, generatedAt);
     } finally {
       setDownloading(false);
     }
-  }, [getTarget, title, orientation]);
+  }, [getTarget, title, orientation, generatedAt]);
 
   const handleShare = useCallback(async () => {
     const url = window.location.href;

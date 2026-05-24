@@ -76,6 +76,7 @@ export function SharedArtifactPage() {
     title: data?.meta.title || 'Artifact',
     getTarget: () => contentRef.current,
     orientation: 'vertical',
+    generatedAt: data?.meta.created_at ?? null,
   });
 
   return (
