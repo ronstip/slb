@@ -28,7 +28,7 @@ const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'What does it cost?',
-    a: "Usage-based. Pay for the work, not a seat. Briefs from $49. No annual contract. Detailed pricing on the way in.",
+    a: "Usage-based. Pay for the work, not a seat. No annual contract. Detailed pricing on the way in.",
   },
   {
     q: "How is this different from a social-listening dashboard?",
@@ -2393,7 +2393,7 @@ const LP_WhyScolto = () => (
           { a: 'Hands you a dashboard.',                 b: 'Hands you a brief, a deck, a dashboard, and a digest.' },
           { a: 'Counts mentions and scores sentiment.',  b: 'Reads the post, watches the video, weighs the comment thread.' },
           { a: 'Surfaces a spike. You investigate why.', b: 'Tells you why, and which creator is the swing voter.' },
-          { a: 'Locks you into a $30k annual seat.',     b: 'Briefs from $49. Usage-based, no annual contract.' },
+          { a: 'Locks you into a $30k annual seat.',     b: 'Usage-based. No annual contract.' },
           { a: 'Wants a kickoff call.',                  b: 'Wants a sentence.' },
         ].map((row, i) => (
           <div key={i} className="lp-why-row" style={{
