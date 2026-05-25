@@ -192,6 +192,13 @@ class Settings(BaseSettings):
     # change, not a code change.
     signup_gate: str = "open"
 
+    # §E credit/cost enforcement (require_active + require_credit_for_run).
+    # Decoupled from `signup_gate` so we can bill regular users for usage
+    # without flipping the signup/access rollout. ON by default; super admins
+    # and `free`-tier users always bypass. Set to false to disable cost gating
+    # (e.g. local dev that shouldn't block on balance).
+    enforce_credits: bool = True
+
     enable_search_grounding: bool = True
     agent_engine_id: str = ""  # Vertex AI Agent Engine ID for Memory Bank (prod only)
     google_genai_use_vertexai: bool = True

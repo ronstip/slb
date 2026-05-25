@@ -3,9 +3,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   BarChart2,
   Download,
-  Eye,
-  EyeOff,
-  Globe,
   Loader2,
   MoreHorizontal,
   Table2,
@@ -18,7 +15,6 @@ import { formatNumber, shortDate } from '../../lib/format.ts';
 import {
   deleteCollection,
   downloadCollection,
-  setCollectionVisibility,
 } from '../../api/endpoints/collections.ts';
 import { Button } from '../../components/ui/button.tsx';
 import { Switch } from '../../components/ui/switch.tsx';
@@ -48,7 +44,6 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
   const { profile } = useAuth();
   const addToSession = useSourcesStore((s) => s.addToSession);
   const removeFromSession = useSourcesStore((s) => s.removeFromSession);
-  const updateSource = useSourcesStore((s) => s.updateSource);
   const removeSource = useSourcesStore((s) => s.removeSource);
   const queryClient = useQueryClient();
 
@@ -62,8 +57,6 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
   const isReady = source.status === 'success';
   const isFailed = source.status === 'failed';
   const isOwner = !source.userId || source.userId === profile?.uid;
-  const isInOrg = !!profile?.org_id;
-  const isShared = source.visibility === 'org';
   const isInSession = source.selected;
 
   const platforms = source.config.platforms
@@ -121,17 +114,6 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
     }
   };
 
-  const handleToggleVisibility = async () => {
-    const newVisibility = isShared ? 'private' : 'org';
-    try {
-      await setCollectionVisibility(source.collectionId, newVisibility);
-      updateSource(source.collectionId, { visibility: newVisibility });
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-    } catch {
-      // handle error
-    }
-  };
-
   return (
     <>
       <div className={cn(
@@ -147,7 +129,6 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
               <span className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">
                 {source.title}
               </span>
-              {isShared && <Globe className="h-3 w-3 shrink-0 text-accent-blue" />}
             </div>
 
             {/* Keywords */}
@@ -192,18 +173,6 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
                 )}
                 {downloading ? 'Downloading...' : 'Download CSV'}
               </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              {isOwner && isInOrg && (
-                <DropdownMenuItem onSelect={handleToggleVisibility}>
-                  {isShared ? (
-                    <><EyeOff className="mr-2 h-3.5 w-3.5" /> Make Private</>
-                  ) : (
-                    <><Eye className="mr-2 h-3.5 w-3.5" /> Share with Org</>
-                  )}
-                </DropdownMenuItem>
-              )}
 
               {isOwner && (
                 <>

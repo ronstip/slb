@@ -44,6 +44,16 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
     from api.auth.admin import is_super_admin_email
     is_super_admin = is_super_admin_email(user.email)
 
+    # §E entitlements: surface tier + $ wallet so the shell can render the
+    # pending page / credit bar without a second round-trip.
+    plan = (user_doc.get("plan") if user_doc else None) or {}
+    credit = (user_doc.get("credit") if user_doc else None) or {}
+    balance = int(credit.get("balance_micros", 0))
+    total_in = int(credit.get("total_in_micros", 0))
+    trial_expires_at = plan.get("trial_expires_at")
+    if hasattr(trial_expires_at, "isoformat"):
+        trial_expires_at = trial_expires_at.isoformat()
+
     response = {
         "uid": user.uid,
         "email": user.email,
@@ -54,9 +64,17 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
         "org_name": org_name,
         "is_anonymous": user.is_anonymous,
         "preferences": user_doc.get("preferences") if user_doc else None,
-        "subscription_plan": user_doc.get("subscription_plan") if user_doc else None,
-        "subscription_status": user_doc.get("subscription_status") if user_doc else None,
         "is_super_admin": is_super_admin,
+        "plan": {
+            "tier": plan.get("tier") or "blocked",
+            "trial_expires_at": trial_expires_at,
+        },
+        "credit": {
+            "balance_micros": balance,
+            "total_in_micros": total_in,
+            "spent_micros": int(credit.get("spent_micros", 0)),
+            "progress_pct": round(balance / total_in * 100, 1) if total_in > 0 else 0.0,
+        },
     }
 
     if user.impersonated_by is not None:

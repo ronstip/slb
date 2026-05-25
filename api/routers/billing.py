@@ -1,22 +1,24 @@
-"""Billing router — Credit-based pay-as-you-go system via Lemon Squeezy."""
+"""Billing router — $-based prepaid credit wallet (§E).
+
+Users top up in dollars; every action deducts its real $ cost (see
+`api/services/cost_meter.py`). The wallet lives at `users/{uid}.credit` and the
+credit-in ledger at `credit_transactions` (both in Firestore). Payment provider
+is not finalised — the Lemon Squeezy checkout/webhook below is the scaffold and
+stays dormant until `lemonsqueezy_*` settings + variant ids are configured.
+"""
 
 import hashlib
 import hmac
 import logging
-from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.auth.impersonation import block_during_impersonation
-from api.auth.permissions import require_org_role
-from api.schemas.responses import (
-    CreditBalanceResponse,
-    CreditPackResponse,
-    CreditPurchaseHistoryItem,
-)
 from api.deps import get_fs
+from api.schemas.responses import CreditTransactionItem, TopUpOption, WalletResponse
+from api.services import entitlements
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -25,107 +27,65 @@ router = APIRouter(prefix="/billing")
 
 LEMONSQUEEZY_API_BASE = "https://api.lemonsqueezy.com/v1"
 
-# ---------------------------------------------------------------------------
-# Credit packs — variant_id comes from the Lemon Squeezy dashboard
-# ---------------------------------------------------------------------------
+# $1.00 = 100 cents = 1_000_000 micros → 1 cent = 10_000 micros.
+CENTS_TO_MICROS = 10_000
 
-CREDIT_PACKS = [
-    {
-        "pack_id": "starter",
-        "name": "Starter",
-        "credits": 100,
-        "price_cents": 999,
-        "popular": False,
-        "variant_id": "",  # TODO: set from Lemon Squeezy dashboard
-    },
-    {
-        "pack_id": "growth",
-        "name": "Growth",
-        "credits": 500,
-        "price_cents": 3999,
-        "popular": True,
-        "variant_id": "",  # TODO: set from Lemon Squeezy dashboard
-    },
-    {
-        "pack_id": "scale",
-        "name": "Scale",
-        "credits": 2000,
-        "price_cents": 12999,
-        "popular": False,
-        "variant_id": "",  # TODO: set from Lemon Squeezy dashboard
-    },
-    {
-        "pack_id": "enterprise",
-        "name": "Enterprise",
-        "credits": 10000,
-        "price_cents": 49999,
-        "popular": False,
-        "variant_id": "",  # TODO: set from Lemon Squeezy dashboard
-    },
+# Prepaid top-up presets. `variant_id` comes from the Lemon Squeezy dashboard
+# (empty = not configured → checkout returns 501 until set).
+TOPUP_OPTIONS = [
+    {"amount_cents": 1000, "label": "$10", "popular": False, "variant_id": ""},
+    {"amount_cents": 2500, "label": "$25", "popular": True, "variant_id": ""},
+    {"amount_cents": 5000, "label": "$50", "popular": False, "variant_id": ""},
+    {"amount_cents": 10000, "label": "$100", "popular": False, "variant_id": ""},
 ]
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
+def _wallet_response(credit: dict) -> WalletResponse:
+    balance = int(credit.get("balance_micros", 0))
+    total_in = int(credit.get("total_in_micros", 0))
+    return WalletResponse(
+        balance_micros=balance,
+        total_in_micros=total_in,
+        spent_micros=int(credit.get("spent_micros", 0)),
+        progress_pct=round(balance / total_in * 100, 1) if total_in > 0 else 0.0,
+    )
 
 
-@router.get("/credits", response_model=CreditBalanceResponse)
-async def get_credit_balance(user: CurrentUser = Depends(get_current_user)):
-    """Get current credit balance for the user or their org."""
-    fs = get_fs()
-
-    if user.org_id:
-        org = fs.get_org(user.org_id)
-        if org:
-            return CreditBalanceResponse(
-                credits_remaining=org.get("credits_remaining", 0),
-                credits_used=org.get("credits_used", 0),
-                credits_total=org.get("credits_total", 0),
-                is_org=True,
-            )
-
-    user_doc = fs.get_user(user.uid)
-    if user_doc:
-        return CreditBalanceResponse(
-            credits_remaining=user_doc.get("credits_remaining", 0),
-            credits_used=user_doc.get("credits_used", 0),
-            credits_total=user_doc.get("credits_total", 0),
-            is_org=False,
-        )
-
-    return CreditBalanceResponse()
+@router.get("/credits", response_model=WalletResponse)
+async def get_wallet(user: CurrentUser = Depends(get_current_user)):
+    """Current $ wallet for the user."""
+    return _wallet_response(get_fs().get_credit(user.uid))
 
 
-@router.get("/credit-packs", response_model=list[CreditPackResponse])
-async def get_credit_packs(user: CurrentUser = Depends(get_current_user)):
-    """Get available credit packs for purchase."""
+@router.get("/topup-options", response_model=list[TopUpOption])
+async def get_topup_options(user: CurrentUser = Depends(get_current_user)):
+    """Preset top-up amounts shown in the UI."""
     return [
-        CreditPackResponse(**{k: v for k, v in pack.items() if k != "variant_id"})
-        for pack in CREDIT_PACKS
+        TopUpOption(amount_cents=o["amount_cents"], label=o["label"], popular=o["popular"])
+        for o in TOPUP_OPTIONS
     ]
 
 
-@router.post("/purchase-credits")
-async def purchase_credits(
-    request: Request,
+@router.post("/topup")
+async def topup(
     body: dict,
     user: CurrentUser = Depends(block_during_impersonation),
 ):
-    """Create a Lemon Squeezy checkout for a credit pack purchase."""
-    if user.org_id:
-        require_org_role(user, "admin")
+    """Create a checkout to add credit to the wallet.
 
+    `body = {"amount_cents": int}`. Provider-agnostic shape — currently wired to
+    Lemon Squeezy; dormant until configured.
+    """
     settings = get_settings()
-    if not settings.lemonsqueezy_api_key:
-        raise HTTPException(status_code=501, detail="Billing is not configured")
+    amount_cents = int(body.get("amount_cents") or 0)
+    option = next((o for o in TOPUP_OPTIONS if o["amount_cents"] == amount_cents), None)
+    if not option:
+        raise HTTPException(status_code=400, detail="Invalid top-up amount")
 
-    pack_id = body.get("pack_id")
-    pack = next((p for p in CREDIT_PACKS if p["pack_id"] == pack_id), None)
-    if not pack:
-        raise HTTPException(status_code=400, detail="Invalid credit pack")
-    if not pack["variant_id"]:
-        raise HTTPException(status_code=501, detail="Credit pack not yet configured in Lemon Squeezy")
+    if not settings.lemonsqueezy_api_key:
+        raise HTTPException(status_code=501, detail="Billing is not configured yet")
+    if not option["variant_id"]:
+        raise HTTPException(status_code=501, detail="Top-up amount not yet configured in Lemon Squeezy")
 
     checkout_payload = {
         "data": {
@@ -135,9 +95,7 @@ async def purchase_credits(
                     "email": user.email,
                     "custom": {
                         "user_id": user.uid,
-                        "org_id": user.org_id or "",
-                        "pack_id": pack["pack_id"],
-                        "credits": str(pack["credits"]),
+                        "amount_cents": str(amount_cents),
                     },
                 },
                 "product_options": {
@@ -145,18 +103,8 @@ async def purchase_credits(
                 },
             },
             "relationships": {
-                "store": {
-                    "data": {
-                        "type": "stores",
-                        "id": settings.lemonsqueezy_store_id,
-                    }
-                },
-                "variant": {
-                    "data": {
-                        "type": "variants",
-                        "id": pack["variant_id"],
-                    }
-                },
+                "store": {"data": {"type": "stores", "id": settings.lemonsqueezy_store_id}},
+                "variant": {"data": {"type": "variants", "id": option["variant_id"]}},
             },
         }
     }
@@ -177,29 +125,24 @@ async def purchase_credits(
         logger.error("Lemon Squeezy checkout error: %s %s", resp.status_code, resp.text)
         raise HTTPException(status_code=502, detail="Failed to create checkout session")
 
-    checkout_url = resp.json()["data"]["attributes"]["url"]
-    return {"url": checkout_url}
+    return {"url": resp.json()["data"]["attributes"]["url"]}
 
 
-@router.get("/credit-history", response_model=list[CreditPurchaseHistoryItem])
-async def get_credit_history(user: CurrentUser = Depends(get_current_user)):
-    """Get credit purchase history."""
-    fs = get_fs()
-
-    if user.org_id:
-        history = fs.get_credit_history(org_id=user.org_id)
-    else:
-        history = fs.get_credit_history(user_id=user.uid)
-
+@router.get("/history", response_model=list[CreditTransactionItem])
+async def get_history(user: CurrentUser = Depends(get_current_user)):
+    """Credit-in ledger (grants / purchases / adjustments) for the user."""
+    rows = get_fs().list_credit_transactions(user.uid)
     return [
-        CreditPurchaseHistoryItem(
-            purchased_at=h.get("purchased_at", ""),
-            credits=h.get("credits", 0),
-            amount_cents=h.get("amount_cents", 0),
-            purchased_by=h.get("purchased_by"),
-            purchased_by_name=h.get("purchased_by_name"),
+        CreditTransactionItem(
+            id=r.get("id", ""),
+            kind=r.get("kind", ""),
+            amount_micros=int(r.get("amount_micros", 0)),
+            balance_after_micros=int(r.get("balance_after_micros", 0)),
+            reason=r.get("reason"),
+            created_by=r.get("created_by"),
+            created_at=r.get("created_at"),
         )
-        for h in history
+        for r in rows
     ]
 
 
@@ -208,76 +151,47 @@ async def lemonsqueezy_webhook(request: Request):
     """Handle Lemon Squeezy webhook events. No auth — verified by HMAC signature."""
     settings = get_settings()
     webhook_secret = settings.lemonsqueezy_webhook_secret
-
     if not webhook_secret:
         raise HTTPException(status_code=501, detail="Webhook secret not configured")
 
     body = await request.body()
     signature = request.headers.get("x-signature", "")
-
-    # Verify HMAC-SHA256 signature
-    expected = hmac.new(
-        webhook_secret.encode(), body, hashlib.sha256
-    ).hexdigest()
-
+    expected = hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     payload = await request.json()
     event_name = payload.get("meta", {}).get("event_name", "")
-
     if event_name == "order_created":
-        _handle_credit_purchase(payload)
+        _handle_topup(payload)
     else:
         logger.info("Unhandled Lemon Squeezy event: %s", event_name)
-
     return {"status": "ok"}
 
 
-# ---------------------------------------------------------------------------
-# Webhook handlers
-# ---------------------------------------------------------------------------
-
-
-def _handle_credit_purchase(payload: dict):
-    """Add credits after a successful credit pack purchase."""
+def _handle_topup(payload: dict):
+    """Credit the wallet after a successful prepaid top-up."""
     custom_data = payload.get("meta", {}).get("custom_data", {})
-
     user_id = custom_data.get("user_id")
-    org_id = custom_data.get("org_id") or None
-    credits = int(custom_data.get("credits", 0))
-    pack_id = custom_data.get("pack_id", "")
-
-    if not credits or not user_id:
-        logger.warning("Webhook missing credits or user_id in custom_data: %s", custom_data)
+    amount_cents = int(custom_data.get("amount_cents", 0) or 0)
+    if not user_id or amount_cents <= 0:
+        logger.warning("Top-up webhook missing user_id/amount_cents: %s", custom_data)
         return
 
-    pack = next((p for p in CREDIT_PACKS if p["pack_id"] == pack_id), None)
-    amount_cents = pack["price_cents"] if pack else 0
+    amount_micros = amount_cents * CENTS_TO_MICROS
+    order_id = str((payload.get("data") or {}).get("id") or "")
 
-    now = datetime.now(timezone.utc).isoformat()
     fs = get_fs()
+    fs.add_credit_micros(
+        user_id,
+        amount_micros,
+        kind="purchase",
+        reason=f"Top-up ${amount_cents / 100:.2f}",
+        provider_ref=order_id or None,
+    )
+    entitlements.invalidate(user_id)
 
-    if org_id:
-        fs.add_credits(org_id=org_id, credits=credits)
-        fs.record_credit_purchase(
-            org_id=org_id,
-            user_id=user_id,
-            credits=credits,
-            amount_cents=amount_cents,
-            purchased_at=now,
-        )
-    else:
-        fs.add_credits(user_id=user_id, credits=credits)
-        fs.record_credit_purchase(
-            user_id=user_id,
-            credits=credits,
-            amount_cents=amount_cents,
-            purchased_at=now,
-        )
-
-    # Track in BigQuery event log
     from api.services.usage_service import track_credit_purchase
-    track_credit_purchase(user_id, org_id, credits, amount_cents, pack_id)
+    track_credit_purchase(user_id, amount_cents=amount_cents, amount_micros=amount_micros, provider_ref=order_id)
 
-    logger.info("Added %d credits for user=%s org=%s pack=%s", credits, user_id, org_id, pack_id)
+    logger.info("Top-up credited %d micros to user=%s (order=%s)", amount_micros, user_id, order_id)

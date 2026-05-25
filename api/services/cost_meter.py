@@ -18,6 +18,7 @@ outside an HTTP request (e.g. CLI worker scripts).
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import threading
@@ -108,6 +109,71 @@ EVENT_BQ = "bq_query"
 EVENT_GCS = "gcs_op"
 
 
+# Cost-source labels (written to usage_events.cost_source so the admin UI can
+# tell apart "this is what the provider actually charged us" from "we estimated
+# because the provider didn't report a number" from "we looked it up in our
+# rate table"). Keep the set small + stable — frontend renders by string.
+COST_SOURCE_PROVIDER_REPORTED = "provider_reported"   # apify run.usageTotalUsd, etc.
+COST_SOURCE_RATE_TABLE = "rate_table"                 # gemini tokens, brightdata $/record
+COST_SOURCE_ESTIMATED_FALLBACK = "estimated_fallback" # provider went silent → assumed_per_post
+
+
+# ---------------------------------------------------------------------------
+# ContextVar propagation across thread boundaries
+# ---------------------------------------------------------------------------
+#
+# `threading.Thread` does NOT inherit ContextVars from the parent thread —
+# the child starts with a fresh, default context. That silently drops the
+# cost-meter user_id / org_id / collection_id / agent_id binding the
+# worker (workers/server.py) carefully set up, so every priced event
+# fired from a child thread (apify adapter pool, pipeline step worker,
+# etc.) lands as "unattributed" / "Unassigned".
+#
+# Use these helpers at every thread-spawn / executor.submit site that
+# leads to a `log_cost` / `log_gemini_response` call. They snapshot the
+# parent's context and `Context.run()` the target inside the snapshot in
+# the child thread, so attribution carries through.
+
+
+def start_thread_with_cost_context(
+    target,
+    *,
+    args: tuple = (),
+    kwargs: dict | None = None,
+    name: str | None = None,
+    daemon: bool = True,
+) -> threading.Thread:
+    """Spawn a ``Thread`` that runs ``target`` inside a snapshot of the
+    current contextvar context — propagates cost-meter attribution
+    (and ``X-Request-ID``) across thread boundaries.
+
+    Drop-in replacement for ``threading.Thread(target=..., args=..., ...)``
+    at every spawn site whose target may eventually call :func:`log_cost`
+    or :func:`log_gemini_response`. Without it, the child thread sees
+    empty contextvars and priced rows land as ``user_id="" agent_id=NULL``.
+    """
+    ctx = contextvars.copy_context()
+    kwargs = kwargs or {}
+
+    def _runner() -> None:
+        ctx.run(target, *args, **kwargs)
+
+    t = threading.Thread(target=_runner, name=name, daemon=daemon)
+    return t
+
+
+def submit_with_cost_context(executor, target, /, *args, **kwargs):
+    """``executor.submit(target, *args, **kwargs)`` that propagates the
+    current contextvar context into the pool worker thread.
+
+    Use instead of bare ``pool.submit(fn, ...)`` whenever the submitted
+    callable might log cost — otherwise the futures execute with empty
+    cost-meter context and rows lose user / agent attribution.
+    """
+    ctx = contextvars.copy_context()
+    return executor.submit(ctx.run, target, *args, **kwargs)
+
+
 def log_cost(
     *,
     provider: str,
@@ -130,6 +196,8 @@ def log_cost(
     agent_id: str | None = None,
     request_id: str | None = None,
     raw_provider_payload: dict | None = None,
+    platform: str | None = None,
+    cost_source: str | None = None,
 ) -> None:
     """Fire-and-forget logging of one paid external call.
 
@@ -142,6 +210,31 @@ def log_cost(
     specialised helper (e.g. Google Search Grounding via
     :func:`config.cost_rates.compute_grounding_cost_micros`).
     """
+    # Normalize provider name once so the BQ column matches the rate-table
+    # key (e.g. legacy "xapi" → canonical "x_api"). compute_cost_micros
+    # already normalizes internally; we mirror it here so the persisted row
+    # is consistent across all writers.
+    try:
+        from config.cost_rates import normalize_provider
+        provider = normalize_provider(provider) or provider
+    except Exception:
+        pass
+
+    # Inherit any unset attribution fields from the bound collection context.
+    # Worker adapters (e.g. Apify in workers/collection/adapters/apify.py)
+    # pass user_id="" because they don't know it directly — the runner binds
+    # it via `collection_context_scope` at the entry. log_gemini_response
+    # already does this fallback; doing it once here covers every caller.
+    ctx = _collection_context.get() or {}
+    if not user_id:
+        user_id = ctx.get("user_id") or ""
+    if org_id is None:
+        org_id = ctx.get("org_id")
+    if collection_id is None:
+        collection_id = ctx.get("collection_id")
+    if agent_id is None:
+        agent_id = ctx.get("agent_id")
+
     # Resolve request_id from the current request scope if not supplied.
     if request_id is None:
         try:
@@ -166,6 +259,7 @@ def log_cost(
                 unit_kind=unit_kind,
                 provider_reported_cost_usd=provider_reported_cost_usd,
                 bytes_processed=bytes_processed,
+                platform=platform,
             )
         except Exception:
             # Cost computation must never block the row. NULL cost is preferred
@@ -182,6 +276,29 @@ def log_cost(
             provider, model, sub_kind,
         )
 
+    # §E billed amount — what the user's wallet is actually debited: raw
+    # provider cost × the admin-set profit margin. Stored alongside cost_micros
+    # so the Finance page can report cost vs revenue. NULL when cost is NULL
+    # (rate-table miss) — never block on telemetry.
+    billed_micros: int | None = None
+    if cost_micros is not None:
+        try:
+            from config.cost_rates import get_margin_multiplier
+
+            billed_micros = int(round(cost_micros * get_margin_multiplier()))
+        except Exception:
+            logger.warning("cost_meter: margin lookup failed — billing at cost", exc_info=True)
+            billed_micros = cost_micros
+
+    # Safety net: a priced event with no user_id is cost we can't attribute or
+    # bill. It shouldn't happen — surface it loudly so the gap gets fixed at the
+    # call site (e.g. an LLM call outside a request/collection context).
+    if cost_micros and not user_id:
+        logger.warning(
+            "cost_meter: priced event has NO user_id — unattributed cost "
+            "(provider=%s model=%s feature=%s)", provider, model, feature,
+        )
+
     metadata: dict[str, Any] = {}
     if raw_provider_payload is not None:
         # Cap raw payload size — provider responses can be huge and BQ has
@@ -193,6 +310,15 @@ def log_cost(
             metadata["raw"] = payload_str
         except Exception:
             logger.debug("cost_meter: could not serialise raw_provider_payload", exc_info=True)
+
+    # Default cost_source: providers that report exact cost (apify) pass
+    # `provider_reported_cost_usd`; everyone else looked it up in the rate
+    # table. Callers can pin a stricter label (e.g. "estimated_fallback").
+    if cost_source is None:
+        if provider_reported_cost_usd is not None:
+            cost_source = COST_SOURCE_PROVIDER_REPORTED
+        elif cost_micros is not None:
+            cost_source = COST_SOURCE_RATE_TABLE
 
     row: dict[str, Any] = {
         "event_id": str(uuid4()),
@@ -212,8 +338,11 @@ def log_cost(
         "units": int(units) if units else None,
         "unit_kind": unit_kind,
         "cost_micros": cost_micros,
+        "billed_micros": billed_micros,
         "agent_id": agent_id,
         "request_id": request_id,
+        "platform": platform,
+        "cost_source": cost_source,
     }
 
     def _insert() -> None:
@@ -226,6 +355,20 @@ def log_cost(
                 "cost_meter: BQ insert failed for provider=%s feature=%s",
                 provider, feature, exc_info=True,
             )
+        # §E: deduct the BILLED amount (cost × margin) from the user's prepaid
+        # wallet (best-effort). BigQuery above stays the source of truth for
+        # analytics/reconcile; the wallet counter is the fast balance the gate
+        # reads. `free`-tier users are simply not enforced on balance, so
+        # deducting them is harmless.
+        if billed_micros and user_id:
+            try:
+                from api.deps import get_fs
+
+                get_fs().apply_spend_micros(user_id, int(billed_micros))
+            except Exception:
+                logger.warning(
+                    "cost_meter: wallet deduction failed for user=%s", user_id, exc_info=True,
+                )
 
     threading.Thread(target=_insert, daemon=True).start()
 
@@ -245,6 +388,7 @@ def log_gemini_response(
     collection_id: str | None = None,
     agent_id: str | None = None,
     model: str | None = None,
+    platform: str | None = None,
 ) -> None:
     """Extract ``usage_metadata`` from a ``google-genai`` response and log
     one ``llm_call`` cost row.
@@ -289,6 +433,7 @@ def log_gemini_response(
             session_id=session_id,
             collection_id=collection_id or ctx.get("collection_id"),
             agent_id=agent_id or ctx.get("agent_id"),
+            platform=platform,
         )
     except Exception:
         logger.warning(

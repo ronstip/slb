@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
+from api.services.collection_service import can_access_agent, can_access_collection
 from api.middleware.request_id import get_request_id
 from api.rate_limiting import limiter
 from api.schemas.requests import CreateFromWizardRequest, RunSourcesRequest
@@ -128,9 +129,7 @@ async def create_from_wizard_endpoint(
         status_doc = fs.get_collection_status(cid)
         if not status_doc:
             continue
-        owner_id = status_doc.get("user_id")
-        owner_org = status_doc.get("org_id")
-        if owner_id != user.uid and not (user.org_id and owner_org == user.org_id):
+        if not can_access_collection(user, status_doc):
             continue
         fs.add_agent_collection(agent_id, cid)
         fs.update_collection_status(cid, agent_id=agent_id)
@@ -140,9 +139,7 @@ async def create_from_wizard_endpoint(
         src_agent = fs.get_agent(src_agent_id)
         if not src_agent:
             continue
-        src_owner = src_agent.get("user_id")
-        src_org = src_agent.get("org_id")
-        if src_owner != user.uid and not (user.org_id and src_org == user.org_id):
+        if not can_access_agent(user, src_agent):
             continue
         for cid in src_agent.get("collection_ids", []):
             if cid not in attached_existing:
@@ -280,9 +277,37 @@ async def get_agent_endpoint(agent_id: str, user: CurrentUser = Depends(get_curr
     agent = await asyncio.to_thread(get_agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+    if not can_access_agent(user, agent):
         raise HTTPException(status_code=403, detail="Access denied")
     return agent
+
+
+@router.patch("/agents/{agent_id}/visibility")
+async def set_agent_visibility_endpoint(
+    agent_id: str,
+    body: dict,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Share an agent with the org or make it private again. Owner-only.
+
+    Propagates the chosen visibility to the agent's collections so org members
+    granted access can also read its feed/data (see agent_service)."""
+    from api.services.agent_service import get_agent, set_agent_visibility
+
+    visibility = body.get("visibility")
+    if visibility not in ("private", "org"):
+        raise HTTPException(status_code=422, detail="visibility must be 'private' or 'org'")
+
+    agent = await asyncio.to_thread(get_agent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the agent owner can change sharing")
+    if visibility == "org" and not user.org_id:
+        raise HTTPException(status_code=400, detail="You are not part of an organization")
+
+    await asyncio.to_thread(set_agent_visibility, agent_id, visibility)
+    return {"ok": True, "visibility": visibility}
 
 
 @router.patch("/agents/{agent_id}")
@@ -442,8 +467,10 @@ async def run_agent_endpoint(
     agent = get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Owner-only: a run is billed to the owner's wallet, so a shared (read-only)
+    # org viewer must not be able to trigger it.
+    if agent.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the agent owner can run it")
 
     # If agent says 'running', check if it's actually stuck
     if agent.get("status") == "running":
@@ -479,8 +506,9 @@ async def run_agent_sources_endpoint(
     agent = get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Owner-only: re-collection is billed to the owner's wallet.
+    if agent.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the agent owner can run it")
 
     collection_ids = run_agent_sources(
         agent_id, agent, source_idx=body.source_idx, platform=body.platform,
@@ -637,7 +665,7 @@ async def get_agent_artifacts(
     agent = await asyncio.to_thread(get_agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+    if not can_access_agent(user, agent):
         raise HTTPException(status_code=403, detail="Access denied")
 
     artifact_ids = agent.get("artifact_ids") or []
@@ -676,7 +704,7 @@ async def get_agent_logs(
     agent = await asyncio.to_thread(get_agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+    if not can_access_agent(user, agent):
         raise HTTPException(status_code=403, detail="Access denied")
 
     fs = get_fs()
@@ -694,7 +722,7 @@ async def list_agent_runs(
     agent = await asyncio.to_thread(get_agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+    if not can_access_agent(user, agent):
         raise HTTPException(status_code=403, detail="Access denied")
 
     fs = get_fs()
@@ -713,7 +741,7 @@ async def get_agent_run(
     agent = get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.get("user_id") != user.uid and agent.get("org_id") != user.org_id:
+    if not can_access_agent(user, agent):
         raise HTTPException(status_code=403, detail="Access denied")
 
     fs = get_fs()

@@ -540,7 +540,12 @@ def _enrich_single_post(
 
             from api.services.cost_meter import log_gemini_response
 
-            log_gemini_response(response, feature="enrich", model=model)
+            # Tag platform so the Finance matrix can attribute enrichment
+            # cost (Gemini tokens) to the platform of the post being enriched —
+            # otherwise enrichment looks platform-less in the breakdown.
+            log_gemini_response(
+                response, feature="enrich", model=model, platform=post.platform,
+            )
 
             result = EnrichmentResult.model_validate_json(response.text)
             return (post.post_id, result)

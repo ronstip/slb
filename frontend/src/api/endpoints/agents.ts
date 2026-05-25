@@ -96,10 +96,21 @@ export interface AgentOutput {
   config: AgentOutputConfig;
 }
 
+export type AgentVisibility = 'private' | 'org';
+
 export interface Agent {
   agent_id: string;
   user_id: string;
   org_id: string | null;
+  /** Org-sharing for this agent. 'private' (default) = only the owner sees it;
+   *  'org' = shared with every member of the owner's organization. */
+  visibility?: AgentVisibility;
+  /** Server-computed for the requesting user: false when this agent is owned by
+   *  another member of your org and shared with you. */
+  is_owner?: boolean;
+  /** Display name (or email) of the owner — set only on agents shared with you
+   *  by someone else, so the UI can show "Shared by …". */
+  owner_label?: string | null;
   title: string;
   agent_type: AgentType;
   status: AgentStatus | null;
@@ -185,6 +196,19 @@ export function updateAgent(
   updates: Partial<Pick<Agent, 'title' | 'status' | 'data_scope' | 'enrichment_config' | 'schedule' | 'agent_type' | 'paused' | 'todos' | 'constitution' | 'outputs' | 'data_start_date' | 'data_end_date'>>,
 ): Promise<{ ok: boolean; version?: number }> {
   return apiPatch<{ ok: boolean; version?: number }>(`/agents/${agentId}`, updates);
+}
+
+/** Share an agent with the org or make it private again. Owner-only on the
+ *  server; propagates to the agent's collections so shared members can read its
+ *  feed/data. */
+export function setAgentVisibility(
+  agentId: string,
+  visibility: AgentVisibility,
+): Promise<{ ok: boolean; visibility: AgentVisibility }> {
+  return apiPatch<{ ok: boolean; visibility: AgentVisibility }>(
+    `/agents/${agentId}/visibility`,
+    { visibility },
+  );
 }
 
 export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: string; collection_ids: string[]; status: string }> {

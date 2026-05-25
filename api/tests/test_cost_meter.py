@@ -24,10 +24,38 @@ class _FakeBQ:
         return 0
 
 
+class _FakeFS:
+    """Records wallet deductions so tests stay hermetic (no real Firestore)."""
+
+    def __init__(self) -> None:
+        self.deductions: list[tuple[str, int]] = []
+
+    def apply_spend_micros(self, uid: str, micros: int) -> None:
+        self.deductions.append((uid, micros))
+
+
+@pytest.fixture(autouse=True)
+def _default_margin(monkeypatch):
+    """Pin the profit margin to 1.0 so default-margin assertions don't depend on
+    the dev Firestore pricing doc / process-cached pricing. cost_meter imports
+    `get_margin_multiplier` lazily at call time, so patching the module attr
+    takes effect. The margin-specific test re-patches to its own value."""
+    monkeypatch.setattr("config.cost_rates.get_margin_multiplier", lambda: 1.0)
+
+
 @pytest.fixture()
 def fake_bq(monkeypatch):
     fake = _FakeBQ()
     monkeypatch.setattr("api.deps.get_bq", lambda: fake)
+    # Keep wallet deduction hermetic too — cost_meter now calls get_fs().
+    monkeypatch.setattr("api.deps.get_fs", lambda: _FakeFS())
+    return fake
+
+
+@pytest.fixture()
+def fake_fs(monkeypatch):
+    fake = _FakeFS()
+    monkeypatch.setattr("api.deps.get_fs", lambda: fake)
     return fake
 
 
@@ -67,6 +95,77 @@ def test_log_cost_writes_row_with_expected_shape(fake_bq: _FakeBQ):
     assert row["input_tokens"] == 1_000_000
     assert row["output_tokens"] == 1_000_000
     assert row["cost_micros"] == 3_500_000
+    # Default margin is 1.0 → billed == cost.
+    assert row["billed_micros"] == 3_500_000
+
+
+def test_log_cost_deducts_from_wallet(monkeypatch):
+    bq = _FakeBQ()
+    fs = _FakeFS()
+    monkeypatch.setattr("api.deps.get_bq", lambda: bq)
+    monkeypatch.setattr("api.deps.get_fs", lambda: fs)
+    cost_meter.log_cost(
+        provider="gemini",
+        user_id="u1",
+        feature="chat",
+        model="gemini-3-flash-preview",
+        input_tokens=1_000_000,
+        output_tokens=1_000_000,
+    )
+    _wait_for_rows(bq)
+    # Deduction runs after the insert on the same daemon thread.
+    deadline = time.time() + 2.0
+    while time.time() < deadline and not fs.deductions:
+        time.sleep(0.01)
+    assert fs.deductions == [("u1", 3_500_000)]
+
+
+def test_log_cost_applies_margin_to_billed_and_wallet(monkeypatch):
+    # §E profit margin: wallet is debited cost × margin, and the row records
+    # both the raw cost and the billed (revenue) amount.
+    bq = _FakeBQ()
+    fs = _FakeFS()
+    monkeypatch.setattr("api.deps.get_bq", lambda: bq)
+    monkeypatch.setattr("api.deps.get_fs", lambda: fs)
+    # cost_meter does `from config.cost_rates import get_margin_multiplier`
+    # at call time, so patching the module attribute takes effect.
+    monkeypatch.setattr("config.cost_rates.get_margin_multiplier", lambda: 2.0)
+
+    cost_meter.log_cost(
+        provider="gemini",
+        user_id="u1",
+        feature="chat",
+        model="gemini-3-flash-preview",
+        input_tokens=1_000_000,
+        output_tokens=1_000_000,
+    )
+    _wait_for_rows(bq)
+    row = bq.rows[0]
+    assert row["cost_micros"] == 3_500_000
+    assert row["billed_micros"] == 7_000_000  # 3.5M × 2.0
+    deadline = time.time() + 2.0
+    while time.time() < deadline and not fs.deductions:
+        time.sleep(0.01)
+    assert fs.deductions == [("u1", 7_000_000)]  # wallet debited the BILLED amount
+
+
+def test_log_cost_null_cost_has_null_billed_and_no_deduction(monkeypatch):
+    bq = _FakeBQ()
+    fs = _FakeFS()
+    monkeypatch.setattr("api.deps.get_bq", lambda: bq)
+    monkeypatch.setattr("api.deps.get_fs", lambda: fs)
+    cost_meter.log_cost(
+        provider="not-a-real-provider",
+        user_id="u1",
+        feature="scrape",
+        units=10,
+    )
+    _wait_for_rows(bq)
+    row = bq.rows[0]
+    assert row["cost_micros"] is None
+    assert row["billed_micros"] is None
+    time.sleep(0.05)
+    assert fs.deductions == []  # nothing to charge on a rate-table miss
 
 
 def test_log_cost_honors_override(fake_bq: _FakeBQ):
@@ -140,6 +239,116 @@ def test_log_cost_unknown_provider_still_writes_row_with_null_cost(fake_bq: _Fak
     assert row["provider"] == "not-a-real-provider"
     assert row["cost_micros"] is None
     assert row["units"] == 10
+
+
+def test_log_cost_inherits_user_id_from_collection_context(fake_bq: _FakeBQ):
+    """Apify-style call sites pass user_id="" and rely on the bound
+    collection context (set by workers/server.py at task entry). Without
+    the fallback, those rows land with empty user_id and the admin
+    user-detail query (WHERE user_id = @uid) hides them — the root cause
+    of the "only Brightdata showing" bug. This test pins the fallback in
+    place so the regression can't sneak back."""
+    with cost_meter.collection_context_scope(
+        user_id="owner-uid", org_id="org-1", collection_id="col-1", agent_id="agent-1",
+    ):
+        cost_meter.log_cost(
+            provider="apify",
+            user_id="",            # adapter doesn't know the owner here
+            feature="scrape",
+            provider_reported_cost_usd=0.05,
+        )
+    _wait_for_rows(fake_bq)
+    row = fake_bq.rows[0]
+    assert row["user_id"] == "owner-uid"
+    assert row["org_id"] == "org-1"
+    assert row["collection_id"] == "col-1"
+    assert row["agent_id"] == "agent-1"
+
+
+def test_log_cost_default_cost_source_provider_reported(fake_bq: _FakeBQ):
+    """When the caller supplies `provider_reported_cost_usd`, the row's
+    cost_source defaults to "provider_reported" so the admin UI can
+    distinguish provider-reported charges from estimates without the
+    call site needing to set the label explicitly."""
+    cost_meter.log_cost(
+        provider="apify",
+        user_id="u1",
+        feature="scrape",
+        platform="instagram",
+        provider_reported_cost_usd=0.05,
+    )
+    _wait_for_rows(fake_bq)
+    row = fake_bq.rows[0]
+    assert row["cost_source"] == cost_meter.COST_SOURCE_PROVIDER_REPORTED
+    assert row["platform"] == "instagram"
+
+
+def test_log_cost_default_cost_source_rate_table(fake_bq: _FakeBQ):
+    """Gemini token rows go through compute_cost_micros (rate table); the
+    default cost_source label is "rate_table" so an admin can tell at a
+    glance which rows are looked up vs reported vs estimated."""
+    cost_meter.log_cost(
+        provider="gemini",
+        user_id="u1",
+        feature="chat",
+        model="gemini-3-flash-preview",
+        input_tokens=1_000_000,
+    )
+    _wait_for_rows(fake_bq)
+    row = fake_bq.rows[0]
+    assert row["cost_source"] == cost_meter.COST_SOURCE_RATE_TABLE
+
+
+def test_log_cost_explicit_estimated_fallback(fake_bq: _FakeBQ):
+    """Apify adapter explicitly stamps `estimated_fallback` when it had to
+    compute cost from `apify_assumed_per_post_usd` instead of trusting a
+    provider-reported number."""
+    cost_meter.log_cost(
+        provider="apify",
+        user_id="u1",
+        feature="scrape",
+        platform="tiktok",
+        provider_reported_cost_usd=0.04,  # synthesized from assumed × posts
+        cost_source=cost_meter.COST_SOURCE_ESTIMATED_FALLBACK,
+    )
+    _wait_for_rows(fake_bq)
+    row = fake_bq.rows[0]
+    assert row["cost_source"] == "estimated_fallback"
+    assert row["platform"] == "tiktok"
+
+
+def test_start_thread_with_cost_context_propagates_ctx(fake_bq: _FakeBQ):
+    """Plain `threading.Thread` does NOT inherit ContextVars from its
+    parent thread — a child thread sees the default (empty) context. This
+    silently dropped user_id+agent_id from every Apify cost row fired from
+    its per-platform worker threads. `start_thread_with_cost_context`
+    captures the parent context and re-runs the target inside it.
+
+    Pins the helper's behavior so we don't regress to the threading bug
+    that hid crawler events from per-agent Recent Activity."""
+    with cost_meter.collection_context_scope(
+        user_id="thread-uid", org_id="thread-org",
+        collection_id="thread-col", agent_id="thread-agent",
+    ):
+        def _child() -> None:
+            cost_meter.log_cost(
+                provider="apify",
+                user_id="",         # falls back to ctx
+                feature="scrape",
+                platform="facebook",
+                provider_reported_cost_usd=0.02,
+            )
+
+        t = cost_meter.start_thread_with_cost_context(_child, daemon=True)
+        t.start()
+        t.join(timeout=2)
+
+    _wait_for_rows(fake_bq)
+    row = fake_bq.rows[0]
+    assert row["user_id"] == "thread-uid"
+    assert row["agent_id"] == "thread-agent"
+    assert row["collection_id"] == "thread-col"
+    assert row["platform"] == "facebook"
 
 
 def test_log_cost_picks_up_request_id_from_contextvar(fake_bq: _FakeBQ):

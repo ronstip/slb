@@ -8,6 +8,8 @@ import {
   Compass,
   Database,
   FileText,
+  Globe,
+  Lock,
   MessageSquare,
   MoreHorizontal,
   Pause,
@@ -15,10 +17,11 @@ import {
   Play,
   StopCircle,
   Timer,
+  Users,
 } from 'lucide-react';
 import { ScheduleDialog } from './detail/ScheduleDialog.tsx';
 import type { Agent } from '../../api/endpoints/agents.ts';
-import { runAgent, updateAgent as patchAgent } from '../../api/endpoints/agents.ts';
+import { runAgent, updateAgent as patchAgent, setAgentVisibility } from '../../api/endpoints/agents.ts';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { mediaUrl } from '../../api/client.ts';
 // Import the status helpers directly from the canonical source to avoid
@@ -409,10 +412,61 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
     }
   };
 
-  const canRun = RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
+  // Ownership / sharing. `is_owner` is server-computed; default to owner for
+  // legacy payloads that predate the field so existing actions stay enabled.
+  const isOwner = task.is_owner !== false;
+  const isShared = task.visibility === 'org';
+  const canShare = isOwner && !!task.org_id;
+
+  const handleToggleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = isShared ? 'private' : 'org';
+    try {
+      await setAgentVisibility(task.agent_id, next);
+      fetchAgents();
+      toast.success(next === 'org' ? 'Shared with your organization' : 'Made private');
+    } catch {
+      toast.error('Failed to update sharing');
+    }
+  };
+
+  // Non-owners get a read-only view of a shared agent — owner-only mutations
+  // (run, stop, pause, schedule, rename, archive) are hidden.
+  const canRun =
+    isOwner && RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
   const hasArtifacts = (task.artifact_ids?.length ?? 0) > 0;
   const hasCollections = (task.collection_ids?.length ?? 0) > 0;
   const subtitle = describeDataWindow(task);
+
+  // "Shared by {owner}" for agents shared with you; a subtle "Shared" pill for
+  // the owner of a shared agent so it's clear it's visible to the org.
+  const sharedBadge = !isOwner ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+      <Users className="h-2.5 w-2.5" />
+      Shared by {task.owner_label ?? 'a teammate'}
+    </span>
+  ) : isShared ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+      <Globe className="h-2.5 w-2.5" />
+      Shared
+    </span>
+  ) : null;
+
+  const shareMenuItem = canShare ? (
+    <DropdownMenuItem onClick={handleToggleShare}>
+      {isShared ? (
+        <>
+          <Lock className="mr-2 h-3.5 w-3.5" />
+          Make private
+        </>
+      ) : (
+        <>
+          <Globe className="mr-2 h-3.5 w-3.5" />
+          Share with org
+        </>
+      )}
+    </DropdownMenuItem>
+  ) : null;
 
   return (
     <>
@@ -448,6 +502,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
               <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                 {subtitle}
               </p>
+              {sharedBadge && <div className="mt-1.5">{sharedBadge}</div>}
               <div className="mt-3 flex-1" />
               <StatsRow task={task} data={feedData} />
             </>
@@ -462,6 +517,8 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
                 </h3>
                 <StatusBadge status={task.status} paused={task.paused} />
               </div>
+
+              {sharedBadge && <div className="mb-1.5">{sharedBadge}</div>}
 
               {/* Meta info — hidden in compact mode */}
               {!compact && (
@@ -512,6 +569,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
                   </button>
                 )}
               </div>
+              {isOwner && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button type="button" className="transition-colors hover:text-foreground" onClick={(e) => e.stopPropagation()}>
@@ -519,24 +577,31 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={handleRenameOpen}>
-                    <Pencil className="mr-2 h-3.5 w-3.5" />
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {task.status === 'archived' ? (
-                    <DropdownMenuItem onClick={handleRestore}>
-                      <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
-                      Restore
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem onClick={() => setArchiveConfirmOpen(true)}>
-                      <Archive className="mr-2 h-3.5 w-3.5" />
-                      Archive
-                    </DropdownMenuItem>
+                  {shareMenuItem}
+                  {isOwner && (
+                    <>
+                      {shareMenuItem && <DropdownMenuSeparator />}
+                      <DropdownMenuItem onClick={handleRenameOpen}>
+                        <Pencil className="mr-2 h-3.5 w-3.5" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {task.status === 'archived' ? (
+                        <DropdownMenuItem onClick={handleRestore}>
+                          <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                          Restore
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem onClick={() => setArchiveConfirmOpen(true)}>
+                          <Archive className="mr-2 h-3.5 w-3.5" />
+                          Archive
+                        </DropdownMenuItem>
+                      )}
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              )}
             </div>
           ) : (
             /* Full action bar with tooltips */
@@ -559,7 +624,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
                   <TooltipContent>{task.agent_type === 'recurring' ? 'Run now' : 'Re-run'}</TooltipContent>
                 </Tooltip>
               )}
-              {task.status === 'running' && (
+              {isOwner && task.status === 'running' && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleStop}>
@@ -569,7 +634,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
                   <TooltipContent>Stop</TooltipContent>
                 </Tooltip>
               )}
-              {task.agent_type === 'recurring' && task.status !== 'running' && (
+              {isOwner && task.agent_type === 'recurring' && task.status !== 'running' && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePauseResume}>
@@ -589,7 +654,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
                   <TooltipContent>Artifacts</TooltipContent>
                 </Tooltip>
               )}
-              {task.agent_type !== 'recurring' && task.status === 'success' && (
+              {isOwner && task.agent_type !== 'recurring' && task.status === 'success' && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setScheduleOpen(true); }}>
@@ -610,6 +675,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
                 </Tooltip>
               )}
               <div className="flex-1" />
+              {isOwner && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
@@ -617,24 +683,31 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={handleRenameOpen}>
-                    <Pencil className="mr-2 h-3.5 w-3.5" />
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {task.status === 'archived' ? (
-                    <DropdownMenuItem onClick={handleRestore}>
-                      <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
-                      Restore
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem onClick={() => setArchiveConfirmOpen(true)}>
-                      <Archive className="mr-2 h-3.5 w-3.5" />
-                      Archive
-                    </DropdownMenuItem>
+                  {shareMenuItem}
+                  {isOwner && (
+                    <>
+                      {shareMenuItem && <DropdownMenuSeparator />}
+                      <DropdownMenuItem onClick={handleRenameOpen}>
+                        <Pencil className="mr-2 h-3.5 w-3.5" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {task.status === 'archived' ? (
+                        <DropdownMenuItem onClick={handleRestore}>
+                          <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                          Restore
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem onClick={() => setArchiveConfirmOpen(true)}>
+                          <Archive className="mr-2 h-3.5 w-3.5" />
+                          Archive
+                        </DropdownMenuItem>
+                      )}
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              )}
             </div>
           )}
         </div>

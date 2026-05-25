@@ -6,6 +6,7 @@ import {
 import { Users, MessageSquare, Database, FileText, DollarSign, Coins, Target } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card.tsx';
 import { getAdminOverview, getAdminActivity } from '../../../api/endpoints/admin.ts';
+import { formatUsdMicros } from '../../../lib/money.ts';
 
 function StatCard({
   title,
@@ -127,10 +128,10 @@ export function OverviewSection() {
           icon={Coins}
         />
         <StatCard
-          title="Credits Outstanding"
-          value={(overview?.credits_outstanding ?? 0).toLocaleString()}
+          title="Credit Outstanding"
+          value={formatUsdMicros(overview?.credit_outstanding_micros ?? 0)}
           icon={Coins}
-          subtitle="Across all users & orgs"
+          subtitle="Unspent balance across all users"
         />
         <StatCard title="Organizations" value={overview?.total_orgs ?? 0} icon={Users} />
       </div>

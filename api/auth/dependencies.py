@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from firebase_admin import auth as firebase_auth
 
 from api.deps import get_fs
@@ -142,13 +142,16 @@ async def get_current_user(request: Request) -> CurrentUser:
     # Import locally to avoid a circular import (admin.py imports CurrentUser).
     from api.auth.admin import is_super_admin_email
 
-    settings = get_settings()
     if not is_super_admin_email(real_user.email):
+        # IGNORE the header (don't 403). A non-admin should never be able to
+        # impersonate, but a *stale* impersonation header left in sessionStorage
+        # from a prior admin session must not brick the user's whole app — every
+        # request would otherwise 403 → /access-denied. Treat them as themselves.
         logger.warning(
-            "Non-admin %s attempted to impersonate %s — ignoring header",
+            "Non-admin %s sent impersonation header for %s — ignoring",
             redact_email(real_user.email), target_uid,
         )
-        raise HTTPException(status_code=403, detail="Impersonation requires super admin")
+        return real_user
 
     if target_uid == real_user.uid:
         return real_user
@@ -178,6 +181,22 @@ async def get_current_user(request: Request) -> CurrentUser:
         impersonated_by=real_user.uid,
         real_email=real_user.email,
     )
+
+
+async def enforce_access(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    """Router-level dependency (defense in depth) for private data endpoints.
+
+    Rejects `blocked` / expired-trial accounts server-side so a stale token can't
+    fetch data via direct API calls even though the UI gates them. Anonymous
+    landing-preview users and super admins pass; balance is NOT enforced here
+    (out-of-credit paid users can still read). Reuses the same `get_current_user`
+    resolution as the endpoint (FastAPI caches it per request — no double work).
+    """
+    if not user.is_anonymous:
+        from api.services.entitlements import require_access
+
+        require_access(user.uid)
+    return user
 
 
 def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = False) -> dict:
@@ -217,6 +236,11 @@ def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = Fals
         "org_role": org_role,
         "created_at": now,
         "last_login_at": now,
+        # §E entitlements: new accounts start blocked (admin must promote) with
+        # an empty $ wallet. Anonymous landing-page users get blocked too — they
+        # never hit a gated action, and signing in upgrades the same uid.
+        "plan": {"tier": "blocked", "trial_expires_at": None, "notes": "", "updated_at": now},
+        "credit": {"balance_micros": 0, "total_in_micros": 0, "spent_micros": 0, "updated_at": now},
     }
 
     fs.create_user(uid, user_data)

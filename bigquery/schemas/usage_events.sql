@@ -34,9 +34,22 @@ CREATE TABLE IF NOT EXISTS social_listening.usage_events (
     cached_tokens INT64,
     units INT64,                -- posts collected, snapshots, records, bytes
     unit_kind STRING,           -- posts | snapshot | records | bytes
-    cost_micros INT64,          -- USD * 1e6
+    cost_micros INT64,          -- USD * 1e6 — raw PROVIDER cost
+    billed_micros INT64,        -- USD * 1e6 — cost × profit margin; what the wallet is debited (§E, migration 0002)
     agent_id STRING,
-    request_id STRING           -- pairs cost rows with the originating user request
+    request_id STRING,          -- pairs cost rows with the originating user request
+
+    -- Platform × provider matrix (added 2026-05-24, migration 0003) — each
+    -- (provider, platform) pair has its own per-call price (e.g. Apify
+    -- charges differently for IG vs FB vs TikTok). NULL for legacy rows
+    -- and for rows that aren't platform-scoped (LLM calls, BQ queries).
+    platform STRING,            -- instagram | facebook | tiktok | x | reddit | youtube | ...
+
+    -- "Where did `cost_micros` come from" — surfaces in the admin UI so an
+    -- operator can tell whether a row reflects the provider's reported
+    -- charge, a per-call rate-table lookup, or a fallback estimate
+    -- (e.g. apify_assumed_per_post_usd when run.usageTotalUsd is silent).
+    cost_source STRING          -- provider_reported | rate_table | estimated_fallback
 )
 PARTITION BY DATE(created_at)
 CLUSTER BY event_type, user_id;

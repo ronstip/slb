@@ -41,17 +41,14 @@ _AGENT_POSTS_TVF = "social_listening.scope_posts(@agent_id)"
 
 def _check_agent_access(fs, user: CurrentUser, agent_id: str) -> dict:
     """Validate agent exists and user has access. Returns agent doc."""
+    from api.services.collection_service import can_access_agent
+
     agent = fs.get_agent(agent_id)
     if not agent:
         raise HTTPException(404, "Agent not found")
-    if agent.get("user_id") == user.uid:
-        return agent
-    if (
-        user.org_id
-        and agent.get("org_id") == user.org_id
-    ):
-        return agent
-    raise HTTPException(403, "Access denied")
+    if not can_access_agent(user, agent):
+        raise HTTPException(403, "Access denied")
+    return agent
 
 
 def _platforms_from_breakdown(value) -> list[str]:

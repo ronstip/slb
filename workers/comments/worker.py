@@ -21,6 +21,8 @@ import json
 import logging
 import sys
 
+from api.services.cost_meter import EVENT_PROVIDER, log_cost
+from config.cost_rates import normalize_provider
 from config.settings import get_settings
 from workers.collection.models import Channel
 from workers.collection.normalizer import (
@@ -34,12 +36,23 @@ from workers.shared.bq_client import BQClient
 logger = logging.getLogger(__name__)
 
 
+# Map external platform → cost-rate provider key. Adapter dispatch in
+# `wrapper.fetch_comments` uses the platform label; cost attribution uses
+# the canonical provider key from `config/cost_rates.py`.
+_PLATFORM_PROVIDER: dict[str, str] = {
+    "twitter": "x_api",
+    "x": "x_api",
+}
+
+
 def fetch_post_comments(payload: dict) -> None:
     post_id = payload.get("post_id")
     platform = payload.get("platform")
     post_url = payload.get("post_url")
     collection_id = payload.get("collection_id")
     agent_id = payload.get("agent_id")
+    user_id = payload.get("user_id")
+    org_id = payload.get("org_id")
     if not post_id or not platform or not post_url:
         raise ValueError(
             "fetch_post_comments requires post_id, platform, post_url; got: "
@@ -83,6 +96,35 @@ def fetch_post_comments(payload: dict) -> None:
         logger.info("Inserted %d comments for post %s", len(comment_rows), post_id)
     else:
         logger.info("No comments fetched for post %s", post_id)
+
+    # §E cost attribution — bill the comment fetch under the originating
+    # agent + user. Pricing: each reply tweet returned is one "search post
+    # read"; we also issue one root-tweet lookup to resolve the
+    # conversation id, so units = len(comments) + 1. NULL cost when we
+    # can't map the platform → a known provider (e.g. instagram comments,
+    # if added later) — row still goes in so the admin sees the activity.
+    provider = normalize_provider(payload.get("crawl_provider")) or _PLATFORM_PROVIDER.get(platform)
+    if provider and user_id:
+        units = len(batch.comments) + 1  # +1 = root-tweet lookup
+        try:
+            log_cost(
+                provider=provider,
+                user_id=user_id,
+                org_id=org_id,
+                feature="comments",
+                event_type=EVENT_PROVIDER,
+                sub_kind="search_per_post",
+                platform=platform,
+                units=units,
+                unit_kind="posts",
+                collection_id=collection_id,
+                agent_id=agent_id,
+            )
+        except Exception:
+            logger.warning(
+                "comments worker: cost logging failed for post %s",
+                post_id, exc_info=True,
+            )
 
 
 if __name__ == "__main__":

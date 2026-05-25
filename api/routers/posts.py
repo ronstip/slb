@@ -248,6 +248,11 @@ async def fetch_post_comments_endpoint(
         "platform": platform,
         "post_url": post["post_url"],
         "crawl_provider": post.get("crawl_provider"),
+        # §E: thread caller identity so the worker can attribute X-API cost
+        # back to the user even in dev mode (where the Cloud Tasks server
+        # binding in workers/server.py is bypassed).
+        "user_id": user.uid,
+        "org_id": user.org_id,
     }
 
     settings = get_settings()

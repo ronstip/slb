@@ -340,52 +340,43 @@ class SubscriptionResponse(BaseModel):
     is_org: bool = False
 
 
+# §E: usage is now $-wallet + action counts (no quota limits, no $ breakdown).
 class UsageResponse(BaseModel):
     period_start: str
     period_end: str
-    queries_used: int = 0
-    queries_limit: int = 50
-    collections_created: int = 0
-    collections_limit: int = 3
-    posts_collected: int = 0
-    posts_limit: int = 500
-
-
-class UsageTrendPoint(BaseModel):
-    date: str
-    queries: int = 0
+    tier: str = "free"
+    trial_expires_at: str | None = None
+    balance_micros: int = 0
+    total_in_micros: int = 0
+    spent_micros: int = 0
+    progress_pct: float = 0.0
+    chats: int = 0
     collections: int = 0
     posts: int = 0
-    user_name: str | None = None
-    user_id: str | None = None
 
 
-class UsageTrendResponse(BaseModel):
-    points: list[UsageTrendPoint]
-    granularity: str = "daily"
+# §E credit wallet ($-based, USD micros).
+class WalletResponse(BaseModel):
+    balance_micros: int = 0
+    total_in_micros: int = 0
+    spent_micros: int = 0
+    progress_pct: float = 0.0
 
 
-class CreditBalanceResponse(BaseModel):
-    credits_remaining: int = 0
-    credits_used: int = 0
-    credits_total: int = 0
-    is_org: bool = False
-
-
-class CreditPackResponse(BaseModel):
-    pack_id: str
-    name: str
-    credits: int
-    price_cents: int
+class TopUpOption(BaseModel):
+    amount_cents: int
+    label: str
     popular: bool = False
 
 
-class CreditPurchaseHistoryItem(BaseModel):
-    purchased_at: str
-    credits: int
-    amount_cents: int
-    purchased_by: str | None = None
-    purchased_by_name: str | None = None
+class CreditTransactionItem(BaseModel):
+    id: str
+    kind: str
+    amount_micros: int
+    balance_after_micros: int = 0
+    reason: str | None = None
+    created_by: str | None = None
+    created_at: str | None = None
 
 
 # --- Sessions ---

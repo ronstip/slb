@@ -21,13 +21,6 @@ export async function listCollections(): Promise<CollectionStatusResponse[]> {
   return apiGet('/collections');
 }
 
-export async function setCollectionVisibility(
-  collectionId: string,
-  visibility: 'private' | 'org',
-): Promise<{ status: string; visibility: string }> {
-  return apiPost(`/collection/${collectionId}/visibility`, { visibility });
-}
-
 export async function deleteCollection(
   collectionId: string,
 ): Promise<{ status: string }> {
@@ -48,7 +41,7 @@ export async function refreshCollectionStats(
 
 export async function updateCollection(
   collectionId: string,
-  updates: { title?: string; visibility?: string },
+  updates: { title?: string },
 ): Promise<{ status: string }> {
   return apiPatch(`/collection/${collectionId}`, updates);
 }

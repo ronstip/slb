@@ -11,7 +11,6 @@ import {
 import { Button } from '../../components/ui/button.tsx';
 import { Input } from '../../components/ui/input.tsx';
 import { Label } from '../../components/ui/label.tsx';
-import { Switch } from '../../components/ui/switch.tsx';
 import { Badge } from '../../components/ui/badge.tsx';
 import { PLATFORM_LABELS } from '../../lib/constants.ts';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
@@ -22,28 +21,26 @@ interface EditCollectionDialogProps {
   source: Source | null;
   open: boolean;
   onClose: () => void;
-  hasOrg: boolean;
 }
 
+// Org sharing now lives on the agent (see AgentCard "Share with org"), not on
+// individual collections — this dialog only edits the collection title.
 export function EditCollectionDialog({
   source,
   open,
   onClose,
-  hasOrg,
 }: EditCollectionDialogProps) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
-  const [isOrg, setIsOrg] = useState(false);
 
   useEffect(() => {
     if (source) {
       setTitle(source.title);
-      setIsOrg(source.visibility === 'org');
     }
   }, [source]);
 
   const mutation = useMutation({
-    mutationFn: (updates: { title?: string; visibility?: string }) =>
+    mutationFn: (updates: { title?: string }) =>
       updateCollection(source!.collectionId, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['collections'] });
@@ -57,19 +54,12 @@ export function EditCollectionDialog({
 
   const handleSave = () => {
     if (!source) return;
-    const updates: { title?: string; visibility?: string } = {};
-    if (title.trim() && title.trim() !== source.title) {
-      updates.title = title.trim();
-    }
-    const newVis = isOrg ? 'org' : 'private';
-    if (newVis !== source.visibility) {
-      updates.visibility = newVis;
-    }
-    if (Object.keys(updates).length === 0) {
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === source.title) {
       onClose();
       return;
     }
-    mutation.mutate(updates);
+    mutation.mutate({ title: trimmed });
   };
 
   if (!source) return null;
@@ -93,19 +83,6 @@ export function EditCollectionDialog({
               onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
             />
           </div>
-
-          {/* Visibility */}
-          {hasOrg && (
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-xs">Share with organization</Label>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Make this collection visible to all org members
-                </p>
-              </div>
-              <Switch checked={isOrg} onCheckedChange={setIsOrg} />
-            </div>
-          )}
 
           {/* Read-only info */}
           <div className="space-y-2 rounded-md bg-muted/30 p-3">

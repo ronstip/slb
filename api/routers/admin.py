@@ -11,6 +11,7 @@ from api.auth.admin import is_super_admin_email, require_super_admin
 from api.auth.dependencies import CurrentUser, get_current_user, get_real_user
 from api.deps import get_bq, get_fs
 from api.services.logging_utils import redact_email
+from config import cost_rates
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +70,10 @@ async def admin_overview(user: CurrentUser = Depends(_admin_user)):
     total_revenue_cents = sum(p.get("amount_cents", 0) for p in all_purchases)
     total_credits_purchased = sum(p.get("credits", 0) for p in all_purchases)
 
-    # Credits outstanding (sum of credits_remaining across users + orgs)
-    credits_outstanding = sum(u.get("credits_remaining", 0) for u in all_users)
-    credits_outstanding += sum(o.get("credits_remaining", 0) for o in all_orgs)
+    # §E: outstanding wallet liability — sum of remaining $ balances (USD micros).
+    credit_outstanding_micros = sum(
+        int((u.get("credit") or {}).get("balance_micros", 0)) for u in all_users
+    )
 
     # Get real totals from source-of-truth tables (not just usage_events)
     now = datetime.now(timezone.utc)
@@ -146,7 +148,7 @@ async def admin_overview(user: CurrentUser = Depends(_admin_user)):
         "avg_relevancy_pct": avg_relevancy_pct,
         "total_revenue_cents": total_revenue_cents,
         "total_credits_purchased": total_credits_purchased,
-        "credits_outstanding": credits_outstanding,
+        "credit_outstanding_micros": credit_outstanding_micros,
     }
 
 
@@ -195,11 +197,47 @@ async def admin_users(
         logger.exception("Batch usage fetch failed — continuing with empty usage")
         usage_map = {}
 
+    # §E: MTD + all-time $ spend per user — one grouped BigQuery query.
+    # BigQuery bills per byte SCANNED, so one full scan + conditional SUM is
+    # cheaper than two scans. We bill on BILLED amount (cost × margin) here
+    # to match the Finance KPIs; numerically identical at margin = 1×.
+    try:
+        spend_rows = await asyncio.to_thread(
+            get_bq().query,
+            f"""
+            SELECT user_id,
+                   SUM({_REVENUE_EXPR}) AS total_micros,
+                   SUM(CASE WHEN created_at >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH)
+                            THEN {_REVENUE_EXPR} END) AS mtd_micros
+            FROM social_listening.usage_events
+            WHERE cost_micros IS NOT NULL
+            GROUP BY user_id
+            """,
+        )
+        spend_map: dict[str, int] = {}
+        total_spend_map: dict[str, int] = {}
+        for r in spend_rows:
+            uid = r["user_id"]
+            spend_map[uid] = int(r.get("mtd_micros") or 0)
+            total_spend_map[uid] = int(r.get("total_micros") or 0)
+    except Exception:
+        logger.warning("Spend query failed — continuing without spend", exc_info=True)
+        spend_map = {}
+        total_spend_map = {}
+
     # Merge usage into user records
     users = []
     for u in all_users:
         uid = u["uid"]
+        # Skip phantom docs: `apply_spend_micros` merge-creates a users/{uid}
+        # doc (credit map only) if cost is ever logged for a uid that was never
+        # provisioned — e.g. the test placeholder "u1" or an orphaned id. They
+        # have no email and no created_at; they aren't real accounts.
+        if not u.get("email") and not u.get("created_at"):
+            continue
         usage = usage_map.get(uid, {})
+        plan = u.get("plan") or {}
+        credit = u.get("credit") or {}
         users.append({
             "uid": uid,
             "email": u.get("email", ""),
@@ -212,7 +250,10 @@ async def admin_users(
             "queries_used": usage.get("queries_used", 0),
             "collections_created": user_collections_map.get(uid, 0),
             "posts_collected": user_posts_map.get(uid, 0),
-            "credits_remaining": u.get("credits_remaining", 0),
+            "tier": plan.get("tier") or "blocked",
+            "balance_micros": int(credit.get("balance_micros", 0)),
+            "mtd_spend_micros": spend_map.get(uid, 0),
+            "total_spend_micros": total_spend_map.get(uid, 0),
         })
 
     # Search filter
@@ -234,24 +275,228 @@ async def admin_users(
     return {"users": users, "total": total}
 
 
+def _range_clause(range_key: str, start: str | None, end: str | None) -> tuple[str, dict]:
+    """Build the SQL WHERE-suffix + params for a cost-breakdown date range.
+
+    range_key: 'week' (this calendar week, Mon-start) | 'mtd' (this month) |
+    'custom' (start/end inclusive, YYYY-MM-DD) | anything else = all time.
+    """
+    if range_key == "week":
+        return " AND created_at >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), WEEK(MONDAY))", {}
+    if range_key == "mtd":
+        return " AND created_at >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH)", {}
+    if range_key == "custom":
+        clause, params = "", {}
+        if start:
+            clause += " AND created_at >= TIMESTAMP(@start)"
+            params["start"] = start
+        if end:
+            # End is inclusive of the whole day → use exclusive next-day bound.
+            try:
+                end_excl = (datetime.fromisoformat(end) + timedelta(days=1)).strftime("%Y-%m-%d")
+            except ValueError:
+                end_excl = end
+            clause += " AND created_at < TIMESTAMP(@end_excl)"
+            params["end_excl"] = end_excl
+        return clause, params
+    return "", {}
+
+
+def _cost_breakdown(user_id: str, range_key: str = "mtd", start: str | None = None, end: str | None = None) -> dict:
+    """Cost breakdown by provider + feature + platform from BigQuery (USD
+    micros). Adds a (provider, platform) matrix so an admin can see Apify
+    IG vs FB vs TikTok costs separately (each has a different per-call rate).
+    """
+    range_sql, range_params = _range_clause(range_key, start, end)
+    where = "user_id = @uid AND cost_micros IS NOT NULL" + range_sql
+    params = {"uid": user_id, **range_params}
+    bq = get_bq()
+
+    def _grouped(dimension: str) -> list[dict]:
+        try:
+            rows = bq.query(
+                f"""
+                SELECT {dimension} AS key, SUM(cost_micros) AS micros, COUNT(*) AS events
+                FROM social_listening.usage_events
+                WHERE {where}
+                GROUP BY {dimension}
+                ORDER BY micros DESC
+                """,
+                params,
+            )
+        except Exception as e:
+            logger.warning("Cost breakdown (%s) failed for %s: %s", dimension, user_id, e)
+            return []
+        return [
+            {"key": r.get("key") or "unknown", "micros": int(r.get("micros") or 0), "events": int(r.get("events") or 0)}
+            for r in rows
+        ]
+
+    by_provider = _grouped("provider")
+    by_feature = _grouped("feature")
+    by_platform_provider = _platform_provider_matrix(where, params)
+    total = sum(p["micros"] for p in by_provider)
+    return {
+        "total_micros": total,
+        "by_provider": by_provider,
+        "by_feature": by_feature,
+        "by_platform_provider": by_platform_provider,
+    }
+
+
+def _platform_provider_matrix(where: str, params: dict) -> list[dict]:
+    """Group ``usage_events`` rows by (platform, provider) so the UI can
+    render a 2-D matrix. NULL platform → "unspecified" (LLM rows that
+    aren't platform-scoped). NULL provider → "unknown".
+    """
+    bq = get_bq()
+    try:
+        rows = bq.query(
+            f"""
+            SELECT
+                COALESCE(platform, 'unspecified') AS platform,
+                COALESCE(provider, 'unknown') AS provider,
+                SUM(cost_micros) AS cost_micros,
+                SUM(COALESCE(billed_micros, cost_micros)) AS billed_micros,
+                COUNT(*) AS events
+            FROM social_listening.usage_events
+            WHERE {where}
+            GROUP BY platform, provider
+            ORDER BY cost_micros DESC
+            """,
+            params,
+        )
+    except Exception as e:
+        logger.warning("platform×provider matrix failed: %s", e)
+        return []
+    return [
+        {
+            "platform": r.get("platform") or "unspecified",
+            "provider": r.get("provider") or "unknown",
+            "cost_micros": int(r.get("cost_micros") or 0),
+            "billed_micros": int(r.get("billed_micros") or 0),
+            "events": int(r.get("events") or 0),
+        }
+        for r in rows
+    ]
+
+
+# Sentinel used in SQL to bucket rows with NULL agent_id. Translated back to
+# `None` (+ "Unassigned" label) on the Python side. Must not collide with a
+# real Firestore document id; the leading "_" makes that safe.
+_UNASSIGNED_AGENT_KEY = "_unassigned"
+
+
+def _agent_cost_breakdown(
+    user_id: str,
+    agent_meta: dict[str, dict],
+    range_key: str = "all",
+    start: str | None = None,
+    end: str | None = None,
+    fs=None,
+) -> list[dict]:
+    """Per-agent cost/billed rollup for one user.
+
+    Rows with NULL ``agent_id`` (legacy events from before agents were
+    introduced) bucket into an "Unassigned" group surfaced in the UI as a
+    signal that some paid activity isn't tied to an agent — every priced
+    event going forward should carry one.
+
+    ``agent_meta`` is a ``{agent_id: agent_doc}`` map (passed by the caller
+    so we don't hit Firestore once per agent inside the loop). Any agent_id
+    that appears in BQ but isn't in the map is fetched via ``fs.get_agent``
+    so the UI shows the agent's real name, not the raw id — covers agents
+    that were deleted, transferred, or shared from another owner.
+    """
+    range_sql, range_params = _range_clause(range_key, start, end)
+    where = "user_id = @uid AND cost_micros IS NOT NULL" + range_sql
+    params = {"uid": user_id, **range_params}
+    bq = get_bq()
+
+    try:
+        rows = bq.query(
+            f"""
+            SELECT COALESCE(agent_id, @unassigned) AS agent_id,
+                   SUM(cost_micros) AS cost_micros,
+                   SUM({_REVENUE_EXPR}) AS billed_micros,
+                   COUNT(*) AS events
+            FROM social_listening.usage_events
+            WHERE {where}
+            GROUP BY agent_id
+            ORDER BY cost_micros DESC
+            """,
+            {**params, "unassigned": _UNASSIGNED_AGENT_KEY},
+        )
+    except Exception as e:
+        logger.warning("Agent cost breakdown failed for %s: %s", user_id, e)
+        return []
+
+    out: list[dict] = []
+    for r in rows:
+        aid = r.get("agent_id")
+        if aid == _UNASSIGNED_AGENT_KEY or not aid:
+            out.append({
+                "agent_id": None,
+                "agent_name": "Unassigned",
+                "agent_icon": None,
+                "cost_micros": int(r.get("cost_micros") or 0),
+                "billed_micros": int(r.get("billed_micros") or 0),
+                "events": int(r.get("events") or 0),
+            })
+            continue
+        meta = agent_meta.get(aid)
+        if meta is None and fs is not None:
+            # Hydrate on-demand so deleted/cross-owner agents still resolve.
+            try:
+                meta = fs.get_agent(aid)
+            except Exception:
+                meta = None
+            if meta:
+                # Memoise so the second range query doesn't re-fetch.
+                agent_meta[aid] = meta
+        meta = meta or {}
+        # Agent docs use `title` (api/routers/agents.py::create_agent_endpoint);
+        # fall back to `name`/`display_name` for forward compat, then to the
+        # raw id for orphans whose Firestore doc was deleted.
+        out.append({
+            "agent_id": aid,
+            "agent_name": (
+                meta.get("title")
+                or meta.get("name")
+                or meta.get("display_name")
+                or aid
+            ),
+            "agent_icon": meta.get("icon"),
+            "cost_micros": int(r.get("cost_micros") or 0),
+            "billed_micros": int(r.get("billed_micros") or 0),
+            "events": int(r.get("events") or 0),
+        })
+    return out
+
+
 @router.get("/users/{user_id}")
 async def admin_user_detail(
     user_id: str,
     user: CurrentUser = Depends(_admin_user),
 ):
-    """Detailed view of a single user: profile, usage, credits, recent events."""
+    """Detailed view of a single user: profile, plan, $ wallet, cost breakdown,
+    credit ledger, plan/credit audit log, usage trend, recent events."""
     fs = get_fs()
     bq = get_bq()
 
-    user_doc, usage, user_collections = await asyncio.gather(
+    user_doc, usage, user_collections, user_agents = await asyncio.gather(
         asyncio.to_thread(fs.get_user, user_id),
         asyncio.to_thread(fs.get_usage, user_id),
         asyncio.to_thread(fs.list_all_collection_statuses, 1000),
+        asyncio.to_thread(fs.list_user_agents, user_id, None),
     )
 
     if not user_doc:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Index agents once so cost-by-agent doesn't hit Firestore per row.
+    agent_meta: dict[str, dict] = {a.get("agent_id"): a for a in user_agents if a.get("agent_id")}
 
     # Aggregate posts/collections from collection_status (source of truth)
     user_total_posts = sum(
@@ -266,24 +511,49 @@ async def admin_user_detail(
         if key in user_doc and hasattr(user_doc[key], "isoformat"):
             user_doc[key] = user_doc[key].isoformat()
 
-    # Credit balance (check org first)
-    org_id = user_doc.get("org_id")
-    if org_id:
-        org = await asyncio.to_thread(fs.get_org, org_id)
-        credits_remaining = org.get("credits_remaining", 0) if org else 0
-    else:
-        credits_remaining = user_doc.get("credits_remaining", 0)
+    # §E plan + $ wallet (per-user; no org inheritance).
+    plan = user_doc.get("plan") or {}
+    credit = user_doc.get("credit") or {}
+    balance = int(credit.get("balance_micros", 0))
+    total_in = int(credit.get("total_in_micros", 0))
+    trial_expires_at = plan.get("trial_expires_at")
+    if hasattr(trial_expires_at, "isoformat"):
+        trial_expires_at = trial_expires_at.isoformat()
 
-    # Recent events from BigQuery
+    org_id = user_doc.get("org_id")
+
+    # Recent events, cost breakdowns, per-agent rollups, ledger, audit
+    # (parallel where useful).
+    cost_mtd, cost_all, agents_cost_mtd, agents_cost_all, ledger, audit = await asyncio.gather(
+        asyncio.to_thread(_cost_breakdown, user_id, "mtd"),
+        asyncio.to_thread(_cost_breakdown, user_id, "all"),
+        asyncio.to_thread(_agent_cost_breakdown, user_id, agent_meta, "mtd", None, None, fs),
+        asyncio.to_thread(_agent_cost_breakdown, user_id, agent_meta, "all", None, None, fs),
+        asyncio.to_thread(fs.list_credit_transactions, user_id, 50),
+        asyncio.to_thread(fs.list_admin_audit, user_id, 50),
+    )
+
     try:
+        # Pull a large window so the grouped Recent Activity shows every
+        # priced event per agent — the UI default-collapses each accordion
+        # so the wire size only matters when an admin actually expands one.
+        # Cost-only view: hide bare counter rows (event_type=posts_collected
+        # for Apify writes a row with cost_micros=NULL because Apify is
+        # PROVIDER_REPORTED — rate-table lookup returns None for it; the real
+        # cost shows up on the sibling provider_call row). Without the
+        # filter, Recent Activity surfaces both side-by-side and the
+        # NULL-cost counter row visually competes with the real $-cost row.
         recent_events = await asyncio.to_thread(
             bq.query,
             """
-            SELECT event_id, event_type, session_id, collection_id, metadata, created_at
+            SELECT event_id, event_type, feature, provider, model,
+                   session_id, collection_id, agent_id,
+                   cost_micros, billed_micros, created_at,
+                   platform, cost_source
             FROM social_listening.usage_events
-            WHERE user_id = @uid
+            WHERE user_id = @uid AND cost_micros IS NOT NULL
             ORDER BY created_at DESC
-            LIMIT 50
+            LIMIT 1000
             """,
             {"uid": user_id},
         )
@@ -291,24 +561,37 @@ async def admin_user_detail(
         logger.warning("BQ recent events query failed for %s: %s", user_id, e)
         recent_events = []
 
-    # Usage trend (last 30 days)
+    # Usage trend (last 30 days) — per-user cost vs revenue from usage_events
+    # (replaces the old queries/collections/posts counters; the $ view is the
+    # useful one now that we bill for usage).
     now = datetime.now(timezone.utc)
     start_date = now - timedelta(days=30)
     try:
-        daily_logs = await asyncio.to_thread(fs.get_usage_daily, user_id, start_date, now)
-    except Exception:
-        daily_logs = {}
+        trend_rows = await asyncio.to_thread(
+            bq.query,
+            f"""
+            SELECT FORMAT_DATE('%Y-%m-%d', DATE(created_at)) AS date,
+                   SUM(cost_micros) AS cost, SUM({_REVENUE_EXPR}) AS revenue
+            FROM social_listening.usage_events
+            WHERE user_id = @uid AND cost_micros IS NOT NULL
+                  AND created_at >= TIMESTAMP(@start)
+            GROUP BY date
+            """,
+            {"uid": user_id, "start": start_date.strftime("%Y-%m-%d")},
+        )
+    except Exception as e:
+        logger.warning("BQ usage trend query failed for %s: %s", user_id, e)
+        trend_rows = []
 
+    by_day = {r.get("date"): r for r in trend_rows}
     trend = []
     for i in range(30):
-        day = start_date + timedelta(days=i + 1)
-        day_str = day.strftime("%Y-%m-%d")
-        entry = daily_logs.get(day_str, {})
+        day_str = (start_date + timedelta(days=i + 1)).strftime("%Y-%m-%d")
+        row = by_day.get(day_str) or {}
         trend.append({
             "date": day_str,
-            "queries": entry.get("queries", 0),
-            "collections": entry.get("collections", 0),
-            "posts": entry.get("posts", 0),
+            "cost_micros": int(row.get("cost") or 0),
+            "billed_micros": int(row.get("revenue") or 0),
         })
 
     return {
@@ -323,10 +606,154 @@ async def admin_user_detail(
         "queries_used": usage.get("queries_used", 0),
         "collections_created": user_total_collections,
         "posts_collected": user_total_posts,
-        "credits_remaining": credits_remaining,
+        "agents_count": len(user_agents),
+        "plan": {
+            "tier": plan.get("tier") or "blocked",
+            "trial_expires_at": trial_expires_at,
+            "notes": plan.get("notes", ""),
+        },
+        "credit": {
+            "balance_micros": balance,
+            "total_in_micros": total_in,
+            "spent_micros": int(credit.get("spent_micros", 0)),
+            "progress_pct": round(balance / total_in * 100, 1) if total_in > 0 else 0.0,
+        },
+        "cost_mtd": cost_mtd,
+        "cost_all_time": cost_all,
+        "cost_by_agent_mtd": agents_cost_mtd,
+        "cost_by_agent_all_time": agents_cost_all,
+        "credit_transactions": ledger,
+        "audit_log": audit,
         "recent_events": recent_events,
         "usage_trend": trend,
     }
+
+
+# ---------------------------------------------------------------------------
+# §E — plan + credit administration (super-admin only)
+# ---------------------------------------------------------------------------
+
+
+class UpdatePlanRequest(BaseModel):
+    tier: str  # blocked | free | trial | paid
+    trial_expires_at: str | None = None  # ISO date/datetime; trial only
+    notes: str | None = None
+
+
+class GrantCreditRequest(BaseModel):
+    amount_micros: int | None = None  # exact micros, OR
+    amount_cents: int | None = None  # convenience: dollars*100
+    reason: str = ""
+    kind: str = "grant"  # grant | adjustment | refund
+
+
+_VALID_TIERS = {"blocked", "free", "trial", "paid"}
+
+
+@router.patch("/users/{user_id}/plan")
+async def admin_update_plan(
+    user_id: str,
+    body: UpdatePlanRequest,
+    admin: CurrentUser = Depends(_admin_user),
+):
+    """Set a user's entitlement tier (+ optional trial expiry / notes)."""
+    if body.tier not in _VALID_TIERS:
+        raise HTTPException(status_code=400, detail=f"tier must be one of {sorted(_VALID_TIERS)}")
+
+    fs = get_fs()
+    target = await asyncio.to_thread(fs.get_user, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    before = target.get("plan") or {}
+
+    trial_expires_at = None
+    if body.tier == "trial" and body.trial_expires_at:
+        try:
+            trial_expires_at = datetime.fromisoformat(body.trial_expires_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="trial_expires_at must be ISO format")
+
+    fields: dict = {"tier": body.tier, "trial_expires_at": trial_expires_at, "updated_by": admin.uid}
+    if body.notes is not None:
+        fields["notes"] = body.notes
+
+    await asyncio.to_thread(fs.set_plan, user_id, **fields)
+
+    from api.services import entitlements
+    entitlements.invalidate(user_id)
+
+    await asyncio.to_thread(
+        fs.write_admin_audit,
+        {
+            "event": "plan_change",
+            "target_uid": user_id,
+            "target_email": target.get("email"),
+            "actor_uid": admin.uid,
+            "actor_email": admin.email,
+            "before": {"tier": before.get("tier")},
+            "after": {"tier": body.tier, "trial_expires_at": body.trial_expires_at, "notes": body.notes},
+        },
+    )
+    logger.info("Admin %s set tier=%s on %s", admin.email, body.tier, user_id)
+    return {"status": "ok", "tier": body.tier}
+
+
+@router.post("/users/{user_id}/credit")
+async def admin_grant_credit(
+    user_id: str,
+    body: GrantCreditRequest,
+    admin: CurrentUser = Depends(_admin_user),
+):
+    """Grant / adjust a user's $ wallet. Amount in micros or cents."""
+    if body.amount_micros is not None:
+        amount = int(body.amount_micros)
+    elif body.amount_cents is not None:
+        amount = int(body.amount_cents) * 10_000
+    else:
+        raise HTTPException(status_code=400, detail="amount_micros or amount_cents required")
+    if amount == 0:
+        raise HTTPException(status_code=400, detail="amount must be non-zero")
+    if body.kind not in {"grant", "adjustment", "refund"}:
+        raise HTTPException(status_code=400, detail="invalid kind")
+
+    fs = get_fs()
+    target = await asyncio.to_thread(fs.get_user, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_balance = await asyncio.to_thread(
+        fs.add_credit_micros, user_id, amount, body.kind, body.reason, admin.uid, None,
+    )
+
+    from api.services import entitlements
+    entitlements.invalidate(user_id)
+
+    await asyncio.to_thread(
+        fs.write_admin_audit,
+        {
+            "event": "credit_grant",
+            "target_uid": user_id,
+            "target_email": target.get("email"),
+            "actor_uid": admin.uid,
+            "actor_email": admin.email,
+            "after": {"amount_micros": amount, "kind": body.kind, "reason": body.reason, "balance_after_micros": new_balance},
+        },
+    )
+    logger.info("Admin %s %s %d micros to %s", admin.email, body.kind, amount, user_id)
+    return {"status": "ok", "balance_micros": new_balance}
+
+
+@router.get("/users/{user_id}/cost")
+async def admin_user_cost(
+    user_id: str,
+    range: str = Query("mtd", pattern="^(week|mtd|all|custom)$"),
+    start: str | None = Query(None, description="ISO date (custom range)"),
+    end: str | None = Query(None, description="ISO date, inclusive (custom range)"),
+    admin: CurrentUser = Depends(_admin_user),
+):
+    """Cost breakdown by provider + feature for a user (week | mtd | all | custom)."""
+    return await asyncio.to_thread(_cost_breakdown, user_id, range, start, end)
 
 
 # ---------------------------------------------------------------------------
@@ -619,66 +1046,464 @@ async def admin_collection_audit(
 
 
 # ---------------------------------------------------------------------------
-# Revenue
+# Finance — platform-wide economics (§E).
+#   cost      = SUM(usage_events.cost_micros)        — what WE pay providers (all usage)
+#   revenue   = SUM(credit_transactions purchases)   — real cash users paid us
+#   granted   = non-purchase credit-in (admin grants/adjustments) — NOT revenue
+#   net       = revenue − cost                       — true P&L (negative while
+#               you subsidise free/trial/test usage with no paying customers)
+# billed_micros (cost × margin) is still tracked per usage row and surfaced in
+# the by-tier breakdown as "usage value", but it is NOT counted as revenue —
+# a wallet funded by an admin grant isn't money we earned.
 # ---------------------------------------------------------------------------
 
+_REVENUE_EXPR = "COALESCE(billed_micros, cost_micros)"
 
-@router.get("/revenue")
-async def admin_revenue(
-    days: int = Query(90, ge=1, le=365),
-    user: CurrentUser = Depends(_admin_user),
-):
-    """Revenue metrics: total, daily breakdown, recent purchases."""
-    fs = get_fs()
 
-    purchases = await asyncio.to_thread(fs.get_all_credit_purchases)
+def _range_bounds(range_key: str, start: str | None, end: str | None):
+    """Python [start, end) datetimes mirroring `_range_clause` (for the credit
+    ledger, which we filter in Python rather than SQL). Returns (start, end),
+    either of which may be None (= unbounded)."""
+    now = datetime.now(timezone.utc)
+    if range_key == "week":
+        monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        return monday, None
+    if range_key == "mtd":
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0), None
+    if range_key == "custom":
+        s = e = None
+        if start:
+            try:
+                s = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
+            except ValueError:
+                s = None
+        if end:
+            try:
+                e = (datetime.fromisoformat(end) + timedelta(days=1)).replace(tzinfo=timezone.utc)
+            except ValueError:
+                e = None
+        return s, e
+    return None, None
 
-    # Convert timestamps for filtering
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    cutoff_str = cutoff.isoformat()
 
-    filtered = [
-        p for p in purchases
-        if (p.get("purchased_at") or "") >= cutoff_str
+def _finance_breakdown(
+    range_key: str,
+    start: str | None,
+    end: str | None,
+    tier_by_uid: dict[str, str],
+    credit: dict[str, int],
+    unspent_purchased_micros: int = 0,
+) -> dict:
+    """Platform economics: provider cost (BQ) vs real revenue (purchases).
+
+    Revenue is cash users actually paid (`credit['purchase']`); admin grants and
+    all usage-derived "billed" amounts are NOT revenue. The by-tier breakdown
+    still shows usage cost/value per tier so internal/free spend is visible.
+    """
+    range_sql, params = _range_clause(range_key, start, end)
+    where = "cost_micros IS NOT NULL" + range_sql
+    bq = get_bq()
+
+    def _one(sql: str) -> list[dict]:
+        try:
+            return list(bq.query(sql, params))
+        except Exception as e:
+            logger.warning("Finance query failed: %s", e)
+            return []
+
+    totals = _one(
+        f"""
+        SELECT SUM(cost_micros) AS cost, SUM({_REVENUE_EXPR}) AS revenue, COUNT(*) AS events
+        FROM social_listening.usage_events WHERE {where}
+        """
+    )
+    t = totals[0] if totals else {}
+    cost_micros = int(t.get("cost") or 0)
+    revenue_micros = int(t.get("revenue") or 0)
+
+    def _grouped(dimension: str) -> list[dict]:
+        rows = _one(
+            f"""
+            SELECT {dimension} AS key, SUM(cost_micros) AS cost,
+                   SUM({_REVENUE_EXPR}) AS revenue, COUNT(*) AS events
+            FROM social_listening.usage_events WHERE {where}
+            GROUP BY {dimension} ORDER BY cost DESC
+            """
+        )
+        return [
+            {
+                "key": r.get("key") or "unknown",
+                "cost_micros": int(r.get("cost") or 0),
+                "revenue_micros": int(r.get("revenue") or 0),
+                "events": int(r.get("events") or 0),
+            }
+            for r in rows
+        ]
+
+    series_rows = _one(
+        f"""
+        SELECT FORMAT_DATE('%Y-%m-%d', DATE(created_at)) AS date,
+               SUM(cost_micros) AS cost, SUM({_REVENUE_EXPR}) AS revenue
+        FROM social_listening.usage_events WHERE {where}
+        GROUP BY date ORDER BY date
+        """
+    )
+    series = [
+        {
+            "date": r.get("date"),
+            "cost_micros": int(r.get("cost") or 0),
+            "revenue_micros": int(r.get("revenue") or 0),
+        }
+        for r in series_rows
     ]
 
-    total_revenue_cents = sum(p.get("amount_cents", 0) for p in filtered)
-    total_purchases = len(filtered)
-    avg_purchase_cents = total_revenue_cents // total_purchases if total_purchases else 0
+    # Per-user → bucket usage cost/value by the user's tier so internal/free/
+    # unattributed spend is visible (it's cost we absorb, not revenue).
+    per_user = _one(
+        f"""
+        SELECT user_id, SUM(cost_micros) AS cost, SUM({_REVENUE_EXPR}) AS revenue,
+               COUNT(*) AS events
+        FROM social_listening.usage_events WHERE {where}
+        GROUP BY user_id
+        """
+    )
+    tier_agg: dict[str, dict] = {}
+    for r in per_user:
+        uid = r.get("user_id") or ""
+        tier = "unattributed" if not uid else tier_by_uid.get(uid, "deleted")
+        bucket = tier_agg.setdefault(
+            tier, {"key": tier, "cost_micros": 0, "revenue_micros": 0, "events": 0}
+        )
+        bucket["cost_micros"] += int(r.get("cost") or 0)
+        bucket["revenue_micros"] += int(r.get("revenue") or 0)  # usage value (billed), not cash
+        bucket["events"] += int(r.get("events") or 0)
 
-    # Daily aggregation
-    daily_map: dict[str, dict] = {}
-    for p in filtered:
-        purchased_at = p.get("purchased_at", "")
-        day = purchased_at[:10] if len(purchased_at) >= 10 else "unknown"
-        if day not in daily_map:
-            daily_map[day] = {"date": day, "revenue_cents": 0, "purchases": 0}
-        daily_map[day]["revenue_cents"] += p.get("amount_cents", 0)
-        daily_map[day]["purchases"] += 1
+    by_tier = sorted(tier_agg.values(), key=lambda b: b["cost_micros"], reverse=True)
 
-    daily_revenue = sorted(daily_map.values(), key=lambda d: d["date"])
+    purchases = int(credit.get("purchase", 0))
+    granted = int(credit.get("grant", 0)) + int(credit.get("adjustment", 0)) + int(credit.get("refund", 0))
 
-    # Recent purchases (last 20)
-    recent = filtered[:20]
-    recent_purchases = [
+    # Platform × provider matrix — each (provider, platform) pair has its
+    # own per-call price. Apify alone splits IG/FB/TikTok runs into
+    # separately-priced actor calls; rolling them into "Apify $0.26" hides
+    # whether a single platform dominates the cost.
+    matrix = _platform_provider_matrix(where, params)
+
+    # Cost-source roll-up — tells the operator what fraction of recorded
+    # cost is "real" (provider-reported) vs "estimated" (apify fallback)
+    # vs "rate_table". One row per source so the Finance page surfaces
+    # estimate exposure without drilling into individual events.
+    by_cost_source_rows = _one(
+        f"""
+        SELECT COALESCE(cost_source, 'unknown') AS source,
+               SUM(cost_micros) AS cost_micros,
+               SUM({_REVENUE_EXPR}) AS billed_micros,
+               COUNT(*) AS events
+        FROM social_listening.usage_events
+        WHERE {where}
+        GROUP BY source
+        ORDER BY cost_micros DESC
+        """
+    )
+    by_cost_source = [
         {
-            "purchased_at": p.get("purchased_at", ""),
-            "credits": p.get("credits", 0),
-            "amount_cents": p.get("amount_cents", 0),
-            "user_id": p.get("user_id"),
-            "org_id": p.get("org_id"),
-            "purchased_by_name": p.get("purchased_by_name"),
+            "key": r.get("source") or "unknown",
+            "cost_micros": int(r.get("cost_micros") or 0),
+            "revenue_micros": int(r.get("billed_micros") or 0),
+            "events": int(r.get("events") or 0),
         }
-        for p in recent
+        for r in by_cost_source_rows
     ]
 
     return {
-        "total_revenue_cents": total_revenue_cents,
-        "total_purchases": total_purchases,
-        "avg_purchase_cents": avg_purchase_cents,
-        "daily_revenue": daily_revenue,
-        "recent_purchases": recent_purchases,
+        "cost_micros": cost_micros,
+        "revenue_micros": purchases,            # real cash in (purchases only)
+        "granted_micros": granted,              # credit we issued (not revenue)
+        "net_micros": purchases - cost_micros,  # true P&L
+        "usage_billed_micros": revenue_micros,  # cost × margin across all usage (informational)
+        # Point-in-time snapshot (NOT range-filterable — credit balances are
+        # live counters in Firestore). The wallet liability we still owe
+        # users in deliverable usage.
+        "unspent_purchased_micros": int(unspent_purchased_micros or 0),
+        "margin_multiplier": cost_rates.get_margin_multiplier(),
+        "events": int(t.get("events") or 0),
+        "by_provider": _grouped("provider"),
+        "by_feature": _grouped("feature"),
+        "by_tier": by_tier,
+        "by_platform_provider": matrix,
+        "by_cost_source": by_cost_source,
+        "series": series,
     }
+
+
+@router.get("/finance")
+async def admin_finance(
+    range: str = Query("mtd"),
+    start: str | None = None,
+    end: str | None = None,
+    user: CurrentUser = Depends(_admin_user),
+):
+    """Platform economics: provider cost vs real (purchase) revenue + breakdowns."""
+    fs = get_fs()
+    all_users = await asyncio.to_thread(fs.list_all_users)
+    tier_by_uid: dict[str, str] = {}
+    unspent_purchased_micros = 0
+    for u in all_users:
+        uid = u.get("uid")
+        if not uid:
+            continue
+        tier = (u.get("plan") or {}).get("tier") or "blocked"
+        tier_by_uid[uid] = "admin" if is_super_admin_email(u.get("email")) else tier
+        # Derive wallet liability in the same loop — avoids a second
+        # Firestore stream just to sum credit balances. Skip phantom docs
+        # (same rule as admin_users at line 225).
+        if u.get("email") or u.get("created_at"):
+            credit_doc = u.get("credit") or {}
+            unspent_purchased_micros += int(credit_doc.get("balance_micros") or 0)
+
+    start_dt, end_dt = _range_bounds(range, start, end)
+    credit = await asyncio.to_thread(fs.sum_credit_in, start_dt, end_dt)
+    return await asyncio.to_thread(
+        _finance_breakdown, range, start, end, tier_by_uid, credit,
+        unspent_purchased_micros,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pricing — admin-editable provider rates + profit margin (§E).
+# Curated knobs only (see config/cost_rates.py); persisted to app_config/pricing
+# and deep-merged over the code seed at runtime.
+# ---------------------------------------------------------------------------
+
+_GEMINI_MODELS = (
+    "gemini-3-flash-preview",
+    "gemini-3-pro-preview",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+)
+
+
+# Scraper providers + platforms exposed in the per-(provider, platform)
+# matrix editor. Order = display order in the UI. The "*" column on the
+# UI side maps to the wildcard cell (`scraper_rates_per_platform[p]["*"]`)
+# and is the fallback used when no platform-specific cell is set.
+_SCRAPER_PROVIDERS = ("apify", "brightdata", "x_api", "vetric")
+_SCRAPER_PLATFORMS = ("instagram", "facebook", "tiktok", "twitter", "reddit", "youtube")
+
+
+def _scraper_matrix_view() -> dict[str, dict[str, float | None]]:
+    """Project the live scraper rate matrix into the UI shape.
+
+    Always emits a cell (possibly ``None``) for every (provider, platform)
+    pair in ``_SCRAPER_PROVIDERS × _SCRAPER_PLATFORMS`` plus the wildcard
+    "*" column, so the editor can render an even grid.
+
+    The wildcard "*" cell falls through to the **legacy single rate** from
+    ``COST_RATES`` (BrightData per-record, X_api per-unit, Vetric per-call,
+    Apify assumed-per-post) when the matrix hasn't been edited yet — that
+    way the admin opens the editor and immediately sees the rates that
+    were in effect, instead of an empty grid that looks like everything
+    is unconfigured.
+
+    Per-platform cells stay ``None`` (no override) until the admin sets one;
+    the live cost-lookup code in ``compute_cost_micros`` already falls back
+    to the wildcard / legacy table when a platform cell is missing.
+    """
+    matrix = cost_rates.get_scraper_rates_per_platform()
+    legacy_rates = cost_rates.get_active_rates()
+
+    # Effective wildcard rate per provider — prefer an explicit matrix cell,
+    # fall back to the legacy single rate in COST_RATES so the editor shows
+    # the value that's actually being applied.
+    legacy_wildcard = {
+        "apify": cost_rates.get_apify_assumed_per_post_usd(),
+        "brightdata": ((legacy_rates.get("brightdata") or {}).get("*") or {}).get("per_record_usd"),
+        "x_api": ((legacy_rates.get("x_api") or {}).get("*") or {}).get("per_unit_usd"),
+        "vetric": ((legacy_rates.get("vetric") or {}).get("*") or {}).get("per_call_usd"),
+    }
+
+    out: dict[str, dict[str, float | None]] = {}
+    for prov in _SCRAPER_PROVIDERS:
+        cells = matrix.get(prov) or {}
+        out[prov] = {p: cells.get(p) for p in _SCRAPER_PLATFORMS}
+        out[prov]["*"] = cells.get("*", legacy_wildcard.get(prov))
+    return out
+
+
+def _curated_pricing_view() -> dict:
+    """Project the effective rate table down to the curated, editable knobs."""
+    r = cost_rates.get_active_rates()
+    gem = r.get("gemini", {})
+    gs = r.get("google_search", {})
+    return {
+        "margin_multiplier": cost_rates.get_margin_multiplier(),
+        "apify_assumed_per_post_usd": cost_rates.get_apify_assumed_per_post_usd(),
+        # Per-(provider, platform) scraper matrix — drives the live cost
+        # row $ for all scrapers (Apify fallback path + BrightData / X_api /
+        # Vetric rate-table replacement). The Pricing editor renders this
+        # as a grid; a cell that's NULL means "no override, use wildcard".
+        "scraper_rates_per_platform": _scraper_matrix_view(),
+        "gemini": {
+            m: {
+                "input_per_mtok": gem.get(m, {}).get("input_per_mtok"),
+                "output_per_mtok": gem.get(m, {}).get("output_per_mtok"),
+                "cached_per_mtok": gem.get(m, {}).get("cached_per_mtok"),
+            }
+            for m in _GEMINI_MODELS
+        },
+        "google_search_gemini3_per_query_usd": gs.get("gemini-3", {}).get("per_query_usd"),
+        "google_search_gemini25_per_prompt_usd": gs.get("gemini-2.5", {}).get("per_prompt_usd"),
+        # Legacy single rates kept so callers that haven't filled in the
+        # matrix don't lose their pricing. New code prefers the matrix.
+        "brightdata_per_record_usd": r.get("brightdata", {}).get("*", {}).get("per_record_usd"),
+        "x_api_per_unit_usd": r.get("x_api", {}).get("*", {}).get("per_unit_usd"),
+        "vetric_per_call_usd": r.get("vetric", {}).get("*", {}).get("per_call_usd"),
+        "bq_per_tb_processed_usd": r.get("bq", {}).get("per_tb_processed_usd"),
+        "gcs_per_gb_stored_usd": r.get("gcs", {}).get("per_gb_stored_usd"),
+        "gcs_per_gb_egress_usd": r.get("gcs", {}).get("per_gb_egress_usd"),
+    }
+
+
+class _GeminiRate(BaseModel):
+    input_per_mtok: float
+    output_per_mtok: float
+    cached_per_mtok: float
+
+
+class PricingUpdate(BaseModel):
+    margin_multiplier: float | None = None
+    apify_assumed_per_post_usd: float | None = None
+    # Per-(provider, platform) scraper matrix. Only providers + platforms
+    # whose cells the admin actually touched need to be present; omitted
+    # ones keep their current value. A cell value of ``None`` clears that
+    # cell (so it falls through to the wildcard "*" for that provider).
+    # Schema: ``{provider: {platform_or_star: usd | None}}``.
+    scraper_rates_per_platform: dict[str, dict[str, float | None]] | None = None
+    gemini: dict[str, _GeminiRate] | None = None
+    google_search_gemini3_per_query_usd: float | None = None
+    google_search_gemini25_per_prompt_usd: float | None = None
+    brightdata_per_record_usd: float | None = None
+    x_api_per_unit_usd: float | None = None
+    vetric_per_call_usd: float | None = None
+    bq_per_tb_processed_usd: float | None = None
+    gcs_per_gb_stored_usd: float | None = None
+    gcs_per_gb_egress_usd: float | None = None
+
+
+def _build_rate_overrides(body: PricingUpdate) -> dict:
+    """Translate the curated payload into the nested COST_RATES override shape."""
+    overrides: dict = {}
+    if body.gemini:
+        overrides["gemini"] = {
+            m: rate.model_dump() for m, rate in body.gemini.items() if m in _GEMINI_MODELS
+        }
+    gs: dict = {}
+    if body.google_search_gemini3_per_query_usd is not None:
+        gs["gemini-3"] = {"per_query_usd": body.google_search_gemini3_per_query_usd}
+    if body.google_search_gemini25_per_prompt_usd is not None:
+        gs["gemini-2.5"] = {"per_prompt_usd": body.google_search_gemini25_per_prompt_usd}
+        gs["*"] = {"per_prompt_usd": body.google_search_gemini25_per_prompt_usd}
+    if gs:
+        overrides["google_search"] = gs
+    if body.brightdata_per_record_usd is not None:
+        overrides["brightdata"] = {"*": {"per_record_usd": body.brightdata_per_record_usd}}
+    if body.x_api_per_unit_usd is not None:
+        v = body.x_api_per_unit_usd
+        # Mirror across the read endpoints so both the estimate (reads `*`) and
+        # actual per-call logging (reads sub_kind) reflect the edit.
+        overrides["x_api"] = {
+            "*": {"per_unit_usd": v},
+            "search_per_post": {"per_unit_usd": v},
+            "lookup_per_call": {"per_unit_usd": v},
+        }
+    if body.vetric_per_call_usd is not None:
+        overrides["vetric"] = {"*": {"per_call_usd": body.vetric_per_call_usd}}
+    if body.bq_per_tb_processed_usd is not None:
+        overrides["bq"] = {"per_tb_processed_usd": body.bq_per_tb_processed_usd}
+    gcs: dict = {}
+    if body.gcs_per_gb_stored_usd is not None:
+        gcs["per_gb_stored_usd"] = body.gcs_per_gb_stored_usd
+    if body.gcs_per_gb_egress_usd is not None:
+        gcs["per_gb_egress_usd"] = body.gcs_per_gb_egress_usd
+    if gcs:
+        overrides["gcs"] = gcs
+    return overrides
+
+
+@router.get("/pricing")
+async def admin_get_pricing(user: CurrentUser = Depends(_admin_user)):
+    """Return the curated, editable pricing knobs (effective values) + metadata."""
+    fs = get_fs()
+    doc = await asyncio.to_thread(fs.get_pricing_config)
+    view = await asyncio.to_thread(_curated_pricing_view)
+    view["updated_at"] = doc.get("updated_at")
+    view["updated_by"] = doc.get("updated_by")
+    return view
+
+
+@router.put("/pricing")
+async def admin_update_pricing(
+    body: PricingUpdate,
+    user: CurrentUser = Depends(_admin_user),
+):
+    """Persist edited rates + margin; invalidate caches; audit the change."""
+    if body.margin_multiplier is not None and body.margin_multiplier <= 0:
+        raise HTTPException(status_code=400, detail="margin_multiplier must be > 0")
+
+    fs = get_fs()
+    before = await asyncio.to_thread(_curated_pricing_view)
+
+    overrides = _build_rate_overrides(body)
+    # Merge new overrides over any existing ones so partial edits don't drop
+    # previously-saved knobs.
+    pricing_doc = await asyncio.to_thread(fs.get_pricing_config)
+    existing = pricing_doc.get("rate_overrides") or {}
+    merged = cost_rates._deep_merge(existing, overrides)
+
+    # Merge the scraper (provider × platform) matrix. The body only sends
+    # cells the admin actually touched; an explicit ``null`` clears that
+    # cell so it falls through to the provider's "*" wildcard. Preserves
+    # providers + platforms not in the editor today (forward compat).
+    scraper_matrix_merged: dict | None = None
+    if body.scraper_rates_per_platform is not None:
+        existing_matrix = dict(pricing_doc.get("scraper_rates_per_platform") or {})
+        for prov, by_plat in body.scraper_rates_per_platform.items():
+            if not isinstance(by_plat, dict):
+                continue
+            cells = dict(existing_matrix.get(prov) or {})
+            for plat, val in by_plat.items():
+                if val is None:
+                    cells.pop(plat, None)
+                else:
+                    cells[plat] = float(val)
+            if cells:
+                existing_matrix[prov] = cells
+            else:
+                existing_matrix.pop(prov, None)
+        scraper_matrix_merged = existing_matrix
+
+    await asyncio.to_thread(
+        fs.set_pricing_config,
+        rate_overrides=merged,
+        margin_multiplier=body.margin_multiplier,
+        apify_assumed_per_post_usd=body.apify_assumed_per_post_usd,
+        scraper_rates_per_platform=scraper_matrix_merged,
+        updated_by=user.email,
+    )
+    cost_rates.invalidate_pricing_cache()
+
+    after = await asyncio.to_thread(_curated_pricing_view)
+    await asyncio.to_thread(
+        fs.write_admin_audit,
+        {
+            "event": "pricing_change",
+            "actor_uid": user.uid,
+            "actor_email": user.email,
+            "before": before,
+            "after": after,
+        },
+    )
+    return after
 
 
 # ---------------------------------------------------------------------------

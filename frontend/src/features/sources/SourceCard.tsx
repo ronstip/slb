@@ -9,9 +9,6 @@ import {
   BarChart2,
   Check,
   Download,
-  Eye,
-  EyeOff,
-  Globe,
   Loader2,
   LogOut,
   MoreHorizontal,
@@ -35,7 +32,6 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog.tsx';
 import {
-  setCollectionVisibility,
   deleteCollection,
   downloadCollection,
 } from '../../api/endpoints/collections.ts';
@@ -52,7 +48,6 @@ export function SourceCard({ source }: SourceCardProps) {
   const { profile } = useAuth();
   const toggleActive = useSourcesStore((s) => s.toggleActive);
   const removeFromSession = useSourcesStore((s) => s.removeFromSession);
-  const updateSource = useSourcesStore((s) => s.updateSource);
   const removeSource = useSourcesStore((s) => s.removeSource);
   const setFeedSource = useStudioStore((s) => s.setFeedSource);
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
@@ -71,8 +66,6 @@ export function SourceCard({ source }: SourceCardProps) {
   const isReady = source.status === 'success';
   const isFailed = source.status === 'failed';
   const isOwner = !source.userId || source.userId === profile?.uid;
-  const isInOrg = !!profile?.org_id;
-  const isShared = source.visibility === 'org';
 
   const platforms = source.config.platforms
     .map((p) => PLATFORM_LABELS[p] || p)
@@ -83,18 +76,6 @@ export function SourceCard({ source }: SourceCardProps) {
     setActiveTab('feed');
     if (studioPanelCollapsed) {
       toggleStudioPanel();
-    }
-  };
-
-  const handleToggleVisibility = async (e: Event) => {
-    e.stopPropagation();
-    const newVisibility = isShared ? 'private' : 'org';
-    try {
-      await setCollectionVisibility(source.collectionId, newVisibility);
-      updateSource(source.collectionId, { visibility: newVisibility });
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-    } catch (err) {
-      console.error('Source operation failed:', err);
     }
   };
 
@@ -197,7 +178,6 @@ export function SourceCard({ source }: SourceCardProps) {
             >
               {source.title}
             </span>
-            {isShared && <Globe className="h-3 w-3 shrink-0 text-accent-blue" />}
           </div>
 
           {/* Meta row */}
@@ -263,23 +243,6 @@ export function SourceCard({ source }: SourceCardProps) {
                 <LogOut className="mr-2 h-3.5 w-3.5" />
                 Remove from session
               </DropdownMenuItem>
-
-              {/* Visibility */}
-              {isOwner && isInOrg && (
-                <DropdownMenuItem onSelect={handleToggleVisibility}>
-                  {isShared ? (
-                    <>
-                      <EyeOff className="mr-2 h-3.5 w-3.5" />
-                      Make Private
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="mr-2 h-3.5 w-3.5" />
-                      Share with Org
-                    </>
-                  )}
-                </DropdownMenuItem>
-              )}
 
               {/* Delete */}
               {isOwner && (

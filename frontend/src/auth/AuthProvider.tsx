@@ -26,6 +26,7 @@ import { useChatStore } from '../stores/chat-store.ts';
 import { useSessionStore } from '../stores/session-store.ts';
 import { useSourcesStore } from '../stores/sources-store.ts';
 import { useStudioStore } from '../stores/studio-store.ts';
+import { useImpersonationStore } from '../stores/impersonation-store.ts';
 
 interface AuthContextValue {
   user: User | null;
@@ -106,14 +107,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const unsub = onAuthStateChanged(auth, async (u) => {
-      // If the Firebase identity actually changed compared to what we last
-      // observed, drop stale per-user data. Skip on the very first emission
-      // so we don't reset empty stores at boot.
+      // If the Firebase identity changed, drop stale per-user data. We compare
+      // against a uid persisted in localStorage (not just an in-memory ref) so a
+      // change ACROSS page loads is caught too — e.g. signing in as user B in a
+      // browser that previously held user A's persisted stores (collection ids,
+      // studio state). Without this, B's first requests fire with A's ids → 403.
       const newUid = u?.uid ?? null;
-      if (prevUidRef.current !== 'unset' && prevUidRef.current !== newUid) {
+      const lastUid =
+        prevUidRef.current === 'unset'
+          ? (typeof localStorage !== 'undefined' ? localStorage.getItem('slb-auth-uid') : null)
+          : prevUidRef.current;
+      if (lastUid !== null && lastUid !== newUid) {
         resetAllStores();
       }
       prevUidRef.current = newUid;
+      try {
+        if (newUid) localStorage.setItem('slb-auth-uid', newUid);
+        else localStorage.removeItem('slb-auth-uid');
+      } catch { /* storage unavailable — non-fatal */ }
 
       if (!u) {
         setUser(null);
@@ -241,6 +252,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useSessionStore.getState().reset();
     useSourcesStore.getState().reset();
     useStudioStore.getState().reset();
+    // Drop any "View as User" impersonation target. Persisted to sessionStorage,
+    // so without this an admin's leftover target would attach the impersonation
+    // header to a later non-admin session's requests. Only runs on real sign-out
+    // / identity change (never during an active impersonation, which keeps the
+    // same Firebase uid), so legitimate sessions are unaffected.
+    useImpersonationStore.getState().clear();
     queryClient.clear();
   };
 

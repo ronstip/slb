@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import {
   BarChart3,
   Download,
-  Globe,
   MoreHorizontal,
   Pencil,
   Search,
@@ -255,9 +254,6 @@ function CollectionSidebarItem({
           )}>
             {source.title}
           </span>
-          {source.visibility === 'org' && (
-            <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
-          )}
         </div>
 
         <div className="flex items-center gap-2 mt-1">

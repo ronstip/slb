@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, ArrowUpDown } from 'lucide-react';
 import { Input } from '../../../components/ui/input.tsx';
-import { Badge } from '../../../components/ui/badge.tsx';
 import { getAdminUsers } from '../../../api/endpoints/admin.ts';
+import { PlanBadge } from '../PlanBadge.tsx';
+import { formatUsdMicros } from '../../../lib/money.ts';
 
 interface UsersSectionProps {
   onSelectUser: (userId: string) => void;
@@ -80,7 +81,16 @@ export function UsersSection({ onSelectUser }: UsersSectionProps) {
               <tr>
                 <SortHeader field="email">Email</SortHeader>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                  Org
+                  Tier
+                </th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                  Balance
+                </th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                  MTD spend
+                </th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                  Total spend
                 </th>
                 <SortHeader field="queries_used">Queries</SortHeader>
                 <SortHeader field="collections_created">Collections</SortHeader>
@@ -107,12 +117,11 @@ export function UsersSection({ onSelectUser }: UsersSectionProps) {
                     </div>
                   </td>
                   <td className="px-3 py-2">
-                    {u.org_role && (
-                      <Badge variant="secondary" className="text-xs">
-                        {u.org_role}
-                      </Badge>
-                    )}
+                    <PlanBadge tier={u.tier} />
                   </td>
+                  <td className="px-3 py-2 text-right font-mono">{formatUsdMicros(u.balance_micros)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{formatUsdMicros(u.mtd_spend_micros)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{formatUsdMicros(u.total_spend_micros)}</td>
                   <td className="px-3 py-2 text-right font-mono">{u.queries_used}</td>
                   <td className="px-3 py-2 text-right font-mono">{u.collections_created}</td>
                   <td className="px-3 py-2 text-right font-mono">{u.posts_collected.toLocaleString()}</td>
@@ -126,7 +135,7 @@ export function UsersSection({ onSelectUser }: UsersSectionProps) {
               ))}
               {(data?.users ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
                     No users found
                   </td>
                 </tr>
