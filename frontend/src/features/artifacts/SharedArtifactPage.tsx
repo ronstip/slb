@@ -187,6 +187,7 @@ export function SharedArtifactPage() {
                 reads in.
               </p>
               <div className="mt-5 flex items-center justify-center gap-4">
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Listens on</span>
                 {(['instagram', 'twitter', 'tiktok', 'youtube', 'reddit', 'facebook'] as const).map((p) => (
                   <PlatformIcon key={p} platform={p} className="h-5 w-5" />
                 ))}

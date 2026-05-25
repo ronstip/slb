@@ -223,6 +223,7 @@ function EditorialFooter() {
         </p>
 
         <div className="flex items-center gap-4 mt-1 text-white/85">
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/60">Listens on</span>
           {(['instagram', 'twitter', 'tiktok', 'youtube', 'reddit', 'facebook'] as const).map((p) => (
             <PlatformIcon key={p} platform={p} className="h-5 w-5" color="#F6F4EF" />
           ))}
