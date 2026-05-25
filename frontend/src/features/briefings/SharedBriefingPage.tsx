@@ -5,6 +5,7 @@ import { useHead } from '@unhead/react';
 import { AlertTriangle } from 'lucide-react';
 import { Logo, BRAND_NAME, BRAND_INK } from '../../components/Logo.tsx';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
+import { SharePageDefinitionRow } from '../../components/SharePageDefinitionRow.tsx';
 import { SharePageHeaderActions } from '../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
@@ -99,6 +100,7 @@ export function SharedBriefingPage() {
 
       {!isLoading && !error && data && (
         <>
+          <SharePageDefinitionRow deliverable="brief" />
           <main ref={contentRef}>
             <BriefingView title={data.meta.title} briefing={data.layout} />
           </main>

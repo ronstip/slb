@@ -5,6 +5,7 @@ import { useHead } from '@unhead/react';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { Logo, BRAND_NAME, BRAND_INK } from '../../../components/Logo.tsx';
 import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
+import { SharePageDefinitionRow } from '../../../components/SharePageDefinitionRow.tsx';
 import { SharePageHeaderActions } from '../../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
@@ -143,6 +144,7 @@ export function SharedDashboardPage() {
       {/* Dashboard content */}
       {!isLoading && !error && response && (
         <>
+          <SharePageDefinitionRow deliverable="dashboard" />
           {/* Filter bar — editor can hide it for curated reports. */}
           {!response.filterBarHidden && (
             <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">

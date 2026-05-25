@@ -5,6 +5,10 @@ import { useHead } from '@unhead/react';
 import { AlertTriangle, Download } from 'lucide-react';
 import { Logo, BRAND_NAME, BRAND_INK } from '../../components/Logo.tsx';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
+import {
+  SharePageDefinitionRow,
+  type SharedDeliverable,
+} from '../../components/SharePageDefinitionRow.tsx';
 import { SharePageHeaderActions } from '../../components/SharePageHeaderActions.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Skeleton } from '../../components/ui/skeleton.tsx';
@@ -25,6 +29,16 @@ import { cn } from '../../lib/utils.ts';
 import type { DataExportRow } from '../../api/types.ts';
 
 const CHARTJS_TYPES = new Set<string>(['bar', 'line', 'pie', 'doughnut']);
+
+function artifactDeliverable(type: string): SharedDeliverable {
+  switch (type) {
+    case 'chart': return 'chart';
+    case 'data_export': return 'data export';
+    case 'presentation': return 'slide deck';
+    case 'markdown': return 'brief';
+    default: return 'brief';
+  }
+}
 
 function formatSharedDate(iso: string): string {
   const d = new Date(iso);
@@ -125,6 +139,7 @@ export function SharedArtifactPage() {
 
       {!isLoading && !error && data && style && (
         <>
+          <SharePageDefinitionRow deliverable={artifactDeliverable(data.meta.type)} />
           <div className="border-b border-border bg-card shrink-0">
             <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
               <div className="flex items-center gap-3">
