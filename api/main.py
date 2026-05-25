@@ -9,11 +9,12 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # Initialize Firebase Admin SDK (must happen before auth imports use it)
+from api.auth.dependencies import enforce_access
 from api.auth.firebase_init import init_firebase
 
 init_firebase()
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -108,29 +109,38 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 # the entire request lifecycle (cost telemetry, logs, downstream propagation).
 app.add_middleware(RequestIDMiddleware)
 
+# §E defense-in-depth: gate private data routers server-side so a blocked /
+# expired-trial account can't fetch data via direct API calls (the UI also
+# gates them). NOT applied to: public/shared (token) routers, /me (auth) — must
+# work for blocked users to render the pending page, billing, admin (super-admin
+# gated), media (proxies images for public shared dashboards), health, chat
+# (already gated by require_active), and the public waitlist. No-op unless
+# signup_gate=="entitlements"; anonymous + super admins always pass.
+_gated = [Depends(enforce_access)]
+
 # Include routers
 app.include_router(settings_router.router)
 app.include_router(billing_router.router)
-app.include_router(sessions_router.router)
+app.include_router(sessions_router.router, dependencies=_gated)
 app.include_router(admin_router.router)
-app.include_router(dashboard_router.router)
+app.include_router(dashboard_router.router, dependencies=_gated)
 app.include_router(dashboard_shares_router.router)
-app.include_router(dashboard_layouts_router.router)
-app.include_router(explorer_layouts_router.router)
-app.include_router(artifacts_router.router)
+app.include_router(dashboard_layouts_router.router, dependencies=_gated)
+app.include_router(explorer_layouts_router.router, dependencies=_gated)
+app.include_router(artifacts_router.router, dependencies=_gated)
 app.include_router(artifact_shares_router.router)
-app.include_router(topics_router.router)
-app.include_router(briefing_router.router)
+app.include_router(topics_router.router, dependencies=_gated)
+app.include_router(briefing_router.router, dependencies=_gated)
 app.include_router(briefing_shares_router.router)
 app.include_router(feed_links_router.router)
 app.include_router(auth_router.router)
 app.include_router(orgs_router.router)
 app.include_router(media_router.router)
 app.include_router(health_router.router)
-app.include_router(collections_router.router)
-app.include_router(feed_router.router)
-app.include_router(agents_router.router)
-app.include_router(posts_router.router)
+app.include_router(collections_router.router, dependencies=_gated)
+app.include_router(feed_router.router, dependencies=_gated)
+app.include_router(agents_router.router, dependencies=_gated)
+app.include_router(posts_router.router, dependencies=_gated)
 app.include_router(chat_router.router)
 app.include_router(internal_router.router)
 app.include_router(waitlist_router.router)

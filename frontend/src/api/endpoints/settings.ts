@@ -5,10 +5,9 @@ import type {
   OrgDetails,
   OrgInvite,
   UsageStats,
-  UsageTrendResponse,
-  CreditBalance,
-  CreditPack,
-  CreditPurchaseHistoryItem,
+  Wallet,
+  TopUpOption,
+  CreditTransaction,
 } from '../types.ts';
 
 // --- Account ---
@@ -65,32 +64,20 @@ export function getUsage(): Promise<UsageStats> {
   return apiGet<UsageStats>('/usage/me');
 }
 
-export function getOrgUsage(): Promise<UsageStats> {
-  return apiGet<UsageStats>('/usage/org');
+// --- Credit wallet ($-based) ---
+
+export function getWallet(): Promise<Wallet> {
+  return apiGet<Wallet>('/billing/credits');
 }
 
-export function getUsageTrend(days: number = 30): Promise<UsageTrendResponse> {
-  return apiGet<UsageTrendResponse>('/usage/trend', { days: String(days) });
+export function getTopUpOptions(): Promise<TopUpOption[]> {
+  return apiGet<TopUpOption[]>('/billing/topup-options');
 }
 
-export function getOrgUsageTrend(days: number = 30): Promise<UsageTrendResponse> {
-  return apiGet<UsageTrendResponse>('/usage/org/trend', { days: String(days) });
+export function topUp(amountCents: number): Promise<{ url: string }> {
+  return apiPost('/billing/topup', { amount_cents: amountCents });
 }
 
-// --- Credits ---
-
-export function getCreditBalance(): Promise<CreditBalance> {
-  return apiGet<CreditBalance>('/billing/credits');
-}
-
-export function getCreditPacks(): Promise<CreditPack[]> {
-  return apiGet<CreditPack[]>('/billing/credit-packs');
-}
-
-export function purchaseCredits(packId: string): Promise<{ url: string }> {
-  return apiPost('/billing/purchase-credits', { pack_id: packId });
-}
-
-export function getCreditHistory(): Promise<CreditPurchaseHistoryItem[]> {
-  return apiGet<CreditPurchaseHistoryItem[]>('/billing/credit-history');
+export function getCreditHistory(): Promise<CreditTransaction[]> {
+  return apiGet<CreditTransaction[]>('/billing/history');
 }

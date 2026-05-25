@@ -15,7 +15,6 @@ from api.deps import get_bq, get_fs
 from api.rate_limiting import limiter
 from api.schemas.requests import (
     CreateCollectionRequest,
-    SetCollectionVisibilityRequest,
     UpdateCollectionRequest,
 )
 from api.schemas.responses import (
@@ -47,37 +46,18 @@ async def create_collection(
     return result
 
 
-@router.post("/collection/{collection_id}/visibility")
-async def set_collection_visibility(
-    collection_id: str,
-    body: SetCollectionVisibilityRequest,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Toggle collection visibility between 'private' and 'org'. Only the owner can change this."""
-    visibility = body.visibility
-
-    fs = get_fs()
-    status = await asyncio.to_thread(fs.get_collection_status, collection_id)
-    if not status:
-        raise HTTPException(status_code=404, detail="Collection not found")
-    if status.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Only the collection owner can change visibility")
-    if not user.org_id:
-        raise HTTPException(status_code=400, detail="You must be in an organization to share collections")
-
-    await asyncio.to_thread(
-        fs.update_collection_status, collection_id, visibility=visibility, org_id=user.org_id
-    )
-    return {"status": "updated", "visibility": visibility}
-
-
 @router.patch("/collection/{collection_id}")
 async def update_collection(
     collection_id: str,
     request: UpdateCollectionRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Update collection metadata (title, visibility). Only the owner can update."""
+    """Update collection metadata (title). Only the owner can update.
+
+    Org sharing is no longer set per-collection — it is driven by the owning
+    agent's visibility (see agents `PATCH /agents/{id}/visibility`), which
+    propagates down to its collections.
+    """
     fs = get_fs()
     status = await asyncio.to_thread(fs.get_collection_status, collection_id)
     if not status:
@@ -88,14 +68,6 @@ async def update_collection(
     updates = {}
     if request.title is not None:
         updates["title"] = request.title
-    if request.visibility is not None:
-        if request.visibility not in ("private", "org"):
-            raise HTTPException(status_code=400, detail="Visibility must be 'private' or 'org'")
-        if request.visibility == "org" and not user.org_id:
-            raise HTTPException(status_code=400, detail="You must be in an organization to share collections")
-        updates["visibility"] = request.visibility
-        if request.visibility == "org":
-            updates["org_id"] = user.org_id
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")

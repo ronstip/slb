@@ -1,6 +1,5 @@
 """Settings router — profile updates, organization management, invites, usage."""
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -20,20 +19,12 @@ from api.schemas.responses import (
     OrgMemberResponse,
     OrgInviteResponse,
     UsageResponse,
-    UsageTrendPoint,
-    UsageTrendResponse,
 )
 from api.deps import get_fs
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-PLAN_LIMITS = {
-    "free": {"queries": 50, "collections": 3, "posts": 500},
-    "pro": {"queries": 500, "collections": 20, "posts": 10_000},
-    "enterprise": {"queries": -1, "collections": -1, "posts": 100_000},
-}
 
 
 # ---------------------------------------------------------------------------
@@ -335,154 +326,50 @@ async def leave_org(user: CurrentUser = Depends(get_current_user)):
 
 @router.get("/usage/me", response_model=UsageResponse)
 async def get_usage(user: CurrentUser = Depends(get_current_user)):
-    """Get the current user's usage stats."""
+    """Get the current user's $ wallet + this-month action counts.
+
+    No quota limits, no provider names, no $ breakdown — that lives in the
+    admin panel. `free` users have an unenforced wallet (UI shows "Unlimited").
+    """
     fs = get_fs()
-
-    # Determine plan limits
-    plan = "free"
-    if user.org_id:
-        org = fs.get_org(user.org_id)
-        if org:
-            plan = org.get("subscription_plan") or "free"
-    else:
-        user_doc = fs.get_user(user.uid)
-        if user_doc:
-            plan = user_doc.get("subscription_plan") or "free"
-
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
-
-    # Get usage counters
-    usage = fs.get_usage(user.uid, user.org_id)
+    user_doc = fs.get_user(user.uid) or {}
+    plan = user_doc.get("plan") or {}
+    credit = user_doc.get("credit") or {}
+    balance = int(credit.get("balance_micros", 0))
+    total_in = int(credit.get("total_in_micros", 0))
 
     now = datetime.now(timezone.utc)
     period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     next_month = (period_start.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    return UsageResponse(
-        period_start=period_start.isoformat(),
-        period_end=next_month.isoformat(),
-        queries_used=usage.get("queries_used", 0),
-        queries_limit=limits["queries"],
-        collections_created=usage.get("collections_created", 0),
-        collections_limit=limits["collections"],
-        posts_collected=usage.get("posts_collected", 0),
-        posts_limit=limits["posts"],
-    )
+    # This-month action counts from the daily usage logs.
+    try:
+        daily = fs.get_usage_daily(user.uid, period_start, now)
+    except Exception:
+        daily = {}
+    chats = sum(int(d.get("queries", 0)) for d in daily.values())
+    collections = sum(int(d.get("collections", 0)) for d in daily.values())
+    posts = sum(int(d.get("posts", 0)) for d in daily.values())
 
-
-@router.get("/usage/org", response_model=UsageResponse)
-async def get_org_usage(user: CurrentUser = Depends(get_current_user)):
-    """Get the organization's aggregate usage stats. Requires admin role."""
-    require_org_role(user, "admin")
-
-    fs = get_fs()
-
-    org = fs.get_org(user.org_id)
-    plan = org.get("subscription_plan", "free") if org else "free"
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
-
-    usage = fs.get_org_usage(user.org_id)
-
-    now = datetime.now(timezone.utc)
-    period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    next_month = (period_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    trial = plan.get("trial_expires_at")
+    if hasattr(trial, "isoformat"):
+        trial = trial.isoformat()
 
     return UsageResponse(
         period_start=period_start.isoformat(),
         period_end=next_month.isoformat(),
-        queries_used=usage.get("queries_used", 0),
-        queries_limit=limits["queries"],
-        collections_created=usage.get("collections_created", 0),
-        collections_limit=limits["collections"],
-        posts_collected=usage.get("posts_collected", 0),
-        posts_limit=limits["posts"],
+        tier=plan.get("tier") or "free",
+        trial_expires_at=trial,
+        balance_micros=balance,
+        total_in_micros=total_in,
+        spent_micros=int(credit.get("spent_micros", 0)),
+        progress_pct=round(balance / total_in * 100, 1) if total_in > 0 else 0.0,
+        chats=chats,
+        collections=collections,
+        posts=posts,
     )
 
 
-@router.get("/usage/trend", response_model=UsageTrendResponse)
-async def get_usage_trend(
-    days: int = 30,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Get daily usage trend for the current user (personal view)."""
-    fs = get_fs()
-
-    now = datetime.now(timezone.utc)
-    start_date = now - timedelta(days=days)
-
-    try:
-        daily_logs = fs.get_usage_daily(user.uid, start_date, now)
-    except Exception as e:
-        logger.warning("Failed to get usage trend: %s", e)
-        daily_logs = {}
-
-    points = []
-    for i in range(days):
-        day = start_date + timedelta(days=i + 1)
-        day_str = day.strftime("%Y-%m-%d")
-        entry = daily_logs.get(day_str, {})
-        points.append(
-            UsageTrendPoint(
-                date=day_str,
-                queries=entry.get("queries", 0),
-                collections=entry.get("collections", 0),
-                posts=entry.get("posts", 0),
-            )
-        )
-
-    return UsageTrendResponse(points=points, granularity="daily")
-
-
-@router.get("/usage/org/trend", response_model=UsageTrendResponse)
-async def get_org_usage_trend(
-    days: int = 30,
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Get daily usage trend for the org, split by user. Requires admin role."""
-    require_org_role(user, "admin")
-
-    fs = get_fs()
-
-    now = datetime.now(timezone.utc)
-    start_date = now - timedelta(days=days)
-
-    try:
-        members = await asyncio.to_thread(fs.list_org_members, user.org_id)
-    except Exception as e:
-        logger.warning("Failed to list org members for trend: %s", e)
-        return UsageTrendResponse(points=[], granularity="daily")
-
-    # Fetch daily logs for all members in parallel (not sequentially)
-    async def _fetch_member_usage(uid: str) -> tuple[str, dict]:
-        try:
-            logs = await asyncio.to_thread(fs.get_usage_daily, uid, start_date, now)
-            return uid, logs
-        except Exception:
-            return uid, {}
-
-    results = await asyncio.gather(
-        *[_fetch_member_usage(m["uid"]) for m in members]
-    )
-    member_logs: dict[str, dict] = dict(results)
-
-    points = []
-    for i in range(days):
-        day = start_date + timedelta(days=i + 1)
-        day_str = day.strftime("%Y-%m-%d")
-
-        for member in members:
-            daily_logs = member_logs.get(member["uid"], {})
-            entry = daily_logs.get(day_str, {})
-            if entry.get("queries", 0) > 0 or entry.get("collections", 0) > 0 or entry.get("posts", 0) > 0:
-                points.append(
-                    UsageTrendPoint(
-                        date=day_str,
-                        queries=entry.get("queries", 0),
-                        collections=entry.get("collections", 0),
-                        posts=entry.get("posts", 0),
-                        user_name=member.get("display_name") or member.get("email", "Unknown"),
-                        user_id=member["uid"],
-                    )
-                )
-
-    return UsageTrendResponse(points=points, granularity="daily")
+# NOTE: the per-user `/usage/trend` endpoint was removed — the settings UI now
+# shows only the wallet (the low-value action-count trend was dropped, §E). The
+# rich cost/revenue view lives in the admin panel.

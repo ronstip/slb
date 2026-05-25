@@ -22,7 +22,7 @@ Scope: P0 = must-ship before lifting `ALLOWED_EMAILS`. P1 = first month after op
 | C.2 — request_id middleware | ✅ Done | Middleware + propagation in API + workers + Cloud Tasks headers |
 | C.1, C.3–6 — Sentry, Cloud Run, alerts, runbook | ⏳ Pending | |
 | D — Compliance minimum | ⏳ Pending | |
-| E — Entitlements + admin plans | ⏳ Pending | |
+| E — Entitlements + $ credit wallet | ✅ Live | $-based prepaid wallet; gate flipped to `entitlements`. Payments (Lemon Squeezy) still dormant. See docs/production plan/E-entitlements-and-credits.md |
 | P1 / P2 | ⏳ Pending | |
 
 ---
@@ -108,45 +108,27 @@ GROUP BY 1,2;
 5. **Uptime checks + alerts**: Cloud Monitoring uptime on `https://api.scolto.com/health` and `https://scolto.com` every 5 min, 3 regions. Alert policy → PagerDuty/email.
 6. **Rollback runbook** — new `docs/RUNBOOK.md`: Cloud Run `gcloud run services update-traffic --to-revisions=<prev>=100`, Firebase `firebase hosting:rollback`. Test once before launch.
 
-### E. Entitlements + admin-controlled plans
+### E. Entitlements + dollar-based prepaid credit system — ✅ LIVE
 
-Goal: lift `ALLOWED_EMAILS` without losing the ability to give free demos, trial seats, internal unlimited use. Per-user (and optionally per-org) plan, editable from admin.
+> **Current-state reference: [docs/production plan/E-entitlements-and-credits.md](docs/production%20plan/E-entitlements-and-credits.md)** — implemented + live behind `signup_gate="entitlements"` (migration run, gate flipped). The summary below is the original revised scope; the linked doc has the as-built model, file map, fix history, and open gaps.
 
-**Plan model** (Firestore `users/{uid}.plan`, optionally `orgs/{orgId}.plan` as inherit-from):
+Goal: lift `ALLOWED_EMAILS` and consolidate the old, overlapping money code (integer credits, free/pro/enterprise quotas, dormant Stripe stubs) into **one dollar-based prepaid wallet**.
 
-```
-{
-  tier: "blocked" | "trial" | "free" | "paid",
-  trial_ends_at: timestamp | null,          // trial only
-  trial_cost_cap_micros: int | null,        // trial only — hard cap → 402
-  features: { chat: bool, collections: bool, exports: bool, ... },  // optional fine-grained gates
-  notes: string,
-  updated_by: uid,
-  updated_at: timestamp,
-}
-```
+**Tiers** (Firestore `users/{uid}.plan.tier`): `blocked | free | trial | paid`.
+- `blocked` — **default for every new signup**. 402 on every gated action. Replaces `ALLOWED_EMAILS`.
+- `free` — internal/demo, **unlimited, balance not enforced**. All current users migrate here.
+- `trial` — admin grants a starting $ balance (+ optional expiry); enforced like `paid`.
+- `paid` — user-purchased $ balance; enforced; can top up.
 
-Tier semantics:
-- `blocked` — **default for every new signup**. 402 on every gated action. Replaces today's `ALLOWED_EMAILS` env. Admin must promote.
-- `trial` — limited by admin-set days AND/OR admin-set cost cap, whichever hits first. Fully under admin control per user.
-- `free` — no charge, no cap. Covers internal team and manually-granted demo accounts. (Merged with what was `internal_unlimited`.)
-- `paid` — future, when public billing turns on.
+**No org-level plans. No per-feature toggles** — every feature is available to every non-blocked, in-credit user.
 
-**Enforcement** — new `api/services/entitlements.py`:
-- `require_active(user)` → 402 if `tier=blocked`, or `tier=trial` with `trial_ends_at < now`, or `tier=trial` with current cost over `trial_cost_cap_micros`. `free` / `paid` always pass.
-- `require_feature(user, feature)` → optional per-feature gate.
-- Reads current-cost from a 60 s cached aggregate over `usage_events`.
-- Called from chat, collection-start, export endpoints. Reuse [api/auth/dependencies.py](api/auth/dependencies.py) pattern.
+**Wallet** — `users/{uid}.credit { balance_micros, total_in_micros, spent_micros }` (Firestore = authoritative balance; BigQuery `usage_events` = cost truth + admin breakdown). Append-only `credit_transactions` ledger for grants/purchases; `admin_audit` for plan/credit changes.
 
-**Admin UI** — refactor [frontend/src/features/admin/sections/UsersSection.tsx](frontend/src/features/admin/sections/UsersSection.tsx) + [UserDetailSection.tsx](frontend/src/features/admin/sections/UserDetailSection.tsx):
-- Per-row: tier badge, month-to-date cost, trial cap utilisation if trial.
-- Detail panel: edit tier (`blocked` / `trial` / `free` / `paid`); when `trial` selected, show fields for `trial_ends_at` (date picker) and `trial_cost_cap_micros` (USD input); optional feature toggles + notes. Recent cost breakdown by provider / feature. Audit log of plan changes.
-- Backend: extend [api/routers/admin.py](api/routers/admin.py) with `PATCH /admin/users/{uid}/plan`, `GET /admin/users/{uid}/cost?range=mtd`. Super-admin only. Writes to Firestore `users/{uid}.plan` and an `admin_audit` collection.
+**Enforcement** — new `api/services/entitlements.py`: `require_active(user)` (chat) and `require_credit_for_run(user, estimated_micros)` (collections/agent runs, with a **pre-flight cost estimate** so a run never dies mid-way). `api/services/cost_estimate.py` builds the estimate from [config/cost_rates.py](config/cost_rates.py). `api/services/cost_meter.py` deducts each real spend from the wallet.
 
-**User-facing usage panel** — refactor [frontend/src/features/settings/sections/UsageSection.tsx](frontend/src/features/settings/sections/UsageSection.tsx) + [BillingSection.tsx](frontend/src/features/settings/sections/BillingSection.tsx):
-- Show aggregate only: current tier, trial expiry + remaining trial budget (if on trial), total actions / posts collected / chats this month. No provider names, no $ amounts.
-- Hide cost-cap numbers from `free` / `paid` users (no cap to show).
-- Backend: `GET /me/usage` in [api/routers/settings.py](api/routers/settings.py) returns the simplified aggregate from `usage_events`. Existing endpoint likely stale — replace once new telemetry is flowing.
+**Admin UI** — [UsersSection.tsx](frontend/src/features/admin/sections/UsersSection.tsx) + [UserDetailSection.tsx](frontend/src/features/admin/sections/UserDetailSection.tsx): tier/balance/MTD-spend columns; plan editor; grant-credit form; cost breakdown by provider/feature; ledger + audit. Backend: `PATCH /admin/users/{uid}/plan`, `POST /admin/users/{uid}/credit`, `GET /admin/users/{uid}/cost`.
+
+**User-facing panel** — merge [UsageSection.tsx](frontend/src/features/settings/sections/UsageSection.tsx) + [BillingSection.tsx](frontend/src/features/settings/sections/BillingSection.tsx) into one "Credits & Usage": $ balance + progress bar + Top-up button + this-month action counts. **No provider names, no $ breakdown** (free users see "Unlimited"). New `AccountPendingPage` for `blocked` users; 402 handling in [client.ts](frontend/src/api/client.ts) + [sse-client.ts](frontend/src/api/sse-client.ts).
 
 ### D. Compliance minimum
 

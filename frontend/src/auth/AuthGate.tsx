@@ -2,12 +2,14 @@ import { Navigate, Outlet } from 'react-router';
 import { useHead } from '@unhead/react';
 import { useAuth } from './useAuth.ts';
 import { NewAgentDrawer } from '../features/agents/NewAgentDrawer.tsx';
+import { AccountPendingPage } from '../features/account-pending/AccountPendingPage.tsx';
+import { accountBlock } from '../lib/entitlement.ts';
 
 export function AuthGate() {
   // Authenticated app surfaces must never be indexed.
   useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
 
-  const { loading, isAnonymous } = useAuth();
+  const { loading, isAnonymous, profile } = useAuth();
 
   if (loading) {
     return (
@@ -20,6 +22,12 @@ export function AuthGate() {
   // Anonymous (unauthenticated) users must sign in before accessing the app
   if (isAnonymous) {
     return <Navigate to="/" replace />;
+  }
+
+  // §E: blocked / expired-trial accounts can't use the app. Super admins +
+  // impersonation pass (handled inside accountBlock).
+  if (accountBlock(profile)) {
+    return <AccountPendingPage />;
   }
 
   return (

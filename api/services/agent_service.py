@@ -314,11 +314,29 @@ def get_agent(agent_id: str) -> dict | None:
 
 
 def list_agents(user_id: str, org_id: str | None = None) -> list[dict]:
-    """List agents visible to the user. data_scope.sources is normalized."""
-    agents = get_fs().list_user_agents(user_id, org_id)
+    """List agents visible to the user (own + org-shared). data_scope.sources is
+    normalized. Each agent is annotated with `is_owner` and, for agents owned by
+    someone else in the org, `owner_label` (display name or email) so the UI can
+    show "Shared by …" instead of presenting them as the viewer's own."""
+    fs = get_fs()
+    agents = fs.list_user_agents(user_id, org_id)
+
+    # Resolve owner labels for shared (non-owned) agents in one pass — small
+    # number of distinct owners, so a per-owner Firestore read is cheap and
+    # cached well enough for a list view.
+    owner_labels: dict[str, str] = {}
     for agent in agents:
+        owner_id = agent.get("user_id")
+        is_owner = owner_id == user_id
+        agent["is_owner"] = is_owner
+        if not is_owner and owner_id and owner_id not in owner_labels:
+            doc = fs.get_user(owner_id) or {}
+            owner_labels[owner_id] = doc.get("display_name") or doc.get("email") or "a teammate"
+
         agent["data_scope"] = _normalize_data_scope(agent.get("data_scope"))
         _backfill_data_window(agent)
+        agent["visibility"] = agent.get("visibility") or "private"
+        agent["owner_label"] = None if is_owner else owner_labels.get(owner_id)
     return agents
 
 
@@ -362,6 +380,39 @@ def _record_data_window_row(agent_id: str, agent_before: dict, fields: dict) -> 
             "Failed to record data_start_date change for agent %s in BigQuery",
             agent_id,
         )
+
+
+def set_agent_visibility(agent_id: str, visibility: str) -> dict:
+    """Share an agent with the org (`visibility="org"`) or make it private again.
+
+    The agent is the single unit of org sharing. Because the feed / posts /
+    dashboard access checks operate on per-collection `visibility`, we propagate
+    the agent's visibility down to every collection it owns so those existing
+    checks keep working unchanged. Returns the updated agent dict.
+    """
+    if visibility not in ("private", "org"):
+        raise ValueError(f"invalid visibility: {visibility!r}")
+
+    fs = get_fs()
+    agent = fs.get_agent(agent_id)
+    if agent is None:
+        raise KeyError(agent_id)
+
+    fs.update_agent(agent_id, visibility=visibility)
+
+    # Propagate to the agent's collections so org members granted access to the
+    # agent can also read its data (and lose it when un-shared). Stamp the
+    # agent's org_id too so the collections surface in the org collection query.
+    org_id = agent.get("org_id")
+    for cid in agent.get("collection_ids", []) or []:
+        try:
+            fs.update_collection_status(cid, visibility=visibility, org_id=org_id)
+        except Exception:
+            # A missing/legacy collection doc must not abort the share toggle.
+            logger.exception("Failed to propagate visibility to collection %s", cid)
+
+    agent["visibility"] = visibility
+    return agent
 
 
 def update_agent(agent_id: str, **fields) -> None:
@@ -540,7 +591,11 @@ def dispatch_agent_run(
 
     Returns (run_id, collection_ids).
     """
-    from api.services.collection_service import create_collection_from_request
+    from api.services.collection_service import (
+        create_collection_from_request,
+        estimate_request_micros,
+    )
+    from api.services.entitlements import require_credit_for_run
     from workers.pipeline.schedule_utils import compute_next_run_at
     from api.agent.workflow_template import build_workflow_template, progress_automated_steps
 
@@ -558,6 +613,19 @@ def dispatch_agent_run(
         logger.warning("Agent %s has no sources defined", agent_id)
         return "", []
 
+    # §E pre-flight: an agent run spawns one collection per source. Estimate the
+    # TOTAL up front and refuse (402) if the wallet can't cover the whole run, so
+    # we don't half-run an agent and strand the user mid-way. The per-collection
+    # gate inside create_collection_from_request is a backstop. No-op unless
+    # entitlements mode is on; `free` users pass.
+    description = title if agent_type == "one_shot" else f"{title} (scheduled run)"
+    runnable_sources = [s for s in sources if s.get("keywords") or s.get("channels")]
+    total_estimate = sum(
+        estimate_request_micros(_source_to_collection_request(s, description))
+        for s in runnable_sources
+    )
+    require_credit_for_run(user_id, total_estimate)
+
     # Create a run record (stamped with current agent version)
     agent_version = agent.get("version", 1)
     run_id = fs.create_run(agent_id, trigger=trigger, agent_version=agent_version)
@@ -566,7 +634,6 @@ def dispatch_agent_run(
     fs.update_agent(agent_id, status="running", active_run_id=run_id)
 
     base_extra = _build_base_extra_config(agent)
-    description = title if agent_type == "one_shot" else f"{title} (scheduled run)"
 
     collection_ids = []
     for source in sources:

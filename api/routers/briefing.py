@@ -41,14 +41,14 @@ PAYLOAD_SCHEMA_VERSION = 8
 
 
 def check_agent_access(fs, user: CurrentUser, agent_id: str) -> dict:
+    from api.services.collection_service import can_access_agent
+
     agent = fs.get_agent(agent_id)
     if not agent:
         raise HTTPException(404, "Agent not found")
-    if agent.get("user_id") == user.uid:
-        return agent
-    if user.org_id and agent.get("org_id") == user.org_id:
-        return agent
-    raise HTTPException(403, "Access denied")
+    if not can_access_agent(user, agent):
+        raise HTTPException(403, "Access denied")
+    return agent
 
 
 # ─── Media ref parsing ──────────────────────────────────────────────

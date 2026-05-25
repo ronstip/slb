@@ -348,10 +348,18 @@ class PipelineRunner:
             self._crawl_complete.set()
             self._total_posts_collected = self.state_manager.get_total_posts()
         else:
-            crawl_thread = threading.Thread(
-                target=self._crawl,
-                daemon=True,
+            # Use the cost-context-propagating helper so the cost-meter
+            # ContextVar bound by workers/server.py (or the dev thread in
+            # api/services/collection_service.py) carries into the crawl
+            # thread — otherwise track_posts_collected / Apify log_cost
+            # fire with empty user_id+agent_id and the per-agent Recent
+            # Activity panel hides every priced provider event.
+            from api.services.cost_meter import start_thread_with_cost_context
+
+            crawl_thread = start_thread_with_cost_context(
+                self._crawl,
                 name=f"crawl-{self.collection_id[:8]}",
+                daemon=True,
             )
             crawl_thread.start()
 
@@ -912,48 +920,56 @@ class PipelineRunner:
             # Classify posts and set initial pipeline state
             self.state_manager.mark_collected(in_range)
 
-            # Usage tracking (fire-and-forget) — group by provider so each
-            # row carries the correct cost-attribution label.
+            # Usage tracking (fire-and-forget) — group by (provider, platform)
+            # so the Finance "platform × provider" matrix gets accurate
+            # per-bucket counts (Apify charges IG vs FB vs TikTok at different
+            # rates, so a provider-only aggregate hides the variance).
             actual_stored = len(new_posts) - failed_posts
             if owner_user_id and actual_stored > 0:
                 from api.services.usage_service import track_posts_collected
 
                 # `new_posts` here is the still-failed-included slice; we only
-                # want a per-provider tally for posts that actually landed.
-                # `failed_posts` is a count of insert failures, not specific
-                # rows, so we approximate by scaling each provider group.
-                provider_counts: dict[str, int] = {}
+                # want a per-(provider, platform) tally for posts that actually
+                # landed. `failed_posts` is a count of insert failures, not
+                # specific rows, so we approximate by scaling each bucket.
+                bucket_counts: dict[tuple[str, str], int] = {}
                 for p in new_posts:
-                    key = p.crawl_provider or "unknown"
-                    provider_counts[key] = provider_counts.get(key, 0) + 1
-                if failed_posts and sum(provider_counts.values()) > 0:
-                    total = sum(provider_counts.values())
-                    # Distribute failed_posts pro-rata so the totals still sum
-                    # to `actual_stored`. Tiny inaccuracy at the per-provider
-                    # level is acceptable — we're already in BQ-insert-failure
-                    # territory.
+                    key = (p.crawl_provider or "unknown", p.platform or "unknown")
+                    bucket_counts[key] = bucket_counts.get(key, 0) + 1
+                if failed_posts and sum(bucket_counts.values()) > 0:
+                    total = sum(bucket_counts.values())
+                    # Distribute failed_posts pro-rata so totals still sum to
+                    # actual_stored. Tiny per-bucket inaccuracy is acceptable —
+                    # we're already in BQ-insert-failure territory.
                     remaining = actual_stored
-                    items = list(provider_counts.items())
-                    for i, (prov, cnt) in enumerate(items):
+                    items = list(bucket_counts.items())
+                    for i, (key, cnt) in enumerate(items):
                         if i == len(items) - 1:
-                            provider_counts[prov] = max(remaining, 0)
+                            bucket_counts[key] = max(remaining, 0)
                         else:
                             scaled = int(round(actual_stored * cnt / total))
-                            provider_counts[prov] = scaled
+                            bucket_counts[key] = scaled
                             remaining -= scaled
 
-                for prov, cnt in provider_counts.items():
+                # Pass agent_id explicitly so attribution doesn't depend on
+                # ContextVar inheritance across the crawl thread boundary —
+                # the helper at the thread spawn already propagates context
+                # but defensive explicit passing also surfaces bugs faster.
+                owner_agent_id = self._status_doc.get("agent_id")
+                for (prov, plat), cnt in bucket_counts.items():
                     if cnt <= 0:
                         continue
                     try:
                         track_posts_collected(
                             owner_user_id, owner_org_id, self.collection_id,
                             count=cnt, provider=prov,
+                            agent_id=owner_agent_id,
+                            platform=plat if plat != "unknown" else None,
                         )
                     except Exception:
                         logger.warning(
-                            "Failed to track posts_collected for provider=%s",
-                            prov, exc_info=True,
+                            "Failed to track posts_collected for provider=%s platform=%s",
+                            prov, plat, exc_info=True,
                         )
 
             # Log progress to task activity feed (every 3 batches to avoid spam)
@@ -1279,12 +1295,17 @@ class PipelineRunner:
             claim_fn=ctx.state_manager.claim_one_for_enrichment,
         )
 
+        # Enrichment runs Gemini calls; without context propagation those
+        # log_gemini_response rows lose user_id+agent_id. Use the helper
+        # for every pipeline worker thread that may fire a priced call.
+        from api.services.cost_meter import start_thread_with_cost_context
+
         for runner_obj, step_name in (
             (download_runner, "download"),
             (enrich_runner, "enrich"),
         ):
-            t = threading.Thread(
-                target=runner_obj.run,
+            t = start_thread_with_cost_context(
+                runner_obj.run,
                 args=(stop_event,),
                 daemon=True,
                 name=f"stream-{step_name}-{self.collection_id[:8]}",
@@ -1294,8 +1315,8 @@ class PipelineRunner:
 
         # Embed remains on the batched action model (single BQ query per batch).
         for step in PIPELINE_STEPS:
-            t = threading.Thread(
-                target=self._step_worker,
+            t = start_thread_with_cost_context(
+                self._step_worker,
                 args=(step, ctx, stop_event),
                 daemon=True,
                 name=f"step-{step.name}-{self.collection_id[:8]}",

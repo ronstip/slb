@@ -132,9 +132,8 @@ async def _list_sessions_for_agent(user: CurrentUser, agent_id: str) -> list[Ses
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     # Mirror the access rule used elsewhere (e.g. topics._check_agent_access).
-    if agent.get("user_id") != user.uid and (
-        not user.org_id or agent.get("org_id") != user.org_id
-    ):
+    from api.services.collection_service import can_access_agent
+    if not can_access_agent(user, agent):
         raise HTTPException(status_code=403, detail="Access denied")
 
     session_ids: list[str] = agent.get("session_ids") or []

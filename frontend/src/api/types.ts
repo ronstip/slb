@@ -42,6 +42,21 @@ export interface ImpersonationInfo {
   target_display_name: string | null;
 }
 
+export type PlanTier = 'blocked' | 'free' | 'trial' | 'paid';
+
+export interface PlanInfo {
+  tier: PlanTier;
+  trial_expires_at: string | null;
+}
+
+/** $ prepaid wallet (USD micros). 1_000_000 micros = $1.00. */
+export interface Wallet {
+  balance_micros: number;
+  total_in_micros: number;
+  spent_micros: number;
+  progress_pct: number;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -52,8 +67,8 @@ export interface UserProfile {
   org_name: string | null;
   is_anonymous?: boolean;
   preferences: UserPreferences | null;
-  subscription_plan: string | null;
-  subscription_status: string | null;
+  plan: PlanInfo;
+  credit: Wallet;
   is_super_admin?: boolean;
   /** Present only when a super admin is viewing the app as another user. */
   impersonation?: ImpersonationInfo;
@@ -101,49 +116,33 @@ export interface SubscriptionInfo {
 export interface UsageStats {
   period_start: string;
   period_end: string;
-  queries_used: number;
-  queries_limit: number;
-  collections_created: number;
-  collections_limit: number;
-  posts_collected: number;
-  posts_limit: number;
-}
-
-export interface UsageTrendPoint {
-  date: string;
-  queries: number;
+  tier: PlanTier;
+  trial_expires_at: string | null;
+  balance_micros: number;
+  total_in_micros: number;
+  spent_micros: number;
+  progress_pct: number;
+  chats: number;
   collections: number;
   posts: number;
-  user_name?: string;
-  user_id?: string;
 }
 
-export interface UsageTrendResponse {
-  points: UsageTrendPoint[];
-  granularity: string;
-}
-
-export interface CreditBalance {
-  credits_remaining: number;
-  credits_used: number;
-  credits_total: number;
-  is_org: boolean;
-}
-
-export interface CreditPack {
-  pack_id: string;
-  name: string;
-  credits: number;
-  price_cents: number;
+/** A preset top-up amount shown in the UI. */
+export interface TopUpOption {
+  amount_cents: number;
+  label: string;
   popular: boolean;
 }
 
-export interface CreditPurchaseHistoryItem {
-  purchased_at: string;
-  credits: number;
-  amount_cents: number;
-  purchased_by?: string;
-  purchased_by_name?: string;
+/** One credit-in ledger entry (grant / purchase / adjustment / refund). */
+export interface CreditTransaction {
+  id: string;
+  kind: string;
+  amount_micros: number;
+  balance_after_micros: number;
+  reason?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
 }
 
 export interface CreateCollectionRequest {
@@ -838,7 +837,7 @@ export interface AdminOverview {
   avg_relevancy_pct?: number;
   total_revenue_cents: number;
   total_credits_purchased: number;
-  credits_outstanding: number;
+  credit_outstanding_micros: number;
 }
 
 export interface AdminUser {
@@ -853,7 +852,115 @@ export interface AdminUser {
   queries_used: number;
   collections_created: number;
   posts_collected: number;
-  credits_remaining: number;
+  tier: PlanTier;
+  balance_micros: number;
+  /** Spend (billed @ margin) from start of current month. */
+  mtd_spend_micros: number;
+  /** Spend (billed @ margin) since the user was created. */
+  total_spend_micros: number;
+}
+
+export interface CostBreakdownItem {
+  key: string;
+  micros: number;
+  events: number;
+}
+
+export interface CostBreakdown {
+  total_micros: number;
+  by_provider: CostBreakdownItem[];
+  by_feature: CostBreakdownItem[];
+  /** 2-D platform × provider matrix. Each (provider, platform) pair has
+   *  its own per-call rate (e.g. Apify charges IG vs FB vs TikTok runs
+   *  at different prices), so rolling them into a single "by_provider"
+   *  row hides where the cost actually went. */
+  by_platform_provider?: PlatformProviderCell[];
+}
+
+export interface PlatformProviderCell {
+  platform: string;        // 'instagram' | 'facebook' | 'tiktok' | 'x' | 'unspecified' | …
+  provider: string;        // 'apify' | 'brightdata' | 'x_api' | 'gemini' | 'unknown' | …
+  cost_micros: number;
+  billed_micros: number;
+  events: number;
+}
+
+// --- §E Finance (platform cost vs revenue from usage_events) ---
+
+export interface FinanceItem {
+  key: string;
+  cost_micros: number;
+  revenue_micros: number;
+  events: number;
+}
+
+export interface FinancePoint {
+  date: string;
+  cost_micros: number;
+  revenue_micros: number;
+}
+
+export interface FinanceSummary {
+  cost_micros: number;            // total provider cost (all usage, money out)
+  revenue_micros: number;         // real cash in — purchases only (excludes grants)
+  granted_micros: number;         // admin grants/adjustments issued (NOT revenue)
+  net_micros: number;             // revenue − total cost (true P&L)
+  usage_billed_micros: number;    // cost × margin across all usage (informational)
+  /** Sum of users.credit.balance_micros (point-in-time wallet liability). */
+  unspent_purchased_micros: number;
+  margin_multiplier: number;      // the configured profit factor (the lever)
+  events: number;
+  by_provider: FinanceItem[];
+  by_feature: FinanceItem[];
+  by_tier: FinanceItem[];         // revenue_micros here = billed usage value, not cash
+  /** Platform × provider matrix — see CostBreakdown.by_platform_provider. */
+  by_platform_provider: PlatformProviderCell[];
+  /** Group costs by their source ("provider_reported" vs "estimated_fallback"
+   *  vs "rate_table") so the admin can see how much of the recorded cost is
+   *  an estimate rather than a real provider charge. */
+  by_cost_source: FinanceItem[];
+  series: FinancePoint[];
+}
+
+export interface GeminiModelRate {
+  input_per_mtok: number | null;
+  output_per_mtok: number | null;
+  cached_per_mtok: number | null;
+}
+
+/** Curated, admin-editable pricing knobs + global profit margin. */
+export interface PricingConfig {
+  margin_multiplier: number;
+  apify_assumed_per_post_usd: number;
+  /** Per-(provider, platform) scraper rate matrix. Each cell is the
+   *  effective $/post for that pair. Used as:
+   *  - Apify: the fallback estimate when Apify returns no usageTotalUsd.
+   *  - BrightData / X_api / Vetric: the authoritative rate (replaces the
+   *    legacy single per-record / per-call rate when set).
+   *  Cell value `null` means "no override — fall through to '*'". */
+  scraper_rates_per_platform: Record<string, Record<string, number | null>>;
+  gemini: Record<string, GeminiModelRate>;
+  google_search_gemini3_per_query_usd: number | null;
+  google_search_gemini25_per_prompt_usd: number | null;
+  brightdata_per_record_usd: number | null;
+  x_api_per_unit_usd: number | null;
+  vetric_per_call_usd: number | null;
+  bq_per_tb_processed_usd: number | null;
+  gcs_per_gb_stored_usd: number | null;
+  gcs_per_gb_egress_usd: number | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
+export type PricingUpdate = Partial<Omit<PricingConfig, 'updated_at' | 'updated_by'>>;
+
+export interface AdminAuditEntry {
+  id: string;
+  event: string;
+  actor_email?: string | null;
+  occurred_at?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
 }
 
 export interface AdminUserList {
@@ -864,15 +971,51 @@ export interface AdminUserList {
 export interface AdminEvent {
   event_id: string;
   event_type: string;
+  feature: string | null;
+  provider: string | null;
+  model: string | null;
   session_id: string | null;
   collection_id: string | null;
-  metadata: Record<string, unknown> | null;
+  agent_id: string | null;
+  cost_micros: number | null;
+  billed_micros: number | null;
   created_at: string;
+  /** Social platform this row is scoped to (instagram / facebook / tiktok /
+   *  x / reddit / youtube). Null for LLM-only events that don't carry a
+   *  platform (chat, wizard, topic_cluster). */
+  platform: string | null;
+  /** "Where cost_micros came from" — see api/services/cost_meter.py
+   *  constants. "provider_reported" = Apify's actual usageTotalUsd;
+   *  "estimated_fallback" = our assumed_per_post fallback when the
+   *  provider went silent; "rate_table" = lookup against config/cost_rates. */
+  cost_source: string | null;
+}
+
+/** One agent's $ rollup for a single user (admin per-agent attribution). */
+export interface AdminAgentCost {
+  agent_id: string | null;   // null → bucket of events without an agent_id
+  agent_name: string;        // "Unassigned" when agent_id is null
+  agent_icon: string | null;
+  cost_micros: number;
+  billed_micros: number;
+  events: number;
 }
 
 export interface AdminUserDetail extends AdminUser {
+  plan: { tier: PlanTier; trial_expires_at: string | null; notes: string };
+  credit: Wallet;
+  cost_mtd: CostBreakdown;
+  cost_all_time: CostBreakdown;
+  /** Per-agent cost rollup since this user joined. */
+  cost_by_agent_all_time: AdminAgentCost[];
+  /** Per-agent cost rollup for the current month. */
+  cost_by_agent_mtd: AdminAgentCost[];
+  /** Number of agents this user owns. */
+  agents_count: number;
+  credit_transactions: CreditTransaction[];
+  audit_log: AdminAuditEntry[];
   recent_events: AdminEvent[];
-  usage_trend: { date: string; queries: number; collections: number; posts: number }[];
+  usage_trend: { date: string; cost_micros: number; billed_micros: number }[];
 }
 
 export interface AdminActivityPoint {
@@ -971,14 +1114,6 @@ export interface CollectionAudit {
     funnel?: CollectionFunnel;
     recovery?: unknown[];
   };
-}
-
-export interface AdminRevenue {
-  total_revenue_cents: number;
-  total_purchases: number;
-  avg_purchase_cents: number;
-  daily_revenue: { date: string; revenue_cents: number; purchases: number }[];
-  recent_purchases: CreditPurchaseHistoryItem[];
 }
 
 export interface AdminWaitlistEntry {

@@ -15,7 +15,6 @@ import { FeedLinkDialog } from './FeedLinkDialog.tsx';
 import { EditCollectionDialog } from './EditCollectionDialog.tsx';
 import { CollectionModal } from '../sources/CollectionModal.tsx';
 import { StatsModal } from '../sources/StatsModal.tsx';
-import { useAuth } from '../../auth/useAuth.ts';
 import type { Source } from '../../stores/sources-store.ts';
 
 type StatusFilter = 'all' | 'active' | 'completed' | 'failed';
@@ -25,7 +24,6 @@ export function CollectionsPage() {
   const queryClient = useQueryClient();
   const openCollectionModal = useUIStore((s) => s.openCollectionModal);
   const collectionModalOpen = useUIStore((s) => s.collectionModalOpen);
-  const { profile } = useAuth();
 
   // Sidebar state
   const [search, setSearch] = useState('');
@@ -230,7 +228,6 @@ export function CollectionsPage() {
         source={editSource}
         open={!!editSource}
         onClose={() => setEditSource(null)}
-        hasOrg={!!profile?.org_id}
       />
 
       {/* Stats Modal */}

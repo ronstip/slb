@@ -58,11 +58,38 @@ export async function handleResponse(res: Response): Promise<Response> {
   }
 
   if (res.status === 403) {
+    // Resource-level 403s are routine (e.g. POST /feed referencing a collection
+    // you don't own — common when stale client state from a previous user
+    // lingers). Surface them to the caller (TanStack query / component) instead
+    // of yanking the entire app to /access-denied. Admin-only screens self-gate
+    // on `profile.is_super_admin`, so they don't rely on this redirect.
     const body = await res.text();
-    if (typeof window !== 'undefined' && window.location.pathname !== '/access-denied') {
-      navigateHandler?.('/access-denied');
+    if (typeof window !== 'undefined') {
+      console.warn('[api] 403 Forbidden:', body);
     }
     throw new ApiError(403, body);
+  }
+
+  // §E entitlements. A blocked account is a global state → route to the
+  // pending page. insufficient_credit / trial_expired are action-scoped → throw
+  // so the calling action can show an inline "top up" dialog instead of
+  // yanking the user out of whatever they were doing.
+  if (res.status === 402) {
+    const body = await res.text();
+    let code = '';
+    try {
+      code = JSON.parse(body)?.detail?.error ?? '';
+    } catch {
+      // non-JSON body — fall through with empty code
+    }
+    if (
+      code === 'account_blocked' &&
+      typeof window !== 'undefined' &&
+      window.location.pathname !== '/account-pending'
+    ) {
+      navigateHandler?.('/account-pending');
+    }
+    throw new ApiError(402, body);
   }
 
   throw new ApiError(res.status, await res.text());
@@ -155,6 +182,17 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   const res = await handleResponse(
     await fetch(`${API_BASE}${path}`, {
       method: 'PATCH',
+      headers: await getHeaders(),
+      body: JSON.stringify(body),
+    }),
+  );
+  return res.json();
+}
+
+export async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await handleResponse(
+    await fetch(`${API_BASE}${path}`, {
+      method: 'PUT',
       headers: await getHeaders(),
       body: JSON.stringify(body),
     }),

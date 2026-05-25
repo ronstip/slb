@@ -246,8 +246,16 @@ class ApifyAdapter(DataProviderAdapter):
             finally:
                 out_q.put(SENTINEL)
 
+        # Use context-propagating Thread so the cost-meter contextvar
+        # (user/org/collection/agent) survives the parent → child hop.
+        # Plain `threading.Thread` starts with a fresh default context, so
+        # every log_cost in _drive would land with user_id="" agent_id=NULL.
+        from api.services.cost_meter import start_thread_with_cost_context
+
         threads = [
-            threading.Thread(target=_drive, args=(p,), name=f"apify-{p}", daemon=True)
+            start_thread_with_cost_context(
+                _drive, args=(p,), name=f"apify-{p}", daemon=True,
+            )
             for p in platforms
         ]
         for t in threads:
@@ -413,6 +421,11 @@ class ApifyAdapter(DataProviderAdapter):
 
         # Fan out across keywords; yield batches as each keyword completes
         # so a host crash mid-collection still preserves finished-keyword data.
+        # `submit_with_cost_context` propagates the cost-meter contextvar
+        # into the pool worker so log_cost inside _run_and_parse attributes
+        # to the right user/agent.
+        from api.services.cost_meter import submit_with_cost_context
+
         total_parsed = 0
         with ThreadPoolExecutor(max_workers=self._max_parallel) as pool:
             futures = []
@@ -427,7 +440,9 @@ class ApifyAdapter(DataProviderAdapter):
                     run_input["start_date"] = start_date
                 if end_date:
                     run_input["end_date"] = end_date
-                futures.append(pool.submit(self._run_and_parse, "facebook", run_input, config))
+                futures.append(
+                    submit_with_cost_context(pool, self._run_and_parse, "facebook", run_input, config)
+                )
             for fut in as_completed(futures):
                 try:
                     for batch in fut.result():
@@ -483,6 +498,10 @@ class ApifyAdapter(DataProviderAdapter):
         # Yield batches as each keyword's run completes. The shared
         # `_concurrent_runs` semaphore inside `_run_actor_collect_raw` caps
         # in-flight actors regardless of how wide we fan out here.
+        # Context-propagating submit so log_cost retains attribution
+        # through the pool worker boundary.
+        from api.services.cost_meter import submit_with_cost_context
+
         total_parsed = 0
         with ThreadPoolExecutor(max_workers=self._max_parallel) as pool:
             futures = []
@@ -491,7 +510,8 @@ class ApifyAdapter(DataProviderAdapter):
                 if n_posts > 0:
                     run_input["resultsPerPage"] = n_posts
                 futures.append(
-                    pool.submit(
+                    submit_with_cost_context(
+                        pool,
                         self._run_and_parse, "tiktok", run_input, config,
                         apply_time_gate=False,
                     )
@@ -558,15 +578,35 @@ class ApifyAdapter(DataProviderAdapter):
         with self._stats_lock:
             self._funnel["apify_raw_records"] += len(raw_items)
 
-        # Cost telemetry — Apify reports exact USD cost on the run object.
-        # Key name varies by SDK version, try both.
+        # Cost telemetry — Apify exposes the total USD on the run object as
+        # `usageTotalUsd` (top-level). Older SDK shapes used `run.usage.cost`
+        # or `run.usage.totalUsageUsd`; try in order so we capture whichever
+        # the runtime returned. When Apify reports nothing we fall back to
+        # ``apify_assumed_per_post_usd`` × records collected, tagged with
+        # ``cost_source="estimated_fallback"`` so the admin UI surfaces the
+        # difference between a provider-reported charge and our estimate.
         try:
-            from api.services.cost_meter import EVENT_PROVIDER, log_cost
+            from api.services.cost_meter import (
+                COST_SOURCE_ESTIMATED_FALLBACK,
+                COST_SOURCE_PROVIDER_REPORTED,
+                EVENT_PROVIDER,
+                log_cost,
+            )
 
             usage = run.get("usage") or {}
-            reported = usage.get("totalUsageUsd")
-            if reported is None:
-                reported = usage.get("cost")
+            reported = (
+                run.get("usageTotalUsd")          # current Apify API
+                or usage.get("totalUsageUsd")     # legacy SDK shape
+                or usage.get("cost")              # ancient SDK shape
+            )
+            payload = {
+                "actor_id": actor_id,
+                "run_id": run.get("id"),
+                "platform": platform,
+                "dataset_id": dataset_id,
+                "usage": usage,
+                "usageTotalUsd": run.get("usageTotalUsd"),
+            }
             if reported is not None:
                 log_cost(
                     provider="apify",
@@ -574,16 +614,46 @@ class ApifyAdapter(DataProviderAdapter):
                     feature="scrape",
                     event_type=EVENT_PROVIDER,
                     sub_kind=platform,
+                    platform=platform,
                     units=len(raw_items),
                     unit_kind="records",
                     provider_reported_cost_usd=float(reported),
-                    raw_provider_payload={
-                        "actor_id": actor_id,
-                        "run_id": run.get("id"),
-                        "platform": platform,
-                        "dataset_id": dataset_id,
-                        "usage": usage,
-                    },
+                    cost_source=COST_SOURCE_PROVIDER_REPORTED,
+                    raw_provider_payload=payload,
+                )
+            else:
+                # Provider went silent — estimate from the admin-configured
+                # assumed per-post knob so the row still shows up under the
+                # right agent (`cost_source` makes the estimate explicit).
+                from config.cost_rates import get_apify_assumed_per_post_usd
+
+                # Per-platform fallback rate (admin-tunable): IG vs FB vs
+                # TikTok each have a distinct effective per-call price.
+                assumed = get_apify_assumed_per_post_usd(platform)
+                estimated_usd = max(0.0, float(assumed) * len(raw_items))
+                logger.warning(
+                    "Apify run %s returned no cost (run.usageTotalUsd=%s, "
+                    "run.usage=%s) — logging estimated_fallback at $%.6f "
+                    "($%s/post × %d posts)",
+                    run.get("id"), run.get("usageTotalUsd"), usage,
+                    estimated_usd, assumed, len(raw_items),
+                )
+                payload["estimated"] = {
+                    "assumed_per_post_usd": float(assumed),
+                    "records": len(raw_items),
+                }
+                log_cost(
+                    provider="apify",
+                    user_id="",
+                    feature="scrape",
+                    event_type=EVENT_PROVIDER,
+                    sub_kind=platform,
+                    platform=platform,
+                    units=len(raw_items),
+                    unit_kind="records",
+                    provider_reported_cost_usd=estimated_usd,
+                    cost_source=COST_SOURCE_ESTIMATED_FALLBACK,
+                    raw_provider_payload=payload,
                 )
         except Exception:
             logger.warning("Failed to log apify cost", exc_info=True)
@@ -759,12 +829,24 @@ class ApifyAdapter(DataProviderAdapter):
 
         self._record_success()
 
-        # Cost telemetry for engagement-refresh runs (same provider-reported pattern).
+        # Cost telemetry for engagement-refresh runs (same provider-reported
+        # pattern). See `_run_actor_collect_raw` for the key-path rationale.
+        # Engagement refresh is far less common than the initial crawl, so a
+        # missing-cost row is more visible — keep the fallback symmetric.
         try:
-            from api.services.cost_meter import EVENT_PROVIDER, log_cost
+            from api.services.cost_meter import (
+                COST_SOURCE_ESTIMATED_FALLBACK,
+                COST_SOURCE_PROVIDER_REPORTED,
+                EVENT_PROVIDER,
+                log_cost,
+            )
 
             usage = run.get("usage") or {}
-            reported = usage.get("totalUsageUsd") or usage.get("cost")
+            reported = (
+                run.get("usageTotalUsd")
+                or usage.get("totalUsageUsd")
+                or usage.get("cost")
+            )
             if reported is not None:
                 log_cost(
                     provider="apify",
@@ -772,9 +854,35 @@ class ApifyAdapter(DataProviderAdapter):
                     feature="scrape_engagement",
                     event_type=EVENT_PROVIDER,
                     sub_kind=platform,
+                    platform=platform,
                     units=len(urls),
                     unit_kind="records",
                     provider_reported_cost_usd=float(reported),
+                    cost_source=COST_SOURCE_PROVIDER_REPORTED,
+                )
+            else:
+                from config.cost_rates import get_apify_assumed_per_post_usd
+
+                # Per-platform fallback rate (admin-tunable): IG vs FB vs
+                # TikTok each have a distinct effective per-call price.
+                assumed = get_apify_assumed_per_post_usd(platform)
+                estimated_usd = max(0.0, float(assumed) * len(urls))
+                logger.warning(
+                    "Apify engagement-refresh run %s returned no cost — "
+                    "logging estimated_fallback at $%.6f",
+                    run.get("id"), estimated_usd,
+                )
+                log_cost(
+                    provider="apify",
+                    user_id="",
+                    feature="scrape_engagement",
+                    event_type=EVENT_PROVIDER,
+                    sub_kind=platform,
+                    platform=platform,
+                    units=len(urls),
+                    unit_kind="records",
+                    provider_reported_cost_usd=estimated_usd,
+                    cost_source=COST_SOURCE_ESTIMATED_FALLBACK,
                 )
         except Exception:
             logger.warning("Failed to log apify engagement-refresh cost", exc_info=True)

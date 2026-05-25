@@ -17,6 +17,7 @@ from api.auth.dependencies import CurrentUser, get_current_user
 from api.middleware.request_id import get_request_id
 from api.rate_limiting import limiter
 from api.schemas.requests import ChatRequest
+from api.services.entitlements import require_active
 from api.services.artifact_service import (
     persist_tool_result_artifact,
     write_artifact_id_to_event,
@@ -39,6 +40,11 @@ router = APIRouter()
 @limiter.limit("20/minute")
 async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """SSE endpoint — streams agent events to the client."""
+    # §E entitlement gate. Anonymous landing-page previews are exempt (they're
+    # capped separately below); everyone else must be active + in credit.
+    if not user.is_anonymous:
+        require_active(user.uid)
+
     t_start = _time.perf_counter()
     runner = get_runner(
         model=resolve_model_alias(chat_request.model),

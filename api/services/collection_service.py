@@ -9,6 +9,8 @@ from uuid import uuid4
 from api.auth.dependencies import CurrentUser
 from api.deps import get_bq, get_fs
 from api.schemas.requests import CreateCollectionRequest
+from api.services.cost_estimate import estimate_run_cost_micros
+from api.services.entitlements import require_credit_for_run
 from api.schemas.responses import (
     BreakdownItem,
     CollectionStatsResponse,
@@ -20,8 +22,53 @@ from config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
+def estimate_request_micros(request: CreateCollectionRequest) -> int:
+    """Conservative pre-flight $ estimate (USD micros) for one collection request.
+
+    Shared by the per-collection gate and the agent-run sum check so both use
+    identical assumptions.
+    """
+    providers: list[str] | None = None
+    if request.vendor_config:
+        vc = request.vendor_config
+        provs = set((vc.platform_overrides or {}).values())
+        provs.add(vc.default)
+        providers = ["x_api" if p == "xapi" else p for p in provs]
+    return estimate_run_cost_micros(
+        n_posts=request.n_posts,
+        providers=providers,
+        include_comments=request.include_comments,
+        enrichment_enabled=True,
+    )
+
+
+def can_access_agent(user: CurrentUser, agent: dict) -> bool:
+    """Access rule for an agent (the unit of org sharing).
+
+    The owner always has access. Other org members have access only when the
+    owner has explicitly shared the agent (`visibility == "org"`). Sharing is
+    opt-in: an absent/`"private"` visibility means org members see nothing —
+    this is the single source of truth replacing the old per-collection share.
+    """
+    if agent.get("user_id") == user.uid:
+        return True
+    if (
+        user.org_id
+        and agent.get("org_id") == user.org_id
+        and agent.get("visibility") == "org"
+    ):
+        return True
+    return False
+
+
 def can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
-    """Owner or org-member (when visibility=='org') can access the collection."""
+    """Owner or org-member (when visibility=='org') can access the collection.
+
+    Collection `visibility` is no longer set by the user directly; it is
+    propagated from the owning agent's `visibility` (see
+    `agent_service.set_agent_visibility`). The check itself is unchanged so all
+    existing call sites (feed, posts, dashboard, …) keep working.
+    """
     if collection_status.get("user_id") == user.uid:
         return True
     if (
@@ -109,6 +156,11 @@ def create_collection_from_request(
     if request.has_media is not None:
         config.setdefault("has_media", request.has_media)
 
+    # §E pre-flight credit gate. Estimate the run's $ cost up front and refuse
+    # (402) if the wallet can't cover it, so a run never dies mid-way and wastes
+    # credit. No-op unless entitlements mode is on; `free` users always pass.
+    require_credit_for_run(user_id, estimate_request_micros(request))
+
     # Insert collection record into BigQuery
     bq.insert_rows(
         "collections",
@@ -140,9 +192,23 @@ def create_collection_from_request(
             collection_id,
         )
         from workers.pipeline import run_pipeline
+        from api.services.cost_meter import collection_context_scope
+
+        # Bind the cost-meter context INSIDE the thread (contextvars don't cross
+        # thread boundaries). The prod path binds this in workers/server.py via
+        # Cloud Tasks; the dev thread bypasses that, so without this every
+        # enrich/topic_cluster Gemini call would log cost with an empty user_id.
+        agent_id_ctx = (extra_config or {}).get("agent_id")
+
+        def _run_pipeline_with_cost_context() -> None:
+            with collection_context_scope(
+                user_id=user_id, org_id=org_id,
+                collection_id=collection_id, agent_id=agent_id_ctx,
+            ):
+                run_pipeline(collection_id)
+
         thread = threading.Thread(
-            target=run_pipeline,
-            args=(collection_id,),
+            target=_run_pipeline_with_cost_context,
             daemon=True,
         )
         thread.start()

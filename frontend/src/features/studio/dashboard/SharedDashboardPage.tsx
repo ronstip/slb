@@ -21,6 +21,15 @@ export function SharedDashboardPage() {
   // Token-gated; must never be indexed.
   useHead({ meta: [{ name: 'robots', content: 'noindex,nofollow' }] });
 
+  // The app shell sets a global body min-width: 1280px for desktop-only
+  // surfaces. The public share page is a viral landing surface that must
+  // render on phones — drop the constraint while mounted, restore on unmount.
+  useEffect(() => {
+    const prev = document.body.style.minWidth;
+    document.body.style.minWidth = '0';
+    return () => { document.body.style.minWidth = prev; };
+  }, []);
+
   const { token } = useParams<{ token: string }>();
   const [filterBarFilters, setFilterBarFilters] = useState<FilterBarFilterId[]>(DEFAULT_FILTER_BAR_FILTERS);
   const gridRef = useRef<HTMLElement | null>(null);
@@ -148,7 +157,7 @@ export function SharedDashboardPage() {
           {/* Filter bar — editor can hide it for curated reports. */}
           {!response.filterBarHidden && (
             <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-              <div className="mx-auto max-w-6xl">
+              <div className="mx-auto max-w-6xl px-3 sm:px-6">
               <DashboardFilterBar
                 filters={filters}
                 availableOptions={availableOptions}
@@ -165,7 +174,7 @@ export function SharedDashboardPage() {
             </div>
           )}
 
-          <main className="mx-auto max-w-6xl">
+          <main className="mx-auto max-w-6xl px-3 sm:px-6">
             <SocialDashboardView
               artifactId={token!}
               filteredPosts={filteredPosts}

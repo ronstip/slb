@@ -356,7 +356,13 @@ class FirestoreClient:
         return found
 
     def list_user_agents(self, user_id: str, org_id: str | None = None) -> list[dict]:
-        """List agents visible to the user: own + org-shared."""
+        """List agents visible to the user: all of their own, plus org agents the
+        owner has explicitly shared (`visibility == "org"`).
+
+        Sharing is opt-in — an org member must NOT see another member's private
+        agents. (Previously this returned every agent stamped with the org_id,
+        which leaked all org members' agents to each other.)
+        """
         seen: set[str] = set()
         results: list[dict] = []
 
@@ -370,6 +376,9 @@ class FirestoreClient:
             results.append(data)
 
         if org_id:
+            # Filter `visibility == "org"` in Python (not a second `.where`) to
+            # avoid any composite-index requirement — mirrors list_collections.
+            # Agents with no `visibility` field are private and excluded here.
             for doc in (
                 self._db.collection("agents")
                 .where("org_id", "==", org_id)
@@ -378,6 +387,8 @@ class FirestoreClient:
                 if doc.id in seen:
                     continue
                 data = doc.to_dict()
+                if data.get("visibility") != "org":
+                    continue
                 data["agent_id"] = doc.id
                 for key in ("created_at", "updated_at", "completed_at", "next_run_at"):
                     if key in data and hasattr(data[key], "isoformat"):
@@ -388,12 +399,30 @@ class FirestoreClient:
         return results
 
     def add_agent_collection(self, agent_id: str, collection_id: str) -> None:
-        """Append a collection_id to the agent's collection_ids array."""
+        """Append a collection_id to the agent's collection_ids array.
+
+        If the agent is already shared with the org, the freshly-attached
+        collection inherits `visibility="org"` so org members keep access to
+        new data without re-sharing. (Agent is the unit of sharing; collection
+        visibility is derived from it.)
+        """
         from google.cloud.firestore_v1 import transforms
-        self._db.collection("agents").document(agent_id).update({
+        agent_ref = self._db.collection("agents").document(agent_id)
+        agent_snap = agent_ref.get()
+        agent_data = agent_snap.to_dict() or {}
+        agent_ref.update({
             "collection_ids": transforms.ArrayUnion([collection_id]),
             "updated_at": datetime.now(timezone.utc),
         })
+        if agent_data.get("visibility") == "org":
+            try:
+                self.update_collection_status(
+                    collection_id, visibility="org", org_id=agent_data.get("org_id")
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to inherit org visibility for collection %s", collection_id
+                )
 
     def add_agent_artifact(self, agent_id: str, artifact_id: str) -> None:
         """Append an artifact_id to the agent's artifact_ids array."""
@@ -931,77 +960,269 @@ class FirestoreClient:
             return {}
 
     # ------------------------------------------------------------------
-    # Credits
+    # Credit wallet ($-based, USD micros) — §E.
+    #
+    # Firestore `users/{uid}.credit` is the authoritative BALANCE; BigQuery
+    # `usage_events.cost_micros` is the authoritative SPEND log used for the
+    # admin breakdown + periodic reconciliation. The `credit_transactions`
+    # ledger records credit-IN only (grants/purchases/adjustments) — spend is
+    # too high-volume to ledger and already lives in BigQuery.
     # ------------------------------------------------------------------
 
-    def add_credits(
-        self, user_id: str | None = None, org_id: str | None = None, credits: int = 0
-    ) -> None:
-        """Add credits to a user or org account."""
-        from google.cloud.firestore_v1 import transforms
-
-        if org_id:
-            ref = self._db.collection("organizations").document(org_id)
-            ref.set(
-                {
-                    "credits_remaining": transforms.Increment(credits),
-                    "credits_total": transforms.Increment(credits),
-                },
-                merge=True,
-            )
-        elif user_id:
-            ref = self._db.collection("users").document(user_id)
-            ref.set(
-                {
-                    "credits_remaining": transforms.Increment(credits),
-                    "credits_total": transforms.Increment(credits),
-                },
-                merge=True,
-            )
-
-    def deduct_credits(
-        self, user_id: str | None = None, org_id: str | None = None, amount: int = 1
-    ) -> None:
-        """Deduct credits from a user or org account."""
-        from google.cloud.firestore_v1 import transforms
-
-        target_id = org_id or user_id
-        collection = "organizations" if org_id else "users"
-        if target_id:
-            ref = self._db.collection(collection).document(target_id)
-            ref.set(
-                {
-                    "credits_remaining": transforms.Increment(-amount),
-                    "credits_used": transforms.Increment(amount),
-                },
-                merge=True,
-            )
-
-    def record_credit_purchase(
-        self,
-        credits: int,
-        amount_cents: int,
-        purchased_at: str,
-        user_id: str | None = None,
-        org_id: str | None = None,
-    ) -> None:
-        """Record a credit purchase in the history collection."""
-        data = {
-            "credits": credits,
-            "amount_cents": amount_cents,
-            "purchased_at": purchased_at,
-            "purchased_by": user_id,
+    def get_credit(self, uid: str) -> dict:
+        """Return the wallet for a user: balance/total_in/spent (USD micros)."""
+        doc = self._db.collection("users").document(uid).get()
+        credit = (doc.to_dict() or {}).get("credit") if doc.exists else None
+        credit = credit or {}
+        return {
+            "balance_micros": int(credit.get("balance_micros", 0)),
+            "total_in_micros": int(credit.get("total_in_micros", 0)),
+            "spent_micros": int(credit.get("spent_micros", 0)),
         }
-        if org_id:
-            data["org_id"] = org_id
-        if user_id:
-            data["user_id"] = user_id
-            # Try to get user display name
-            user_doc = self.get_user(user_id)
-            if user_doc:
-                data["purchased_by_name"] = user_doc.get("display_name") or user_doc.get("email")
 
-        self._db.collection("credit_purchases").add(data)
+    def set_plan(self, uid: str, **fields) -> None:
+        """Merge plan fields into users/{uid}.plan (stamps updated_at)."""
+        fields = {**fields, "updated_at": datetime.now(timezone.utc)}
+        self._db.collection("users").document(uid).set({"plan": fields}, merge=True)
+
+    def add_credit_micros(
+        self,
+        uid: str,
+        amount_micros: int,
+        kind: str,
+        reason: str = "",
+        created_by: str | None = None,
+        provider_ref: str | None = None,
+    ) -> int:
+        """Add credit (grant/purchase/adjustment/refund) and append a ledger row.
+
+        Runs in a transaction so `balance_after_micros` is consistent under
+        concurrent grants. `total_in_micros` (the progress-bar denominator)
+        only ever grows — negative amounts (refunds) reduce balance but not
+        the lifetime total. Returns the new balance.
+        """
+        user_ref = self._db.collection("users").document(uid)
+        txn_ref = self._db.collection("credit_transactions").document()
+        now = datetime.now(timezone.utc)
+
+        @firestore.transactional
+        def _apply(transaction) -> int:
+            snap = user_ref.get(transaction=transaction)
+            existing = ((snap.to_dict() or {}).get("credit") or {}) if snap.exists else {}
+            new_balance = int(existing.get("balance_micros", 0)) + int(amount_micros)
+            new_total_in = int(existing.get("total_in_micros", 0)) + max(int(amount_micros), 0)
+            transaction.set(
+                user_ref,
+                {
+                    "credit": {
+                        "balance_micros": new_balance,
+                        "total_in_micros": new_total_in,
+                        "spent_micros": int(existing.get("spent_micros", 0)),
+                        "updated_at": now,
+                    }
+                },
+                merge=True,
+            )
+            transaction.set(
+                txn_ref,
+                {
+                    "user_id": uid,
+                    "kind": kind,
+                    "amount_micros": int(amount_micros),
+                    "balance_after_micros": new_balance,
+                    "reason": reason,
+                    "created_by": created_by,
+                    "provider_ref": provider_ref,
+                    "created_at": now,
+                },
+            )
+            return new_balance
+
+        return _apply(self._db.transaction())
+
+    def apply_spend_micros(self, uid: str, micros: int) -> None:
+        """Deduct a real spend from the wallet (atomic increment).
+
+        Called fire-and-forget from the cost meter on every priced provider/LLM
+        call. Never raises into the caller. Spend detail is NOT ledgered here —
+        BigQuery `usage_events` holds it.
+        """
+        if not uid or micros <= 0:
+            return
+        from google.cloud.firestore_v1 import transforms
+
+        try:
+            self._db.collection("users").document(uid).set(
+                {
+                    "credit": {
+                        "balance_micros": transforms.Increment(-int(micros)),
+                        "spent_micros": transforms.Increment(int(micros)),
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+                merge=True,
+            )
+        except Exception as e:  # noqa: BLE001 — wallet deduction must never break a request
+            logger.warning("apply_spend_micros failed for %s: %s", uid, e)
+
+    def list_credit_transactions(self, uid: str, limit: int = 50) -> list[dict]:
+        """Return a user's credit-in ledger, most recent first."""
+        try:
+            query = self._db.collection("credit_transactions").where("user_id", "==", uid)
+            try:
+                docs = query.order_by("created_at", direction="DESCENDING").limit(limit).stream()
+                rows = [{"id": d.id, **(d.to_dict() or {})} for d in docs]
+            except Exception:
+                docs = query.limit(limit).stream()
+                rows = [{"id": d.id, **(d.to_dict() or {})} for d in docs]
+                rows.sort(key=lambda r: str(r.get("created_at", "")), reverse=True)
+            for r in rows:
+                ts = r.get("created_at")
+                if hasattr(ts, "isoformat"):
+                    r["created_at"] = ts.isoformat()
+            return rows
+        except Exception as e:
+            logger.warning("Failed to fetch credit transactions for %s: %s", uid, e)
+            return []
+
+    def sum_credit_in(self, start=None, end=None) -> dict[str, int]:
+        """Sum credit_transactions amount_micros by kind within [start, end).
+
+        Used by the admin Finance page: `purchase` = real cash users paid us;
+        everything else (grant/adjustment/refund) is credit we issued, not
+        revenue. Streams the (small) collection and filters in Python so no
+        composite index is required. `start`/`end` are aware datetimes or None.
+        """
+        out: dict[str, int] = {"purchase": 0, "grant": 0, "adjustment": 0, "refund": 0, "other": 0}
+        try:
+            for d in self._db.collection("credit_transactions").stream():
+                row = d.to_dict() or {}
+                ts = row.get("created_at")
+                if hasattr(ts, "isoformat"):
+                    pass  # already a datetime
+                elif isinstance(ts, str):
+                    try:
+                        ts = datetime.fromisoformat(ts)
+                    except ValueError:
+                        ts = None
+                else:
+                    ts = None
+                if start is not None and (ts is None or ts < start):
+                    continue
+                if end is not None and (ts is None or ts >= end):
+                    continue
+                kind = row.get("kind") or "other"
+                key = kind if kind in out else "other"
+                out[key] += int(row.get("amount_micros") or 0)
+        except Exception as e:
+            logger.warning("sum_credit_in failed: %s", e)
+        return out
+
+    def sum_wallet_balance(self) -> dict[str, int]:
+        """Sum the live ``users.credit`` counters across the whole platform.
+
+        Returns ``{balance_micros, total_in_micros, spent_micros}``. Used by the
+        admin Finance page to surface **unspent purchased credit** — the
+        wallet liability we still owe users in deliverable usage. Phantom
+        Firestore docs (no email AND no created_at — see ``admin.py``) are
+        skipped so the totals match the user table.
+
+        Streams the (small) ``users`` collection in Python; no composite index
+        required. Returned values are a point-in-time snapshot — they are NOT
+        range-filterable because Firestore stores only the live counter.
+        """
+        out: dict[str, int] = {"balance_micros": 0, "total_in_micros": 0, "spent_micros": 0}
+        try:
+            for doc in self._db.collection("users").stream():
+                data = doc.to_dict() or {}
+                # Phantom-skip: matches admin.py's user-list filter.
+                if not (data.get("email") or data.get("created_at")):
+                    continue
+                credit = data.get("credit") or {}
+                out["balance_micros"] += int(credit.get("balance_micros") or 0)
+                out["total_in_micros"] += int(credit.get("total_in_micros") or 0)
+                out["spent_micros"] += int(credit.get("spent_micros") or 0)
+        except Exception as e:
+            logger.warning("sum_wallet_balance failed: %s", e)
+        return out
+
+    def write_admin_audit(self, entry: dict) -> None:
+        """Append an admin action (plan_change / credit_grant) to admin_audit."""
+        try:
+            self._db.collection("admin_audit").add({**entry, "occurred_at": datetime.now(timezone.utc)})
+        except Exception as e:
+            logger.warning("Failed to write admin audit entry: %s", e)
+
+    def list_admin_audit(self, target_uid: str, limit: int = 50) -> list[dict]:
+        """Return audit entries for a target user, most recent first."""
+        try:
+            query = self._db.collection("admin_audit").where("target_uid", "==", target_uid)
+            try:
+                docs = query.order_by("occurred_at", direction="DESCENDING").limit(limit).stream()
+                rows = [{"id": d.id, **(d.to_dict() or {})} for d in docs]
+            except Exception:
+                docs = query.limit(limit).stream()
+                rows = [{"id": d.id, **(d.to_dict() or {})} for d in docs]
+                rows.sort(key=lambda r: str(r.get("occurred_at", "")), reverse=True)
+            for r in rows:
+                ts = r.get("occurred_at")
+                if hasattr(ts, "isoformat"):
+                    r["occurred_at"] = ts.isoformat()
+            return rows
+        except Exception as e:
+            logger.warning("Failed to fetch admin audit for %s: %s", target_uid, e)
+            return []
+
+    # ------------------------------------------------------------------
+    # Pricing config (§E) — admin-editable provider rates + profit margin.
+    # Singleton doc `app_config/pricing` deep-merged over the code seed in
+    # config/cost_rates.py. Read on a short cache by the cost layer.
+    # ------------------------------------------------------------------
+
+    def get_pricing_config(self) -> dict:
+        """Return the pricing-override doc, or {} if unset (use code seeds)."""
+        try:
+            doc = self._db.collection("app_config").document("pricing").get()
+            if not doc.exists:
+                return {}
+            data = doc.to_dict() or {}
+            ts = data.get("updated_at")
+            if hasattr(ts, "isoformat"):
+                data["updated_at"] = ts.isoformat()
+            return data
+        except Exception as e:
+            logger.warning("Failed to read pricing config: %s", e)
+            return {}
+
+    def set_pricing_config(
+        self,
+        *,
+        rate_overrides: dict | None = None,
+        margin_multiplier: float | None = None,
+        apify_assumed_per_post_usd: float | None = None,
+        scraper_rates_per_platform: dict | None = None,
+        updated_by: str | None = None,
+    ) -> None:
+        """Merge pricing fields into `app_config/pricing` (stamps updated_at).
+
+        ``scraper_rates_per_platform`` is the full
+        ``{provider: {platform_or_star: usd}}`` matrix — caller is
+        responsible for merging in the cells they touched on top of the
+        existing dict before passing in, so partial UI edits don't drop
+        un-touched cells.
+        """
+        payload: dict = {"updated_at": datetime.now(timezone.utc)}
+        if rate_overrides is not None:
+            payload["rate_overrides"] = rate_overrides
+        if margin_multiplier is not None:
+            payload["margin_multiplier"] = float(margin_multiplier)
+        if apify_assumed_per_post_usd is not None:
+            payload["apify_assumed_per_post_usd"] = float(apify_assumed_per_post_usd)
+        if scraper_rates_per_platform is not None:
+            payload["scraper_rates_per_platform"] = scraper_rates_per_platform
+        if updated_by is not None:
+            payload["updated_by"] = updated_by
+        self._db.collection("app_config").document("pricing").set(payload, merge=True)
 
     # --- Artifact methods ---
 
@@ -1292,28 +1513,3 @@ class FirestoreClient:
             return data
         return None
 
-    def get_credit_history(
-        self, user_id: str | None = None, org_id: str | None = None
-    ) -> list[dict]:
-        """Get credit purchase history, most recent first."""
-        try:
-            collection = self._db.collection("credit_purchases")
-            if org_id:
-                query = collection.where("org_id", "==", org_id)
-            elif user_id:
-                query = collection.where("user_id", "==", user_id)
-            else:
-                return []
-
-            # Try with ordering (requires composite index); fall back to unordered
-            try:
-                docs = query.order_by("purchased_at", direction="DESCENDING").limit(50).stream()
-                return [{"purchase_id": doc.id, **doc.to_dict()} for doc in docs]
-            except Exception:
-                docs = query.limit(50).stream()
-                results = [{"purchase_id": doc.id, **doc.to_dict()} for doc in docs]
-                results.sort(key=lambda x: x.get("purchased_at", ""), reverse=True)
-                return results
-        except Exception as e:
-            logger.warning("Failed to fetch credit history: %s", e)
-            return []

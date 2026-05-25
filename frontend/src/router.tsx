@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, Outlet, useNavigate, useParams } from 'r
 import { AuthGate } from './auth/AuthGate.tsx';
 import { useAuth } from './auth/useAuth.ts';
 import { setNavigateHandler } from './api/client.ts';
+import { accountBlock } from './lib/entitlement.ts';
 
 // Route-level code splitting. Each lazy() call produces a separate JS chunk
 // that is only fetched when the user navigates to that route. Keeps the
@@ -56,6 +57,9 @@ const CollectionsPage = lazy(() =>
 const AccessDeniedPage = lazy(() =>
   import('./features/access-denied/AccessDeniedPage.tsx').then((m) => ({ default: m.AccessDeniedPage })),
 );
+const AccountPendingPage = lazy(() =>
+  import('./features/account-pending/AccountPendingPage.tsx').then((m) => ({ default: m.AccountPendingPage })),
+);
 
 function FullScreenSpinner() {
   return (
@@ -90,6 +94,7 @@ const AgentHomeRoute = withSuspense(AgentHome);
 const AgentDetailPageRoute = withSuspense(AgentDetailPage);
 const CollectionsPageRoute = withSuspense(CollectionsPage);
 const AccessDeniedPageRoute = withSuspense(AccessDeniedPage);
+const AccountPendingPageRoute = withSuspense(AccountPendingPage);
 
 /**
  * Registers the react-router `navigate` function with the API client so
@@ -127,7 +132,7 @@ function InviteRoute() {
 // Smart home route: shows LandingPage for anonymous/unauthenticated users,
 // AgentHome for signed-in users.
 function HomeRoute() {
-  const { loading, isAnonymous, devMode } = useAuth();
+  const { loading, isAnonymous, devMode, profile } = useAuth();
 
   // During Puppeteer prerender (build-time SEO snapshot) auth never resolves,
   // so always serve LandingPage to crawlers. Production users hit normal logic.
@@ -143,6 +148,13 @@ function HomeRoute() {
   }
 
   if (isAnonymous && !devMode) return <LandingPageRoute />;
+
+  // §E: '/' renders the app outside AuthGate, so gate blocked / expired-trial
+  // accounts here too — otherwise they'd see the home screen (and fire data
+  // requests) instead of the pending page. Super admins / impersonation pass.
+  if (accountBlock(profile)) {
+    return <AccountPendingPageRoute />;
+  }
 
   return <AgentHomeRoute />;
 }
@@ -175,6 +187,12 @@ export const router = createBrowserRouter([
         // bounce back to '/' via AuthGate's anonymous-user redirect.
         path: '/access-denied',
         element: <AccessDeniedPageRoute />,
+      },
+      {
+        // §E: signed-in but blocked users land here (402 account_blocked).
+        // Outside AuthGate so the redirect can't bounce back to '/'.
+        path: '/account-pending',
+        element: <AccountPendingPageRoute />,
       },
       {
         path: '/shared/briefing/:token',
