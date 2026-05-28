@@ -46,9 +46,11 @@ from workers.collection.adapters.apify_client import ApifyAdapterClient, ApifyAP
 from workers.collection.adapters.apify_parsers import (
     flatten_apify_instagram_comments,
     flatten_apify_tiktok_comments,
+    flatten_apify_youtube_comments,
     get_parsers,
     parse_apify_instagram_comment_author,
     parse_apify_tiktok_comment_author,
+    parse_apify_youtube_comment_author,
 )
 from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.comment_threading import resolve_comment_roots
@@ -808,8 +810,8 @@ class ApifyAdapter(DataProviderAdapter):
         return results
 
     # Per-platform comments config — each Apify actor accepts a different
-    # set of input field names, so we carry the URL key + limit key here
-    # alongside the parsers.
+    # set of input field names + URL payload shape, so we carry the URL
+    # key + limit key + URL wrapper here alongside the parsers.
     #
     # Fields: (
     #   actor_id_settings_attr,
@@ -818,6 +820,7 @@ class ApifyAdapter(DataProviderAdapter):
     #   limit_input_key,      # actor input field that takes the per-post cap
     #   flatten_fn,
     #   author_parse_fn,
+    #   url_payload_fn,       # build the value passed under url_input_key
     # )
     _COMMENTS_CONFIG = {
         "instagram": (
@@ -827,6 +830,7 @@ class ApifyAdapter(DataProviderAdapter):
             "resultsLimit",
             flatten_apify_instagram_comments,
             parse_apify_instagram_comment_author,
+            lambda url: [url],
         ),
         "tiktok": (
             "apify_actor_tiktok_comments",
@@ -835,6 +839,16 @@ class ApifyAdapter(DataProviderAdapter):
             "commentsPerPost",
             flatten_apify_tiktok_comments,
             parse_apify_tiktok_comment_author,
+            lambda url: [url],
+        ),
+        "youtube": (
+            "apify_actor_youtube_comments",
+            "apify_youtube_comments_max",
+            "startUrls",
+            "maxComments",
+            flatten_apify_youtube_comments,
+            parse_apify_youtube_comment_author,
+            lambda url: [{"url": url}],
         ),
     }
 
@@ -864,6 +878,7 @@ class ApifyAdapter(DataProviderAdapter):
             limit_input_key,
             flatten_fn,
             parse_author_fn,
+            url_payload_fn,
         ) = config
 
         post_url = post.get("post_url")
@@ -877,7 +892,7 @@ class ApifyAdapter(DataProviderAdapter):
         actor_id = getattr(settings, actor_attr)
 
         run_input: dict = {
-            url_input_key: [post_url],
+            url_input_key: url_payload_fn(post_url),
             limit_input_key: results_limit,
             "proxyConfiguration": {
                 "useApifyProxy": True,

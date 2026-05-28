@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from workers.collection.models import Channel, Comment, Post
@@ -736,6 +737,241 @@ def flatten_apify_tiktok_comments(items: list[dict], post_id: str) -> list[Comme
             child = parse_apify_tiktok_comment(
                 reply, parent_comment_id=top_comment.comment_id,
             )
+            if child.comment_id:
+                out.append(child)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# YouTube comments — streamers/youtube-comments-scraper
+# Observed dataset item shape (one comment per item; no native id, no
+# channelId — only handle):
+#   author ("@handle"), comment, type ("comment" | "reply"),
+#   voteCount, replyCount, publishedTimeText ("2 hours ago"),
+#   hasCreatorHeart, authorIsChannelOwner, title, pageUrl.
+# Field-name fallbacks cover other builds that emit text under `text`/
+# `commentText`, ids under `commentId`/`cid`, ISO dates under `publishedAt`,
+# UC-style channel ids under `authorChannelId`/`channelId`.
+# ---------------------------------------------------------------------------
+
+_YT_RELATIVE_UNITS = {
+    "second": 1,
+    "minute": 60,
+    "hour": 3600,
+    "day": 86_400,
+    "week": 7 * 86_400,
+    "month": 30 * 86_400,   # approx — YT only ever shows whole units
+    "year": 365 * 86_400,
+}
+
+_YT_RELATIVE_RE = re.compile(
+    r"\b(a|an|\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago\b",
+)
+
+
+def _parse_yt_relative_time(text: Any, ref_now: datetime) -> datetime | None:
+    """Convert YT's `publishedTimeText` (e.g. "2 hours ago", "a day ago",
+    "just now") into an absolute tz-aware UTC datetime relative to `ref_now`.
+
+    YT only ever emits relative times for comments via this actor, so a
+    timezone-aware "now" anchor is the best we can do — the result is
+    approximate to whole units (YT's own granularity).
+    """
+    if not isinstance(text, str):
+        return None
+    s = text.strip().lower()
+    if not s:
+        return None
+    if s in ("just now", "moments ago"):
+        return ref_now
+    if s == "yesterday":
+        return ref_now - timedelta(days=1)
+    m = _YT_RELATIVE_RE.search(s)
+    if not m:
+        return None
+    raw_n, unit = m.group(1), m.group(2)
+    n = 1 if raw_n in ("a", "an") else int(raw_n)
+    return ref_now - timedelta(seconds=n * _YT_RELATIVE_UNITS[unit])
+
+
+def _parse_yt_vote_count(value: Any) -> int | None:
+    """YT actors sometimes return abbreviated strings like '1.2K' or '3M'.
+
+    Numeric values pass through `_safe_int`. Strings: strip commas, then
+    expand K/M/B suffix; fall back to None on parse failure.
+    """
+    if isinstance(value, (int, float)):
+        return _safe_int(value)
+    if not isinstance(value, str):
+        return None
+    s = value.strip().replace(",", "")
+    if not s:
+        return None
+    mult = 1
+    suffix = s[-1].upper()
+    if suffix in ("K", "M", "B"):
+        mult = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000}[suffix]
+        s = s[:-1]
+    try:
+        return int(float(s) * mult)
+    except ValueError:
+        return None
+
+
+def _yt_handle(item: dict) -> str:
+    """Pull the author handle (no leading "@") from any of the known fields."""
+    handle = _first(
+        item, "authorHandle", "authorChannelHandle", "author", "userName",
+        "authorName", default="",
+    )
+    if isinstance(handle, str) and handle.startswith("@"):
+        handle = handle[1:]
+    return str(handle)
+
+
+def parse_apify_youtube_comment(
+    item: dict,
+    parent_comment_id: str | None = None,
+    *,
+    ref_now: datetime | None = None,
+) -> Comment:
+    """Parse one YouTube comment item into a Comment.
+
+    `parent_comment_id`, when set, overrides any value on the item itself —
+    used by the flattener to stamp the correct parent on replies.
+
+    `ref_now` is the anchor for parsing relative `publishedTimeText` (e.g.
+    "2 hours ago") — pass the same timestamp for every item in a batch so
+    threaded comments stay ordered relative to each other.
+    """
+    if ref_now is None:
+        ref_now = datetime.now(tz=timezone.utc)
+
+    comment_id = str(_first(item, "id", "commentId", "cid", default=""))
+
+    handle = _yt_handle(item)
+    channel_id = _first(item, "authorChannelId", "channelId", "authorId", default=None)
+
+    content = _first(item, "comment", "text", "commentText", "content", default="")
+
+    published_text = item.get("publishedTimeText")
+    commented_at = (
+        _parse_dt(_first(item, "publishedAt", "publishedTime", "time", "createdAt"))
+        or _parse_yt_relative_time(published_text, ref_now)
+    )
+
+    raw_parent = parent_comment_id
+    if raw_parent is None:
+        candidate = _first(item, "parentCommentId", "replyToCid", "parentId", default=None)
+        if candidate:
+            raw_parent = candidate
+
+    return Comment(
+        comment_id=comment_id,
+        platform="youtube",
+        channel_handle=handle,
+        channel_id=str(channel_id) if channel_id else None,
+        content=content,
+        commented_at=commented_at or datetime.fromtimestamp(0, tz=timezone.utc),
+        likes=_parse_yt_vote_count(_first(item, "voteCount", "votes", "likes", "likeCount", default=None)),
+        replies_count=_safe_int(_first(item, "replyCount", "repliesCount", "numReplies", default=None)),
+        media_urls=[],
+        media_refs=[],
+        platform_metadata={
+            "platform": "youtube",
+            "author_name": _first(item, "authorName", "author", "userName", default=None),
+            "author_thumbnail": _first(item, "authorThumbnail", "authorAvatar", "avatarUrl", default=None),
+            "published_time_text": published_text,
+            "has_creator_heart": item.get("hasCreatorHeart"),
+            "author_is_channel_owner": item.get("authorIsChannelOwner"),
+            "type": item.get("type"),
+            "page_url": item.get("pageUrl"),
+        },
+        replied_to_id=str(raw_parent) if raw_parent else None,
+    )
+
+
+def parse_apify_youtube_comment_author(item: dict) -> Channel:
+    """Channel snapshot for a YouTube comment author."""
+    handle = _yt_handle(item)
+    channel_id = _first(item, "authorChannelId", "channelId", "authorId", default="")
+    channel_url = None
+    if handle:
+        channel_url = f"https://www.youtube.com/@{handle}"
+    elif channel_id:
+        channel_url = f"https://www.youtube.com/channel/{channel_id}"
+    return Channel(
+        channel_id=str(channel_id),
+        platform="youtube",
+        channel_handle=handle,
+        subscribers=None,
+        total_posts=None,
+        channel_url=channel_url,
+        description=None,
+        created_date=None,
+        channel_metadata={
+            "author_name": _first(item, "authorName", "author", "userName", default=None),
+            "author_thumbnail": _first(item, "authorThumbnail", "authorAvatar", "avatarUrl", default=None),
+        },
+    )
+
+
+def flatten_apify_youtube_comments(items: list[dict], post_id: str) -> list[Comment]:
+    """Emit a flat Comment list from the YT comments-scraper dataset.
+
+    The streamers/youtube-comments-scraper actor returns ONE item per
+    comment (top-level or reply) in a flat list, with `type` set to
+    "comment" or "reply" but no parent-comment linkage on reply items.
+    Without that linkage we can't thread replies back to a specific
+    parent — so every item is anchored to the post itself (root = self).
+    `type` is preserved in `platform_metadata` for downstream filtering.
+
+    The fallback paths for other builds:
+      - nested `replies` arrays under a top-level item (legacy shape) —
+        children get the top-level's synthesized id as their parent.
+      - flat items with a `parentCommentId` set — that linkage is
+        preserved as-is.
+
+    Stable synthesized id: many builds don't ship a native `commentId`,
+    so we hash (post_id, handle, content, publishedTimeText) and use that
+    as `comment_id`. The same source row hashes to the same id on
+    re-fetch, so the comments table dedups correctly.
+    """
+    out: list[Comment] = []
+    ref_now = datetime.now(tz=timezone.utc)
+    for top in items:
+        raw_parent = _first(top, "parentCommentId", "replyToCid", "parentId", default=None)
+        is_flat_reply = raw_parent is not None and str(raw_parent) != ""
+
+        top_comment = parse_apify_youtube_comment(
+            top,
+            parent_comment_id=None if is_flat_reply else post_id,
+            ref_now=ref_now,
+        )
+        if not top_comment.comment_id:
+            top_comment.comment_id = _hash_id(
+                f"yt|{post_id}|{top_comment.channel_handle}|"
+                f"{top_comment.content}|{top.get('publishedTimeText', '')}"
+            )
+        if not top_comment.comment_id:
+            continue
+        out.append(top_comment)
+
+        replies = top.get("replies") or []
+        if not isinstance(replies, list):
+            continue
+        for reply in replies:
+            if not isinstance(reply, dict):
+                continue
+            child = parse_apify_youtube_comment(
+                reply, parent_comment_id=top_comment.comment_id, ref_now=ref_now,
+            )
+            if not child.comment_id:
+                child.comment_id = _hash_id(
+                    f"yt|{post_id}|{top_comment.comment_id}|"
+                    f"{child.channel_handle}|{child.content}|"
+                    f"{reply.get('publishedTimeText', '')}"
+                )
             if child.comment_id:
                 out.append(child)
     return out

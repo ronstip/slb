@@ -47,7 +47,8 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
   const commentsSupported =
     post.platform === 'twitter' ||
     post.platform === 'instagram' ||
-    post.platform === 'tiktok';
+    post.platform === 'tiktok' ||
+    post.platform === 'youtube';
 
   const excludeMutation = useMutation({
     mutationFn: () => {

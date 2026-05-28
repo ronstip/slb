@@ -109,7 +109,8 @@ export function CommentsDrawer({ open, onOpenChange, post, agentId }: CommentsDr
   const commentsSupported =
     post.platform === 'twitter' ||
     post.platform === 'instagram' ||
-    post.platform === 'tiktok';
+    post.platform === 'tiktok' ||
+    post.platform === 'youtube';
 
   const query = useQuery({
     queryKey: ['post-comments', post.post_id],
