@@ -615,6 +615,132 @@ def flatten_apify_instagram_comments(
     return out
 
 
+# ---------------------------------------------------------------------------
+# TikTok comments — clockworks/tiktok-comments-scraper
+# Dataset item shape (top-level comment on a video):
+#   cid, text, create_time (unix sec), digg_count (likes), reply_comment_total,
+#   reply_id ("0" or absent = top-level, otherwise parent cid),
+#   user { unique_id, nickname, uid, avatar_thumb, sec_uid, verified },
+#   replies[] (nested list of same shape; some builds return top-level only +
+#   require a separate reply-scraper actor — handled defensively).
+# ---------------------------------------------------------------------------
+
+def parse_apify_tiktok_comment(item: dict, parent_comment_id: str | None = None) -> Comment:
+    """Parse one TikTok comment item into a Comment.
+
+    `parent_comment_id`, when set, overrides any value on the item itself —
+    used by the flattener to stamp the correct parent on nested replies.
+    """
+    comment_id = str(_first(item, "cid", "id", "commentId", default=""))
+
+    user = item.get("user") or {}
+    if not isinstance(user, dict):
+        user = {}
+    handle = _first(user, "unique_id", "uniqueId", "username") or _first(
+        item, "uniqueId", "username", default="",
+    )
+    owner_id = _first(user, "uid", "id", "userId") or _first(
+        item, "uid", "userId", default=None,
+    )
+
+    commented_at = _parse_dt(_first(item, "create_time", "createTime", "createdAt", "timestamp"))
+
+    # TikTok marks top-level comments with reply_id="0" or missing.
+    raw_parent = parent_comment_id
+    if raw_parent is None:
+        candidate = _first(item, "reply_id", "replyId", "parentCommentId", "parentId", default=None)
+        if candidate and str(candidate) != "0":
+            raw_parent = candidate
+
+    return Comment(
+        comment_id=comment_id,
+        platform="tiktok",
+        channel_handle=str(handle),
+        channel_id=str(owner_id) if owner_id else None,
+        content=_first(item, "text", "content", default=""),
+        commented_at=commented_at or datetime.fromtimestamp(0, tz=timezone.utc),
+        likes=_safe_int(_first(item, "digg_count", "diggCount", "likesCount")),
+        replies_count=_safe_int(_first(item, "reply_comment_total", "replyCommentTotal", "repliesCount")),
+        media_urls=[],
+        media_refs=[],
+        platform_metadata={
+            "platform": "tiktok",
+            "verified": user.get("verified"),
+            "nickname": user.get("nickname"),
+            "avatar_url": _first(user, "avatar_thumb", "avatarThumb", "avatar"),
+            "sec_uid": user.get("sec_uid") or user.get("secUid"),
+        },
+        replied_to_id=str(raw_parent) if raw_parent else None,
+    )
+
+
+def parse_apify_tiktok_comment_author(item: dict) -> Channel:
+    """Channel snapshot for a TikTok comment author."""
+    user = item.get("user") or {}
+    if not isinstance(user, dict):
+        user = {}
+    handle = _first(user, "unique_id", "uniqueId", "username") or _first(
+        item, "uniqueId", "username", default="",
+    )
+    owner_id = _first(user, "uid", "id", "userId") or _first(
+        item, "uid", "userId", default="",
+    )
+    return Channel(
+        channel_id=str(owner_id),
+        platform="tiktok",
+        channel_handle=str(handle),
+        subscribers=None,
+        total_posts=None,
+        channel_url=f"https://www.tiktok.com/@{handle}" if handle else None,
+        description=None,
+        created_date=None,
+        channel_metadata={
+            "verified": user.get("verified"),
+            "nickname": user.get("nickname"),
+            "avatar_url": _first(user, "avatar_thumb", "avatarThumb", "avatar"),
+        },
+    )
+
+
+def flatten_apify_tiktok_comments(items: list[dict], post_id: str) -> list[Comment]:
+    """Walk top-level items + their nested `replies` and emit a flat list of
+    Comments with `replied_to_id` correctly populated for each reply.
+
+    Top-level: `replied_to_id = post_id` (root = self after threading pass).
+    Nested replies: `replied_to_id = <top-level cid>`.
+
+    When an item arrives flat with a non-zero `reply_id` (some actor builds
+    return replies in the same list as top-level comments rather than
+    nested), the item's own `reply_id` is preserved as the parent linkage.
+    """
+    out: list[Comment] = []
+    for top in items:
+        # Respect the item's own reply_id if it indicates a non-top-level
+        # comment; otherwise treat as a direct reply to the post.
+        raw_reply_id = _first(top, "reply_id", "replyId", default=None)
+        is_flat_reply = raw_reply_id is not None and str(raw_reply_id) != "0"
+
+        top_comment = parse_apify_tiktok_comment(
+            top, parent_comment_id=None if is_flat_reply else post_id,
+        )
+        if not top_comment.comment_id:
+            continue
+        out.append(top_comment)
+
+        replies = top.get("replies") or []
+        if not isinstance(replies, list):
+            continue
+        for reply in replies:
+            if not isinstance(reply, dict):
+                continue
+            child = parse_apify_tiktok_comment(
+                reply, parent_comment_id=top_comment.comment_id,
+            )
+            if child.comment_id:
+                out.append(child)
+    return out
+
+
 def get_parsers(platform: str, actor_id: str) -> tuple[ParsePostFn, ParseChannelFn]:
     """Look up the (post_parser, channel_parser) pair for the given platform/actor.
 

@@ -44,7 +44,10 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
   const [excludeConfirmOpen, setExcludeConfirmOpen] = useState(false);
   const qc = useQueryClient();
   const collectionId = collectionIdOverride ?? post.collection_id;
-  const commentsSupported = post.platform === 'twitter' || post.platform === 'instagram';
+  const commentsSupported =
+    post.platform === 'twitter' ||
+    post.platform === 'instagram' ||
+    post.platform === 'tiktok';
 
   const excludeMutation = useMutation({
     mutationFn: () => {

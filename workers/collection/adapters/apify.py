@@ -45,8 +45,10 @@ from config.settings import get_settings
 from workers.collection.adapters.apify_client import ApifyAdapterClient, ApifyAPIError
 from workers.collection.adapters.apify_parsers import (
     flatten_apify_instagram_comments,
+    flatten_apify_tiktok_comments,
     get_parsers,
     parse_apify_instagram_comment_author,
+    parse_apify_tiktok_comment_author,
 )
 from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.comment_threading import resolve_comment_roots
@@ -167,7 +169,7 @@ class ApifyAdapter(DataProviderAdapter):
         return list(self._SUPPORTED)
 
     def supported_comment_platforms(self) -> list[str]:
-        return ["instagram"]
+        return list(self._COMMENTS_CONFIG.keys())
 
     @property
     def platform_stats(self) -> dict[str, dict]:
@@ -805,37 +807,78 @@ class ApifyAdapter(DataProviderAdapter):
                 logger.exception("Apify engagement refresh failed for %s", platform)
         return results
 
+    # Per-platform comments config — each Apify actor accepts a different
+    # set of input field names, so we carry the URL key + limit key here
+    # alongside the parsers.
+    #
+    # Fields: (
+    #   actor_id_settings_attr,
+    #   results_limit_settings_attr,
+    #   url_input_key,        # actor input field that takes the list of post URLs
+    #   limit_input_key,      # actor input field that takes the per-post cap
+    #   flatten_fn,
+    #   author_parse_fn,
+    # )
+    _COMMENTS_CONFIG = {
+        "instagram": (
+            "apify_actor_instagram_comments",
+            "apify_instagram_comments_max",
+            "directUrls",
+            "resultsLimit",
+            flatten_apify_instagram_comments,
+            parse_apify_instagram_comment_author,
+        ),
+        "tiktok": (
+            "apify_actor_tiktok_comments",
+            "apify_tiktok_comments_max",
+            "postURLs",
+            "commentsPerPost",
+            flatten_apify_tiktok_comments,
+            parse_apify_tiktok_comment_author,
+        ),
+    }
+
     def fetch_comments(self, post: dict) -> CommentBatch:
-        """Fetch Instagram comments via apify/instagram-comment-scraper.
+        """Fetch comments for a single post via a per-platform Apify actor.
 
         Mirrors XAPIAdapter.fetch_comments shape (sync request/response,
-        return CommentBatch). Each top-level item from the actor becomes a
-        root Comment; nested `replies` are flattened and linked via
-        `replied_to_id` so `resolve_comment_roots` builds the same thread
-        tree the UI already renders.
+        return CommentBatch). Top-level items from the actor become root
+        Comments; nested `replies` are flattened and linked via
+        `replied_to_id` so `resolve_comment_roots` builds the thread tree
+        the UI already renders.
 
         Cost is tagged feature="comments" sub_kind=platform via
         `_run_actor_collect_raw`'s provider-reported pathway.
         """
         platform = post.get("platform")
-        if platform != "instagram":
+        config = self._COMMENTS_CONFIG.get(platform)
+        if config is None:
             raise NotImplementedError(
                 f"fetch_comments not supported by ApifyAdapter on {platform!r} — "
-                "only instagram is wired in v1"
+                f"supported: {sorted(self._COMMENTS_CONFIG)}"
             )
+        (
+            actor_attr,
+            limit_attr,
+            url_input_key,
+            limit_input_key,
+            flatten_fn,
+            parse_author_fn,
+        ) = config
 
         post_url = post.get("post_url")
         post_id = post.get("post_id") or ""
         if not post_url:
-            logger.warning("Apify IG comments: missing post_url on payload %s", post)
+            logger.warning("Apify %s comments: missing post_url on payload %s", platform, post)
             return CommentBatch()
 
         settings = get_settings()
-        results_limit = max(1, int(settings.apify_instagram_comments_max))
+        results_limit = max(1, int(getattr(settings, limit_attr)))
+        actor_id = getattr(settings, actor_attr)
 
         run_input: dict = {
-            "directUrls": [post_url],
-            "resultsLimit": results_limit,
+            url_input_key: [post_url],
+            limit_input_key: results_limit,
             "proxyConfiguration": {
                 "useApifyProxy": True,
                 "apifyProxyGroups": [self._proxy_group],
@@ -843,17 +886,17 @@ class ApifyAdapter(DataProviderAdapter):
         }
 
         raw_items = self._run_actor_collect_raw(
-            "instagram",
+            platform,
             run_input,
             feature="comments",
-            actor_id=settings.apify_actor_instagram_comments,
+            actor_id=actor_id,
         )
 
-        comments = flatten_apify_instagram_comments(raw_items, post_id=post_id)
+        comments = flatten_fn(raw_items, post_id=post_id)
 
         channels_by_id: dict[str, Channel] = {}
         for item in raw_items:
-            ch = parse_apify_instagram_comment_author(item)
+            ch = parse_author_fn(item)
             key = ch.channel_id or ch.channel_handle
             if key and key not in channels_by_id:
                 channels_by_id[key] = ch
@@ -862,7 +905,7 @@ class ApifyAdapter(DataProviderAdapter):
                 for reply in replies:
                     if not isinstance(reply, dict):
                         continue
-                    rch = parse_apify_instagram_comment_author(reply)
+                    rch = parse_author_fn(reply)
                     rkey = rch.channel_id or rch.channel_handle
                     if rkey and rkey not in channels_by_id:
                         channels_by_id[rkey] = rch
@@ -873,8 +916,8 @@ class ApifyAdapter(DataProviderAdapter):
             c.crawl_provider = "apify"
 
         logger.info(
-            "Apify IG: fetched %d comments + %d authors for post %s",
-            len(comments), len(channels_by_id), post_id,
+            "Apify %s: fetched %d comments + %d authors for post %s",
+            platform, len(comments), len(channels_by_id), post_id,
         )
         return CommentBatch(comments=comments, channels=list(channels_by_id.values()))
 

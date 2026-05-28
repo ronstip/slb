@@ -173,6 +173,9 @@ class Settings(BaseSettings):
     # Instagram comments — dedicated actor (separate from the post-collection actor)
     apify_actor_instagram_comments: str = "apify/instagram-comment-scraper"
     apify_instagram_comments_max: int = 100  # per-post fetch cap (cost guard)
+    # TikTok comments — dedicated actor (separate from the post-collection actor)
+    apify_actor_tiktok_comments: str = "clockworks/tiktok-comments-scraper"
+    apify_tiktok_comments_max: int = 100  # per-post fetch cap (cost guard)
 
     # Per-platform default vendor selection. Empty string falls through to
     # `vendor_config.default` then to the first-supporting adapter.
