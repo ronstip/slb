@@ -45,6 +45,16 @@ class CreateCollectionRequest(BaseModel):
     reasoning_level: str | None = None
     min_likes: int | None = None
     has_media: Literal["with", "without", "any"] | None = None  # X adapter; default "with"
+    # Direct-fetch mode: when set, the adapter fetches exactly these posts and
+    # ignores keywords/channel_urls/time_range_days. Used by the "Add post by
+    # URL" feature; pipeline routing is identical to keyword mode.
+    post_urls: list[str] | None = None
+
+
+class FetchPostsByUrlRequest(BaseModel):
+    urls: list[str]
+    note: str | None = None              # optional label → collection description
+    include_comments: bool = False       # default OFF; opt-in via drawer checkbox
 
 
 

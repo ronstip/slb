@@ -514,3 +514,151 @@ def test_collect_instagram_no_rerank_when_under_cap():
         })
 
     assert batches is original_batches
+
+
+# ---------------------------------------------------------------------------
+# Instagram direct-fetch by post_urls
+# ---------------------------------------------------------------------------
+
+def test_collect_instagram_post_urls_uses_post_scraper_actor_and_directurls():
+    """Direct-fetch uses a different actor (apify/instagram-scraper) than the
+    keyword path's apidojo hashtag scraper, because the latter only accepts
+    hashtag URLs. URLs go in `directUrls`, not `startUrls`."""
+    adapter = _build_ig_adapter()
+
+    raw_calls: list[tuple[str, dict, str | None]] = []
+
+    def _capture(platform, run_input, *, actor_id=None, feature="scrape"):
+        raw_calls.append((platform, run_input, actor_id))
+        return []
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_capture):
+        adapter._collect_instagram({
+            "post_urls": [
+                "https://www.instagram.com/p/Cabc123/",
+                "https://www.instagram.com/reel/Xyz_45/",
+            ],
+            # Ignored in post_urls mode.
+            "keywords": ["should-not-appear"],
+            "channel_urls": ["https://www.instagram.com/someprofile/"],
+        })
+
+    assert len(raw_calls) == 1
+    platform, ri, actor_id = raw_calls[0]
+    assert platform == "instagram"
+    assert actor_id == "apify/instagram-scraper"  # not the apidojo hashtag scraper
+    assert ri["directUrls"] == [
+        "https://www.instagram.com/p/Cabc123/",
+        "https://www.instagram.com/reel/Xyz_45/",
+    ]
+    assert ri["resultsType"] == "posts"
+    assert ri["resultsLimit"] == 2
+    # Hashtag-mode keys must NOT leak.
+    assert "startUrls" not in ri
+    assert "getReels" not in ri
+    assert "getPosts" not in ri
+
+
+def test_collect_instagram_post_urls_filters_non_ig_urls():
+    adapter = _build_ig_adapter()
+    raw_calls: list[dict] = []
+
+    def _capture(platform, run_input, *, actor_id=None, feature="scrape"):
+        raw_calls.append(run_input)
+        return []
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_capture):
+        adapter._collect_instagram({
+            "post_urls": [
+                "https://www.instagram.com/p/Valid/",
+                "https://google.com/not-ig",
+                "garbage",
+            ],
+        })
+
+    assert len(raw_calls) == 1
+    assert raw_calls[0]["directUrls"] == ["https://www.instagram.com/p/Valid/"]
+    assert raw_calls[0]["resultsLimit"] == 1
+    stats = adapter.platform_stats["instagram"]
+    assert stats["errors"] == 2
+
+
+def test_collect_instagram_post_urls_all_invalid_returns_empty():
+    adapter = _build_ig_adapter()
+    raw_calls: list[dict] = []
+
+    def _capture(platform, run_input, *, actor_id=None, feature="scrape"):
+        raw_calls.append(run_input)
+        return []
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_capture):
+        batches = adapter._collect_instagram({
+            "post_urls": ["garbage", "https://google.com/x"],
+        })
+
+    assert batches == []
+    assert raw_calls == []
+    assert adapter.platform_stats["instagram"]["errors"] == 2
+
+
+def test_collect_instagram_post_urls_dedupes_directurls():
+    """Apify's post-scraper rejects the whole run if `directUrls` has dupes.
+    Adapter dedupes defensively even though the service layer also dedupes."""
+    adapter = _build_ig_adapter()
+    raw_calls: list[dict] = []
+
+    def _capture(platform, run_input, *, actor_id=None, feature="scrape"):
+        raw_calls.append(run_input)
+        return []
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_capture):
+        adapter._collect_instagram({
+            "post_urls": [
+                "https://www.instagram.com/p/A/",
+                "https://www.instagram.com/p/A/",   # exact dup
+                "https://www.instagram.com/p/B/",
+                "https://www.instagram.com/p/A/",   # dup again
+            ],
+        })
+
+    assert len(raw_calls) == 1
+    assert raw_calls[0]["directUrls"] == [
+        "https://www.instagram.com/p/A/",
+        "https://www.instagram.com/p/B/",
+    ]
+    assert raw_calls[0]["resultsLimit"] == 2
+
+
+def test_collect_instagram_post_urls_parses_with_post_scraper_parser():
+    """End-to-end: feed a raw dataset item shaped like apify/instagram-scraper
+    output, verify it ends up as one Post with the expected shortcode-derived
+    fields. Confirms we resolved the right parser dynamically per actor."""
+    adapter = _build_ig_adapter()
+
+    fake_raw = [{
+        "id": "9999",
+        "shortCode": "Cabc123",
+        "url": "https://www.instagram.com/p/Cabc123/",
+        "type": "Video",
+        "caption": "hello world",
+        "timestamp": "2026-05-28T12:00:00.000Z",
+        "ownerUsername": "alice",
+        "ownerId": "100",
+        "likesCount": 5,
+        "commentsCount": 1,
+        "videoUrl": "https://example.com/v.mp4",
+    }]
+
+    def _stub(platform, run_input, *, actor_id=None, feature="scrape"):
+        return fake_raw
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_stub):
+        batches = adapter._collect_instagram({
+            "post_urls": ["https://www.instagram.com/p/Cabc123/"],
+        })
+
+    posts = [p for b in batches for p in b.posts]
+    assert len(posts) == 1
+    assert posts[0].channel_handle == "alice"
+    assert posts[0].post_url == "https://www.instagram.com/p/Cabc123/"
+    assert adapter.platform_stats["instagram"]["posts"] == 1

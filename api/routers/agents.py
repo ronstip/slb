@@ -12,7 +12,11 @@ from api.deps import get_fs
 from api.services.collection_service import can_access_agent, can_access_collection
 from api.middleware.request_id import get_request_id
 from api.rate_limiting import limiter
-from api.schemas.requests import CreateFromWizardRequest, RunSourcesRequest
+from api.schemas.requests import (
+    CreateFromWizardRequest,
+    FetchPostsByUrlRequest,
+    RunSourcesRequest,
+)
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -515,6 +519,51 @@ async def run_agent_sources_endpoint(
     )
     if not collection_ids:
         raise HTTPException(status_code=404, detail="No matching source with collectable config")
+
+    return {"agent_id": agent_id, "collection_ids": collection_ids, "status": "running"}
+
+
+@router.post("/agents/{agent_id}/fetch-posts")
+@limiter.limit("10/minute")
+async def fetch_posts_by_url_endpoint(
+    request: Request,
+    agent_id: str,
+    body: FetchPostsByUrlRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Fetch one or more specific posts by URL through the unified pipeline.
+
+    URLs are parsed server-side and grouped by platform; each group becomes its
+    own collection (mirrors keyword-mode where one source = one collection).
+    Same credits gate, same enrichment, same dedup as keyword-collected posts.
+    Owner-only — runs are billed to the agent owner's wallet.
+    """
+    from api.services.agent_service import (
+        UrlFetchValidationError, fetch_posts_by_url, get_agent,
+    )
+
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Only the agent owner can fetch posts")
+
+    try:
+        collection_ids = fetch_posts_by_url(
+            agent_id, agent,
+            urls=body.urls, note=body.note, include_comments=body.include_comments,
+        )
+    except UrlFetchValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "bad_urls": e.bad_urls,
+                "unsupported_platforms": e.unsupported_platforms,
+            },
+        )
+
+    if not collection_ids:
+        raise HTTPException(status_code=400, detail="No collectable URLs after parsing")
 
     return {"agent_id": agent_id, "collection_ids": collection_ids, "status": "running"}
 
