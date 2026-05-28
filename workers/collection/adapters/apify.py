@@ -315,6 +315,12 @@ class ApifyAdapter(DataProviderAdapter):
         )
 
     def _collect_instagram(self, config: dict) -> list[Batch]:
+        post_urls = config.get("post_urls") or []
+        if post_urls:
+            # Direct-fetch mode — keywords / channel_urls / time_range ignored.
+            # Same actor as the keyword path; passes URLs through startUrls.
+            return self._collect_instagram_by_urls(post_urls, config)
+
         keywords = config.get("keywords", []) or []
         channel_urls = config.get("channel_urls", []) or []
 
@@ -389,6 +395,98 @@ class ApifyAdapter(DataProviderAdapter):
                             seen.add(ch.channel_id)
                 batches = self._chunk_into_batches(all_posts, all_channels)
 
+        return batches
+
+    def _collect_instagram_by_urls(
+        self, post_urls: list[str], config: dict,
+    ) -> list[Batch]:
+        """Direct-fetch IG posts via the post-scraper actor.
+
+        Uses `apify/instagram-scraper` (configurable via
+        `apify_actor_instagram_post`) with `directUrls` mode — the keyword
+        path's `apidojo/instagram-hashtag-scraper` only accepts hashtag URLs
+        and silently returns 0 items for post URLs. Parser is resolved per-call
+        from the registry since this is a different actor than the platform
+        default at init.
+        """
+        # Defend against direct callers — front-door parser canonicalises,
+        # but the adapter has no guarantee its input came through there.
+        # Also dedupe: apify/instagram-scraper rejects the whole run with
+        # "directUrls must NOT have duplicate items" if any pair matches.
+        seen: set[str] = set()
+        canonical: list[str] = []
+        for u in post_urls:
+            if "instagram.com/" in u and u not in seen:
+                seen.add(u)
+                canonical.append(u)
+        errors = len(post_urls) - len(canonical)
+
+        if not canonical:
+            with self._stats_lock:
+                self._platform_stats["instagram"] = {
+                    "posts": 0, "batches": 0, "errors": errors,
+                }
+            return []
+
+        settings = get_settings()
+        actor_id = settings.apify_actor_instagram_post
+
+        run_input: dict = {
+            "directUrls": canonical,
+            "resultsType": "posts",
+            "resultsLimit": len(canonical),
+            "addParentData": False,
+            "proxyConfiguration": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": [self._proxy_group],
+            },
+        }
+
+        raw_items = self._run_actor_collect_raw(
+            "instagram", run_input, actor_id=actor_id,
+        )
+
+        # Parse with the post-scraper's parser (different schema from the
+        # keyword path's apidojo parser stored in self._parsers).
+        parse_post, parse_channel = get_parsers("instagram", actor_id)
+        posts: list[Post] = []
+        channels: dict[str, Channel] = {}
+        seen_ids: set[str] = set()
+        parse_failures = 0
+        for item in raw_items:
+            try:
+                post = parse_post(item)
+            except Exception:  # noqa: BLE001
+                parse_failures += 1
+                logger.warning("Apify IG direct-fetch parse failure", exc_info=True)
+                continue
+            if not post.post_id or post.post_id in seen_ids:
+                continue
+            seen_ids.add(post.post_id)
+            posts.append(post)
+            try:
+                ch = parse_channel(item)
+            except Exception:  # noqa: BLE001
+                continue
+            key = ch.channel_id or ch.channel_handle
+            if key and key not in channels:
+                channels[key] = ch
+
+        batches = self._chunk_into_batches(posts, list(channels.values()))
+
+        with self._stats_lock:
+            self._platform_stats["instagram"] = {
+                "posts": len(posts),
+                "batches": len(batches),
+                "errors": errors,
+            }
+            self._funnel["apify_raw_records"] += len(raw_items)
+            self._funnel["apify_parse_failures"] += parse_failures
+            self._funnel["apify_valid_posts"] += len(posts)
+        logger.info(
+            "[apify/instagram] direct-fetch: %d url(s) → %d raw → %d post(s) in %d batch(es) (actor=%s)",
+            len(canonical), len(raw_items), len(posts), len(batches), actor_id,
+        )
         return batches
 
     def _chunk_into_batches(

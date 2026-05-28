@@ -322,3 +322,120 @@ def test_hard_cap_counts_only_primary_posts_not_refs():
 
     posts = batches[0].posts
     assert {p.post_id for p in posts} == {"9001", "8000"}
+
+
+# ---------------------------------------------------------------------------
+# Direct-fetch by post_urls — new in fetch-posts-by-URL feature
+# ---------------------------------------------------------------------------
+
+def test_collect_with_post_urls_hits_tweets_ids_endpoint():
+    adapter = _build_adapter(unpack=False)
+    tw1 = _tweet("12345", "100", "hello")
+    tw2 = _tweet("67890", "200", "world")
+    resp = _make_response(
+        primary_tweets=[tw1, tw2],
+        users=[_user("100", "alice"), _user("200", "bob")],
+    )
+    adapter._client.get.return_value = resp
+
+    batches = adapter.collect({
+        "platforms": ["twitter"],
+        "post_urls": [
+            "https://x.com/alice/status/12345",
+            "https://twitter.com/bob/status/67890",
+        ],
+    })
+
+    # Exactly one /tweets call (both ids fit in a single chunk).
+    assert adapter._client.get.call_count == 1
+    call = adapter._client.get.call_args_list[0]
+    assert call.args[0] == "tweets"
+    params = call.kwargs["params"]
+    assert set(params["ids"].split(",")) == {"12345", "67890"}
+    # Field set mirrors the keyword path so downstream parsing is identical.
+    assert "context_annotations" in params["tweet.fields"]
+
+    posts = [p for b in batches for p in b.posts]
+    assert {p.post_id for p in posts} == {"12345", "67890"}
+    assert all(p.crawl_provider == "xapi" for p in posts)
+    assert all(p.search_keyword is None for p in posts)
+
+
+def test_collect_with_post_urls_ignores_keywords_and_searchall():
+    """When post_urls is set we never hit /tweets/search/all — only /tweets?ids="""
+    adapter = _build_adapter(unpack=False)
+    adapter._client.get.return_value = _make_response(
+        primary_tweets=[_tweet("12345", "100", "hi")],
+        users=[_user("100", "alice")],
+    )
+
+    adapter.collect({
+        "platforms": ["twitter"],
+        "keywords": ["should-be-ignored"],
+        "channel_urls": ["https://x.com/someone"],
+        "time_range": {"start": "2026-01-01", "end": "2026-02-01"},
+        "post_urls": ["https://x.com/alice/status/12345"],
+    })
+
+    paths_hit = [c.args[0] for c in adapter._client.get.call_args_list]
+    assert paths_hit == ["tweets"]
+    assert "tweets/search/all" not in paths_hit
+
+
+def test_collect_with_post_urls_invalid_urls_recorded_in_stats():
+    adapter = _build_adapter(unpack=False)
+    adapter._client.get.return_value = _make_response(
+        primary_tweets=[_tweet("12345", "100", "hi")],
+        users=[_user("100", "alice")],
+    )
+
+    adapter.collect({
+        "platforms": ["twitter"],
+        "post_urls": [
+            "https://x.com/alice/status/12345",
+            "https://google.com/not-a-tweet",
+            "garbage",
+        ],
+    })
+
+    stats = adapter.platform_stats["twitter"]
+    assert stats["errors"] == 2
+    assert stats["posts"] == 1
+
+
+def test_collect_with_post_urls_chunks_at_100():
+    """X API caps /2/tweets?ids= at 100 ids per request — 250 urls = 3 calls."""
+    adapter = _build_adapter(unpack=False)
+    adapter._client.get.return_value = _make_response(primary_tweets=[], users=[])
+
+    urls = [f"https://x.com/u/status/{i}" for i in range(250)]
+    adapter.collect({"platforms": ["twitter"], "post_urls": urls})
+
+    assert adapter._client.get.call_count == 3
+    chunk_sizes = [
+        len(c.kwargs["params"]["ids"].split(","))
+        for c in adapter._client.get.call_args_list
+    ]
+    assert chunk_sizes == [100, 100, 50]
+
+
+def test_collect_with_post_urls_returns_empty_when_platform_missing():
+    """If 'twitter' isn't in platforms, post_urls is a no-op for this adapter."""
+    adapter = _build_adapter(unpack=False)
+    batches = adapter.collect({
+        "platforms": ["reddit"],
+        "post_urls": ["https://x.com/u/status/1"],
+    })
+    assert batches == []
+    adapter._client.get.assert_not_called()
+
+
+def test_collect_with_post_urls_all_invalid_returns_empty():
+    adapter = _build_adapter(unpack=False)
+    batches = adapter.collect({
+        "platforms": ["twitter"],
+        "post_urls": ["garbage", "https://google.com/x"],
+    })
+    assert batches == []
+    adapter._client.get.assert_not_called()
+    assert adapter.platform_stats["twitter"]["errors"] == 2

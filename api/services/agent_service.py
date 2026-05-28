@@ -653,6 +653,114 @@ def run_agent_sources(
     return collection_ids
 
 
+# Platforms with both a registered URL parser AND adapter `post_urls` support.
+# Grow this set in lockstep with workers.collection.url_parsers + the adapter
+# `collect()` branch — a mismatch would 500 on dispatch.
+SUPPORTED_PLATFORMS_FOR_URL_FETCH = {"twitter", "instagram"}
+
+
+class UrlFetchValidationError(ValueError):
+    """Raised when one or more submitted URLs can't be routed for direct-fetch."""
+
+    def __init__(self, bad_urls: list[str], unsupported_platforms: list[str]):
+        self.bad_urls = bad_urls
+        self.unsupported_platforms = unsupported_platforms
+        super().__init__(f"bad_urls={bad_urls}, unsupported_platforms={unsupported_platforms}")
+
+
+def fetch_posts_by_url(
+    agent_id: str,
+    agent: dict,
+    urls: list[str],
+    note: str | None = None,
+    include_comments: bool = False,
+) -> list[str]:
+    """Dispatch one collection per platform for a list of post URLs.
+
+    Mirrors `run_agent_sources`: one fresh collection per platform, linked to
+    the agent, no run record, no agent-status change. Pipeline reuse is total
+    — `create_collection_from_request` is the same entry point keyword runs use,
+    so credits gate / Firestore status / enrichment / embedding all apply.
+
+    Raises UrlFetchValidationError if any URL fails to parse or routes to a
+    platform that isn't wired yet.
+    """
+    from api.services.collection_service import create_collection_from_request
+    from workers.collection.url_parsers import parse_post_url
+
+    if not urls:
+        raise UrlFetchValidationError(bad_urls=[], unsupported_platforms=[])
+
+    by_platform: dict[str, list[str]] = {}
+    seen_canonical: set[str] = set()
+    bad_urls: list[str] = []
+    unsupported: set[str] = set()
+    for url in urls:
+        parsed = parse_post_url(url)
+        if parsed is None:
+            bad_urls.append(url)
+            continue
+        if parsed.platform not in SUPPORTED_PLATFORMS_FOR_URL_FETCH:
+            unsupported.add(parsed.platform)
+            continue
+        # Dedupe by canonical URL — Apify's instagram-scraper rejects the whole
+        # run when directUrls contains duplicates; X /tweets?ids= silently
+        # dedupes but pre-dedupe keeps our run-cost estimates honest.
+        if parsed.canonical_url in seen_canonical:
+            continue
+        seen_canonical.add(parsed.canonical_url)
+        by_platform.setdefault(parsed.platform, []).append(parsed.canonical_url)
+
+    if bad_urls or unsupported:
+        raise UrlFetchValidationError(
+            bad_urls=bad_urls, unsupported_platforms=sorted(unsupported),
+        )
+
+    fs = get_fs()
+    user_id = agent.get("user_id", "")
+    org_id = agent.get("org_id")
+    title = agent.get("title", "")
+    base_extra = _build_base_extra_config(agent)
+    agent_version = agent.get("version", 1)
+
+    base_desc = note.strip() if note else ""
+    collection_ids: list[str] = []
+    for platform, urls_for_platform in by_platform.items():
+        description = (
+            f"{base_desc} — {platform} ({len(urls_for_platform)} URL(s))"
+            if base_desc
+            else f"{title or 'Agent'}: direct fetch — {platform} ({len(urls_for_platform)} URL(s))"
+        )
+        from api.schemas.requests import CreateCollectionRequest
+        request = CreateCollectionRequest(
+            description=description,
+            platforms=[platform],
+            keywords=[],
+            n_posts=len(urls_for_platform),
+            include_comments=include_comments,
+            post_urls=urls_for_platform,
+        )
+        result = create_collection_from_request(
+            request=request,
+            user_id=user_id,
+            org_id=org_id,
+            extra_config=dict(base_extra),
+        )
+        cid = result["collection_id"]
+        collection_ids.append(cid)
+        fs.add_agent_collection(agent_id, cid)
+        fs.update_collection_status(cid, agent_id=agent_id, agent_version=agent_version)
+
+    if collection_ids:
+        fs.update_agent(agent_id, collection_ids=transforms.ArrayUnion(collection_ids))
+        log_agent_activity(
+            agent_id,
+            f"Direct fetch — collecting {sum(len(v) for v in by_platform.values())} post(s) across {len(collection_ids)} collection(s)",
+            source="agent_service",
+        )
+    return collection_ids
+
+
 def dispatch_agent_run(
     agent_id: str,
     agent: dict,

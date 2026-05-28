@@ -161,6 +161,11 @@ class Settings(BaseSettings):
     # Apify — pay-per-result actor platform; primary vendor for Instagram, Facebook, TikTok
     apify_api_token: str = ""
     apify_actor_instagram: str = "apidojo/instagram-hashtag-scraper"
+    # Direct-fetch (post URL) actor — apidojo/instagram-hashtag-scraper only
+    # accepts hashtag URLs, so the post-by-URL flow needs a different actor
+    # that handles directUrls. Defaults to apify/instagram-scraper (parser
+    # already registered in apify_parsers.py).
+    apify_actor_instagram_post: str = "apify/instagram-scraper"
     apify_actor_facebook: str = "apify/facebook-posts-scraper"
     apify_actor_tiktok: str = "apidojo/tiktok-scraper-api"
     apify_run_timeout_sec: int = 1500

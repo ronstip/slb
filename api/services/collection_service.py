@@ -140,6 +140,11 @@ def create_collection_from_request(
     }
     if request.vendor_config:
         config["vendor_config"] = request.vendor_config.model_dump(exclude_none=True)
+    if request.post_urls:
+        # Direct-fetch mode (from /agents/{id}/fetch-posts). Drop time_range —
+        # user asked for specific posts; out-of-window gate would discard them.
+        config["post_urls"] = request.post_urls
+        config.pop("time_range", None)
     if extra_config:
         config.update(extra_config)
 

@@ -115,6 +115,13 @@ class XAPIAdapter(DataProviderAdapter):
         if "twitter" not in config.get("platforms", []):
             return []
 
+        post_urls = config.get("post_urls") or []
+        if post_urls:
+            # Direct-fetch mode — keyword/channel/time_range are ignored. User
+            # asked for these specific posts; pipeline routes them through the
+            # same enrich/embed/stats steps as keyword-collected ones.
+            return self._collect_by_post_urls(post_urls)
+
         keywords = config.get("keywords", []) or []
         channel_urls = config.get("channel_urls", []) or []
         has_media = _normalize_has_media(config.get("has_media"))
@@ -464,6 +471,82 @@ class XAPIAdapter(DataProviderAdapter):
         for post in posts:
             post.crawl_provider = "xapi"
             post.search_keyword = keyword
+
+    # ------------------------------------------------------------------
+    # Direct-fetch by post URL — /2/tweets?ids=
+    # ------------------------------------------------------------------
+
+    def _collect_by_post_urls(self, post_urls: list[str]) -> list[Batch]:
+        """Fetch specific posts by URL; emit them as normal Batches.
+
+        Used by the "Add post by URL" feature. Same field set as keyword search
+        so downstream enrichment/embedding/dedup behave identically. Chunks at
+        100 ids per call (X API hard cap, also the context_annotations ceiling).
+        """
+        valid_ids: list[str] = []
+        errors = 0
+        for url in post_urls:
+            tid = extract_twitter_id(url)
+            if tid:
+                valid_ids.append(tid)
+            else:
+                logger.warning("X API direct-fetch: cannot extract tweet id from %s", url)
+                errors += 1
+
+        if not valid_ids:
+            with self._stats_lock:
+                self._platform_stats["twitter"] = {
+                    "posts": 0, "primary_posts": 0, "referenced_posts": 0,
+                    "batches": 0, "errors": errors,
+                }
+            return []
+
+        batches: list[Batch] = []
+        for chunk_start in range(0, len(valid_ids), _TWEETS_LOOKUP_BATCH_SIZE):
+            chunk = valid_ids[chunk_start:chunk_start + _TWEETS_LOOKUP_BATCH_SIZE]
+            params = {
+                "ids": ",".join(chunk),
+                "tweet.fields": self.DEFAULT_TWEET_FIELDS,
+                "user.fields": self.DEFAULT_USER_FIELDS,
+                "media.fields": self.DEFAULT_MEDIA_FIELDS,
+                "expansions": self.DEFAULT_EXPANSIONS,
+            }
+            try:
+                resp = self._client.get("tweets", params=params)
+            except (XAPIError, requests.RequestException) as e:
+                logger.warning("X API direct-fetch failed for %d ids: %s", len(chunk), e)
+                errors += 1
+                continue
+
+            tweets = resp.get("data") or []
+            includes = resp.get("includes") or {}
+            if not tweets:
+                continue
+
+            posts = [parse_x_post(t, includes) for t in tweets]
+            channels_seen: dict[str, Channel] = {}
+            for user in includes.get("users") or []:
+                ch = parse_x_channel(user)
+                if ch.channel_handle and ch.channel_handle not in channels_seen:
+                    channels_seen[ch.channel_handle] = ch
+
+            self._stamp_posts(posts, None)  # no search_keyword for direct-fetch
+            batches.append(Batch(posts=posts, channels=list(channels_seen.values())))
+
+        post_count = sum(len(b.posts) for b in batches)
+        with self._stats_lock:
+            self._platform_stats["twitter"] = {
+                "posts": post_count,
+                "primary_posts": post_count,
+                "referenced_posts": 0,
+                "batches": len(batches),
+                "errors": errors,
+            }
+        logger.info(
+            "X API direct-fetch: collected %d posts in %d batches (%d errors)",
+            post_count, len(batches), errors,
+        )
+        return batches
 
     # ------------------------------------------------------------------
     # Engagement refresh — /2/tweets?ids=

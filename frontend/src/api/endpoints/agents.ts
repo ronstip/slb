@@ -229,6 +229,22 @@ export function runAgentSources(
   );
 }
 
+/** Fetch one or more specific posts by URL through the unified pipeline.
+ *  Server parses each URL, groups by platform, and dispatches one collection
+ *  per platform — same enrichment/embedding path as keyword-collected posts.
+ *  Only X/Twitter URLs are supported today; others return 400. */
+export function fetchPostsByUrl(
+  agentId: string,
+  urls: string[],
+  note?: string,
+  includeComments?: boolean,
+): Promise<{ agent_id: string; collection_ids: string[]; status: string }> {
+  return apiPost<{ agent_id: string; collection_ids: string[]; status: string }>(
+    `/agents/${agentId}/fetch-posts`,
+    { urls, note, include_comments: includeComments ?? false },
+  );
+}
+
 export function resumeAgent(agentId: string): Promise<{ ok: boolean; agent_id: string; status: string }> {
   return apiPost<{ ok: boolean; agent_id: string; status: string }>(`/agents/${agentId}/resume`, {});
 }
