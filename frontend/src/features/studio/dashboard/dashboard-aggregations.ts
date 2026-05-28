@@ -32,18 +32,25 @@ export interface PlatformBreakdown {
   platform: string;
   post_count: number;
   view_count: number;
+  engagement_count: number;
 }
 
 export function aggregatePlatforms(posts: DashboardPost[]): PlatformBreakdown[] {
-  const map = new Map<string, { posts: number; views: number }>();
+  const map = new Map<string, { posts: number; views: number; engagement: number }>();
   for (const p of posts) {
-    const cur = map.get(p.platform) ?? { posts: 0, views: 0 };
+    const cur = map.get(p.platform) ?? { posts: 0, views: 0, engagement: 0 };
     cur.posts += 1;
     cur.views += p.view_count ?? 0;
+    cur.engagement += (p.like_count ?? 0) + (p.comment_count ?? 0) + (p.share_count ?? 0);
     map.set(p.platform, cur);
   }
   return [...map.entries()]
-    .map(([platform, v]) => ({ platform, post_count: v.posts, view_count: v.views }))
+    .map(([platform, v]) => ({
+      platform,
+      post_count: v.posts,
+      view_count: v.views,
+      engagement_count: v.engagement,
+    }))
     .sort((a, b) => b.post_count - a.post_count);
 }
 
