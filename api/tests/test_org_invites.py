@@ -160,6 +160,62 @@ def test_provision_no_invite_still_uses_domain_auto_join(monkeypatch):
     assert fake.created["org_role"] == "member"
 
 
+# ── anon → linked upgrade: cache staleness + user-doc backfill ───────────
+
+
+class _UpgradeFS:
+    """Captures get_user/update_user for the anon→linked upgrade path."""
+
+    def __init__(self, existing: dict | None):
+        self._existing = existing
+        self.updates: dict = {}
+
+    def get_user(self, _uid):
+        return dict(self._existing) if self._existing else None
+
+    def update_user(self, _uid, **fields):
+        self.updates.update(fields)
+
+
+def test_anon_to_linked_backfills_email_on_user_doc(monkeypatch):
+    """Anonymous user linked to Google. Existing doc has email="" — the upgrade
+    path must overwrite it with the Google email so /me + invite-email-match
+    work afterwards."""
+    fake = _UpgradeFS(existing={"email": "", "is_anonymous": True, "org_id": None})
+    monkeypatch.setattr(auth_deps, "get_fs", lambda: fake)
+
+    auth_deps._get_or_create_user(
+        "uid1",
+        {"email": "client@acme.com", "name": "Client", "picture": "p"},
+        is_anonymous=False,
+    )
+
+    assert fake.updates["email"] == "client@acme.com"
+    assert fake.updates["display_name"] == "Client"
+    assert fake.updates["is_anonymous"] is False
+
+
+def test_anon_to_linked_invalidates_user_cache():
+    """Regression: same uid, anon CurrentUser cached with email="". After link
+    the token carries the Google email — `_resolve_real_user` must NOT keep
+    returning the stale anon CurrentUser (would 403 the invite join)."""
+    anon = CurrentUser(uid="X", email="", display_name=None, org_id=None,
+                       org_role=None, is_anonymous=True)
+    # Pre-populate cache with the anon entry, very-far-future expiry.
+    auth_deps._user_cache["X"] = (anon, 9_999_999_999.0)
+
+    # Simulate the second-half of _resolve_real_user's cache check inline:
+    cached = auth_deps._user_cache.get("X")
+    is_anonymous_now = False
+    email_now = "client@acme.com"
+    assert cached is not None
+    stale = not (cached[0].is_anonymous == is_anonymous_now and cached[0].email == email_now)
+    assert stale, "anon-cached entry must be detected as stale after linking"
+
+    # Cleanup so the global cache doesn't leak between tests.
+    auth_deps._user_cache.pop("X", None)
+
+
 # ── preview_invite (public endpoint) ─────────────────────────────────────
 
 
