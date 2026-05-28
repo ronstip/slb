@@ -42,6 +42,11 @@ logger = logging.getLogger(__name__)
 _PLATFORM_PROVIDER: dict[str, str] = {
     "twitter": "x_api",
     "x": "x_api",
+    # NOTE: Instagram intentionally not mapped here. Apify's adapter logs
+    # cost from inside `_run_actor_collect_raw` via the provider-reported
+    # `usageTotalUsd` field with feature="comments"; logging again here
+    # would double-bill. X is units-based (PAYG search/all reads), so its
+    # cost only surfaces when the comments worker emits it.
 }
 
 

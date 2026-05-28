@@ -43,8 +43,17 @@ from datetime import datetime, timezone
 
 from config.settings import get_settings
 from workers.collection.adapters.apify_client import ApifyAdapterClient, ApifyAPIError
-from workers.collection.adapters.apify_parsers import get_parsers
+from workers.collection.adapters.apify_parsers import (
+    flatten_apify_instagram_comments,
+    flatten_apify_tiktok_comments,
+    flatten_apify_youtube_comments,
+    get_parsers,
+    parse_apify_instagram_comment_author,
+    parse_apify_tiktok_comment_author,
+    parse_apify_youtube_comment_author,
+)
 from workers.collection.adapters.base import DataProviderAdapter
+from workers.collection.adapters.comment_threading import resolve_comment_roots
 from workers.collection.models import Batch, Channel, CommentBatch, Post
 
 logger = logging.getLogger(__name__)
@@ -160,6 +169,9 @@ class ApifyAdapter(DataProviderAdapter):
 
     def supported_platforms(self) -> list[str]:
         return list(self._SUPPORTED)
+
+    def supported_comment_platforms(self) -> list[str]:
+        return list(self._COMMENTS_CONFIG.keys())
 
     @property
     def platform_stats(self) -> dict[str, dict]:
@@ -534,17 +546,29 @@ class ApifyAdapter(DataProviderAdapter):
     # Shared run + parse + gate
     # ------------------------------------------------------------------
 
-    def _run_actor_collect_raw(self, platform: str, run_input: dict) -> list[dict]:
+    def _run_actor_collect_raw(
+        self,
+        platform: str,
+        run_input: dict,
+        *,
+        feature: str = "scrape",
+        actor_id: str | None = None,
+    ) -> list[dict]:
         """Trigger one actor run and return raw dataset items. Empty on failure.
 
         Centralizes run-budget claim, error capture, timing, and raw-record
         funnel accounting. Callers do their own parsing — IG uses this directly
         because it merges items from two passes before parsing once.
+
+        `feature` controls the cost-log tag (e.g. "scrape" for collection,
+        "comments" for per-post comment fetches). `actor_id`, when set,
+        overrides the per-platform default actor — used by the comments
+        path to invoke a different actor than the collection actor.
         """
         if not self._claim_run():
             return []
 
-        actor_id = self._actor_ids[platform]
+        actor_id = actor_id or self._actor_ids[platform]
         started = time.monotonic()
         # Cap total in-flight actor calls across all platforms — see __init__.
         with self._concurrent_runs:
@@ -611,7 +635,7 @@ class ApifyAdapter(DataProviderAdapter):
                 log_cost(
                     provider="apify",
                     user_id="",  # filled from collection_context if bound
-                    feature="scrape",
+                    feature=feature,
                     event_type=EVENT_PROVIDER,
                     sub_kind=platform,
                     platform=platform,
@@ -645,7 +669,7 @@ class ApifyAdapter(DataProviderAdapter):
                 log_cost(
                     provider="apify",
                     user_id="",
-                    feature="scrape",
+                    feature=feature,
                     event_type=EVENT_PROVIDER,
                     sub_kind=platform,
                     platform=platform,
@@ -785,10 +809,132 @@ class ApifyAdapter(DataProviderAdapter):
                 logger.exception("Apify engagement refresh failed for %s", platform)
         return results
 
+    # Per-platform comments config — each Apify actor accepts a different
+    # set of input field names + URL payload shape, so we carry the URL
+    # key + limit key + URL wrapper here alongside the parsers.
+    #
+    # Fields: (
+    #   actor_id_settings_attr,
+    #   results_limit_settings_attr,
+    #   url_input_key,        # actor input field that takes the list of post URLs
+    #   limit_input_key,      # actor input field that takes the per-post cap
+    #   flatten_fn,
+    #   author_parse_fn,
+    #   url_payload_fn,       # build the value passed under url_input_key
+    # )
+    _COMMENTS_CONFIG = {
+        "instagram": (
+            "apify_actor_instagram_comments",
+            "apify_instagram_comments_max",
+            "directUrls",
+            "resultsLimit",
+            flatten_apify_instagram_comments,
+            parse_apify_instagram_comment_author,
+            lambda url: [url],
+        ),
+        "tiktok": (
+            "apify_actor_tiktok_comments",
+            "apify_tiktok_comments_max",
+            "postURLs",
+            "commentsPerPost",
+            flatten_apify_tiktok_comments,
+            parse_apify_tiktok_comment_author,
+            lambda url: [url],
+        ),
+        "youtube": (
+            "apify_actor_youtube_comments",
+            "apify_youtube_comments_max",
+            "startUrls",
+            "maxComments",
+            flatten_apify_youtube_comments,
+            parse_apify_youtube_comment_author,
+            lambda url: [{"url": url}],
+        ),
+    }
+
     def fetch_comments(self, post: dict) -> CommentBatch:
-        raise NotImplementedError(
-            f"fetch_comments not supported by ApifyAdapter on {post.get('platform', '<unknown>')}"
+        """Fetch comments for a single post via a per-platform Apify actor.
+
+        Mirrors XAPIAdapter.fetch_comments shape (sync request/response,
+        return CommentBatch). Top-level items from the actor become root
+        Comments; nested `replies` are flattened and linked via
+        `replied_to_id` so `resolve_comment_roots` builds the thread tree
+        the UI already renders.
+
+        Cost is tagged feature="comments" sub_kind=platform via
+        `_run_actor_collect_raw`'s provider-reported pathway.
+        """
+        platform = post.get("platform")
+        config = self._COMMENTS_CONFIG.get(platform)
+        if config is None:
+            raise NotImplementedError(
+                f"fetch_comments not supported by ApifyAdapter on {platform!r} — "
+                f"supported: {sorted(self._COMMENTS_CONFIG)}"
+            )
+        (
+            actor_attr,
+            limit_attr,
+            url_input_key,
+            limit_input_key,
+            flatten_fn,
+            parse_author_fn,
+            url_payload_fn,
+        ) = config
+
+        post_url = post.get("post_url")
+        post_id = post.get("post_id") or ""
+        if not post_url:
+            logger.warning("Apify %s comments: missing post_url on payload %s", platform, post)
+            return CommentBatch()
+
+        settings = get_settings()
+        results_limit = max(1, int(getattr(settings, limit_attr)))
+        actor_id = getattr(settings, actor_attr)
+
+        run_input: dict = {
+            url_input_key: url_payload_fn(post_url),
+            limit_input_key: results_limit,
+            "proxyConfiguration": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": [self._proxy_group],
+            },
+        }
+
+        raw_items = self._run_actor_collect_raw(
+            platform,
+            run_input,
+            feature="comments",
+            actor_id=actor_id,
         )
+
+        comments = flatten_fn(raw_items, post_id=post_id)
+
+        channels_by_id: dict[str, Channel] = {}
+        for item in raw_items:
+            ch = parse_author_fn(item)
+            key = ch.channel_id or ch.channel_handle
+            if key and key not in channels_by_id:
+                channels_by_id[key] = ch
+            replies = item.get("replies") or []
+            if isinstance(replies, list):
+                for reply in replies:
+                    if not isinstance(reply, dict):
+                        continue
+                    rch = parse_author_fn(reply)
+                    rkey = rch.channel_id or rch.channel_handle
+                    if rkey and rkey not in channels_by_id:
+                        channels_by_id[rkey] = rch
+
+        resolve_comment_roots(comments, post_id=post_id)
+
+        for c in comments:
+            c.crawl_provider = "apify"
+
+        logger.info(
+            "Apify %s: fetched %d comments + %d authors for post %s",
+            platform, len(comments), len(channels_by_id), post_id,
+        )
+        return CommentBatch(comments=comments, channels=list(channels_by_id.values()))
 
     def _refresh_platform_engagements(self, platform: str, urls: list[str]) -> list[dict]:
         if not self._claim_run():
