@@ -93,7 +93,15 @@ async def _resolve_real_user(request: Request) -> CurrentUser:
     now = time.monotonic()
     cached = _user_cache.get(uid)
     if cached and cached[1] > now:
-        return cached[0]
+        cached_user = cached[0]
+        # Identity drift: an anonymous Firebase user that just linked to Google
+        # keeps the same uid but the token now carries a real email + a non-anon
+        # provider. The cached CurrentUser still has email="" / is_anonymous=True,
+        # so email-sensitive endpoints (org-invite join, audit logs) would see
+        # the wrong identity. Re-provision when those fields drift.
+        if cached_user.is_anonymous == is_anonymous and cached_user.email == email:
+            return cached_user
+        _user_cache.pop(uid, None)
 
     # Fetch or provision user in Firestore
     user_doc = await asyncio.to_thread(_get_or_create_user, uid, decoded, is_anonymous)
@@ -217,6 +225,23 @@ def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = Fals
 
     existing = fs.get_user(uid)
     if existing:
+        # Anon → linked: the doc was created when the user was anonymous
+        # (email="", is_anonymous=True). After linkWithPopup the same uid now
+        # has a real Google identity — backfill the profile so Finance/audit/
+        # invite-email-match all see the real address.
+        if existing.get("is_anonymous") and not is_anonymous:
+            email = decoded_token.get("email", "")
+            updates: dict = {"is_anonymous": False}
+            if email:
+                updates["email"] = email
+            name = decoded_token.get("name")
+            if name:
+                updates["display_name"] = name
+            picture = decoded_token.get("picture")
+            if picture:
+                updates["photo_url"] = picture
+            fs.update_user(uid, **updates)
+            existing.update(updates)
         # Only update last_login_at once per hour (not on every request)
         now_mono = time.monotonic()
         last_written = _last_login_written.get(uid, 0)
