@@ -6,8 +6,9 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.auth.dependencies import CurrentUser, get_current_user
+from api.auth.dependencies import CurrentUser, get_current_user, invalidate_user_cache
 from api.auth.permissions import require_org_role, require_org_member
+from api.services.agent_service import reconcile_user_org_membership
 from api.schemas.requests import (
     UpdateProfileRequest,
     UpdateOrgRequest,
@@ -238,6 +239,9 @@ async def join_org(
 
     # Add user to org
     fs.update_user(user.uid, org_id=org_id, org_role=role)
+    invalidate_user_cache(user.uid)
+    # Stamp the new org on the joiner's existing agents so they can be shared.
+    reconcile_user_org_membership(user.uid, org_id)
 
     # Mark invite as accepted
     fs.update_invite(invite["invite_id"], status="accepted")
@@ -274,8 +278,10 @@ async def update_member_role(
     # If transferring ownership, demote current owner
     if request.role == "owner":
         fs.update_user(user.uid, org_role="admin")
+        invalidate_user_cache(user.uid)
 
     fs.update_user(member_uid, org_role=request.role)
+    invalidate_user_cache(member_uid)
     return {"status": "updated"}
 
 
@@ -300,6 +306,9 @@ async def remove_member(
         raise HTTPException(status_code=400, detail="Cannot remove the owner")
 
     fs.update_user(member_uid, org_id=None, org_role=None)
+    invalidate_user_cache(member_uid)
+    # Drop org stamps + any active org-share from the removed member's agents.
+    reconcile_user_org_membership(member_uid, None)
     return {"status": "removed"}
 
 
@@ -316,6 +325,8 @@ async def leave_org(user: CurrentUser = Depends(get_current_user)):
 
     fs = get_fs()
     fs.update_user(user.uid, org_id=None, org_role=None)
+    invalidate_user_cache(user.uid)
+    reconcile_user_org_membership(user.uid, None)
     return {"status": "left"}
 
 

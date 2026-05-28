@@ -113,6 +113,18 @@ async def _resolve_real_user(request: Request) -> CurrentUser:
     return current_user
 
 
+def invalidate_user_cache(uid: str) -> None:
+    """Drop the cached CurrentUser for `uid`.
+
+    Why: org membership writes (join/create/leave/role-change/remove) update the
+    Firestore user doc directly, but `_resolve_real_user` serves a 5-minute
+    cached `CurrentUser` with the OLD `org_id`. Without invalidation the user
+    keeps acting as if they were not in the new org — e.g. agents they create
+    get `org_id=None` and become unshareable.
+    """
+    _user_cache.pop(uid, None)
+
+
 async def get_real_user(request: Request) -> CurrentUser:
     """FastAPI dependency: resolves the real Firebase-authenticated caller.
 

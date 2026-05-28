@@ -319,6 +319,15 @@ def list_agents(user_id: str, org_id: str | None = None) -> list[dict]:
     someone else in the org, `owner_label` (display name or email) so the UI can
     show "Shared by …" instead of presenting them as the viewer's own."""
     fs = get_fs()
+
+    # Self-heal: stamp the user's current org_id on any of their own agents
+    # that drifted (created before joining an org, or carried over from a
+    # previous org). Idempotent — a no-op when nothing has drifted, which is
+    # the steady state after the first call. Costs one extra `agents` stream
+    # per list call to detect drift; in return, every membership change
+    # converges without manual migration.
+    reconcile_user_org_membership(user_id, org_id)
+
     agents = fs.list_user_agents(user_id, org_id)
 
     # Resolve owner labels for shared (non-owned) agents in one pass — small
@@ -380,6 +389,68 @@ def _record_data_window_row(agent_id: str, agent_before: dict, fields: dict) -> 
             "Failed to record data_start_date change for agent %s in BigQuery",
             agent_id,
         )
+
+
+def reconcile_user_org_membership(user_id: str, current_org_id: str | None) -> int:
+    """Stamp `current_org_id` on every agent owned by `user_id` whose `org_id`
+    no longer matches their current org membership, and unshare any agent that
+    was shared with the OLD org.
+
+    Why: an agent's `org_id` is captured at creation time from the owner's then-
+    current `org_id`. If the owner later joins / leaves / switches orgs, those
+    stamps drift and the agent becomes unshareable (UI gates Share-with-org on
+    `agent.org_id`) or, worse, would leak into the wrong org if we just
+    re-stamped without resetting visibility.
+
+    Invariant after this call: for every agent owned by `user_id`,
+    `agent.org_id == current_org_id`, and if `current_org_id` differs from the
+    previous stamp, `visibility="private"` (owner must re-share explicitly with
+    the new org). Idempotent — a no-op when nothing has drifted.
+
+    Returns the number of agents reconciled (for logging / tests).
+    """
+    fs = get_fs()
+    drifted: list[dict] = []
+    for doc in fs._db.collection("agents").where("user_id", "==", user_id).stream():
+        data = doc.to_dict() or {}
+        if data.get("org_id") != current_org_id:
+            data["agent_id"] = doc.id
+            drifted.append(data)
+
+    for agent in drifted:
+        agent_id = agent["agent_id"]
+        was_shared = agent.get("visibility") == "org"
+        updates: dict = {"org_id": current_org_id}
+        # Don't carry an org-share across an org switch. If the owner left their
+        # org entirely (current_org_id is None) the share is also stale.
+        if was_shared:
+            updates["visibility"] = "private"
+        try:
+            fs.update_agent(agent_id, **updates)
+        except Exception:
+            logger.exception("reconcile: failed to update agent %s", agent_id)
+            continue
+
+        # Propagate to the agent's collections so per-collection access checks
+        # (feed / posts / dashboard) stay consistent with the agent's new state.
+        for cid in agent.get("collection_ids", []) or []:
+            col_updates: dict = {"org_id": current_org_id}
+            if was_shared:
+                col_updates["visibility"] = "private"
+            try:
+                fs.update_collection_status(cid, **col_updates)
+            except Exception:
+                logger.exception(
+                    "reconcile: failed to update collection %s for agent %s",
+                    cid, agent_id,
+                )
+
+    if drifted:
+        logger.info(
+            "reconcile_user_org_membership: user=%s new_org=%s reconciled=%d",
+            user_id, current_org_id, len(drifted),
+        )
+    return len(drifted)
 
 
 def set_agent_visibility(agent_id: str, visibility: str) -> dict:

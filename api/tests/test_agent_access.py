@@ -173,3 +173,135 @@ def test_invalid_visibility_rejected(monkeypatch):
     monkeypatch.setattr(agent_service, "get_fs", lambda: _FakeFS({}))
     with pytest.raises(ValueError):
         agent_service.set_agent_visibility("a1", "public")
+
+
+# ── reconcile_user_org_membership ────────────────────────────────────────
+
+
+class _ReconcileFS:
+    """Fake FS for reconcile tests: backs both the stream-by-user_id read and
+    the per-agent / per-collection writes."""
+
+    def __init__(self, agents: list[dict]):
+        self._docs = [_FakeDoc(a["agent_id"], a) for a in agents]
+        self.agent_writes: list[tuple[str, dict]] = []
+        self.collection_writes: list[tuple[str, dict]] = []
+        # _ReconcileFS exposes `_db` so reconcile can stream agents the same
+        # way the real client does in list_user_agents.
+        self._db = _FakeDB(self._docs)
+
+    def update_agent(self, agent_id, **fields):
+        self.agent_writes.append((agent_id, fields))
+
+    def update_collection_status(self, cid, **fields):
+        self.collection_writes.append((cid, fields))
+
+
+def test_reconcile_stamps_org_id_on_orphan_agents(monkeypatch):
+    """User joined an org after creating agents — their old agents have
+    org_id=None and the UI can't share them. Reconcile must stamp the new org."""
+    fake = _ReconcileFS([
+        {"agent_id": "a1", "user_id": "u", "org_id": None,
+         "visibility": "private", "collection_ids": ["c1"]},
+    ])
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    reconciled = agent_service.reconcile_user_org_membership("u", "orgA")
+
+    assert reconciled == 1
+    assert fake.agent_writes == [("a1", {"org_id": "orgA"})]
+    assert fake.collection_writes == [("c1", {"org_id": "orgA"})]
+
+
+def test_reconcile_is_noop_when_org_matches(monkeypatch):
+    """Steady state: no agents drifted -> no writes, no log spam."""
+    fake = _ReconcileFS([
+        {"agent_id": "a1", "user_id": "u", "org_id": "orgA",
+         "visibility": "org", "collection_ids": ["c1"]},
+    ])
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    reconciled = agent_service.reconcile_user_org_membership("u", "orgA")
+
+    assert reconciled == 0
+    assert fake.agent_writes == []
+    assert fake.collection_writes == []
+
+
+def test_reconcile_unshares_when_switching_orgs(monkeypatch):
+    """User left orgA (where agent was shared) and joined orgB. The share
+    must NOT silently follow them into orgB — reset to private."""
+    fake = _ReconcileFS([
+        {"agent_id": "a1", "user_id": "u", "org_id": "orgA",
+         "visibility": "org", "collection_ids": ["c1"]},
+    ])
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    reconciled = agent_service.reconcile_user_org_membership("u", "orgB")
+
+    assert reconciled == 1
+    assert fake.agent_writes == [("a1", {"org_id": "orgB", "visibility": "private"})]
+    assert fake.collection_writes == [("c1", {"org_id": "orgB", "visibility": "private"})]
+
+
+def test_reconcile_drops_share_when_leaving_org(monkeypatch):
+    """User left their org -> org_id=None and any active share is stale."""
+    fake = _ReconcileFS([
+        {"agent_id": "a1", "user_id": "u", "org_id": "orgA",
+         "visibility": "org", "collection_ids": []},
+    ])
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    agent_service.reconcile_user_org_membership("u", None)
+
+    assert fake.agent_writes == [("a1", {"org_id": None, "visibility": "private"})]
+
+
+def test_reconcile_preserves_private_visibility_on_join(monkeypatch):
+    """Joining an org with private agents must NOT auto-share them."""
+    fake = _ReconcileFS([
+        {"agent_id": "a1", "user_id": "u", "org_id": None,
+         "visibility": "private", "collection_ids": []},
+    ])
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    agent_service.reconcile_user_org_membership("u", "orgA")
+
+    # Only org_id changes; visibility stays private (no leak).
+    assert fake.agent_writes == [("a1", {"org_id": "orgA"})]
+
+
+def test_reconcile_ignores_other_users_agents(monkeypatch):
+    """The query filter `user_id == uid` keeps reconcile from touching agents
+    owned by anyone else, even when their org_id mismatches."""
+    fake = _ReconcileFS([
+        {"agent_id": "mine", "user_id": "u", "org_id": None,
+         "visibility": "private", "collection_ids": []},
+        {"agent_id": "theirs", "user_id": "other", "org_id": "orgZ",
+         "visibility": "org", "collection_ids": []},
+    ])
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    agent_service.reconcile_user_org_membership("u", "orgA")
+
+    assert [w[0] for w in fake.agent_writes] == ["mine"]
+
+
+# ── invalidate_user_cache ────────────────────────────────────────────────
+
+
+def test_invalidate_user_cache_drops_entry():
+    """Org membership writes must be visible to the next request, even within
+    the 5-min user-cache TTL window."""
+    from api.auth import dependencies as deps
+
+    deps._user_cache["u1"] = (_user("u1"), 9_999_999_999.0)  # very-far-future expiry
+    deps.invalidate_user_cache("u1")
+    assert "u1" not in deps._user_cache
+
+
+def test_invalidate_user_cache_missing_key_is_noop():
+    from api.auth import dependencies as deps
+
+    deps._user_cache.pop("ghost", None)
+    deps.invalidate_user_cache("ghost")  # must not raise

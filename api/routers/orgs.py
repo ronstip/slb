@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.auth.dependencies import CurrentUser, get_current_user
+from api.auth.dependencies import CurrentUser, get_current_user, invalidate_user_cache
 from api.deps import get_fs
+from api.services.agent_service import reconcile_user_org_membership
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,9 @@ async def create_org(
     })
 
     fs.update_user(user.uid, org_id=org_id, org_role="owner")
+    invalidate_user_cache(user.uid)
+    # Stamp this org on the creator's existing agents so they can be shared.
+    reconcile_user_org_membership(user.uid, org_id)
 
     return {"org_id": org_id, "name": name, "slug": slug, "domain": domain}
 
@@ -98,4 +102,7 @@ async def leave_org(user: CurrentUser = Depends(get_current_user)):
 
     fs = get_fs()
     fs.update_user(user.uid, org_id=None, org_role=None)
+    invalidate_user_cache(user.uid)
+    # Drop the org stamp + any active org-share from the user's agents.
+    reconcile_user_org_membership(user.uid, None)
     return {"status": "left"}
