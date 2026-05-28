@@ -132,6 +132,7 @@ export const DEFAULT_VISIBLE_KEYS = [
   'ai_summary',
   'posted_at',
   'views',
+  'likes',
   'sentiment',
   'channel_type',
   'entities',
