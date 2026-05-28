@@ -238,34 +238,9 @@ def parse_comment_author(user: dict) -> Channel:
     return parse_x_channel(user)
 
 
-def resolve_comment_roots(comments: list[Comment], post_id: str) -> None:
-    """Set `root_comment_id` on each comment in-place.
-
-    Root = the in-batch ancestor whose `replied_to_id == post_id` (a direct
-    reply to the original post). A comment that itself replies to the post
-    is its own root. If the chain can't be resolved within the batch (the
-    middle ancestor wasn't paged in), fall back to root = self so the row
-    is never NULL.
-    """
-    by_id = {c.comment_id: c for c in comments}
-    for c in comments:
-        cur = c
-        visited: set[str] = set()
-        while True:
-            if cur.comment_id in visited:
-                # Cycle — defensive; X shouldn't produce one
-                c.root_comment_id = c.comment_id
-                break
-            visited.add(cur.comment_id)
-            if not cur.replied_to_id or cur.replied_to_id == post_id:
-                c.root_comment_id = cur.comment_id
-                break
-            parent = by_id.get(cur.replied_to_id)
-            if parent is None:
-                # Ancestor not in this batch — fall back to self
-                c.root_comment_id = c.comment_id
-                break
-            cur = parent
+# `resolve_comment_roots` moved to comment_threading — re-exported here for
+# back-compat with existing X-side imports.
+from workers.collection.adapters.comment_threading import resolve_comment_roots  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
