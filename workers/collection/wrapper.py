@@ -254,5 +254,27 @@ class DataProviderWrapper:
         return adapter.fetch_engagements(post_urls)
 
     def fetch_comments(self, platform: str, post: dict) -> CommentBatch:
-        adapter = self._get_adapter(platform)
-        return adapter.fetch_comments(post)
+        """Route to the first provider whose `supported_comment_platforms`
+        includes this platform.
+
+        Comments routing is *separate* from post-collection routing: e.g.
+        Instagram posts collect via Vetric (first-supporting in provider
+        order), but Vetric exposes no comments endpoint, so a comments call
+        skips past Vetric to Apify. The standard vendor-precedence (env /
+        per-collection overrides) still applies as a first pass when the
+        named vendor explicitly supports comments for the platform.
+        """
+        preferred = self._resolve_preferred_vendor(platform)
+        if preferred:
+            target_class = self._VENDOR_CLASS_MAP.get(preferred)
+            if target_class:
+                for provider in self._providers:
+                    if (
+                        isinstance(provider, target_class)
+                        and platform in provider.supported_comment_platforms()
+                    ):
+                        return provider.fetch_comments(post)
+        for provider in self._providers:
+            if platform in provider.supported_comment_platforms():
+                return provider.fetch_comments(post)
+        raise ValueError(f"No adapter supports comments for platform: {platform}")

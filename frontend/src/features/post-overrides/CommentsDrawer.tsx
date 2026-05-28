@@ -106,7 +106,7 @@ function CommentRow({ c, depth }: { c: CommentItem; depth: number }) {
 
 export function CommentsDrawer({ open, onOpenChange, post, agentId }: CommentsDrawerProps) {
   const qc = useQueryClient();
-  const commentsSupported = post.platform === 'twitter';
+  const commentsSupported = post.platform === 'twitter' || post.platform === 'instagram';
 
   const query = useQuery({
     queryKey: ['post-comments', post.post_id],

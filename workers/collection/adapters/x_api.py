@@ -98,6 +98,9 @@ class XAPIAdapter(DataProviderAdapter):
     def supported_platforms(self) -> list[str]:
         return list(self.SUPPORTED)
 
+    def supported_comment_platforms(self) -> list[str]:
+        return ["twitter"]
+
     @property
     def platform_stats(self) -> dict[str, dict]:
         return dict(self._platform_stats)

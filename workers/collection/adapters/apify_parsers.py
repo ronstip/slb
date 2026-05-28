@@ -18,7 +18,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
-from workers.collection.models import Channel, Post
+from workers.collection.models import Channel, Comment, Post
 
 logger = logging.getLogger(__name__)
 
@@ -514,6 +514,105 @@ _PARSER_REGISTRY: dict[tuple[str, str], tuple[ParsePostFn, ParseChannelFn]] = {
         parse_clockworks_tiktok_channel,
     ),
 }
+
+
+# ---------------------------------------------------------------------------
+# Instagram comments — apify/instagram-comment-scraper
+# Dataset item shape (top-level reply on a post):
+#   id, text, ownerUsername, ownerProfilePicUrl, ownerIsVerified, timestamp,
+#   likesCount, repliesCount, replies (nested list of same shape, optional),
+#   postUrl (echo), commentUrl
+# Nested replies carry a `parentCommentId` (or `replyToCommentId`) on builds
+# that flatten them; builds that nest replies under `replies` get their
+# parent stamped during the flatten step below.
+# ---------------------------------------------------------------------------
+
+def parse_apify_instagram_comment(item: dict, parent_comment_id: str | None = None) -> Comment:
+    """Parse one IG comment item into a Comment.
+
+    `parent_comment_id`, when set, overrides any value on the item itself —
+    used by the flattener to stamp the correct parent on nested replies that
+    don't carry their parent id natively.
+    """
+    comment_id = str(_first(item, "id", "commentId", default=""))
+    handle = _first(item, "ownerUsername", "username", default="")
+    owner_id = _first(item, "ownerId", "userId", default=None)
+
+    commented_at = _parse_dt(_first(item, "timestamp", "createdAt", "created_at"))
+
+    replied_to = parent_comment_id or _first(
+        item, "parentCommentId", "replyToCommentId", "parentId", default=None,
+    )
+
+    return Comment(
+        comment_id=comment_id,
+        platform="instagram",
+        channel_handle=str(handle),
+        channel_id=str(owner_id) if owner_id else None,
+        content=_first(item, "text", "content", default=""),
+        commented_at=commented_at or datetime.fromtimestamp(0, tz=timezone.utc),
+        likes=_safe_int(item.get("likesCount")),
+        replies_count=_safe_int(item.get("repliesCount")),
+        media_urls=[],
+        media_refs=[],
+        platform_metadata={
+            "platform": "instagram",
+            "owner_is_verified": item.get("ownerIsVerified"),
+            "owner_profile_pic_url": item.get("ownerProfilePicUrl"),
+            "comment_url": item.get("commentUrl"),
+        },
+        replied_to_id=str(replied_to) if replied_to else None,
+    )
+
+
+def parse_apify_instagram_comment_author(item: dict) -> Channel:
+    """Channel snapshot for a comment author."""
+    handle = _first(item, "ownerUsername", "username", default="")
+    owner_id = _first(item, "ownerId", "userId", default="")
+    return Channel(
+        channel_id=str(owner_id),
+        platform="instagram",
+        channel_handle=str(handle),
+        subscribers=None,
+        total_posts=None,
+        channel_url=f"https://www.instagram.com/{handle}/" if handle else None,
+        description=None,
+        created_date=None,
+        channel_metadata={
+            "verified": item.get("ownerIsVerified"),
+            "profile_pic_url": item.get("ownerProfilePicUrl"),
+        },
+    )
+
+
+def flatten_apify_instagram_comments(
+    items: list[dict], post_id: str,
+) -> list[Comment]:
+    """Walk top-level items + their nested `replies` and emit a flat list of
+    Comments with `replied_to_id` correctly populated for each reply.
+
+    Each top-level comment gets `replied_to_id = post_id` so the threading
+    pass treats it as a direct reply to the post (root = self). Nested
+    replies get `replied_to_id = <top-level comment id>`.
+    """
+    out: list[Comment] = []
+    for top in items:
+        top_comment = parse_apify_instagram_comment(top, parent_comment_id=post_id)
+        if not top_comment.comment_id:
+            continue
+        out.append(top_comment)
+        replies = top.get("replies") or []
+        if not isinstance(replies, list):
+            continue
+        for reply in replies:
+            if not isinstance(reply, dict):
+                continue
+            child = parse_apify_instagram_comment(
+                reply, parent_comment_id=top_comment.comment_id,
+            )
+            if child.comment_id:
+                out.append(child)
+    return out
 
 
 def get_parsers(platform: str, actor_id: str) -> tuple[ParsePostFn, ParseChannelFn]:

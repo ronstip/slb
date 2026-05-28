@@ -43,8 +43,13 @@ from datetime import datetime, timezone
 
 from config.settings import get_settings
 from workers.collection.adapters.apify_client import ApifyAdapterClient, ApifyAPIError
-from workers.collection.adapters.apify_parsers import get_parsers
+from workers.collection.adapters.apify_parsers import (
+    flatten_apify_instagram_comments,
+    get_parsers,
+    parse_apify_instagram_comment_author,
+)
 from workers.collection.adapters.base import DataProviderAdapter
+from workers.collection.adapters.comment_threading import resolve_comment_roots
 from workers.collection.models import Batch, Channel, CommentBatch, Post
 
 logger = logging.getLogger(__name__)
@@ -160,6 +165,9 @@ class ApifyAdapter(DataProviderAdapter):
 
     def supported_platforms(self) -> list[str]:
         return list(self._SUPPORTED)
+
+    def supported_comment_platforms(self) -> list[str]:
+        return ["instagram"]
 
     @property
     def platform_stats(self) -> dict[str, dict]:
@@ -534,17 +542,29 @@ class ApifyAdapter(DataProviderAdapter):
     # Shared run + parse + gate
     # ------------------------------------------------------------------
 
-    def _run_actor_collect_raw(self, platform: str, run_input: dict) -> list[dict]:
+    def _run_actor_collect_raw(
+        self,
+        platform: str,
+        run_input: dict,
+        *,
+        feature: str = "scrape",
+        actor_id: str | None = None,
+    ) -> list[dict]:
         """Trigger one actor run and return raw dataset items. Empty on failure.
 
         Centralizes run-budget claim, error capture, timing, and raw-record
         funnel accounting. Callers do their own parsing — IG uses this directly
         because it merges items from two passes before parsing once.
+
+        `feature` controls the cost-log tag (e.g. "scrape" for collection,
+        "comments" for per-post comment fetches). `actor_id`, when set,
+        overrides the per-platform default actor — used by the comments
+        path to invoke a different actor than the collection actor.
         """
         if not self._claim_run():
             return []
 
-        actor_id = self._actor_ids[platform]
+        actor_id = actor_id or self._actor_ids[platform]
         started = time.monotonic()
         # Cap total in-flight actor calls across all platforms — see __init__.
         with self._concurrent_runs:
@@ -611,7 +631,7 @@ class ApifyAdapter(DataProviderAdapter):
                 log_cost(
                     provider="apify",
                     user_id="",  # filled from collection_context if bound
-                    feature="scrape",
+                    feature=feature,
                     event_type=EVENT_PROVIDER,
                     sub_kind=platform,
                     platform=platform,
@@ -645,7 +665,7 @@ class ApifyAdapter(DataProviderAdapter):
                 log_cost(
                     provider="apify",
                     user_id="",
-                    feature="scrape",
+                    feature=feature,
                     event_type=EVENT_PROVIDER,
                     sub_kind=platform,
                     platform=platform,
@@ -786,9 +806,77 @@ class ApifyAdapter(DataProviderAdapter):
         return results
 
     def fetch_comments(self, post: dict) -> CommentBatch:
-        raise NotImplementedError(
-            f"fetch_comments not supported by ApifyAdapter on {post.get('platform', '<unknown>')}"
+        """Fetch Instagram comments via apify/instagram-comment-scraper.
+
+        Mirrors XAPIAdapter.fetch_comments shape (sync request/response,
+        return CommentBatch). Each top-level item from the actor becomes a
+        root Comment; nested `replies` are flattened and linked via
+        `replied_to_id` so `resolve_comment_roots` builds the same thread
+        tree the UI already renders.
+
+        Cost is tagged feature="comments" sub_kind=platform via
+        `_run_actor_collect_raw`'s provider-reported pathway.
+        """
+        platform = post.get("platform")
+        if platform != "instagram":
+            raise NotImplementedError(
+                f"fetch_comments not supported by ApifyAdapter on {platform!r} — "
+                "only instagram is wired in v1"
+            )
+
+        post_url = post.get("post_url")
+        post_id = post.get("post_id") or ""
+        if not post_url:
+            logger.warning("Apify IG comments: missing post_url on payload %s", post)
+            return CommentBatch()
+
+        settings = get_settings()
+        results_limit = max(1, int(settings.apify_instagram_comments_max))
+
+        run_input: dict = {
+            "directUrls": [post_url],
+            "resultsLimit": results_limit,
+            "proxyConfiguration": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": [self._proxy_group],
+            },
+        }
+
+        raw_items = self._run_actor_collect_raw(
+            "instagram",
+            run_input,
+            feature="comments",
+            actor_id=settings.apify_actor_instagram_comments,
         )
+
+        comments = flatten_apify_instagram_comments(raw_items, post_id=post_id)
+
+        channels_by_id: dict[str, Channel] = {}
+        for item in raw_items:
+            ch = parse_apify_instagram_comment_author(item)
+            key = ch.channel_id or ch.channel_handle
+            if key and key not in channels_by_id:
+                channels_by_id[key] = ch
+            replies = item.get("replies") or []
+            if isinstance(replies, list):
+                for reply in replies:
+                    if not isinstance(reply, dict):
+                        continue
+                    rch = parse_apify_instagram_comment_author(reply)
+                    rkey = rch.channel_id or rch.channel_handle
+                    if rkey and rkey not in channels_by_id:
+                        channels_by_id[rkey] = rch
+
+        resolve_comment_roots(comments, post_id=post_id)
+
+        for c in comments:
+            c.crawl_provider = "apify"
+
+        logger.info(
+            "Apify IG: fetched %d comments + %d authors for post %s",
+            len(comments), len(channels_by_id), post_id,
+        )
+        return CommentBatch(comments=comments, channels=list(channels_by_id.values()))
 
     def _refresh_platform_engagements(self, platform: str, urls: list[str]) -> list[dict]:
         if not self._claim_run():
