@@ -292,7 +292,30 @@ const BESPOKE_COLUMNS: Record<string, BespokeColumnSpec> = {
     width: 'w-[7%]',
     align: 'right' as const,
     sortable: true,
-    render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.views ?? 0)}</span>,
+    render: (row) => {
+      const v = row.views ?? 0;
+      return v === 0
+        ? <span className="text-xs text-muted-foreground">—</span>
+        : <span className="tabular-nums text-xs font-medium">{formatNumber(v)}</span>;
+    },
+  },
+  likes: {
+    width: 'w-[6%]',
+    align: 'right' as const,
+    sortable: true,
+    render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.likes ?? 0)}</span>,
+  },
+  comments_count: {
+    width: 'w-[7%]',
+    align: 'right' as const,
+    sortable: true,
+    render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.comments_count ?? 0)}</span>,
+  },
+  shares: {
+    width: 'w-[6%]',
+    align: 'right' as const,
+    sortable: true,
+    render: (row) => <span className="tabular-nums text-xs font-medium">{formatNumber(row.shares ?? 0)}</span>,
   },
   sentiment: {
     width: 'w-[8%]',
