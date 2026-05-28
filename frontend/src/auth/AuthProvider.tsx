@@ -33,10 +33,13 @@ interface AuthContextValue {
   profile: UserProfile | null;
   loading: boolean;
   isAnonymous: boolean;
-  signIn: () => Promise<void>;
+  /** `loginHint` (Google) pre-selects the matching account in the chooser —
+   *  used by the invite flow to force the visitor to sign in as the invited
+   *  email. */
+  signIn: (loginHint?: string) => Promise<void>;
   signInWithMicrosoft: () => Promise<void>;
   signOut: () => Promise<void>;
-  linkAccount: (provider: 'google' | 'microsoft') => Promise<void>;
+  linkAccount: (provider: 'google' | 'microsoft', loginHint?: string) => Promise<void>;
   getToken: () => Promise<string | null>;
   refreshProfile: () => Promise<void>;
   devMode: boolean;
@@ -177,12 +180,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsub;
   }, []);
 
-  const signIn = async () => {
+  const signIn = async (loginHint?: string) => {
     if (!auth) return;
     // If currently anonymous, link instead of replacing (preserves session)
     if (auth.currentUser?.isAnonymous) {
-      await linkAccount('google');
+      await linkAccount('google', loginHint);
     } else if (googleProvider) {
+      // Always overwrite custom params (empty obj when no hint) so a previous
+      // login_hint from an earlier call doesn't leak into the next chooser.
+      googleProvider.setCustomParameters(loginHint ? { login_hint: loginHint } : {});
       await signInWithPopup(auth, googleProvider);
     }
   };
@@ -197,10 +203,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /** Link an anonymous account to a Google or Microsoft account, or sign in directly. */
-  const linkAccount = async (provider: 'google' | 'microsoft') => {
+  const linkAccount = async (provider: 'google' | 'microsoft', loginHint?: string) => {
     if (!auth) return;
 
     const authProvider = provider === 'google' ? googleProvider! : microsoftProvider!;
+    if (provider === 'google' && googleProvider) {
+      googleProvider.setCustomParameters(loginHint ? { login_hint: loginHint } : {});
+    }
 
     // No current user (anonymous auth disabled/failed) — sign in directly
     if (!auth.currentUser) {

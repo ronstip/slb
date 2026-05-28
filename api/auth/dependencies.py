@@ -232,7 +232,13 @@ def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = Fals
     org_id = None
     org_role = None
 
-    if domain:
+    # If there's a pending invite waiting for this email, skip domain auto-join.
+    # Otherwise the user would get attached to a domain-matched org first and
+    # `POST /orgs/join` would then reject the invite with "already belongs to
+    # an organization". The invite flow attaches them to the correct org.
+    pending_invite = fs.find_pending_invite_by_email(email) if email else None
+
+    if domain and not pending_invite:
         org = fs.find_org_by_domain(domain)
         if org:
             org_id = org["org_id"]
