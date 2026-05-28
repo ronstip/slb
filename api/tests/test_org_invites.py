@@ -195,6 +195,50 @@ def test_anon_to_linked_backfills_email_on_user_doc(monkeypatch):
     assert fake.updates["is_anonymous"] is False
 
 
+def test_allowlist_bypass_pending_invite_passes(monkeypatch):
+    """Allowlist gate must let through emails that have a pending invite —
+    otherwise the invitee can never accept (/orgs/join 403s before it runs)."""
+
+    class _FS:
+        def get_user(self, _uid):
+            return None  # brand-new user, no doc yet
+
+        def find_pending_invite_by_email(self, _email):
+            return {"invite_id": "i1", "org_id": "orgA"}
+
+    monkeypatch.setattr(auth_deps, "get_fs", lambda: _FS())
+    assert auth_deps._has_invite_or_membership("uid1", "client@acme.com") is True
+
+
+def test_allowlist_bypass_existing_member_passes(monkeypatch):
+    """Once a user is in an org (after accepting), allowlist must still wave
+    them through — otherwise they get locked out on the next request."""
+
+    class _FS:
+        def get_user(self, _uid):
+            return {"org_id": "orgA"}
+
+        def find_pending_invite_by_email(self, _email):
+            return None  # invite already accepted
+
+    monkeypatch.setattr(auth_deps, "get_fs", lambda: _FS())
+    assert auth_deps._has_invite_or_membership("uid1", "client@acme.com") is True
+
+
+def test_allowlist_bypass_random_user_blocked(monkeypatch):
+    """Sanity: someone with no invite and no org membership is NOT bypassed."""
+
+    class _FS:
+        def get_user(self, _uid):
+            return None
+
+        def find_pending_invite_by_email(self, _email):
+            return None
+
+    monkeypatch.setattr(auth_deps, "get_fs", lambda: _FS())
+    assert auth_deps._has_invite_or_membership("uid1", "random@x.com") is False
+
+
 def test_anon_to_linked_invalidates_user_cache():
     """Regression: same uid, anon CurrentUser cached with email="". After link
     the token carries the Google email — `_resolve_real_user` must NOT keep

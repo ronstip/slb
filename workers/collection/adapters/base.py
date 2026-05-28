@@ -7,7 +7,17 @@ from workers.collection.models import Batch, CommentBatch
 class DataProviderAdapter(ABC):
     @abstractmethod
     def collect(self, config: dict) -> Iterable[Batch]:
-        """Return batches of posts + channel metadata from the platform."""
+        """Return batches of posts + channel metadata from the platform.
+
+        Config keys (mode-dependent):
+          platforms: list[str]            required
+          # --- keyword/channel mode ---
+          keywords, channel_urls, time_range, max_posts_per_keyword
+          # --- direct-fetch mode ---
+          post_urls: list[str]            when non-empty, the adapter fetches
+                                          exactly the listed posts and ignores
+                                          keywords/channel_urls/time_range.
+        """
 
     @abstractmethod
     def fetch_engagements(self, post_urls: list[str]) -> list[dict]:

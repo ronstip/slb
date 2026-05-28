@@ -5,6 +5,7 @@ import {
   Clock,
   FileText,
   Globe,
+  Link2,
   Loader2,
   Play,
   Plus,
@@ -32,6 +33,7 @@ import {
 } from '../../../../components/ui/alert-dialog.tsx';
 import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
 import { cn } from '../../../../lib/utils.ts';
+import { AddPostByUrlDrawer } from '../AddPostByUrlDrawer.tsx';
 
 interface SourceRow {
   source: Source;
@@ -68,6 +70,7 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [pendingRun, setPendingRun] = useState<PendingRun>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [addByUrlOpen, setAddByUrlOpen] = useState(false);
   const queryClient = useQueryClient();
   const sources = task.data_scope?.sources ?? [];
 
@@ -304,6 +307,15 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
                 Add Sources
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => setAddByUrlOpen(true)}
+              className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all"
+            >
+              <Link2 className="h-3 w-3" />
+              Add post by URL
+            </button>
           </div>
         </div>
 
@@ -478,6 +490,12 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AddPostByUrlDrawer
+        open={addByUrlOpen}
+        onOpenChange={setAddByUrlOpen}
+        agentId={task.agent_id}
+      />
     </div>
   );
 }
