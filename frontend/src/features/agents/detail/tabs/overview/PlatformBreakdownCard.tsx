@@ -47,9 +47,9 @@ export function PlatformBreakdownCard({
   const platforms = useMemo(() => aggregatePlatforms(posts), [posts]);
 
   const maxPosts = Math.max(1, ...platforms.map((p) => p.post_count));
-  const maxViews = Math.max(1, ...platforms.map((p) => p.view_count));
+  const maxEngagements = Math.max(1, ...platforms.map((p) => p.engagement_count));
   const totalPosts = platforms.reduce((sum, p) => sum + p.post_count, 0);
-  const totalViews = platforms.reduce((sum, p) => sum + p.view_count, 0);
+  const totalEngagements = platforms.reduce((sum, p) => sum + p.engagement_count, 0);
 
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-4">
@@ -86,9 +86,10 @@ export function PlatformBreakdownCard({
           <div className="space-y-2">
             {platforms.map((p) => {
               const postsPct = (p.post_count / maxPosts) * 100;
-              const viewsPct = (p.view_count / maxViews) * 100;
+              const engagementsPct = (p.engagement_count / maxEngagements) * 100;
               const postsShare = totalPosts > 0 ? (p.post_count / totalPosts) * 100 : 0;
-              const viewsShare = totalViews > 0 ? (p.view_count / totalViews) * 100 : 0;
+              const engagementsShare =
+                totalEngagements > 0 ? (p.engagement_count / totalEngagements) * 100 : 0;
               const color = PLATFORM_COLORS[p.platform] ?? '#94999F';
               const label = PLATFORM_LABELS[p.platform] ?? p.platform;
               return (
@@ -116,12 +117,12 @@ export function PlatformBreakdownCard({
                           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/50">
                             <div
                               className="h-full transition-all duration-500"
-                              style={{ width: `${viewsPct}%`, backgroundColor: color, opacity: 0.4 }}
+                              style={{ width: `${engagementsPct}%`, backgroundColor: color, opacity: 0.4 }}
                             />
                           </div>
                           <span className="w-20 shrink-0 text-right text-[10px] tabular-nums text-foreground">
-                            {formatNumber(p.view_count)}
-                            <span className="ml-1 text-muted-foreground">views</span>
+                            {formatNumber(p.engagement_count)}
+                            <span className="ml-1 text-muted-foreground">engagements</span>
                           </span>
                         </div>
                       </div>
@@ -146,11 +147,11 @@ export function PlatformBreakdownCard({
                           </span>
                         </div>
                         <div className="flex items-baseline justify-between gap-4">
-                          <span className="opacity-80">Views</span>
+                          <span className="opacity-80">Engagements</span>
                           <span className="font-semibold tabular-nums">
-                            {formatNumber(p.view_count)}
+                            {formatNumber(p.engagement_count)}
                             <span className="ml-1 font-normal opacity-60">
-                              ({viewsShare.toFixed(1)}%)
+                              ({engagementsShare.toFixed(1)}%)
                             </span>
                           </span>
                         </div>
