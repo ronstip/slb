@@ -104,6 +104,15 @@ export interface OrgInvite {
   expires_at: string;
 }
 
+export interface OrgInvitePreview {
+  org_name: string;
+  invited_email: string;
+  role: string;
+  inviter_name: string | null;
+  inviter_email: string | null;
+  expires_at: string;
+}
+
 export interface SubscriptionInfo {
   status: string | null;
   plan: string | null;

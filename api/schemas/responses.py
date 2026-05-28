@@ -331,6 +331,17 @@ class OrgInviteResponse(BaseModel):
     expires_at: str
 
 
+# Public preview returned to anonymous visitors clicking an invite link.
+# Deliberately omits invite_id / invite_code — caller already has the code.
+class OrgInvitePreviewResponse(BaseModel):
+    org_name: str
+    invited_email: str
+    role: str
+    inviter_name: str | None = None
+    inviter_email: str | None = None
+    expires_at: str
+
+
 class SubscriptionResponse(BaseModel):
     status: str | None
     plan: str | None

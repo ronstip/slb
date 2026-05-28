@@ -844,6 +844,29 @@ class FirestoreClient:
             return data
         return None
 
+    def find_pending_invite_by_email(self, email: str) -> dict | None:
+        """Find the most recent pending invite for an email (case-insensitive).
+
+        Used during signup to suppress domain auto-join when an invite is
+        waiting: otherwise the new user gets attached to a domain-matched org
+        before they can redeem the invite, and `join_org` then rejects them
+        with "already belongs to an organization".
+        """
+        if not email:
+            return None
+        docs = (
+            self._db.collection("org_invites")
+            .where("email", "==", email.strip().lower())
+            .where("status", "==", "pending")
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            data = doc.to_dict()
+            data["invite_id"] = doc.id
+            return data
+        return None
+
     def list_org_invites(self, org_id: str) -> list[dict]:
         """List all invites for an organization."""
         docs = (

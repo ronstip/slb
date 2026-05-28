@@ -207,13 +207,15 @@ export const router = createBrowserRouter([
         element: <SharedDashboardPageRoute />,
       },
       {
+        // Public — InviteHandler manages its own anon vs signed-in branches
+        // (lets a non-registered invitee sign in + auto-join in one click).
+        path: '/invite/:code',
+        element: <InviteRoute />,
+      },
+      {
         // All app routes go through AuthGate (redirects anonymous users to /)
         element: <AuthGate />,
         children: [
-          {
-            path: '/invite/:code',
-            element: <InviteRoute />,
-          },
           {
             path: '/settings/:section',
             element: <SettingsPageRoute />,

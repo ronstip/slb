@@ -4,6 +4,7 @@ import type {
   UserPreferences,
   OrgDetails,
   OrgInvite,
+  OrgInvitePreview,
   UsageStats,
   Wallet,
   TopUpOption,
@@ -44,6 +45,11 @@ export async function revokeInvite(inviteId: string): Promise<void> {
 
 export function joinOrg(inviteCode: string): Promise<{ status: string; org_id: string }> {
   return apiPost(`/orgs/join/${inviteCode}`, {});
+}
+
+/** Public — no auth required. Used by the signed-out invite page. */
+export function getInvitePreview(inviteCode: string): Promise<OrgInvitePreview> {
+  return apiGet<OrgInvitePreview>(`/orgs/invites/preview/${inviteCode}`);
 }
 
 export function updateMemberRole(uid: string, role: string): Promise<{ status: string }> {

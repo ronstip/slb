@@ -19,6 +19,7 @@ from api.schemas.responses import (
     OrgDetailsResponse,
     OrgMemberResponse,
     OrgInviteResponse,
+    OrgInvitePreviewResponse,
     UsageResponse,
 )
 from api.deps import get_fs
@@ -206,6 +207,51 @@ async def revoke_invite(
     return {"status": "revoked"}
 
 
+@router.get("/orgs/invites/preview/{invite_code}", response_model=OrgInvitePreviewResponse)
+async def preview_invite(invite_code: str):
+    """Public preview of an invite — shown on the sign-in card before the
+    visitor authenticates. Unauthenticated on purpose: the invite code itself
+    is the secret. Returns the bare minimum the sign-in page needs to display
+    "John invited you to Acme as member" + force-pick the right Google account.
+    """
+    fs = get_fs()
+
+    invite = fs.get_invite_by_code(invite_code)
+    if not invite or invite.get("status") != "pending":
+        raise HTTPException(status_code=404, detail="Invite not found or expired")
+
+    expires_at = invite.get("expires_at")
+    expires_iso = ""
+    if expires_at:
+        if hasattr(expires_at, "timestamp"):
+            expires_dt = expires_at
+        else:
+            expires_dt = datetime.fromisoformat(str(expires_at))
+        if expires_dt.tzinfo is None:
+            expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > expires_dt:
+            raise HTTPException(status_code=404, detail="Invite not found or expired")
+        expires_iso = expires_dt.isoformat()
+
+    org = fs.get_org(invite["org_id"]) or {}
+    inviter = fs.get_user(invite.get("created_by", "")) or {}
+
+    return OrgInvitePreviewResponse(
+        org_name=org.get("name") or "this organization",
+        invited_email=invite.get("email", ""),
+        role=invite.get("role", "member"),
+        inviter_name=inviter.get("display_name"),
+        inviter_email=inviter.get("email"),
+        expires_at=expires_iso,
+    )
+
+
+# Default trial length granted to invited users on first acceptance. Org admins
+# already vouched for them, so we skip the `blocked` queue and give them a real
+# trial window. Admins can extend / convert via the Finance page.
+_INVITE_TRIAL_DAYS = 14
+
+
 @router.post("/orgs/join/{invite_code}")
 async def join_org(
     invite_code: str,
@@ -234,6 +280,16 @@ async def join_org(
         if datetime.now(timezone.utc) > expires_dt.replace(tzinfo=timezone.utc):
             raise HTTPException(status_code=400, detail="Invite has expired")
 
+    # Email must match the invite — invites are not bearer tokens transferable
+    # between accounts. The Firebase email is trusted (verified by the issuer).
+    invited_email = (invite.get("email") or "").strip().lower()
+    actor_email = (user.email or "").strip().lower()
+    if not actor_email or actor_email != invited_email:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This invite is for {invited_email or 'a different email address'}.",
+        )
+
     org_id = invite["org_id"]
     role = invite.get("role", "member")
 
@@ -242,6 +298,23 @@ async def join_org(
     invalidate_user_cache(user.uid)
     # Stamp the new org on the joiner's existing agents so they can be shared.
     reconcile_user_org_membership(user.uid, org_id)
+
+    # Promote `blocked` invitees to a real trial — the inviting admin already
+    # vouched. Leave free/trial/paid alone (don't downgrade an existing tier).
+    user_doc = fs.get_user(user.uid) or {}
+    current_tier = ((user_doc.get("plan") or {}).get("tier")) or "blocked"
+    if current_tier == "blocked":
+        trial_expires_at = datetime.now(timezone.utc) + timedelta(days=_INVITE_TRIAL_DAYS)
+        fs.set_plan(
+            user.uid,
+            tier="trial",
+            trial_expires_at=trial_expires_at,
+            notes=f"promoted via org invite {invite_code}",
+        )
+        # Drop the entitlements cache so the next request sees `trial`, not
+        # the stale `blocked` snapshot.
+        from api.services import entitlements
+        entitlements.invalidate(user.uid)
 
     # Mark invite as accepted
     fs.update_invite(invite["invite_id"], status="accepted")
