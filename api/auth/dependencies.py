@@ -43,6 +43,20 @@ class CurrentUser:
     real_email: str | None = None
 
 
+def _has_invite_or_membership(uid: str, email: str) -> bool:
+    """True when the caller is already in an org OR has a pending invite for
+    their email. Used by the allowlist gate to wave through invitees and
+    long-standing org members whose emails aren't on the allowlist."""
+    fs = get_fs()
+    if uid:
+        user_doc = fs.get_user(uid)
+        if user_doc and user_doc.get("org_id"):
+            return True
+    if email:
+        return bool(fs.find_pending_invite_by_email(email))
+    return False
+
+
 async def _resolve_real_user(request: Request) -> CurrentUser:
     """Verify the Firebase token and return the real caller.
 
@@ -86,8 +100,15 @@ async def _resolve_real_user(request: Request) -> CurrentUser:
             )
         allowed = {e.strip().lower() for e in settings.allowed_emails.split(",") if e.strip()}
         if email.lower() not in allowed:
-            logger.warning("Email not in allowlist: %s", redact_email(email))
-            raise HTTPException(status_code=403, detail="Access restricted to approved users")
+            # Org invites + existing org membership are themselves an
+            # authorization signal: an admin already vouched. Without this
+            # bypass a non-allowlisted invitee can never accept their invite
+            # (this check 403s before `/orgs/join/{code}` ever runs) and an
+            # existing member would get locked out the moment their email is
+            # removed from the allowlist.
+            if not await asyncio.to_thread(_has_invite_or_membership, uid, email):
+                logger.warning("Email not in allowlist: %s", redact_email(email))
+                raise HTTPException(status_code=403, detail="Access restricted to approved users")
 
     # Check in-memory cache first
     now = time.monotonic()
