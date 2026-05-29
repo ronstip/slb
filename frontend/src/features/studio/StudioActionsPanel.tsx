@@ -3,10 +3,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { useChatStore } from '../../stores/chat-store.ts';
 import { useSSEChat } from '../chat/hooks/useSSEChat.ts';
 import { ChartDialog } from './ChartDialog.tsx';
-import { StrategicPlanningDialog } from './StrategicPlanningDialog.tsx';
-import { DashboardReportDialog } from './DashboardReportDialog.tsx';
-import { CreateReportDialog } from './CreateReportDialog.tsx';
-import { InsightReportDialog } from './InsightReportDialog.tsx';
+import { GenerateReportDialog } from './GenerateReportDialog.tsx';
 import { STUDIO_ACTIONS, type StudioAction } from './studio-actions.ts';
 import { cn } from '../../lib/utils.ts';
 import type { CustomFieldDef } from '../../api/types.ts';
@@ -27,17 +24,11 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
   const { sendMessage } = useSSEChat();
   const isAgentResponding = useChatStore((s) => s.isAgentResponding);
   const [chartOpen, setChartOpen] = useState(false);
-  const [planningOpen, setPlanningOpen] = useState(false);
-  const [dashboardReportOpen, setDashboardReportOpen] = useState(false);
-  const [createReportOpen, setCreateReportOpen] = useState(false);
-  const [insightReportOpen, setInsightReportOpen] = useState(false);
+  const [generateReportOpen, setGenerateReportOpen] = useState(false);
 
   const handlerFor = (action: StudioAction) => {
-    if (action.id === 'insight_report') return () => setInsightReportOpen(true);
+    if (action.id === 'generate_report') return () => setGenerateReportOpen(true);
     if (action.id === 'chart') return () => setChartOpen(true);
-    if (action.id === 'strategic_planning') return () => setPlanningOpen(true);
-    if (action.id === 'dashboard_report') return () => setDashboardReportOpen(true);
-    if (action.id === 'create_report') return () => setCreateReportOpen(true);
     if (action.id === 'create_skill') return () => {};
     return () => action.prompt && sendMessage(action.prompt);
   };
@@ -86,24 +77,9 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
           onSubmit={sendMessage}
           customFields={customFields}
         />
-        <StrategicPlanningDialog
-          open={planningOpen}
-          onOpenChange={setPlanningOpen}
-          onSubmit={sendMessage}
-        />
-        <DashboardReportDialog
-          open={dashboardReportOpen}
-          onOpenChange={setDashboardReportOpen}
-          onSubmit={sendMessage}
-        />
-        <CreateReportDialog
-          open={createReportOpen}
-          onOpenChange={setCreateReportOpen}
-          onSubmit={sendMessage}
-        />
-        <InsightReportDialog
-          open={insightReportOpen}
-          onOpenChange={setInsightReportOpen}
+        <GenerateReportDialog
+          open={generateReportOpen}
+          onOpenChange={setGenerateReportOpen}
           onSubmit={sendMessage}
         />
       </>
@@ -143,24 +119,9 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
         onSubmit={sendMessage}
         customFields={customFields}
       />
-      <StrategicPlanningDialog
-        open={planningOpen}
-        onOpenChange={setPlanningOpen}
-        onSubmit={sendMessage}
-      />
-      <DashboardReportDialog
-        open={dashboardReportOpen}
-        onOpenChange={setDashboardReportOpen}
-        onSubmit={sendMessage}
-      />
-      <CreateReportDialog
-        open={createReportOpen}
-        onOpenChange={setCreateReportOpen}
-        onSubmit={sendMessage}
-      />
-      <InsightReportDialog
-        open={insightReportOpen}
-        onOpenChange={setInsightReportOpen}
+      <GenerateReportDialog
+        open={generateReportOpen}
+        onOpenChange={setGenerateReportOpen}
         onSubmit={sendMessage}
       />
     </div>
