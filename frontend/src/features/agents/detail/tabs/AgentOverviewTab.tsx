@@ -134,11 +134,6 @@ export function AgentOverviewTab({
                 onOpenBriefing={() => { void openBriefing(); }}
                 onOpenSettings={() => onTabChange('settings')}
               />
-              <ActivityCard
-                logs={logs}
-                isRunning={isRunning}
-                onOpenLogs={() => onTabChange('settings')}
-              />
               <EntitiesCard
                 agentId={task.agent_id}
                 collectionIds={collectionIds}
@@ -168,6 +163,11 @@ export function AgentOverviewTab({
                 dataStartDate={task.data_start_date}
                 dataEndDate={task.data_end_date}
                 onOpenData={() => onTabChange('data')}
+              />
+              <ActivityCard
+                logs={logs}
+                isRunning={isRunning}
+                onOpenLogs={() => onTabChange('settings')}
               />
             </div>
           </div>

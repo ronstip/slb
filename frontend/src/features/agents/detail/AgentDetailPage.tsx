@@ -7,6 +7,7 @@ import { useSessionStore } from '../../../stores/session-store.ts';
 import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { runAgent, resumeAgent, updateAgent as patchAgent } from '../../../api/endpoints/agents.ts';
+import { confirmAgentRun } from '../../../components/confirm-dialog.tsx';
 import { useAgentDetail } from './useAgentDetail.ts';
 import { useAgentEditMode } from './useAgentEditMode.ts';
 import { AppSidebar } from '../../../components/AppSidebar.tsx';
@@ -162,6 +163,7 @@ export function AgentDetailPage() {
 
   const handleRun = async () => {
     if (!task) return;
+    if (!(await confirmAgentRun(task.title))) return;
     try {
       await runAgent(task.agent_id);
       toast.success('Agent run started');

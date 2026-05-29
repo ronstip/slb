@@ -35,6 +35,7 @@ const AgentDetailDrawer = lazy(() =>
 );
 import type { Agent, AgentStatus } from '../../api/endpoints/agents.ts';
 import { runAgent, updateAgent as patchAgent } from '../../api/endpoints/agents.ts';
+import { confirmAgentRun } from '../../components/confirm-dialog.tsx';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -329,6 +330,7 @@ export function AgentsPage() {
   };
 
   const handleRun = async (agent: Agent) => {
+    if (!(await confirmAgentRun(agent.title))) return;
     try {
       await runAgent(agent.agent_id);
       fetchAgents();
