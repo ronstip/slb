@@ -74,30 +74,30 @@ export function TopicsMosaic({
       </header>
 
       {isLoading && visible.length === 0 ? (
-        <MosaicSkeleton />
+        <RowsSkeleton />
       ) : visible.length === 0 ? (
         <EmptyState isAgentRunning={isAgentRunning} isError={isError} />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <ul className="flex flex-col divide-y divide-border/40">
           {visible.map((topic) => (
-            <MosaicCard
+            <TopicRow
               key={topic.cluster_id}
               topic={topic}
               onOpen={() => onOpenTopic(topic.cluster_id)}
             />
           ))}
-        </div>
+        </ul>
       )}
     </section>
   );
 }
 
-interface MosaicCardProps {
+interface TopicRowProps {
   topic: TopicCluster;
   onOpen: () => void;
 }
 
-function MosaicCard({ topic, onOpen }: MosaicCardProps) {
+function TopicRow({ topic, onOpen }: TopicRowProps) {
   const [imgFailed, setImgFailed] = useState(false);
   const thumbSrc = resolveThumbnail(topic);
   const sentiment = dominantSentiment(topic);
@@ -108,109 +108,84 @@ function MosaicCard({ topic, onOpen }: MosaicCardProps) {
   const showImage = thumbSrc && !imgFailed;
 
   return (
-    <article
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card transition-all hover:border-border hover:shadow-md cursor-pointer"
-    >
-      {/* Banner image (or sentiment-tinted fallback w/ platform logos) */}
-      <div className="relative h-44 w-full overflow-hidden bg-secondary">
-        {showImage ? (
-          <img
-            src={thumbSrc}
-            alt=""
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-            loading="lazy"
-            onError={() => setImgFailed(true)}
-          />
-        ) : (
-          <PlatformLogoFallback
-            platforms={topic.platforms ?? []}
-            tintStrong={tintStrong}
-            tintSoft={tintSoft}
-          />
-        )}
-        {/* Sentiment color wash on top of image (subtle) */}
-        {showImage && (
-          <div
-            aria-hidden
-            className="absolute inset-0 mix-blend-multiply"
-            style={{ background: `linear-gradient(135deg, ${tintStrong} 0%, transparent 60%)` }}
-          />
-        )}
-        {/* Bottom vignette so badges/overlays read on bright images */}
-        <div
-          aria-hidden
-          className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent"
-        />
-        {/* Virality badge — floats top-right of image */}
-        {virality != null && (
-          <span
-            className="absolute right-2 top-2 rounded-md px-2 py-1 text-xs font-bold tabular-nums text-white shadow-sm backdrop-blur-sm"
-            style={{ backgroundColor: vColor }}
-          >
-            x{formatNumber(virality)}
-          </span>
-        )}
-        {/* Post count chip — bottom-left of image */}
-        <span className="absolute bottom-2 left-2 rounded-md bg-black/50 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
-          {topic.post_count} posts
-        </span>
-      </div>
-
-      {/* Content below image */}
-      <div className="relative flex-1 p-3 space-y-1.5">
-        <h4 className="font-heading text-base font-semibold leading-snug text-foreground line-clamp-2">
-          {topic.topic_name}
-        </h4>
-
-        {topic.topic_summary && (
-          <p className="text-xs leading-relaxed text-muted-foreground line-clamp-2">
-            {topic.topic_summary}
-          </p>
-        )}
-
-        <div className="flex items-center gap-2.5 pt-0.5 text-[11px] text-muted-foreground">
-          {sentiment && (
-            <span className="flex items-center gap-1">
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: SENTIMENT_COLORS[sentiment.key] }}
-              />
-              {sentiment.pct}% {sentiment.key}
-            </span>
-          )}
-          {topic.total_views != null && topic.total_views > 0 && (
-            <span className="flex items-center gap-1">
-              <Eye className="h-3 w-3" /> {formatNumber(topic.total_views)}
-            </span>
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:bg-muted/30 rounded-lg px-2 -mx-2"
+      >
+        {/* Thumbnail */}
+        <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-md bg-secondary">
+          {showImage ? (
+            <img
+              src={thumbSrc}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              loading="lazy"
+              onError={() => setImgFailed(true)}
+            />
+          ) : (
+            <PlatformLogoFallback
+              platforms={topic.platforms ?? []}
+              tintStrong={tintStrong}
+              tintSoft={tintSoft}
+            />
           )}
         </div>
-      </div>
 
-    </article>
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h4 className="flex-1 min-w-0 truncate font-heading text-sm font-semibold text-foreground">
+              {topic.topic_name}
+            </h4>
+            {virality != null && (
+              <span
+                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white"
+                style={{ backgroundColor: vColor }}
+              >
+                x{formatNumber(virality)}
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 flex items-center gap-2.5 text-[11px] text-muted-foreground">
+            <span className="font-medium">{formatNumber(topic.post_count)} posts</span>
+            {sentiment && (
+              <span className="flex items-center gap-1">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: SENTIMENT_COLORS[sentiment.key] }}
+                />
+                {sentiment.pct}% {sentiment.key}
+              </span>
+            )}
+            {topic.total_views != null && topic.total_views > 0 && (
+              <span className="flex items-center gap-1">
+                <Eye className="h-3 w-3" /> {formatNumber(topic.total_views)}
+              </span>
+            )}
+          </div>
+        </div>
+      </button>
+    </li>
   );
 }
 
-function MosaicSkeleton() {
+function RowsSkeleton() {
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="flex flex-col divide-y divide-border/40">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div
-          key={i}
-          className="relative min-h-[140px] overflow-hidden rounded-xl border border-border/60 bg-card"
-        >
-          <div
-            className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-muted/60 to-transparent"
-            style={{ animationDelay: `${i * 120}ms` }}
-          />
+        <div key={i} className="flex items-center gap-3 py-2.5 px-2 -mx-2">
+          <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-md bg-muted/40">
+            <div
+              className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-muted/60 to-transparent"
+              style={{ animationDelay: `${i * 120}ms` }}
+            />
+          </div>
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3 w-2/3 rounded bg-muted/40" />
+            <div className="h-2.5 w-1/3 rounded bg-muted/30" />
+          </div>
         </div>
       ))}
     </div>
@@ -226,24 +201,19 @@ function PlatformLogoFallback({
   tintStrong: string;
   tintSoft: string;
 }) {
-  const visible = platforms.slice(0, 4);
-  const single = visible.length === 1;
+  const visible = platforms.slice(0, 2);
   return (
     <div className="absolute inset-0">
       <div
         className="absolute inset-0"
         style={{ background: `linear-gradient(135deg, ${tintStrong} 0%, ${tintSoft} 60%, transparent 100%)` }}
       />
-      <div className="relative flex h-full w-full items-center justify-center gap-4">
+      <div className="relative flex h-full w-full items-center justify-center gap-1.5">
         {visible.length === 0 ? (
-          <div className="h-16 w-16 rounded-full bg-foreground/5" />
+          <Hash className="h-5 w-5 text-foreground/30" />
         ) : (
           visible.map((p) => (
-            <PlatformIcon
-              key={p}
-              platform={p}
-              className={single ? 'h-20 w-20 opacity-90' : 'h-12 w-12 opacity-90'}
-            />
+            <PlatformIcon key={p} platform={p} className="h-5 w-5 opacity-80" />
           ))
         )}
       </div>

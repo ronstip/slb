@@ -46,7 +46,7 @@ export const STUDIO_ACTIONS: StudioAction[] = [
     tileTheme:
       'border-blue-500/40 bg-gradient-to-br from-blue-500 to-blue-700 text-white hover:from-blue-400 hover:to-blue-600',
     iconBubble: 'bg-white/20 text-white ring-white/20',
-    prompt: 'Generate an insight report for the selected sources.',
+    // Special: opens InsightReportDialog (v7 Strategic Memo Brief template) rather than sending a prompt directly.
   },
   {
     id: 'strategic_planning',

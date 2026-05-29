@@ -6,6 +6,7 @@ import { ChartDialog } from './ChartDialog.tsx';
 import { StrategicPlanningDialog } from './StrategicPlanningDialog.tsx';
 import { DashboardReportDialog } from './DashboardReportDialog.tsx';
 import { CreateReportDialog } from './CreateReportDialog.tsx';
+import { InsightReportDialog } from './InsightReportDialog.tsx';
 import { STUDIO_ACTIONS, type StudioAction } from './studio-actions.ts';
 import { cn } from '../../lib/utils.ts';
 import type { CustomFieldDef } from '../../api/types.ts';
@@ -29,8 +30,10 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
   const [planningOpen, setPlanningOpen] = useState(false);
   const [dashboardReportOpen, setDashboardReportOpen] = useState(false);
   const [createReportOpen, setCreateReportOpen] = useState(false);
+  const [insightReportOpen, setInsightReportOpen] = useState(false);
 
   const handlerFor = (action: StudioAction) => {
+    if (action.id === 'insight_report') return () => setInsightReportOpen(true);
     if (action.id === 'chart') return () => setChartOpen(true);
     if (action.id === 'strategic_planning') return () => setPlanningOpen(true);
     if (action.id === 'dashboard_report') return () => setDashboardReportOpen(true);
@@ -98,6 +101,11 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
           onOpenChange={setCreateReportOpen}
           onSubmit={sendMessage}
         />
+        <InsightReportDialog
+          open={insightReportOpen}
+          onOpenChange={setInsightReportOpen}
+          onSubmit={sendMessage}
+        />
       </>
     );
   }
@@ -143,6 +151,16 @@ export function StudioActionsPanel({ customFields, variant = 'compact' }: Studio
       <DashboardReportDialog
         open={dashboardReportOpen}
         onOpenChange={setDashboardReportOpen}
+        onSubmit={sendMessage}
+      />
+      <CreateReportDialog
+        open={createReportOpen}
+        onOpenChange={setCreateReportOpen}
+        onSubmit={sendMessage}
+      />
+      <InsightReportDialog
+        open={insightReportOpen}
+        onOpenChange={setInsightReportOpen}
         onSubmit={sendMessage}
       />
     </div>

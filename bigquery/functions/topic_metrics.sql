@@ -285,17 +285,20 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.topic_metrics(
         GROUP BY c.cluster_id
     ),
     -- ===== Thumbnail: prefer GCS-backed image, then engagement-weighted =====
-    -- Filters to media_type='image' (videos/audio don't render as thumbnails)
-    -- and prefers posts with a GCS-backed copy (stable, always renderable);
+    -- UNNESTs media_refs so video-first posts (TikTok/IG Reel/YT Short) still
+    -- contribute later image refs instead of being excluded. Filters to
+    -- media_type='image' (videos/audio don't render as thumbnails) and
+    -- prefers posts with a GCS-backed copy (stable, always renderable);
     -- external-only URLs fall through and are routed via the frontend's
     -- /media-proxy with onError fallback to the styled placeholder.
     thumb_candidates AS (
-        SELECT cluster_id, is_representative, views, likes,
-               JSON_EXTRACT_SCALAR(media_refs, '$[0].original_url') AS original_url,
-               JSON_EXTRACT_SCALAR(media_refs, '$[0].gcs_uri') AS gcs_uri,
-               JSON_EXTRACT_SCALAR(media_refs, '$[0].media_type') AS media_type
-        FROM scoped_members
-        WHERE media_refs IS NOT NULL
+        SELECT m.cluster_id, m.is_representative, m.views, m.likes,
+               JSON_EXTRACT_SCALAR(ref, '$.original_url') AS original_url,
+               JSON_EXTRACT_SCALAR(ref, '$.gcs_uri') AS gcs_uri,
+               JSON_EXTRACT_SCALAR(ref, '$.media_type') AS media_type
+        FROM scoped_members m,
+             UNNEST(JSON_QUERY_ARRAY(m.media_refs)) AS ref
+        WHERE m.media_refs IS NOT NULL
     ),
     thumb_ranked AS (
         SELECT cluster_id, original_url, gcs_uri,
@@ -303,6 +306,12 @@ CREATE OR REPLACE TABLE FUNCTION social_listening.topic_metrics(
                    PARTITION BY cluster_id
                    ORDER BY
                      CASE WHEN gcs_uri IS NOT NULL AND gcs_uri != '' THEN 0 ELSE 1 END,
+                     -- Prefer URLs that look like actual image files; many
+                     -- parsers populate `original_url` with the post share-link
+                     -- (e.g. facebook.com/reel/…, instagram.com/p/…) which the
+                     -- frontend cannot render as an <img>.
+                     CASE WHEN REGEXP_CONTAINS(LOWER(original_url), r'\.(jpg|jpeg|png|webp|gif)(\?|$)') THEN 0 ELSE 1 END,
+                     CASE WHEN REGEXP_CONTAINS(LOWER(original_url), r'/(reel|reels|p|posts|status|video|watch|shorts)/') THEN 1 ELSE 0 END,
                      is_representative DESC,
                      (views + likes * 10) DESC
                ) AS rn
