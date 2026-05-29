@@ -8,7 +8,6 @@ import { AgentActivityLogCompact } from '../AgentActivityLog.tsx';
 import { LiveProgressBand } from './overview/LiveProgressBand.tsx';
 import { LivePostStream } from './overview/LivePostStream.tsx';
 import { DeliverablesPanel } from './overview/DeliverablesPanel.tsx';
-import { EmergingTopicsPreview } from './overview/EmergingTopicsPreview.tsx';
 import { EntitiesCard } from './overview/EntitiesCard.tsx';
 import { ChannelMixCard } from './overview/ChannelMixCard.tsx';
 import { PlatformBreakdownCard } from './overview/PlatformBreakdownCard.tsx';
@@ -135,17 +134,6 @@ export function AgentOverviewTab({
                 onOpenBriefing={() => { void openBriefing(); }}
                 onOpenSettings={() => onTabChange('settings')}
               />
-              <EmergingTopicsPreview
-                agentId={task.agent_id}
-                isAgentRunning={isRunning}
-                onOpenTopics={() => onTabChange('topics')}
-                onOpenTopic={setOpenTopicId}
-              />
-              <ActivityCard
-                logs={logs}
-                isRunning={isRunning}
-                onOpenLogs={() => onTabChange('settings')}
-              />
               <EntitiesCard
                 agentId={task.agent_id}
                 collectionIds={collectionIds}
@@ -175,6 +163,11 @@ export function AgentOverviewTab({
                 dataStartDate={task.data_start_date}
                 dataEndDate={task.data_end_date}
                 onOpenData={() => onTabChange('data')}
+              />
+              <ActivityCard
+                logs={logs}
+                isRunning={isRunning}
+                onOpenLogs={() => onTabChange('settings')}
               />
             </div>
           </div>

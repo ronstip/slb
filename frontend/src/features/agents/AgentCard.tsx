@@ -22,6 +22,7 @@ import {
 import { ScheduleDialog } from './detail/ScheduleDialog.tsx';
 import type { Agent } from '../../api/endpoints/agents.ts';
 import { runAgent, updateAgent as patchAgent, setAgentVisibility } from '../../api/endpoints/agents.ts';
+import { confirmAgentRun } from '../../components/confirm-dialog.tsx';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { mediaUrl } from '../../api/client.ts';
 // Import the status helpers directly from the canonical source to avoid
@@ -335,6 +336,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
 
   const handleRun = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!(await confirmAgentRun(task.title))) return;
     try {
       await runAgent(task.agent_id);
       toast.success('Agent run started');
