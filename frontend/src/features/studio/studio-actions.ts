@@ -62,12 +62,12 @@ export const STUDIO_ACTIONS: StudioAction[] = [
     id: 'send_email',
     label: 'Send Email',
     icon: Mail,
-    iconClass: 'text-pink-600 bg-pink-500/10',
-    hoverClass: 'hover:border-pink-500/40 hover:bg-pink-500/5',
-    tileGradient: 'from-pink-500/20 via-pink-500/5 to-transparent',
-    iconTint: 'text-pink-500',
+    iconClass: 'text-indigo-600 bg-indigo-500/10',
+    hoverClass: 'hover:border-indigo-500/40 hover:bg-indigo-500/5',
+    tileGradient: 'from-indigo-500/20 via-indigo-500/5 to-transparent',
+    iconTint: 'text-indigo-500',
     tileTheme:
-      'border-pink-500/40 bg-gradient-to-br from-pink-500 to-pink-700 text-white hover:from-pink-400 hover:to-pink-600',
+      'border-indigo-500/40 bg-gradient-to-br from-indigo-500 to-indigo-700 text-white hover:from-indigo-400 hover:to-indigo-600',
     iconBubble: 'bg-white/20 text-white ring-white/20',
     prompt:
       'Send me an email summary of the key findings for the selected sources. Ask me for my email address first.',
