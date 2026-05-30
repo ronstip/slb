@@ -55,13 +55,15 @@ export function dominantSentiment(topic: TopicCluster): { key: string; pct: numb
 }
 
 export function resolveThumbnail(topic: TopicCluster): string | null {
-  if (topic.thumbnail_gcs_uri) return mediaUrl(topic.thumbnail_gcs_uri);
-  if (topic.thumbnail_url) return topic.thumbnail_url;
+  if (topic.thumbnail_gcs_uri || topic.thumbnail_url) {
+    return mediaUrl(topic.thumbnail_gcs_uri ?? undefined, topic.thumbnail_url ?? undefined);
+  }
   return null;
 }
 
 export function resolvePostThumbnail(post: TopicPost): string | null {
-  if (post.thumbnail_gcs_uri) return mediaUrl(post.thumbnail_gcs_uri);
-  if (post.thumbnail_url) return post.thumbnail_url;
+  if (post.thumbnail_gcs_uri || post.thumbnail_url) {
+    return mediaUrl(post.thumbnail_gcs_uri ?? undefined, post.thumbnail_url ?? undefined);
+  }
   return null;
 }

@@ -1,11 +1,8 @@
 import type { LucideIcon } from 'lucide-react';
-import { FileText, Target, BarChart3, Mail, Presentation, Plus, LayoutDashboard, FileBarChart2 } from 'lucide-react';
+import { FileText, BarChart3, Mail, Presentation, Plus } from 'lucide-react';
 
 export type StudioActionId =
-  | 'insight_report'
-  | 'strategic_planning'
-  | 'dashboard_report'
-  | 'create_report'
+  | 'generate_report'
   | 'chart'
   | 'send_email'
   | 'deck_slides'
@@ -36,48 +33,9 @@ export interface StudioAction {
 
 export const STUDIO_ACTIONS: StudioAction[] = [
   {
-    id: 'insight_report',
-    label: 'Insight Report',
+    id: 'generate_report',
+    label: 'Reports',
     icon: FileText,
-    iconClass: 'text-blue-600 bg-blue-500/10',
-    hoverClass: 'hover:border-blue-500/40 hover:bg-blue-500/5',
-    tileGradient: 'from-blue-500/20 via-blue-500/5 to-transparent',
-    iconTint: 'text-blue-500',
-    tileTheme:
-      'border-blue-500/40 bg-gradient-to-br from-blue-500 to-blue-700 text-white hover:from-blue-400 hover:to-blue-600',
-    iconBubble: 'bg-white/20 text-white ring-white/20',
-    prompt: 'Generate an insight report for the selected sources.',
-  },
-  {
-    id: 'strategic_planning',
-    label: 'Strategic Planning',
-    icon: Target,
-    iconClass: 'text-emerald-600 bg-emerald-500/10',
-    hoverClass: 'hover:border-emerald-500/40 hover:bg-emerald-500/5',
-    tileGradient: 'from-emerald-500/20 via-emerald-500/5 to-transparent',
-    iconTint: 'text-emerald-500',
-    tileTheme:
-      'border-emerald-500/40 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white hover:from-emerald-400 hover:to-emerald-600',
-    iconBubble: 'bg-white/20 text-white ring-white/20',
-    // Special: opens StrategicPlanningDialog rather than sending a prompt directly.
-  },
-  {
-    id: 'dashboard_report',
-    label: 'Dashboard Report',
-    icon: LayoutDashboard,
-    iconClass: 'text-violet-600 bg-violet-500/10',
-    hoverClass: 'hover:border-violet-500/40 hover:bg-violet-500/5',
-    tileGradient: 'from-violet-500/20 via-violet-500/5 to-transparent',
-    iconTint: 'text-violet-500',
-    tileTheme:
-      'border-violet-500/40 bg-gradient-to-br from-violet-500 to-violet-700 text-white hover:from-violet-400 hover:to-violet-600',
-    iconBubble: 'bg-white/20 text-white ring-white/20',
-    // Special: opens DashboardReportDialog rather than sending a prompt directly.
-  },
-  {
-    id: 'create_report',
-    label: 'Create Report',
-    icon: FileBarChart2,
     iconClass: 'text-teal-600 bg-teal-500/10',
     hoverClass: 'hover:border-teal-500/40 hover:bg-teal-500/5',
     tileGradient: 'from-teal-500/20 via-teal-500/5 to-transparent',
@@ -85,7 +43,7 @@ export const STUDIO_ACTIONS: StudioAction[] = [
     tileTheme:
       'border-teal-500/40 bg-gradient-to-br from-teal-500 to-teal-700 text-white hover:from-teal-400 hover:to-teal-600',
     iconBubble: 'bg-white/20 text-white ring-white/20',
-    // Special: opens CreateReportDialog (version B intelligence template) rather than sending a prompt directly.
+    // Special: opens GenerateReportDialog (radio of Brief / Competitive Report / Weekly Report / Strategic Planning).
   },
   {
     id: 'chart',
@@ -104,12 +62,12 @@ export const STUDIO_ACTIONS: StudioAction[] = [
     id: 'send_email',
     label: 'Send Email',
     icon: Mail,
-    iconClass: 'text-pink-600 bg-pink-500/10',
-    hoverClass: 'hover:border-pink-500/40 hover:bg-pink-500/5',
-    tileGradient: 'from-pink-500/20 via-pink-500/5 to-transparent',
-    iconTint: 'text-pink-500',
+    iconClass: 'text-indigo-600 bg-indigo-500/10',
+    hoverClass: 'hover:border-indigo-500/40 hover:bg-indigo-500/5',
+    tileGradient: 'from-indigo-500/20 via-indigo-500/5 to-transparent',
+    iconTint: 'text-indigo-500',
     tileTheme:
-      'border-pink-500/40 bg-gradient-to-br from-pink-500 to-pink-700 text-white hover:from-pink-400 hover:to-pink-600',
+      'border-indigo-500/40 bg-gradient-to-br from-indigo-500 to-indigo-700 text-white hover:from-indigo-400 hover:to-indigo-600',
     iconBubble: 'bg-white/20 text-white ring-white/20',
     prompt:
       'Send me an email summary of the key findings for the selected sources. Ask me for my email address first.',

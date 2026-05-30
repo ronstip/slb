@@ -20,6 +20,7 @@ import {
 import type { Agent } from '../../api/endpoints/agents.ts';
 import { RUNNABLE_STATUSES, STATUS_ACCENT, StatusBadge } from './detail/agent-status-utils.tsx';
 import { getAgent, runAgent, updateAgent as patchAgent, getAgentArtifacts, getAgentLogs } from '../../api/endpoints/agents.ts';
+import { confirmAgentRun } from '../../components/confirm-dialog.tsx';
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { useSourcesStore } from '../../stores/sources-store.ts';
 import type { Source } from '../../stores/sources-store.ts';
@@ -198,6 +199,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
   const canRun = RUNNABLE_STATUSES.includes(displayTask.status);
 
   const handleRunDrawer = async () => {
+    if (!(await confirmAgentRun(displayTask.title))) return;
     setIsRunning(true);
     try {
       await runAgent(displayTask.agent_id);

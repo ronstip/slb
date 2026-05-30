@@ -85,19 +85,36 @@ def _load_template_widgets(fs, template_id: str | None) -> list[dict] | None:
     template. Used by the semantic leakage check in `_check_dashboard_for_publish`.
     Failures here are non-fatal — verify still runs with the literal-marker checks.
     """
+    widgets, _ = _load_template_meta(fs, template_id)
+    return widgets
+
+
+def _load_template_meta(
+    fs, template_id: str | None
+) -> tuple[list[dict] | None, bool]:
+    """Return ``(widgets, enforce_widget_set)`` for the template doc.
+
+    ``enforce_widget_set`` is an opt-in template-level flag (default False) that
+    tells ``_check_dashboard_for_publish`` to reject the final dashboard if any
+    template widget is missing UNLESS that widget carries ``removable: True``.
+    Catches the failure mode where the agent calls ``removals=[...]`` on a
+    core widget (e.g. §3 narratives in the v7 Strategic Memo Brief) and ends
+    up with a structurally incomplete brief.
+    """
     if not template_id:
-        return None
+        return None, False
     try:
         doc = fs._db.collection(DASHBOARD_LAYOUTS).document(template_id).get()
     except Exception:
-        return None
+        return None, False
     if not doc.exists:
-        return None
+        return None, False
     data = doc.to_dict() or {}
     if not data.get("is_template"):
-        return None
+        return None, False
     widgets = data.get("layout")
-    return widgets if isinstance(widgets, list) else None
+    enforce = bool(data.get("enforce_widget_set"))
+    return (widgets if isinstance(widgets, list) else None), enforce
 
 
 def _refuse_if_template(data: dict, layout_id: str, action: str) -> dict | None:
@@ -1062,6 +1079,7 @@ def _is_section_widget(wi: str) -> bool:
 def _check_dashboard_for_publish(
     widgets: list[dict],
     template_widgets: list[dict] | None = None,
+    enforce_widget_set: bool = False,
 ) -> list[str]:
     """Run all hard pre-publish checks on a widget list. Returns a list of
     short error strings (one per defect, naming the widget id). Empty list
@@ -1071,6 +1089,12 @@ def _check_dashboard_for_publish(
     text widget is also compared to its same-`i` template counterpart — an
     exact-or-near-exact match means the widget was never filled. This catches
     cases the literal-string markers miss when the template wording shifts.
+
+    If ``enforce_widget_set`` is True (opt-in via the template's
+    ``enforce_widget_set: true`` field), every template widget that is NOT
+    marked ``removable: True`` must be present in the final dashboard. Catches
+    the failure mode where the agent removes a core section via
+    ``removals=[...]`` and ends up shipping a structurally incomplete brief.
     """
     errors: list[str] = []
     seen_anchors: dict[str, str] = {}  # anchor → first widget i that declared it
@@ -1083,6 +1107,35 @@ def _check_dashboard_for_publish(
             if tw.get("aggregation") != "text":
                 continue
             template_md_by_i[tw.get("i") or ""] = (tw.get("markdownContent") or "")
+
+    # Mandatory-widget enforcement — opt-in via template's `enforce_widget_set`.
+    # Any template widget without `removable: True` that is missing from the
+    # final layout is an error. Run BEFORE the per-widget checks so missing
+    # mandatory widgets surface even when the present ones are clean.
+    if enforce_widget_set and template_widgets:
+        present_ids = {
+            w.get("i") for w in widgets
+            if isinstance(w, dict) and w.get("i")
+        }
+        for tw in template_widgets:
+            if not isinstance(tw, dict):
+                continue
+            tw_id = tw.get("i")
+            if not tw_id:
+                continue
+            if tw.get("removable"):
+                continue
+            if tw_id not in present_ids:
+                errors.append(
+                    f"widget '{tw_id}': MANDATORY template widget is missing "
+                    f"from the final dashboard — likely removed via "
+                    f"`update_dashboard(removals=[\"{tw_id}\"])`. This widget is "
+                    f"not marked `removable: True` in the template, so it must "
+                    f"be present in the published brief. Re-add it by calling "
+                    f"`update_dashboard(additions=[...])` with the original "
+                    f"widget config from the template, then patch its "
+                    f"markdownContent with real content."
+                )
 
     # Detect the dashboard's dominant language from filled text widgets so we
     # can flag chart titles in the wrong script. Hebrew is currently the only
@@ -1420,8 +1473,14 @@ def verify_dashboard(
         1 for w in widgets
         if isinstance(w, dict) and w.get("aggregation") == "text"
     )
-    template_widgets = _load_template_widgets(fs, data.get("source_template_id"))
-    errors = _check_dashboard_for_publish(widgets, template_widgets=template_widgets)
+    template_widgets, enforce_widget_set = _load_template_meta(
+        fs, data.get("source_template_id")
+    )
+    errors = _check_dashboard_for_publish(
+        widgets,
+        template_widgets=template_widgets,
+        enforce_widget_set=enforce_widget_set,
+    )
 
     # Numerical verification — only runs when reportScope is committed AND we
     # have an active agent_id (the TVF needs both). Standalone dashboards and
@@ -1546,11 +1605,14 @@ def publish_dashboard(
     # Hard pre-publish gate — same checks as verify_dashboard. The agent is
     # asked to call verify_dashboard first; this is the safety net for when
     # it doesn't, or when content drifted between verify and publish.
-    template_widgets = _load_template_widgets(fs, data.get("source_template_id"))
+    template_widgets, enforce_widget_set = _load_template_meta(
+        fs, data.get("source_template_id")
+    )
     widgets_for_check = data.get("layout") or []
     pre_publish_errors = _check_dashboard_for_publish(
         widgets_for_check,
         template_widgets=template_widgets,
+        enforce_widget_set=enforce_widget_set,
     )
     # Numerical scope check — same as verify_dashboard but inside the publish
     # gate so a stale verify-pass can't smuggle drift through.
