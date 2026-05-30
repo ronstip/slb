@@ -11,6 +11,9 @@ import { confirmAgentRun } from '../../../components/confirm-dialog.tsx';
 import { useAgentDetail } from './useAgentDetail.ts';
 import { useAgentEditMode } from './useAgentEditMode.ts';
 import { AppSidebar } from '../../../components/AppSidebar.tsx';
+import { MobileHeader } from '../../../components/MobileHeader.tsx';
+import { MobileSidebar } from '../../../components/MobileSidebar.tsx';
+import { MobileTabBar } from '../../../components/MobileTabBar.tsx';
 import type { DetailTab } from '../../../components/AppSidebar.tsx';
 import { ScheduleDialog } from './ScheduleDialog.tsx';
 import { RUNNABLE_STATUSES } from './agent-status-utils.tsx';
@@ -244,36 +247,45 @@ export function AgentDetailPage() {
 
   const canRun = !!task && RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
 
+  // Shared between the desktop <aside> and the mobile off-canvas drawer so the
+  // sidebar behaves identically in both; `isMobile` is layered on for the drawer.
+  const sidebarProps = {
+    activeAgent: task,
+    activeTab,
+    onTabChange: setActiveTab,
+    hasCollections: (task?.collection_ids?.length ?? 0) > 0,
+    onRun: handleRun,
+    onStop: handleStop,
+    onResume: handleResume,
+    onPauseResume: handlePauseResume,
+    onOpenSchedule: () => setScheduleOpen(true),
+    agentSessions,
+    activeSessionId,
+    onSessionSelect: handleSessionSelect,
+    onNewChat: handleNewChat,
+    agentLayouts,
+    activeLayoutId,
+    onLayoutSelect: handleLayoutSelect,
+    onNewLayout: handleNewLayout,
+  };
+
   return (
     <div className="flex h-screen bg-background">
-      {/* Unified sidebar */}
+      {/* Unified sidebar — desktop only; becomes the drawer on mobile */}
       <aside
-        className="shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar"
+        className="hidden shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block"
         style={{ width: sidebarCollapsed ? 48 : 280 }}
       >
-        <AppSidebar
-          activeAgent={task}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          hasCollections={(task?.collection_ids?.length ?? 0) > 0}
-          onRun={handleRun}
-          onStop={handleStop}
-          onResume={handleResume}
-          onPauseResume={handlePauseResume}
-          onOpenSchedule={() => setScheduleOpen(true)}
-          agentSessions={agentSessions}
-          activeSessionId={activeSessionId}
-          onSessionSelect={handleSessionSelect}
-          onNewChat={handleNewChat}
-          agentLayouts={agentLayouts}
-          activeLayoutId={activeLayoutId}
-          onLayoutSelect={handleLayoutSelect}
-          onNewLayout={handleNewLayout}
-        />
+        <AppSidebar {...sidebarProps} />
       </aside>
 
+      <MobileSidebar>
+        <AppSidebar {...sidebarProps} isMobile />
+      </MobileSidebar>
+
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <MobileHeader title={task?.title} />
         {/* Tab content — wait for task before mounting tabs (each tab assumes a
             non-null task). The sidebar renders independently above. */}
         <main className="flex flex-1 flex-col overflow-hidden">
@@ -343,6 +355,20 @@ export function AgentDetailPage() {
             </Suspense>
           )}
         </main>
+        {/* Mobile: agent tabs docked at the bottom */}
+        <MobileTabBar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          hasCollections={(task?.collection_ids?.length ?? 0) > 0}
+          agentSessions={agentSessions}
+          activeSessionId={activeSessionId}
+          onSessionSelect={handleSessionSelect}
+          onNewChat={handleNewChat}
+          agentLayouts={agentLayouts}
+          activeLayoutId={activeLayoutId}
+          onLayoutSelect={handleLayoutSelect}
+          onNewLayout={handleNewLayout}
+        />
       </div>
 
       {task && <ScheduleDialog task={task} open={scheduleOpen} onOpenChange={setScheduleOpen} />}

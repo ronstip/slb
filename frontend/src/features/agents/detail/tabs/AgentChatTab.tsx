@@ -174,9 +174,10 @@ export function AgentChatTab({
         </ErrorBoundary>
       </div>
 
-      {/* Right: Workspace sidebar — collapsed by default on chat tab */}
+      {/* Right: Workspace sidebar — desktop only; the rail/resize UX doesn't
+          translate to mobile, where chat needs the full width. */}
       <aside
-        className="relative shrink-0 overflow-hidden border-l border-border bg-card"
+        className="relative hidden shrink-0 overflow-hidden border-l border-border bg-card md:block"
         style={{ width: studioPanelCollapsed ? STUDIO_COLLAPSED_W : studioPanelWidth }}
       >
         {!studioPanelCollapsed && (

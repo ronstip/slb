@@ -27,6 +27,7 @@ import {
   StopCircle,
   Sun,
   UserCog,
+  X,
 } from 'lucide-react';
 import type { Agent } from '../api/endpoints/agents.ts';
 import type { SessionListItem } from '../api/endpoints/sessions.ts';
@@ -62,7 +63,7 @@ import { cn } from '../lib/utils.ts';
 
 export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer' | 'settings' | 'topics';
 
-const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
+export const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'explorer', label: 'Explorer', icon: Compass },
@@ -99,6 +100,10 @@ interface AppSidebarProps {
   activeLayoutId?: string | null;
   onLayoutSelect?: (layoutId: string | null) => void;
   onNewLayout?: () => void;
+  /** When rendered inside the mobile off-canvas Sheet: always show the
+   *  expanded layout, hide the collapse toggle, and close the drawer after
+   *  any navigation. */
+  isMobile?: boolean;
 }
 
 function AppSidebarImpl({
@@ -119,13 +124,33 @@ function AppSidebarImpl({
   activeLayoutId,
   onLayoutSelect,
   onNewLayout,
+  isMobile = false,
 }: AppSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const agents = useAgentStore((s) => s.agents);
-  const collapsed = useUIStore((s) => s.sourcesPanelCollapsed);
+  const collapsedRaw = useUIStore((s) => s.sourcesPanelCollapsed);
   const toggle = useUIStore((s) => s.toggleSourcesPanel);
   const openWizardDrawer = useUIStore((s) => s.openWizardDrawer);
+  const closeMobileSidebar = useUIStore((s) => s.closeMobileSidebar);
+  // In the mobile Sheet we always render the full expanded sidebar.
+  const collapsed = collapsedRaw && !isMobile;
+  // Close the mobile drawer after navigating; no-op on desktop.
+  const afterNav = () => {
+    if (isMobile) closeMobileSidebar();
+  };
+  const go = (path: string) => {
+    navigate(path);
+    afterNav();
+  };
+  const handleSessionSelectMobile = (sessionId: string) => {
+    onSessionSelect?.(sessionId);
+    afterNav();
+  };
+  const handleLayoutSelectMobile = (layoutId: string | null) => {
+    onLayoutSelect?.(layoutId);
+    afterNav();
+  };
   const { user, profile, signOut, isAnonymous } = useAuth();
   const { theme, setTheme } = useTheme();
 
@@ -148,6 +173,7 @@ function AppSidebarImpl({
   // instead of dropping them into the home-page createMode layout.
   const handleNewAgent = () => {
     openWizardDrawer();
+    afterNav();
   };
   const totalAgents = useMemo(
     () => agents.filter((a) => a.status !== 'archived').length,
@@ -256,7 +282,7 @@ function AppSidebarImpl({
       >
         <Tooltip>
           <TooltipTrigger asChild>
-            <button onClick={() => navigate('/')} className="mb-1 cursor-pointer focus:outline-none transition-opacity hover:opacity-75" style={{ color: '#FFFFFF' }}>
+            <button onClick={() => go('/')} className="mb-1 cursor-pointer focus:outline-none transition-opacity hover:opacity-75" style={{ color: '#FFFFFF' }}>
               <Logo size="md" showText={false} />
             </button>
           </TooltipTrigger>
@@ -283,7 +309,7 @@ function AppSidebarImpl({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className={cn('mt-1 h-8 w-8 hover:bg-sidebar-accent hover:text-sidebar-foreground', isHomePage ? 'text-sidebar-primary' : 'text-sidebar-foreground/70')} onClick={() => navigate('/')}>
+            <Button variant="ghost" size="icon" className={cn('mt-1 h-8 w-8 hover:bg-sidebar-accent hover:text-sidebar-foreground', isHomePage ? 'text-sidebar-primary' : 'text-sidebar-foreground/70')} onClick={() => go('/')}>
               <Home className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -292,7 +318,7 @@ function AppSidebarImpl({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className={cn('mt-1 h-8 w-8 hover:bg-sidebar-accent hover:text-sidebar-foreground', location.pathname === '/agents' ? 'text-sidebar-primary' : 'text-sidebar-foreground/70')} onClick={() => navigate('/agents')}>
+            <Button variant="ghost" size="icon" className={cn('mt-1 h-8 w-8 hover:bg-sidebar-accent hover:text-sidebar-foreground', location.pathname === '/agents' ? 'text-sidebar-primary' : 'text-sidebar-foreground/70')} onClick={() => go('/agents')}>
               <LayoutGrid className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -331,12 +357,18 @@ function AppSidebarImpl({
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       {/* Top: Logo + collapse button */}
       <div className="flex h-16 items-center justify-between px-4">
-        <button onClick={() => navigate('/')} className="cursor-pointer focus:outline-none transition-opacity hover:opacity-75" style={{ color: '#FFFFFF' }}>
+        <button onClick={() => go('/')} className="cursor-pointer focus:outline-none transition-opacity hover:opacity-75" style={{ color: '#FFFFFF' }}>
           <Logo size="sm" />
         </button>
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={toggle}>
-          <PanelLeftClose className="h-4 w-4" />
-        </Button>
+        {isMobile ? (
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={closeMobileSidebar} aria-label="Close menu">
+            <X className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={toggle}>
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* New Agent — primary action button */}
@@ -353,14 +385,14 @@ function AppSidebarImpl({
       {/* Navigation */}
       <div className="flex flex-col gap-0.5 px-3">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => go('/')}
           className={cn(NAV_ITEM_BASE, isHomePage ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE)}
         >
           <Home className={cn('h-4 w-4 shrink-0', isHomePage && 'text-sidebar-primary')} />
           Home
         </button>
         <button
-          onClick={() => navigate('/agents')}
+          onClick={() => go('/agents')}
           className={cn(NAV_ITEM_BASE, isAgentsPage ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE)}
         >
           <LayoutGrid className={cn('h-4 w-4 shrink-0', isAgentsPage && 'text-sidebar-primary')} />
@@ -408,6 +440,10 @@ function AppSidebarImpl({
                         if (isExplorerTab && isTabActive) {
                           setExplorerHistoryOpen((v) => !v);
                         }
+                        // Switching to a different tab on mobile shows its
+                        // content full-screen — close the drawer. Toggling the
+                        // expander on the already-active tab keeps it open.
+                        if (!isTabActive) afterNav();
                       }}
                       className={cn(
                         'flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
@@ -462,7 +498,7 @@ function AppSidebarImpl({
                         <SessionCard
                           key={session.session_id}
                           session={session}
-                          onSelect={onSessionSelect}
+                          onSelect={handleSessionSelectMobile}
                           onDeleted={onNewChat}
                         />
                       ))}
@@ -477,7 +513,7 @@ function AppSidebarImpl({
                             ? 'bg-sidebar-accent text-sidebar-foreground'
                             : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60',
                         )}
-                        onClick={() => onLayoutSelect(null)}
+                        onClick={() => handleLayoutSelectMobile(null)}
                       >
                         {activeLayoutId === null && (
                           <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-sidebar-primary" />
@@ -496,7 +532,7 @@ function AppSidebarImpl({
                             ? 'bg-sidebar-accent text-sidebar-foreground'
                             : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60',
                         )}
-                        onClick={() => onLayoutSelect(DASHBOARD_DEFAULT_ID)}
+                        onClick={() => handleLayoutSelectMobile(DASHBOARD_DEFAULT_ID)}
                       >
                         {activeLayoutId === DASHBOARD_DEFAULT_ID && (
                           <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-sidebar-primary" />
@@ -513,7 +549,7 @@ function AppSidebarImpl({
                           key={layout.layout_id}
                           layout={layout}
                           isActive={activeLayoutId === layout.layout_id}
-                          onSelect={onLayoutSelect}
+                          onSelect={handleLayoutSelectMobile}
                         />
                       ))}
                       {(!agentLayouts || agentLayouts.length === 0) && onNewLayout && (
@@ -646,7 +682,7 @@ function AppSidebarImpl({
                   return (
                     <button
                       key={agent.agent_id}
-                      onClick={() => navigate(`/agents/${agent.agent_id}`)}
+                      onClick={() => go(`/agents/${agent.agent_id}`)}
                       className={cn(
                         'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
                         isActive ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,

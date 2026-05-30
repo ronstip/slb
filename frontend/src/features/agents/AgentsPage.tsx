@@ -73,6 +73,9 @@ import { AgentCardGrid } from './AgentCardGrid.tsx';
 import { BotAvatar, UtilityTopBar } from '../../components/BrandElements.tsx';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
+import { MobileHeader } from '../../components/MobileHeader.tsx';
+import { MobileSidebar } from '../../components/MobileSidebar.tsx';
+import { useIsMobile } from '../../hooks/useIsMobile.ts';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { cn } from '../../lib/utils.ts';
 
@@ -185,6 +188,9 @@ export function AgentsPage() {
   const [openScheduleOnDrawer, setOpenScheduleOnDrawer] = useState(false);
   const [explorerAgent, setExplorerAgent] = useState<Agent | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode);
+  // The fixed-column table can't fit a phone; always show responsive cards there.
+  const isMobile = useIsMobile();
+  const effectiveViewMode: ViewMode = isMobile ? 'grid' : viewMode;
   const [sortField, setSortField] = useState<SortField>('last_run');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -348,15 +354,20 @@ export function AgentsPage() {
     <TooltipProvider delayDuration={300}>
     <div className="flex h-screen w-full overflow-x-hidden bg-background">
       <aside
-        className="shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar"
+        className="hidden shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block"
         style={{ width: sidebarCollapsed ? 48 : 280 }}
       >
         <AppSidebar />
       </aside>
 
-      <div className="flex flex-1 flex-col overflow-x-hidden">
+      <MobileSidebar>
+        <AppSidebar />
+      </MobileSidebar>
+
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+        <MobileHeader />
         <main className="flex-1 overflow-y-auto">
-          <div className="w-full px-10 pb-14">
+          <div className="w-full px-4 pb-14 md:px-10">
             {/* ── Top utility row — eyebrow with agent counts + bell + theme ── */}
             <div className="pt-8">
               <UtilityTopBar hasNotification={hasExecuting}>
@@ -438,8 +449,8 @@ export function AgentsPage() {
               </DropdownMenu>
 
               <div className="ml-auto flex items-center gap-3">
-                {/* View toggle */}
-                <div className="inline-flex h-10 items-stretch overflow-hidden rounded-md border border-border bg-card">
+                {/* View toggle — hidden on mobile, where cards are forced */}
+                <div className="hidden h-10 items-stretch overflow-hidden rounded-md border border-border bg-card md:inline-flex">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -511,7 +522,7 @@ export function AgentsPage() {
                       : 'Ask the AI to set up recurring monitoring or automate a scheduled report to create an agent'}
                   </p>
                 </div>
-              ) : viewMode === 'grid' ? (
+              ) : effectiveViewMode === 'grid' ? (
                 <AgentCardGrid
                   tasks={filteredAgents}
                   onAgentClick={handleRowClick}
