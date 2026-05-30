@@ -48,7 +48,7 @@ export function AgentOverviewTab({
   const { open: openBriefing } = useOpenBriefingShare(task.agent_id, task.title);
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden min-w-0 relative">
+    <div className="flex flex-1 flex-col min-w-0 relative overflow-x-hidden overflow-y-auto md:overflow-hidden">
       {/* Decorative background glow */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none" />
 
@@ -68,9 +68,9 @@ export function AgentOverviewTab({
         onGoToBriefing={() => { void openBriefing(); }}
       />
 
-      <main className="flex-1 overflow-y-auto z-10 p-6 lg:p-8">
+      <main className="flex-1 z-10 p-4 md:overflow-y-auto md:p-6 lg:p-8">
         <div className="mx-auto max-w-[1400px]">
-          <div className="grid gap-4 lg:grid-cols-12">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="space-y-4 lg:col-span-8">
               <section
                 className={`relative flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card transition-[height] duration-200 ${chatExpanded ? 'h-[680px]' : 'h-[360px]'}`}

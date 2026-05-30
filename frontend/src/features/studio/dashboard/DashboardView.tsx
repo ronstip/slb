@@ -135,7 +135,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className={`flex items-center gap-2 bg-card/50${noBorder ? ' h-11 px-6' : ' py-1.5 px-4 border-b border-border'}`}>
+      <div className={`flex flex-wrap items-center gap-2 bg-card/50 md:flex-nowrap${noBorder ? ' px-3 py-2 md:h-11 md:px-6 md:py-0' : ' py-1.5 px-3 border-b border-border md:px-4'}`}>
         {!standalone && (
           <>
             <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={collapseReport}>
@@ -165,10 +165,11 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
         )}
 
         {titleAdornment}
-        {/* Spacer pushes buttons to the right */}
-        <div className="flex-1" />
+        {/* Spacer pushes buttons to the right (desktop only — on mobile the
+            toolbar wraps instead of overflowing). */}
+        <div className="hidden flex-1 md:block" />
         {/* Right-side controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 md:flex-nowrap md:shrink-0">
           {/* Edit controls */}
           {toolbarHandlers && (
             <>

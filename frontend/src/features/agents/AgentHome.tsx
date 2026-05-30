@@ -8,6 +8,8 @@ import { useAuth } from '../../auth/useAuth.ts';
 import { useCollectionsSync } from '../collections/useCollectionsSync.ts';
 import { Logo, BRAND_NAME } from '../../components/Logo.tsx';
 import { AppSidebar } from '../../components/AppSidebar.tsx';
+import { MobileHeader } from '../../components/MobileHeader.tsx';
+import { MobileSidebar } from '../../components/MobileSidebar.tsx';
 import { UtilityTopBar } from '../../components/BrandElements.tsx';
 import { AgentCreationWizard } from './wizard/AgentCreationWizard.tsx';
 import { LatestAgentsRow } from './LatestAgentsRow.tsx';
@@ -65,17 +67,26 @@ export function AgentHome() {
 
   return (
     <div className="flex h-screen bg-background">
+      {/* Desktop sidebar — hidden on mobile, where it becomes the drawer below */}
       <aside
-        className="shrink-0 overflow-hidden"
+        className="hidden shrink-0 overflow-hidden md:block"
         style={{ width: sidebarCollapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_EXPANDED_W }}
       >
         <AppSidebar />
       </aside>
 
+      {/* Mobile off-canvas navigation */}
+      <MobileSidebar>
+        <AppSidebar isMobile />
+      </MobileSidebar>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+      <MobileHeader />
+
       {/* Wizard — always keep mounted so AgentCreationWizard's useSSEChat stream is
           not aborted when we switch to the chat view. Just hide it visually. */}
       <main
-        className={`${hasChatActivity ? 'hidden' : 'flex'} relative flex-1 flex-col items-center overflow-y-auto px-8 py-8`}
+        className={`${hasChatActivity ? 'hidden' : 'flex'} relative flex-1 flex-col items-center overflow-y-auto px-4 py-6 md:px-8 md:py-8`}
       >
         {/* Loading state */}
         {isLoading && agents.length === 0 && (
@@ -158,6 +169,7 @@ export function AgentHome() {
           </ErrorBoundary>
         </div>
       )}
+      </div>
 
       {/* Home route is rendered outside AuthGate, so mount the drawer here
           too — without it, the sidebar's "New agent" button no-ops on /. */}

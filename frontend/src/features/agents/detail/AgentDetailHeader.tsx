@@ -89,12 +89,12 @@ export function AgentDetailHeader({
 
   return (
     <header className="bg-card/50 backdrop-blur-md border-b border-border/40 shrink-0 z-10">
-      <div className="px-6 pt-5 pb-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
-            <BotAvatar seed={task.agent_id} size={48} className="shadow-sm border border-border/50 shrink-0" />
+      <div className="px-4 pt-3 pb-3 md:px-6 md:pt-5 md:pb-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+          <div className="flex items-center gap-3 min-w-0 md:gap-4">
+            <BotAvatar seed={task.agent_id} size={48} className="shrink-0" />
             <div className="min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2.5 flex-wrap md:gap-3">
                 {isEditing && draft && editMode ? (
                   <Input
                     value={draft.title}
@@ -103,21 +103,37 @@ export function AgentDetailHeader({
                     autoFocus
                   />
                 ) : (
-                  <h1 className="font-heading font-bold text-xl text-foreground truncate">{task.title}</h1>
+                  <h1 className="font-heading font-bold text-lg text-foreground truncate md:text-xl">{task.title}</h1>
                 )}
                 <StatusBadge status={task.status} paused={task.paused} />
                 {task.status === 'running' && <RadarPulse />}
               </div>
-              <p className="text-muted-foreground text-xs mt-1">
-                ID: #{task.agent_id.slice(0, 12)} • Created {startDate}
-                {stepsCount > 0 && ` • ${completedSteps}/${stepsCount} steps`}
-                {collectionsCount > 0 && ` • ${collectionsCount} sources`}
-                {artifactsCount > 0 && ` • ${artifactsCount} artifacts`}
-              </p>
+              {/* Meta — ID dropped (users don't care); fields spaced out. */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
+                <span>Created {startDate}</span>
+                {stepsCount > 0 && (
+                  <>
+                    <span className="opacity-40">•</span>
+                    <span>{completedSteps}/{stepsCount} steps</span>
+                  </>
+                )}
+                {collectionsCount > 0 && (
+                  <>
+                    <span className="opacity-40">•</span>
+                    <span>{collectionsCount} sources</span>
+                  </>
+                )}
+                {artifactsCount > 0 && (
+                  <>
+                    <span className="opacity-40">•</span>
+                    <span>{artifactsCount} artifacts</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 md:shrink-0">
             {rightControls ? (
               rightControls
             ) : isEditing && editMode ? (

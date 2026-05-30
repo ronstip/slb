@@ -26,6 +26,8 @@ interface UIStore {
   activePoll: PollData | null;
   signUpPromptOpen: boolean;
   wizardDrawerOpen: boolean;
+  /** Mobile-only: off-canvas navigation drawer (the AppSidebar in a Sheet). */
+  mobileSidebarOpen: boolean;
 
   toggleSourcesPanel: () => void;
   toggleStudioPanel: () => void;
@@ -45,6 +47,9 @@ interface UIStore {
   closeSignUpPrompt: () => void;
   openWizardDrawer: () => void;
   closeWizardDrawer: () => void;
+  openMobileSidebar: () => void;
+  closeMobileSidebar: () => void;
+  setMobileSidebarOpen: (open: boolean) => void;
 }
 
 const loadCollapsed = (key: string): boolean => {
@@ -82,6 +87,7 @@ export const useUIStore = create<UIStore>((set) => ({
   activePoll: null,
   signUpPromptOpen: false,
   wizardDrawerOpen: false,
+  mobileSidebarOpen: false,
 
   toggleSourcesPanel: () =>
     set((s) => {
@@ -156,4 +162,7 @@ export const useUIStore = create<UIStore>((set) => ({
   closeSignUpPrompt: () => set({ signUpPromptOpen: false }),
   openWizardDrawer: () => set({ wizardDrawerOpen: true }),
   closeWizardDrawer: () => set({ wizardDrawerOpen: false }),
+  openMobileSidebar: () => set({ mobileSidebarOpen: true }),
+  closeMobileSidebar: () => set({ mobileSidebarOpen: false }),
+  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
 }));
