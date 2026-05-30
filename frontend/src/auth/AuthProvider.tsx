@@ -20,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { auth, googleProvider, microsoftProvider, isFirebaseConfigured, signInAnonymously } from './firebase.ts';
 import { setTokenGetter, setSignOutHandler } from '../api/client.ts';
 import { apiGet, apiPost } from '../api/client.ts';
+import { toast } from 'sonner';
 import type { UserProfile } from '../api/types.ts';
 import { useAgentStore } from '../stores/agent-store.ts';
 import { useChatStore } from '../stores/chat-store.ts';
@@ -46,6 +47,32 @@ interface AuthContextValue {
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
+
+/**
+ * Map a sign-in / link popup failure to user-facing feedback.
+ *
+ * Benign cancellations (user closed/double-triggered the popup) are swallowed.
+ * `auth/missing-initial-state` surfaces on browsers that partition or clear
+ * sessionStorage (iOS Safari ITP, in-app webviews) when the Firebase OAuth
+ * handler is cross-origin. The real fix is the same-origin authDomain
+ * (`scolto.com`); this toast is the residual backstop for environments where
+ * popup auth still can't complete.
+ */
+function reportSignInError(error: unknown): void {
+  const code = (error as AuthError)?.code;
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
+  if (
+    code === 'auth/missing-initial-state' ||
+    code === 'auth/web-storage-unsupported' ||
+    code === 'auth/popup-blocked'
+  ) {
+    toast.error(
+      "Couldn't complete sign-in in this browser. Try again, or open scolto.com directly in Safari or Chrome (not an in-app browser).",
+    );
+    return;
+  }
+  toast.error('Sign-in failed. Please try again.');
+}
 
 // True while the build-time Puppeteer prerender is capturing static HTML.
 // vite.config.ts injects window.__PRERENDER_INJECTED before scripts evaluate.
@@ -189,7 +216,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Always overwrite custom params (empty obj when no hint) so a previous
       // login_hint from an earlier call doesn't leak into the next chooser.
       googleProvider.setCustomParameters(loginHint ? { login_hint: loginHint } : {});
-      await signInWithPopup(auth, googleProvider);
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (error) {
+        reportSignInError(error);
+      }
     }
   };
 
@@ -198,7 +229,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (auth.currentUser?.isAnonymous) {
       await linkAccount('microsoft');
     } else if (microsoftProvider) {
-      await signInWithPopup(auth, microsoftProvider);
+      try {
+        await signInWithPopup(auth, microsoftProvider);
+      } catch (error) {
+        reportSignInError(error);
+      }
     }
   };
 
@@ -216,9 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await signInWithPopup(auth, authProvider);
       } catch (error: unknown) {
-        const firebaseError = error as AuthError;
-        if (firebaseError.code === 'auth/popup-closed-by-user') return;
-        throw error;
+        reportSignInError(error);
       }
       return;
     }
@@ -246,11 +279,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(result.user);
           await fetchProfile();
         }
-      } else if (firebaseError.code === 'auth/popup-closed-by-user') {
-        // User closed popup — do nothing
-        return;
       } else {
-        throw error;
+        reportSignInError(firebaseError);
       }
     }
   };

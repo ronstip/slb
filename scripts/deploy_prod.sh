@@ -298,7 +298,7 @@ cd "$ROOT_DIR/frontend"
 cat > .env.production <<ENVEOF
 VITE_API_URL=$API_URL
 VITE_FIREBASE_API_KEY=AIzaSyCx_2MDdBqET7pu850TYz-0E6y91wSXpks
-VITE_FIREBASE_AUTH_DOMAIN=social-listening-pl.firebaseapp.com
+VITE_FIREBASE_AUTH_DOMAIN=scolto.com
 VITE_FIREBASE_PROJECT_ID=social-listening-pl
 VITE_FIREBASE_STORAGE_BUCKET=social-listening-pl.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=662322593981
