@@ -1,21 +1,25 @@
 import { useState, useMemo } from 'react';
-import { Database, Search, X } from 'lucide-react';
+import { Database } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import type { Agent } from '../../../../api/endpoints/agents.ts';
+import type { ArtifactListItem } from '../../../../api/endpoints/artifacts.ts';
 import { listCollections } from '../../../../api/endpoints/collections.ts';
 import { mapCollectionToSource } from '../../../collections/utils.ts';
 import { PostsDataPanel } from '../../../collections/PostsDataPanel.tsx';
 import { computeWindowStart } from './overview/overview-filters.ts';
-import { Input } from '../../../../components/ui/input.tsx';
 import type { Source } from '../../../../stores/sources-store.ts';
-import { StatusBadge } from '../agent-status-utils.tsx';
+import { AgentDetailHeader } from '../AgentDetailHeader.tsx';
 
 interface TaskCollectionsTabProps {
   task: Agent;
+  artifacts: ArtifactListItem[];
 }
 
-export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
+export function AgentCollectionsTab({ task, artifacts }: TaskCollectionsTabProps) {
   const [globalSearch, setGlobalSearch] = useState('');
+  // Portal target for the data toolbar (search / columns / export / view toggle),
+  // which renders into the header's rightControls slot.
+  const [toolbarEl, setToolbarEl] = useState<HTMLDivElement | null>(null);
 
   const taskCollectionIds = useMemo(
     () => new Set(task.collection_ids ?? []),
@@ -57,13 +61,20 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
   );
   const endDate = task.data_end_date ?? null;
 
+  // Data-page header: agent-level run/settings controls live on the Overview tab,
+  // so here the right side hosts only the data toolbar (portaled in by PostsDataPanel).
+  const header = (
+    <AgentDetailHeader
+      task={task}
+      artifacts={artifacts}
+      rightControls={<div ref={setToolbarEl} className="flex flex-wrap items-center gap-2" />}
+    />
+  );
+
   if (taskCollectionIds.size === 0) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex h-11 shrink-0 items-center gap-3 px-6">
-          <h1 className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">{task.title}</h1>
-          <StatusBadge status={task.status} />
-        </div>
+        {header}
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
           <Database className="h-10 w-10 opacity-20" />
           <p className="text-sm font-medium">No data yet</p>
@@ -75,33 +86,16 @@ export function AgentCollectionsTab({ task }: TaskCollectionsTabProps) {
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-      {/* Header row: title + status + search + export */}
-      <div className="flex h-11 shrink-0 items-center gap-3 px-6">
-        <h1 className="truncate font-heading text-sm font-semibold tracking-tight text-foreground">{task.title}</h1>
-        <StatusBadge status={task.status} />
-        <div className="flex-1" />
-        <div className="relative w-48">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={globalSearch}
-            onChange={(e) => setGlobalSearch(e.target.value)}
-            placeholder="Search posts..."
-            className="h-7 pl-8 text-xs"
-          />
-          {globalSearch && (
-            <button onClick={() => setGlobalSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      </div>
+      {header}
 
-      {/* Data panel with built-in filter bar */}
+      {/* Data panel — toolbar (search/columns/export/view toggle) portals into the header */}
       <PostsDataPanel
         selectedCollectionIds={allCollectionIds}
         collectionNames={collectionNames}
         collections={collections}
         globalSearch={globalSearch}
+        onGlobalSearchChange={setGlobalSearch}
+        toolbarContainer={toolbarEl}
         dedup={allCollectionIds.length > 1}
         startDate={startDate ?? undefined}
         endDate={endDate}

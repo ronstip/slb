@@ -1,10 +1,9 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, Database, Download, LayoutGrid, Search, Table2, X } from 'lucide-react';
+import { Database, Download, LayoutGrid, Search, Table2, X } from 'lucide-react';
 import { downloadCsv, FEED_POST_CSV_COLUMNS } from '../../lib/download-csv.ts';
-import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { Input } from '../../components/ui/input.tsx';
-import { Checkbox } from '../../components/ui/checkbox.tsx';
 import { getMultiCollectionPosts } from '../../api/endpoints/feed.ts';
 import { getCollectionStats } from '../../api/endpoints/collections.ts';
 import { getAgent } from '../../api/endpoints/agents.ts';
@@ -49,6 +48,13 @@ interface PostsDataPanelProps {
   collectionNames: Map<string, string>;
   collections?: Source[];
   globalSearch: string;
+  /** When provided, the panel renders its own "Search posts" input in the filter
+   *  bar wired to this callback (used when the host has no header search of its own). */
+  onGlobalSearchChange?: (value: string) => void;
+  /** When provided, the toolbar controls (search, columns, export, view toggle) are
+   *  portaled into this element (e.g. the page header) and the inline filter bar —
+   *  including the source/platform/date/sentiment/channel filters — is not rendered. */
+  toolbarContainer?: HTMLElement | null;
   dedup?: boolean;
   /** Default lower bound on `posted_at` (the agent's search-window start). User-picked dateRange overrides it. */
   startDate?: string;
@@ -69,6 +75,8 @@ export function PostsDataPanel({
   collectionNames: _collectionNames,
   collections,
   globalSearch,
+  onGlobalSearchChange,
+  toolbarContainer,
   dedup,
   startDate,
   endDate,
@@ -84,8 +92,6 @@ export function PostsDataPanel({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [platformFilter, setPlatformFilter] = useState('all');
   const [sentimentFilter, setSentimentFilter] = useState('all');
-  const [channelFilter, setChannelFilter] = useState<Set<string>>(new Set());
-  const [channelSearch, setChannelSearch] = useState('');
   const [dateRange, setDateRange] = useState<DateTimeRange>({ from: null, to: null });
 
   // Fetch agent doc to read custom_fields schema for the field registry.
@@ -178,13 +184,11 @@ export function PostsDataPanel({
   const totalAvailable = data?.total ?? allPosts.length;
   const isTruncated = !showAll && totalAvailable > allPosts.length;
 
-  // Apply top-level channel filter + per-column filters (all client-side, ANDed).
+  // Apply per-column filters (all client-side, ANDed). Channel filtering now
+  // flows through the channel_handle column filter like every other column.
   const afterColumnFilters = useMemo(() => {
-    const base = channelFilter.size === 0
-      ? allPosts
-      : allPosts.filter((p) => channelFilter.has(p.channel_handle));
-    return applyColumnFilters(base, columnFilters, registry);
-  }, [allPosts, columnFilters, channelFilter, registry]);
+    return applyColumnFilters(allPosts, columnFilters, registry);
+  }, [allPosts, columnFilters, registry]);
 
   // Apply global search on top
   const filteredPosts = useMemo(() => {
@@ -199,26 +203,11 @@ export function PostsDataPanel({
     });
   }, [afterColumnFilters, globalSearch]);
 
-  // Distinct channel handles for the top-bar channel-handle multi-select.
-  // (Channel-handle filtering stays in the toolbar — it's a high-traffic
-  // top-level filter that doesn't fit as a per-column header.)
-  const channelOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const p of allPosts) {
-      counts.set(p.channel_handle, (counts.get(p.channel_handle) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [allPosts]);
-
   const clearAllFilters = useCallback(() => {
     setColumnFilters(createEmptyFilters());
     setSourceFilter('all');
     setPlatformFilter('all');
     setSentimentFilter('all');
-    setChannelFilter(new Set());
-    setChannelSearch('');
     setDateRange({ from: null, to: null });
   }, []);
 
@@ -226,7 +215,6 @@ export function PostsDataPanel({
     sourceFilter !== 'all' ||
     platformFilter !== 'all' ||
     sentimentFilter !== 'all' ||
-    channelFilter.size > 0 ||
     dateRange.from !== null ||
     dateRange.to !== null;
   const hasAnyFilter = hasAnyTopFilter || hasActiveFilters(columnFilters);
@@ -307,11 +295,141 @@ export function PostsDataPanel({
     );
   }
 
+  const searchBox = onGlobalSearchChange ? (
+    <div className="relative w-48 shrink-0">
+      <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        value={globalSearch}
+        onChange={(e) => onGlobalSearchChange(e.target.value)}
+        placeholder="Search posts..."
+        className="h-7 pl-8 text-xs"
+      />
+      {globalSearch && (
+        <button
+          onClick={() => onGlobalSearchChange('')}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  // Right-side controls: columns + clear-all + export + view toggle
+  const controls = (
+    <>
+      <ColumnPicker
+        registry={registry}
+        prefs={columnPrefs}
+        onChange={updateColumnPrefs}
+        onReset={resetColumnPrefs}
+      />
+      {hasAnyFilter && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 text-xs text-primary hover:text-primary/80"
+          onClick={clearAllFilters}
+        >
+          Clear all
+          <X className="h-3 w-3" />
+        </Button>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        disabled={filteredPosts.length === 0}
+        onClick={() => {
+          // Unnest custom_fields one level: each top-level key becomes its own column.
+          // Keys are agent-defined and dynamic — discover them from the rows being exported.
+          // Skip keys that would collide with built-in columns (the built-in wins; the
+          // collision is silent because exposing a custom_fields value under a built-in
+          // header would be misleading).
+          const builtInKeys = new Set(FEED_POST_CSV_COLUMNS.map((c) => c.key));
+          const customKeys = new Set<string>();
+          for (const post of filteredPosts) {
+            const cf = post.custom_fields;
+            if (cf && typeof cf === 'object' && !Array.isArray(cf)) {
+              for (const k of Object.keys(cf)) {
+                if (!builtInKeys.has(k)) customKeys.add(k);
+              }
+            }
+          }
+          const customColumns = [...customKeys]
+            .sort()
+            .map((k) => ({ key: k, header: k }));
+          const cols = FEED_POST_CSV_COLUMNS
+            .filter((c) => c.key !== 'custom_fields')
+            .concat(customColumns);
+
+          const flatRows = filteredPosts.map((post) => {
+            const cf = (post.custom_fields ?? {}) as Record<string, unknown>;
+            const row: Record<string, unknown> = { ...post };
+            for (const k of customKeys) {
+              if (k in cf) row[k] = cf[k];
+            }
+            return row;
+          });
+
+          const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+          const slug = (exportFilenamePrefix ?? 'posts').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
+          downloadCsv(flatRows, `${slug}_${today}`, cols);
+        }}
+      >
+        <Download className="h-3.5 w-3.5" />
+        Export CSV
+      </Button>
+      <div className="flex items-center rounded-md border border-border/60 bg-background overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setView('table')}
+          className={cn(
+            'flex h-7 items-center gap-1.5 px-2 text-xs transition-colors',
+            view === 'table'
+              ? 'bg-secondary text-foreground'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+          aria-pressed={view === 'table'}
+        >
+          <Table2 className="h-3.5 w-3.5" />
+          Table
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('feed')}
+          className={cn(
+            'flex h-7 items-center gap-1.5 px-2 text-xs transition-colors border-l border-border/60',
+            view === 'feed'
+              ? 'bg-secondary text-foreground'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+          aria-pressed={view === 'feed'}
+        >
+          <LayoutGrid className="h-3.5 w-3.5" />
+          Feed
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-white dark:bg-background">
-      {/* Filter bar */}
-      <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border/40 bg-muted/20 shrink-0">
-        {/* Source filter */}
+      {/* Toolbar — portaled into the page header when a container is provided
+          (data page); otherwise rendered inline alongside the filters. */}
+      {toolbarContainer ? (
+        createPortal(
+          <div className="flex flex-wrap items-center gap-2">
+            {searchBox}
+            {controls}
+          </div>,
+          toolbarContainer,
+        )
+      ) : (
+        <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border/40 bg-muted/20 shrink-0">
+          {searchBox}
+
+          {/* Source filter */}
         {sourceOptions.length > 1 && (
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger className="h-7 w-auto min-w-[140px] text-xs gap-1.5 bg-background">
@@ -373,211 +491,13 @@ export function PostsDataPanel({
           </SelectContent>
         </Select>
 
-        {/* Channel filter (channel_handle, multi-select with search + counts) */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                'flex h-7 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs',
-                'hover:bg-accent/50 transition-colors min-w-[140px]',
-              )}
-            >
-              <span className="text-muted-foreground font-medium mr-1">Channel:</span>
-              <span className="truncate">
-                {channelFilter.size === 0
-                  ? 'All'
-                  : channelFilter.size === 1
-                    ? `@${[...channelFilter][0]}`
-                    : `${channelFilter.size} selected`}
-              </span>
-              <ChevronDown className="ml-auto h-3.5 w-3.5 opacity-50 shrink-0" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            className="flex w-64 max-h-80 flex-col overflow-hidden p-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {channelOptions.length > 5 && (
-              <div className="shrink-0 border-b border-border/40 p-2">
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={channelSearch}
-                    onChange={(e) => setChannelSearch(e.target.value)}
-                    placeholder="Search channels..."
-                    className="h-7 pl-7 text-xs"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="p-1.5 space-y-0.5">
-                {(() => {
-                  const q = channelSearch.trim().toLowerCase();
-                  const filtered = q
-                    ? channelOptions.filter((o) => o.value.toLowerCase().includes(q))
-                    : channelOptions;
-                  if (filtered.length === 0) {
-                    return <div className="py-4 text-center text-xs text-muted-foreground">No matches</div>;
-                  }
-                  return filtered.map((opt) => {
-                    const isChecked = channelFilter.has(opt.value);
-                    return (
-                      <label
-                        key={opt.value}
-                        className={cn(
-                          'flex items-center gap-2 rounded-md px-2 py-1.5 text-xs cursor-pointer transition-colors',
-                          isChecked
-                            ? 'bg-primary/8 text-foreground'
-                            : 'hover:bg-accent text-foreground/80',
-                        )}
-                      >
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={() => {
-                            const next = new Set(channelFilter);
-                            if (next.has(opt.value)) next.delete(opt.value);
-                            else next.add(opt.value);
-                            setChannelFilter(next);
-                          }}
-                          className="h-3.5 w-3.5 shrink-0"
-                        />
-                        <span className="flex-1 min-w-0 truncate">@{opt.value}</span>
-                        <span className="shrink-0 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-                          {opt.count.toLocaleString()}
-                        </span>
-                      </label>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-            <div className="shrink-0 flex items-center gap-1.5 border-t border-border/40 px-2 py-1.5 bg-muted/20">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 flex-1 text-[10px] font-semibold"
-                onClick={() => {
-                  const q = channelSearch.trim().toLowerCase();
-                  const filtered = q
-                    ? channelOptions.filter((o) => o.value.toLowerCase().includes(q))
-                    : channelOptions;
-                  setChannelFilter(new Set(filtered.map((o) => o.value)));
-                }}
-              >
-                Select All
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 flex-1 text-[10px] font-semibold text-muted-foreground"
-                onClick={() => setChannelFilter(new Set())}
-                disabled={channelFilter.size === 0}
-              >
-                Clear
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
+          {/* Channel filtering now lives in the data table's channel_handle
+              column header (multi-select), so it's no longer duplicated here. */}
 
-        {/* Right-side controls: columns + clear-all + export + view toggle */}
-        <div className="ml-auto flex items-center gap-2">
-          <ColumnPicker
-            registry={registry}
-            prefs={columnPrefs}
-            onChange={updateColumnPrefs}
-            onReset={resetColumnPrefs}
-          />
-          {hasAnyFilter && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 text-xs text-primary hover:text-primary/80"
-              onClick={clearAllFilters}
-            >
-              Clear all
-              <X className="h-3 w-3" />
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1.5 text-xs"
-            disabled={filteredPosts.length === 0}
-            onClick={() => {
-              // Unnest custom_fields one level: each top-level key becomes its own column.
-              // Keys are agent-defined and dynamic — discover them from the rows being exported.
-              // Skip keys that would collide with built-in columns (the built-in wins; the
-              // collision is silent because exposing a custom_fields value under a built-in
-              // header would be misleading).
-              const builtInKeys = new Set(FEED_POST_CSV_COLUMNS.map((c) => c.key));
-              const customKeys = new Set<string>();
-              for (const post of filteredPosts) {
-                const cf = post.custom_fields;
-                if (cf && typeof cf === 'object' && !Array.isArray(cf)) {
-                  for (const k of Object.keys(cf)) {
-                    if (!builtInKeys.has(k)) customKeys.add(k);
-                  }
-                }
-              }
-              const customColumns = [...customKeys]
-                .sort()
-                .map((k) => ({ key: k, header: k }));
-              const cols = FEED_POST_CSV_COLUMNS
-                .filter((c) => c.key !== 'custom_fields')
-                .concat(customColumns);
-
-              const flatRows = filteredPosts.map((post) => {
-                const cf = (post.custom_fields ?? {}) as Record<string, unknown>;
-                const row: Record<string, unknown> = { ...post };
-                for (const k of customKeys) {
-                  if (k in cf) row[k] = cf[k];
-                }
-                return row;
-              });
-
-              const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-              const slug = (exportFilenamePrefix ?? 'posts').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
-              downloadCsv(flatRows, `${slug}_${today}`, cols);
-            }}
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export CSV
-          </Button>
-          <div className="flex items-center rounded-md border border-border/60 bg-background overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setView('table')}
-              className={cn(
-                'flex h-7 items-center gap-1.5 px-2 text-xs transition-colors',
-                view === 'table'
-                  ? 'bg-secondary text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-              aria-pressed={view === 'table'}
-            >
-              <Table2 className="h-3.5 w-3.5" />
-              Table
-            </button>
-            <button
-              type="button"
-              onClick={() => setView('feed')}
-              className={cn(
-                'flex h-7 items-center gap-1.5 px-2 text-xs transition-colors border-l border-border/60',
-                view === 'feed'
-                  ? 'bg-secondary text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-              aria-pressed={view === 'feed'}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Feed
-            </button>
-          </div>
+          {/* Right-side controls: columns + clear-all + export + view toggle */}
+          <div className="ml-auto flex items-center gap-2">{controls}</div>
         </div>
-      </div>
+      )}
 
       {/* Analytics metrics strip */}
       <AnalyticsStrip stats={analyticsStats} />

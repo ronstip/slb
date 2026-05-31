@@ -11,11 +11,17 @@ export interface ColumnDef<T> {
   key: string;
   header: string | ReactNode;
   width?: string;
+  /** Minimum pixel width. The table grows to the sum of these and scrolls
+   *  horizontally once that exceeds the container, instead of squeezing. */
+  minWidth?: number;
   align?: 'left' | 'right';
   sortable?: boolean;
   sortKey?: string;
   render: (row: T, idx: number) => ReactNode;
 }
+
+/** Fallback min width for columns that don't declare one. */
+const DEFAULT_COL_MIN_PX = 120;
 
 export interface DataTableProps<T> {
   data: T[];
@@ -86,10 +92,18 @@ export function DataTable<T>({
   const isExpandable = renderExpandedRow != null;
   const colCount = columns.length;
 
+  // Sum of per-column minimums: the table claims at least this width and the
+  // container scrolls horizontally once it exceeds the viewport, so adding
+  // columns no longer squeezes everything into the screen.
+  const minTableWidth = columns.reduce(
+    (sum, col) => sum + (col.minWidth ?? DEFAULT_COL_MIN_PX),
+    0,
+  );
+
   return (
     <>
       <div className={`min-h-0 flex-1 overflow-auto ${className ?? ''}`}>
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full table-fixed text-xs" style={{ minWidth: minTableWidth }}>
           <colgroup>
             {columns.map((col) => (
               <col key={col.key} className={col.width ?? ''} />

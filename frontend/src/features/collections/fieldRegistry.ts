@@ -25,7 +25,7 @@ export interface FieldDef {
 
 const BUILTIN_FIELDS: FieldDef[] = [
   { key: 'platform',       label: 'Platform',      kind: 'enum',       source: 'builtin', accessor: (p) => p.platform },
-  { key: 'channel_handle', label: 'Channel',       kind: 'text',       source: 'builtin', accessor: (p) => p.channel_handle },
+  { key: 'channel_handle', label: 'Channel',       kind: 'enum',       source: 'builtin', accessor: (p) => p.channel_handle },
   { key: 'channel_type',   label: 'Ch. Type',      kind: 'enum',       source: 'builtin', accessor: (p) => p.channel_type, knownOptions: ['official', 'media', 'influencer', 'ugc'] },
   { key: 'title',          label: 'Title',         kind: 'text',       source: 'builtin', accessor: (p) => p.title },
   { key: 'content',        label: 'Content',       kind: 'text',       source: 'builtin', accessor: (p) => p.content },

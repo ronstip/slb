@@ -341,7 +341,9 @@ export function AgentDetailPage() {
                   canRun={canRun}
                 />
               )}
-              {activeTab === 'data' && <AgentCollectionsTab task={task} />}
+              {activeTab === 'data' && (
+                <AgentCollectionsTab task={task} artifacts={artifacts} />
+              )}
               {activeTab === 'artifacts' && (
                 <AgentArtifactsTab task={task} artifacts={artifacts} />
               )}

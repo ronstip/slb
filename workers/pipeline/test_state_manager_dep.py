@@ -148,3 +148,21 @@ def test_initial_state_classification_unchanged():
     assert by_id["9001"] == PostState.READY_FOR_ENRICHMENT
     assert by_id["9002"] == PostState.COLLECTED_WITH_MEDIA
     assert by_id["9003"] == PostState.MISSING_MEDIA
+
+
+def test_media_resolved_skips_download_state():
+    """When media is already downloaded upstream (media_resolved=True), media
+    posts skip COLLECTED_WITH_MEDIA and go straight to READY_FOR_ENRICHMENT —
+    the download streaming step would otherwise re-download into GCS."""
+    mgr = _make_manager()
+    text_only = _post("9001", content="just text")
+    with_media = _post("9002", media_urls=["https://cdn/x.jpg"])
+    empty = _post("9003", content="")
+    captured = _captured_post_meta(mgr)
+
+    mgr.mark_collected([text_only, with_media, empty], media_resolved=True)
+
+    by_id = {pid: state for pid, state in captured["transitions"]}
+    assert by_id["9001"] == PostState.READY_FOR_ENRICHMENT
+    assert by_id["9002"] == PostState.READY_FOR_ENRICHMENT  # not COLLECTED_WITH_MEDIA
+    assert by_id["9003"] == PostState.MISSING_MEDIA
