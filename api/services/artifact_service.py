@@ -91,6 +91,9 @@ def persist_tool_result_artifact(
         "title": title,
         "user_id": user_id,
         "org_id": org_id,
+        # Stored so a dashboard_layouts doc (keyed by artifact_id) can resolve
+        # back to its owning agent for the shared-component access checks.
+        "agent_id": agent_id,
         "session_id": session_id,
         "collection_ids": collection_ids,
         "favorited": False,

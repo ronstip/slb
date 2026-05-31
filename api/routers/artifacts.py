@@ -17,6 +17,7 @@ from api.schemas.artifacts import (
     ArtifactListItem,
     UpdateArtifactRequest,
 )
+from api.services.collection_service import can_access_component
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,9 @@ router = APIRouter()
 
 
 def _can_access(user: CurrentUser, artifact: dict) -> bool:
-    if artifact.get("user_id") == user.uid:
-        return True
-    if user.org_id and artifact.get("org_id") == user.org_id and artifact.get("shared"):
-        return True
-    return False
+    # Artifact access is the shared component rule (owner, or org-shared via the
+    # `shared` flag set when the owning agent is shared) — see can_access_component.
+    return can_access_component(user, artifact)
 
 
 @router.get("/artifacts", response_model=list[ArtifactListItem])
