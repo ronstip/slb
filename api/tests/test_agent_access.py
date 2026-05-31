@@ -12,7 +12,7 @@ import pytest
 
 from api.auth.dependencies import CurrentUser
 from api.services import agent_service
-from api.services.collection_service import can_access_agent
+from api.services.collection_service import can_access_agent, can_access_component
 from workers.shared.firestore_client import FirestoreClient
 
 
@@ -57,6 +57,46 @@ def test_no_org_user_denied_others_agent():
     user = _user("member", org_id=None)
     agent = {"user_id": "owner", "org_id": "orgA", "visibility": "org"}
     assert can_access_agent(user, agent) is False
+
+
+# ── can_access_component (collections / artifacts / layouts) ─────────────
+
+
+def test_component_owner_always_has_access():
+    user = _user("owner", org_id="orgA")
+    assert can_access_component(user, {"user_id": "owner", "visibility": "private"}) is True
+
+
+def test_component_org_member_sees_visibility_org():
+    user = _user("member", org_id="orgA")
+    doc = {"user_id": "owner", "org_id": "orgA", "visibility": "org"}
+    assert can_access_component(user, doc) is True
+
+
+def test_component_org_member_sees_shared_flag():
+    """Artifacts gate on the legacy `shared` bool rather than `visibility`."""
+    user = _user("member", org_id="orgA")
+    doc = {"user_id": "owner", "org_id": "orgA", "shared": True}
+    assert can_access_component(user, doc) is True
+
+
+def test_component_org_member_denied_private():
+    user = _user("member", org_id="orgA")
+    doc = {"user_id": "owner", "org_id": "orgA", "visibility": "private"}
+    assert can_access_component(user, doc) is False
+    assert can_access_component(user, {"user_id": "owner", "org_id": "orgA", "shared": False}) is False
+
+
+def test_component_different_org_denied():
+    user = _user("member", org_id="orgB")
+    doc = {"user_id": "owner", "org_id": "orgA", "visibility": "org", "shared": True}
+    assert can_access_component(user, doc) is False
+
+
+def test_component_no_org_user_denied():
+    user = _user("member", org_id=None)
+    doc = {"user_id": "owner", "org_id": "orgA", "visibility": "org"}
+    assert can_access_component(user, doc) is False
 
 
 # ── list_user_agents scoping (the regression) ───────────────────────────
@@ -135,6 +175,7 @@ class _FakeFS:
         self._agent = agent
         self.agent_updates: dict = {}
         self.collection_updates: list[tuple[str, dict]] = []
+        self.artifact_updates: list[tuple[str, dict]] = []
 
     def get_agent(self, agent_id):
         return dict(self._agent)
@@ -144,6 +185,9 @@ class _FakeFS:
 
     def update_collection_status(self, collection_id, **fields):
         self.collection_updates.append((collection_id, fields))
+
+    def update_artifact(self, artifact_id, fields=None, **kwargs):
+        self.artifact_updates.append((artifact_id, {**(fields or {}), **kwargs}))
 
 
 def test_share_propagates_org_visibility_to_collections(monkeypatch):
@@ -169,6 +213,46 @@ def test_unshare_propagates_private_to_collections(monkeypatch):
     assert fake.collection_updates == [("c1", {"visibility": "private", "org_id": "orgA"})]
 
 
+def test_share_propagates_shared_flag_to_artifacts(monkeypatch):
+    fake = _FakeFS({
+        "user_id": "owner", "org_id": "orgA",
+        "collection_ids": [], "artifact_ids": ["art1", "art2"],
+    })
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    agent_service.set_agent_visibility("a1", "org")
+
+    assert sorted(fake.artifact_updates) == [
+        ("art1", {"org_id": "orgA", "shared": True}),
+        ("art2", {"org_id": "orgA", "shared": True}),
+    ]
+
+
+def test_unshare_clears_shared_flag_on_artifacts(monkeypatch):
+    fake = _FakeFS({
+        "user_id": "owner", "org_id": "orgA",
+        "collection_ids": [], "artifact_ids": ["art1"],
+    })
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    agent_service.set_agent_visibility("a1", "private")
+
+    assert fake.artifact_updates == [("art1", {"org_id": "orgA", "shared": False})]
+
+
+def test_reconcile_unshare_clears_artifacts(monkeypatch):
+    """Switching orgs on a shared agent must also un-share its artifacts."""
+    fake = _ReconcileFS([
+        {"agent_id": "a1", "user_id": "u", "org_id": "orgA",
+         "visibility": "org", "collection_ids": [], "artifact_ids": ["art1"]},
+    ])
+    monkeypatch.setattr(agent_service, "get_fs", lambda: fake)
+
+    agent_service.reconcile_user_org_membership("u", "orgB")
+
+    assert fake.artifact_writes == [("art1", {"org_id": "orgB", "shared": False})]
+
+
 def test_invalid_visibility_rejected(monkeypatch):
     monkeypatch.setattr(agent_service, "get_fs", lambda: _FakeFS({}))
     with pytest.raises(ValueError):
@@ -186,6 +270,7 @@ class _ReconcileFS:
         self._docs = [_FakeDoc(a["agent_id"], a) for a in agents]
         self.agent_writes: list[tuple[str, dict]] = []
         self.collection_writes: list[tuple[str, dict]] = []
+        self.artifact_writes: list[tuple[str, dict]] = []
         # _ReconcileFS exposes `_db` so reconcile can stream agents the same
         # way the real client does in list_user_agents.
         self._db = _FakeDB(self._docs)
@@ -195,6 +280,9 @@ class _ReconcileFS:
 
     def update_collection_status(self, cid, **fields):
         self.collection_writes.append((cid, fields))
+
+    def update_artifact(self, artifact_id, fields=None, **kwargs):
+        self.artifact_writes.append((artifact_id, {**(fields or {}), **kwargs}))
 
 
 def test_reconcile_stamps_org_id_on_orphan_agents(monkeypatch):

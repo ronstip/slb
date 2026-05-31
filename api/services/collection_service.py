@@ -80,6 +80,23 @@ def can_access_collection(user: CurrentUser, collection_status: dict) -> bool:
     return False
 
 
+def can_access_component(user: CurrentUser, doc: dict) -> bool:
+    """Access rule for any component of an agent (collection / artifact / layout).
+
+    Components inherit their owning agent's org-share state, denormalized onto
+    each doc by `agent_sharing.propagate_to_components`. The owner always has
+    access; an org member has access when the doc is shared to their org —
+    expressed either as `visibility == "org"` (collections, layouts) or the
+    legacy `shared` bool (artifacts). Both are accepted so a single helper gates
+    every component type.
+    """
+    if doc.get("user_id") == user.uid:
+        return True
+    if not user.org_id or doc.get("org_id") != user.org_id:
+        return False
+    return doc.get("visibility") == "org" or doc.get("shared") is True
+
+
 def signature_to_response(data: dict) -> CollectionStatsResponse:
     """Convert a raw statistical signature dict to CollectionStatsResponse."""
     eng = data.get("engagement_summary") or {}

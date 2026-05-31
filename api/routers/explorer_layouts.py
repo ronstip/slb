@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
+from api.services.collection_service import can_access_agent
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,21 @@ router = APIRouter(prefix="/explorer/layouts", tags=["explorer-layouts"])
 
 COLLECTION = "explorer_layouts"
 DASHBOARD_LAYOUTS_COLLECTION = "dashboard_layouts"
+
+
+def _require_agent_access(user: CurrentUser, agent: dict | None) -> None:
+    """Gate a layout operation on its owning agent.
+
+    Explorer layouts are components of an agent (see
+    docs/agent-sharing-architecture.md): whoever can access the agent can read
+    and edit its layouts. Shared agents are thus collaboratively editable; a
+    private agent's layouts stay owner-only. Pass the already-fetched agent dict
+    so the Firestore read can stay off the event loop in the caller.
+    """
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if not can_access_agent(user, agent):
+        raise HTTPException(status_code=403, detail="Access denied")
 
 
 class ExplorerLayoutCreate(BaseModel):
@@ -47,15 +63,22 @@ async def list_explorer_layouts(
     user: CurrentUser = Depends(get_current_user),
     fs=Depends(get_fs),
 ):
-    """List all explorer layouts for an agent belonging to the current user."""
-    # Sort client-side to avoid requiring a composite (agent_id, user_id, updated_at) index.
+    """List all explorer layouts for an agent the user can access.
+
+    Layouts belong to the agent, not the requesting user: any member who can
+    access the agent (owner, or org member of a shared agent) sees the full set,
+    so views are collaborative on a shared agent.
+    """
+    agent = await asyncio.to_thread(fs.get_agent, agent_id)
+    _require_agent_access(user, agent)
+
+    # Sort client-side to avoid requiring a composite (agent_id, updated_at) index.
     # Firestore's Python client is synchronous; running .stream() on the asyncio
     # loop stalls every concurrent request — push it to a worker thread.
     def _fetch():
         return list(
             fs._db.collection(COLLECTION)
             .where("agent_id", "==", agent_id)
-            .where("user_id", "==", user.uid)
             .stream()
         )
 
@@ -81,6 +104,9 @@ async def create_explorer_layout(
     fs=Depends(get_fs),
 ):
     """Create a new explorer layout (metadata only)."""
+    agent = await asyncio.to_thread(fs.get_agent, request.agent_id)
+    _require_agent_access(user, agent)
+
     layout_id = uuid.uuid4().hex
     now = datetime.now(timezone.utc).isoformat()
 
@@ -108,16 +134,16 @@ async def update_explorer_layout(
     user: CurrentUser = Depends(get_current_user),
     fs=Depends(get_fs),
 ):
-    """Rename an explorer layout."""
+    """Rename an explorer layout (any member who can access the agent)."""
     doc_ref = fs._db.collection(COLLECTION).document(layout_id)
-    doc = doc_ref.get()
+    doc = await asyncio.to_thread(doc_ref.get)
 
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Layout not found")
 
     data = doc.to_dict()
-    if data.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Access denied")
+    agent = await asyncio.to_thread(fs.get_agent, data.get("agent_id"))
+    _require_agent_access(user, agent)
 
     updates: dict[str, Any] = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if request.title is not None:
@@ -141,21 +167,21 @@ async def delete_explorer_layout(
     user: CurrentUser = Depends(get_current_user),
     fs=Depends(get_fs),
 ):
-    """Delete an explorer layout and its associated dashboard layout data."""
+    """Delete an explorer layout (any member who can access the agent)."""
     doc_ref = fs._db.collection(COLLECTION).document(layout_id)
-    doc = doc_ref.get()
+    doc = await asyncio.to_thread(doc_ref.get)
 
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Layout not found")
 
     data = doc.to_dict()
-    if data.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Access denied")
+    agent = await asyncio.to_thread(fs.get_agent, data.get("agent_id"))
+    _require_agent_access(user, agent)
 
     # Delete metadata
-    doc_ref.delete()
+    await asyncio.to_thread(doc_ref.delete)
 
     # Also delete the associated dashboard layout data (widget config)
     dashboard_doc = fs._db.collection(DASHBOARD_LAYOUTS_COLLECTION).document(layout_id)
-    if dashboard_doc.get().exists:
-        dashboard_doc.delete()
+    if (await asyncio.to_thread(dashboard_doc.get)).exists:
+        await asyncio.to_thread(dashboard_doc.delete)
