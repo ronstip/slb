@@ -8,6 +8,7 @@ from uuid import uuid4
 from google.cloud.firestore_v1 import transforms
 
 from api.deps import get_bq, get_fs
+from api.services import agent_sharing
 
 logger = logging.getLogger(__name__)
 
@@ -431,19 +432,16 @@ def reconcile_user_org_membership(user_id: str, current_org_id: str | None) -> i
             logger.exception("reconcile: failed to update agent %s", agent_id)
             continue
 
-        # Propagate to the agent's collections so per-collection access checks
-        # (feed / posts / dashboard) stay consistent with the agent's new state.
-        for cid in agent.get("collection_ids", []) or []:
-            col_updates: dict = {"org_id": current_org_id}
-            if was_shared:
-                col_updates["visibility"] = "private"
-            try:
-                fs.update_collection_status(cid, **col_updates)
-            except Exception:
-                logger.exception(
-                    "reconcile: failed to update collection %s for agent %s",
-                    cid, agent_id,
-                )
+        # Fan the reconciled state out to every component so per-component access
+        # checks (feed / posts / dashboard / artifacts / layouts) stay consistent
+        # with the agent. visibility=None when the agent stayed private — restamp
+        # org_id only, don't move a share state that doesn't exist.
+        agent_sharing.propagate_to_components(
+            fs,
+            agent,
+            org_id=current_org_id,
+            visibility="private" if was_shared else None,
+        )
 
     if drifted:
         logger.info(
@@ -471,16 +469,12 @@ def set_agent_visibility(agent_id: str, visibility: str) -> dict:
 
     fs.update_agent(agent_id, visibility=visibility)
 
-    # Propagate to the agent's collections so org members granted access to the
-    # agent can also read its data (and lose it when un-shared). Stamp the
-    # agent's org_id too so the collections surface in the org collection query.
-    org_id = agent.get("org_id")
-    for cid in agent.get("collection_ids", []) or []:
-        try:
-            fs.update_collection_status(cid, visibility=visibility, org_id=org_id)
-        except Exception:
-            # A missing/legacy collection doc must not abort the share toggle.
-            logger.exception("Failed to propagate visibility to collection %s", cid)
+    # Fan the new visibility out to every component the agent owns (collections,
+    # artifacts, layouts). The registry of "what is a component" lives in one
+    # place — agent_sharing.propagate_to_components.
+    agent_sharing.propagate_to_components(
+        fs, agent, org_id=agent.get("org_id"), visibility=visibility
+    )
 
     agent["visibility"] = visibility
     return agent

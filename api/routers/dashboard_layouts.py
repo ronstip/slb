@@ -16,12 +16,55 @@ from api.routers.dashboard_schema import (
     MAX_WIDGETS,
     GRID_COLS,
 )
+from api.services.collection_service import can_access_component
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dashboard/layouts", tags=["dashboard-layouts"])
 
 COLLECTION = "dashboard_layouts"
+EXPLORER_LAYOUTS_COLLECTION = "explorer_layouts"
+
+
+def _resolve_share_doc(fs, key_id: str) -> dict | None:
+    """Resolve the doc whose org-share state governs a dashboard layout.
+
+    A `dashboard_layouts` doc is keyed by one of two things:
+      - an **artifact_id** — an artifact-backed dashboard (briefs/social
+        dashboard saved as a deliverable); or
+      - an **explorer layout_id** — an explorer *view* (DashboardView passes the
+        explorer layout's id as `artifact.id`), which has no artifact doc.
+
+    Both resolve to a component of an agent, so return the governing doc:
+    the artifact, or the explorer layout's owning agent. `can_access_component`
+    handles either (artifacts gate on `shared`, agents on `visibility`).
+    Returns None when neither exists (orphan / restored session).
+    """
+    artifact = fs.get_artifact(key_id)
+    if artifact is not None:
+        return artifact
+    snap = fs._db.collection(EXPLORER_LAYOUTS_COLLECTION).document(key_id).get()
+    if snap.exists:
+        return fs.get_agent((snap.to_dict() or {}).get("agent_id"))
+    return None
+
+
+def _require_dashboard_access(
+    user: CurrentUser, share_doc: dict | None, layout_data: dict | None
+) -> None:
+    """Gate a dashboard (widget) layout on its resolved owning artifact/agent.
+
+    When the owning agent is shared, every org member can read AND edit the
+    single shared widget layout (collaborative). Fallback: when nothing could be
+    resolved (orphaned / restored-session doc), fall back to the layout doc's
+    own owner so legacy private docs stay private.
+    """
+    if share_doc is not None:
+        if not can_access_component(user, share_doc):
+            raise HTTPException(status_code=403, detail="Access denied")
+        return
+    if layout_data is not None and layout_data.get("user_id") != user.uid:
+        raise HTTPException(status_code=403, detail="Access denied")
 
 
 class LayoutSaveRequest(BaseModel):
@@ -51,15 +94,15 @@ async def get_dashboard_layout(
     """Get saved layout for a dashboard artifact. Returns null layout if not yet saved."""
     doc_ref = fs._db.collection(COLLECTION).document(artifact_id)
     doc = await asyncio.to_thread(doc_ref.get)
+    share_doc = await asyncio.to_thread(_resolve_share_doc, fs, artifact_id)
+
+    layout_data = doc.to_dict() if doc.exists else None
+    _require_dashboard_access(user, share_doc, layout_data)
 
     if not doc.exists:
         return LayoutResponse(layout=None)
 
-    data = doc.to_dict()
-
-    # Verify ownership
-    if data.get("user_id") != user.uid:
-        raise HTTPException(status_code=403, detail="Access denied")
+    data = layout_data
 
     return LayoutResponse(
         layout=data.get("layout"),
@@ -88,12 +131,11 @@ async def save_dashboard_layout(
 
     doc_ref = fs._db.collection(COLLECTION).document(artifact_id)
     doc = await asyncio.to_thread(doc_ref.get)
+    share_doc = await asyncio.to_thread(_resolve_share_doc, fs, artifact_id)
 
-    # If doc exists, verify ownership before overwriting.
-    if doc.exists:
-        data = doc.to_dict()
-        if data.get("user_id") != user.uid:
-            raise HTTPException(status_code=403, detail="Access denied")
+    # Gate the write on the resolved owning artifact/agent (shared = collaborative).
+    layout_data = doc.to_dict() if doc.exists else None
+    _require_dashboard_access(user, share_doc, layout_data)
 
     serialized_layout = [w.model_dump(exclude_none=True, by_alias=True) for w in request.layout]
     serialized_scope = (
