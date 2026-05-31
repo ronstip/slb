@@ -3,56 +3,20 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/pop
 import { Input } from '../../components/ui/input.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { cn } from '../../lib/utils.ts';
+import {
+  DATE_PRESETS as PRESETS,
+  isoToLocalInput,
+  localInputToIso,
+  formatShort,
+  matchPresetLabel,
+  type DateTimeRange,
+} from './dateRange.ts';
 
-export interface DateTimeRange {
-  from: string | null;
-  to: string | null;
-}
+export type { DateTimeRange };
 
 interface DateTimeRangeFilterProps {
   value: DateTimeRange;
   onChange: (range: DateTimeRange) => void;
-}
-
-const PRESETS: { label: string; ms: number }[] = [
-  { label: 'Last 1h', ms: 60 * 60 * 1000 },
-  { label: 'Last 24h', ms: 24 * 60 * 60 * 1000 },
-  { label: 'Last 7d', ms: 7 * 24 * 60 * 60 * 1000 },
-  { label: 'Last 30d', ms: 30 * 24 * 60 * 60 * 1000 },
-];
-
-function pad(n: number): string {
-  return n.toString().padStart(2, '0');
-}
-
-function isoToLocalInput(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function localInputToIso(local: string): string | null {
-  if (!local) return null;
-  const d = new Date(local);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
-
-function formatShort(iso: string | null): string {
-  if (!iso) return '…';
-  const d = new Date(iso);
-  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function matchPresetLabel(value: DateTimeRange): string | null {
-  if (!value.from || value.to) return null;
-  const fromMs = new Date(value.from).getTime();
-  const now = Date.now();
-  const delta = now - fromMs;
-  const tolerance = 60 * 1000;
-  const hit = PRESETS.find((p) => Math.abs(delta - p.ms) < tolerance);
-  return hit ? hit.label : null;
 }
 
 export function DateTimeRangeFilter({ value, onChange }: DateTimeRangeFilterProps) {

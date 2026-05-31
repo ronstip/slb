@@ -128,7 +128,8 @@ const STORAGE_PREFIX = 'tableColumns:';
  *  fieldRegistry built-in keys. Anything not listed defaults to hidden
  *  (the user can opt in via the picker). */
 export const DEFAULT_VISIBLE_KEYS = [
-  'platform',         // rendered as "Source" — platform icon + handle
+  'platform',         // platform icon + label
+  'channel_handle',   // @handle (split out from the old "Source" column)
   'ai_summary',
   'posted_at',
   'views',
@@ -138,9 +139,18 @@ export const DEFAULT_VISIBLE_KEYS = [
   'entities',
 ] as const;
 
+/** Order fields with agent custom fields first (so they're prominent in the
+ *  picker and lead the table), built-ins after — each group in registry order. */
+function customFirst(registry: FieldDef[]): FieldDef[] {
+  return [
+    ...registry.filter((f) => f.source === 'custom'),
+    ...registry.filter((f) => f.source !== 'custom'),
+  ];
+}
+
 export function defaultPrefsFor(registry: FieldDef[]): ColumnPref[] {
   const defaults = new Set<string>(DEFAULT_VISIBLE_KEYS);
-  return registry.map((f) => ({ key: f.key, visible: defaults.has(f.key) }));
+  return customFirst(registry).map((f) => ({ key: f.key, visible: defaults.has(f.key) }));
 }
 
 /** Merge a saved prefs list with the current registry: keep the saved order
@@ -161,13 +171,19 @@ export function mergeColumnPrefs(
     result.push(p);
     seen.add(p.key);
   }
-  // Append any field not seen yet, in registry order
+  // Append any field not seen yet.
   for (const f of registry) {
     if (!seen.has(f.key)) {
       result.push({ key: f.key, visible: defaults.has(f.key) });
     }
   }
-  return result;
+  // Float custom fields to the top (stable — relative order within each group is
+  // preserved), so they lead the picker even for users with older saved prefs.
+  const sourceByKey = new Map(registry.map((f) => [f.key, f.source]));
+  return [
+    ...result.filter((p) => sourceByKey.get(p.key) === 'custom'),
+    ...result.filter((p) => sourceByKey.get(p.key) !== 'custom'),
+  ];
 }
 
 export function loadColumnPrefs(scopeId: string): ColumnPref[] | null {

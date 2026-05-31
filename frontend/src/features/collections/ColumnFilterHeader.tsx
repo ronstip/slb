@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, Filter, Search, X } from 'lucide-react';
+import { Calendar, Filter, Search, X } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -16,6 +16,26 @@ import {
   SelectValue,
 } from '../../components/ui/select.tsx';
 import { cn } from '../../lib/utils.ts';
+import {
+  DATE_PRESETS,
+  isoToLocalInput,
+  localInputToIso,
+} from './dateRange.ts';
+
+/* ------------------------------------------------------------------ */
+/* Shared trigger styling — keeps the "this column is filterable"      */
+/* affordance consistent across every header kind.                     */
+/* ------------------------------------------------------------------ */
+
+const TRIGGER_BASE =
+  'inline-flex items-center gap-1 rounded px-1 -mx-1 text-[11px] font-semibold uppercase tracking-wider transition-colors hover:bg-accent/60';
+
+/** Faint funnel shown when a column has no active filter — signals filterability. */
+function FilterAffordance({ active }: { active: boolean }) {
+  return (
+    <Filter className={cn('h-3 w-3', active ? '' : 'opacity-40')} />
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* Multi-select filter header (with search + counts)                   */
@@ -61,6 +81,10 @@ export function MultiSelectFilterHeader({
     onChange(new Set(filtered.map((o) => o.value)));
   };
 
+  const selectOnly = (value: string) => {
+    onChange(new Set([value]));
+  };
+
   const totalSelected = selected.size;
 
   return (
@@ -68,7 +92,7 @@ export function MultiSelectFilterHeader({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            'inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors',
+            TRIGGER_BASE,
             hasFilter ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
           )}
         >
@@ -78,7 +102,7 @@ export function MultiSelectFilterHeader({
               {totalSelected}
             </span>
           ) : (
-            <ChevronDown className="h-3 w-3 opacity-40" />
+            <FilterAffordance active={false} />
           )}
         </button>
       </PopoverTrigger>
@@ -114,7 +138,7 @@ export function MultiSelectFilterHeader({
                   <label
                     key={opt.value}
                     className={cn(
-                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-xs cursor-pointer transition-colors',
+                      'group flex items-center gap-2 rounded-md px-2 py-1.5 text-xs cursor-pointer transition-colors',
                       isChecked
                         ? 'bg-primary/8 text-foreground'
                         : 'hover:bg-accent text-foreground/80',
@@ -130,6 +154,18 @@ export function MultiSelectFilterHeader({
                         ? renderOption(opt.value, opt.count)
                         : <span className="capitalize">{opt.value}</span>}
                     </span>
+                    {/* "Only" — clears every other value, keeps just this one. */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        selectOnly(opt.value);
+                      }}
+                      className="shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary opacity-0 transition-opacity hover:bg-primary/10 group-hover:opacity-100"
+                    >
+                      Only
+                    </button>
                     <span className="shrink-0 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
                       {opt.count.toLocaleString()}
                     </span>
@@ -197,16 +233,12 @@ export function NumberRangeFilterHeader({ label, value, onChange }: NumberRangeF
       <PopoverTrigger asChild>
         <button
           className={cn(
-            'inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors',
+            TRIGGER_BASE,
             hasFilter ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           {label}
-          {hasFilter ? (
-            <Filter className="h-3 w-3" />
-          ) : (
-            <ChevronDown className="h-3 w-3 opacity-40" />
-          )}
+          <FilterAffordance active={hasFilter} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-52 p-2.5 space-y-1.5" onClick={(e) => e.stopPropagation()}>
@@ -260,16 +292,12 @@ export function BoolFilterHeader({ label, value, onChange }: BoolFilterProps) {
       <PopoverTrigger asChild>
         <button
           className={cn(
-            'inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors',
+            TRIGGER_BASE,
             hasFilter ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           {label}
-          {hasFilter ? (
-            <Filter className="h-3 w-3" />
-          ) : (
-            <ChevronDown className="h-3 w-3 opacity-40" />
-          )}
+          <FilterAffordance active={hasFilter} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-32 p-1.5" onClick={(e) => e.stopPropagation()}>
@@ -307,16 +335,12 @@ export function TextFilterHeader({ label, value, onChange }: TextFilterProps) {
       <PopoverTrigger asChild>
         <button
           className={cn(
-            'inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors',
+            TRIGGER_BASE,
             hasFilter ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           {label}
-          {hasFilter ? (
-            <Filter className="h-3 w-3" />
-          ) : (
-            <ChevronDown className="h-3 w-3 opacity-40" />
-          )}
+          <FilterAffordance active={hasFilter} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-52 p-2.5" onClick={(e) => e.stopPropagation()}>
@@ -343,6 +367,96 @@ export function TextFilterHeader({ label, value, onChange }: TextFilterProps) {
             <X className="mr-1 h-3 w-3" /> Clear filter
           </Button>
         )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Date-range filter header (presets + from / to)                      */
+/* ------------------------------------------------------------------ */
+
+export interface DateRange {
+  from?: string; // ISO
+  to?: string;   // ISO
+}
+
+interface DateRangeFilterProps {
+  label: string;
+  value: DateRange;
+  onChange: (value: DateRange) => void;
+}
+
+export function DateRangeFilterHeader({ label, value, onChange }: DateRangeFilterProps) {
+  const hasFilter = Boolean(value.from || value.to);
+
+  const applyPreset = (ms: number) => {
+    onChange({ from: new Date(Date.now() - ms).toISOString(), to: undefined });
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            TRIGGER_BASE,
+            hasFilter ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {label}
+          {hasFilter ? <Calendar className="h-3 w-3" /> : <FilterAffordance active={false} />}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-col gap-3">
+          <div>
+            <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">Quick ranges</div>
+            <div className="flex flex-wrap gap-1.5">
+              {DATE_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyPreset(p.ms)}
+                  className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">From</label>
+              <Input
+                type="datetime-local"
+                value={isoToLocalInput(value.from ?? null)}
+                onChange={(e) => onChange({ ...value, from: localInputToIso(e.target.value) ?? undefined })}
+                className="h-7 text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">To</label>
+              <Input
+                type="datetime-local"
+                value={isoToLocalInput(value.to ?? null)}
+                onChange={(e) => onChange({ ...value, to: localInputToIso(e.target.value) ?? undefined })}
+                className="h-7 text-xs"
+              />
+            </div>
+          </div>
+
+          {hasFilter && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-[11px]"
+              onClick={() => onChange({ from: undefined, to: undefined })}
+            >
+              <X className="h-3 w-3" /> Clear
+            </Button>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );

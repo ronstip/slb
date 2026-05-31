@@ -17,6 +17,7 @@ import {
   TextFilterHeader,
   NumberRangeFilterHeader,
   BoolFilterHeader,
+  DateRangeFilterHeader,
 } from './ColumnFilterHeader.tsx';
 import { type FieldDef, extractFieldOptions } from './fieldRegistry.ts';
 import type { ColumnPref } from './ColumnPicker.tsx';
@@ -224,10 +225,13 @@ function FilterHeaderForField({
         />
       );
     case 'date':
-      // No header filter for dates yet — date range is handled by the top-bar
-      // DateTimeRangeFilter for posted_at. Add a per-column date picker later
-      // if a custom date field needs it.
-      return <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>;
+      return (
+        <DateRangeFilterHeader
+          label={label}
+          value={{ from: v.from, to: v.to }}
+          onChange={(r) => setFilter({ ...v, from: r.from, to: r.to })}
+        />
+      );
   }
 }
 
@@ -246,6 +250,8 @@ const CHANNEL_TYPE_COLORS: Record<string, string> = {
 
 interface BespokeColumnSpec {
   width?: string;
+  /** Minimum pixel width — drives the table's horizontal-scroll threshold. */
+  minWidth?: number;
   align?: 'left' | 'right';
   sortable?: boolean;
   render: (row: FeedPost) => ReactNode;
@@ -257,12 +263,11 @@ interface BespokeColumnSpec {
 
 const BESPOKE_COLUMNS: Record<string, BespokeColumnSpec> = {
   platform: {
-    width: 'w-[12%]',
-    headerLabel: 'Source',
+    width: 'w-[5%]',
+    minWidth: 56,
     render: (row) => (
-      <span className="flex items-center gap-1.5 truncate">
-        <PlatformIcon platform={row.platform} className="h-3.5 w-3.5 shrink-0" />
-        <span className="text-xs font-medium text-foreground/80 truncate">@{row.channel_handle}</span>
+      <span className="flex items-center" title={PLATFORM_LABELS[row.platform] || row.platform}>
+        <PlatformIcon platform={row.platform} className="h-4 w-4 shrink-0" />
       </span>
     ),
     renderOption: (p) => (
@@ -272,8 +277,18 @@ const BESPOKE_COLUMNS: Record<string, BespokeColumnSpec> = {
       </span>
     ),
   },
+  channel_handle: {
+    width: 'w-[10%]',
+    render: (row) => (
+      <span className="block truncate text-xs font-medium text-foreground/80" title={`@${row.channel_handle}`}>
+        @{row.channel_handle}
+      </span>
+    ),
+    renderOption: (v) => <span className="font-medium">@{v}</span>,
+  },
   ai_summary: {
     headerLabel: 'AI Summary',
+    minWidth: 240,
     render: (row) => {
       const text = row.ai_summary || [row.title, row.content].filter(Boolean).join(' ');
       return (
@@ -379,6 +394,7 @@ export function collectionsPostColumns(
       key: '__link',
       header: '',
       width: 'w-7',
+      minWidth: 36,
       render: (row) => (
         <ExternalLinkCell url={row.post_url} hoverContent={<PostCard post={row} />} />
       ),
@@ -408,6 +424,7 @@ export function collectionsPostColumns(
       key: pref.key,
       header,
       width: bespoke?.width,
+      minWidth: bespoke?.minWidth,
       align: bespoke?.align,
       sortable: bespoke?.sortable,
       render: bespoke
@@ -421,6 +438,7 @@ export function collectionsPostColumns(
       key: '__actions',
       header: '',
       width: 'w-8',
+      minWidth: 40,
       render: (row) => <PostActionsMenu post={row} agentId={agentId} />,
     });
   }

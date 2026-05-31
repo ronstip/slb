@@ -43,7 +43,7 @@ class StateManager:
     # Initial classification
     # ------------------------------------------------------------------
 
-    def mark_collected(self, posts: list[Post]) -> None:
+    def mark_collected(self, posts: list[Post], media_resolved: bool = False) -> None:
         """Classify posts and set their initial pipeline state.
 
         Rules:
@@ -51,6 +51,12 @@ class StateManager:
         - Posts with media_urls → COLLECTED_WITH_MEDIA (needs download)
         - Text-only posts (has content, no media) → READY_FOR_ENRICHMENT
         - Media post type but no media_urls → MISSING_MEDIA (stump)
+
+        `media_resolved=True` means media was already downloaded to GCS before
+        this call (the normal crawl path now downloads pre-insert so BQ carries
+        durable gcs_uri refs). In that case media posts skip COLLECTED_WITH_MEDIA
+        and go straight to READY_FOR_ENRICHMENT — the download streaming step is
+        reserved for continuation/recovery, where media may not yet be in GCS.
 
         Also stores media_refs in Firestore so the download step can read them
         without waiting for the BQ streaming buffer.
@@ -74,7 +80,12 @@ class StateManager:
             if post.platform == "youtube":
                 transitions.append((post.post_id, PostState.READY_FOR_ENRICHMENT))
             elif post.media_urls:
-                transitions.append((post.post_id, PostState.COLLECTED_WITH_MEDIA))
+                transitions.append((
+                    post.post_id,
+                    PostState.READY_FOR_ENRICHMENT
+                    if media_resolved
+                    else PostState.COLLECTED_WITH_MEDIA,
+                ))
             elif post.content or post.title:
                 transitions.append((post.post_id, PostState.READY_FOR_ENRICHMENT))
             else:

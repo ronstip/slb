@@ -17,6 +17,7 @@ from uuid import uuid4
 
 
 from config.settings import get_settings
+from workers.collection.media_downloader import download_media_batch
 from workers.collection.models import Post
 from workers.collection.normalizer import (
     channel_to_bq_row,
@@ -867,25 +868,17 @@ class PipelineRunner:
                 # refresh already happened above, nothing to insert.
                 continue
 
-            # Seed media_refs from CDN URLs so posts display immediately
-            for p in new_posts:
-                if p.media_urls and not p.media_refs:
-                    p.media_refs = [
-                        {
-                            "original_url": url,
-                            "media_type": "video"
-                            if any(
-                                ext in url.lower()
-                                for ext in (
-                                    ".mp4", ".mov", ".webm", "mime_type=video",
-                                    "googlevideo.com", "videoplayback", "v.redd.it",
-                                )
-                            )
-                            else "image",
-                            "content_type": "",
-                        }
-                        for url in p.media_urls
-                    ]
+            # Download media to GCS *before* the BQ insert so the posts row
+            # carries durable gcs_uri refs from the start. Previously posts were
+            # inserted with raw, expiring CDN URLs and a post-insert UPDATE tried
+            # to backfill gcs_uri — but that UPDATE is blocked by BQ's streaming
+            # buffer (up to ~90 min) and gave up after ~65s, so most posts stayed
+            # on signed CDN links that 403 once they expire. Downloading first
+            # makes BQ media_refs correct at insert time (mutates p.media_refs).
+            download_media_batch(
+                self.gcs, new_posts, self.collection_id,
+                executor=self._media_executor,
+            )
 
             # Write posts to BQ (always — no dedup, timestamps differentiate)
             post_rows = [post_to_bq_row(p, self.collection_id) for p in new_posts]
@@ -917,8 +910,10 @@ class PipelineRunner:
             funnel_posts_in_range += len(in_range)
             funnel_posts_out_of_range += len(out_of_range)
 
-            # Classify posts and set initial pipeline state
-            self.state_manager.mark_collected(in_range)
+            # Classify posts and set initial pipeline state. media_resolved=True
+            # because download_media_batch above already pushed media to GCS, so
+            # media posts skip the download step and go straight to enrichment.
+            self.state_manager.mark_collected(in_range, media_resolved=True)
 
             # Usage tracking (fire-and-forget) — group by (provider, platform)
             # so the Finance "platform × provider" matrix gets accurate
