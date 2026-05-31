@@ -1,8 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryCache,
+  MutationCache,
+} from '@tanstack/react-query';
 import { createHead, UnheadProvider } from '@unhead/react/client';
 import { Toaster } from 'sonner';
+import { notifyError } from './lib/notify.ts';
 import { AuthProvider } from './auth/AuthProvider.tsx';
 import { ThemeProvider } from './components/theme-provider.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
@@ -25,7 +31,23 @@ window.addEventListener('vite:preloadError', (event) => {
   window.location.reload();
 });
 
+// Global error safety-net: any query/mutation failure that isn't already
+// handled (toasted) by its caller surfaces a toast instead of dying silently
+// in the console. Callers that show their own error UI opt out with
+// `meta: { silent: true }` so we don't double-toast.
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      if (query.meta?.silent) return;
+      notifyError(error);
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      if (mutation.meta?.silent) return;
+      notifyError(error);
+    },
+  }),
   defaultOptions: {
     queries: {
       retry: 1,

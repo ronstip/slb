@@ -66,6 +66,7 @@ import {
 import { BotAvatar } from '../../components/BrandElements.tsx';
 import { cn } from '../../lib/utils.ts';
 import { toast } from 'sonner';
+import { notifyError } from '../../lib/notify.ts';
 import type { FeedResponse } from '../../api/types.ts';
 
 interface TaskCardProps {
@@ -341,8 +342,10 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
       await runAgent(task.agent_id);
       toast.success('Agent run started');
       fetchAgents();
-    } catch {
-      toast.error('Failed to start agent run');
+    } catch (err) {
+      // Credit-gated path: a 402 yields the Buy-credit toast; other failures
+      // fall back to the generic message.
+      notifyError(err, 'Failed to start agent run');
     }
   };
 

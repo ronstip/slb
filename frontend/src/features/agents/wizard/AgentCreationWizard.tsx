@@ -9,8 +9,8 @@ import {
   Pencil,
   Sparkles,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { notifyError } from '../../../lib/notify.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useAgentStore } from '../../../stores/agent-store.ts';
 import { planWizard } from '../../../api/endpoints/wizard.ts';
@@ -222,7 +222,10 @@ export function AgentCreationWizard() {
       }
     } catch (err) {
       console.error('wizard planner failed', err);
-      toast.error('Could not generate a plan. You can still configure the agent manually.');
+      // Credit/trial 402s now surface here (the planner is a gated paid call) —
+      // notifyError yields the Buy-credit toast; other failures fall back to
+      // the manual-config hint.
+      notifyError(err, 'Could not generate a plan. You can still configure the agent manually.');
       setPlanStatus('error');
     }
   };
@@ -259,7 +262,7 @@ export function AgentCreationWizard() {
       // Navigate to the new agent's Overview page so users see live progress.
       navigate(`/agents/${result.agent_id}`, { replace: true });
     } catch (err) {
-      toast.error('Failed to create agent. Please try again.');
+      notifyError(err, 'Failed to create agent. Please try again.');
       setIsSubmitting(false);
     }
   };

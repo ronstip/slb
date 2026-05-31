@@ -97,6 +97,7 @@ export function CommentsDrawer({ open, onOpenChange, post, agentId }: CommentsDr
         description: err instanceof Error ? err.message : 'Unknown error',
       });
     },
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   const threads = useMemo(

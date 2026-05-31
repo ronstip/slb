@@ -120,6 +120,8 @@ export function ShareDashboardDialog({
         setSlugError('Could not create custom link.');
       }
     },
+    // Errors surface inline as a slug-field message; suppress the global toast.
+    meta: { silent: true },
   });
 
   const revokeCustomMutation = useMutation({

@@ -793,6 +793,12 @@ def dispatch_agent_run(
     # entitlements mode is on; `free` users pass.
     description = title if agent_type == "one_shot" else f"{title} (scheduled run)"
     runnable_sources = [s for s in sources if s.get("keywords") or s.get("channels")]
+    # Sources that carry neither keywords nor channels collect nothing. Without
+    # this guard the run dispatches 0 collections yet the agent gets marked
+    # "running"→"completed" — an empty, misleading agent. Bail like `not sources`.
+    if not runnable_sources:
+        logger.warning("Agent %s has no runnable sources (no keywords/channels)", agent_id)
+        return "", []
     total_estimate = sum(
         estimate_request_micros(_source_to_collection_request(s, description))
         for s in runnable_sources

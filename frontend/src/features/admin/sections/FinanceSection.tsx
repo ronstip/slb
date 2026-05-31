@@ -447,6 +447,7 @@ function PricingEditor() {
       qc.invalidateQueries({ queryKey: ['admin', 'finance'] });
     },
     onError: () => toast.error('Failed to update pricing'),
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   if (!draft) {
