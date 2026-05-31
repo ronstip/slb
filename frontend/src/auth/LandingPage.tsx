@@ -3099,8 +3099,7 @@ export function LandingPage() {
             padding-right: 16px !important;
             gap: 10px !important;
           }
-          .lp-root .lp-nav-links,
-          .lp-root .lp-nav-signin {
+          .lp-root .lp-nav-links {
             display: none !important;
           }
           /* Keep the nav CTA on one line at narrow widths and trim its
