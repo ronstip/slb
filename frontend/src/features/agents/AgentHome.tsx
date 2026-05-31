@@ -66,7 +66,7 @@ export function AgentHome() {
   const hasChatActivity = messages.length > 0 || isAgentResponding;
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-dvh bg-background">
       {/* Desktop sidebar — hidden on mobile, where it becomes the drawer below */}
       <aside
         className="hidden shrink-0 overflow-hidden md:block"

@@ -270,7 +270,7 @@ export function AgentDetailPage() {
   };
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-dvh bg-background">
       {/* Unified sidebar — desktop only; becomes the drawer on mobile */}
       <aside
         className="hidden shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block"

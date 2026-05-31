@@ -352,7 +352,7 @@ export function AgentsPage() {
 
   return (
     <TooltipProvider delayDuration={300}>
-    <div className="flex h-screen w-full overflow-x-hidden bg-background">
+    <div className="flex h-dvh w-full overflow-x-hidden bg-background">
       <aside
         className="hidden shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block"
         style={{ width: sidebarCollapsed ? 48 : 280 }}
