@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, type ReactNode, type CSSProperties } from 'react';
+import { Link } from 'react-router';
 import { useHead } from '@unhead/react';
 import { useAuth } from './useAuth.ts';
 import { captureGoogleEmail } from './firebase.ts';
@@ -2503,8 +2504,9 @@ const LP_Footer = () => (
         </div>
         <div style={{ display: 'grid', gap: 8 }}>
           <LP_Mono size={9.5} color="#7E7666" style={{ marginBottom: 4 }}>Legal</LP_Mono>
-          <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>Privacy</a>
-          <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>Terms</a>
+          <Link to="/privacy" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Privacy</Link>
+          <Link to="/terms" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Terms</Link>
+          <Link to="/refund" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Refunds</Link>
         </div>
       </div>
     </div>
