@@ -50,6 +50,7 @@ export function EditCollectionDialog({
     onError: () => {
       toast.error('Failed to update collection');
     },
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   const handleSave = () => {

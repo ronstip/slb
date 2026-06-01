@@ -43,9 +43,10 @@ export function ExternalLinkCell({ url, hoverContent }: ExternalLinkCellProps) {
 /* ------------------------------------------------------------------ */
 
 export function PlatformCell({ platform }: { platform: string }) {
+  const label = PLATFORM_LABELS[platform] || platform;
   return (
-    <span className="truncate text-muted-foreground">
-      {PLATFORM_LABELS[platform] || platform}
+    <span className="line-clamp-2 break-words text-muted-foreground" title={label}>
+      {label}
     </span>
   );
 }
@@ -55,7 +56,8 @@ export function PlatformCell({ platform }: { platform: string }) {
 /* ------------------------------------------------------------------ */
 
 export function HandleCell({ handle }: { handle: string }) {
-  return <span className="truncate">@{handle}</span>;
+  // Handles have no spaces -> break-all so a long handle wraps instead of clipping.
+  return <span className="line-clamp-2 break-all" title={`@${handle}`}>@{handle}</span>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -139,14 +141,13 @@ export function TimeAgoCell({ date }: { date: string }) {
 /* ContentPreview                                                      */
 /* ------------------------------------------------------------------ */
 
-export function ContentPreview({ text, maxLength = 120 }: { text: string | null | undefined; maxLength?: number }) {
-  const display = text?.slice(0, maxLength) || '—';
+export function ContentPreview({ text }: { text: string | null | undefined; maxLength?: number }) {
   return (
     <span
-      className="line-clamp-2 text-xs text-foreground/90"
+      className="line-clamp-2 break-words text-xs text-foreground/90"
       title={text || undefined}
     >
-      {display}
+      {text || '—'}
     </span>
   );
 }

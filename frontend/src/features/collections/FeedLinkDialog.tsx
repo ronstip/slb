@@ -65,6 +65,7 @@ export function FeedLinkDialog({
     onError: () => {
       toast.error('Failed to create feed link');
     },
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   const revokeMutation = useMutation({

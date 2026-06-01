@@ -66,6 +66,9 @@ export function useUpdateMarkdownContent() {
       qc.invalidateQueries({ queryKey: ['artifact-standalone', id] });
       qc.invalidateQueries({ queryKey: ['artifacts'] });
     },
+    // Callers (e.g. MarkdownArtifactView) toast their own save error; the
+    // global error net would otherwise double-toast.
+    meta: { silent: true },
   });
 }
 

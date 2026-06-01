@@ -156,6 +156,18 @@ async def create_from_wizard_endpoint(
     if body.start_run and has_sources:
         fresh_agent = fs.get_agent(agent_id) or agent
         run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent)
+        # dispatch_agent_run bails with ("", []) when no source has keywords/
+        # channels. Don't strand an empty agent in a fake "running"/"completed"
+        # state — fail it and tell the user what's missing.
+        if not dispatched_ids and not attached_existing:
+            fs.update_agent(agent_id, status="failed")
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "no_runnable_sources",
+                    "message": "This agent has no sources with keywords or channels to collect. Add at least one before running.",
+                },
+            )
     elif body.start_run and attached_existing and body.agent_type == "one_shot":
         fs.update_agent(agent_id, status="success")
     elif not body.start_run and body.agent_type == "recurring" and schedule and schedule.get("frequency"):
@@ -199,6 +211,12 @@ async def wizard_plan_endpoint(
     description = (request.description or "").strip()
     if len(description) < 10:
         raise HTTPException(status_code=400, detail="Description too short (min 10 chars)")
+
+    # §E: the planner is a paid Gemini call — gate it like chat so an
+    # out-of-credit user can't rack up overdraft just by stepping through the
+    # wizard. No-op for free/admins or when enforce_credits is off.
+    from api.services.entitlements import require_active
+    require_active(user.uid)
 
     fs = get_fs()
     db = fs._db

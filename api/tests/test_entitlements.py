@@ -165,6 +165,25 @@ def test_run_sufficient_passes(monkeypatch):
     ent.require_credit_for_run(UID, 3_000)  # no raise
 
 
+def test_run_zero_balance_zero_estimate_still_blocks(monkeypatch):
+    # Regression: a paid/trial user at $0 must not slip through when the
+    # pre-flight estimate rounds to 0 (e.g. sources with no keywords → empty
+    # runnable_sources → total_estimate 0). `0 < 0` was False, so the gate
+    # used to no-op and let an out-of-credit run proceed.
+    _set_user_doc(monkeypatch, tier="paid", balance_micros=0)
+    with pytest.raises(HTTPException) as exc:
+        ent.require_credit_for_run(UID, 0)
+    assert exc.value.detail["error"] == ent.ERR_INSUFFICIENT
+
+
+def test_run_negative_balance_blocks(monkeypatch):
+    # An already-overdrafted wallet can't start anything, regardless of estimate.
+    _set_user_doc(monkeypatch, tier="paid", balance_micros=-240_000)
+    with pytest.raises(HTTPException) as exc:
+        ent.require_credit_for_run(UID, 1_000)
+    assert exc.value.detail["error"] == ent.ERR_INSUFFICIENT
+
+
 # ── require_access (read gate — balance NOT enforced) ─────────────────
 
 

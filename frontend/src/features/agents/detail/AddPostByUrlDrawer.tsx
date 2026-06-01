@@ -16,6 +16,7 @@ import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
 import { Checkbox } from '../../../components/ui/checkbox.tsx';
 import { fetchPostsByUrl } from '../../../api/endpoints/agents.ts';
+import { describeError } from '../../../lib/errors.ts';
 
 interface AddPostByUrlDrawerProps {
   open: boolean;
@@ -23,38 +24,11 @@ interface AddPostByUrlDrawerProps {
   agentId: string;
 }
 
-interface FetchError {
-  detail?: {
-    bad_urls?: string[];
-    unsupported_platforms?: string[];
-  } | string;
-  message?: string;
-}
-
 function parseUrls(text: string): string[] {
   return text
     .split(/\r?\n/)
     .map((s) => s.trim())
     .filter(Boolean);
-}
-
-function describeError(err: unknown): string {
-  if (typeof err === 'object' && err !== null) {
-    const e = err as FetchError;
-    if (typeof e.detail === 'object' && e.detail !== null) {
-      const parts: string[] = [];
-      if (e.detail.bad_urls?.length) {
-        parts.push(`Unrecognised: ${e.detail.bad_urls.join(', ')}`);
-      }
-      if (e.detail.unsupported_platforms?.length) {
-        parts.push(`Not yet supported: ${e.detail.unsupported_platforms.join(', ')}`);
-      }
-      if (parts.length) return parts.join(' · ');
-    }
-    if (typeof e.detail === 'string') return e.detail;
-    if (e.message) return e.message;
-  }
-  return 'Unknown error';
 }
 
 export function AddPostByUrlDrawer({ open, onOpenChange, agentId }: AddPostByUrlDrawerProps) {
@@ -87,6 +61,7 @@ export function AddPostByUrlDrawer({ open, onOpenChange, agentId }: AddPostByUrl
     onError: (err) => {
       toast.error('Could not fetch posts', { description: describeError(err) });
     },
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   const submitDisabled = urls.length === 0 || mutation.isPending;

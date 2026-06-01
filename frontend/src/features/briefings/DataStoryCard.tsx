@@ -120,7 +120,7 @@ function MiniTable({ spec }: { spec: ChartSpec }) {
           style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
         >
           {row.map((cell, ci) => (
-            <div key={`cell-${ri}-${ci}`} className="truncate px-2 py-1.5 text-foreground">
+            <div key={`cell-${ri}-${ci}`} className="break-words px-2 py-1.5 text-foreground" title={cell}>
               {cell}
             </div>
           ))}

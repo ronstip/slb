@@ -68,6 +68,8 @@ export function PostActionsMenu({ post, agentId, collectionIdOverride, className
       qc.invalidateQueries({ queryKey: ['live-feed-count'] });
       qc.invalidateQueries({ queryKey: ['collection-posts'] });
     },
+    // Error is toasted by the per-call onError below; don't double-toast.
+    meta: { silent: true },
   });
 
   const undoMutation = useMutation({

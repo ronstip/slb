@@ -150,6 +150,7 @@ export function EditPostDrawer({ open, onOpenChange, post, agentId, collectionId
         description: err instanceof Error ? err.message : 'Unknown error',
       });
     },
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   const approveMutation = useMutation({
@@ -184,6 +185,7 @@ export function EditPostDrawer({ open, onOpenChange, post, agentId, collectionId
         description: err instanceof Error ? err.message : 'Unknown error',
       });
     },
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   const isLoading = draftMutation.isPending;

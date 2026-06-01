@@ -404,6 +404,7 @@ function PlanEditor({ user }: { user: AdminUserDetail }) {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
     onError: () => toast.error('Failed to update plan'),
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   return (
@@ -469,6 +470,7 @@ function CreditPanel({ user }: { user: AdminUserDetail }) {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
     onError: () => toast.error('Failed to update credit'),
+    meta: { silent: true }, // handled above — don't double-toast via global net
   });
 
   const valid = amount !== '' && !Number.isNaN(parseFloat(amount)) && parseFloat(amount) !== 0;

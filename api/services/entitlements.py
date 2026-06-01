@@ -165,6 +165,18 @@ def require_credit_for_run(uid: str, estimated_micros: int) -> None:
     if balance is None:  # free
         return
     estimated_micros = max(int(estimated_micros or 0), 0)
+    # A non-positive balance can't start ANY paid run — even one whose estimate
+    # rounds to 0 (e.g. sources with no keywords → empty runnable_sources).
+    # Checked first because `0 < 0` is False, which used to let $0 users slip
+    # through. Mirrors require_active's `balance <= 0` rule.
+    if balance <= 0:
+        raise _402(
+            ERR_INSUFFICIENT,
+            "You're out of credit. Top up to continue.",
+            required_micros=estimated_micros,
+            balance_micros=balance,
+            shortfall_micros=max(estimated_micros - balance, 1),
+        )
     if balance < estimated_micros:
         raise _402(
             ERR_INSUFFICIENT,
