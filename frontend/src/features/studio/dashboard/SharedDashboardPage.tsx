@@ -153,7 +153,7 @@ export function SharedDashboardPage() {
       {/* Dashboard content */}
       {!isLoading && !error && response && (
         <>
-          <SharePageDefinitionRow deliverable="dashboard" />
+          <SharePageDefinitionRow deliverable="dashboard" platforms={availableOptions.platform} />
           {/* Filter bar — editor can hide it for curated reports. */}
           {!response.filterBarHidden && (
             <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
