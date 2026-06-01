@@ -196,6 +196,9 @@ function buildTableColumns(
         key: col.id,
         header: col.header || autoColumnHeader(col),
         align: 'left',
+        // Label columns hold narrative text -> give them more room and let them
+        // wrap to full height (no line cap) so the value is always fully visible.
+        minWidth: isFirstDim ? 220 : 170,
         // String values: DataTable's header sort is numeric-only and would
         // scramble — fall back to aggregateTable's pre-sort by picking this
         // column in the config dialog's Sort by.
@@ -209,7 +212,10 @@ function buildTableColumns(
                 {isFirstDim && row.__platform && (
                   <PlatformIcon platform={row.__platform} className="h-3.5 w-3.5 shrink-0" />
                 )}
-                <span className="text-[12px] font-medium text-foreground truncate">
+                <span
+                  className="text-[12px] font-medium text-foreground break-words"
+                  title={raw === '' ? text : `@${text}`}
+                >
                   {raw === '' ? text : `@${text}`}
                 </span>
               </div>
@@ -218,9 +224,10 @@ function buildTableColumns(
           return (
             <span
               className={cn(
-                'text-[12px] truncate',
+                'text-[12px] break-words',
                 isFirstDim ? 'font-medium text-foreground' : 'text-foreground',
               )}
+              title={text}
             >
               {text}
             </span>
@@ -343,7 +350,8 @@ function buildPostTableColumns(
           render: (row) => {
             const v = row[id];
             if (v == null || v === '') return <span className="text-muted-foreground/40">—</span>;
-            return <span className="truncate text-[12px]">{Array.isArray(v) ? v.join(', ') : String(v)}</span>;
+            const s = Array.isArray(v) ? v.join(', ') : String(v);
+            return <span className="break-words text-[12px]" title={s}>{s}</span>;
           },
         });
     }
