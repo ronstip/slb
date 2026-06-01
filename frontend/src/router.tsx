@@ -60,6 +60,15 @@ const AccessDeniedPage = lazy(() =>
 const AccountPendingPage = lazy(() =>
   import('./features/account-pending/AccountPendingPage.tsx').then((m) => ({ default: m.AccountPendingPage })),
 );
+const PrivacyPage = lazy(() =>
+  import('./legal/LegalPages.tsx').then((m) => ({ default: m.PrivacyPage })),
+);
+const TermsPage = lazy(() =>
+  import('./legal/LegalPages.tsx').then((m) => ({ default: m.TermsPage })),
+);
+const RefundPage = lazy(() =>
+  import('./legal/LegalPages.tsx').then((m) => ({ default: m.RefundPage })),
+);
 
 function FullScreenSpinner() {
   return (
@@ -95,6 +104,9 @@ const AgentDetailPageRoute = withSuspense(AgentDetailPage);
 const CollectionsPageRoute = withSuspense(CollectionsPage);
 const AccessDeniedPageRoute = withSuspense(AccessDeniedPage);
 const AccountPendingPageRoute = withSuspense(AccountPendingPage);
+const PrivacyPageRoute = withSuspense(PrivacyPage);
+const TermsPageRoute = withSuspense(TermsPage);
+const RefundPageRoute = withSuspense(RefundPage);
 
 /**
  * Registers the react-router `navigate` function with the API client so
@@ -193,6 +205,20 @@ export const router = createBrowserRouter([
         // Outside AuthGate so the redirect can't bounce back to '/'.
         path: '/account-pending',
         element: <AccountPendingPageRoute />,
+      },
+      {
+        // Public legal pages — reachable by Lemon Squeezy reviewers and any
+        // anonymous visitor. Must live outside AuthGate.
+        path: '/privacy',
+        element: <PrivacyPageRoute />,
+      },
+      {
+        path: '/terms',
+        element: <TermsPageRoute />,
+      },
+      {
+        path: '/refund',
+        element: <RefundPageRoute />,
       },
       {
         path: '/shared/briefing/:token',
