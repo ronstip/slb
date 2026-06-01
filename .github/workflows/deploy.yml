@@ -27,7 +27,19 @@ jobs:
 
       - name: Install frontend deps
         working-directory: frontend
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: npm ci
+
+      - name: Cache Puppeteer browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Puppeteer Chromium (prerender)
+        working-directory: frontend
+        run: for i in 1 2 3; do npx puppeteer browsers install chrome && break || sleep 10; done
 
       - name: Build frontend (dev mode - no Firebase)
         working-directory: frontend
@@ -71,7 +83,19 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: npm ci
+
+      - name: Cache Puppeteer browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Puppeteer Chromium (prerender)
+        working-directory: frontend
+        run: for i in 1 2 3; do npx puppeteer browsers install chrome && break || sleep 10; done
 
       - name: Type-check
         working-directory: frontend
