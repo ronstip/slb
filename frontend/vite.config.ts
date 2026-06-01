@@ -84,27 +84,36 @@ export default defineConfig({
     // Build-time prerender for the public landing route so Google and
     // AI crawlers (GPTBot, ClaudeBot, PerplexityBot, etc.) that don't
     // run JavaScript still see the full hero content.
-    prerender({
-      routes: ['/'],
-      renderer: '@prerenderer/renderer-puppeteer',
-      rendererOptions: {
-        // HomeRoute checks window.__PRERENDER_INJECTED to skip the auth
-        // loading spinner and render LandingPage directly during snapshot.
-        inject: true,
-        injectProperty: '__PRERENDER_INJECTED',
-        // Capture after a fixed delay — long enough for React to mount,
-        // lazy-load the LandingPage chunk, and render the hero.
-        renderAfterTime: 8_000,
-        maxConcurrentRoutes: 1,
-        timeout: 60_000,
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-        consoleHandler: (route: string, msg: { type: () => string; text: () => string }) => {
-          // eslint-disable-next-line no-console
-          console.log(`[prerender ${route}] ${msg.type()}: ${msg.text()}`);
-        },
-      },
-    }),
+    //
+    // Prerender drives a headless Chromium via puppeteer. Set
+    // DISABLE_PRERENDER=true to skip it entirely — used by the CI smoke-test
+    // build, which only needs a working SPA and shouldn't pay the
+    // (slow, flaky) Chromium download. Only the deploy build needs SEO HTML.
+    ...(process.env.DISABLE_PRERENDER === 'true'
+      ? []
+      : [
+          prerender({
+            routes: ['/'],
+            renderer: '@prerenderer/renderer-puppeteer',
+            rendererOptions: {
+              // HomeRoute checks window.__PRERENDER_INJECTED to skip the auth
+              // loading spinner and render LandingPage directly during snapshot.
+              inject: true,
+              injectProperty: '__PRERENDER_INJECTED',
+              // Capture after a fixed delay — long enough for React to mount,
+              // lazy-load the LandingPage chunk, and render the hero.
+              renderAfterTime: 8_000,
+              maxConcurrentRoutes: 1,
+              timeout: 60_000,
+              headless: true,
+              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+              consoleHandler: (route: string, msg: { type: () => string; text: () => string }) => {
+                // eslint-disable-next-line no-console
+                console.log(`[prerender ${route}] ${msg.type()}: ${msg.text()}`);
+              },
+            },
+          }),
+        ]),
   ],
   resolve: {
     alias: {
