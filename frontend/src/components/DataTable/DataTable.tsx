@@ -120,6 +120,7 @@ export function DataTable<T>({
                     className={`truncate ${cellPadX} ${headerPadY} font-medium ${
                       col.align === 'right' ? 'text-right' : 'text-left'
                     } ${isSortable ? 'cursor-pointer select-none' : ''}`}
+                    title={typeof col.header === 'string' ? col.header : undefined}
                     onClick={isSortable ? () => onSort(colSortKey) : undefined}
                   >
                     {isSortable ? (

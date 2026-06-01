@@ -78,11 +78,13 @@ export function postColumns<T extends PostColumnRow>(
       key: 'handle',
       header: 'Handle',
       width: 'w-[10%]',
+      minWidth: 140,
       render: (row) => <HandleCell handle={row.channel_handle} />,
     },
     {
       key: 'summary',
       header: summaryLabel,
+      minWidth: 280,
       render: (row) => {
         const text = summaryField === 'content'
           ? [row.title, row.content].filter(Boolean).join(' ')
@@ -131,6 +133,7 @@ export function postColumns<T extends PostColumnRow>(
       key: 'themes',
       header: 'Themes',
       width: 'w-[12%]',
+      minWidth: 150,
       render: (row) => <ThemeChips themes={parseStringList(row.themes)} />,
     },
   ];
@@ -140,6 +143,7 @@ export function postColumns<T extends PostColumnRow>(
       key: 'entities',
       header: 'Entities',
       width: 'w-[12%]',
+      minWidth: 150,
       render: (row) => <EntityChips entities={parseStringList(row.entities)} />,
     });
   }

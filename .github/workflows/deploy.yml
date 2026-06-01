@@ -27,12 +27,17 @@ jobs:
 
       - name: Install frontend deps
         working-directory: frontend
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: npm ci
 
+      # Smoke build skips SEO prerender (DISABLE_PRERENDER) so the gate never
+      # touches puppeteer/Chromium — keeps the gate fast and reliable.
       - name: Build frontend (dev mode - no Firebase)
         working-directory: frontend
         env:
           VITE_FIREBASE_API_KEY: ''
+          DISABLE_PRERENDER: 'true'
         run: npx vite build
 
       - name: Install E2E deps
@@ -59,7 +64,9 @@ jobs:
     needs: e2e-tests
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Headroom: this job downloads Chromium for SEO prerender, which can be
+    # slow on a cache miss. Cached after the first successful run.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -71,7 +78,19 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: npm ci
+
+      - name: Cache Puppeteer browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Puppeteer Chromium (prerender)
+        working-directory: frontend
+        run: for i in 1 2 3; do npx puppeteer browsers install chrome && break || sleep 10; done
 
       - name: Type-check
         working-directory: frontend

@@ -100,7 +100,10 @@ export function SharedBriefingPage() {
 
       {!isLoading && !error && data && (
         <>
-          <SharePageDefinitionRow deliverable="brief" />
+          <SharePageDefinitionRow
+            deliverable="brief"
+            platforms={data.layout.analytics?.platform_mix?.map((p) => p.name)}
+          />
           <main ref={contentRef}>
             <BriefingView title={data.meta.title} briefing={data.layout} />
           </main>
