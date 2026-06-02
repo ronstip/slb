@@ -1,9 +1,9 @@
-"""Billing router — $-based prepaid credit wallet (§E).
+"""Billing router - $-based prepaid credit wallet (§E).
 
 Users top up in dollars; every action deducts its real $ cost (see
 `api/services/cost_meter.py`). The wallet lives at `users/{uid}.credit` and the
 credit-in ledger at `credit_transactions` (both in Firestore). Payment provider
-is not finalised — the Lemon Squeezy checkout/webhook below is the scaffold and
+is not finalised - the Lemon Squeezy checkout/webhook below is the scaffold and
 stays dormant until `lemonsqueezy_*` settings + variant ids are configured.
 """
 
@@ -73,7 +73,7 @@ async def topup(
 ):
     """Create a checkout to add credit to the wallet.
 
-    `body = {"amount_cents": int}`. Provider-agnostic shape — currently wired to
+    `body = {"amount_cents": int}`. Provider-agnostic shape - currently wired to
     Lemon Squeezy; dormant until configured.
     """
     settings = get_settings()
@@ -148,7 +148,7 @@ async def get_history(user: CurrentUser = Depends(get_current_user)):
 
 @router.post("/webhook")
 async def lemonsqueezy_webhook(request: Request):
-    """Handle Lemon Squeezy webhook events. No auth — verified by HMAC signature."""
+    """Handle Lemon Squeezy webhook events. No auth - verified by HMAC signature."""
     settings = get_settings()
     webhook_secret = settings.lemonsqueezy_webhook_secret
     if not webhook_secret:

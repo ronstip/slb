@@ -69,7 +69,7 @@ export function InviteHandler({ inviteCode }: { inviteCode: string }) {
       return;
     }
 
-    // Signed-in user — attempt join exactly once per (preview, user) pair.
+    // Signed-in user - attempt join exactly once per (preview, user) pair.
     if (joinAttempted.current) return;
     joinAttempted.current = true;
     setState('joining');
@@ -104,7 +104,7 @@ export function InviteHandler({ inviteCode }: { inviteCode: string }) {
       // onAuthStateChanged will flip `isAnonymous` → the effect above will
       // pick up the new state and call joinOrg. No further action here.
     } catch {
-      // User closed the popup or hit a Firebase error — leave them on the
+      // User closed the popup or hit a Firebase error - leave them on the
       // signed-out card so they can retry. No toast spam.
     }
   };
@@ -239,7 +239,7 @@ function extractDetail(msg: string): string | null {
     const parsed = JSON.parse(msg.replace(/^API Error \d+: /, ''));
     if (typeof parsed?.detail === 'string') return parsed.detail;
   } catch {
-    // not JSON — caller falls back to raw message
+    // not JSON - caller falls back to raw message
   }
   return null;
 }

@@ -14,7 +14,7 @@ TypeError: Cannot read properties of undefined (reading 'startsWith')
 
 URL pattern: `/agents/<id>?tab=explorer&layout=<layout_id>`
 
-Did not repro on localhost — bug is data-dependent. Saved layout JSON in
+Did not repro on localhost - bug is data-dependent. Saved layout JSON in
 Firestore could contain a widget config where `dimension` is undefined but the
 code path still reaches `isCustomFieldDimension(dim)` (e.g. malformed table
 column with `kind: 'dimension'` but no `dimension`, or a custom aggregation
@@ -41,7 +41,7 @@ crashing the whole dashboard render via the `useMemo` chain in
   undefined/null/unknown dims instead of returning `undefined`.
 
 The fix is a containment patch: a single bad widget no longer takes down the
-whole dashboard. It does not address the upstream data quality issue — saved
+whole dashboard. It does not address the upstream data quality issue - saved
 layouts can still ship a widget with `dimension: undefined`, but that widget
 will now render an "Unknown" label / empty data instead of crashing the page.
 
@@ -53,7 +53,7 @@ covers the undefined/null inputs that reproduced the crash before the fix.
 ## Follow-up worth considering
 
 - Audit `dashboard-aggregations.ts` for any other `dim`/`dimension` access
-  past the `if (!dimension)` early return — if a widget arrives with
+  past the `if (!dimension)` early return - if a widget arrives with
   `dimension` set to an invalid string the chart will render "Unknown" buckets
   rather than nothing, which may surprise the user.
 - Consider a migration / validator that strips `kind: 'dimension'` columns

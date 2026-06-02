@@ -105,7 +105,7 @@ export function SocialDashboardGrid({
 
   const handleLayoutChange = useCallback(
     (layout: Layout) => {
-      // Only persist lg-breakpoint positions — compact layouts are auto-derived
+      // Only persist lg-breakpoint positions - compact layouts are auto-derived
       if (!isEditMode || isDragging.current || currentBreakpoint !== 'lg') return;
       const updated = widgets.map((w) => {
         const item = layout.find((l) => l.i === w.i);
@@ -121,7 +121,7 @@ export function SocialDashboardGrid({
 
   // The vertical (A4 portrait) clamp is for desktop PDF parity. On a narrow
   // viewport it would shrink the dashboard to ~69% of an already small screen
-  // — skip it. Gated on viewport width (not the RGL-derived breakpoint) so the
+  // - skip it. Gated on viewport width (not the RGL-derived breakpoint) so the
   // clamp can't toggle its own input width and oscillate.
   const containerStyle: React.CSSProperties =
     orientation === 'vertical' && !isNarrowViewport

@@ -140,7 +140,7 @@ function AuditContent({ audit }: { audit: CollectionAudit }) {
           <div className="space-y-1">
             {platformErrors.map((e, i) => (
               <div key={i} className="rounded-md border border-orange-500/30 bg-orange-500/5 px-3 py-2 text-xs text-orange-700 dark:text-orange-400">
-                <span className="font-medium">{e.platform}</span> — {e.message}
+                <span className="font-medium">{e.platform}</span> - {e.message}
               </div>
             ))}
           </div>
@@ -231,7 +231,7 @@ function AuditContent({ audit }: { audit: CollectionAudit }) {
       {audit.snapshots.length > 0 && (
         <div className="space-y-1.5">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            BrightData Snapshots ({audit.snapshots.length}) <span className="normal-case font-normal text-muted-foreground">— each = 1 API call charged</span>
+            BrightData Snapshots ({audit.snapshots.length}) <span className="normal-case font-normal text-muted-foreground">- each = 1 API call charged</span>
           </h3>
           <div className="rounded-lg border">
             <table className="w-full text-xs">
@@ -304,7 +304,7 @@ export function CollectionsSection() {
 
       {/* ── Top row: stat chips (60%) + funnel bar (40%) ── */}
       <div className="flex gap-2 items-stretch">
-        {/* Stat chips — 3×2 grid, 60% width */}
+        {/* Stat chips - 3×2 grid, 60% width */}
         <div className="grid grid-cols-3 gap-2 w-[40%]">
           <StatChip label="Collections"    value={data?.total ?? 0} icon={Database} />
           <StatChip label="BD Raw"         value={fs?.total_bd_raw_records?.toLocaleString() ?? '-'} icon={Database} />
@@ -324,7 +324,7 @@ export function CollectionsSection() {
           />
         </div>
 
-        {/* Aggregate funnel bar — 40% width */}
+        {/* Aggregate funnel bar - 40% width */}
         <Card className="py-0 w-[60%] min-w-0">
           <CardContent className="px-4 py-3 h-full flex flex-col justify-between">
             <p className="text-xs font-semibold">Aggregate Post Funnel</p>
@@ -352,7 +352,7 @@ export function CollectionsSection() {
                 </div>
               </>
             ) : (
-              <p className="text-xs text-muted-foreground my-auto">No funnel data yet — run a collection to see breakdown.</p>
+              <p className="text-xs text-muted-foreground my-auto">No funnel data yet - run a collection to see breakdown.</p>
             )}
           </CardContent>
         </Card>
@@ -391,7 +391,7 @@ export function CollectionsSection() {
 
       <p className="text-xs text-muted-foreground -mt-1">{data?.total ?? 0} collections</p>
 
-      {/* ── Table — scrolls independently ── */}
+      {/* ── Table - scrolls independently ── */}
       {isLoading ? (
         <div className="flex items-center justify-center py-10">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
@@ -408,10 +408,10 @@ export function CollectionsSection() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Charged</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Stored</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="Posts whose posted_at is within the agent's time window">In-range</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="Posts this collection was the first to fetch (by collected_at). Frozen at fetch time — later collections re-fetching the same post don't reduce this count.">Unique</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="Posts this collection was the first to fetch (by collected_at). Frozen at fetch time - later collections re-fetching the same post don't reduce this count.">Unique</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Enriched</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="Enriched posts marked is_related_to_task=TRUE">Related</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="related / stored — % of fetched posts that were both in-window and on-task">Relevancy</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap" title="related / stored - % of fetched posts that were both in-window and on-task">Relevancy</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Embedded</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Created</th>
                 <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Audit</th>
@@ -457,21 +457,21 @@ export function CollectionsSection() {
                           )}
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
-                      {c.posts_in_range != null ? c.posts_in_range.toLocaleString() : <span className="text-muted-foreground">—</span>}
+                      {c.posts_in_range != null ? c.posts_in_range.toLocaleString() : <span className="text-muted-foreground">-</span>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
-                      {c.posts_unique != null ? c.posts_unique.toLocaleString() : <span className="text-muted-foreground">—</span>}
+                      {c.posts_unique != null ? c.posts_unique.toLocaleString() : <span className="text-muted-foreground">-</span>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">{c.posts_enriched.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
-                      {c.posts_related != null ? c.posts_related.toLocaleString() : <span className="text-muted-foreground">—</span>}
+                      {c.posts_related != null ? c.posts_related.toLocaleString() : <span className="text-muted-foreground">-</span>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
-                      {c.relevancy_pct != null ? `${c.relevancy_pct}%` : <span className="text-muted-foreground">—</span>}
+                      {c.relevancy_pct != null ? `${c.relevancy_pct}%` : <span className="text-muted-foreground">-</span>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">{c.posts_embedded.toLocaleString()}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{fmt(c.created_at)}</td>

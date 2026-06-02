@@ -53,7 +53,7 @@ export function WaitlistSection() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard blocked — no-op
+      // clipboard blocked - no-op
     }
   };
 
@@ -158,7 +158,7 @@ export function WaitlistSection() {
                         {e.interested_in}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">-</span>
                     )}
                   </td>
                   <td className="px-3 py-2">

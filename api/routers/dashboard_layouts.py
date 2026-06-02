@@ -1,4 +1,4 @@
-"""Dashboard layouts router — persists per-artifact widget layout configuration."""
+"""Dashboard layouts router - persists per-artifact widget layout configuration."""
 
 import asyncio
 import logging
@@ -30,9 +30,9 @@ def _resolve_share_doc(fs, key_id: str) -> dict | None:
     """Resolve the doc whose org-share state governs a dashboard layout.
 
     A `dashboard_layouts` doc is keyed by one of two things:
-      - an **artifact_id** — an artifact-backed dashboard (briefs/social
+      - an **artifact_id** - an artifact-backed dashboard (briefs/social
         dashboard saved as a deliverable); or
-      - an **explorer layout_id** — an explorer *view* (DashboardView passes the
+      - an **explorer layout_id** - an explorer *view* (DashboardView passes the
         explorer layout's id as `artifact.id`), which has no artifact doc.
 
     Both resolve to a component of an agent, so return the governing doc:
@@ -121,7 +121,7 @@ async def save_dashboard_layout(
     fs=Depends(get_fs),
 ):
     """Save (upsert) layout for a dashboard artifact."""
-    # Grid bounds — not expressible in Pydantic field validators since it's a cross-field check.
+    # Grid bounds - not expressible in Pydantic field validators since it's a cross-field check.
     for idx, w in enumerate(request.layout):
         if w.x + w.w > GRID_COLS:
             raise HTTPException(
@@ -144,8 +144,8 @@ async def save_dashboard_layout(
         else None
     )
     # MERGE the layout fields rather than replacing the whole doc. Without
-    # `merge=True`, `.set()` drops every field not in the payload — including
-    # `is_template`, `title`, and `source_template_id` — silently demoting docs.
+    # `merge=True`, `.set()` drops every field not in the payload - including
+    # `is_template`, `title`, and `source_template_id` - silently demoting docs.
     await asyncio.to_thread(
         doc_ref.set,
         {

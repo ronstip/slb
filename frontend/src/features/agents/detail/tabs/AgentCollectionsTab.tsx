@@ -88,7 +88,7 @@ export function AgentCollectionsTab({ task, artifacts }: TaskCollectionsTabProps
     <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
       {header}
 
-      {/* Data panel — toolbar (search/columns/export/view toggle) portals into the header */}
+      {/* Data panel - toolbar (search/columns/export/view toggle) portals into the header */}
       <PostsDataPanel
         selectedCollectionIds={allCollectionIds}
         collectionNames={collectionNames}

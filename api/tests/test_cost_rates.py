@@ -175,7 +175,7 @@ def test_grounding_gemini_25_billed_per_prompt():
 
 
 def test_grounding_gemini_3_ignores_per_prompt_arg():
-    # Wrong dimension for the family — should not bill.
+    # Wrong dimension for the family - should not bill.
     assert (
         compute_grounding_cost_micros("gemini-3-flash-preview", prompts_grounded=5)
         is None

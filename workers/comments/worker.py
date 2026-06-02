@@ -1,10 +1,10 @@
-"""Comments Worker — fetches a post's full reply tree and appends to BQ.
+"""Comments Worker - fetches a post's full reply tree and appends to BQ.
 
 Fire-and-forget, same shape as workers/engagement/worker.py.
 
 Output:
-    - social_listening.comments — one row per reply
-    - social_listening.channels — one snapshot row per unique comment author
+    - social_listening.comments - one row per reply
+    - social_listening.channels - one snapshot row per unique comment author
 
 Payload (from Cloud Task body):
     {
@@ -102,12 +102,12 @@ def fetch_post_comments(payload: dict) -> None:
     else:
         logger.info("No comments fetched for post %s", post_id)
 
-    # §E cost attribution — bill the comment fetch under the originating
+    # §E cost attribution - bill the comment fetch under the originating
     # agent + user. Pricing: each reply tweet returned is one "search post
     # read"; we also issue one root-tweet lookup to resolve the
     # conversation id, so units = len(comments) + 1. NULL cost when we
     # can't map the platform → a known provider (e.g. instagram comments,
-    # if added later) — row still goes in so the admin sees the activity.
+    # if added later) - row still goes in so the admin sees the activity.
     provider = normalize_provider(payload.get("crawl_provider")) or _PLATFORM_PROVIDER.get(platform)
     if provider and user_id:
         units = len(batch.comments) + 1  # +1 = root-tweet lookup

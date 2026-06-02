@@ -18,13 +18,13 @@ const JPEG_QUALITY = 0.82
 
 const SCOLTO_URL = 'https://scolto.com'
 
-// Hebrew (U+0590-05FF) + Arabic + presentation forms — RTL detection.
+// Hebrew (U+0590-05FF) + Arabic + presentation forms - RTL detection.
 const RTL_PATTERN = /[֐-׿؀-ۿݐ-ݿיִ-ﻼ]/
 
 const SERIF_STACK = `'Fraunces', 'David Libre', 'Frank Ruhl Libre', 'Iowan Old Style', 'Apple Garamond', 'Times New Roman', Georgia, serif`
 const MONO_STACK = `'JetBrains Mono', 'SF Mono', 'Menlo', Consolas, monospace`
 
-/** Scolto cornermark — mirrors LP_ScoltoMark from the landing page. */
+/** Scolto cornermark - mirrors LP_ScoltoMark from the landing page. */
 async function loadLogoDataUrl(strokeColor: string = BRAND_INK): Promise<string> {
   const svgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="${strokeColor}" stroke-width="3.4" stroke-linecap="round">
     <path d="M4 18 V4 H18"/>
@@ -204,7 +204,7 @@ function applyPdfCaptureStyles(root: HTMLElement): () => void {
 }
 
 /** Embed widgets render third-party iframes (X/YouTube/FB/LinkedIn) that
- *  html2canvas can't capture — they come out blank. Swap their contents with a
+ *  html2canvas can't capture - they come out blank. Swap their contents with a
  *  short placeholder for capture, then restore. */
 function swapEmbedWidgets(root: HTMLElement): () => void {
   const embeds = Array.from(root.querySelectorAll<HTMLElement>('[data-embed-widget]'))
@@ -215,7 +215,7 @@ function swapEmbedWidgets(root: HTMLElement): () => void {
     el.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:center;padding:24px;
                   font-size:12px;color:${BRAND_MUTED};font-style:italic;text-align:center;">
-        Interactive embedded posts — view in the live brief.
+        Interactive embedded posts - view in the live brief.
       </div>
     `
     restores.push(() => {
@@ -227,7 +227,7 @@ function swapEmbedWidgets(root: HTMLElement): () => void {
 }
 
 /** The markdown widget puts per-paragraph dir="rtl" on Hebrew blocks but leaves
- *  the parent <ul>/<ol> LTR — so list bullets land on the far-left edge.
+ *  the parent <ul>/<ol> LTR - so list bullets land on the far-left edge.
  *  Flip dir on the prose wrapper for capture only. */
 function applyRtlListFixup(root: HTMLElement): () => void {
   const proseEls = Array.from(root.querySelectorAll<HTMLElement>('.agent-prose'))
@@ -315,7 +315,7 @@ export async function exportDashboardPdf(
     pdf.setFillColor(BRAND_ORANGE)
     pdf.rect(0, 0, pageW, 2, 'F')
 
-    // Logo (cornermark) + wordmark — left side
+    // Logo (cornermark) + wordmark - left side
     const logoSize = 14
     const logoY = TOP_BAND_H / 2 - logoSize / 2 + 1
     pdf.addImage(logoDataUrl, 'PNG', PAGE_MARGIN, logoY, logoSize, logoSize)
@@ -374,14 +374,14 @@ export async function exportDashboardPdf(
     pdf.setFillColor(BRAND_ORANGE)
     pdf.circle(PAGE_MARGIN + 2, baselineY - 2, 1.4, 'F')
 
-    // "Scolto" — clickable hyperlink, ink color (subtle), still discoverable
+    // "Scolto" - clickable hyperlink, ink color (subtle), still discoverable
     const scoltoX = PAGE_MARGIN + 9
     const scoltoLabel = 'Scolto'
     const scoltoW = pdf.getTextWidth(scoltoLabel)
     pdf.setTextColor(BRAND_INK)
     pdf.textWithLink(scoltoLabel, scoltoX, baselineY, { url: SCOLTO_URL })
 
-    // Rest of the line — muted
+    // Rest of the line - muted
     const restLabel = `  ·  © ${copyrightYear} Scolto. All rights reserved.`
     pdf.setTextColor(BRAND_MUTED)
     pdf.text(restLabel, scoltoX + scoltoW, baselineY)
@@ -410,7 +410,7 @@ export async function exportDashboardPdf(
       useCORS: true,
       backgroundColor: '#ffffff',
       logging: false,
-      // @ts-expect-error — letterRendering is an html2canvas option
+      // @ts-expect-error - letterRendering is an html2canvas option
       letterRendering: true,
     })
 

@@ -1,4 +1,4 @@
-# Agent refactor — current state
+# Agent refactor - current state
 
 **Updated:** 2026-05-02. Refactor goal: agent personality / sharpness / capability closer to Claude Code, in the social-listening domain.
 
@@ -26,7 +26,7 @@ Chat (5 scenarios):
 | judge repetition | 3.4 | 3.8 | +0.4 |
 | judge correctness | 3.4 | 3.0 | −0.4 |
 
-The `correctness` dip is single-run noise concentrated on two scenarios: `chat-bare-greeting` added a "How can I help you today?" closer the prompt explicitly bans (model variance — phase3 produced the rule-compliant version on the same prompt), and `chat-followup-no-restate` improved 1.0 → 2.0 (phase3 was chronic 1/1/1/1; still not ideal, but moving). Verify on the next eval pass.
+The `correctness` dip is single-run noise concentrated on two scenarios: `chat-bare-greeting` added a "How can I help you today?" closer the prompt explicitly bans (model variance - phase3 produced the rule-compliant version on the same prompt), and `chat-followup-no-restate` improved 1.0 → 2.0 (phase3 was chronic 1/1/1/1; still not ideal, but moving). Verify on the next eval pass.
 
 Autonomous (4 scenarios):
 
@@ -40,7 +40,7 @@ Autonomous (4 scenarios):
 | judge repetition | 3.0 | 3.75 | +0.75 |
 | judge correctness | 3.0 | 3.5 | +0.5 |
 
-Output tokens grew because `autonomous-full-run` and `autonomous-recurring-trend` previously produced 15 tokens each (hit the call cap before any deliverable). They now produce 259 and 269 tokens of real briefing output. The 4 remaining duplicates are all in `autonomous-verifier-catches-bad-claim` and are expected — that scenario forces a verify→fix→re-verify cycle, which legitimately re-runs the 3 sanity SQLs + `verify_briefing`.
+Output tokens grew because `autonomous-full-run` and `autonomous-recurring-trend` previously produced 15 tokens each (hit the call cap before any deliverable). They now produce 259 and 269 tokens of real briefing output. The 4 remaining duplicates are all in `autonomous-verifier-catches-bad-claim` and are expected - that scenario forces a verify→fix→re-verify cycle, which legitimately re-runs the 3 sanity SQLs + `verify_briefing`.
 
 ## What landed
 
@@ -62,15 +62,15 @@ Output tokens grew because `autonomous-full-run` and `autonomous-recurring-trend
 
 ---
 
-## Lessons that bit us — read these before changing anything
+## Lessons that bit us - read these before changing anything
 
 These are not theoretical. Each one cost real debug time.
 
 1. **`LlmAgent(static_instruction=…, instruction=…)` injects `instruction` as a `role='user'` content message** on every ReAct continuation (see `google/adk/flows/llm_flows/instructions.py:112-119`). The model treats it as a fresh user request and produces "Acknowledged. I've updated my context…" instead of answering. **Fix:** combine both into the single `instruction` param. Don't reintroduce `static_instruction` until you've confirmed the ADK behavior changed.
 
-2. **Tool-result strings outweigh the system prompt at decision time.** Even with explicit sequencing rules in the prompt, the model follows the *tool's success message* for the next call. Whenever you add a multi-step sequence, audit every tool-result string in the chain — they are the final word the model reads. ([generate_briefing.py](../tools/generate_briefing.py) used to say "Next: call compose_briefing" and routed the model around the verifier.)
+2. **Tool-result strings outweigh the system prompt at decision time.** Even with explicit sequencing rules in the prompt, the model follows the *tool's success message* for the next call. Whenever you add a multi-step sequence, audit every tool-result string in the chain - they are the final word the model reads. ([generate_briefing.py](../tools/generate_briefing.py) used to say "Next: call compose_briefing" and routed the model around the verifier.)
 
-3. **SQL examples in the prompt are run verbatim — proofread them.** Two examples in `shared.py` had `QUALIFY … GROUP BY …` (illegal in BigQuery). The model copied them and produced 6 syntax errors before falling back. Surface only after `dedup_sql_calls` was wired in.
+3. **SQL examples in the prompt are run verbatim - proofread them.** Two examples in `shared.py` had `QUALIFY … GROUP BY …` (illegal in BigQuery). The model copied them and produced 6 syntax errors before falling back. Surface only after `dedup_sql_calls` was wired in.
 
 4. **Don't add `update_todos` meta-rules to autonomous prompts.** Three attempts in phase1d/1e/2c reproducibly capped autonomous at 25 calls with 22+ duplicate SQL. Gemini-3-flash-preview over-fits on todo-discipline rules and stops updating todos at all.
 
@@ -101,15 +101,15 @@ Gate criteria (`report.py`): `output_tokens` not regressed >30%, `duplicate_acti
 
 For a quick chat sanity check without the eval suite, set `AGENT_DEBUG_LOG=1` and run these 7 prompts in fresh chats on a real collection:
 
-1. `Hi` — expect 1-2 sentences, **0 tool calls**.
-2. `What platform leads engagement?` — concise answer leading with the number, ≤100 words.
-3. `Compare TikTok vs X on engagement and sentiment` — two `execute_sql` calls fanned out in parallel; no `update_todos` churn.
-4. `Find any posts mentioning 'X' or 'Y'` — `search_posts` tool (not LIKE in execute_sql), real summary of results.
-5. `Find posts from before 2020` — `execute_sql` with `posted_at < '2020-01-01'`; faithful empty-result reporting.
-6. `Tell me about the data` — picks a sensible default summary, states assumption.
-7. `Build me a dashboard and a deck` — multi-deliverable, todos used appropriately, both artifacts created.
+1. `Hi` - expect 1-2 sentences, **0 tool calls**.
+2. `What platform leads engagement?` - concise answer leading with the number, ≤100 words.
+3. `Compare TikTok vs X on engagement and sentiment` - two `execute_sql` calls fanned out in parallel; no `update_todos` churn.
+4. `Find any posts mentioning 'X' or 'Y'` - `search_posts` tool (not LIKE in execute_sql), real summary of results.
+5. `Find posts from before 2020` - `execute_sql` with `posted_at < '2020-01-01'`; faithful empty-result reporting.
+6. `Tell me about the data` - picks a sensible default summary, states assumption.
+7. `Build me a dashboard and a deck` - multi-deliverable, todos used appropriately, both artifacts created.
 
-In the resulting JSONL, every `model_request` event after a tool response should have a `function_response` as the last entry of `recent_contents` — never `## Date Awareness…` (regression marker for Lesson 1).
+In the resulting JSONL, every `model_request` event after a tool response should have a `function_response` as the last entry of `recent_contents` - never `## Date Awareness…` (regression marker for Lesson 1).
 
 ---
 
@@ -117,12 +117,12 @@ In the resulting JSONL, every `model_request` event after a tool response should
 
 **Prompts:** [chat_prompt.py](../prompts/chat_prompt.py), [autonomous_prompt.py](../prompts/autonomous_prompt.py), [verifier_prompt.py](../prompts/verifier_prompt.py), [shared.py](../prompts/shared.py) (date awareness + BQ schema + SQL examples).
 
-**Agent wiring:** [agent.py](../agent.py) — single `instruction` param; before/after callbacks chained.
+**Agent wiring:** [agent.py](../agent.py) - single `instruction` param; before/after callbacks chained.
 
-**Callbacks:** [callbacks.py](../callbacks.py) — `dedup_sql_calls`, `cap_total_tool_calls`, `refund_failed_sql_budget`, `get_context_injector`, `_append_to_system_instruction`.
+**Callbacks:** [callbacks.py](../callbacks.py) - `dedup_sql_calls`, `cap_total_tool_calls`, `refund_failed_sql_budget`, `get_context_injector`, `_append_to_system_instruction`.
 
 **Tools added in this refactor:** [verify_briefing.py](../tools/verify_briefing.py), [search_posts.py](../tools/search_posts.py), [_idempotency.py](../tools/_idempotency.py).
 
-**Debug:** [debug_io.py](../debug_io.py) — gated by `AGENT_DEBUG_LOG`. Off in prod unless explicitly enabled.
+**Debug:** [debug_io.py](../debug_io.py) - gated by `AGENT_DEBUG_LOG`. Off in prod unless explicitly enabled.
 
 **Eval scenarios:** [scenarios.yaml](scenarios.yaml). Adding one is documented in [README.md](README.md).

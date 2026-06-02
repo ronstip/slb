@@ -30,13 +30,13 @@ async def scheduler_tick():
     try:
         _check_due_agents(fs, settings)
     except Exception:
-        # A failed tick shouldn't poison Cloud Scheduler retries — log and
+        # A failed tick shouldn't poison Cloud Scheduler retries - log and
         # return ok so the scheduler keeps its cadence.
         logger.exception("Scheduler tick: recurring agent check failed")
 
     # Recover agents stranded in 'running' after a continuation runtime
     # crash. Cloud Tasks' built-in retry handles in-flight failures, but
-    # once it gives up nothing else watches — this is the safety net.
+    # once it gives up nothing else watches - this is the safety net.
     try:
         from workers.agent_continuation import recover_stuck_agents
         recovered = recover_stuck_agents()
@@ -66,7 +66,7 @@ async def agent_continue(request: dict):
       and a fresh ``updated_at`` (the continuation touches it on every tool event).
       It skips.
     - A retry arriving after the original instance died (no exception, no
-      completion — e.g. Cloud Run evicted the container) sees a stale
+      completion - e.g. Cloud Run evicted the container) sees a stale
       ``updated_at``. It takes over.
 
     Staleness threshold is 5 min. Tool events in ``_emit_activity`` write
@@ -86,7 +86,7 @@ async def agent_continue(request: dict):
 
     if agent.get("status") != "running":
         logger.info(
-            "Agent %s: skipping — status=%s (terminal)",
+            "Agent %s: skipping - status=%s (terminal)",
             agent_id, agent.get("status"),
         )
         return {"ok": True, "agent_id": agent_id, "skipped": True, "reason": "terminal"}
@@ -108,12 +108,12 @@ async def agent_continue(request: dict):
         now = datetime.now(timezone.utc)
         if updated_at and (now - updated_at) < timedelta(minutes=LIVENESS_WINDOW_MIN):
             logger.info(
-                "Agent %s: skipping retry — previous attempt still active (updated %ss ago)",
+                "Agent %s: skipping retry - previous attempt still active (updated %ss ago)",
                 agent_id, int((now - updated_at).total_seconds()),
             )
             return {"ok": True, "agent_id": agent_id, "skipped": True, "reason": "in_flight"}
         logger.warning(
-            "Agent %s: previous attempt appears dead (updated_at=%s) — taking over",
+            "Agent %s: previous attempt appears dead (updated_at=%s) - taking over",
             agent_id, updated_at,
         )
 
@@ -121,7 +121,7 @@ async def agent_continue(request: dict):
     try:
         await _async_agent_continuation(agent_id)
     except Exception:
-        # Continuation failed terminally — mark the agent so the UI shows
+        # Continuation failed terminally - mark the agent so the UI shows
         # a clean failure state instead of a perpetual 'running'.
         logger.exception("Agent continuation failed for %s", agent_id)
         fs.update_agent(

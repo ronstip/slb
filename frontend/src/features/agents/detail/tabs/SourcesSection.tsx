@@ -60,7 +60,7 @@ type PendingRun =
 type SourceTab = 'summary' | 'files' | string;
 
 function previewList(items: string[], cap: number): string {
-  if (items.length === 0) return '—';
+  if (items.length === 0) return '-';
   if (items.length <= cap) return items.join(', ');
   return `${items.slice(0, cap).join(', ')}, +${items.length - cap}`;
 }
@@ -170,7 +170,7 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
   );
 
   // Always force-recompute. The cached Firestore signature can race with the
-  // agent's status flip — when status transitions to 'success' before the
+  // agent's status flip - when status transitions to 'success' before the
   // pipeline's final signature write lands, a cached read returns the old
   // snapshot and the 5-min staleTime then locks it in. Recomputing keeps
   // Posts / Posts last 3d in sync with what's actually in BigQuery.
@@ -472,7 +472,7 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
               Refresh data for {pendingRunLabel}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will start a new collection for {pendingRunLabel} using the configured keywords and post target. The agent's analysis won't be re-run — only the underlying data is refreshed.
+              This will start a new collection for {pendingRunLabel} using the configured keywords and post target. The agent's analysis won't be re-run - only the underlying data is refreshed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -511,7 +511,7 @@ interface SourcesSummaryViewProps {
   isRunning?: boolean;
 }
 
-// One row per platform — aggregated across all source cards for that platform.
+// One row per platform - aggregated across all source cards for that platform.
 // Per-source detail is one click away via the platform tab. Play refreshes
 // every source on that platform in a single backend call.
 function SourcesSummaryViewImpl({
@@ -612,7 +612,7 @@ function SourcesSummaryViewImpl({
 const SourcesSummaryView = memo(SourcesSummaryViewImpl);
 
 function formatDateLabel(value?: string | null): string {
-  if (!value) return '—';
+  if (!value) return '-';
   // value is YYYY-MM-DD; render as a short locale label without timezone shift.
   const [y, m, d] = value.split('-').map(Number);
   if (!y || !m || !d) return value;

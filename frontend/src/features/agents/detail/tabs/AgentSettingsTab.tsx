@@ -343,7 +343,7 @@ export function AgentSettingsTab({
 // Shown in the Live Logs sub-tab when the agent is recoverable:
 //   - status === 'failed' (exception during continuation)
 //   - status === 'running' but updated_at is older than the backend's 5-min
-//     liveness window (almost certainly a dead worker — host died, uvicorn
+//     liveness window (almost certainly a dead worker - host died, uvicorn
 //     reloaded mid-run, etc.)
 // Both cases are unstuck by POST /agents/{id}/resume, which preserves the
 // already-collected/enriched data and re-runs the agent phase.
@@ -383,7 +383,7 @@ function ResumeBanner({ task, onResume }: { task: Agent; onResume?: () => void }
     ? (reason && reason !== 'Agent continuation failed after collection completion.'
         ? reason
         : 'The continuation worker raised an exception (often a dead local server or a tool error).')
-    : `No progress for over ${Math.round((Date.now() - updatedAtMs) / 60000)} minutes — the worker likely died.`;
+    : `No progress for over ${Math.round((Date.now() - updatedAtMs) / 60000)} minutes - the worker likely died.`;
 
   return (
     <div className="flex items-start gap-4 rounded-2xl border border-amber-500/40 bg-amber-500/5 px-5 py-4">
@@ -399,8 +399,8 @@ function ResumeBanner({ task, onResume }: { task: Agent; onResume?: () => void }
         {!canResume && (
           <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
             {!task.continuation_ready
-              ? 'Not resumable — collections did not finish. Re-run the agent instead.'
-              : 'Nothing to resume — all steps are already complete.'}
+              ? 'Not resumable - collections did not finish. Re-run the agent instead.'
+              : 'Nothing to resume - all steps are already complete.'}
           </p>
         )}
       </div>
@@ -582,7 +582,7 @@ function EditableConstitutionSection({
 // ─── Editable Sources Section ────────────────────────────────────────────────
 //
 // Each card == one Source (one platform, its own keywords / quota / range /
-// region). Users add as many cards as they want — including multiple cards for
+// region). Users add as many cards as they want - including multiple cards for
 // the same platform with different queries (e.g. two Twitter cards tracking
 // different keywords with different quotas).
 
@@ -1069,7 +1069,7 @@ function SaveStatusIndicator({ status }: { status: 'idle' | 'saving' | 'saved' |
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] text-destructive">
         <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
-        Save failed — retrying on next change
+        Save failed - retrying on next change
       </span>
     );
   }

@@ -17,7 +17,7 @@ import { ApiError } from '../../../api/client.ts';
  *  app-global {@link TopUpDialogHost}. Rendered only inside an open dialog, so
  *  the options query is naturally lazy (no `enabled` flag needed).
  *
- *  NOTE: the checkout-error toast stays local (not `notifyError`) on purpose —
+ *  NOTE: the checkout-error toast stays local (not `notifyError`) on purpose -
  *  `notify.ts` depends on the top-up host, so importing it here would create a
  *  module cycle. The 501 "payments not enabled" message matches notify's map. */
 export function TopUpContent() {
@@ -38,7 +38,7 @@ export function TopUpContent() {
       const notConfigured = e instanceof ApiError && e.status === 501;
       toast.error(
         notConfigured
-          ? 'Payments are not enabled yet — please check back soon.'
+          ? 'Payments are not enabled yet - please check back soon.'
           : 'Could not start checkout. Please try again.',
       );
     } finally {

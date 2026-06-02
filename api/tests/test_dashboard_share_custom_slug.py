@@ -65,7 +65,7 @@ def test_validator_rejects_reserved(reserved):
 
 
 class FakeFS:
-    """In-memory stand-in for FirestoreClient — just enough surface for the router."""
+    """In-memory stand-in for FirestoreClient - just enough surface for the router."""
 
     def __init__(self):
         self.shares: dict[str, dict] = {}

@@ -3,9 +3,9 @@
 Runners are expensive to construct (each instantiates tools, callbacks,
 prompts, and a FirestoreSessionService). We keep one Runner per
 ``(model, thinking_level, search_grounding)`` combination for the
-lifetime of the process — the cache is bounded (a handful of models ×
+lifetime of the process - the cache is bounded (a handful of models ×
 ~5 thinking levels × 2 search states). Session state itself is
-per-request and backed by Firestore — the shared Runner is safe.
+per-request and backed by Firestore - the shared Runner is safe.
 """
 
 from google.adk.runners import Runner
@@ -14,7 +14,7 @@ from api.agent.agent import create_runner
 from api.agent.tools.registry import AgentMode
 
 MODEL_ALIASES: dict[str, str] = {
-    # gemini-3-pro-preview was discontinued on Vertex AI 2026-03-26 — use
+    # gemini-3-pro-preview was discontinued on Vertex AI 2026-03-26 - use
     # gemini-3.1-pro-preview as its successor. Flash 3.x is still preview-only.
     "flash": "gemini-3-flash-preview",
     "pro": "gemini-3.1-pro-preview",
@@ -32,7 +32,7 @@ def get_runner(
 ) -> Runner:
     """Return a cached Runner for the given model + thinking + search + mode combo.
 
-    ``None`` for any field means "fall back to settings default" — both
+    ``None`` for any field means "fall back to settings default" - both
     here and inside ``create_agent``. The cache key preserves ``None``
     so the default-fallback runner stays distinct from any explicit
     override that happens to match the current settings value.

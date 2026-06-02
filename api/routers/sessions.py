@@ -1,4 +1,4 @@
-"""Sessions router — list, retrieve, and delete chat sessions."""
+"""Sessions router - list, retrieve, and delete chat sessions."""
 
 import asyncio
 import json

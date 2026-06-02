@@ -89,7 +89,7 @@ class XAPIClient:
                 wait_sec = 15.0
             wait_sec = min(wait_sec, 60.0)  # don't stall workers more than a minute
             logger.warning(
-                "X API 429 for %s — sleeping %.1fs then retrying once", url, wait_sec,
+                "X API 429 for %s - sleeping %.1fs then retrying once", url, wait_sec,
             )
             time.sleep(wait_sec)
             self._throttle()

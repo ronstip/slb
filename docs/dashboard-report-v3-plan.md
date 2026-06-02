@@ -1,4 +1,4 @@
-# Dashboard Report v3/v4/v5 — Plan & Synthesized Feedback
+# Dashboard Report v3/v4/v5 - Plan & Synthesized Feedback
 
 **Date:** 2026-05-13
 **Goal:** Produce a v5 template + prompt that yields a customer-ready report. Iterate v3 → v4 → v5 with Playwright screenshots in between.
@@ -11,7 +11,7 @@
 
 | Item | Source | Action |
 |---|---|---|
-| Tone drifted "clowny / trying to be cool" in v2; v1 had the right senior-analyst voice | User #1b | Prompt: hard tone block — "intelligence analyst & advisor stance; expensive engagement; serious matter". Cut "cool" framings. |
+| Tone drifted "clowny / trying to be cool" in v2; v1 had the right senior-analyst voice | User #1b | Prompt: hard tone block - "intelligence analyst & advisor stance; expensive engagement; serious matter". Cut "cool" framings. |
 | Verbosity inconsistent: v1 longer, v2 shorter | User #1 | Prompt: target word count per section; reference target = v1 levels (~6,000 words total). |
 | §App-A URLs were `google.com/search?q=…` placeholders | My audit 3.2 | Tool gate: `publish_dashboard` rejects SERP-host URLs in Appendix. Prompt: link must point to a specific article/poll, not a search query. |
 | §9 narratives table lost reach column | My audit 3.3 | Template §9 brief: require `reach` column; rank by it. |
@@ -31,9 +31,9 @@
 | Item | Source | Action |
 |---|---|---|
 | Body structure unstable across sections (sometimes table-first, sometimes prose-first) | User #1 | Template each section brief: "open paragraph (interpretation) → table (data) → 1 paragraph (so-what) → chart if applicable". Same skeleton everywhere. |
-| H3 visually indistinguishable from H2 | User #4 | I checked the CSS — sizes ARE different (H1=26, H2=22, H3=18). Issue is likely that the agent's `##` for subsections under a section that already has `##`, so siblings end up at the same level. Fix in template: section headers are `##`, sub-actor / sub-topic blocks are `###`, never `##`. Add an explicit instruction in the prompt. |
+| H3 visually indistinguishable from H2 | User #4 | I checked the CSS - sizes ARE different (H1=26, H2=22, H3=18). Issue is likely that the agent's `##` for subsections under a section that already has `##`, so siblings end up at the same level. Fix in template: section headers are `##`, sub-actor / sub-topic blocks are `###`, never `##`. Add an explicit instruction in the prompt. |
 | Figures (charts) not optimally placed/chosen | User #5 | Template: revise chart placement to sit next to the section that interprets it. Inline figure references in markdownContent. Reconsider which charts. |
-| Text widgets scroll instead of stretching to full content size | User #7 | Two-part fix: (a) widget renderer — drop the inner `overflow-y-auto` when text fits; (b) tool — add an `auto_size_text_widgets` step in `publish_dashboard` that computes content height and sets `h` to fit. Actually simplest: tell the agent to update `h` per filled widget. But best is to fix the renderer to grow naturally. |
+| Text widgets scroll instead of stretching to full content size | User #7 | Two-part fix: (a) widget renderer - drop the inner `overflow-y-auto` when text fits; (b) tool - add an `auto_size_text_widgets` step in `publish_dashboard` that computes content height and sets `h` to fit. Actually simplest: tell the agent to update `h` per filled widget. But best is to fix the renderer to grow naturally. |
 | Top/bottom margins of text widgets need optimization | User #8 | Tweak `agent-prose` CSS: reduce default `margin-bottom` on first/last block; tighten spacing on H2 (currently 22px with large top margin). |
 | Tables need consistent generation guidance | User #9 | Template per-section: explicit column schemas with `| :--- | :---: | ----:` alignment hints. Prompt: row count caps (top-10, top-5), header conventions. |
 
@@ -52,7 +52,7 @@
 ### Template (`f7c9e2b81e1a4d9caaa18b5f3d2c7a04` → new v3 ID)
 
 1. Remove § symbol from every section header. Use plain numbers ("2. Metadata & contextual frame").
-2. Merge Appendix A + Appendix B into one widget ("Appendix — External context & methodology").
+2. Merge Appendix A + Appendix B into one widget ("Appendix - External context & methodology").
 3. Restore §7b format/platform sub-table brief.
 4. Restore §9 reach column requirement.
 5. Add `Link` column to §8a top-posts schema (and require markdown post links).
@@ -93,7 +93,7 @@
 
 ## 3. Iteration plan
 
-### v3 — broad strokes
+### v3 - broad strokes
 
 - New template script: `scripts/build_dashboard_template_v3.py`.
 - New template Firestore ID: hex32 string (TBD on first run).
@@ -102,7 +102,7 @@
 - Screenshot top → bottom in Playwright at 1440×900.
 - Capture issues.
 
-### v4 — visual + content fixes from v3
+### v4 - visual + content fixes from v3
 
 - CSS tweaks for margins/h3.
 - Auto-size text widgets logic (add to tool or to demo-population script).
@@ -110,7 +110,7 @@
 - Refresh demo content where v3 prose felt off-tone.
 - Screenshot.
 
-### v5 — polish for customer-readiness
+### v5 - polish for customer-readiness
 
 - Final tone pass on every section.
 - Final chart placement check.

@@ -1,7 +1,7 @@
 # Scolto robots.txt
 # https://scolto.com
 
-# Default policy — allow all crawlers, block authenticated and token-gated routes.
+# Default policy - allow all crawlers, block authenticated and token-gated routes.
 User-agent: *
 Allow: /
 Disallow: /shared/

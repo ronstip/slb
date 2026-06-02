@@ -1,4 +1,4 @@
-"""HTTP server for worker processes — receives Cloud Tasks requests.
+"""HTTP server for worker processes - receives Cloud Tasks requests.
 
 Deployed as a separate Cloud Run service (sl-worker). Each endpoint
 wraps the corresponding CLI worker script.
@@ -35,7 +35,7 @@ def _bind_cost_context_from_collection(collection_id: str):
     """Look up the owning user/org for a collection and bind it on the
     cost-meter ContextVar so any downstream Gemini call in this request
     attributes cost correctly. Returns the contextvar token (or ``None``
-    if the lookup failed — telemetry must never block work).
+    if the lookup failed - telemetry must never block work).
     """
     if not collection_id:
         return None

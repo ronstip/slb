@@ -138,7 +138,7 @@ def test_owner_can_fetch_posts_by_url(owner_client, created_collections):
     body = resp.json()
     assert body["agent_id"] == "agent-1"
     assert body["status"] == "running"
-    # One collection per platform — both URLs are twitter → one collection.
+    # One collection per platform - both URLs are twitter → one collection.
     assert len(body["collection_ids"]) == 1
 
     # Verify the request that was dispatched.
@@ -150,7 +150,7 @@ def test_owner_can_fetch_posts_by_url(owner_client, created_collections):
         "https://twitter.com/bob/status/67890",
     ]
     assert req.n_posts == 2
-    # Default off — see plan §G3.
+    # Default off - see plan §G3.
     assert req.include_comments is False
 
 
@@ -187,7 +187,7 @@ def test_unparseable_url_returns_400(owner_client, created_collections):
 
 
 def test_unsupported_platform_returns_400(owner_client, created_collections):
-    # YouTube isn't wired (no parser + no adapter branch). IG IS wired now —
+    # YouTube isn't wired (no parser + no adapter branch). IG IS wired now -
     # if you flip this to an IG URL, swap to test_owner_can_fetch_instagram_post_by_url.
     resp = owner_client.post(
         "/agents/agent-1/fetch-posts",
@@ -197,7 +197,7 @@ def test_unsupported_platform_returns_400(owner_client, created_collections):
     detail = resp.json()["detail"]
     # Either captured as bad_urls (parser doesn't know YouTube yet) OR as
     # unsupported_platforms (parser knows but adapter doesn't). Both shapes ok
-    # — what matters is no collection was dispatched.
+    # - what matters is no collection was dispatched.
     assert detail.get("bad_urls") or detail.get("unsupported_platforms")
     assert created_collections == []
 

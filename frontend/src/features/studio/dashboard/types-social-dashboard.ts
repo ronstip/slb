@@ -152,7 +152,7 @@ export type TopicMetric =
   | 'estimated_views'
   | 'unique_channels';
 
-/** Widened union for CustomChartConfig — the runtime branches on
+/** Widened union for CustomChartConfig - the runtime branches on
  *  widget.dataSource to decide which dimension/metric vocabulary applies. */
 export type AnyDimension = CustomDimension | TopicDimension;
 export type AnyMetric = CustomMetric | TopicMetric;
@@ -176,7 +176,7 @@ export const TOPIC_JSON_UNNESTED_DIMENSIONS: ReadonlySet<TopicDimension> = new S
   'platform', 'theme', 'entity', 'brand', 'channel_type', 'emotion',
 ]);
 
-/** Metrics whose value is a per-topic ratio. Sum is not meaningful — these
+/** Metrics whose value is a per-topic ratio. Sum is not meaningful - these
  *  default to `avg` aggregation and are blocked from JSON-unnested dims (since
  *  they can't decompose per breakdown entry). */
 export const TOPIC_RATIO_METRICS: ReadonlySet<TopicMetric> = new Set<TopicMetric>([
@@ -224,13 +224,13 @@ export interface CustomChartConfig {
    *  - `'posts'` (default): values are {@link CustomDimension}.
    *  - `'topics'`: values are {@link TopicDimension}. */
   dimension?: AnyDimension;
-  /** Vocabulary depends on `dataSource` — see `dimension`. */
+  /** Vocabulary depends on `dataSource` - see `dimension`. */
   metric: AnyMetric;
   /** default 'sum' */
   metricAgg?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   /** only applies when dimension === 'posted_at' */
   timeBucket?: 'hour' | 'day' | 'week' | 'month';
-  /** Bar orientation — default 'horizontal' */
+  /** Bar orientation - default 'horizontal' */
   barOrientation?: 'horizontal' | 'vertical';
   /** Optional second dimension to split bars/slices into sub-groups. For topic
    *  widgets, phase 1 ignores this (no breakdown support). */
@@ -347,7 +347,7 @@ export type TableColumnViz = 'none' | 'bar' | 'heatmap';
  *  e.g. "1,234 (12.3%)". Ignored for string dimension cells. */
 export type TableColumnDisplay = 'abs' | 'pct' | 'abs_pct';
 
-/** Post-level field — used when `CustomTableConfig.mode === 'post'`. One row per
+/** Post-level field - used when `CustomTableConfig.mode === 'post'`. One row per
  *  post, each column reads a raw field off `DashboardPost`. `custom:<name>` reads
  *  `post.custom_fields[name]`. */
 export type PostField =
@@ -390,7 +390,7 @@ export type PostFieldRender =
   | 'sentiment' // SentimentBadge
   | 'badge'     // generic small badge (emotion, language, content_type)
   | 'array'     // chip list (themes/entities/brands/custom array)
-  | 'numeric'   // numeric — supports viz/display
+  | 'numeric'   // numeric - supports viz/display
   | 'text';     // plain string fallback
 
 export interface PostFieldMeta {
@@ -432,9 +432,9 @@ export function getPostFieldMeta(field: PostField | undefined | null): PostField
 }
 
 export interface TableColumn {
-  /** Stable key — also used as the sort key. */
+  /** Stable key - also used as the sort key. */
   id: string;
-  /** 'metric' (default — back-compat) | 'dimension' | 'post-field' (post mode). */
+  /** 'metric' (default - back-compat) | 'dimension' | 'post-field' (post mode). */
   kind?: 'metric' | 'dimension' | 'post-field';
   /** Metric column: which field to aggregate. Vocabulary depends on the
    *  widget's `dataSource` (see {@link CustomChartConfig}). */
@@ -465,11 +465,11 @@ export function isPostFieldColumn(col: TableColumn): boolean {
 }
 
 export interface CustomTableConfig {
-  /** Aggregation mode. 'group' (default — back-compat): rows = cross product of
+  /** Aggregation mode. 'group' (default - back-compat): rows = cross product of
    *  dimension columns, metric columns aggregate within each group. 'post':
    *  rows = one per post, all columns are `kind: 'post-field'`. */
   mode?: 'group' | 'post';
-  /** @deprecated — legacy single group-by. New configs put all dimensions in
+  /** @deprecated - legacy single group-by. New configs put all dimensions in
    *  `columns` with `kind: 'dimension'`. Kept optional for back-compat; we
    *  normalize at render time via {@link normalizeTableConfig}. */
   dimension?: CustomDimension;
@@ -483,7 +483,7 @@ export interface CustomTableConfig {
   rowLimit?: number;
   /** Show the leading rank gutter (#). Default true. */
   showRank?: boolean;
-  /** Style — minimal subset; chart accent / palette do not apply to tables. */
+  /** Style - minimal subset; chart accent / palette do not apply to tables. */
   density?: 'compact' | 'comfortable';
   striped?: boolean;
 }
@@ -522,7 +522,7 @@ export function autoColumnHeader(col: TableColumn): string {
   }
   if (isDimensionColumn(col) && col.dimension) {
     const dim = col.dimension;
-    // Topic dimensions don't exist in DIMENSION_META — try the topic registry
+    // Topic dimensions don't exist in DIMENSION_META - try the topic registry
     // first, fall through to post-side. Either way getDimensionMeta returns
     // UNKNOWN_DIMENSION_META rather than crashing if we miss.
     const topicMeta = (dim as string) in TOPIC_DIMENSION_META
@@ -593,7 +593,7 @@ export function defaultTableConfigFor(dimension: CustomDimension): CustomTableCo
   };
 }
 
-/** Bootstrap a topics-backed table — leaderboard layout: topic header,
+/** Bootstrap a topics-backed table - leaderboard layout: topic header,
  *  post_count, total_engagement, signal_score. One row per topic. */
 export function defaultTopicTableConfig(): CustomTableConfig {
   return {
@@ -639,9 +639,9 @@ export function defaultPostTableConfig(): CustomTableConfig {
 export interface ChartStyleOverrides {
   /** Base accent color for the generated palette. */
   accent?: string;
-  /** Per-label color overrides — keyed by the exact label in the data. */
+  /** Per-label color overrides - keyed by the exact label in the data. */
   seriesColors?: Record<string, string>;
-  /** Per-label display-name overrides — keyed by the exact raw label in the
+  /** Per-label display-name overrides - keyed by the exact raw label in the
    *  data, value is the user-facing name shown in legends, axes, table cells,
    *  tooltips, etc. Empty/missing → fall back to humanised raw label. */
   seriesLabels?: Record<string, string>;
@@ -789,23 +789,23 @@ export interface SocialDashboardWidget {
   /** Legacy: KPI card tint + simple chart accent. New widgets prefer
    *  `styleOverrides.accent`; kept here for KPI cards and back-compat. */
   accent?: string;
-  /** Chart style — accent + per-series color overrides. Takes precedence
+  /** Chart style - accent + per-series color overrides. Takes precedence
    *  over `accent` for non-KPI chart widgets. */
   styleOverrides?: ChartStyleOverrides;
   /** Per-widget filters applied on top of global filtered posts */
   filters?: SocialWidgetFilters;
-  /** Custom chart configuration — set when aggregation === 'custom' */
+  /** Custom chart configuration - set when aggregation === 'custom' */
   customConfig?: CustomChartConfig;
-  /** Table widget configuration — set when chartType === 'table'. Coexists
+  /** Table widget configuration - set when chartType === 'table'. Coexists
    *  with `customConfig` so switching chart type ↔ table preserves both. */
   tableConfig?: CustomTableConfig;
-  /** Markdown body — set when aggregation === 'text' */
+  /** Markdown body - set when aggregation === 'text' */
   markdownContent?: string;
-  /** Post URLs to embed — set when aggregation === 'embeds'. Mode (single vs
+  /** Post URLs to embed - set when aggregation === 'embeds'. Mode (single vs
    *  carousel) is derived from length at render time; user does not choose. */
   embedUrls?: string[];
   /** Optional figure-style caption rendered below the chart body (figcaption).
-   *  The widget's `title` doubles as the figure header — there's only one. */
+   *  The widget's `title` doubles as the figure header - there's only one. */
   figureText?: string;
   /** Visual scale for number-card widgets. Undefined → medium. */
   numberSize?: NumberSize;
@@ -1000,7 +1000,7 @@ export const AGGREGATION_META: Record<SocialAggregation, AggregationMeta> = {
   },
   'text': {
     label: 'Text Card',
-    description: 'A markdown text block — use for intros, section headers, or commentary',
+    description: 'A markdown text block - use for intros, section headers, or commentary',
     icon: 'FileText',
     defaultChartType: 'table',
     defaultTitle: 'Text',
@@ -1008,7 +1008,7 @@ export const AGGREGATION_META: Record<SocialAggregation, AggregationMeta> = {
   },
   'embeds': {
     label: 'Embed Posts',
-    description: 'Embed one or more social posts by URL — single view or auto-carousel',
+    description: 'Embed one or more social posts by URL - single view or auto-carousel',
     icon: 'Quote',
     defaultChartType: 'embed',
     defaultTitle: 'Embedded Posts',
@@ -1033,7 +1033,7 @@ export type NumberSize = 'small' | 'medium' | 'big';
 export const DEFAULT_NUMBER_SIZE: NumberSize = 'medium';
 
 /** Grid footprint applied when the user picks a size in the editor. Existing
- *  widgets keep their saved w/h on render — only an explicit size change snaps. */
+ *  widgets keep their saved w/h on render - only an explicit size change snaps. */
 export const NUMBER_SIZE_GRID: Record<NumberSize, { w: number; h: number }> = {
   small:  { w: 2, h: 1 },
   medium: { w: 3, h: 2 },

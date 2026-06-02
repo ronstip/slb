@@ -82,7 +82,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // Reconstruction rebuilds chart artifacts from raw events; per-artifact
       // style edits (saved via PATCH /artifacts/{id}) aren't in those events,
       // so fetch them from Firestore and merge. IDs starting with `chart-restored-`
-      // are reconstructor fallbacks (no real Firestore doc) — skip those.
+      // are reconstructor fallbacks (no real Firestore doc) - skip those.
       await Promise.all(
         artifacts
           .filter((a) => a.type === 'chart' && !a.id.startsWith('chart-restored-'))
@@ -159,7 +159,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // Keep agent context active so the next message links to this agent
     useAgentStore.getState().setActiveAgent(agentId);
     // Callers (AgentDetailPage, AgentChatTab) already fetch sessions from their
-    // own mount effects — calling fetchAgentSessions here too triples the
+    // own mount effects - calling fetchAgentSessions here too triples the
     // /sessions request count under React StrictMode and on every task reload.
   },
 
@@ -196,7 +196,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }));
       // If the active session was deleted, the caller (SessionCard) handles navigation to `/`
     } catch {
-      // Deletion failed — leave list unchanged
+      // Deletion failed - leave list unchanged
     }
   },
 

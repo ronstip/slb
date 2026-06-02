@@ -5,7 +5,7 @@ return successfully, the result is persisted to Firestore so the
 frontend can re-hydrate it later. The assigned artifact_id is written
 back into the ADK event so it survives session persistence.
 
-Dashboards are NOT artifacts — they live in the Explore tab and are
+Dashboards are NOT artifacts - they live in the Explore tab and are
 managed via the explorer_layouts / dashboard_layouts collections.
 """
 
@@ -107,7 +107,7 @@ def persist_tool_result_artifact(
     try:
         fs.create_artifact(artifact_id, doc)
     except Exception as e:
-        # Doc never landed — drop quietly. The frontend will 404 on re-hydrate
+        # Doc never landed - drop quietly. The frontend will 404 on re-hydrate
         # and render a graceful error state. Bugs surface via this warning.
         logger.warning("Failed to create artifact %s: %s", artifact_id, e)
         return None
@@ -116,7 +116,7 @@ def persist_tool_result_artifact(
         try:
             fs.add_agent_artifact(agent_id, artifact_id)
         except Exception as e:
-            # The artifact doc exists, but it's now orphaned from the agent —
+            # The artifact doc exists, but it's now orphaned from the agent -
             # the deliverables UI fetches via agent.artifact_ids, so the user
             # can't see it. Log at ERROR so this is greppable in Cloud Logging
             # rather than buried in warning noise.
@@ -151,7 +151,7 @@ def persist_event_artifacts(
     """Walk an ADK event's function_response parts and persist any artifacts.
 
     Used by the worker continuation paths to persist artifacts as their tool
-    results stream in, instead of waiting until the entire runner loop ends —
+    results stream in, instead of waiting until the entire runner loop ends -
     so a Cloud Run timeout / OOM mid-run doesn't drop completed deliverables.
 
     On success, also stamps `_artifact_id` back into the response dict so the

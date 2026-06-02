@@ -1,4 +1,4 @@
-"""The /chat SSE endpoint — streams agent events to the client."""
+"""The /chat SSE endpoint - streams agent events to the client."""
 
 import asyncio
 import json
@@ -39,7 +39,7 @@ router = APIRouter()
 @router.post("/chat")
 @limiter.limit("20/minute")
 async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
-    """SSE endpoint — streams agent events to the client."""
+    """SSE endpoint - streams agent events to the client."""
     # §E entitlement gate. Anonymous landing-page previews are exempt (they're
     # capped separately below); everyone else must be active + in credit.
     if not user.is_anonymous:
@@ -145,7 +145,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                         if isinstance(tr_result, dict):
                             active_agent_id = session.state.get("active_agent_id") if session else None
                             # Artifact persistence must not tear down the SSE
-                            # stream — log and continue without _artifact_id
+                            # stream - log and continue without _artifact_id
                             # so the client still receives the tool_result.
                             try:
                                 aid = persist_tool_result_artifact(
@@ -221,7 +221,7 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                     restore_and_flush(runner, session, trimmed_prefix)
                 except Exception:
                     # Last-resort guard: stream interrupted and flush itself
-                    # failing. Log and exit — we've already done our best.
+                    # failing. Log and exit - we've already done our best.
                     logger.exception("Failed to flush session %s in finally block", session_id)
 
     return EventSourceResponse(event_stream())

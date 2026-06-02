@@ -45,7 +45,7 @@ from config.settings import get_settings
 from workers.collection.adapters.apify_client import ApifyAdapterClient
 
 
-# Logical-field getters — each returns a non-None value if the field is
+# Logical-field getters - each returns a non-None value if the field is
 # recoverable on this item under either the legacy `parse_apify_instagram_post`
 # shape OR the apidojo/instagram-hashtag-scraper shape. Used by the
 # parser-shape check and the engagement / views / time-window checks.

@@ -44,7 +44,7 @@ export const MODEL_OPTIONS: {
   {
     key: 'flash',
     label: 'Gemini 3 Flash',
-    description: 'Fast and capable — best for most queries.',
+    description: 'Fast and capable - best for most queries.',
   },
   {
     key: 'pro',

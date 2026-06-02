@@ -156,7 +156,7 @@ export function InlineChart({ data }: InlineChartProps) {
   } else if (chartType === 'number') {
     content = <InlineNumber data={chartData} />;
   } else {
-    // Unknown chart type — show nothing
+    // Unknown chart type - show nothing
     return null;
   }
 

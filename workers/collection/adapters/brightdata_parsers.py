@@ -60,7 +60,7 @@ def parse_brightdata_tiktok_post(item: dict) -> Post:
     post_id = str(item.get("post_id") or "")
     username = item.get("account_id") or item.get("profile_username") or ""
 
-    # Media URLs — skip video_url (TikTok CDN tokens expire within minutes,
+    # Media URLs - skip video_url (TikTok CDN tokens expire within minutes,
     # causing 100% 403 failures). Keep thumbnails + carousel images only.
     media_urls: list[str] = []
     preview = item.get("preview_image")

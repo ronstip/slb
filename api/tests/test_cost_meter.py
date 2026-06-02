@@ -1,6 +1,6 @@
 """Unit tests for the cost_meter row builder + threaded insert.
 
-We don't actually hit BigQuery — `api.deps.get_bq` is monkey-patched so we
+We don't actually hit BigQuery - `api.deps.get_bq` is monkey-patched so we
 can capture the row that *would* be inserted, then assert on its shape.
 """
 
@@ -47,7 +47,7 @@ def _default_margin(monkeypatch):
 def fake_bq(monkeypatch):
     fake = _FakeBQ()
     monkeypatch.setattr("api.deps.get_bq", lambda: fake)
-    # Keep wallet deduction hermetic too — cost_meter now calls get_fs().
+    # Keep wallet deduction hermetic too - cost_meter now calls get_fs().
     monkeypatch.setattr("api.deps.get_fs", lambda: _FakeFS())
     return fake
 
@@ -88,7 +88,7 @@ def test_log_cost_writes_row_with_expected_shape(fake_bq: _FakeBQ):
     assert row["user_id"] == "u1"
     assert row["session_id"] == "sess"
     assert row["request_id"] == "rid-test"
-    # Cost columns — gemini-3-flash-preview: $0.50 + $3.00 = $3.50/M tok.
+    # Cost columns - gemini-3-flash-preview: $0.50 + $3.00 = $3.50/M tok.
     assert row["provider"] == "gemini"
     assert row["model"] == "gemini-3-flash-preview"
     assert row["feature"] == "chat"
@@ -222,7 +222,7 @@ def test_log_cost_swallows_insert_failure(fake_bq: _FakeBQ, monkeypatch):
         model="gemini-3-flash-preview",
         input_tokens=1,
     )
-    # Give the thread a beat to finish — we just need to confirm no exception
+    # Give the thread a beat to finish - we just need to confirm no exception
     # leaked into the calling thread.
     time.sleep(0.05)
 
@@ -245,7 +245,7 @@ def test_log_cost_inherits_user_id_from_collection_context(fake_bq: _FakeBQ):
     """Apify-style call sites pass user_id="" and rely on the bound
     collection context (set by workers/server.py at task entry). Without
     the fallback, those rows land with empty user_id and the admin
-    user-detail query (WHERE user_id = @uid) hides them — the root cause
+    user-detail query (WHERE user_id = @uid) hides them - the root cause
     of the "only Brightdata showing" bug. This test pins the fallback in
     place so the regression can't sneak back."""
     with cost_meter.collection_context_scope(
@@ -319,7 +319,7 @@ def test_log_cost_explicit_estimated_fallback(fake_bq: _FakeBQ):
 
 def test_start_thread_with_cost_context_propagates_ctx(fake_bq: _FakeBQ):
     """Plain `threading.Thread` does NOT inherit ContextVars from its
-    parent thread — a child thread sees the default (empty) context. This
+    parent thread - a child thread sees the default (empty) context. This
     silently dropped user_id+agent_id from every Apify cost row fired from
     its per-platform worker threads. `start_thread_with_cost_context`
     captures the parent context and re-runs the target inside it.

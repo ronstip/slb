@@ -9,7 +9,7 @@ interface ArtifactPreviewIllustrationProps {
 
 /**
  * Abstract SVG illustrations for artifact library grid cards.
- * Uses simple geometric shapes to suggest the chart/artifact type — no data needed.
+ * Uses simple geometric shapes to suggest the chart/artifact type - no data needed.
  */
 export function ArtifactPreviewIllustration({
   artifactType,

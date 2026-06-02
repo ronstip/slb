@@ -1,8 +1,8 @@
 """Per-collection-run file logging.
 
 Attaches a FileHandler to the root logger for the lifetime of one
-PipelineRunner.run() call so every log line emitted during that run —
-including from worker threads and adapter code — is captured to a file
+PipelineRunner.run() call so every log line emitted during that run -
+including from worker threads and adapter code - is captured to a file
 named after the collection. A stable `latest.log` is rewritten at the
 start of each run so `tail -f logs/runs/latest.log` always follows the
 most recent run.
@@ -13,7 +13,7 @@ File layout::
     logs/runs/latest.log                             # truncated each run
 
 The handler is attached/detached via a context manager so a crash inside
-the run still flushes and removes the handler — no leaked file handles.
+the run still flushes and removes the handler - no leaked file handles.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def collection_run_log(collection_id: str, agent_id: str | None = None) -> Itera
     latest_path = LOG_DIR / LATEST_NAME
 
     # Truncate latest.log up front. We open in 'w' mode so any prior run's
-    # contents are wiped — `tail -f latest.log` will follow the new run.
+    # contents are wiped - `tail -f latest.log` will follow the new run.
     latest_handler = logging.FileHandler(latest_path, mode="w", encoding="utf-8")
     run_handler = logging.FileHandler(run_path, mode="a", encoding="utf-8")
     formatter = logging.Formatter(_FORMAT)

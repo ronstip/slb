@@ -1,4 +1,4 @@
-"""Pipeline step definitions — thin wrappers around existing worker functions.
+"""Pipeline step definitions - thin wrappers around existing worker functions.
 
 Each step action takes a batch of posts (from state_manager) and returns
 per-post outcomes. The runner uses these to transition states.
@@ -28,7 +28,7 @@ class StepContext:
     settings: Settings
     content_types: list[str] | None = None
     batch_counters: dict[str, int] = field(default_factory=dict)
-    # In-run idempotency cache — primed once from BQ at pipeline start and
+    # In-run idempotency cache - primed once from BQ at pipeline start and
     # updated as steps succeed. Avoids a per-batch BQ pre-check roundtrip.
     enriched_ids: set[str] = field(default_factory=set)
     embedded_ids: set[str] = field(default_factory=set)
@@ -140,7 +140,7 @@ def action_embed(posts: list[dict], ctx: StepContext) -> list[StepResult]:
 # Step registry
 # ---------------------------------------------------------------------------
 #
-# Embed is the only step still on the batched action model — it's a single BQ
+# Embed is the only step still on the batched action model - it's a single BQ
 # query per batch and was never the bottleneck. Download and enrich now run
 # through StreamingStepRunner (see workers/pipeline/streaming.py and the
 # streaming_steps section below).
@@ -210,7 +210,7 @@ def download_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None
             )
 
     if not media_urls:
-        # No media to download — let it pass through to enrichment with empty refs.
+        # No media to download - let it pass through to enrichment with empty refs.
         return "ok", None
 
     post_obj = Post(
@@ -237,7 +237,7 @@ def download_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None
     ]
     if usable_refs:
         return "ok", {"media_refs": usable_refs}
-    # All downloads failed — but still pass through; enrichment uses text only.
+    # All downloads failed - but still pass through; enrichment uses text only.
     return "ok", None
 
 
@@ -254,7 +254,7 @@ def enrich_process_one(post: dict, ctx: StepContext) -> tuple[str, dict | None]:
     if post_id in ctx.enriched_ids:
         return "ok", None
 
-    # Read post content from BQ — include platform_metadata so we can fall back
+    # Read post content from BQ - include platform_metadata so we can fall back
     # to the defensive `referenced_post` cache when the dep isn't in our DAG.
     try:
         rows = ctx.bq.query(
@@ -360,7 +360,7 @@ def _resolve_referenced_post(post: dict, row: dict, ctx: StepContext):
             dep_state = ctx.state_manager.get_post_state(awaits)
         except Exception:
             logger.warning(
-                "post_state read failed for dep %s — falling back to defensive cache",
+                "post_state read failed for dep %s - falling back to defensive cache",
                 awaits, exc_info=True,
             )
         try:

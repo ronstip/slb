@@ -16,9 +16,9 @@
 | Scenario | output_tokens | tool_calls | duplicates | preamble | turns |
 |---|---:|---:|---:|---:|---:|
 | **autonomous-full-run** | 213 → 15 | 18 → 27 | 0 → 20 | 0 → 0 | 1 → 1 |
-| **autonomous-narrow-scope** | — | — | — | — | — (candidate only) |
-| **autonomous-recurring-trend** | — | — | — | — | — (candidate only) |
-| **autonomous-verifier-catches-bad-claim** | — | — | — | — | — (candidate only) |
+| **autonomous-narrow-scope** | - | - | - | - | - (candidate only) |
+| **autonomous-recurring-trend** | - | - | - | - | - (candidate only) |
+| **autonomous-verifier-catches-bad-claim** | - | - | - | - | - (candidate only) |
 
 ## Duplicate actions (candidate)
 

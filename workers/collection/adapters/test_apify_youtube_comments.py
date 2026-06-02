@@ -84,7 +84,7 @@ def _yt_item(
 
 
 def test_fetch_comments_parses_real_shape_with_synthesized_ids():
-    """Two flat comments, no native ids — flatten synthesizes stable ids
+    """Two flat comments, no native ids - flatten synthesizes stable ids
     and content/author/votes survive the parse."""
     adapter, settings_patch = _build_adapter()
 
@@ -250,7 +250,7 @@ def test_parse_yt_vote_count_abbreviations():
 
 
 def test_fetch_comments_facebook_still_unsupported():
-    """Facebook isn't wired yet — should raise NotImplementedError."""
+    """Facebook isn't wired yet - should raise NotImplementedError."""
     adapter, settings_patch = _build_adapter()
     try:
         with pytest.raises(NotImplementedError):

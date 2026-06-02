@@ -1,4 +1,4 @@
-"""Artifacts router — list, retrieve, update, and delete artifacts."""
+"""Artifacts router - list, retrieve, update, and delete artifacts."""
 
 import asyncio
 import json
@@ -26,7 +26,7 @@ router = APIRouter()
 
 def _can_access(user: CurrentUser, artifact: dict) -> bool:
     # Artifact access is the shared component rule (owner, or org-shared via the
-    # `shared` flag set when the owning agent is shared) — see can_access_component.
+    # `shared` flag set when the owning agent is shared) - see can_access_component.
     return can_access_component(user, artifact)
 
 
@@ -262,7 +262,7 @@ async def post_underlying_data(
     body: InlineUnderlyingDataRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Inline underlying data query — used when the artifact is not in Firestore
+    """Inline underlying data query - used when the artifact is not in Firestore
     (e.g. restored sessions where the artifact ID was lost)."""
     if not body.collection_ids:
         raise HTTPException(422, "collection_ids is required")

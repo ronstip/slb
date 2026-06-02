@@ -6,7 +6,7 @@ import { Logo } from '../../../components/Logo.tsx';
 import { Markdown } from '../../../components/Markdown.tsx';
 
 export function buildKickoffMarkdown(task: Agent, briefing: Briefing | null): string {
-  // Prefer the executive briefing — it's the user-facing front page, already
+  // Prefer the executive briefing - it's the user-facing front page, already
   // self-contained with its own headline. Fall back to state_of_the_world for
   // older runs that pre-date the executive_briefing field.
   const executive = briefing?.executive_briefing?.trim();
@@ -21,20 +21,20 @@ export function buildKickoffMarkdown(task: Agent, briefing: Briefing | null): st
     return `${heading}\n\n${stateOfWorld}`;
   }
 
-  // Fallbacks keyed on status / paused — no heading, already a one-liner.
+  // Fallbacks keyed on status / paused - no heading, already a one-liner.
   if (task.paused) {
     return `I'm paused right now. Resume me when you're ready, or ask me anything about **${task.title}**.`;
   }
   switch (task.status) {
     case 'running':
-      return `I'm still gathering data on **${task.title}**. Ask me anything in the meantime — I'll use what I have so far.`;
+      return `I'm still gathering data on **${task.title}**. Ask me anything in the meantime - I'll use what I have so far.`;
     case 'failed':
       return `My last run hit an issue. Ask me to retry, or dig into what went wrong with **${task.title}**.`;
     case 'archived':
       return `This agent is archived, but I still have everything I collected. Ask me anything about **${task.title}**.`;
     case 'success':
     default:
-      return `Ready when you are. Ask me anything about **${task.title}** — findings, trends, or what to look at next.`;
+      return `Ready when you are. Ask me anything about **${task.title}** - findings, trends, or what to look at next.`;
   }
 }
 

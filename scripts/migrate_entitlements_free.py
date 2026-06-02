@@ -3,7 +3,7 @@
 Why:
     §E replaces the `ALLOWED_EMAILS` gate with a per-user plan. New signups
     default to `blocked` (set in `_get_or_create_user`), but everyone already
-    using the app must keep working — so we migrate all pre-existing user docs
+    using the app must keep working - so we migrate all pre-existing user docs
     to `tier="free"` (unlimited, balance not enforced) and initialise an empty
     $ wallet.
 
@@ -59,7 +59,7 @@ def main(dry_run: bool) -> None:
         data = doc.to_dict() or {}
         plan = data.get("plan") or {}
 
-        # Already has a tier (new blocked signup or admin-assigned) — leave it.
+        # Already has a tier (new blocked signup or admin-assigned) - leave it.
         if plan.get("tier"):
             n_skipped += 1
             continue

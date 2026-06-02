@@ -3,7 +3,7 @@
 Why:
     Org-sharing now propagates the agent's share state down to its artifacts
     (sets `shared=True` + `org_id`) so org members can open the agent's
-    deliverables — briefs, slides, exports, and the social dashboard. See
+    deliverables - briefs, slides, exports, and the social dashboard. See
     docs/agent-sharing-architecture.md.
 
     Propagation only runs when the share is *toggled* with the new code. Agents
@@ -15,10 +15,10 @@ Why:
     This backfill stamps `shared=True`, `org_id`, and (if missing) `agent_id`
     on every artifact owned by a currently-org-shared agent.
 
-    Explorer / dashboard layouts need NO backfill — they gate live via their
+    Explorer / dashboard layouts need NO backfill - they gate live via their
     agent / artifact, so they light up as soon as the artifacts above are fixed.
 
-Idempotent — an artifact already shared to the right org is skipped.
+Idempotent - an artifact already shared to the right org is skipped.
 
 Usage:
     python -m scripts.backfill_shared_agent_artifacts --dry-run
@@ -67,7 +67,7 @@ def main(dry_run: bool) -> None:
         org_id = agent.get("org_id")
         artifact_ids = agent.get("artifact_ids") or []
         if org_id is None:
-            # A shared agent with no org_id is itself inconsistent — skip and flag.
+            # A shared agent with no org_id is itself inconsistent - skip and flag.
             logger.warning("agent %s is visibility=org but has no org_id; skipping", agent_id)
             continue
         n_agents += 1

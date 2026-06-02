@@ -1,4 +1,4 @@
-# Bright Data Integration — Architecture Plan
+# Bright Data Integration - Architecture Plan
 
 ## 1. System Overview
 
@@ -12,12 +12,12 @@ The platform currently relies on **Vetric** as the sole production data vendor. 
 
 ```
 DataProviderWrapper
-  ├── VetricAdapter     (instagram, tiktok, twitter, reddit, youtube)  — synchronous API
-  ├── BrightDataAdapter (tiktok, youtube, reddit)                      — async trigger→poll→download
+  ├── VetricAdapter     (instagram, tiktok, twitter, reddit, youtube)  - synchronous API
+  ├── BrightDataAdapter (tiktok, youtube, reddit)                      - async trigger→poll→download
   └── MockAdapter       (dev fallback)
 ```
 
-A single collection can mix vendors — e.g., Vetric for Twitter + Instagram, Bright Data for TikTok + YouTube + Reddit. Vendor selection is driven by a `vendor_config` in the collection config.
+A single collection can mix vendors - e.g., Vetric for Twitter + Instagram, Bright Data for TikTok + YouTube + Reddit. Vendor selection is driven by a `vendor_config` in the collection config.
 
 ### Key Architectural Difference
 
@@ -44,7 +44,7 @@ Authorization: Bearer 27e3b627-f007-4fd1-a977-f60d34a5fb18
 
 ### Async Lifecycle
 
-**Step 1 — Trigger scrape:**
+**Step 1 - Trigger scrape:**
 ```
 POST /datasets/v3/scrape
   ?dataset_id={dataset_id}
@@ -57,16 +57,16 @@ Body: {"input": [{...}, {...}]}
 ```
 
 Response (async): `{"snapshot_id": "sd_xxx", "message": "in progress..."}`
-Response (sync, small requests): Direct data array — handle both cases.
+Response (sync, small requests): Direct data array - handle both cases.
 
-**Step 2 — Poll status:**
+**Step 2 - Poll status:**
 ```
 GET /datasets/v3/progress/{snapshot_id}
 
 Response: {"status": "ready", "snapshot_id": "sd_xxx", "records": 4, "errors": 0, "collection_duration": 112597}
 ```
 
-**Step 3 — Download results:**
+**Step 3 - Download results:**
 ```
 GET /datasets/v3/snapshot/{snapshot_id}
 
@@ -87,23 +87,23 @@ Response: NDJSON array of post/profile objects
 
 ### Per-Platform Input Schemas
 
-**TikTok — Keyword Discovery:**
+**TikTok - Keyword Discovery:**
 ```json
 {"search_keyword": "trump", "num_of_posts": 20, "country": "IL"}
 ```
 
-**YouTube — Keyword Discovery:**
+**YouTube - Keyword Discovery:**
 ```json
 {"keyword": "popular music", "num_of_posts": "10", "start_date": "03-01-2026", "end_date": "03-06-2026", "country": ""}
 ```
 Note: `num_of_posts` is a **string** for YouTube. Date format is `MM-DD-YYYY`.
 
-**Reddit — Keyword Discovery:**
+**Reddit - Keyword Discovery:**
 ```json
 {"keyword": "trump", "date": "2026-01-01", "num_of_posts": 20}
 ```
 
-**All Platforms — Collect by URL (engagement refresh):**
+**All Platforms - Collect by URL (engagement refresh):**
 ```json
 {"URL": "https://tiktok.com/@user/video/123"}
 ```
@@ -114,7 +114,7 @@ Note: `num_of_posts` is a **string** for YouTube. Date format is `MM-DD-YYYY`.
 
 New file: `workers/collection/adapters/brightdata_client.py`
 
-Mirrors the pattern of `vetric_client.py` — a requests.Session with retry adapter.
+Mirrors the pattern of `vetric_client.py` - a requests.Session with retry adapter.
 
 ```python
 class BrightDataAPIError(Exception):
@@ -152,11 +152,11 @@ def scrape_and_wait(self, dataset_id, inputs, discover_by="keyword",
                     poll_backoff=1.5, max_poll_interval=30.0):
     result = self.trigger_scrape(dataset_id, inputs, discover_by)
 
-    # Sync response — data returned directly
+    # Sync response - data returned directly
     if isinstance(result, list):
         return result
 
-    # Async — poll until ready
+    # Async - poll until ready
     snapshot_id = result
     interval = poll_interval_sec
     elapsed = 0.0
@@ -203,7 +203,7 @@ def _build_session(self):
 
 New file: `workers/collection/adapters/brightdata_parsers.py`
 
-Follows the exact pattern of `vetric_parsers.py` — defensive `.get()` with defaults, one parse function per platform.
+Follows the exact pattern of `vetric_parsers.py` - defensive `.get()` with defaults, one parse function per platform.
 
 ### Shared Utilities
 
@@ -235,7 +235,7 @@ def _extract_search_keyword(item: dict) -> str | None:
 | `url` | `post_url` | |
 | `create_time` | `posted_at` | ISO 8601 |
 | `digg_count` | `likes` | Integer |
-| `share_count` | `shares` | **String** — needs `_safe_int` |
+| `share_count` | `shares` | **String** - needs `_safe_int` |
 | `collect_count` | `saves` | Integer |
 | `comment_count` | `comments_count` | Integer |
 | `play_count` | `views` | Integer |
@@ -304,7 +304,7 @@ def _extract_search_keyword(item: dict) -> str | None:
 | `community_rank` | `platform_metadata.community_rank` | |
 | `discovery_input.keyword` | `search_keyword` | |
 
-**Reddit post type inference:** Determine from media presence — has `videos` → "video", has `photos` → "image", else "text".
+**Reddit post type inference:** Determine from media presence - has `videos` → "video", has `photos` → "image", else "text".
 
 ### Parser Pseudocode Pattern
 
@@ -604,7 +604,7 @@ Level 1: Cross-Platform (ThreadPoolExecutor, max_workers=3)
 Level 2: Cross-Keyword Batching (Bright Data handles internally)
 ├── Single API call with ALL keywords for a platform
 ├── {"input": [{"keyword": "k1", ...}, {"keyword": "k2", ...}, ...]}
-└── BD parallelizes server-side — major advantage over Vetric
+└── BD parallelizes server-side - major advantage over Vetric
 
 Level 3: Async I/O Overlap
 ├── While tiktok is polling (sleeping), youtube may be downloading
@@ -678,10 +678,10 @@ def fetch_engagements(self, post_urls: list[str]) -> list[dict]:
 | | TikTok | YouTube | Reddit |
 |---|---|---|---|
 | likes | `digg_count` | `likes` | `num_upvotes` |
-| shares | `share_count` | — | — |
+| shares | `share_count` | - | - |
 | comments | `comment_count` | `num_comments` | `num_comments` |
-| views | `play_count` | `views` | — |
-| saves | `collect_count` | — | — |
+| views | `play_count` | `views` | - |
+| saves | `collect_count` | - | - |
 
 ### Cost Consideration
 
@@ -743,7 +743,7 @@ Dataset IDs are stored as class constants in `BrightDataAdapter._DATASET_IDS`. T
 ### One Consideration
 
 The Bright Data polling loop can block a thread for up to 300s. Ensure:
-- Worker service timeout allows for collection time (Cloud Run: 10+ min — already fine)
+- Worker service timeout allows for collection time (Cloud Run: 10+ min - already fine)
 - Cloud Tasks timeout accounts for Bright Data collection duration
 
 ---
@@ -767,7 +767,7 @@ If Bright Data fails for one platform:
 1. Log error with snapshot_id, platform, keywords
 2. Record failure in `platform_stats` (used in run_log)
 3. Continue with other platforms (both BD and Vetric)
-4. Report partial results — collection proceeds with whatever succeeded
+4. Report partial results - collection proceeds with whatever succeeded
 
 This matches VetricAdapter's existing behavior.
 

@@ -118,7 +118,7 @@ def _slot_name(ph_type_int: int, counters: dict[str, int]) -> str:
         count = counters.get("content", 0)
         counters["content"] = count + 1
         if count == 0:
-            return "body"  # single content area — will be renamed to "left" if a second appears
+            return "body"  # single content area - will be renamed to "left" if a second appears
         else:
             return "right"
     elif ph_type == "PICTURE":

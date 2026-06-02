@@ -115,7 +115,7 @@ export function AgentDetailPage() {
 
   // Sync the URL's `layout` param into the explorer-layout store. Runs whenever
   // the URL changes (initial mount, refresh, back/forward), so the dashboard
-  // matches what the URL says — making layouts bookmarkable and shareable.
+  // matches what the URL says - making layouts bookmarkable and shareable.
   useEffect(() => {
     if (activeTab !== 'explorer') return;
     const desired = layoutParam ?? null;
@@ -204,7 +204,7 @@ export function AgentDetailPage() {
           const parsed = JSON.parse((e as { body: string }).body);
           if (parsed?.detail) msg = String(parsed.detail);
         } catch {
-          // body wasn't JSON — leave default
+          // body wasn't JSON - leave default
         }
       }
       toast.error(msg);
@@ -271,7 +271,7 @@ export function AgentDetailPage() {
 
   return (
     <div className="flex h-dvh bg-background">
-      {/* Unified sidebar — desktop only; becomes the drawer on mobile */}
+      {/* Unified sidebar - desktop only; becomes the drawer on mobile */}
       <aside
         className="hidden shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block"
         style={{ width: sidebarCollapsed ? 48 : 280 }}
@@ -286,7 +286,7 @@ export function AgentDetailPage() {
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <MobileHeader title={task?.title} />
-        {/* Tab content — wait for task before mounting tabs (each tab assumes a
+        {/* Tab content - wait for task before mounting tabs (each tab assumes a
             non-null task). The sidebar renders independently above. */}
         <main className="flex flex-1 flex-col overflow-hidden">
           {!task ? (

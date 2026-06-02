@@ -26,7 +26,7 @@ def parse_x_post(tweet: dict, includes: dict | None) -> Post:
     """Parse a tweet from /2/tweets/search/recent or /2/users/:id/tweets.
 
     `tweet` is a single object from `response["data"]` OR `response["includes"]["tweets"]`.
-    `includes` is `response["includes"]` — used to resolve author + media + referenced text.
+    `includes` is `response["includes"]` - used to resolve author + media + referenced text.
     """
     includes = includes or {}
     users_by_id = _index_users_by_id(includes)
@@ -129,7 +129,7 @@ def _build_referenced_snapshot(
 
     Always includes id + type. Adds text + author when the ref is hydrated in
     `includes.tweets` (i.e. expansion was requested and the source tweet is
-    visible to us — not deleted/protected). The enricher falls back to this
+    visible to us - not deleted/protected). The enricher falls back to this
     cache when the dep Post is missing from BQ.
     """
     snapshot: dict = {"id": ref_id, "type": ref_type}
@@ -179,7 +179,7 @@ def parse_comment(tweet: dict, users_by_id: dict[str, dict]) -> Comment:
     """Parse a reply tweet (from /2/tweets/search/all conversation_id:<id>)
     into a Comment. `users_by_id` is the indexed includes.users block.
 
-    Sets `replied_to_id` to the direct parent (post or comment) — root
+    Sets `replied_to_id` to the direct parent (post or comment) - root
     resolution is done in a second pass via resolve_comment_roots.
     """
     author_id = str(tweet.get("author_id", ""))
@@ -234,23 +234,23 @@ def parse_comment(tweet: dict, users_by_id: dict[str, dict]) -> Comment:
 
 
 def parse_comment_author(user: dict) -> Channel:
-    """Shim onto parse_x_channel — comment authors are X channels."""
+    """Shim onto parse_x_channel - comment authors are X channels."""
     return parse_x_channel(user)
 
 
-# `resolve_comment_roots` moved to comment_threading — re-exported here for
+# `resolve_comment_roots` moved to comment_threading - re-exported here for
 # back-compat with existing X-side imports.
 from workers.collection.adapters.comment_threading import resolve_comment_roots  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
-# Helpers — media
+# Helpers - media
 # ---------------------------------------------------------------------------
 
 def _extract_media(media_objs: list[dict]) -> tuple[list[str], list[dict]]:
     """Return (downloadable_urls, rich_refs) for a tweet's media attachments.
 
-    The URL list (jpg/png/mp4 only — HLS .m3u8 dropped) feeds the media_downloader
+    The URL list (jpg/png/mp4 only - HLS .m3u8 dropped) feeds the media_downloader
     which streams plain HTTP files. The rich-refs list mirrors the URL list 1:1
     and carries `preview_image_url` for videos so the UI can render a thumbnail
     even when the video TTL has expired or GCS upload failed.
@@ -301,7 +301,7 @@ def _infer_post_type(media_objs: list[dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Helpers — includes indexing
+# Helpers - includes indexing
 # ---------------------------------------------------------------------------
 
 def _index_users_by_id(includes: dict) -> dict[str, dict]:
@@ -313,7 +313,7 @@ def _index_media_by_key(includes: dict) -> dict[str, dict]:
 
 
 def _index_tweets_by_id(includes: dict) -> dict[str, dict]:
-    """Index `includes.tweets` — populated by the `referenced_tweets.id` expansion.
+    """Index `includes.tweets` - populated by the `referenced_tweets.id` expansion.
 
     Each entry is a fully-hydrated tweet object (same shape as `data[]` items)
     representing a post referenced (quoted/replied/retweeted) by a top-level
@@ -323,7 +323,7 @@ def _index_tweets_by_id(includes: dict) -> dict[str, dict]:
 
 
 # ---------------------------------------------------------------------------
-# Helpers — date / numeric
+# Helpers - date / numeric
 # ---------------------------------------------------------------------------
 
 def _parse_iso8601(value: str | None) -> datetime:
@@ -342,7 +342,7 @@ def _parse_iso8601(value: str | None) -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# URL helpers — shared with Vetric adapter for engagement-refresh routing
+# URL helpers - shared with Vetric adapter for engagement-refresh routing
 # ---------------------------------------------------------------------------
 
 def extract_twitter_id(url: str) -> str | None:

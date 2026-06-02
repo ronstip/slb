@@ -1,4 +1,4 @@
-"""Snapshot recovery — download BrightData snapshots that were triggered but never downloaded.
+"""Snapshot recovery - download BrightData snapshots that were triggered but never downloaded.
 
 Called by the scheduler (every ~5 min) and on API startup to recover data
 from crashed or interrupted collection pipelines.
@@ -88,7 +88,7 @@ def recover_snapshots() -> int:
         # Try to download
         records = client.try_download_snapshot(snapshot_id)
         if records is None:
-            # Not ready yet — scheduler will retry next tick
+            # Not ready yet - scheduler will retry next tick
             continue
         if not records:
             logger.info("Recovery: snapshot %s returned 0 records, marking done", snapshot_id)
@@ -132,7 +132,7 @@ def recover_snapshots() -> int:
             if existing_ids:
                 posts = [p for p in posts if p.post_id not in existing_ids]
                 logger.info(
-                    "Recovery: snapshot %s — %d already in BQ, %d new",
+                    "Recovery: snapshot %s - %d already in BQ, %d new",
                     snapshot_id, len(existing_ids), len(posts),
                 )
         except Exception as e:

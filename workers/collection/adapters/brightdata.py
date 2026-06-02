@@ -67,7 +67,7 @@ class BrightDataAdapter(DataProviderAdapter):
         self._platform_stats: dict[str, dict] = {}
         self._collection_errors: list[dict] = []
         self._stats_lock = threading.Lock()
-        # Post funnel tracking — records how many records are lost at each stage
+        # Post funnel tracking - records how many records are lost at each stage
         self._funnel: dict = {
             "bd_raw_records": 0,
             "bd_error_items_filtered": 0,
@@ -94,7 +94,7 @@ class BrightDataAdapter(DataProviderAdapter):
         with self._snapshot_count_lock:
             if self._snapshot_count >= self._max_snapshots:
                 logger.warning(
-                    "Snapshot budget exhausted: %d/%d used — skipping further scrapes",
+                    "Snapshot budget exhausted: %d/%d used - skipping further scrapes",
                     self._snapshot_count, self._max_snapshots,
                 )
                 return False
@@ -401,7 +401,7 @@ class BrightDataAdapter(DataProviderAdapter):
         all_group_results: list[dict] = []
         all_marketplace_results: list[dict] = []
 
-        # Strategy 1: Group URL collection (recency-first — num_of_posts, no date filter)
+        # Strategy 1: Group URL collection (recency-first - num_of_posts, no date filter)
         if channel_urls and self._check_snapshot_budget():
             inputs = []
             for url in channel_urls:

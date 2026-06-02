@@ -207,7 +207,7 @@ export function CollectionLibraryCard({ source }: CollectionLibraryCardProps) {
           )}
         </div>
 
-        {/* Session toggle row — entire row is clickable */}
+        {/* Session toggle row - entire row is clickable */}
         <button
           type="button"
           className="mt-2.5 flex w-full items-center justify-between border-t border-border/50 pt-2.5 text-left cursor-pointer"

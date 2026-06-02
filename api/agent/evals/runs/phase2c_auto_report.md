@@ -16,8 +16,8 @@
 | Scenario | output_tokens | tool_calls | duplicates | preamble | turns |
 |---|---:|---:|---:|---:|---:|
 | **autonomous-full-run** | 366 → 332 | 16 → 20 | 0 → 1 | 0 → 0 | 1 → 1 |
-| **autonomous-narrow-scope** | — | — | — | — | — (candidate only) |
-| **autonomous-recurring-trend** | — | — | — | — | — (candidate only) |
+| **autonomous-narrow-scope** | - | - | - | - | - (candidate only) |
+| **autonomous-recurring-trend** | - | - | - | - | - (candidate only) |
 
 ## Duplicate actions (candidate)
 

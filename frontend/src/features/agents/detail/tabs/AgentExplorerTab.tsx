@@ -70,7 +70,7 @@ export function AgentExplorerTab({ task, activeLayoutId = null, startInEditMode 
     );
   }
 
-  // DashboardView's toolbar IS the header — inject status badge as adornment, suppress borders
+  // DashboardView's toolbar IS the header - inject status badge as adornment, suppress borders
   return (
     <div className="flex flex-1 flex-col w-full overflow-hidden bg-background">
       <DashboardView

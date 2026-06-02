@@ -7,7 +7,7 @@ import {
 
 /**
  * Resolve (or lazily create) a briefing's public share link, then open it
- * in a new tab. Used by the Deliverables surfaces — owners view their own
+ * in a new tab. Used by the Deliverables surfaces - owners view their own
  * briefing through the same shared URL guests would.
  */
 export function useOpenBriefingShare(agentId: string, title: string) {

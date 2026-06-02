@@ -4,15 +4,15 @@ The briefing itself is composed by the agent via `compose_briefing` ADK tool
 (see [api/agent/tools/compose_briefing.py]). This module:
   - Serves the cached briefing via GET /agents/{id}/briefing
   - Exposes helpers used by `compose_briefing` and `list_topics` tools:
-      * `load_topics_ranked` — Firestore topics enriched with BQ aggregates,
+      * `load_topics_ranked` - Firestore topics enriched with BQ aggregates,
         sorted by composite signal score.
-      * `load_best_image_per_topic` — GCS-backed image lookup per cluster.
-      * `load_topic_posts` — representative posts for a single cluster.
-      * `topic_stats` — renderable stat fields.
-      * `display_topic_name` — keyword fallback for generic "Topic N" names.
-      * `extract_first_image` — parse media_refs[0] for (gcs_uri, original_url).
-      * `build_response_payload` — merge layout + topic enrichment + pulse.
-      * `write_briefing_to_firestore` / `read_cached_briefing` — persistence.
+      * `load_best_image_per_topic` - GCS-backed image lookup per cluster.
+      * `load_topic_posts` - representative posts for a single cluster.
+      * `topic_stats` - renderable stat fields.
+      * `display_topic_name` - keyword fallback for generic "Topic N" names.
+      * `extract_first_image` - parse media_refs[0] for (gcs_uri, original_url).
+      * `build_response_payload` - merge layout + topic enrichment + pulse.
+      * `write_briefing_to_firestore` / `read_cached_briefing` - persistence.
 
 Distinct from [api/agent/tools/generate_briefing.py] which writes the per-run
 briefing (state_of_the_world / open_threads / process_notes) used as input here.
@@ -90,7 +90,7 @@ def extract_first_image(media_refs_raw: Any) -> tuple[str | None, str | None]:
 
 # ─── Topic loaders ──────────────────────────────────────────────────
 #
-# All three loaders read from `social_listening.topic_metrics(@agent_id)` —
+# All three loaders read from `social_listening.topic_metrics(@agent_id)` -
 # a single TVF that pre-materialises per-cluster aggregates, thumbnails, and
 # sample posts. The TVF's sample_posts is capped at 10 per cluster; callers
 # requesting more will get 10. `fs` is retained on `load_topics_ranked` for
@@ -195,7 +195,7 @@ def load_topic_posts(
     Returns a dict keyed by cluster_id. Clusters with no posts get an empty
     list entry so callers can `.get(cid, [])` safely. Posts within each cluster
     are ordered representative-first then engagement-weighted (matches the
-    TVF's `sample_posts` ordering). `limit_per_cluster` is capped at 10 — the
+    TVF's `sample_posts` ordering). `limit_per_cluster` is capped at 10 - the
     TVF only stores the top 10 sample posts.
     """
     if not cluster_ids:
@@ -443,7 +443,7 @@ def load_briefing_analytics(bq, agent_id: str, trend_days: int = 14) -> dict:
     )
     avg_interactions = round(total_interactions / total_posts) if total_posts else 0
 
-    # Sentiment trend — separate query so the joined CTE above stays compact.
+    # Sentiment trend - separate query so the joined CTE above stays compact.
     trend_rows = bq.query(
         """
         WITH latest AS (
@@ -563,7 +563,7 @@ def enrich_story(
     topics_by_id: dict[str, dict],
     best_image_per_topic: dict[str, dict],
 ) -> dict:
-    """Dispatch on story type — topic stories get topic enrichment, data stories pass through."""
+    """Dispatch on story type - topic stories get topic enrichment, data stories pass through."""
     if story.get("type") == "topic":
         return enrich_topic_story(story, topics_by_id, best_image_per_topic)
     # Data stories have no topic anchor; return as-is (citations, metrics, chart
@@ -576,7 +576,7 @@ def enrich_hero(
     topics_by_id: dict[str, dict],
     best_image_per_topic: dict[str, dict],
 ) -> dict:
-    """Hero variant of enrich — topic heroes get image_gcs_uri/image_original_url from the
+    """Hero variant of enrich - topic heroes get image_gcs_uri/image_original_url from the
     best cluster-wide image; data heroes pass through.
     """
     if hero.get("type") == "topic":
@@ -618,7 +618,7 @@ def read_cached_briefing(fs, agent_id: str) -> dict | None:
         return None
     data = snap.to_dict()
     if data.get("_schema_version") != PAYLOAD_SCHEMA_VERSION:
-        logger.info("Cached briefing has stale schema — ignoring for agent %s", agent_id)
+        logger.info("Cached briefing has stale schema - ignoring for agent %s", agent_id)
         return None
     try:
         BriefingLayout.model_validate(data)

@@ -43,13 +43,13 @@ def main(agent_id: str) -> None:
     data_start_date = agent.get("data_start_date")
     if not data_start_date:
         print(
-            f"Agent {agent_id} has no data_start_date in Firestore — "
+            f"Agent {agent_id} has no data_start_date in Firestore - "
             "open the agent in the UI once so the lazy backfill runs.",
             file=sys.stderr,
         )
         sys.exit(2)
 
-    # DML INSERT — streaming inserts cache table schema for several minutes
+    # DML INSERT - streaming inserts cache table schema for several minutes
     # after ALTER TABLE, so use a query job directly to bypass the cache.
     created_at_iso = datetime.now(timezone.utc).isoformat()
     data_scope_json = (

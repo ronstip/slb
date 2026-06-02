@@ -1,4 +1,4 @@
-# Dashboard Report — Iteration 2 Final Handoff (v3 → v6)
+# Dashboard Report - Iteration 2 Final Handoff (v3 → v6)
 
 **Date:** 2026-05-13
 **Status:** v6 ready for customer review
@@ -11,7 +11,7 @@ This document captures the full iteration journey from the v2 audit (see [iterat
 
 - **v6 is the customer-ready candidate.** Auto-grow widget renderer + v1-depth content + tightened CSS hierarchy + restored §7b/§9 columns + hyperlinks throughout + single appendix + no `§` symbol.
 - **The architectural fix is in the renderer.** Text widgets now measure their content and request a grid-row height that fits exactly. No more height tuning whack-a-mole.
-- **The demo to view:** `dashboard_layouts/a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0` — Bennett-week report, full v1-depth.
+- **The demo to view:** `dashboard_layouts/a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0` - Bennett-week report, full v1-depth.
 
 ### Customer-ready URL
 ```
@@ -23,27 +23,27 @@ http://localhost:5174/agents/4a809b8d-96e2-4527-a3ef-b2ffd4bbc45f?tab=explorer&l
 ## 1. Feedback that drove this iteration
 
 ### From the iteration-1.md audit
-1. §App-A "no URLs" defect — partially fixed in v2 (SERP placeholders); fully fixed in v3+ (real article URLs in demo).
-2. §8b (tone/emotion) silent drop — restored as a real widget in v3+ template (`v3sec08b00`).
-3. §14 expansion gap (2 of 5 in v2) — split into 5 explicit slots in v3 template; demo uses 4 (5th removed cleanly).
-4. §7a missing days — fixed in v3+ (all 7 days listed; sparse days marked `—`).
-5. §1 placeholder dummy — removed from template entirely.
-6. SoV under-count for subject — fixed in v3+ via two-signal UNION instruction.
-7. End-of-run validation is prose — still prose at v6; flagged for v7 (`verify_dashboard` tool).
+1. §App-A "no URLs" defect - partially fixed in v2 (SERP placeholders); fully fixed in v3+ (real article URLs in demo).
+2. §8b (tone/emotion) silent drop - restored as a real widget in v3+ template (`v3sec08b00`).
+3. §14 expansion gap (2 of 5 in v2) - split into 5 explicit slots in v3 template; demo uses 4 (5th removed cleanly).
+4. §7a missing days - fixed in v3+ (all 7 days listed; sparse days marked `-`).
+5. §1 placeholder dummy - removed from template entirely.
+6. SoV under-count for subject - fixed in v3+ via two-signal UNION instruction.
+7. End-of-run validation is prose - still prose at v6; flagged for v7 (`verify_dashboard` tool).
 
 ### From user notes
-1. **Verbosity drift** (v2 too short, v1 too verbose) — v5 demo expanded to v1-level (≈9,000 chars vs v3 demo's ≈4,200; the actual report content in v5/v6 is the customer-grade depth target).
-1b. **Tone "clowny / trying to be cool"** in v2 — v5 prose deliberately measured, senior-analyst register. Voice block in every section's brief.
-2. **No hyperlinks to real examples** — v5+ demo embeds post URLs in every top-post table (§8a Pro/Anti columns have explicit `Link` column with `[צפייה](url)`), plus inline links to @handles in narrative prose.
-3. **`§` symbol** — removed everywhere (template and demo). Plain numbering: "2. Metadata", "5. Share of Voice", "Appendix".
-4. **H3 looked like H2** — CSS fix in v4: H1 28px / H2 22px+700+underline border / H3 16px+600. Clear three-tier hierarchy.
-5. **Figure placement** — chart widgets remain interleaved between text sections; chart titles localized to Hebrew (`"פוסטים לפי שחקן (תמהיל סנטימנט)"`, etc.).
-6. **Metadata language mismatch** — chart titles, figureText, KPI card labels all set to Hebrew in v5+ demo.
-7. **Text widgets scrolled / stretched** — v6 renderer auto-sizes. Every widget's grid `h` now matches content exactly (24–70 px buffer, no scroll, no whitespace).
-8. **Top/bottom margins inside widgets** — `agent-prose > *:first-child` and `> *:last-child` margin zeroed in v4 CSS; H2 top-margin reduced from 32 to 22 px.
-9. **Tables consistent** — every section brief specifies the table column schema explicitly.
-10. **Agent adds new sections rather than extending** — template now scaffolds all required sub-sections (§6 per-actor, §11a/b/c, §14.1–5); briefs say "do not introduce new top-level sections."
-11. **Two appendix sections** — merged into ONE widget (`v3secapp00`) with two H3 sub-headers (Part A: external context, Part B: methodology).
+1. **Verbosity drift** (v2 too short, v1 too verbose) - v5 demo expanded to v1-level (≈9,000 chars vs v3 demo's ≈4,200; the actual report content in v5/v6 is the customer-grade depth target).
+1b. **Tone "clowny / trying to be cool"** in v2 - v5 prose deliberately measured, senior-analyst register. Voice block in every section's brief.
+2. **No hyperlinks to real examples** - v5+ demo embeds post URLs in every top-post table (§8a Pro/Anti columns have explicit `Link` column with `[צפייה](url)`), plus inline links to @handles in narrative prose.
+3. **`§` symbol** - removed everywhere (template and demo). Plain numbering: "2. Metadata", "5. Share of Voice", "Appendix".
+4. **H3 looked like H2** - CSS fix in v4: H1 28px / H2 22px+700+underline border / H3 16px+600. Clear three-tier hierarchy.
+5. **Figure placement** - chart widgets remain interleaved between text sections; chart titles localized to Hebrew (`"פוסטים לפי שחקן (תמהיל סנטימנט)"`, etc.).
+6. **Metadata language mismatch** - chart titles, figureText, KPI card labels all set to Hebrew in v5+ demo.
+7. **Text widgets scrolled / stretched** - v6 renderer auto-sizes. Every widget's grid `h` now matches content exactly (24–70 px buffer, no scroll, no whitespace).
+8. **Top/bottom margins inside widgets** - `agent-prose > *:first-child` and `> *:last-child` margin zeroed in v4 CSS; H2 top-margin reduced from 32 to 22 px.
+9. **Tables consistent** - every section brief specifies the table column schema explicitly.
+10. **Agent adds new sections rather than extending** - template now scaffolds all required sub-sections (§6 per-actor, §11a/b/c, §14.1–5); briefs say "do not introduce new top-level sections."
+11. **Two appendix sections** - merged into ONE widget (`v3secapp00`) with two H3 sub-headers (Part A: external context, Part B: methodology).
 
 ---
 
@@ -105,7 +105,7 @@ http://localhost:5174/agents/4a809b8d-96e2-4527-a3ef-b2ffd4bbc45f?tab=explorer&l
 | v5 demo (raw) | 21,934 px | Content expanded ~1.5–2× to v1 verbosity; one widget (§8a) overflowed |
 | **v6 (auto-grow on v5 content)** | **19,342 px** | Every widget exactly fits content; no scroll, no whitespace |
 
-The reduction from raw v5 (21,934) to v6 (19,342) — 12% saving — is the auto-grow shaving over-allocated widgets. The increase from v4 (16,318) to v6 (19,342) is real content depth, not whitespace.
+The reduction from raw v5 (21,934) to v6 (19,342) - 12% saving - is the auto-grow shaving over-allocated widgets. The increase from v4 (16,318) to v6 (19,342) is real content depth, not whitespace.
 
 ---
 
@@ -121,10 +121,10 @@ The reduction from raw v5 (21,934) to v6 (19,342) — 12% saving — is the auto
 
 ---
 
-## 5. Open work (v7 candidates — NOT shipped in v6)
+## 5. Open work (v7 candidates - NOT shipped in v6)
 
 1. **`verify_dashboard(layout_id)` tool.** Pre-flight check that `publish_dashboard` calls. Rejects:
-   - SERP-host URLs in §App-A (`google.com/search`, `bing.com/search`, etc.) — caught v2 gaming.
+   - SERP-host URLs in §App-A (`google.com/search`, `bing.com/search`, etc.) - caught v2 gaming.
    - Renumbering of removed widget letters (`§8b` removed but body relabels `§8c→8b`).
    - Missing post-URL links in §8a tables.
    - Chart titles in a language different from body text.
@@ -133,11 +133,11 @@ The reduction from raw v5 (21,934) to v6 (19,342) — 12% saving — is the auto
    - Auto-save on dashboard load (write the auto-sized `h` back after measure).
    - Have `publish_dashboard` accept measured heights from the frontend.
 
-3. **Update the agent prompt's `TEMPLATE_ID` to v3** (`c0a8d9e1f203450aa15b3c2d4e5f6a7b`). Not done yet — pending decision on whether to do it as one cutover with the verify-tool, or now and follow up.
+3. **Update the agent prompt's `TEMPLATE_ID` to v3** (`c0a8d9e1f203450aa15b3c2d4e5f6a7b`). Not done yet - pending decision on whether to do it as one cutover with the verify-tool, or now and follow up.
 
-4. **PDF / shared-view rendering parity.** Auto-grow is via React effect. The PDF export path ([exportDashboardPdf.ts](../frontend/src/features/studio/dashboard/exportDashboardPdf.ts)) may or may not honor the auto-grown heights — worth a manual verification before customer demo.
+4. **PDF / shared-view rendering parity.** Auto-grow is via React effect. The PDF export path ([exportDashboardPdf.ts](../frontend/src/features/studio/dashboard/exportDashboardPdf.ts)) may or may not honor the auto-grown heights - worth a manual verification before customer demo.
 
-5. **`SharedDashboardPage.tsx` doesn't currently wire `onAutoSize`** — only the in-app `SocialDashboardView`. If we want the auto-grow to apply when the dashboard is shared via public URL, that path needs the same plumbing.
+5. **`SharedDashboardPage.tsx` doesn't currently wire `onAutoSize`** - only the in-app `SocialDashboardView`. If we want the auto-grow to apply when the dashboard is shared via public URL, that path needs the same plumbing.
 
 ---
 
@@ -149,7 +149,7 @@ The reduction from raw v5 (21,934) to v6 (19,342) — 12% saving — is the auto
 | [scripts/build_dashboard_v3_demo.py](../scripts/build_dashboard_v3_demo.py) | NEW. v3 demo content (v2-level depth). |
 | [scripts/build_dashboard_template_v4.py](../scripts/build_dashboard_template_v4.py) | NEW. v4 template with tuned heights (now obsolete; auto-grow replaces this). |
 | [scripts/build_dashboard_v4_demo.py](../scripts/build_dashboard_v4_demo.py) | NEW. v4 demo. |
-| [scripts/build_dashboard_v5_demo.py](../scripts/build_dashboard_v5_demo.py) | NEW. v5 demo — full v1-depth content. Used by v6 via auto-grow. |
+| [scripts/build_dashboard_v5_demo.py](../scripts/build_dashboard_v5_demo.py) | NEW. v5 demo - full v1-depth content. Used by v6 via auto-grow. |
 | [frontend/src/features/studio/dashboard/SocialWidgetRenderer.tsx](../frontend/src/features/studio/dashboard/SocialWidgetRenderer.tsx) | Auto-grow logic; ResizeObserver; new `onAutoSize` prop. |
 | [frontend/src/features/studio/dashboard/SocialDashboardGrid.tsx](../frontend/src/features/studio/dashboard/SocialDashboardGrid.tsx) | New `onAutoSize` prop; forwarded to renderer. |
 | [frontend/src/features/studio/dashboard/SocialDashboardView.tsx](../frontend/src/features/studio/dashboard/SocialDashboardView.tsx) | `handleAutoSize` state-only updater; repacks `y` of widgets below the change. |

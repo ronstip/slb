@@ -18,8 +18,8 @@ import { formatUsdMicros } from '../../../lib/money.ts';
 import { InfoHint } from '../InfoHint.tsx';
 import { CostVsBilledChart } from '../CostVsBilledChart.tsx';
 
-const COST_HINT = 'Cost = raw provider COGS — what we pay providers (Gemini, BrightData, X API, Apify, BigQuery, …). Source of truth for our margin.';
-const BILLED_HINT = 'Billed = cost × profit margin — what a paying user\'s wallet is debited. Margin is 1× by default (no markup); change it in the Pricing editor below.';
+const COST_HINT = 'Cost = raw provider COGS - what we pay providers (Gemini, BrightData, X API, Apify, BigQuery, …). Source of truth for our margin.';
+const BILLED_HINT = 'Billed = cost × profit margin - what a paying user\'s wallet is debited. Margin is 1× by default (no markup); change it in the Pricing editor below.';
 
 const GEMINI_MODELS = [
   'gemini-3-flash-preview',
@@ -39,7 +39,7 @@ const SCRAPER_PROVIDER_HINTS: Record<string, string> = {
   apify:
     'Apify reports the exact run cost on the call itself (`usageTotalUsd`). ' +
     'These cells are the **fallback** estimate used when Apify returns no ' +
-    'cost — rows tagged cost_source="estimated_fallback".',
+    'cost - rows tagged cost_source="estimated_fallback".',
   brightdata:
     'BrightData per-record price. The matrix cell wins over the legacy ' +
     'single rate when set; empty cells fall through to "*".',
@@ -67,12 +67,12 @@ const COST_SOURCE_LABELS: Record<string, string> = {
 
 const COST_SOURCE_HINT =
   'Where each row\'s $ figure came from:\n' +
-  '• provider_reported — the provider returned an exact cost on the call ' +
+  '• provider_reported - the provider returned an exact cost on the call ' +
   '(e.g. Apify run.usageTotalUsd). Source of truth.\n' +
-  '• estimated_fallback — provider went silent on this call, so we logged ' +
+  '• estimated_fallback - provider went silent on this call, so we logged ' +
   'cost = units × apify_assumed_per_post_usd. Edit that knob in the ' +
   'pricing editor below if the estimate drifts.\n' +
-  '• rate_table — we looked the per-call price up in config/cost_rates.py ' +
+  '• rate_table - we looked the per-call price up in config/cost_rates.py ' +
   '(Gemini tokens, BrightData $/record, X API $/post, etc.).';
 
 export function FinanceSection() {
@@ -124,7 +124,7 @@ export function FinanceSection() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <KpiCard label="Provider cost" value={formatUsdMicros(fin.cost_micros)} hint="What we pay providers (all usage)" />
-        <KpiCard label="Revenue (cash in)" value={formatUsdMicros(fin.revenue_micros)} hint="Real top-ups users paid — grants excluded" />
+        <KpiCard label="Revenue (cash in)" value={formatUsdMicros(fin.revenue_micros)} hint="Real top-ups users paid - grants excluded" />
         <KpiCard
           label="Net"
           value={formatUsdMicros(fin.net_micros)}
@@ -139,7 +139,7 @@ export function FinanceSection() {
         <KpiCard
           label="Credit granted"
           value={formatUsdMicros(fin.granted_micros)}
-          hint="Admin grants/adjustments — from us, not revenue"
+          hint="Admin grants/adjustments - from us, not revenue"
         />
         <KpiCard
           label="Usage billed (at margin)"
@@ -149,17 +149,17 @@ export function FinanceSection() {
         <KpiCard
           label="Unspent purchased credit"
           value={formatUsdMicros(fin.unspent_purchased_micros)}
-          hint="Wallet liability — credit users still hold (point-in-time, not range). ≈ $0 until payments launch."
+          hint="Wallet liability - credit users still hold (point-in-time, not range). ≈ $0 until payments launch."
         />
       </div>
 
-      {/* Cost by tier — surfaces internal/free/test usage we absorb */}
+      {/* Cost by tier - surfaces internal/free/test usage we absorb */}
       <FinanceBreakdown
         title="By tier (where the cost sits)"
         items={fin.by_tier}
       />
 
-      {/* Cost vs billed over time — shared with UserDetail */}
+      {/* Cost vs billed over time - shared with UserDetail */}
       {chartPoints.length > 0 && (
         <Card>
           <CardHeader>
@@ -173,14 +173,14 @@ export function FinanceSection() {
         </Card>
       )}
 
-      {/* Platform × provider matrix — supplements (does NOT replace) the
+      {/* Platform × provider matrix - supplements (does NOT replace) the
           plain "By provider" / "By feature" tables below. The matrix is
           the right unit of attribution when tuning rates; the flat
           tables stay easier to scan when you just want a total per
           provider or feature. */}
       <PlatformProviderMatrix cells={fin.by_platform_provider} />
 
-      {/* Original breakdowns — kept so the totals view stays glanceable.
+      {/* Original breakdowns - kept so the totals view stays glanceable.
           Cost-source roll-up shows next to them so estimate exposure is
           visible without an extra click. */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -222,7 +222,7 @@ function FinanceBreakdown({
   renderKey?: (k: string) => string;
   titleHint?: string;
 }) {
-  // Totals row only renders for tables with more than one bucket — for a
+  // Totals row only renders for tables with more than one bucket - for a
   // single-row table "Total" would just repeat the row.
   const showTotals = items.length > 1;
   const totalCost = items.reduce((a, it) => a + it.cost_micros, 0);
@@ -294,7 +294,7 @@ function FinanceBreakdown({
  *  this platform at all?".
  *
  *  Why this exists: a single "Apify $0.26" line in the old "by provider"
- *  table hid that the spend may have been 99% Instagram and 1% TikTok —
+ *  table hid that the spend may have been 99% Instagram and 1% TikTok -
  *  but the per-call rate differs by platform, so an admin needs to see
  *  the split before tuning rates or assumed-per-post fallbacks. */
 function PlatformProviderMatrix({ cells }: { cells: PlatformProviderCell[] }) {
@@ -336,15 +336,15 @@ function PlatformProviderMatrix({ cells }: { cells: PlatformProviderCell[] }) {
           Cost by platform × provider
           <InfoHint text={
             'How each cell is attributed:\n' +
-            '• Scraper rows (Apify / BrightData / X_api / Vetric) — the ' +
+            '• Scraper rows (Apify / BrightData / X_api / Vetric) - the ' +
             'platform of the post that was scraped. Per-call rate varies ' +
             'by (provider, platform); set these in the Scrapers matrix ' +
             'in the Pricing editor below.\n' +
-            '• Gemini rows — the platform of the post that was enriched. ' +
-            'Gemini\'s $/token rate is identical across platforms — what ' +
+            '• Gemini rows - the platform of the post that was enriched. ' +
+            'Gemini\'s $/token rate is identical across platforms - what ' +
             'varies is which posts (and therefore whose token volume) ' +
             'drove that spend.\n' +
-            '• "Unspecified" — events that aren\'t platform-scoped (chat, ' +
+            '• "Unspecified" - events that aren\'t platform-scoped (chat, ' +
             'wizard, briefing, topic_cluster).\n' +
             'Rows / columns are sorted by spend, descending.'
           } />
@@ -376,7 +376,7 @@ function PlatformProviderMatrix({ cells }: { cells: PlatformProviderCell[] }) {
                       const cell = lookup.get(`${plat}|${prov}`);
                       return (
                         <td key={prov} className="px-3 py-2 text-right font-mono">
-                          {cell ? formatUsdMicros(cell.cost_micros) : <span className="text-muted-foreground">—</span>}
+                          {cell ? formatUsdMicros(cell.cost_micros) : <span className="text-muted-foreground">-</span>}
                         </td>
                       );
                     })}
@@ -447,7 +447,7 @@ function PricingEditor() {
       qc.invalidateQueries({ queryKey: ['admin', 'finance'] });
     },
     onError: () => toast.error('Failed to update pricing'),
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   if (!draft) {
@@ -498,7 +498,7 @@ function PricingEditor() {
           </p>
         </div>
 
-        {/* Section 1 — Gemini token rates (LLM) */}
+        {/* Section 1 - Gemini token rates (LLM) */}
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Gemini ($ / 1M tokens)</p>
           <div className="space-y-3">
@@ -522,7 +522,7 @@ function PricingEditor() {
           </div>
         </div>
 
-        {/* Section 2 — Scrapers / crawlers matrix (provider × platform).
+        {/* Section 2 - Scrapers / crawlers matrix (provider × platform).
             Each cell is the effective $/post for that (provider, platform).
             For Apify it's the fallback estimate (cost_source="estimated_fallback");
             for BrightData / X_api / Vetric it's the authoritative rate. */}
@@ -558,7 +558,7 @@ function PricingEditor() {
           }
         />
 
-        {/* Section 3 — BigQuery + GCS (infra) */}
+        {/* Section 3 - BigQuery + GCS (infra) */}
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">BigQuery &amp; GCS</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -581,7 +581,7 @@ function PricingEditor() {
 
 
 /** Provider (rows) × platform (columns) editable matrix for scraper rates.
- *  The trailing "*" column edits the wildcard cell — fallthrough when no
+ *  The trailing "*" column edits the wildcard cell - fallthrough when no
  *  platform-specific cell is set. */
 function ScraperMatrixEditor({
   matrix, apifyWildcardFallback, onCellChange, onApifyWildcardChange,
@@ -594,7 +594,7 @@ function ScraperMatrixEditor({
   return (
     <div>
       <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Scrapers / crawlers — $/post per (provider × platform)
+        Scrapers / crawlers - $/post per (provider × platform)
         <InfoHint text={
           'Edit the per-call price for each (provider, platform) combination. ' +
           'The "*" column is the wildcard fallback when no platform-specific ' +
@@ -682,7 +682,7 @@ function MatrixCellInput({
         onChange(Number.isNaN(n) ? null : n);
       }}
       className="h-8 w-24 text-right font-mono text-xs"
-      placeholder="—"
+      placeholder="-"
     />
   );
 }

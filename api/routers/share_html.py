@@ -1,7 +1,7 @@
 """SEO-friendly HTML + OG image for /shared/* URLs.
 
 WhatsApp/iMessage/Slack/Twitter/LinkedIn link-preview crawlers don't run JS,
-so they only see the static OG tags from the SPA's `index.html` — identical
+so they only see the static OG tags from the SPA's `index.html` - identical
 for every share link. This router is mounted behind a Firebase Hosting
 rewrite for `/shared/**` and `/og-image/**`. For each request we:
 
@@ -12,7 +12,7 @@ rewrite for `/shared/**` and `/og-image/**`. For each request we:
   3. Serve a per-deliverable PNG (title rendered on the brand template)
      at `/og-image/{type}/{token}.png`.
 
-The static `og:description` was the product call — only image + title vary.
+The static `og:description` was the product call - only image + title vary.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ ShareType = Literal["briefing", "artifact", "dashboard"]
 _VALID_TYPES: tuple[str, ...] = ("briefing", "artifact", "dashboard")
 
 STATIC_DESCRIPTION = (
-    "View this on Scolto — your team of senior AI analysts for social listening, "
+    "View this on Scolto - your team of senior AI analysts for social listening, "
     "trend detection, campaign tracking, and competitive intelligence."
 )
 
@@ -61,7 +61,7 @@ def _strip_prerendered_root(html: str) -> str:
     The build pipeline prerenders `/` and writes the hero content into the
     same `index.html` that every route ends up serving. For crawlers hitting
     `/shared/*` we don't want the landing-page text showing up in their
-    indexed snapshot — empty the root and let React mount the share view.
+    indexed snapshot - empty the root and let React mount the share view.
     """
     return re.sub(
         r'(<div id="root">).*?(</div>\s*<script\s+type="module")',
@@ -193,7 +193,7 @@ async def shared_artifact_html(request: Request, token: str):
 
 @router.get("/shared/{token}", response_class=HTMLResponse)
 async def shared_dashboard_html(request: Request, token: str):
-    # Dashboard share URLs are bare `/shared/{token}` — no type segment.
+    # Dashboard share URLs are bare `/shared/{token}` - no type segment.
     return await _serve_html("dashboard", token)
 
 
@@ -216,7 +216,7 @@ async def _load_image_template() -> bytes:
 
 
 def _load_font(size: int):
-    """Returns a Pillow ImageFont — TTF if available, default bitmap otherwise.
+    """Returns a Pillow ImageFont - TTF if available, default bitmap otherwise.
 
     Default falls back to PIL's tiny built-in font; we install fonts-dejavu-core
     in the Dockerfile so prod always picks the TTF path.
@@ -241,7 +241,7 @@ def _is_rtl(text: str) -> bool:
 
     Range U+0590–U+08FF covers the right-to-left scripts we expect customer
     titles to use. A single RTL char flips the whole line to right-anchored
-    rendering — mixed Latin+Hebrew titles look more natural that way.
+    rendering - mixed Latin+Hebrew titles look more natural that way.
     """
     return any("֐" <= ch <= "ࣿ" for ch in text)
 
@@ -288,7 +288,7 @@ def _wrap_lines(text: str, font, draw, max_width: int, max_lines: int) -> list[s
 
 
 # Per share-type labels used in the badge + title prefix. Dashboards are
-# customer-facing "briefs" — the internal "dashboard" wording leaks otherwise.
+# customer-facing "briefs" - the internal "dashboard" wording leaks otherwise.
 _TYPE_LABEL: dict[str, str] = {
     "briefing": "BRIEFING",
     "artifact": "ARTIFACT",
@@ -312,7 +312,7 @@ def _render_og_png_sync(share_type: str, title: str, template: bytes) -> bytes:
 
     raw_title = (title or "Scolto").strip()
     label = _TYPE_LABEL.get(share_type, share_type.upper())
-    # Prefix only for LTR titles — adding "Report: " to a Hebrew title forces
+    # Prefix only for LTR titles - adding "Report: " to a Hebrew title forces
     # an LTR base direction and the Hebrew portion ends up reversed-looking.
     rtl = _is_rtl(raw_title)
     display_title = raw_title if rtl else f"{_TYPE_TITLE_PREFIX.get(share_type, '')}{raw_title}"
@@ -333,7 +333,7 @@ def _render_og_png_sync(share_type: str, title: str, template: bytes) -> bytes:
         font=badge_font,
     )
 
-    # Title — autoshrink until it fits within 2 lines.
+    # Title - autoshrink until it fits within 2 lines.
     title_max_width = W - padding_x * 2
     title_font_size = 68
     while title_font_size >= 36:
@@ -374,7 +374,7 @@ async def og_image(share_type: str, token: str):
         content=png_bytes,
         media_type="image/png",
         headers={
-            # Title can rename — keep CDN cache modest so renames propagate.
+            # Title can rename - keep CDN cache modest so renames propagate.
             "Cache-Control": "public, max-age=3600, must-revalidate",
         },
     )

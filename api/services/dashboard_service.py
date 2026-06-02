@@ -1,6 +1,6 @@
 """Shared dashboard data-fetching logic used by both authenticated and public endpoints.
 
-Dashboard reads always go through the `social_listening.scope_posts` TVF —
+Dashboard reads always go through the `social_listening.scope_posts` TVF -
 the same single source of truth used by `/feed`, the data tab, topics,
 briefings, and the agent's overview/live feed. The TVF dedups posts, picks
 *this* agent's enrichment row (skipping NULL-agent legacy and other agents'
@@ -9,7 +9,7 @@ rows), and joins the latest engagement.
 `agent_id` is required. Callers that don't have one in hand should derive it
 from the collections via :func:`derive_agent_id_for_collections`. When no
 agent context is recoverable (collections never linked to any agent), the
-builders return ``(None, None)`` — callers should skip BigQuery and serve an
+builders return ``(None, None)`` - callers should skip BigQuery and serve an
 empty result.
 """
 
@@ -32,12 +32,12 @@ def derive_agent_id_for_collections(fs, collection_ids: list[str]) -> str | None
     """Look up the agent_id for a set of collections in Firestore.
 
     Each collection's status doc carries `agent_id` (set when the agent's run
-    creates the collection — see services/agent_service.py). We use that to
+    creates the collection - see services/agent_service.py). We use that to
     resolve the dashboard's agent context when the request didn't carry one.
 
     Returns the most-common agent_id across the collections (multi-agent
     dashboards are rare; we pick a consistent view). Returns None when no
-    collection has an agent_id — those collections are orphan and not
+    collection has an agent_id - those collections are orphan and not
     queryable through the agent-scoped dashboard.
     """
     if not collection_ids:
@@ -47,7 +47,7 @@ def derive_agent_id_for_collections(fs, collection_ids: list[str]) -> str | None
     for cid in collection_ids:
         try:
             status = fs.get_collection_status(cid)
-        except Exception:  # noqa: BLE001 — telemetry-style lookup, never block
+        except Exception:  # noqa: BLE001 - telemetry-style lookup, never block
             logger.exception("Failed reading collection_status for %s", cid)
             continue
         if not status:
@@ -77,7 +77,7 @@ def build_dashboard_sql(
     max_rows: int,
 ) -> tuple[str | None, dict | None]:
     """Return (sql, params) for the dashboard rows query, or (None, None) when
-    no agent context is recoverable. Always TVF-scoped — the legacy cross-agent
+    no agent context is recoverable. Always TVF-scoped - the legacy cross-agent
     SQL has been retired in favor of a single source of truth.
     """
     if not agent_id:
@@ -260,7 +260,7 @@ def _parse_breakdown_entries(value) -> list[TopicBreakdownEntry]:
 
 
 def _parse_platforms_breakdown(value) -> list[TopicPlatformEntry]:
-    """Parse topic_metrics.platforms_breakdown — array of structs with per-
+    """Parse topic_metrics.platforms_breakdown - array of structs with per-
     platform posts/views/likes/engagement."""
     items = parse_json_field(value)
     out: list[TopicPlatformEntry] = []

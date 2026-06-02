@@ -1,7 +1,7 @@
 """One-shot cleanup: delete all existing `insight_report` artifacts from Firestore.
 
 Part of the briefing/report unification refactor. The `insight_report` artifact
-type has been removed from the app — this script removes the residual data.
+type has been removed from the app - this script removes the residual data.
 
 Usage:
     uv run python -m workers.cleanup_insight_reports           # dry-run
@@ -53,10 +53,10 @@ def main() -> None:
 
     logger.info("Found %d insight_report artifact(s):", len(reports))
     for path, title in reports:
-        logger.info("  %s  —  %s", path, title)
+        logger.info("  %s  -  %s", path, title)
 
     if not args.apply:
-        logger.info("DRY RUN — re-run with --apply to delete these.")
+        logger.info("DRY RUN - re-run with --apply to delete these.")
         return
 
     logger.info("Deleting %d documents...", len(reports))

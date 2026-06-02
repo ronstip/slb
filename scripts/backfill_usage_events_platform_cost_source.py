@@ -4,7 +4,7 @@ the existing rows of ``social_listening.usage_events``.
 Why:
     The new columns from migration 0003 (platform, cost_source) start NULL
     on every pre-existing row. Same for `agent_id` on rows logged before
-    the cost-meter ContextVar thread-propagation fix landed — Apify /
+    the cost-meter ContextVar thread-propagation fix landed - Apify /
     X API / posts_collected events fired from worker sub-threads dropped
     the agent_id because plain `threading.Thread` doesn't inherit
     ContextVars.
@@ -16,17 +16,17 @@ Why:
 
 What it does (each step is idempotent + safe to re-run):
 
-1. **agent_id** — for every row with `agent_id IS NULL` AND a non-null
+1. **agent_id** - for every row with `agent_id IS NULL` AND a non-null
    `collection_id`, look up the collection's agent_id from Firestore
    (`collection_status/<id>.agent_id`) and `MERGE` it in.
 
-2. **platform** — Apify rows stored the platform in the raw provider
+2. **platform** - Apify rows stored the platform in the raw provider
    payload (`metadata.raw.platform`). Extract it via JSON nav. For rows
    where that isn't present, fall back to the collection's single
-   platform when the collection had exactly one — multi-platform
+   platform when the collection had exactly one - multi-platform
    collections stay NULL (we don't know which one each row was for).
 
-3. **cost_source** — deterministic by provider:
+3. **cost_source** - deterministic by provider:
    - apify rows with a non-null cost_micros: `provider_reported` (the
      adapter only logged when `run.usageTotalUsd` was set, until today's
      fallback path).
@@ -75,7 +75,7 @@ _RATE_TABLE_PROVIDERS = (
     "google_search",
     "brightdata",
     "x_api",
-    "xapi",       # legacy spelling — still present in older rows
+    "xapi",       # legacy spelling - still present in older rows
     "vetric",
     "bq",
     "gcs",
@@ -116,7 +116,7 @@ def backfill_agent_id(bq_client: bigquery.Client, project: str, meta: dict[str, 
         if m.get("agent_id")
     ]
     if not rows:
-        logger.info("agent_id backfill: no (collection_id → agent_id) mappings — nothing to do.")
+        logger.info("agent_id backfill: no (collection_id → agent_id) mappings - nothing to do.")
         return
 
     sql = f"""
@@ -177,7 +177,7 @@ def backfill_platform_from_collection(
     bq_client: bigquery.Client, project: str, meta: dict[str, dict], dry_run: bool,
 ) -> None:
     """For rows with a collection that targeted exactly one platform,
-    stamp that platform. Multi-platform collections stay NULL — we can't
+    stamp that platform. Multi-platform collections stay NULL - we can't
     confidently attribute a given row to one of several platforms.
     """
     single = [

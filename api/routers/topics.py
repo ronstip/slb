@@ -1,7 +1,7 @@
-"""Topics router — list topics, get analytics, get posts for a topic.
+"""Topics router - list topics, get analytics, get posts for a topic.
 
 Topics are agent-scoped: they cluster posts across all of an agent's collections.
-Reads from `topic_metrics(@agent_id)` — the single source of truth — with a
+Reads from `topic_metrics(@agent_id)` - the single source of truth - with a
 small Python-side shape adapter to preserve the legacy frontend contract.
 """
 
@@ -134,7 +134,7 @@ def _load_agent_topics(fs, bq, agent_id: str) -> list[dict]:
             "thumbnail_gcs_uri": r.get("thumbnail_gcs_uri"),
             "platforms": _platforms_from_breakdown(r.get("platforms_breakdown")),
             # legacy alias for the post-count headline. CI bounds are not
-            # available from `topic_clusters` today — frontend tolerates
+            # available from `topic_clusters` today - frontend tolerates
             # missing fields via `?? 0` and renders without CI.
             "estimated_pool_count": r.get("estimated_post_count"),
         })
@@ -163,7 +163,7 @@ async def list_agent_topics(
 
 
 # ---------------------------------------------------------------------------
-# Narrative synthesis — 2–3 sentence AI summary of all topics, cached per
+# Narrative synthesis - 2–3 sentence AI summary of all topics, cached per
 # agent in Firestore and regenerated only when the topic set changes.
 # ---------------------------------------------------------------------------
 
@@ -178,7 +178,7 @@ You are briefing an analyst on what is happening across a set of social-listenin
 
 Write:
 1. **headline**: one short sentence (max 80 chars, no period) capturing the dominant story.
-2. **narrative**: 2-3 sentences synthesizing the conversation — which topics dominate, \
+2. **narrative**: 2-3 sentences synthesizing the conversation - which topics dominate, \
 what sentiment direction emerges, and any tension or contrast worth flagging. \
 Concrete, not generic. Do not list every topic.
 
@@ -189,7 +189,7 @@ Topics (sorted by volume):
 
 
 def _topic_set_hash(topics: list[dict]) -> str:
-    """Stable hash over the set of cluster_ids — narrative regenerates on set change."""
+    """Stable hash over the set of cluster_ids - narrative regenerates on set change."""
     ids = sorted(t["cluster_id"] for t in topics)
     return hashlib.sha256("|".join(ids).encode()).hexdigest()[:16]
 
@@ -312,7 +312,7 @@ async def get_agent_topics_narrative(
             "topic_count": len(cluster_ids),
         }
 
-    # Cache miss — load full topics with BQ enrichment for the prompt.
+    # Cache miss - load full topics with BQ enrichment for the prompt.
     topics = await asyncio.to_thread(_load_agent_topics, fs, bq, agent_id)
     if not topics:
         return None
@@ -347,12 +347,12 @@ async def get_agent_topic_analytics(
     cluster_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """On-demand analytics for a topic — sentiment, platform, engagement distributions."""
+    """On-demand analytics for a topic - sentiment, platform, engagement distributions."""
     fs = get_fs()
     bq = get_bq()
     await asyncio.to_thread(_check_agent_access, fs, user, agent_id)
 
-    # Totals come straight from topic_clusters — every field pre-materialised,
+    # Totals come straight from topic_clusters - every field pre-materialised,
     # including median_post_time which the old query couldn't compute.
     totals_sql = f"""
         {_LATEST_CTE}
@@ -550,7 +550,7 @@ async def regenerate_agent_topics(
     body: _RegenerateRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Manually regenerate topics for an agent. Synchronous — wall-clock is
+    """Manually regenerate topics for an agent. Synchronous - wall-clock is
     typically 30-60s for llm_taxonomy_v2; 60-120s for brothers_v1 on a large
     agent. The HTTP client should set its timeout accordingly. Long-running
     agents will eventually need Cloud Tasks fallback (see plan); not wired yet.
@@ -619,7 +619,7 @@ async def patch_topics_config(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Patch the agent's topics_config (algorithm + knobs). NOT a versioned
-    field — changes here do not bump agent.version. Merges with existing
+    field - changes here do not bump agent.version. Merges with existing
     config; unset fields preserve their current value.
     """
     from api.services.agent_service import _normalize_topics_config

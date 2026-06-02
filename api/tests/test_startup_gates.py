@@ -6,7 +6,7 @@ Pins three invariants that protect prod:
   - dev with empty values                                → boots fine
 
 The gates run inside lifespan, so the tests just drive the (sync portion of
-the) check directly with a fake settings object — avoids spinning up the
+the) check directly with a fake settings object - avoids spinning up the
 full FastAPI app and its Firestore/BQ deps.
 """
 
@@ -33,11 +33,11 @@ def _run_gates(s: _FakeSettings) -> None:
     if not s.is_dev:
         if s.signup_gate == "allowlist" and not s.allowed_emails.strip():
             raise RuntimeError(
-                "SIGNUP_GATE=allowlist but ALLOWED_EMAILS is empty — refusing to start"
+                "SIGNUP_GATE=allowlist but ALLOWED_EMAILS is empty - refusing to start"
             )
         if not s.super_admin_emails.strip():
             raise RuntimeError(
-                "SUPER_ADMIN_EMAILS is empty in production — refusing to start"
+                "SUPER_ADMIN_EMAILS is empty in production - refusing to start"
             )
 
 
@@ -77,7 +77,7 @@ def test_prod_open_gate_does_not_require_allowed_emails() -> None:
 
 
 def test_prod_entitlements_gate_does_not_require_allowed_emails() -> None:
-    # Reserved value — should not trip the allowlist check.
+    # Reserved value - should not trip the allowlist check.
     s = _FakeSettings(
         is_dev=False, signup_gate="entitlements",
         allowed_emails="", super_admin_emails="admin@example.com",

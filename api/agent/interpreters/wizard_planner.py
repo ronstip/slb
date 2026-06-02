@@ -1,4 +1,4 @@
-"""Wizard planner — interprets a user's agent description into a structured plan.
+"""Wizard planner - interprets a user's agent description into a structured plan.
 
 This is a narrow Gemini call with a Pydantic ``response_schema``.
 It mirrors the pattern in ``workers/enrichment/enricher.py`` and lives next
@@ -112,7 +112,7 @@ def _render_shortlist(collections: list[dict]) -> str:
         kws = c.get("keywords") or []
         plats = c.get("platforms") or []
         lines.append(
-            f"- {c['collection_id']}: \"{c.get('title', '')}\" — "
+            f"- {c['collection_id']}: \"{c.get('title', '')}\" - "
             f"{', '.join(plats) or 'n/a'}, {c.get('posts_collected', 0)} posts, "
             f"keywords: {kws}"
         )
@@ -131,14 +131,14 @@ def _build_prompt(
     prompt = (
         f"{WIZARD_PLANNER_PROMPT}\n\n"
         f"Current time (UTC): {now}\n\n"
-        f"User's existing collections (you may attach any of these by collection_id — "
+        f"User's existing collections (you may attach any of these by collection_id - "
         f"do NOT invent IDs):\n{shortlist}\n\n"
         f"User's description:\n\"\"\"\n{description.strip()}\n\"\"\"\n\n"
     )
 
     if research:
         prompt += (
-            "Background research (gathered via web search on the user's topic — "
+            "Background research (gathered via web search on the user's topic - "
             "use this to ground identity, mission, scope_and_relevance, and "
             "enrichment_context with real-world context):\n"
             f"\"\"\"\n{research.strip()}\n\"\"\"\n\n"
@@ -175,7 +175,7 @@ headings). Cover, where applicable:
 
 Be concrete. Cite specifics when search returns them (dates, names, numbers). \
 Do not invent. If the topic is vague or unknown, say so plainly and keep the \
-brief short. Do not return JSON. Do not give advice on the agent's config — \
+brief short. Do not return JSON. Do not give advice on the agent's config - \
 just the factual context.
 
 User's description:
@@ -194,7 +194,7 @@ def _research_context(
     """Call 1: search-grounded free-text research brief.
 
     Returns the research text, or None if the call fails. Failure is non-fatal
-    — the planner falls back to its un-grounded prompt.
+    - the planner falls back to its un-grounded prompt.
     """
     from api.services.cost_meter import log_gemini_response
 

@@ -1,6 +1,6 @@
 """Notification channel protocol and implementations.
 
-NotificationChannel is a minimal protocol — email now, Slack later.
+NotificationChannel is a minimal protocol - email now, Slack later.
 """
 
 import logging
@@ -22,7 +22,7 @@ class NotificationChannel(Protocol):
 class EmailChannel:
     """SendGrid email notification channel.
 
-    Returns True on success, False on failure — never raises.
+    Returns True on success, False on failure - never raises.
     """
 
     def __init__(self, api_key: str, from_email: str, from_name: str):

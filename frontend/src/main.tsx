@@ -19,7 +19,7 @@ import './styles/globals.css';
 // hashes (e.g. `AgentHome-HDCHfv-F.js`) that no longer exist on the CDN. The
 // next route-level lazy import 404s and React Router surfaces "Failed to
 // fetch dynamically imported module". Vite emits `vite:preloadError` for
-// exactly this case — hard-reload to pick up the new index.html + chunk map.
+// exactly this case - hard-reload to pick up the new index.html + chunk map.
 // Guard against an infinite reload loop if the chunk is genuinely missing
 // (e.g. CDN outage) by remembering the last reload time.
 window.addEventListener('vite:preloadError', (event) => {

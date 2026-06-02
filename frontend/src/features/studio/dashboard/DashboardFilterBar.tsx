@@ -57,10 +57,10 @@ interface DashboardFilterBarProps {
   collectionNames?: Record<string, string>;
   /** When true, shows controls to add/remove/reorder filter pills */
   isEditMode?: boolean;
-  /** Ordered list of active filter IDs — undefined = show all defaults */
+  /** Ordered list of active filter IDs - undefined = show all defaults */
   filterBarFilters?: string[];
   onFilterBarChange?: (filters: FilterBarFilterId[]) => void;
-  /** All posts (unfiltered) — used to compute per-option counts */
+  /** All posts (unfiltered) - used to compute per-option counts */
   allPosts?: DashboardPost[];
   /** When true, suppresses the bottom border */
   noBorder?: boolean;
@@ -150,7 +150,7 @@ function FilterPill({
                 ? 'border-primary/30 bg-primary/10 text-primary'
                 : 'border-border bg-card text-muted-foreground hover:border-primary/20 hover:text-foreground',
           )}
-          title={isLocked ? `${label} is locked by this report's scope — narrow within it, can't widen past it.` : undefined}
+          title={isLocked ? `${label} is locked by this report's scope - narrow within it, can't widen past it.` : undefined}
         >
           {isLocked && <Lock className="h-2.5 w-2.5" />}
           {label}
@@ -165,7 +165,7 @@ function FilterPill({
         {isLocked && (
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
             <Lock className="h-2.5 w-2.5 shrink-0" />
-            Locked by report scope — narrow only.
+            Locked by report scope - narrow only.
           </div>
         )}
         {/* Search */}
@@ -262,7 +262,7 @@ function DateRangePill({
                 ? 'border-primary/30 bg-primary/10 text-primary'
                 : 'border-border bg-card text-muted-foreground hover:border-primary/20 hover:text-foreground',
           )}
-          title={isLocked ? "Date range is locked by this report's scope — narrow within it, can't widen past it." : undefined}
+          title={isLocked ? "Date range is locked by this report's scope - narrow within it, can't widen past it." : undefined}
         >
           {isLocked ? <Lock className="h-2.5 w-2.5" /> : <Calendar className="h-3 w-3" />}
           Date Range
@@ -272,7 +272,7 @@ function DateRangePill({
         {isLocked && (
           <div className="mb-2 -mt-1 -mx-1 rounded-md bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
             <Lock className="h-2.5 w-2.5 shrink-0" />
-            Locked by report scope — narrow only.
+            Locked by report scope - narrow only.
           </div>
         )}
         <div className="flex flex-col gap-2">
@@ -500,7 +500,7 @@ export function DashboardFilterBar({
         onToggle={(v) => onToggle(key, v)}
         onSelectAll={() => {
           // When locked, "select all" should only target the scope's values,
-          // not the full option list — otherwise the viewer's selection state
+          // not the full option list - otherwise the viewer's selection state
           // diverges from what the chart aggregator actually applies.
           const candidateOpts = locked ? cfg.opts.filter((o) => locked.includes(o)) : cfg.opts;
           const toAdd = candidateOpts.filter((o) => !cfg.sel.includes(o));

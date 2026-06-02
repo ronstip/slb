@@ -1,4 +1,4 @@
-"""Shared Cloud Tasks dispatch — used by every endpoint that hands work
+"""Shared Cloud Tasks dispatch - used by every endpoint that hands work
 off to the worker service.
 
 Was inlined in collection_service.py; extracted so engagement / comments /

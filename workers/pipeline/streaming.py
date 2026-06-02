@@ -1,4 +1,4 @@
-"""Streaming step runner — eliminates batch drain by claiming and processing
+"""Streaming step runner - eliminates batch drain by claiming and processing
 posts individually with a persistent executor.
 
 Replaces the batched `_step_worker` model for download and enrich:
@@ -7,7 +7,7 @@ Replaces the batched `_step_worker` model for download and enrich:
 - Consumer thread drains completed futures and periodically flushes batched
   side-effects (BQ MERGE for enrich) and state transitions.
 
-The slowest call no longer holds up the pool — as soon as a slot frees, the
+The slowest call no longer holds up the pool - as soon as a slot frees, the
 next post is claimed. Pool stays saturated until the queue runs dry.
 """
 
@@ -126,7 +126,7 @@ class StreamingStepRunner:
                 post = self._claim_fn()
             except Exception:
                 logger.warning(
-                    "claim_one failed for step '%s' in %s — backing off",
+                    "claim_one failed for step '%s' in %s - backing off",
                     self._name, self._ctx.collection_id, exc_info=True,
                 )
                 self._in_flight_sem.release()
@@ -179,7 +179,7 @@ class StreamingStepRunner:
             )
         with self._results_lock:
             self._pending.append((post["post_id"], outcome, extra))
-        # Free the slot — producer can claim the next post.
+        # Free the slot - producer can claim the next post.
         self._in_flight_sem.release()
 
     # ------------------------------------------------------------------
@@ -206,7 +206,7 @@ class StreamingStepRunner:
             if should_flush:
                 self._flush()
             elif done and pending_count == 0:
-                # Producer is done and we have nothing left — exit.
+                # Producer is done and we have nothing left - exit.
                 return
             elif stop and pending_count == 0:
                 return
@@ -228,7 +228,7 @@ class StreamingStepRunner:
                 self._flush_fn(results, self._ctx)
             except Exception:
                 logger.exception(
-                    "flush_fn raised for step '%s' — marking all in this batch as failed",
+                    "flush_fn raised for step '%s' - marking all in this batch as failed",
                     self._name,
                 )
                 # Whole batch failed at the side-effect layer; downgrade outcomes.
@@ -254,7 +254,7 @@ class StreamingStepRunner:
             )
             return
 
-        # Telemetry — record the flush as one "batch" for stage_timings compat.
+        # Telemetry - record the flush as one "batch" for stage_timings compat.
         if self._record_step_timing is not None:
             try:
                 self._record_step_timing(

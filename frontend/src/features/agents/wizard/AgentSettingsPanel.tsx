@@ -31,7 +31,7 @@ interface AgentSettingsPanelProps {
   canSubmit?: boolean;
   isSubmitting?: boolean;
   planStatus: PlanStatus;
-  /** When true, render contents only — no outer card / step badge / submit footer.
+  /** When true, render contents only - no outer card / step badge / submit footer.
    *  Parent stepper provides those instead. */
   embedded?: boolean;
 }
@@ -56,7 +56,7 @@ const WEEKDAYS: { value: number; label: string }[] = [
   { value: 0, label: 'Sun' },
 ];
 
-// Day-of-month presets — full per-day select would be too dense; the design
+// Day-of-month presets - full per-day select would be too dense; the design
 // shows just the most useful anchors (1st, 15th, end-of-month).
 const MONTHLY_DAYS: { value: number; label: string }[] = [
   { value: 1,  label: '1st' },
@@ -138,7 +138,7 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly,
       {renderHeader('bg-primary text-primary-foreground')}
 
       <div className="space-y-6 flex-1">
-        {/* Run type — two cards with a check chip on the right (mirrors design) */}
+        {/* Run type - two cards with a check chip on the right (mirrors design) */}
         <Section label="Run type">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <RunTypeCard
@@ -158,7 +158,7 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly,
           </div>
         </Section>
 
-        {/* Schedule (shown when recurring) — frequency + day + time chips
+        {/* Schedule (shown when recurring) - frequency + day + time chips
             live on the same row so the cadence reads as one decision.
             Times are a chip-row so additional run times can be added. */}
         {isRecurring && (
@@ -180,7 +180,7 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly,
                 </button>
               ))}
 
-              {/* Day picker — weekly = day-of-week, monthly = preset day-of-month */}
+              {/* Day picker - weekly = day-of-week, monthly = preset day-of-month */}
               {settings.scheduleIntervalHours === 168 && (
                 <>
                   <span className="mx-1 h-4 w-px bg-border/70" aria-hidden />
@@ -222,7 +222,7 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly,
                 </>
               )}
 
-              {/* Time chips — one per scheduled run time. The first is sent
+              {/* Time chips - one per scheduled run time. The first is sent
                   to the backend cadence string today; extras are described
                   to the planner. */}
               {settings.scheduleIntervalHours >= 24 && (
@@ -289,7 +289,7 @@ export function AgentSettingsPanel({ settings, onChange, onSubmit, onCreateOnly,
           </Section>
         )}
 
-        {/* Outputs — 2 × 3 grid of toggleable cards (mirrors design exactly). */}
+        {/* Outputs - 2 × 3 grid of toggleable cards (mirrors design exactly). */}
         <Section
           label="Outputs"
           hint={settings.outputsFromAI ? 'AI-suggested' : undefined}

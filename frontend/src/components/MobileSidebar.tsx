@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetTitle } from './ui/sheet.tsx';
  * Mobile-only off-canvas wrapper for the navigation sidebar. Renders the
  * given sidebar (an <AppSidebar isMobile />) inside a left-side Sheet driven
  * by the shared `mobileSidebarOpen` UI state. On `md` and up the trigger
- * (MobileHeader) is hidden, so this never opens — the desktop layout keeps
+ * (MobileHeader) is hidden, so this never opens - the desktop layout keeps
  * its inline fixed-width <aside>.
  */
 export function MobileSidebar({ children }: { children: ReactNode }) {

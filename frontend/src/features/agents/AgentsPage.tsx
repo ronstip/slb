@@ -23,7 +23,7 @@ import {
 import { useAgentStore } from '../../stores/agent-store.ts';
 import { RUNNABLE_STATUSES, StatusBadge, formatLastRun } from './detail/agent-status-utils.tsx';
 
-// Lazy-load heavy panels — they're only rendered after the user clicks a row
+// Lazy-load heavy panels - they're only rendered after the user clicks a row
 // (drawer) or "Explore data" (dashboard). Eagerly importing them pulls in
 // recharts, chart.js, react-grid-layout, jspdf, html2canvas, react-markdown,
 // and the entire dashboard widget system into the agents-list bundle.
@@ -121,7 +121,7 @@ function formatRelativeTime(iso: string): string {
   return `in ${diffD}d`;
 }
 
-/** Coloured platform chip — used by the row's "Sources" cell. Renders the
+/** Coloured platform chip - used by the row's "Sources" cell. Renders the
  *  platform's official logo on a tile painted in its brand colour. */
 function SourceMark({ platform }: { platform: string }) {
   const bg = PLATFORM_COLORS[platform] ?? '#6E665A';
@@ -142,7 +142,7 @@ function SourceMark({ platform }: { platform: string }) {
   );
 }
 
-/** Stable seeded sparkline — decorative, distinct per agent. */
+/** Stable seeded sparkline - decorative, distinct per agent. */
 function MiniSparkline({ seed, color }: { seed: string; color: string }) {
   const points = useMemo(() => {
     let h = 0;
@@ -229,7 +229,7 @@ export function AgentsPage() {
       : <ArrowDown className="h-3 w-3" />;
   };
 
-  // Counts per filter pill — based on the *unfiltered* agents list.
+  // Counts per filter pill - based on the *unfiltered* agents list.
   const counts = useMemo(() => {
     const total = tasks.length;
     let running = 0, success = 0, failed = 0, archived = 0;
@@ -245,7 +245,7 @@ export function AgentsPage() {
   const filteredAgents = useMemo(() => {
     const filtered = tasks.filter((t) => {
       if (statusFilter === 'all') {
-        // Default view hides archived agents — same behaviour as before.
+        // Default view hides archived agents - same behaviour as before.
         if (t.status === 'archived') return false;
       } else {
         if (t.status !== statusFilter) return false;
@@ -345,7 +345,7 @@ export function AgentsPage() {
     }
   };
 
-  // Row column template — kept stable so the header line and each data row
+  // Row column template - kept stable so the header line and each data row
   // stay perfectly aligned.
   // Agent | Sources | Status | Schedule | Last run | Trend | Actions
   const ROW_GRID = { gridTemplateColumns: 'minmax(260px,1fr) 168px 120px 120px 120px 100px 180px' } as const;
@@ -368,7 +368,7 @@ export function AgentsPage() {
         <MobileHeader />
         <main className="flex-1 overflow-y-auto">
           <div className="w-full px-4 pb-14 md:px-10">
-            {/* ── Top utility row — eyebrow with agent counts + bell + theme ── */}
+            {/* ── Top utility row - eyebrow with agent counts + bell + theme ── */}
             <div className="pt-8">
               <UtilityTopBar hasNotification={hasExecuting}>
                 <span>
@@ -449,7 +449,7 @@ export function AgentsPage() {
               </DropdownMenu>
 
               <div className="ml-auto flex items-center gap-3">
-                {/* View toggle — hidden on mobile, where cards are forced */}
+                {/* View toggle - hidden on mobile, where cards are forced */}
                 <div className="hidden h-10 items-stretch overflow-hidden rounded-md border border-border bg-card md:inline-flex">
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -481,7 +481,7 @@ export function AgentsPage() {
                   </Tooltip>
                 </div>
 
-                {/* New agent — dark "ink" button per template */}
+                {/* New agent - dark "ink" button per template */}
                 <button
                   onClick={openWizardDrawer}
                   className="inline-flex h-10 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-semibold text-background transition-opacity hover:opacity-90"
@@ -564,7 +564,7 @@ export function AgentsPage() {
                   {/* Data rows */}
                   {filteredAgents.map((task) => {
                     const isExecuting = task.status === 'running';
-                    const lastRun = task.updated_at ? formatLastRun(task.updated_at) : '—';
+                    const lastRun = task.updated_at ? formatLastRun(task.updated_at) : '-';
                     const sources = task.data_scope?.sources?.map((s) => s.platform) ?? [];
                     const uniqueSources = Array.from(new Set(sources));
 
@@ -606,7 +606,7 @@ export function AgentsPage() {
                         {/* Sources */}
                         <div className="flex items-center gap-1.5">
                           {uniqueSources.length === 0
-                            ? <span className="text-[11px] text-muted-foreground">—</span>
+                            ? <span className="text-[11px] text-muted-foreground">-</span>
                             : uniqueSources.slice(0, 5).map((p) => (
                               <SourceMark key={p} platform={p} />
                             ))}
@@ -624,7 +624,7 @@ export function AgentsPage() {
                         <div className="font-mono text-[11px] text-muted-foreground">
                           {task.agent_type === 'recurring' && task.schedule
                             ? formatSchedule(task.schedule.frequency)
-                            : '—'}
+                            : '-'}
                         </div>
 
                         {/* Last run */}
@@ -635,7 +635,7 @@ export function AgentsPage() {
                         {/* Trend */}
                         <div>
                           <MiniSparkline seed={task.agent_id} color={`var(--chart-${(task.agent_id.charCodeAt(0) % 5) + 1})`} />
-                          {/* fallback color via inline style — keeps the strokes within the chart palette */}
+                          {/* fallback color via inline style - keeps the strokes within the chart palette */}
                         </div>
 
                         {/* Actions */}
@@ -729,7 +729,7 @@ export function AgentsPage() {
           </div>
         </main>
 
-        {/* Detail Drawer — only mounted once the user opens it, to keep the
+        {/* Detail Drawer - only mounted once the user opens it, to keep the
             heavy drawer + StatsModal + TableModal out of the list-view bundle. */}
         {(drawerOpen || selectedAgent) && (
           <Suspense fallback={null}>
@@ -743,7 +743,7 @@ export function AgentsPage() {
           </Suspense>
         )}
 
-        {/* Data Explorer — only mounted when explorerAgent is set. Lazy keeps
+        {/* Data Explorer - only mounted when explorerAgent is set. Lazy keeps
             the entire DashboardView + recharts + chart.js + react-grid-layout
             chunk off the agents-list critical path. */}
         {explorerAgent && (

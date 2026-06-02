@@ -1,4 +1,4 @@
--- Migration 0002 — add billed_micros to usage_events (§E profit margin).
+-- Migration 0002 - add billed_micros to usage_events (§E profit margin).
 --
 -- `cost_micros` is the raw PROVIDER cost. `billed_micros` is what the user's
 -- prepaid wallet is actually debited: provider cost × the admin-set profit
@@ -8,11 +8,11 @@
 --
 -- Safe to run live: the column is nullable, no existing column or type is
 -- modified, partitioning/clustering keys are unchanged. Legacy rows (and any
--- row whose cost couldn't be priced) keep NULL — treat NULL as "no revenue"
+-- row whose cost couldn't be priced) keep NULL - treat NULL as "no revenue"
 -- in aggregations.
 --
 -- IMPORTANT: apply this BEFORE deploying the cost_meter change that writes
--- `billed_micros` — BigQuery streaming inserts reject unknown columns.
+-- `billed_micros` - BigQuery streaming inserts reject unknown columns.
 --
 -- Apply with:
 --   bq query --use_legacy_sql=false --project_id=$GCP_PROJECT_ID < \

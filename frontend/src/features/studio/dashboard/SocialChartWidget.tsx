@@ -143,7 +143,7 @@ function formatNumber(val: number): string {
 // Idempotent: already-formatted labels pass through unchanged.
 function formatLabel(raw: string): string {
   if (!raw) return raw;
-  // Already mixed-case or contains spaces — assume curated, leave alone.
+  // Already mixed-case or contains spaces - assume curated, leave alone.
   if (/\s/.test(raw) || /[a-z][A-Z]/.test(raw)) return raw;
   return raw
     .replace(/_/g, '-')
@@ -277,10 +277,10 @@ interface SocialChartWidgetProps {
   chartType: SocialChartType;
   data: WidgetData | undefined;
   accent?: string;
-  /** Per-label color overrides — keyed by exact label as it appears in the data
+  /** Per-label color overrides - keyed by exact label as it appears in the data
    *  (group name for grouped/multi-series, category label otherwise). */
   seriesColorOverrides?: Record<string, string>;
-  /** Per-label display-name overrides — same key shape as `seriesColorOverrides`.
+  /** Per-label display-name overrides - same key shape as `seriesColorOverrides`.
    *  Wins over the default `formatLabel` humanisation in legends, axes, tooltips. */
   seriesLabelOverrides?: Record<string, string>;
   barOrientation?: 'horizontal' | 'vertical';
@@ -380,7 +380,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       const entries = Object.entries(data.groupedTimeSeries);
       if (chartType === 'bar') {
         // Keep dates on the primary axis with breakdown values as datasets so
-        // bars stack/group by breakdown — matching the user's group-by intent.
+        // bars stack/group by breakdown - matching the user's group-by intent.
         const allDates = new Set<string>();
         for (const [, series] of entries) for (const p of series) allDates.add(p.date);
         const labels = [...allDates].sort();
@@ -407,7 +407,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     );
   }
 
-  // ── Grouped time series (multi-line) — only for line chart type ──────────
+  // ── Grouped time series (multi-line) - only for line chart type ──────────
   if (chartType === 'line' && normalizedData.groupedTimeSeries && Object.keys(normalizedData.groupedTimeSeries).length > 0) {
     const groups = Object.entries(normalizedData.groupedTimeSeries)
       .sort(([, a], [, b]) => (b[b.length - 1]?.value ?? 0) - (a[a.length - 1]?.value ?? 0))
@@ -469,7 +469,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     return <div className="h-full w-full"><Line ref={lineRef as never} data={chartData} options={options} /></div>;
   }
 
-  // ── Single time series (line) — only for line chart type ─────────────────
+  // ── Single time series (line) - only for line chart type ─────────────────
   if (chartType === 'line' && normalizedData.timeSeries && normalizedData.timeSeries.length > 0) {
     const lineColor = colors[0];
     const chartData = {

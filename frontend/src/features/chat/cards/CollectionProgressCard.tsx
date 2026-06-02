@@ -38,7 +38,7 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
       const views = statusData?.total_views ?? 0;
       const viewsPart = views > 0 ? ` with ${formatNumber(views)} total views` : '';
       onCompleted(
-        `Collection ${collectionId} just finished — ${formatNumber(posts)} posts collected${viewsPart}.`,
+        `Collection ${collectionId} just finished - ${formatNumber(posts)} posts collected${viewsPart}.`,
       );
     }
   }, [isDone, onCompleted, collectionId, statusData]);
@@ -55,7 +55,7 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
 
   const inner = (
     <div className={variant === 'inline' ? 'border-t border-border/30' : ''}>
-      {/* Status header — always visible */}
+      {/* Status header - always visible */}
       <button
         onClick={() => setStatsOpen((v) => !v)}
         className="flex w-full items-center gap-2.5 px-5 py-2.5 text-left transition-colors hover:bg-accent/20"
@@ -104,13 +104,13 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
             </div>
             <div className="rounded-lg bg-muted/40 px-3 py-2 text-center">
               <p className="text-base font-bold tabular-nums text-foreground">
-                {isActive && (statusData?.total_views ?? 0) === 0 ? '—' : formatNumber(statusData?.total_views ?? 0)}
+                {isActive && (statusData?.total_views ?? 0) === 0 ? '-' : formatNumber(statusData?.total_views ?? 0)}
               </p>
               <p className="text-[10px] text-muted-foreground">Views</p>
             </div>
             <div className="rounded-lg bg-muted/40 px-3 py-2 text-center">
               <p className="text-base font-bold tabular-nums text-foreground">
-                {statusData?.positive_pct != null ? `${statusData.positive_pct}%` : '—'}
+                {statusData?.positive_pct != null ? `${statusData.positive_pct}%` : '-'}
               </p>
               <p className="text-[10px] text-muted-foreground">Positive</p>
             </div>

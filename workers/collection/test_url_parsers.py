@@ -2,7 +2,7 @@
 
 `parse_post_url` is the front-door parser used by the API layer to detect
 platform + post-id from a URL the user paste-submits. Each platform parser is
-intentionally narrow — search/profile/explore URLs must NOT be misread as posts.
+intentionally narrow - search/profile/explore URLs must NOT be misread as posts.
 """
 
 import pytest
@@ -11,7 +11,7 @@ from workers.collection.url_parsers import parse_post_url
 
 
 # ---------------------------------------------------------------------------
-# Twitter / X — supported today
+# Twitter / X - supported today
 # ---------------------------------------------------------------------------
 
 def test_parse_x_com_status_url():
@@ -44,7 +44,7 @@ def test_parse_status_url_with_trailing_slash():
 
 
 # ---------------------------------------------------------------------------
-# Rejections — must NOT parse as a post
+# Rejections - must NOT parse as a post
 # ---------------------------------------------------------------------------
 
 def test_parse_search_url_returns_none():

@@ -203,8 +203,8 @@ def compute_statistical_signature(
     """Run 5 parallel BQ queries and assemble the signature dict (does not save).
 
     When `since` is None, no time window is applied (a 1900 sentinel is used so
-    every SQL path has a valid, harmless bound). When set, all metrics —
-    including top_channels — are filtered to rows at or after `since`.
+    every SQL path has a valid, harmless bound). When set, all metrics -
+    including top_channels - are filtered to rows at or after `since`.
     """
     since_iso = since.isoformat() if since else _ALL_TIME_SINCE
     params = {"collection_ids": collection_ids, "since": since_iso}

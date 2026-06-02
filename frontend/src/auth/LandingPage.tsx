@@ -5,6 +5,7 @@ import { useAuth } from './useAuth.ts';
 import { captureGoogleEmail } from './firebase.ts';
 import { apiPost } from '../api/client.ts';
 import { ScoltoMark } from '../components/Logo.tsx';
+import { SiteFooter } from '../landing/SiteFooter.tsx';
 
 const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   {
@@ -13,7 +14,7 @@ const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'Who is Scolto for?',
-    a: "Brand and insights leads at consumer companies. Agencies and competitive-intel teams use it too — anyone who walks into a room and has to explain what just happened in their category.",
+    a: "Brand and insights leads at consumer companies. Agencies and competitive-intel teams use it too - anyone who walks into a room and has to explain what just happened in their category.",
   },
   {
     q: 'How does Scolto work?',
@@ -21,23 +22,23 @@ const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'Where does the data come from?',
-    a: "Public social, comments, video, reviews, forums and press — across TikTok, Instagram, YouTube, X, Reddit, Facebook and the open web. Licensed providers where required. No private DMs, ever.",
+    a: "Public social, comments, video, reviews, forums and press - across TikTok, Instagram, YouTube, X, Reddit, Facebook and the open web. Licensed providers where required. No private DMs, ever.",
   },
   {
     q: 'How is hallucination handled?',
-    a: "Every claim cites the post, clip or comment it came from — timecoded for video. If Scolto can't source it, it flags the gap instead of guessing. The receipts sit next to the read-out.",
+    a: "Every claim cites the post, clip or comment it came from - timecoded for video. If Scolto can't source it, it flags the gap instead of guessing. The receipts sit next to the read-out.",
   },
   {
     q: 'What does it cost?',
-    a: "Usage-based. Pay for the work, not a seat. No annual contract. Detailed pricing on the way in.",
+    a: "Usage-based - you pay for the work, not a seat. Plans run from $149/mo (Solo) to Studio for agencies, plus Scale for brand teams. Credits meter the reading; run out and you roll onto pay-as-you-go at the same rate. Full breakdown under Pricing above.",
   },
   {
     q: "How is this different from a social-listening dashboard?",
-    a: "Dashboards count mentions and ask you to interpret them. Scolto ships the interpretation — what happened, why it matters, what to do — with the dashboard as a side artifact when you want one.",
+    a: "Dashboards count mentions and ask you to interpret them. Scolto ships the interpretation - what happened, why it matters, what to do - with the dashboard as a side artifact when you want one.",
   },
   {
     q: 'What about privacy?',
-    a: "Only public conversation. Your briefs, outputs and workspace stay yours — we don't train on them or share them. Single sign-on with Google or Microsoft.",
+    a: "Only public conversation. Your briefs, outputs and workspace stay yours - we don't train on them or share them. Single sign-on with Google or Microsoft.",
   },
 ];
 
@@ -286,10 +287,10 @@ const PLATFORMS: { id: PlatformId; label: string; color: string; glyph: ReactNod
     glyph: (<path d="M12 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 01-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 01.042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 014.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 01.14-.197.35.35 0 01.238-.042l2.906.617a1.214 1.214 0 011.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 00-.231.094.33.33 0 000 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 00.029-.463.33.33 0 00-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 00-.232-.095z" fill="#FFF" />) },
   { id: 'web', label: 'Web', color: '#4285F4',
     glyph: (<><circle cx="12" cy="12" r="10" fill="none" stroke="#FFF" strokeWidth="2"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" fill="none" stroke="#FFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>) },
-  { id: 'slack', label: 'Slack', color: '#4A154B',
-    glyph: (<><rect x="6" y="10" width="3" height="8" rx="1.5" fill="#ECB22E"/><rect x="10" y="14" width="8" height="3" rx="1.5" fill="#2EB67D"/><rect x="15" y="6" width="3" height="8" rx="1.5" fill="#E01E5A"/><rect x="6" y="7" width="8" height="3" rx="1.5" fill="#36C5F0"/></>) },
+  { id: 'slack', label: 'Slack', color: '#FFFFFF',
+    glyph: (<><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313z" fill="#E01E5A"/><path d="M8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312z" fill="#36C5F0"/><path d="M18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312z" fill="#2EB67D"/><path d="M15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" fill="#ECB22E"/></>) },
   { id: 'whatsapp', label: 'WhatsApp', color: '#25D366',
-    glyph: (<path d="M5 19l1.2-3.4A6.5 6.5 0 1 1 9 18.5L5 19zM10 9.5c-.3 0-.6.1-.9.5-.3.4-1.1 1.1-1.1 2.6 0 1.6 1.1 3.1 1.3 3.3.2.2 2.2 3.4 5.4 4.6.7.3 1.3.5 1.7.6.7.2 1.3.2 1.8.1.6-.1 1.7-.7 2-1.4.3-.7.3-1.3.2-1.4-.1-.1-.3-.2-.6-.4-.3-.2-1.7-.9-2-1-.3-.1-.5-.2-.7.2-.2.3-.7 1-.9 1.2-.2.2-.3.2-.6.1-.3-.2-1.3-.5-2.5-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6.1-.1.3-.3.4-.5.1-.2.2-.3.3-.5.1-.2.1-.4 0-.5-.1-.1-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5z" fill="#FFF"/>) },
+    glyph: (<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.149-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" fill="#FFF"/>) },
   { id: 'gmail', label: 'Email', color: '#EA4335',
     glyph: (<><path d="M5 8l7 5 7-5v8.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8z" fill="#FFF"/><path d="M5 8l7 5 7-5" stroke="#EA4335" strokeWidth="1.2" fill="none"/></>) },
   { id: 'notion', label: 'Notion', color: '#0F0F0F',
@@ -334,7 +335,7 @@ const ROTATING_DELIVERABLES = [
 
 // Typewriter rotator: types a word, holds it, deletes back to empty, advances.
 // Renders as plain inline text (no absolute positioning + no `overflow: hidden`)
-// so the baseline matches surrounding inline text on every line wrap — that's
+// so the baseline matches surrounding inline text on every line wrap - that's
 // what previously raised the rotator above "Reads the comments." on mobile.
 const TYPE_MS = 65;
 const DELETE_MS = 35;
@@ -519,7 +520,7 @@ const LP_DailyRead = () => {
         <p style={{ margin: '8px 0 0', fontFamily: "'Inter Tight',sans-serif", fontSize: 12.5, lineHeight: 1.5, color: LP_BRAND.muted }}>
           Michael B. Jordan's upset Best Actor win and the In-N-Out after-party are carrying positive sentiment.
           Sinners and One Battle After Another are splitting the prestige conversation. The KPop Demon Hunters
-          speech cut-off is the only loud negative thread — and it's still climbing on TikTok.
+          speech cut-off is the only loud negative thread - and it's still climbing on TikTok.
         </p>
       </div>
 
@@ -565,7 +566,7 @@ const LP_DailyRead = () => {
       </div>
 
       <div style={{ padding: '0 20px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-        <LP_FeedThumb photo={OSCARS.jordan}   platform="instagram" handle="@eentertainment" caption="Michael B. Jordan: 'Yo momma, what's up?' — Best Actor speech for Sinners" meta="4.1M · 1:24" />
+        <LP_FeedThumb photo={OSCARS.jordan}   platform="instagram" handle="@eentertainment" caption="Michael B. Jordan: 'Yo momma, what's up?' - Best Actor speech for Sinners" meta="4.1M · 1:24" />
         <LP_FeedThumb photo={OSCARS.pta}      platform="x"         handle="@PopBase"        caption="Paul Thomas Anderson finally wins his first Oscar after 14 nominations" meta="8.4M views" />
         <LP_FeedThumb photo={OSCARS.dolby}    platform="x"         handle="@nextbestpic"    caption="The mess celebs left inside the Dolby Theatre after the ceremony…" meta="7.2M views" />
       </div>
@@ -620,7 +621,7 @@ const LP_DailyRead = () => {
   );
 };
 
-// Top-down beach umbrella — 8 scalloped fabric petals alternating rust / cream,
+// Top-down beach umbrella - 8 scalloped fabric petals alternating rust / cream,
 // with a tiny ink finial. The petal edges bulge outward (not straight radial
 // lines) so it reads as canopy fabric, not a cog. Lifted from the design kit.
 const LP_BeachUmbrellaWatermark = ({ size = 240 }: { size?: number }) => {
@@ -665,7 +666,7 @@ const LP_BeachUmbrellaWatermark = ({ size = 240 }: { size?: number }) => {
   );
 };
 
-// Credibility strip — single-row "by the numbers" beat. Sits between
+// Credibility strip - single-row "by the numbers" beat. Sits between
 // MeetScolto and the Friday preview. Editorial pull-line on the left,
 // four Fraunces big stats on the right, divided by warm 1px rules.
 const LP_Credibility = () => {
@@ -713,7 +714,7 @@ const LP_Credibility = () => {
   );
 };
 
-// "What Friday looks like" — anchors its own beat below the centered hero.
+// "What Friday looks like" - anchors its own beat below the centered hero.
 // The Weekly Read card, rotated -1.2°, with a Live pill rotated -0.6°.
 const LP_FridayPreview = () => (
   <section className="lp-section lp-friday-section" style={{ padding: '96px 64px 80px', position: 'relative' }}>
@@ -1168,7 +1169,7 @@ const MR3_BriefsDemo = () => (
         flex: 1,
         fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 400,
         fontSize: 13, color: LP_BRAND.ink, lineHeight: 1.2, letterSpacing: -0.2,
-      }}>Fit issue forming on Drift V2 — same pattern as V1.</span>
+      }}>Fit issue forming on Drift V2 - same pattern as V1.</span>
     </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1195,7 +1196,7 @@ const MR3_BriefsDemo = () => (
             <div style={{
               fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink,
               lineHeight: 1.3, marginTop: 1,
-            }}>Heads up — sizing pattern forming. Suggest comms hold.</div>
+            }}>Heads up - sizing pattern forming. Suggest comms hold.</div>
           </div>
         </div>
       </div>
@@ -1220,7 +1221,7 @@ const MR3_BriefsDemo = () => (
           fontFamily: "'Inter Tight',sans-serif", fontSize: 9.5,
           color: LP_BRAND.ink, lineHeight: 1.3,
         }}>
-          fyi — sizing pattern, V1 redux. brief Fri 9? <span style={{ color: '#3DA37D', marginLeft: 2 }}>✓✓</span>
+          fyi - sizing pattern, V1 redux. brief Fri 9? <span style={{ color: '#3DA37D', marginLeft: 2 }}>✓✓</span>
         </div>
       </div>
 
@@ -1235,7 +1236,7 @@ const MR3_BriefsDemo = () => (
         <div style={{
           fontFamily: "'Fraunces',serif", fontWeight: 500, fontSize: 11.5,
           color: LP_BRAND.ink, lineHeight: 1.2, letterSpacing: -0.2,
-        }}>Friday Brief — Drift V2 sizing</div>
+        }}>Friday Brief - Drift V2 sizing</div>
         <div style={{
           fontFamily: "'Inter Tight',sans-serif", fontSize: 9, color: LP_BRAND.muted,
           lineHeight: 1.3,
@@ -1269,7 +1270,7 @@ const MR3_BriefsDemo = () => (
           <div style={{
             fontFamily: "'Fraunces',serif", fontStyle: 'italic',
             fontSize: 11, color: LP_BRAND.ink, lineHeight: 1.2,
-          }}>Drift V2 — Friday Brief</div>
+          }}>Drift V2 - Friday Brief</div>
           <LP_Mono size={7.5} color={LP_BRAND.orangeDeep} style={{ display: 'block', marginTop: 2 }}>for CMO · Fri 9am</LP_Mono>
         </div>
       </div>
@@ -1308,7 +1309,7 @@ const MR3_BriefsDemo = () => (
           <div style={{
             fontFamily: "'Fraunces',serif", fontStyle: 'italic',
             fontSize: 11, color: LP_BRAND.ink, lineHeight: 1.2,
-          }}>Drift V2 — QBR</div>
+          }}>Drift V2 - QBR</div>
           <LP_Mono size={7.5} color={LP_BRAND.orangeDeep} style={{ display: 'block', marginTop: 2 }}>for QBR · Mon</LP_Mono>
         </div>
       </div>
@@ -1465,12 +1466,12 @@ const LP_MeetScolto = () => {
       <div className="lp-3col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
         <MR3_JobCard
           n="01" head="Watches the" hi="field."
-          body="Every platform, every format, every entity — around the clock. Posts, replies, video frames, audio, on-screen text, logos, prices. Indexed and ready, nothing for you to set up."
+          body="Every platform, every format, every entity - around the clock. Posts, replies, video frames, audio, on-screen text, logos, prices. Indexed and ready, nothing for you to set up."
           demo={<MR3_FieldDemo />}
         />
         <MR3_JobCard
           n="02" head="Reads the" hi="room."
-          body="Groups every mention by what it's actually about — across languages, formats, platforms. The fit complaint in Korean and the heel-slip reel in Spanish go in the same column, not different feeds."
+          body="Groups every mention by what it's actually about - across languages, formats, platforms. The fit complaint in Korean and the heel-slip reel in Spanish go in the same column, not different feeds."
           demo={<MR3_RoomTopicsDemo />}
         />
         <MR3_JobCard
@@ -2385,7 +2386,7 @@ const LP_WhyScolto = () => (
           margin: '22px 0 0', maxWidth: 460, fontFamily: "'Inter Tight',sans-serif", fontSize: 15,
           color: LP_BRAND.muted, lineHeight: 1.6,
         }}>
-          Brandwatch, Sprinklr, Talkwalker — they all ship the same thing in the end: a dashboard with a search bar, and a deal that asks you to fill it. Scolto ships an agent that fills it for you, and tells you what it found.
+          Brandwatch, Sprinklr, Talkwalker - they all ship the same thing in the end: a dashboard with a search bar, and a deal that asks you to fill it. Scolto ships an agent that fills it for you, and tells you what it found.
         </p>
       </div>
 
@@ -2421,6 +2422,295 @@ const LP_WhyScolto = () => (
     </div>
   </section>
 );
+
+// ── Pricing ───────────────────────────────────────────────────────────────────
+
+const LP_Check = ({ color = LP_BRAND.green }: { color?: string }) => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+    <path d="M20 6 9 17l-5-5" />
+  </svg>
+);
+
+type LP_Feature = { text: string; icons?: PlatformId[] };
+
+type LP_Tier = {
+  name: string;
+  blurb: string;
+  monthly: number | null;
+  credits: string;
+  seats: string;
+  overage: string;
+  features: LP_Feature[];
+  cta: string;
+  featured?: boolean;
+};
+
+const LP_TIERS: ReadonlyArray<LP_Tier> = [
+  {
+    name: 'Solo',
+    blurb: 'For snapshots reads - a competitor teardown, a campaign recap, an event debrief.',
+    monthly: 149,
+    credits: '500 credits / mo',
+    seats: '1 seat',
+    overage: 'Then pay as you go - same rate, no cliff',
+    features: [
+      { text: 'Every platform', icons: ['tiktok', 'instagram', 'youtube', 'x', 'reddit', 'facebook', 'web'] },
+      { text: 'Get briefs, decks, dashboards, access to data' },
+      { text: 'Full multimudallity - Reads video, images, and comments' },
+      { text: 'Every claim links back to the posts' },
+      { text: 'Share anything you make by link' },
+      { text: '30-day history' },
+    ],
+    cta: 'Get early access',
+  },
+  {
+    name: 'Studio',
+    blurb: 'For live moments - follow a campaigns, events, competitors for the period that matter.',
+    monthly: 499,
+    credits: '2,000 credits / mo',
+    seats: '5 seats',
+    overage: 'Then pay as you go - same rate, no cliff',
+    features: [
+      { text: 'Everything in Solo' },
+      { text: 'Lower credit rate - more reading per dollar' },
+      { text: '5 seats, collaborate in real time' },
+      { text: '1-year history' },
+    ],
+    cta: 'Get early access',
+    featured: true,
+  },
+  {
+    name: 'Scale',
+    blurb: "For brands & agencies that can't look away - monitoring, crisis, competitors, crowd voice, around the clock.",
+    monthly: null,
+    credits: 'Custom credit pool',
+    seats: 'Unlimited seats',
+    overage: 'Custom volume pricing',
+    features: [
+      { text: 'Everything in Studio' },
+      { text: 'Lowest credit rate - custom volume pricing' },
+      { text: 'Agent integration to Slack & WhatsApp', icons: ['slack', 'whatsapp'] },
+      { text: 'An analyst on hand to support your team' },
+      { text: 'Unlimited history' },
+    ],
+    cta: 'Talk to us',
+  },
+];
+
+const LP_Pricing = ({ openWaitlist }: { openWaitlist: () => void }) => {
+  const [annual, setAnnual] = useState(false);
+
+  return (
+    <section id="pricing" className="lp-section" style={{
+      padding: '96px 64px 88px', background: LP_BRAND.cream, scrollMarginTop: 80,
+      borderTop: `1px solid ${LP_BRAND.rule}`, borderBottom: `1px solid ${LP_BRAND.rule}`,
+    }}>
+      <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto' }}>
+        <LP_Mono color={LP_BRAND.orangeDeep}>Pricing</LP_Mono>
+        <h2 className="lp-section-h2" style={{
+          margin: '14px 0 0', fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 64,
+          letterSpacing: -1.6, lineHeight: 0.98, color: LP_BRAND.ink,
+        }}>
+          Pay for the work,<br />
+          <span style={{ fontStyle: 'italic', fontWeight: 400, color: LP_BRAND.orangeDeep }}>not a seat.</span>
+        </h2>
+        <p style={{
+          margin: '22px auto 0', maxWidth: 520, fontFamily: "'Inter Tight',sans-serif", fontSize: 15,
+          color: LP_BRAND.muted, lineHeight: 1.6,
+        }}>
+          Every plan ships briefs, decks, dashboards, digests - and the raw data behind them. Credits buy the reading - no kickoff call, no $30k annual seat.
+        </p>
+      </div>
+
+      {/* Billing toggle */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 32 }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4, padding: 4,
+          background: LP_BRAND.paper, border: `1px solid ${LP_BRAND.rule}`, borderRadius: 99,
+        }}>
+          {([['Monthly', false], ['Annual', true]] as const).map(([label, val]) => (
+            <button
+              key={label}
+              onClick={() => setAnnual(val)}
+              style={{
+                padding: '8px 18px', borderRadius: 99, border: 'none', cursor: 'pointer',
+                background: annual === val ? LP_BRAND.ink : 'transparent',
+                color: annual === val ? '#F4EFE3' : LP_BRAND.muted,
+                fontFamily: "'Inter Tight',sans-serif", fontSize: 13, fontWeight: 600,
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                transition: 'background 140ms ease, color 140ms ease',
+              }}
+            >
+              {label}
+              {val && (
+                <span style={{
+                  fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: 0.6,
+                  color: annual ? LP_BRAND.orangeSoft : LP_BRAND.orangeDeep,
+                  background: annual ? 'rgba(255,255,255,0.12)' : `${LP_BRAND.orange}1f`,
+                  padding: '2px 6px', borderRadius: 6, textTransform: 'uppercase',
+                }}>
+                  2 mo free
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tier cards */}
+      <div className="lp-price-grid" style={{
+        marginTop: 44, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18,
+        maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto', alignItems: 'stretch',
+      }}>
+        {LP_TIERS.map((t) => {
+          const annualMonthly = t.monthly != null ? Math.round((t.monthly * 10) / 12) : null;
+          const shown = annual ? annualMonthly : t.monthly;
+          return (
+            <div
+              key={t.name}
+              className="lp-price-card"
+              style={{
+                position: 'relative', display: 'flex', flexDirection: 'column',
+                background: t.featured ? LP_BRAND.ink : '#FFFFFF',
+                border: t.featured ? `1px solid ${LP_BRAND.ink}` : `1px solid ${LP_BRAND.rule}`,
+                borderRadius: 18, padding: '32px 28px',
+                boxShadow: t.featured ? '0 30px 60px -32px rgba(15,31,77,0.5)' : 'none',
+              }}
+            >
+              {t.featured && (
+                <div style={{
+                  position: 'absolute', top: 18, right: 18,
+                  fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: 1.2,
+                  textTransform: 'uppercase', color: LP_BRAND.ink, background: LP_BRAND.orange,
+                  padding: '4px 9px', borderRadius: 7, fontWeight: 600,
+                }}>
+                  Most popular
+                </div>
+              )}
+
+              <LP_Mono color={t.featured ? LP_BRAND.orangeSoft : LP_BRAND.orangeDeep}>{t.name}</LP_Mono>
+              <p style={{
+                margin: '12px 0 0', minHeight: 72, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5,
+                lineHeight: 1.5, color: t.featured ? '#C9C4D9' : LP_BRAND.muted,
+              }}>
+                {t.blurb}
+              </p>
+
+              {/* Price */}
+              <div style={{ marginTop: 20, display: 'flex', alignItems: 'baseline', gap: 6, minHeight: 56 }}>
+                {shown != null ? (
+                  <>
+                    <span style={{
+                      fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 52, lineHeight: 1,
+                      letterSpacing: -1.5, color: t.featured ? LP_BRAND.cream : LP_BRAND.ink,
+                    }}>
+                      ${shown}
+                    </span>
+                    <span style={{
+                      fontFamily: "'Inter Tight',sans-serif", fontSize: 13,
+                      color: t.featured ? '#A9A3BC' : LP_BRAND.muted,
+                    }}>
+                      /mo
+                    </span>
+                  </>
+                ) : (
+                  <span style={{
+                    fontFamily: "'Fraunces',serif", fontWeight: 300, fontSize: 46, lineHeight: 1,
+                    letterSpacing: -1.2, fontStyle: 'italic', color: t.featured ? LP_BRAND.cream : LP_BRAND.ink,
+                  }}>
+                    Custom
+                  </span>
+                )}
+              </div>
+              <div style={{
+                marginTop: 6, minHeight: 16, fontFamily: "'Inter Tight',sans-serif", fontSize: 11.5,
+                color: t.featured ? '#A9A3BC' : LP_BRAND.mutedDark,
+              }}>
+                {shown != null && annual ? `billed annually · $${(annualMonthly! * 12).toLocaleString()}/yr` : ' '}
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={openWaitlist}
+                style={{
+                  marginTop: 22, padding: '12px 18px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                  width: '100%',
+                  background: t.featured ? LP_BRAND.orange : LP_BRAND.ink,
+                  color: t.featured ? '#FFFFFF' : '#F4EFE3',
+                  fontFamily: "'Inter Tight',sans-serif", fontSize: 14, fontWeight: 600,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                {t.cta}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </button>
+
+              {/* What's included */}
+              <div style={{
+                marginTop: 24, paddingTop: 20,
+                borderTop: `1px solid ${t.featured ? 'rgba(255,255,255,0.12)' : LP_BRAND.rule}`,
+              }}>
+                <div style={{
+                  fontFamily: "'Inter Tight',sans-serif", fontWeight: 600, fontSize: 14,
+                  color: t.featured ? LP_BRAND.cream : LP_BRAND.ink,
+                }}>
+                  {t.credits}
+                </div>
+                <div style={{
+                  marginTop: 3, fontFamily: "'Inter Tight',sans-serif", fontSize: 12.5,
+                  color: t.featured ? '#A9A3BC' : LP_BRAND.muted,
+                }}>
+                  {t.seats}
+                </div>
+
+                <ul style={{ margin: '18px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 11 }}>
+                  {t.features.map((f) => (
+                    <li key={f.text} style={{ display: 'flex', gap: 9, alignItems: f.icons ? 'center' : 'flex-start' }}>
+                      <LP_Check color={t.featured ? LP_BRAND.orange : LP_BRAND.green} />
+                      <span style={{
+                        fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, lineHeight: 1.45,
+                        color: t.featured ? '#D6D1E2' : LP_BRAND.slate,
+                      }}>
+                        {f.text}
+                      </span>
+                      {f.icons && (
+                        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                          {f.icons.map(id => <LP_PlatformBadge key={id} id={id} size={17} />)}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+
+                <div style={{
+                  marginTop: 18, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: 0.4,
+                  color: t.featured ? '#8E879E' : LP_BRAND.mutedDark,
+                }}>
+                  {t.overage}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Credit explainer */}
+      <div style={{
+        marginTop: 28, maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto',
+        display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+        padding: '16px 22px', background: LP_BRAND.paper, border: `1px solid ${LP_BRAND.rule}`,
+        borderRadius: 12, textAlign: 'center',
+      }}>
+        <LP_Mono size={9.5} color={LP_BRAND.orangeDeep}>How credits work</LP_Mono>
+        <span style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: LP_BRAND.muted, lineHeight: 1.5 }}>
+          <strong style={{ color: LP_BRAND.ink, fontWeight: 600 }}>Credits meter the reading</strong> - posts pulled, video watched, comments weighed. Deeper questions read more. Run out before month-end and you roll straight onto pay-as-you-go at the same rate; nothing pauses.
+        </span>
+      </div>
+    </section>
+  );
+};
 
 // ── Invite / Final CTA ────────────────────────────────────────────────────────
 
@@ -2476,50 +2766,6 @@ const LP_Invite = ({ openWaitlist }: { openWaitlist: () => void }) => (
   </section>
 );
 
-// ── Footer ────────────────────────────────────────────────────────────────────
-
-const LP_Footer = () => (
-  <footer className="lp-footer" style={{ padding: '40px 64px 48px', background: '#1A1714', color: '#D6CFBF', borderTop: `1px solid ${LP_BRAND.ruleDark}` }}>
-    <div className="lp-footer-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 48, flexWrap: 'wrap' }}>
-      <div style={{ maxWidth: 300 }}>
-        <div style={{ marginBottom: 14 }}>
-          <LP_ScoltoLogo markSize={32} fontSize={42} onDark />
-        </div>
-        <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: '#A29A8B', lineHeight: 1.55 }}>
-          The first AI agent on social — reads the internet so you don't have to.
-        </div>
-      </div>
-      <div className="lp-footer-links" style={{ display: 'flex', gap: 64, fontFamily: "'Inter Tight',sans-serif", fontSize: 13 }}>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <LP_Mono size={9.5} color="#7E7666" style={{ marginBottom: 4 }}>Product</LP_Mono>
-          <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>How it works</a>
-          <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>Examples</a>
-          <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>Changelog</a>
-        </div>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <LP_Mono size={9.5} color="#7E7666" style={{ marginBottom: 4 }}>Company</LP_Mono>
-          <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>About</a>
-          <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>Careers</a>
-          <a style={{ color: '#D6CFBF', textDecoration: 'none' }}>Manifesto</a>
-        </div>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <LP_Mono size={9.5} color="#7E7666" style={{ marginBottom: 4 }}>Legal</LP_Mono>
-          <Link to="/privacy" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Privacy</Link>
-          <Link to="/terms" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Terms</Link>
-          <Link to="/refund" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Refunds</Link>
-        </div>
-      </div>
-    </div>
-    <div className="lp-footer-bottom" style={{
-      marginTop: 36, paddingTop: 18, borderTop: '1px solid #2A2520',
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    }}>
-      <LP_Mono size={9.5} color="#7E7666">© 2026 Scolto — the first AI agent on social</LP_Mono>
-      <LP_Mono size={9.5} color="#7E7666">made for people who'd rather read than scroll</LP_Mono>
-    </div>
-  </footer>
-);
-
 // ── Nav ───────────────────────────────────────────────────────────────────────
 
 const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist: () => void }) => (
@@ -2531,8 +2777,17 @@ const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist
     <LP_ScoltoLogo markSize={34} fontSize={44} />
     <nav className="lp-nav-links" style={{ display: 'flex', gap: 32, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink }}>
       <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>How it works</a>
-      <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>What it ships you</a>
-      <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>Manifesto</a>
+      <a
+        href="#pricing"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' });
+        }}
+        style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'pointer' }}
+      >
+        Pricing
+      </a>
+      <Link to="/manifesto" style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'pointer' }}>Manifesto</Link>
     </nav>
     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
       <button
@@ -2746,7 +3001,7 @@ function WaitlistModal({
     } catch (err: unknown) {
       const code = (err as { code?: string } | null)?.code;
       if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        // User dismissed the popup — silently return to idle.
+        // User dismissed the popup - silently return to idle.
         setStatus('idle');
         return;
       }
@@ -2848,7 +3103,7 @@ function WaitlistModal({
               <p style={{
                 margin: 0, fontSize: 13.5, color: LP_BRAND.muted, lineHeight: 1.5,
               }}>
-                One click with Google — we'll grab your email and let you know the moment a seat opens up.
+                One click with Google - we'll grab your email and let you know the moment a seat opens up.
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
@@ -2877,7 +3132,7 @@ function WaitlistModal({
               margin: '14px auto 0', maxWidth: 320, fontSize: 11.5, color: LP_BRAND.muted,
               textAlign: 'center', lineHeight: 1.5,
             }}>
-              We only use your email to invite you in — no marketing, no sharing.
+              We only use your email to invite you in - no marketing, no sharing.
             </p>
             <button
               onClick={onClose}
@@ -2986,7 +3241,7 @@ export function LandingPage() {
 
   // The app shell sets a global body { min-width: 1280px } for desktop-only
   // surfaces (see globals.css). The landing page is a public/viral surface
-  // that must render on phones — drop the constraint while mounted.
+  // that must render on phones - drop the constraint while mounted.
   useEffect(() => {
     const prev = document.body.style.minWidth;
     document.body.style.minWidth = '0';
@@ -3010,7 +3265,7 @@ export function LandingPage() {
       else await signInWithMicrosoft();
       setAuthOpen(false);
     } catch {
-      // popup closed or cancelled — handled internally
+      // popup closed or cancelled - handled internally
     } finally {
       setLoadingProvider(null);
     }
@@ -3079,7 +3334,7 @@ export function LandingPage() {
             padding-top: 40px !important;
             padding-bottom: 40px !important;
           }
-          /* Hero sits right under the nav — keep the gap tight. */
+          /* Hero sits right under the nav - keep the gap tight. */
           .lp-root .lp-hero-section {
             padding-top: 20px !important;
             padding-bottom: 32px !important;
@@ -3092,7 +3347,7 @@ export function LandingPage() {
             display: none !important;
           }
           /* The floating "live · 27.4M mentions" pill collides with the
-             DailyRead header on small screens — it's noise on mobile. */
+             DailyRead header on small screens - it's noise on mobile. */
           .lp-root .lp-hero-live-pill {
             display: none !important;
           }
@@ -3111,7 +3366,7 @@ export function LandingPage() {
             font-size: 12.5px !important;
             gap: 6px !important;
           }
-          /* minmax(0, 1fr) — without the 0 min, a child's min-content can
+          /* minmax(0, 1fr) - without the 0 min, a child's min-content can
              expand the column past the container and cause horizontal scroll. */
           .lp-root .lp-2col,
           .lp-root .lp-3col {
@@ -3125,6 +3380,7 @@ export function LandingPage() {
           .lp-root .lp-brief-grid,
           .lp-root .lp-dash-charts,
           .lp-root .lp-why-row,
+          .lp-root .lp-price-grid,
           .lp-root .lp-comp-share-row {
             grid-template-columns: minmax(0, 1fr) !important;
           }
@@ -3376,9 +3632,10 @@ export function LandingPage() {
       <LP_Deliverables />
       <LP_Channels />
       <LP_WhyScolto />
+      <LP_Pricing openWaitlist={() => openWaitlist()} />
       <LP_FAQ />
       <LP_Invite openWaitlist={() => openWaitlist()} />
-      <LP_Footer />
+      <SiteFooter />
 
       <AuthModal
         open={authOpen}

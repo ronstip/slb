@@ -51,7 +51,7 @@ const ALL_CHART_TYPES: Array<{ type: SocialChartType; label: string; icon: React
 ];
 
 /** Chart types unavailable for topic widgets in phase 1. topic_metrics is a
- *  snapshot — no time series, so `line` doesn't apply. */
+ *  snapshot - no time series, so `line` doesn't apply. */
 const TOPIC_DISABLED_CHART_TYPES: ReadonlySet<SocialChartType> = new Set(['line']);
 
 // ── Public wrapper ─────────────────────────────────────────────────────────────
@@ -110,10 +110,10 @@ export function SocialWidgetConfigDialog({
 // ── Preset → custom conversion ─────────────────────────────────────────────────
 
 function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
-  // Text and embed widgets have no data/chart config — pass through untouched.
+  // Text and embed widgets have no data/chart config - pass through untouched.
   if (widget.aggregation === 'text') return widget;
   if (widget.aggregation === 'embeds') return widget;
-  // Preserve the preset's chart type if it was set — e.g. channels/entities
+  // Preserve the preset's chart type if it was set - e.g. channels/entities
   // ship with `chartType: 'table'` and the rich table view should survive the
   // round-trip through the edit dialog. Without this, opening any 'channels'
   // widget for edit would silently rewrite it as a bar chart on save.
@@ -122,7 +122,7 @@ function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
       ? widget.chartType
       : widget.chartType ?? presetToCustomConfig(widget.aggregation, widget.kpiIndex).chartType;
 
-  // Seed tableConfig when the widget is rendered as a table — keeps the dialog
+  // Seed tableConfig when the widget is rendered as a table - keeps the dialog
   // populated with the actual columns the user sees on the dashboard so edits
   // round-trip. Uses dimension-aware defaults for known presets.
   let seededTableConfig = widget.tableConfig;
@@ -194,7 +194,7 @@ function SocialWidgetConfigDialogInner({
   const onDragPointerUp = useCallback(() => { dragRef.current.active = false; }, []);
 
   // Recompute valid chart types whenever dimension/metric changes. For topic
-  // widgets, drop the chart types we don't support in phase 1 (line — no time
+  // widgets, drop the chart types we don't support in phase 1 (line - no time
   // series in topic_metrics).
   const validChartTypes = (isTopics
     ? getValidChartTypesForCustom(
@@ -275,7 +275,7 @@ function SocialWidgetConfigDialogInner({
 
   // MDXEditor portals its toolbar popups (block-type dropdown, link dialog)
   // into this host. Keeping it inside DialogContent puts the popups in the
-  // Radix Dialog's pointer-events scope — otherwise they render but clicks
+  // Radix Dialog's pointer-events scope - otherwise they render but clicks
   // are swallowed because modal Dialog blocks pointer events on body.
   // Callback ref + state so the editor re-renders once the host mounts.
   const [editorOverlayHost, setEditorOverlayHost] = useState<HTMLDivElement | null>(null);
@@ -375,7 +375,7 @@ function SocialWidgetConfigDialogInner({
 
               <div className="flex-1 overflow-y-auto">
                 <TabsContent value="data" className="mt-0 p-5 space-y-4">
-                  {/* Title — doubles as the figure header. AI compose drafts a
+                  {/* Title - doubles as the figure header. AI compose drafts a
                        terse 4–8 word label from the current data. */}
                   <div className="flex items-center gap-3">
                     <Label className="text-xs w-24 shrink-0">Title</Label>
@@ -406,7 +406,7 @@ function SocialWidgetConfigDialogInner({
                     />
                   </div>
 
-                  {/* Figure text — academic-style caption rendered below the
+                  {/* Figure text - academic-style caption rendered below the
                        chart body. Optional; blank → no change in look. */}
                   <div className="flex items-start gap-3">
                     <Label className="text-xs w-24 shrink-0 pt-2">Figure text</Label>
@@ -431,7 +431,7 @@ function SocialWidgetConfigDialogInner({
 
                   <Separator />
 
-                  {/* Data Source toggle — widget-level. Hoisted above the
+                  {/* Data Source toggle - widget-level. Hoisted above the
                        chart/table form fork so it's visible regardless of
                        chart type. */}
                   <div className="flex items-center gap-3">
@@ -461,7 +461,7 @@ function SocialWidgetConfigDialogInner({
                     </div>
                   </div>
 
-                  {/* Chart type selector — grid layout with icon on top, all types visible */}
+                  {/* Chart type selector - grid layout with icon on top, all types visible */}
                   <div className="space-y-2.5">
                     <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Chart Type
@@ -674,7 +674,7 @@ function StyleTab({
       ? aggregateTopicsTable(topics, tableConfig)
       : aggregateTable(applyWidgetFilters(previewPosts, draft.filters), tableConfig);
 
-    // Build a rename group per dimension column — for topic widgets the
+    // Build a rename group per dimension column - for topic widgets the
     // typical case is one group ("Topic") but other dims (beat_type,
     // top_emotion, ...) work the same. For post tables, multi-group tables
     // (e.g. channel × platform) also get one section per dim.
@@ -742,7 +742,7 @@ function TableStyleForm({
   /** One entry per dimension column on the table. Each carries the distinct
    *  raw values present in the rendered preview rows, so the user can rename
    *  them. Renames are written to the shared `styleOverrides.seriesLabels`
-   *  map — keyed by raw value, so renames apply consistently wherever the
+   *  map - keyed by raw value, so renames apply consistently wherever the
    *  same value appears (table cells, chart legends). */
   dimGroups: Array<{ columnId: string; label: string; values: string[] }>;
   styleOverrides: ChartStyleOverrides;
@@ -971,7 +971,7 @@ function ComposeButton({
       className="h-8 px-2 shrink-0 text-xs gap-1.5"
       disabled={pending}
       onClick={handleClick}
-      title={errored ? 'Compose failed — try again' : 'Compose with AI'}
+      title={errored ? 'Compose failed - try again' : 'Compose with AI'}
     >
       {pending ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -985,7 +985,7 @@ function ComposeButton({
 
 // ── Embed Posts config panel ─────────────────────────────────────────────────
 // One URL per line. Render mode (single vs carousel) is auto-derived from the
-// list length at render time — the user does not pick.
+// list length at render time - the user does not pick.
 
 function EmbedConfigPanel({
   draft,

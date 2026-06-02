@@ -32,14 +32,14 @@ JUDGE_PROMPT = """You are evaluating an AI agent's transcript against four dimen
 Score each 1-5 (5 = best). Return ONLY a JSON object, no preamble.
 
 Rubric:
-  conciseness  — 5 = no preamble, leads with answer, no filler.
+  conciseness  - 5 = no preamble, leads with answer, no filler.
                  1 = restates the question, narrates every tool call, hedges.
-  tone         — 5 = sharp, judgment-bearing, faithful (says when something is
+  tone         - 5 = sharp, judgment-bearing, faithful (says when something is
                      missing or wrong without padding).
                  1 = apologetic, defensive, generic AI-assistant voice.
-  repetition   — 5 = never restates findings the user already saw.
+  repetition   - 5 = never restates findings the user already saw.
                  1 = repeats the same point across turns or after tool calls.
-  correctness  — 5 = answers the actual question; uses tools well; no drift.
+  correctness  - 5 = answers the actual question; uses tools well; no drift.
                  1 = wrong answer, ignores tool results, or invents data.
 
 Scenario focus (weigh this heaviest if provided):
@@ -73,7 +73,7 @@ def _format_transcript_for_judge(t: Transcript) -> str:
             elif ev.type == "tool_response":
                 resp = json.dumps(ev.tool_response or {}, default=str)[:300]
                 lines.append(f"TOOL_RESULT: {ev.tool_name} -> {resp}")
-            # thinking events are skipped — judge sees what the user sees.
+            # thinking events are skipped - judge sees what the user sees.
     return "\n".join(lines)
 
 
@@ -87,7 +87,7 @@ def judge_transcript(t: Transcript, focus: str = "") -> dict[str, Any]:
     settings = get_settings()
     # The agent runs through ADK which auto-detects Vertex AI from
     # GOOGLE_GENAI_USE_VERTEXAI / GOOGLE_CLOUD_PROJECT env vars. The bare
-    # genai.Client() does NOT — so we configure it explicitly from settings.
+    # genai.Client() does NOT - so we configure it explicitly from settings.
     use_vertex = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("1", "true")
     if use_vertex or settings.gcp_project_id:
         client = genai.Client(
@@ -99,7 +99,7 @@ def judge_transcript(t: Transcript, focus: str = "") -> dict[str, Any]:
         client = genai.Client()  # falls back to GOOGLE_API_KEY if set
 
     body = JUDGE_PROMPT.format(
-        focus=focus or "(none — apply the rubric uniformly)",
+        focus=focus or "(none - apply the rubric uniformly)",
         transcript=_format_transcript_for_judge(t),
     )
     resp = client.models.generate_content(

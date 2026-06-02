@@ -122,7 +122,7 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
 
 /** Array-dimension intersection: when the scope constrains a dimension, the
  *  viewer's selection can only NARROW the scope's set, not introduce values
- *  outside it. Empty viewer selection means "all values within the scope" —
+ *  outside it. Empty viewer selection means "all values within the scope" -
  *  we promote the scope's list to the active filter. */
 function intersectArrayDimension(
   scopeValues: string[] | null | undefined,
@@ -154,7 +154,7 @@ function intersectDateRange(
 }
 
 /** Combine the report's committed scope with the viewer's current filter
- *  selections. The scope is the floor — viewer filters can narrow each
+ *  selections. The scope is the floor - viewer filters can narrow each
  *  dimension further but never widen past the scope. When no scope is set
  *  (standalone mode), this is the identity function. */
 function intersectWithScope(

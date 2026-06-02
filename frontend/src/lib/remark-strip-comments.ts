@@ -1,7 +1,7 @@
 import { visit } from 'unist-util-visit';
 
 /** Remark plugin that removes HTML comment nodes and converts `<br>` to
- *  hard breaks. The agent occasionally emits raw HTML — react-markdown
+ *  hard breaks. The agent occasionally emits raw HTML - react-markdown
  *  won't render it, so without this it leaks through as literal text
  *  (e.g. `br>` next to a date). */
 export function remarkStripComments() {

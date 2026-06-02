@@ -56,7 +56,7 @@ export function TopicCard({ topic, agentId, onViewPosts }: TopicCardProps) {
         aria-hidden
       />
 
-      {/* Collapsed header — always visible */}
+      {/* Collapsed header - always visible */}
       <div
         className="w-full text-left cursor-pointer pl-[3px]"
         role="button"
@@ -109,7 +109,7 @@ export function TopicCard({ topic, agentId, onViewPosts }: TopicCardProps) {
               </div>
             </div>
 
-            {/* Subtitle — topic summary, 2-line clamp */}
+            {/* Subtitle - topic summary, 2-line clamp */}
             {topic.topic_summary && (
               <p className="text-[12px] leading-relaxed text-muted-foreground line-clamp-2">
                 {topic.topic_summary}
@@ -158,7 +158,7 @@ export function TopicCard({ topic, agentId, onViewPosts }: TopicCardProps) {
           </div>
         </div>
 
-        {/* Action buttons — tinted chips matching the action panel style */}
+        {/* Action buttons - tinted chips matching the action panel style */}
         <div className="flex items-center gap-1.5 border-t border-border/40 mx-3 mt-2 pt-2 pb-2" onClick={(e) => e.stopPropagation()}>
           <ActionChip label="Posts" icon={List} style={ACTION_STYLES.posts} onClick={handleViewPosts} />
           <ActionChip label="Data" icon={Table2} style={ACTION_STYLES.data} onClick={handleViewPosts} />

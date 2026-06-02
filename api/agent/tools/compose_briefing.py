@@ -1,4 +1,4 @@
-"""Compose Briefing Tool — the agent's exit tool that publishes the user-facing briefing.
+"""Compose Briefing Tool - the agent's exit tool that publishes the user-facing briefing.
 
 This is the agent's final action in an autonomous run. It takes the agent's
 composed layout (hero + secondary + rail, with a mix of topic and data stories),
@@ -8,7 +8,7 @@ persists to `agents/{id}/briefings/latest`.
 
 Distinct from [api/agent/tools/generate_briefing.py] (which writes the per-run
 briefing used as the agent's internal reflection). Both tools are called in
-sequence during the final phase of an autonomous run — generate_briefing first
+sequence during the final phase of an autonomous run - generate_briefing first
 (reflection), then compose_briefing (user-facing publication).
 """
 
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 def _self_heal_story(story: dict, topics_by_id: dict, default_rank: int) -> dict:
     """Fill required fields the LLM commonly omits on topic stories.
 
-    Only touches topic stories that have a known ``topic_id`` — uses the topic
+    Only touches topic stories that have a known ``topic_id`` - uses the topic
     doc's ``topic_name``/``topic_summary`` for missing ``headline``/``blurb``,
     and falls back to the list position for missing ``rank``. Data stories
     pass through untouched (no safe defaults for ``headline``/``metrics``).
@@ -62,7 +62,7 @@ def _self_heal_story(story: dict, topics_by_id: dict, default_rank: int) -> dict
 def _summarize_validation_errors(errors: list[dict]) -> list[str]:
     """Turn pydantic's raw error list into short, actionable messages the model can act on.
 
-    The default e.errors() output is structured but verbose — lots of "input_value"
+    The default e.errors() output is structured but verbose - lots of "input_value"
     and schema-path noise. This pulls out the minimum the LLM needs: which story
     slot is broken, and what's missing there.
     """
@@ -103,29 +103,29 @@ def compose_briefing(
     """Publish the agent-composed briefing as the user-facing artifact for this run.
 
     WHEN TO USE: ONCE per autonomous run, as the FINAL action. Call AFTER
-    ``generate_briefing`` (the internal reflection) — this is the user-facing
+    ``generate_briefing`` (the internal reflection) - this is the user-facing
     publication. Returns successfully → run is complete; stop.
 
     WHEN NOT TO USE:
-      - For in-progress drafts or intermediate updates — there is no draft state.
-      - Before ``generate_briefing`` — generate first (reflection), then compose.
-      - In chat mode for ad-hoc summaries — only call when the user explicitly
+      - For in-progress drafts or intermediate updates - there is no draft state.
+      - Before ``generate_briefing`` - generate first (reflection), then compose.
+      - In chat mode for ad-hoc summaries - only call when the user explicitly
         asks to refresh the briefing.
 
     REQUIRED FIELDS (validation WILL fail if any are missing):
 
-      Topic story — type="topic":
+      Topic story - type="topic":
           REQUIRED: topic_id, headline, blurb, rank
-          Optional: section_label (hero only — e.g. "TOP STORY")
+          Optional: section_label (hero only - e.g. "TOP STORY")
           Use for "what people are talking about" stories anchored to a cluster
           from list_topics. The server resolves names/stats/thumbnails from topic_id.
 
-      Data story — type="data":
+      Data story - type="data":
           REQUIRED: headline, blurb, rank, metrics (list with AT LEAST 1 item)
-          Each metric: {label, value, delta?, tone?} — label and value required.
+          Each metric: {label, value, delta?, tone?} - label and value required.
           Optional: section_label, chart, timeframe, citations
-          Use for analytical findings — EMV leaders, competitive gaps, anomalies.
-          A data story WITHOUT metrics is invalid — convert it to a topic story
+          Use for analytical findings - EMV leaders, competitive gaps, anomalies.
+          A data story WITHOUT metrics is invalid - convert it to a topic story
           if it doesn't have numbers, or drop it.
 
     WORKED EXAMPLE (copy this shape exactly):
@@ -169,15 +169,15 @@ def compose_briefing(
 
     Returns:
         Status dict. On success, includes hero_type and counts. On validation
-        failure, includes ``errors`` — a list of short strings like
-        "secondary[2].metrics: missing required field" — fix those and retry.
+        failure, includes ``errors`` - a list of short strings like
+        "secondary[2].metrics: missing required field" - fix those and retry.
     """
     state = tool_context.state if tool_context else {}
     agent_id = state.get("active_agent_id")
     if not agent_id:
         return {
             "status": "error",
-            "message": "No active agent in tool context — cannot publish briefing.",
+            "message": "No active agent in tool context - cannot publish briefing.",
         }
 
     # Idempotency: compose_briefing is the autonomous exit tool. The most
@@ -197,7 +197,7 @@ def compose_briefing(
             "status": "duplicate",
             "briefing_id": _existing["artifact_id"],
             "message": (
-                "An identical briefing was already composed in this session — "
+                "An identical briefing was already composed in this session - "
                 "the run already produced its exit artifact. Stop here."
             ),
         }
@@ -269,7 +269,7 @@ def compose_briefing(
 
     write_briefing_to_firestore(fs, agent_id, payload)
     logger.info(
-        "Briefing published for agent %s — hero type=%s, %d secondary, %d rail",
+        "Briefing published for agent %s - hero type=%s, %d secondary, %d rail",
         agent_id,
         payload["hero"].get("type"),
         len(payload["secondary"]),

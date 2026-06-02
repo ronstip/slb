@@ -1,4 +1,4 @@
-"""Table component — renders a table at placeholder bounds."""
+"""Table component - renders a table at placeholder bounds."""
 
 import logging
 from typing import Any

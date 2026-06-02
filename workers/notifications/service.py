@@ -1,4 +1,4 @@
-"""Notification service — sends agent-composed emails via SendGrid."""
+"""Notification service - sends agent-composed emails via SendGrid."""
 
 import logging
 

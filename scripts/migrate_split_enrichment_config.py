@@ -5,10 +5,10 @@ content_types) out of `data_scope` into a new top-level `enrichment_config`
 field on each agent document. Removes them from `data_scope` after copying
 (rip the bandaid).
 
-Idempotent — agents already migrated (have `enrichment_config` set OR have
+Idempotent - agents already migrated (have `enrichment_config` set OR have
 no enrichment keys in data_scope) are skipped.
 
-Does NOT bump agent.version — backfilling shouldn't trigger phantom
+Does NOT bump agent.version - backfilling shouldn't trigger phantom
 re-enrichment under the new (agent_id, agent_version) skip key.
 
 Usage:
@@ -61,7 +61,7 @@ def main(dry_run: bool) -> None:
 
         if existing_ec:
             n_skipped_already += 1
-            logger.debug("agent %s: already has enrichment_config — skipping", doc.id)
+            logger.debug("agent %s: already has enrichment_config - skipping", doc.id)
             continue
 
         new_ec: dict = {}
@@ -73,7 +73,7 @@ def main(dry_run: bool) -> None:
         if not new_ec:
             n_skipped_empty += 1
             logger.debug(
-                "agent %s: no enrichment keys in data_scope — writing empty config",
+                "agent %s: no enrichment keys in data_scope - writing empty config",
                 doc.id,
             )
 

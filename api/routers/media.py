@@ -104,7 +104,7 @@ async def upload_ppt_template(
 
     contents = await file.read()
     if len(contents) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large — maximum 20MB")
+        raise HTTPException(status_code=413, detail="File too large - maximum 20MB")
 
     settings = get_settings()
     template_id = uuid4().hex[:12]
@@ -128,7 +128,7 @@ async def upload_ppt_template(
         from api.utils.pptx_manifest import extract_manifest
         manifest = extract_manifest(contents)
     except Exception as e:
-        # Manifest extraction is optional — user gets a valid upload even
+        # Manifest extraction is optional - user gets a valid upload even
         # if parsing fails. Agent falls back to layout-by-convention.
         logger.warning("Failed to extract pptx manifest for user %s: %s", user.uid, e)
 

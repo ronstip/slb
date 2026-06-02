@@ -100,12 +100,12 @@ LATEST RUN REFLECTION (what the agent concluded last run; may be empty):
 CANDIDATE TOPICS (pre-ranked by composite signal; you pick and order):
 {topics_json}
 
-STORY TYPES — mix freely
+STORY TYPES - mix freely
 - "topic": semantic cluster of posts. Anchor with topic_id. Required fields: type, topic_id, headline, blurb, rank. Hero-only: section_label.
 - "data": an analytical finding you derive from the candidates (leader, comparison, anomaly, record, momentum shift). Required fields: type, headline, blurb, rank, metrics (≥1 item: {{label, value, delta?, tone?}}). Optional: chart ({{chart_type: bar|line|pie|doughnut|table, data: ..., title?}}), timeframe, citations (post_ids).
 
 TASK
-1. Pick ONE hero story. If editorial importance is close, a topic with has_image_in_topic=true gives a better visual anchor — prefer that. But a significantly more important data/topic story without an image still wins.
+1. Pick ONE hero story. If editorial importance is close, a topic with has_image_in_topic=true gives a better visual anchor - prefer that. But a significantly more important data/topic story without an image still wins.
 2. Pick 3-4 SECONDARY stories. MUST include at least one `data` story (EMV-leader-style, comparison, anomaly, record). Mix types freely.
 3. Put the rest in RAIL, ordered by importance.
 4. Write headlines in authoritative news style (50-90 chars, active voice, concrete nouns). Hero blurb is a 2-3 sentence lede weaving in two or more concrete numbers. Secondary/rail blurbs are 1-2 sentences.
@@ -120,7 +120,7 @@ Return a single valid JSON OBJECT (not an array) matching this shape:
   "generated_at": ""
 }}
 
-Set generated_at="" — the server fills it.
+Set generated_at="" - the server fills it.
 """
 
 

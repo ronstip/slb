@@ -1,9 +1,9 @@
 """Idempotency for artifact-creating tools.
 
-The agent's chat baseline showed 65 duplicate actions across 75 tool calls —
+The agent's chat baseline showed 65 duplicate actions across 75 tool calls -
 the model kept re-creating dashboards, charts, and SQL probes because nothing
 in the system said "you already did this." This helper gives every artifact
-tool a way to say "I already did this in the current session — here's the
+tool a way to say "I already did this in the current session - here's the
 existing artifact_id" instead of minting a new one.
 
 Usage in a tool:
@@ -20,7 +20,7 @@ Usage in a tool:
             return {
                 "status": "duplicate",
                 "chart_id": existing["artifact_id"],
-                "message": "Already created earlier this session — reusing.",
+                "message": "Already created earlier this session - reusing.",
             }
 
         # ... do the real work, get chart_id ...
@@ -62,7 +62,7 @@ def action_key(tool_name: str, args: dict[str, Any]) -> str:
 def _get_ledger(tool_context) -> dict[str, dict[str, Any]]:
     """Return the recent-actions ledger from session state, creating if needed.
 
-    Tolerates a missing tool_context (some test paths) — returns a temporary
+    Tolerates a missing tool_context (some test paths) - returns a temporary
     dict in that case so the tool still functions, just without dedup.
     """
     if tool_context is None or not hasattr(tool_context, "state"):

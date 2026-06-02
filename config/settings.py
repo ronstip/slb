@@ -36,15 +36,15 @@ class Settings(BaseSettings):
     enrichment_batch_workers: int = 4
     enrichment_global_concurrency: int = 50  # Max concurrent Gemini calls across all batches
     enrichment_video_rate_limit: int = 25  # Max video enrichment calls per minute (process-wide)
-    enrichment_general_rate_limit: int = 600  # Max total enrichment calls per minute (process-wide) — requires matching Gemini quota in GCP
-    # Retry budget is deliberately tight — the old defaults (base=60s, retries=5)
+    enrichment_general_rate_limit: int = 600  # Max total enrichment calls per minute (process-wide) - requires matching Gemini quota in GCP
+    # Retry budget is deliberately tight - the old defaults (base=60s, retries=5)
     # with exponential backoff let a single 429-prone post hold a worker slot
     # for up to 15 minutes (60+120+240+480+...), gridlocking the enrichment
     # pool when several posts hit 429 in one batch. With base=10s / retries=3
     # the worst case is ~40s (10+20+40).
     enrichment_max_retries: int = 3
     enrichment_retry_base_delay: float = 10.0
-    # Hard ceiling on cumulative retry sleep per post — if we'd sleep past this,
+    # Hard ceiling on cumulative retry sleep per post - if we'd sleep past this,
     # give up and mark the post as failed. Stops pathological batches where
     # every post sits in backoff instead of draining.
     enrichment_retry_max_total_sec: float = 60.0
@@ -57,14 +57,14 @@ class Settings(BaseSettings):
     # not stuck" run.
     enrichment_per_post_timeout_sec: float = 480.0
 
-    # Streaming enrichment — the consumer flushes pending Gemini results into
+    # Streaming enrichment - the consumer flushes pending Gemini results into
     # BigQuery via MERGE either when `flush_size` accumulates or `flush_interval_sec`
     # elapses. Smaller flush_size = smoother `posts_enriched` counter advancement
     # at the cost of more BQ MERGEs.
     enrichment_bq_flush_size: int = 25
     enrichment_bq_flush_interval_sec: float = 3.0
 
-    # Pipeline liveness — a dedicated thread inside the runner touches
+    # Pipeline liveness - a dedicated thread inside the runner touches
     # `collection_status.updated_at` every N seconds, independent of the main
     # loop, so the stale-pipeline watchdog can detect a wedged loop quickly
     # without waiting for the next progress log.
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     # batch can't starve enrich/embed progress.
     media_download_concurrency: int = 16
 
-    # Pipeline embedding step (BQ AI.GENERATE_EMBEDDING — paid per row).
+    # Pipeline embedding step (BQ AI.GENERATE_EMBEDDING - paid per row).
     # Disabled by default because the current default topic algorithm
     # (llm_taxonomy_v2) does not use embeddings. When False, action_embed
     # short-circuits as a no-op pass-through (ENRICHED → DONE) so the state
@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     # agent back to brothers_v1 (which relies on embeddings).
     pipeline_embed_step_enabled: bool = False
     # Fan adapters (BrightData, Vetric, ...) across threads during crawl.
-    # Off by default — flip after verifying per-adapter snapshot accounting in
+    # Off by default - flip after verifying per-adapter snapshot accounting in
     # a canary agent. Only affects multi-provider collections.
     parallel_adapters: bool = False
 
@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     clustering_max_intra_group_mean: float = 0.20
     clustering_max_distance_ungrouped: float = 0.21
 
-    # LLM-taxonomy topic algorithm (alternative to brothers_v1 — no embeddings).
+    # LLM-taxonomy topic algorithm (alternative to brothers_v1 - no embeddings).
     # Toggle via topics_algorithm; per-agent override lives in the agent doc's
     # `topics_config.algorithm_version` field.
     #
@@ -133,7 +133,7 @@ class Settings(BaseSettings):
     vetric_api_key_reddit: str = ""
     vetric_api_key_youtube: str = ""
 
-    # X (Twitter) API v2 — official vendor; default for the `twitter` platform
+    # X (Twitter) API v2 - official vendor; default for the `twitter` platform
     x_api_bearer_token: str = ""
     x_api_max_results: int = 500  # 10..500 per /tweets/search/all page
     x_api_min_request_interval_sec: float = 1.0  # client-side throttle (PAYG-friendly)
@@ -158,10 +158,10 @@ class Settings(BaseSettings):
     brightdata_max_snapshots_per_collection: int = 20
     brightdata_max_snapshots_per_task: int = 50
 
-    # Apify — pay-per-result actor platform; primary vendor for Instagram, Facebook, TikTok
+    # Apify - pay-per-result actor platform; primary vendor for Instagram, Facebook, TikTok
     apify_api_token: str = ""
     apify_actor_instagram: str = "apidojo/instagram-hashtag-scraper"
-    # Direct-fetch (post URL) actor — apidojo/instagram-hashtag-scraper only
+    # Direct-fetch (post URL) actor - apidojo/instagram-hashtag-scraper only
     # accepts hashtag URLs, so the post-by-URL flow needs a different actor
     # that handles directUrls. Defaults to apify/instagram-scraper (parser
     # already registered in apify_parsers.py).
@@ -175,13 +175,13 @@ class Settings(BaseSettings):
     apify_account_memory_cap_mbytes: int = 32768
     apify_build: str = ""  # optional build tag for stability
     apify_proxy_group: str = "RESIDENTIAL"  # RESIDENTIAL | DATACENTER
-    # Instagram comments — dedicated actor (separate from the post-collection actor)
+    # Instagram comments - dedicated actor (separate from the post-collection actor)
     apify_actor_instagram_comments: str = "apify/instagram-comment-scraper"
     apify_instagram_comments_max: int = 100  # per-post fetch cap (cost guard)
-    # TikTok comments — dedicated actor (separate from the post-collection actor)
+    # TikTok comments - dedicated actor (separate from the post-collection actor)
     apify_actor_tiktok_comments: str = "clockworks/tiktok-comments-scraper"
     apify_tiktok_comments_max: int = 100  # per-post fetch cap (cost guard)
-    # YouTube comments — dedicated actor (YT posts collect via Vetric/BrightData;
+    # YouTube comments - dedicated actor (YT posts collect via Vetric/BrightData;
     # comments path is Apify-only). Input shape: startUrls=[{url}], maxComments.
     apify_actor_youtube_comments: str = "streamers/youtube-comments-scraper"
     apify_youtube_comments_max: int = 100  # per-post fetch cap (cost guard)
@@ -197,11 +197,11 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     # Signup gate mode (controls who can sign in once a Firebase token is verified):
-    #   "open"         — no gate beyond Firebase auth itself (dev default).
-    #   "allowlist"    — only emails in `allowed_emails` may sign in.
+    #   "open"         - no gate beyond Firebase auth itself (dev default).
+    #   "allowlist"    - only emails in `allowed_emails` may sign in.
     #                    `lifespan()` hard-fails at startup in production if
     #                    this mode is set with an empty `allowed_emails`.
-    #   "entitlements" — placeholder for §E per-user Firestore tiers.
+    #   "entitlements" - placeholder for §E per-user Firestore tiers.
     #
     # Designed so flipping from "allowlist" → "entitlements" later is an env
     # change, not a code change.
@@ -220,7 +220,7 @@ class Settings(BaseSettings):
 
     frontend_url: str = "http://localhost:5174"
 
-    # CORS — comma-separated allowed origins
+    # CORS - comma-separated allowed origins
     cors_origins: str = "http://localhost:5174,http://localhost:5173,http://localhost:3000"
 
     # Worker service URL for Cloud Tasks dispatch (set in prod, e.g. https://sl-worker-xxx.run.app)
@@ -232,12 +232,12 @@ class Settings(BaseSettings):
     # Comma-separated allowlist of emails. Empty = anyone can sign in.
     allowed_emails: str = ""
 
-    # Lemon Squeezy billing (optional — billing features disabled if not set)
+    # Lemon Squeezy billing (optional - billing features disabled if not set)
     lemonsqueezy_api_key: str = ""
     lemonsqueezy_store_id: str = ""
     lemonsqueezy_webhook_secret: str = ""
 
-    # Super admin — comma-separated emails with platform-wide admin access
+    # Super admin - comma-separated emails with platform-wide admin access
     super_admin_emails: str = ""
 
     # Email notifications (SendGrid)

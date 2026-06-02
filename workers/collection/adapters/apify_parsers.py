@@ -2,7 +2,7 @@
 
 Each (platform, actor_id) pair is registered in `_PARSER_REGISTRY`.
 ApifyAdapter looks up the parser at init time and fail-fast raises if a
-configured actor has no parser entry — swapping actors via env requires
+configured actor has no parser entry - swapping actors via env requires
 also registering a parser.
 
 Field-name fallbacks: actor outputs occasionally rename or remove keys
@@ -57,7 +57,7 @@ def _safe_int(value: Any) -> int | None:
 def _parse_dt(value: Any) -> datetime | None:
     """Parse a datetime from int/float (unix seconds), ISO string, or None.
 
-    Always returns tz-aware UTC. Returns None on failure — callers must handle
+    Always returns tz-aware UTC. Returns None on failure - callers must handle
     None and ideally drop the item (consistent with `time_range_gate`).
     """
     if value is None:
@@ -89,7 +89,7 @@ def _hash_id(seed: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Instagram — apify/instagram-scraper
+# Instagram - apify/instagram-scraper
 # Sample dataset shape (captured from live run, see smoke_apify_out.json):
 #   id, shortCode, url, type (Image|Video|Sidecar), caption, hashtags, mentions,
 #   timestamp (ISO), ownerUsername, ownerFullName, ownerId, likesCount,
@@ -142,12 +142,12 @@ def parse_apify_instagram_post(item: dict) -> Post:
     # Views: prefer videoPlayCount (more reliable for Reels per actor docs),
     # fall back to videoViewCount, then alternate names some builds emit.
     # Without a logged-in `cookies` input, IG often omits view counts entirely
-    # for Reels — that's an upstream constraint, not a parser bug.
+    # for Reels - that's an upstream constraint, not a parser bug.
     views = _safe_int(_first(
         item, "videoPlayCount", "videoViewCount", "playCount", "videoViews",
     ))
     # Temporarily INFO so the next live test shows whether Apify omits the
-    # field or returns null — flip back to logger.debug after we have a
+    # field or returns null - flip back to logger.debug after we have a
     # confirmed answer in production logs.
     if post_type == "video" and views is None:
         logger.info(
@@ -205,7 +205,7 @@ def parse_apify_instagram_channel(item: dict) -> Channel:
 
 
 # ---------------------------------------------------------------------------
-# Instagram — apidojo/instagram-hashtag-scraper
+# Instagram - apidojo/instagram-hashtag-scraper
 # Different output shape from apify/instagram-scraper:
 #   - Singular `likeCount` / `commentCount` (vs plural)
 #   - Nested `owner.{id,username,fullName,isVerified}` (vs flat owner*)
@@ -268,7 +268,7 @@ def parse_apidojo_ig_hashtag_channel(item: dict) -> Channel:
 
 
 # ---------------------------------------------------------------------------
-# Facebook — scrapeforge/facebook-search-posts
+# Facebook - scrapeforge/facebook-search-posts
 # Sample dataset shape:
 #   post_id, type, url, message, message_rich, timestamp (unix sec),
 #   comments_count, reactions_count, reshare_count,
@@ -383,7 +383,7 @@ def parse_scrapeforge_facebook_channel(item: dict) -> Channel:
 
 
 # ---------------------------------------------------------------------------
-# TikTok — clockworks/tiktok-scraper
+# TikTok - clockworks/tiktok-scraper
 # Sample dataset shape:
 #   id, text, textLanguage, createTime (unix), createTimeISO, isAd, isPinned,
 #   isSlideshow, webVideoUrl, mediaUrls[], slideshowImageLinks[],
@@ -492,7 +492,7 @@ def parse_clockworks_tiktok_channel(item: dict) -> Channel:
 
 
 # ---------------------------------------------------------------------------
-# Registry — keyed by (platform, actor_id). v1 ships one parser per platform;
+# Registry - keyed by (platform, actor_id). v1 ships one parser per platform;
 # adding a new actor for an existing platform requires registering a parser
 # entry here. ApifyAdapter raises at init time if a configured actor lacks one.
 # ---------------------------------------------------------------------------
@@ -518,7 +518,7 @@ _PARSER_REGISTRY: dict[tuple[str, str], tuple[ParsePostFn, ParseChannelFn]] = {
 
 
 # ---------------------------------------------------------------------------
-# Instagram comments — apify/instagram-comment-scraper
+# Instagram comments - apify/instagram-comment-scraper
 # Dataset item shape (top-level reply on a post):
 #   id, text, ownerUsername, ownerProfilePicUrl, ownerIsVerified, timestamp,
 #   likesCount, repliesCount, replies (nested list of same shape, optional),
@@ -531,7 +531,7 @@ _PARSER_REGISTRY: dict[tuple[str, str], tuple[ParsePostFn, ParseChannelFn]] = {
 def parse_apify_instagram_comment(item: dict, parent_comment_id: str | None = None) -> Comment:
     """Parse one IG comment item into a Comment.
 
-    `parent_comment_id`, when set, overrides any value on the item itself —
+    `parent_comment_id`, when set, overrides any value on the item itself -
     used by the flattener to stamp the correct parent on nested replies that
     don't carry their parent id natively.
     """
@@ -617,19 +617,19 @@ def flatten_apify_instagram_comments(
 
 
 # ---------------------------------------------------------------------------
-# TikTok comments — clockworks/tiktok-comments-scraper
+# TikTok comments - clockworks/tiktok-comments-scraper
 # Dataset item shape (top-level comment on a video):
 #   cid, text, create_time (unix sec), digg_count (likes), reply_comment_total,
 #   reply_id ("0" or absent = top-level, otherwise parent cid),
 #   user { unique_id, nickname, uid, avatar_thumb, sec_uid, verified },
 #   replies[] (nested list of same shape; some builds return top-level only +
-#   require a separate reply-scraper actor — handled defensively).
+#   require a separate reply-scraper actor - handled defensively).
 # ---------------------------------------------------------------------------
 
 def parse_apify_tiktok_comment(item: dict, parent_comment_id: str | None = None) -> Comment:
     """Parse one TikTok comment item into a Comment.
 
-    `parent_comment_id`, when set, overrides any value on the item itself —
+    `parent_comment_id`, when set, overrides any value on the item itself -
     used by the flattener to stamp the correct parent on nested replies.
     """
     comment_id = str(_first(item, "cid", "id", "commentId", default=""))
@@ -743,9 +743,9 @@ def flatten_apify_tiktok_comments(items: list[dict], post_id: str) -> list[Comme
 
 
 # ---------------------------------------------------------------------------
-# YouTube comments — streamers/youtube-comments-scraper
+# YouTube comments - streamers/youtube-comments-scraper
 # Observed dataset item shape (one comment per item; no native id, no
-# channelId — only handle):
+# channelId - only handle):
 #   author ("@handle"), comment, type ("comment" | "reply"),
 #   voteCount, replyCount, publishedTimeText ("2 hours ago"),
 #   hasCreatorHeart, authorIsChannelOwner, title, pageUrl.
@@ -760,7 +760,7 @@ _YT_RELATIVE_UNITS = {
     "hour": 3600,
     "day": 86_400,
     "week": 7 * 86_400,
-    "month": 30 * 86_400,   # approx — YT only ever shows whole units
+    "month": 30 * 86_400,   # approx - YT only ever shows whole units
     "year": 365 * 86_400,
 }
 
@@ -774,7 +774,7 @@ def _parse_yt_relative_time(text: Any, ref_now: datetime) -> datetime | None:
     "just now") into an absolute tz-aware UTC datetime relative to `ref_now`.
 
     YT only ever emits relative times for comments via this actor, so a
-    timezone-aware "now" anchor is the best we can do — the result is
+    timezone-aware "now" anchor is the best we can do - the result is
     approximate to whole units (YT's own granularity).
     """
     if not isinstance(text, str):
@@ -837,11 +837,11 @@ def parse_apify_youtube_comment(
 ) -> Comment:
     """Parse one YouTube comment item into a Comment.
 
-    `parent_comment_id`, when set, overrides any value on the item itself —
+    `parent_comment_id`, when set, overrides any value on the item itself -
     used by the flattener to stamp the correct parent on replies.
 
     `ref_now` is the anchor for parsing relative `publishedTimeText` (e.g.
-    "2 hours ago") — pass the same timestamp for every item in a batch so
+    "2 hours ago") - pass the same timestamp for every item in a batch so
     threaded comments stay ordered relative to each other.
     """
     if ref_now is None:
@@ -923,13 +923,13 @@ def flatten_apify_youtube_comments(items: list[dict], post_id: str) -> list[Comm
     comment (top-level or reply) in a flat list, with `type` set to
     "comment" or "reply" but no parent-comment linkage on reply items.
     Without that linkage we can't thread replies back to a specific
-    parent — so every item is anchored to the post itself (root = self).
+    parent - so every item is anchored to the post itself (root = self).
     `type` is preserved in `platform_metadata` for downstream filtering.
 
     The fallback paths for other builds:
-      - nested `replies` arrays under a top-level item (legacy shape) —
+      - nested `replies` arrays under a top-level item (legacy shape) -
         children get the top-level's synthesized id as their parent.
-      - flat items with a `parentCommentId` set — that linkage is
+      - flat items with a `parentCommentId` set - that linkage is
         preserved as-is.
 
     Stable synthesized id: many builds don't ship a native `commentId`,
@@ -980,7 +980,7 @@ def flatten_apify_youtube_comments(items: list[dict], post_id: str) -> list[Comm
 def get_parsers(platform: str, actor_id: str) -> tuple[ParsePostFn, ParseChannelFn]:
     """Look up the (post_parser, channel_parser) pair for the given platform/actor.
 
-    Raises ValueError when no entry exists — call this at adapter init so
+    Raises ValueError when no entry exists - call this at adapter init so
     misconfiguration surfaces before the first crawl.
     """
     key = (platform, actor_id)

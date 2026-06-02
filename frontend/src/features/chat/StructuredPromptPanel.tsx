@@ -118,7 +118,7 @@ export function StructuredPromptPanel({ onSubmit, onCancel }: StructuredPromptPa
         const selected = selections[p.id] ?? [];
         const label = selected[0] === 'approve' ? 'Approve & Run' : 'Adjust';
         if (selected[0] === 'adjust' && otherText[p.id]?.trim()) {
-          parts.push(`Plan: ${label} — ${otherText[p.id].trim()}`);
+          parts.push(`Plan: ${label} - ${otherText[p.id].trim()}`);
         } else {
           parts.push(`Plan: ${label}`);
         }
@@ -414,7 +414,7 @@ function PromptRenderer({ prompt, selections, tags, toggles, otherText, onToggle
   }
 }
 
-// ─── Icon Grid (platforms) — 3-column grid ───────────────────────────
+// ─── Icon Grid (platforms) - 3-column grid ───────────────────────────
 
 function PromptIconGrid({
   prompt,

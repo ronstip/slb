@@ -1,4 +1,4 @@
-"""Text component — fills any placeholder with text or bullet list."""
+"""Text component - fills any placeholder with text or bullet list."""
 
 import re
 from typing import Optional

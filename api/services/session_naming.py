@@ -70,14 +70,14 @@ async def name_session_if_needed(runner: Runner, user_id: str, session_id: str) 
 
     except Exception:
         # Best-effort: session naming is cosmetic. LLM latency, auth issues,
-        # malformed response, Firestore hiccups — none should break the chat.
+        # malformed response, Firestore hiccups - none should break the chat.
         logger.exception("Failed to auto-name session %s", session_id)
 
     return "New Session"
 
 
 async def name_session_background(runner: Runner, user_id: str, session_id: str) -> None:
-    """Fire-and-forget wrapper. Never raises — naming is purely cosmetic."""
+    """Fire-and-forget wrapper. Never raises - naming is purely cosmetic."""
     try:
         await name_session_if_needed(runner, user_id, session_id)
     except Exception:

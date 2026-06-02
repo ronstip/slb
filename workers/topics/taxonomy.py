@@ -3,7 +3,7 @@
 Pass 1 (parallel, batched): generate candidate topics per batch of sample posts.
 Pass 2 (single call): merge near-identical candidates + emit assignment rules.
 
-Pass 1 batches run in parallel via ThreadPoolExecutor — they do NOT see each
+Pass 1 batches run in parallel via ThreadPoolExecutor - they do NOT see each
 other's outputs, so we accept that pass 1 produces some duplicates and lean
 on pass 2 to dedup. This trades some pass-2 work for ~Nx wall-clock speedup
 on pass 1, which is the bulk of the cost.
@@ -282,7 +282,7 @@ def run_pass2(
 ) -> list[Topic]:
     """Pass 2: dedupe near-identical candidates and union member lists.
 
-    The LLM emits only groups of candidate indices (token-efficient — avoids
+    The LLM emits only groups of candidate indices (token-efficient - avoids
     the 32K-output truncation that hit when we asked it to also rewrite
     headers). Topic construction is deterministic: header/subheader from the
     longest candidate in the group, anchors are the deduped union,
@@ -352,7 +352,7 @@ def run_pass2(
 
     if not merge_response or not merge_response.groups:
         logger.warning(
-            "Pass-2 produced no parseable groups (finish_reason=%s) — fallback to no-merge",
+            "Pass-2 produced no parseable groups (finish_reason=%s) - fallback to no-merge",
             finish_reason,
         )
         return _fallback_pass2_no_merge(candidates, min_match_score)
@@ -425,7 +425,7 @@ def _build_topic_from_group(
 
     Header/subheader: longest one in the group (proxy for most specific).
     Anchors/keywords: deduped union, preserving the order of first appearance.
-    member_post_ids: union of every candidate's source_post_ids — the LLM's
+    member_post_ids: union of every candidate's source_post_ids - the LLM's
         explicit claim of which sampled posts are about this beat.
     Rule: built directly from anchors + keywords (kept for search/audit; not
         used for assignment in v2).
@@ -491,7 +491,7 @@ def _fallback_pass2_no_merge(
 
 
 # ---------------------------------------------------------------------------
-# Pass 3 — post-hoc per-topic membership filter
+# Pass 3 - post-hoc per-topic membership filter
 # ---------------------------------------------------------------------------
 
 
@@ -528,7 +528,7 @@ def _run_pass3_topic(
             model=model, contents=prompt, config=config,
         )
     except Exception:
-        logger.exception("Pass-3 LLM call failed for topic %r — keeping all", topic.header[:60])
+        logger.exception("Pass-3 LLM call failed for topic %r - keeping all", topic.header[:60])
         return pids, 0
 
     from api.services.cost_meter import log_gemini_response
@@ -544,13 +544,13 @@ def _run_pass3_topic(
             except Exception:
                 pass
     if not parsed or not parsed.verdicts:
-        logger.warning("Pass-3 unparseable for topic %r — keeping all", topic.header[:60])
+        logger.warning("Pass-3 unparseable for topic %r - keeping all", topic.header[:60])
         return pids, 0
 
     by_idx = {v.index: v.fits for v in parsed.verdicts}
     kept: list[str] = []
     for i, pid in enumerate(pids, 1):
-        # Missing verdicts default to KEEP (conservative — don't drop on model omission).
+        # Missing verdicts default to KEEP (conservative - don't drop on model omission).
         if by_idx.get(i, True):
             kept.append(pid)
     return kept, len(pids) - len(kept)
@@ -597,10 +597,10 @@ def run_pass3_filter(
             try:
                 kept, _dropped = future.result(timeout=PASS3_TIMEOUT_SEC)
             except FuturesTimeoutError:
-                logger.warning("Pass-3 timed out for topic %r — keeping all", t.header[:60])
+                logger.warning("Pass-3 timed out for topic %r - keeping all", t.header[:60])
                 continue
             except Exception:
-                logger.exception("Pass-3 task crashed for topic %r — keeping all", t.header[:60])
+                logger.exception("Pass-3 task crashed for topic %r - keeping all", t.header[:60])
                 continue
             t.member_post_ids = kept
 

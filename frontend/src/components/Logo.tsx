@@ -1,4 +1,4 @@
-// Scolto brand logo — the single source of truth for the app's logo and
+// Scolto brand logo - the single source of truth for the app's logo and
 // wordmark. Update the constants below to change the brand everywhere.
 //
 // Mark: four corner brackets in a square frame, around a solid orange dot.
@@ -6,7 +6,7 @@
 
 export const BRAND_NAME = 'Scolto';
 const BRAND_DOT_COLOR = '#D97757'; // matches LP_BRAND.orange on the landing page
-// Brand ink — dark navy used for the wordmark + headings on light surfaces.
+// Brand ink - dark navy used for the wordmark + headings on light surfaces.
 // Mirrors LP_BRAND.ink on the landing page; single source of truth for both.
 export const BRAND_INK = '#0F1F4D';
 
@@ -46,7 +46,7 @@ export function ScoltoMark({ size = 28 }: { size?: number }) {
     <svg
       // viewBox padded by 1 unit on every side so bracket strokes (which sit
       // at the original 0/MARK_W/MARK_H edges) are fully inside the viewport
-      // and don't get asymmetrically clipped or anti-aliased — that's what
+      // and don't get asymmetrically clipped or anti-aliased - that's what
       // made the left brackets look heavier than the right.
       viewBox={`-1 -1 ${MARK_W + 2} ${MARK_H + 2}`}
       width={width}

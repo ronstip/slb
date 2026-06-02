@@ -1,4 +1,4 @@
-"""Settings router — profile updates, organization management, invites, usage."""
+"""Settings router - profile updates, organization management, invites, usage."""
 
 import logging
 from datetime import datetime, timedelta, timezone
@@ -209,7 +209,7 @@ async def revoke_invite(
 
 @router.get("/orgs/invites/preview/{invite_code}", response_model=OrgInvitePreviewResponse)
 async def preview_invite(invite_code: str):
-    """Public preview of an invite — shown on the sign-in card before the
+    """Public preview of an invite - shown on the sign-in card before the
     visitor authenticates. Unauthenticated on purpose: the invite code itself
     is the secret. Returns the bare minimum the sign-in page needs to display
     "John invited you to Acme as member" + force-pick the right Google account.
@@ -280,7 +280,7 @@ async def join_org(
         if datetime.now(timezone.utc) > expires_dt.replace(tzinfo=timezone.utc):
             raise HTTPException(status_code=400, detail="Invite has expired")
 
-    # Email must match the invite — invites are not bearer tokens transferable
+    # Email must match the invite - invites are not bearer tokens transferable
     # between accounts. The Firebase email is trusted (verified by the issuer).
     invited_email = (invite.get("email") or "").strip().lower()
     actor_email = (user.email or "").strip().lower()
@@ -299,7 +299,7 @@ async def join_org(
     # Stamp the new org on the joiner's existing agents so they can be shared.
     reconcile_user_org_membership(user.uid, org_id)
 
-    # Promote `blocked` invitees to a real trial — the inviting admin already
+    # Promote `blocked` invitees to a real trial - the inviting admin already
     # vouched. Leave free/trial/paid alone (don't downgrade an existing tier).
     user_doc = fs.get_user(user.uid) or {}
     current_tier = ((user_doc.get("plan") or {}).get("tier")) or "blocked"
@@ -412,7 +412,7 @@ async def leave_org(user: CurrentUser = Depends(get_current_user)):
 async def get_usage(user: CurrentUser = Depends(get_current_user)):
     """Get the current user's $ wallet + this-month action counts.
 
-    No quota limits, no provider names, no $ breakdown — that lives in the
+    No quota limits, no provider names, no $ breakdown - that lives in the
     admin panel. `free` users have an unenforced wallet (UI shows "Unlimited").
     """
     fs = get_fs()
@@ -454,6 +454,6 @@ async def get_usage(user: CurrentUser = Depends(get_current_user)):
     )
 
 
-# NOTE: the per-user `/usage/trend` endpoint was removed — the settings UI now
+# NOTE: the per-user `/usage/trend` endpoint was removed - the settings UI now
 # shows only the wallet (the low-value action-count trend was dropped, §E). The
 # rich cost/revenue view lives in the admin panel.

@@ -35,7 +35,7 @@ function bulletColor(entryType: EntryType, toolName?: string): string {
   if (entryType === 'tool_error') return 'bg-destructive';
   if (entryType === 'todo_update') return 'bg-accent-success';
 
-  // tool_start / tool_complete — color by category
+  // tool_start / tool_complete - color by category
   const cat = toolName ? TOOL_CATEGORY[toolName] : undefined;
   const isComplete = entryType === 'tool_complete';
   if (cat === 'thinking') return isComplete ? 'bg-emerald-600/80' : 'bg-emerald-600/50 animate-pulse';
@@ -110,7 +110,7 @@ function renderStructuredEntry(log: AgentLogEntry) {
           <span>
             <span className="font-semibold">{displayName}</span>
             {meta?.error && (
-              <span className="ml-1.5 text-[11px] font-normal"> — {meta.error}</span>
+              <span className="ml-1.5 text-[11px] font-normal"> - {meta.error}</span>
             )}
           </span>
         </div>
@@ -248,7 +248,7 @@ function deduplicateLogs(logs: AgentLogEntry[]): AgentLogEntry[] {
   return result;
 }
 
-/** Compact variant for overview cards — shows fewer entries, no expand button. */
+/** Compact variant for overview cards - shows fewer entries, no expand button. */
 export function AgentActivityLogCompact({ logs, isRunning, limit = 4 }: { logs: AgentLogEntry[]; isRunning: boolean; limit?: number }) {
   if (logs.length === 0) return null;
   const dedupedLogs = deduplicateLogs(logs);

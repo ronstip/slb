@@ -3,7 +3,7 @@ import { useLocation } from 'react-router';
 import { useUIStore } from '../../stores/ui-store.ts';
 import { Sheet, SheetContent, SheetTitle } from '../../components/ui/sheet.tsx';
 
-// Lazy — the wizard pulls in 4+ panels (~300 KB total), the chat SSE stack, the
+// Lazy - the wizard pulls in 4+ panels (~300 KB total), the chat SSE stack, the
 // AI thinking card, and the wizard-utils chain. None of that is needed until
 // the user actually opens the drawer.
 const AgentCreationWizard = lazy(() =>
@@ -12,7 +12,7 @@ const AgentCreationWizard = lazy(() =>
 
 /**
  * Side drawer containing the agent creation wizard. Opened from the sidebar
- * and from /agents — keeps the user in place instead of navigating to home.
+ * and from /agents - keeps the user in place instead of navigating to home.
  *
  * The wizard's submit handler navigates to `/agents/{id}` on success, so we
  * close the drawer when the location changes to keep state tidy.

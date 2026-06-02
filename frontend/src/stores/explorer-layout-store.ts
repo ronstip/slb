@@ -52,7 +52,7 @@ export const useExplorerLayoutStore = create<ExplorerLayoutStore>((set, _get) =>
     await apiPost(`/dashboard/layouts/${result.layout_id}`, {
       layout: getNewLayoutStarterWidgets(),
     });
-    // Now safe to switch — DashboardView will find the seeded layout
+    // Now safe to switch - DashboardView will find the seeded layout
     set((s) => ({
       agentLayouts: [result, ...s.agentLayouts],
       activeLayoutId: result.layout_id,

@@ -37,13 +37,13 @@ open its briefs/slides/exports, and sees none of the dashboards**.
 > shared with the org, every component it owns becomes accessible to org
 > members. When it is made private again, every component reverts. Dashboard
 > views (explorer + dashboard layouts) are **collaboratively editable** by any
-> org member who can access the agent — there is one shared view per agent /
+> org member who can access the agent - there is one shared view per agent /
 > per artifact, not a private copy per member.
 
 Decisions locked with the owner (2026-05-31):
-- **Layouts: full collaborative edit** — access == `can_access_agent`. No
+- **Layouts: full collaborative edit** - access == `can_access_agent`. No
   per-member private layout set; the layout doc is shared mutable state.
-- **Un-share reverts everything** — match the collections behavior for
+- **Un-share reverts everything** - match the collections behavior for
   artifacts and layouts too.
 
 > **Implementation refinement (during build).** Collections and artifacts keep
@@ -52,7 +52,7 @@ Decisions locked with the owner (2026-05-31):
 > explorer layout resolves to its `agent_id`, a dashboard layout resolves to its
 > artifact (the layout doc is keyed by `artifact_id`), and access = the
 > agent's / artifact's access. This needs **no new fields on layout docs and no
-> propagation to them** — opening the explorer for one agent is a low-frequency
+> propagation to them** - opening the explorer for one agent is a low-frequency
 > path where one extra lookup is free, and it removes the "stamp every
 > not-yet-saved layout" churn. §3/§4/§5 reflect this; the concept is unchanged
 > (a layout is a component of an agent and inherits its share state).
@@ -85,7 +85,7 @@ def apply_agent_visibility(agent_id: str, visibility: str) -> dict: ...
 to `apply_agent_visibility` (keeps existing import sites working).
 
 `apply_agent_visibility` stamps each component doc with `visibility` + `org_id`:
-- `collection_status` docs (already done — moved here unchanged)
+- `collection_status` docs (already done - moved here unchanged)
 - `artifacts` docs in `agent.artifact_ids` → set `shared = (visibility=="org")`
   and `org_id` (reuses the existing `org_id + shared` gate, no new field)
 - `explorer_layouts` where `agent_id == agent_id` → set `visibility` + `org_id`
@@ -93,7 +93,7 @@ to `apply_agent_visibility` (keeps existing import sites working).
   `org_id` + `agent_id`
 
 Each per-doc update is wrapped in try/except + `logger.exception` (a missing or
-legacy doc must not abort the share toggle — same guard collections use today).
+legacy doc must not abort the share toggle - same guard collections use today).
 
 ## 3. Required data-model changes
 
@@ -132,43 +132,43 @@ def can_access_component(user, doc) -> bool:
 ```
 
 Call-site changes:
-- **Artifacts** — `artifacts._can_access` already implements exactly this for
+- **Artifacts** - `artifacts._can_access` already implements exactly this for
   `org_id + shared`; once propagation sets `shared`, **no code change** beyond
   reusing the helper. `list_artifacts` already returns org-shared artifacts
   ([firestore_client.py:1267](../workers/shared/firestore_client.py#L1267)).
-- **Explorer layouts** — `list_explorer_layouts` ([explorer_layouts.py:44](../api/routers/explorer_layouts.py#L44))
+- **Explorer layouts** - `list_explorer_layouts` ([explorer_layouts.py:44](../api/routers/explorer_layouts.py#L44))
   currently filters `user_id == uid`. Change to: return owner's layouts **plus**
   org-shared layouts for the agent (query `agent_id == X` then filter by
   `can_access_component`). Update/delete ([:119](../api/routers/explorer_layouts.py#L119),
   [:152](../api/routers/explorer_layouts.py#L152)) switch the `user_id` guard to
   `can_access_component` (collaborative edit).
-- **Dashboard layouts** — get/save ([dashboard_layouts.py:61](../api/routers/dashboard_layouts.py#L61),
+- **Dashboard layouts** - get/save ([dashboard_layouts.py:61](../api/routers/dashboard_layouts.py#L61),
   [:95](../api/routers/dashboard_layouts.py#L95)) switch the `user_id` guard to
   `can_access_component`. Save resolves `agent_id`/`org_id`/`visibility` from the
   artifact and stamps them so a member's save stays correctly scoped.
 
 ## 5. Implementation plan (ordered, each step independently testable)
 
-1. **`agent_sharing.py` + registry** — add module with `iter_agent_component_refs`
+1. **`agent_sharing.py` + registry** - add module with `iter_agent_component_refs`
    and `apply_agent_visibility` (collections only, behavior-identical to today).
    Repoint `set_agent_visibility` to delegate. *Test: existing collection
    propagation tests still green.*
 2. **`can_access_component` helper** in `collection_service.py`; refactor
    `artifacts._can_access` to call it. *Test: artifact access unchanged.*
-3. **Artifacts in propagation** — `apply_agent_visibility` sets `shared`+`org_id`
+3. **Artifacts in propagation** - `apply_agent_visibility` sets `shared`+`org_id`
    on `agent.artifact_ids`; revert on private. *Test (red→green): org member can
    GET a shared agent's artifact; loses it on un-share.*
 4. **Stamp `agent_id` on new artifacts.** *Test: created artifact carries agent_id.*
-5. **Explorer layouts** — add fields, propagate, collaborative read/edit gate.
+5. **Explorer layouts** - add fields, propagate, collaborative read/edit gate.
    *Test: member sees + edits owner's explorer layouts only when shared.*
-6. **Dashboard layouts** — add fields, propagate (via artifact→agent), save
+6. **Dashboard layouts** - add fields, propagate (via artifact→agent), save
    stamps scope, collaborative get/save gate. *Test: member reads + saves widget
    layout on shared agent; 403 when private.*
 
-Frontend: no contract change for the happy path — same endpoints, broader
+Frontend: no contract change for the happy path - same endpoints, broader
 results. Verify `explorer-layout-store.ts` and the dashboard layout fetch render
 org-shared layouts without an `is_owner` assumption; add a read-only-vs-editable
-affordance only if product wants it later (out of scope — decision was full edit).
+affordance only if product wants it later (out of scope - decision was full edit).
 
 ## 6. Tests & rollout
 
@@ -181,7 +181,7 @@ affordance only if product wants it later (out of scope — decision was full ed
 
 ## 7. Out of scope / risks
 
-- Per-member private layouts (rejected — collaborative edit chosen).
+- Per-member private layouts (rejected - collaborative edit chosen).
 - Revert-all may flip `shared=False` on an artifact a user had **manually**
   org-shared independent of the agent. Accepted per the owner's "revert all"
   decision; noted here as the one lossy edge.

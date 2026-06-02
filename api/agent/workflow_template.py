@@ -1,4 +1,4 @@
-"""Workflow template builder — generates structured todo lists from agent config.
+"""Workflow template builder - generates structured todo lists from agent config.
 
 Creates a deterministic workflow skeleton from the agent's data_scope.
 The agent can still call update_todos() at runtime to add sub-steps or
@@ -117,7 +117,7 @@ def build_workflow_template(
     elif agent is not None:
         resolved_outputs = derive_outputs(agent)
     else:
-        # No outputs context provided — synthesize a minimal agent shim from
+        # No outputs context provided - synthesize a minimal agent shim from
         # data_scope so the helper can still derive from legacy auto_* flags.
         resolved_outputs = derive_outputs({"data_scope": data_scope})
 

@@ -9,7 +9,7 @@ function uid(): string {
 }
 
 /**
- * Returns the default dashboard layout — mirrors the existing DashboardContent.tsx
+ * Returns the default dashboard layout - mirrors the existing DashboardContent.tsx
  * section-by-section layout, converted to react-grid-layout coordinates.
  * Grid: 12 columns, 48px rowHeight, 8px margins.
  */
@@ -208,14 +208,14 @@ export function getExplorerDefaultLayout(): SocialDashboardWidget[] {
     { i: uid(), x: 4, y: 2, w: 4, h: 5, aggregation: 'platform', chartType: 'bar', title: 'Platform' },
     { i: uid(), x: 8, y: 2, w: 4, h: 5, aggregation: 'themes', chartType: 'bar', title: 'Top Themes' },
 
-    // ── Row 3: Posts table — hero (y=7, h=14) ────────────────────────
+    // ── Row 3: Posts table - hero (y=7, h=14) ────────────────────────
     { i: uid(), x: 0, y: 7, w: 12, h: 14, aggregation: 'posts', chartType: 'data-table', title: 'Posts' },
   ];
 }
 
 /**
  * Minimal starter layout for newly created explorer layouts.
- * Single small widget so the canvas feels empty — user builds from scratch in edit mode.
+ * Single small widget so the canvas feels empty - user builds from scratch in edit mode.
  */
 export function getNewLayoutStarterWidgets(): SocialDashboardWidget[] {
   _idCounter = 100;

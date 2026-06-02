@@ -1,10 +1,10 @@
 """Unit tests for the admin Finance + UserDetail additions.
 
 Covers:
-  - sum_wallet_balance — skips phantom users, sums real wallets only.
-  - _agent_cost_breakdown — NULL agent_id rolls into an "Unassigned" bucket;
+  - sum_wallet_balance - skips phantom users, sums real wallets only.
+  - _agent_cost_breakdown - NULL agent_id rolls into an "Unassigned" bucket;
     real agent_ids hydrate name/icon from the supplied meta map.
-  - _finance_breakdown — surfaces unspent_purchased_micros into the response.
+  - _finance_breakdown - surfaces unspent_purchased_micros into the response.
 
 We mock the BigQuery + Firestore clients; nothing in this file hits a network.
 """
@@ -68,9 +68,9 @@ def test_sum_wallet_balance_skips_phantom_docs():
         "users": [
             # Real, $5 balance.
             {"email": "real@x.com", "credit": {"balance_micros": 5_000_000, "total_in_micros": 7_000_000, "spent_micros": 2_000_000}},
-            # Phantom: no email AND no created_at — apply_spend_micros artifact.
+            # Phantom: no email AND no created_at - apply_spend_micros artifact.
             {"credit": {"balance_micros": 999, "total_in_micros": 999, "spent_micros": 0}},
-            # Real, zero balance — still counted in total_in/spent for completeness.
+            # Real, zero balance - still counted in total_in/spent for completeness.
             {"created_at": "2026-05-01T00:00:00Z", "credit": {"balance_micros": 0, "total_in_micros": 3_000_000, "spent_micros": 3_000_000}},
         ]
     })
@@ -124,7 +124,7 @@ def test_agent_cost_breakdown_unassigned_bucket(monkeypatch):
 
 def test_agent_cost_breakdown_unknown_agent_falls_back_to_id(monkeypatch):
     """An agent_id not present in the meta map AND not in Firestore is
-    rendered with the id as the display name — never drops the row."""
+    rendered with the id as the display name - never drops the row."""
     rows = [
         {"agent_id": "ghost", "cost_micros": 1_000_000, "billed_micros": 1_000_000, "events": 1},
     ]
@@ -144,7 +144,7 @@ def test_agent_cost_breakdown_unknown_agent_falls_back_to_id(monkeypatch):
 
 def test_agent_cost_breakdown_hydrates_from_firestore(monkeypatch):
     """An agent_id missing from the preloaded meta map is fetched from
-    Firestore on demand — covers deleted/cross-owner agents that still
+    Firestore on demand - covers deleted/cross-owner agents that still
     appear in BQ usage_events but aren't in `list_user_agents`."""
     rows = [
         {"agent_id": "other_owner_agent", "cost_micros": 5_000_000, "billed_micros": 5_000_000, "events": 4},
@@ -164,13 +164,13 @@ def test_agent_cost_breakdown_hydrates_from_firestore(monkeypatch):
     assert calls == ["other_owner_agent"]
     assert out[0]["agent_name"] == "Research Co-pilot"
     assert out[0]["agent_icon"] == "search"
-    # And the meta map is memoised — a second call within the same request
+    # And the meta map is memoised - a second call within the same request
     # (e.g. the MTD pass after the all-time pass) won't re-fetch.
     assert "other_owner_agent" in meta
 
 
 # ---------------------------------------------------------------------------
-# _finance_breakdown — passes the new field through
+# _finance_breakdown - passes the new field through
 # ---------------------------------------------------------------------------
 
 
@@ -199,7 +199,7 @@ def test_finance_includes_unspent_purchased_micros(monkeypatch):
 
 
 def test_finance_unspent_defaults_to_zero(monkeypatch):
-    """Callers that omit the new kwarg get a 0 — not a missing key."""
+    """Callers that omit the new kwarg get a 0 - not a missing key."""
     monkeypatch.setattr(admin, "get_bq", lambda: _FakeBQ([]))
 
     out = admin._finance_breakdown(

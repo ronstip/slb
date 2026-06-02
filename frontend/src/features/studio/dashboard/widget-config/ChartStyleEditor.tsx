@@ -13,7 +13,7 @@ const PRESET_COLORS = [
 ];
 
 interface ChartStyleEditorProps {
-  /** Series labels in render order — drives the per-series rows. */
+  /** Series labels in render order - drives the per-series rows. */
   seriesLabels: string[];
   /** Current overrides (controlled). */
   value: ChartStyleOverrides;
@@ -21,7 +21,7 @@ interface ChartStyleEditorProps {
 }
 
 /** Compute the default color a label *would* render with given the
- *  current accent — same precedence as resolveSeriesColors but without
+ *  current accent - same precedence as resolveSeriesColors but without
  *  the user override, so we can show users what they're overriding. */
 function computeDefaultColor(
   label: string,

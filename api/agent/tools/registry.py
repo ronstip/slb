@@ -4,8 +4,8 @@ Single source of truth for agent tools. New agents and LLM callers compose
 subsets via ``compose_tools()`` instead of importing each tool individually.
 
 Tool profiles define which tools are available in each agent mode:
-- ``chat``: Interactive analyst — data exploration, visualization, agent management
-- ``autonomous``: Server-side executor — analysis, artifact generation, delivery
+- ``chat``: Interactive analyst - data exploration, visualization, agent management
+- ``autonomous``: Server-side executor - analysis, artifact generation, delivery
 """
 
 from dataclasses import dataclass
@@ -51,31 +51,31 @@ REGISTRY: dict[str, ToolSpec] = {
         # Planning
         ToolSpec("update_todos", update_todos, "planning", True, "Update session todo list (exactly one item in_progress at a time)"),
         # Agent management
-        ToolSpec("start_agent", start_agent, "agent", True, "Create and dispatch a new agent — call AFTER user approval"),
+        ToolSpec("start_agent", start_agent, "agent", True, "Create and dispatch a new agent - call AFTER user approval"),
         ToolSpec("get_agent_status", get_agent_status, "agent", False, "Read the status of an agent"),
         ToolSpec("set_active_agent", set_active_agent, "agent", True, "Set the active agent for the session"),
         # User interaction
-        ToolSpec("ask_user", ask_user, "user", True, "Prompt the user — only when genuinely ambiguous; otherwise pick a default and state it"),
+        ToolSpec("ask_user", ask_user, "user", True, "Prompt the user - only when genuinely ambiguous; otherwise pick a default and state it"),
         # Output & visualization
         ToolSpec("create_chart", create_chart, "reporting", False, "Generate a chart spec"),
-        ToolSpec("create_markdown", create_markdown, "reporting", False, "Write a long-form markdown report — prose, sections, takeaways. NOT the autonomous exit (use compose_briefing)"),
-        # Dashboard report skill — five narrow tools (read / create-from-template / update / verify / publish).
+        ToolSpec("create_markdown", create_markdown, "reporting", False, "Write a long-form markdown report - prose, sections, takeaways. NOT the autonomous exit (use compose_briefing)"),
+        # Dashboard report skill - five narrow tools (read / create-from-template / update / verify / publish).
         # Used by the dashboard_report studio action to write a live dashboard
         # as the output of a deep strategic analysis, instead of a markdown artifact.
-        ToolSpec("read_dashboard", read_dashboard, "reporting", False, "Read a dashboard's current state — widgets, title, filter pills. Used for the template at session start and for cross-section validation during/after writing."),
+        ToolSpec("read_dashboard", read_dashboard, "reporting", False, "Read a dashboard's current state - widgets, title, filter pills. Used for the template at session start and for cross-section validation during/after writing."),
         ToolSpec("create_dashboard_from_template", create_dashboard_from_template, "reporting", True, "Clone a template dashboard into a new HIDDEN dashboard for this run. Returns the new layout_id."),
-        ToolSpec("update_dashboard", update_dashboard, "reporting", True, "Apply patches/additions/removals to a dashboard's widgets — the workhorse for per-section iteration. Removals auto-repack y. Validates the resulting layout before persisting."),
+        ToolSpec("update_dashboard", update_dashboard, "reporting", True, "Apply patches/additions/removals to a dashboard's widgets - the workhorse for per-section iteration. Removals auto-repack y. Validates the resulting layout before persisting."),
         ToolSpec("verify_dashboard", verify_dashboard, "reporting", False, "Pre-publish gate. Detects template-brief leakage, placeholders, SERP-host citations, '§' headings, duplicate anchors. Returns ok or a list of defects to fix via update_dashboard."),
-        ToolSpec("publish_dashboard", publish_dashboard, "reporting", True, "Make a hidden dashboard visible in the explorer dropdown — the FINAL action of a dashboard-report run. Runs verify_dashboard internally and refuses on defects."),
+        ToolSpec("publish_dashboard", publish_dashboard, "reporting", True, "Make a hidden dashboard visible in the explorer dropdown - the FINAL action of a dashboard-report run. Runs verify_dashboard internally and refuses on defects."),
         ToolSpec("export_data", export_data, "reporting", False, "Export posts as CSV"),
         ToolSpec("compose_email", compose_email, "reporting", True, "Compose an email artifact"),
         ToolSpec("validate_deck_plan", validate_deck_plan, "reporting", False, "Validate a presentation deck plan"),
         ToolSpec("generate_presentation", generate_presentation, "reporting", True, "Generate a slide presentation"),
         # Topics + briefing (compose phase)
         ToolSpec("list_topics", list_topics, "data", False, "List semantic clusters of posts with stats"),
-        ToolSpec("generate_briefing", generate_briefing, "reporting", True, "Persist the agent's INTERNAL run reflection — call ONCE before verify_briefing"),
-        ToolSpec("verify_briefing", verify_briefing, "reporting", False, "Independently verify briefing claims against ground-truth data — call AFTER generate_briefing, BEFORE compose_briefing"),
-        ToolSpec("compose_briefing", compose_briefing, "reporting", True, "Publish the USER-FACING briefing — exit tool, call ONCE at end of run"),
+        ToolSpec("generate_briefing", generate_briefing, "reporting", True, "Persist the agent's INTERNAL run reflection - call ONCE before verify_briefing"),
+        ToolSpec("verify_briefing", verify_briefing, "reporting", False, "Independently verify briefing claims against ground-truth data - call AFTER generate_briefing, BEFORE compose_briefing"),
+        ToolSpec("compose_briefing", compose_briefing, "reporting", True, "Publish the USER-FACING briefing - exit tool, call ONCE at end of run"),
     )
 }
 
@@ -87,7 +87,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
         # Analysis & data
         "create_chart", "create_markdown",
         "export_data", "list_topics",
-        # Dashboard-report skill — iterative dashboard output
+        # Dashboard-report skill - iterative dashboard output
         "read_dashboard", "create_dashboard_from_template", "update_dashboard", "verify_dashboard", "publish_dashboard",
         # Agent management (interactive)
         "start_agent", "set_active_agent", "get_agent_status",
@@ -111,7 +111,7 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
     },
     "report_editor": {
         # In-place widget editing on an already-published dashboard.
-        # Narrow on purpose — no create-from-template / publish (the dashboard
+        # Narrow on purpose - no create-from-template / publish (the dashboard
         # already exists). list_topics grounds suggestions in real data.
         "read_dashboard", "update_dashboard",
         "list_topics",

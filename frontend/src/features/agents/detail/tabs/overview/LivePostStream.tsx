@@ -17,7 +17,7 @@ interface LivePostStreamProps {
   isAgentRunning: boolean;
   sources?: Source[];
   agentCreatedAt: string | undefined;
-  /** Agent-level data window — wins over the per-source computation
+  /** Agent-level data window - wins over the per-source computation
    *  when set. Both are ISO date strings (YYYY-MM-DD); end may be null. */
   dataStartDate?: string | null;
   dataEndDate?: string | null;
@@ -539,7 +539,7 @@ function customFieldTone(value: unknown): ChipTone {
 }
 
 function formatCustomFieldValue(value: unknown): string {
-  if (value === null || value === undefined) return '—';
+  if (value === null || value === undefined) return '-';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value)) return value.join(', ');
   return String(value);

@@ -201,7 +201,7 @@ export function FeedTab() {
         </div>
       ) : (
       <div ref={containerRef} className="flex-1 overflow-y-auto px-3 pb-4" onScroll={handleScroll}>
-        {/* Collection progress banner — shown above posts while collecting */}
+        {/* Collection progress banner - shown above posts while collecting */}
         {showCollectingSpinner && allPosts.length > 0 && (() => {
           const phase = activeSources.some((s) => s.status === 'running')
             ? 'Running'
@@ -214,7 +214,7 @@ export function FeedTab() {
               </span>
               <span className="text-xs font-medium text-foreground/80">
                 {phase}
-                {totalCount > 0 && <> — {formatNumber(totalCount)} posts</>}
+                {totalCount > 0 && <> - {formatNumber(totalCount)} posts</>}
               </span>
             </div>
           );
@@ -246,7 +246,7 @@ export function FeedTab() {
                   {collectingCount > 0 && (
                     <span className="text-lg font-semibold text-foreground tabular-nums">{collectingCount} posts</span>
                   )}
-                  <span className="text-xs text-muted-foreground">{statusLabel} — posts will appear here automatically</span>
+                  <span className="text-xs text-muted-foreground">{statusLabel} - posts will appear here automatically</span>
                 </div>
               );
             })()}

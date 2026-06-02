@@ -46,7 +46,7 @@ export function StatsTab() {
   const sources = useSourcesStore((s) => s.sources);
   const taskCollectionIds = activeTask?.collection_ids ?? [];
 
-  // Collection filter state — empty means "all"
+  // Collection filter state - empty means "all"
   const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
 
   const { data: response, isLoading } = useQuery({
@@ -85,7 +85,7 @@ export function StatsTab() {
   const toggleCollection = (id: string) => {
     setCollectionFilter((prev) => {
       if (prev.length === 0) {
-        // Currently showing all — switch to all except this one
+        // Currently showing all - switch to all except this one
         return taskCollectionIds.filter((c) => c !== id);
       }
       if (prev.includes(id)) {
@@ -181,7 +181,7 @@ export function StatsTab() {
         </div>
       )}
 
-      {/* C. Volume — last 7 days */}
+      {/* C. Volume - last 7 days */}
       {volume.length > 0 && (
         <div className="space-y-1.5">
           <SectionHeader>Volume (last 7 days)</SectionHeader>

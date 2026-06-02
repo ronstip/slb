@@ -32,9 +32,9 @@ if (isFirebaseConfigured) {
 /**
  * Lazily-built secondary Firebase Auth used solely by the waitlist flow.
  * Configured with:
- *   - `inMemoryPersistence` — never write to IndexedDB; we don't want this
+ *   - `inMemoryPersistence` - never write to IndexedDB; we don't want this
  *     "signed in" state to outlive the page.
- *   - `browserPopupRedirectResolver` — without this, `signInWithPopup` on a
+ *   - `browserPopupRedirectResolver` - without this, `signInWithPopup` on a
  *     secondary auth instance fails to wire up the popup callback path and
  *     credentials may not route back to the listener at all.
  */
@@ -55,7 +55,7 @@ function getWaitlistAuth(): Auth {
 }
 
 /**
- * Open Google's account picker just to harvest the user's email address —
+ * Open Google's account picker just to harvest the user's email address -
  * used by the waitlist flow when the app is still gated and we don't want
  * to actually sign the visitor in.
  *
@@ -64,10 +64,10 @@ function getWaitlistAuth(): Auth {
  * resolving the `signInWithPopup` promise via `popup.closed` polling) gets
  * blocked by the browser:
  *
- *   1. `signInWithPopup` promise resolves normally — happy path
- *   2. `onAuthStateChanged` fires — happens whenever Firebase finishes
+ *   1. `signInWithPopup` promise resolves normally - happy path
+ *   2. `onAuthStateChanged` fires - happens whenever Firebase finishes
  *      processing the OAuth credential, even when the popup poll path stalls
- *   3. `currentUser` poll — last-resort guard in case the listener doesn't
+ *   3. `currentUser` poll - last-resort guard in case the listener doesn't
  *      fire (observed when credentials race through faster than the listener
  *      attaches, or due to secondary-app routing quirks)
  *
@@ -83,11 +83,11 @@ export function captureGoogleEmail(): Promise<{ email: string; displayName: stri
   const secondaryAuth = getWaitlistAuth();
   const provider = new GoogleAuthProvider();
   // Force the account chooser even when only one Google account is signed
-  // in on the browser — otherwise the click gives no visible feedback.
+  // in on the browser - otherwise the click gives no visible feedback.
   provider.setCustomParameters({ prompt: 'select_account' });
 
   // Kick off the popup IMMEDIATELY, in the same task as the click, before
-  // we attach any listeners — this keeps the popup unambiguously
+  // we attach any listeners - this keeps the popup unambiguously
   // user-gesture-triggered.
   const popupPromise = signInWithPopup(secondaryAuth, provider);
 
@@ -126,7 +126,7 @@ export function captureGoogleEmail(): Promise<{ email: string; displayName: stri
     });
 
     // Signal 3: currentUser poll (fallback for cases where the listener
-    // doesn't fire — observed under some COOP/persistence combinations).
+    // doesn't fire - observed under some COOP/persistence combinations).
     const poller = setInterval(() => {
       const u = secondaryAuth.currentUser;
       if (u?.email) succeed(u.email, u.displayName);
@@ -140,7 +140,7 @@ export function captureGoogleEmail(): Promise<{ email: string; displayName: stri
         fail(new Error('No email on the selected Google account.'));
       }
     }).catch((err: AuthError) => {
-      // User-cancelled cases — reject immediately so the modal returns to idle.
+      // User-cancelled cases - reject immediately so the modal returns to idle.
       if (
         err?.code === 'auth/popup-closed-by-user' ||
         err?.code === 'auth/cancelled-popup-request' ||

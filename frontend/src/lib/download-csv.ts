@@ -32,7 +32,7 @@ export const CSV_COLUMNS: CsvColumn[] = [
 ];
 
 /**
- * FeedPost shape — matches the rows displayed in PostsDataPanel.
+ * FeedPost shape - matches the rows displayed in PostsDataPanel.
  * Headers are snake_case to match BQ field names and pipe cleanly into pandas.
  * `media_refs` is intentionally omitted.
  */

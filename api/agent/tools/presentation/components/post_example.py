@@ -1,4 +1,4 @@
-"""Post Examples component — embed real post media on a slide, hyperlinked to the source."""
+"""Post Examples component - embed real post media on a slide, hyperlinked to the source."""
 
 import io
 import logging
@@ -121,7 +121,7 @@ def _draw_image_card(slide, x, y, w, h, post, image_bytes, theme, layout_mode):
 
 
 def _draw_text_card(slide, x, y, w, h, post, theme, layout_mode):
-    """Fallback card for posts with no usable image — content text + handle, hyperlinked."""
+    """Fallback card for posts with no usable image - content text + handle, hyperlinked."""
     post_url = post.get("post_url") or None
     bg = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
     bg.fill.solid()
@@ -138,7 +138,7 @@ def _draw_text_card(slide, x, y, w, h, post, theme, layout_mode):
     title = (post.get("title") or "").strip()
     content = (post.get("content") or "").strip()
     body_text = _truncate(
-        (title + " — " + content).strip(" —") if title and content else (title or content),
+        (title + " - " + content).strip(" -") if title and content else (title or content),
         body_max,
     )
 

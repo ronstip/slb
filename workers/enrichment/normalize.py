@@ -2,7 +2,7 @@
 
 Lowercases, strips diacritics, collapses whitespace, and dedupes labels so
 trivial variants collapse (e.g. "Hermès" / "hermes" / "  HERMES  " all become
-"hermes"). Does NOT solve semantic duplicates like "USA" vs "United States" —
+"hermes"). Does NOT solve semantic duplicates like "USA" vs "United States" -
 that requires a separate canonicalization pass.
 """
 

@@ -1,4 +1,4 @@
-"""KPI Grid component — custom card shapes in the free area below title."""
+"""KPI Grid component - custom card shapes in the free area below title."""
 
 import logging
 
@@ -66,7 +66,7 @@ def render_kpi_grid(
         strip.fill.fore_color.rgb = theme.accent
         strip.line.fill.background()
 
-        # Value — large, bold, centered
+        # Value - large, bold, centered
         value_box = slide.shapes.add_textbox(
             x + Inches(0.15), y + Inches(0.25),
             card_w - Inches(0.3), Inches(1.1),
@@ -79,7 +79,7 @@ def render_kpi_grid(
         value_run.text = str(item.get("value", ""))
         set_run_font(value_run, 30, theme, bold=True, color=value_color)
 
-        # Label — smaller, muted, centered
+        # Label - smaller, muted, centered
         label_box = slide.shapes.add_textbox(
             x + Inches(0.1), y + card_h - Inches(0.65),
             card_w - Inches(0.2), Inches(0.5),

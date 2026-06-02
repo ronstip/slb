@@ -1,4 +1,4 @@
-"""Dashboard router — serves denormalized post data for client-side interactive dashboards."""
+"""Dashboard router - serves denormalized post data for client-side interactive dashboards."""
 
 import asyncio
 import logging
@@ -53,7 +53,7 @@ async def get_dashboard_data(
 
     fs = get_fs()
 
-    # Validate access for each collection. Run in parallel — the previous
+    # Validate access for each collection. Run in parallel - the previous
     # sequential loop did N synchronous Firestore reads on the asyncio loop,
     # blocking every other request and adding one round-trip per collection.
     statuses = await asyncio.gather(
@@ -141,7 +141,7 @@ async def get_dashboard_data(
 
 
 # ---------------------------------------------------------------------------
-# Widget annotation compose — one-shot Gemini call that drafts a figure-style
+# Widget annotation compose - one-shot Gemini call that drafts a figure-style
 # header or caption for a dashboard widget. Mirrors the single-call pattern
 # used by topics narrative + session naming. Not cached; the user re-clicks
 # to regenerate.
@@ -194,7 +194,7 @@ _HEADER_INSTRUCTIONS = (
 
 _FIGURE_TEXT_INSTRUCTIONS = (
     "Write a 1–2 sentence figure caption in the style of an academic paper. "
-    "Combine BOTH the methodology (what is being shown — dimension, metric, "
+    "Combine BOTH the methodology (what is being shown - dimension, metric, "
     "sample size, time window) AND the primary takeaway visible in the data. "
     "Past tense, factual, no hedging, no marketing language, no bullets. "
     "Reply with ONLY the caption text."
@@ -280,7 +280,7 @@ def _build_compose_prompt(req: ComposeFieldRequest, task_context: dict | None) -
 
 def _load_task_context(fs, user: CurrentUser, agent_id: str) -> dict | None:
     """Fetch task title + context from the agent doc, with access check.
-    Returns None on missing access or missing doc — composition still works
+    Returns None on missing access or missing doc - composition still works
     without task context, just with less grounding."""
     try:
         agent = fs.get_agent(agent_id)

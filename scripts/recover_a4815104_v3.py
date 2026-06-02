@@ -6,7 +6,7 @@ Why v2 didn't finish a4815104:
   pipeline progress and flipped it back to "success" with "Partial data
   is available". When v2 then iterated to a4815104, the runner's lock
   check saw status="success" (terminal) and short-circuited:
-    "Pipeline lock: ... already in terminal state 'success' — skipping"
+    "Pipeline lock: ... already in terminal state 'success' - skipping"
 
 Strategy:
   - Patch PIPELINE_LOOP_SOFT_TIMEOUT and PIPELINE_LOOP_TIMEOUT to be very
@@ -64,13 +64,13 @@ def _snapshot(fs) -> dict:
 
 def main() -> None:
     # Disable the runner's soft + hard timeouts. The processing loop will
-    # exit cleanly when all posts reach terminal states (done/failed) — see
+    # exit cleanly when all posts reach terminal states (done/failed) - see
     # workers/pipeline/runner.py:1312. We rely on that natural exit.
     import workers.pipeline.runner as runner_mod
     runner_mod.PIPELINE_LOOP_SOFT_TIMEOUT = 10**9
     runner_mod.PIPELINE_LOOP_TIMEOUT = 10**9
     log.info(
-        "Patched runner timeouts (soft=%s, hard=%s) — loop will exit on terminal-only state",
+        "Patched runner timeouts (soft=%s, hard=%s) - loop will exit on terminal-only state",
         runner_mod.PIPELINE_LOOP_SOFT_TIMEOUT, runner_mod.PIPELINE_LOOP_TIMEOUT,
     )
 
@@ -108,8 +108,8 @@ def main() -> None:
     )
 
     # Run the continuation. The continuation path will:
-    #   1. _reconcile_bq_orphans — pull any BQ posts missing from the DAG
-    #   2. recover_stale_transient — revert enriching/downloading from prior run
+    #   1. _reconcile_bq_orphans - pull any BQ posts missing from the DAG
+    #   2. recover_stale_transient - revert enriching/downloading from prior run
     #   3. Re-queue retry-eligible failures
     #   4. Stream until all posts terminal, then run BQ embedding
     #   5. Trigger check_agent_completion (re-runs clustering/analysis)

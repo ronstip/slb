@@ -42,7 +42,7 @@ def main():
     )
 
     if len(rows) < 2:
-        print(f"Only {len(rows)} posts with embeddings — need at least 2.")
+        print(f"Only {len(rows)} posts with embeddings - need at least 2.")
         return
 
     # Parse embeddings

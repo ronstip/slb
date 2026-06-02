@@ -1,4 +1,4 @@
-"""Centralized usage tracking — wraps Firestore counters + BigQuery event log."""
+"""Centralized usage tracking - wraps Firestore counters + BigQuery event log."""
 
 import json
 import logging
@@ -56,7 +56,7 @@ def track_posts_collected(
     event row can be split per provider for cost attribution. Pass
     ``agent_id`` so admin per-agent rollups can attribute the spend.
     Pass ``platform`` (instagram / facebook / tiktok / x / reddit / youtube)
-    so the Finance page can render the platform × provider matrix —
+    so the Finance page can render the platform × provider matrix -
     each (provider, platform) pair has its own rate (e.g. Apify charges
     differently for IG vs FB vs TikTok).
     """
@@ -145,7 +145,7 @@ def _log_event(
     worker call sites that already use ``collection_context_scope`` get
     correct attribution without threading the id through every helper.
     """
-    # Capture request_id at call site, before we hop to a daemon thread —
+    # Capture request_id at call site, before we hop to a daemon thread -
     # ContextVar does not propagate across thread boundaries.
     request_id: str | None
     try:
@@ -154,7 +154,7 @@ def _log_event(
     except Exception:
         request_id = None
 
-    # Fall back to bound collection context for agent_id — same pattern as
+    # Fall back to bound collection context for agent_id - same pattern as
     # cost_meter.log_cost uses, so worker writes inherit the run's agent.
     if not agent_id:
         try:
@@ -165,7 +165,7 @@ def _log_event(
         except Exception:
             pass
 
-    # Normalize provider name once — keeps the BQ column consistent with the
+    # Normalize provider name once - keeps the BQ column consistent with the
     # rate-table key (e.g. legacy "xapi" → canonical "x_api").
     try:
         from config.cost_rates import normalize_provider

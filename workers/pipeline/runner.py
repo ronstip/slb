@@ -1,9 +1,9 @@
-"""Pipeline runner — orchestrates the post-level DAG for a single collection.
+"""Pipeline runner - orchestrates the post-level DAG for a single collection.
 
 Replaces the monolithic run_pipeline() + run_collection() with:
 1. Crawl in background thread (posts enter DAG as they arrive)
 2. Processing loop (moves posts through download → enrich → embed)
-3. Collection gates (stats, clustering — after all posts terminal)
+3. Collection gates (stats, clustering - after all posts terminal)
 4. Final status (scheduling for ongoing collections)
 """
 
@@ -37,7 +37,7 @@ from workers.shared.time_range_gate import partition_by_time_range
 logger = logging.getLogger(__name__)
 
 PIPELINE_LOOP_TIMEOUT = 3500  # Just under Cloud Run timeout (3600s) to allow graceful cleanup
-PIPELINE_LOOP_SOFT_TIMEOUT = 3000  # Self-reschedule threshold (~50 min) — leaves headroom to finish in-flight batches and enqueue a continuation
+PIPELINE_LOOP_SOFT_TIMEOUT = 3000  # Self-reschedule threshold (~50 min) - leaves headroom to finish in-flight batches and enqueue a continuation
 
 
 class PipelineRunner:
@@ -64,7 +64,7 @@ class PipelineRunner:
         # Per-step timing stats, populated by _record_step_timing as the loop runs.
         self._stage_timings: dict[str, dict] = {}
         self._stage_timings_lock = threading.Lock()
-        # Shared media-download executor — sized for CDN/GCS I/O, not bound to
+        # Shared media-download executor - sized for CDN/GCS I/O, not bound to
         # the step orchestration (so a slow download batch doesn't stall
         # enrich/embed progress).
         self._media_executor = ThreadPoolExecutor(
@@ -73,7 +73,7 @@ class PipelineRunner:
         )
 
     def run(self) -> None:
-        """Main entry point — runs the full pipeline.
+        """Main entry point - runs the full pipeline.
 
         Wraps the entire pipeline in a try/except so that any crash
         (unhandled exception, transient error, etc.) always results in
@@ -143,7 +143,7 @@ class PipelineRunner:
                     )
                 except Exception:
                     logger.warning(
-                        "Failed to write continuation-error log for agent %s — agent may appear stuck",
+                        "Failed to write continuation-error log for agent %s - agent may appear stuck",
                         agent_id, exc_info=True,
                     )
 
@@ -156,7 +156,7 @@ class PipelineRunner:
             self.fs.add_agent_log(agent_id, message, source="pipeline", level=level, metadata=metadata)
         except Exception:
             logger.warning(
-                "Failed to write agent log for collection %s — agent may appear stuck",
+                "Failed to write agent log for collection %s - agent may appear stuck",
                 self.collection_id, exc_info=True,
             )
 
@@ -167,7 +167,7 @@ class PipelineRunner:
         Prevents the Cloud Tasks retry loop that caused 17x duplicate runs in production.
 
         Continuation runs (enqueued by this runner when it approaches the Cloud
-        Run timeout) bypass the active-run guard — the previous instance has
+        Run timeout) bypass the active-run guard - the previous instance has
         already exited and cleared its run_id before dispatching the task.
         """
         TERMINAL_STATUSES = {"success", "failed"}
@@ -177,22 +177,22 @@ class PipelineRunner:
         # Read raw Firestore doc (bypass status normalization that maps pending→running)
         raw_doc = self.fs._db.collection("collection_status").document(self.collection_id).get()
         if not raw_doc.exists:
-            logger.warning("Pipeline lock: no status doc for %s — proceeding", self.collection_id)
+            logger.warning("Pipeline lock: no status doc for %s - proceeding", self.collection_id)
             return True
 
         status_doc = raw_doc.to_dict()
         current_status = status_doc.get("status", "")
 
-        # Already finished — don't re-run (even for continuations; a successful
+        # Already finished - don't re-run (even for continuations; a successful
         # prior run means nothing is left to do)
         if current_status in TERMINAL_STATUSES:
             logger.info(
-                "Pipeline lock: %s already in terminal state '%s' — skipping duplicate run",
+                "Pipeline lock: %s already in terminal state '%s' - skipping duplicate run",
                 self.collection_id, current_status,
             )
             return False
 
-        # Another instance may be running — check if it's recent
+        # Another instance may be running - check if it's recent
         if current_status in ACTIVE_STATUSES and not self.continuation:
             updated_at = status_doc.get("updated_at")
             if updated_at:
@@ -203,12 +203,12 @@ class PipelineRunner:
                 age_sec = (datetime.now(timezone.utc) - updated_at).total_seconds()
                 if age_sec < STALE_THRESHOLD_SEC:
                     logger.info(
-                        "Pipeline lock: %s is actively running (status='%s', updated %.0fs ago) — skipping duplicate",
+                        "Pipeline lock: %s is actively running (status='%s', updated %.0fs ago) - skipping duplicate",
                         self.collection_id, current_status, age_sec,
                     )
                     return False
                 logger.warning(
-                    "Pipeline lock: %s appears stale (status='%s', updated %.0fs ago) — proceeding",
+                    "Pipeline lock: %s appears stale (status='%s', updated %.0fs ago) - proceeding",
                     self.collection_id, current_status, age_sec,
                 )
 
@@ -221,7 +221,7 @@ class PipelineRunner:
         actual_run_id = (raw_doc2.to_dict() or {}).get("pipeline_run_id") if raw_doc2.exists else None
         if actual_run_id and actual_run_id != run_id:
             logger.info(
-                "Pipeline lock: %s claimed by another instance (our=%s, theirs=%s) — aborting",
+                "Pipeline lock: %s claimed by another instance (our=%s, theirs=%s) - aborting",
                 self.collection_id, run_id[:8], actual_run_id[:8],
             )
             return False
@@ -230,8 +230,8 @@ class PipelineRunner:
         return True
 
     def _run_pipeline(self, pipeline_start: float) -> None:
-        """Inner pipeline logic — called by run() inside try/except."""
-        # Idempotency guard — prevent duplicate runs from Cloud Tasks retries
+        """Inner pipeline logic - called by run() inside try/except."""
+        # Idempotency guard - prevent duplicate runs from Cloud Tasks retries
         if not self._acquire_pipeline_lock():
             return
 
@@ -247,7 +247,7 @@ class PipelineRunner:
         else:
             self._log_task(f"Collection {self.collection_id[:8]}: starting data collection")
 
-        # Continuations skip re-init — posts are already in the DAG from the prior run.
+        # Continuations skip re-init - posts are already in the DAG from the prior run.
         # Fresh runs reset DAG counters on the Firestore doc.
         if not self.continuation:
             self.fs.update_collection_status(
@@ -268,7 +268,7 @@ class PipelineRunner:
             self.fs.get_agent_collection_ids(agent_id) if agent_id else []
         )
 
-        # Prime the in-run idempotency cache from BQ — avoids a per-batch
+        # Prime the in-run idempotency cache from BQ - avoids a per-batch
         # BQ pre-check roundtrip inside action_enrich/action_embed. The
         # cache is re-primed on every runner init, so continuation runs
         # get a correct starting set.
@@ -303,7 +303,7 @@ class PipelineRunner:
             if self.state_manager.get_total_posts() == 0:
                 self._seed_post_states_from_bq()
             else:
-                # DAG already populated — reconcile any orphans (posts that made
+                # DAG already populated - reconcile any orphans (posts that made
                 # it into BQ in the prior run but never got mark_collected because
                 # the pipeline thread died between the BQ insert and the DAG
                 # update). Keeps continuation from silently losing posts.
@@ -352,7 +352,7 @@ class PipelineRunner:
             # Use the cost-context-propagating helper so the cost-meter
             # ContextVar bound by workers/server.py (or the dev thread in
             # api/services/collection_service.py) carries into the crawl
-            # thread — otherwise track_posts_collected / Apify log_cost
+            # thread - otherwise track_posts_collected / Apify log_cost
             # fire with empty user_id+agent_id and the per-agent Recent
             # Activity panel hides every priced provider event.
             from api.services.cost_meter import start_thread_with_cost_context
@@ -375,7 +375,7 @@ class PipelineRunner:
         # accumulate with prior runs). Runs regardless of exit path below.
         self._persist_stage_timings()
 
-        # Self-rescheduled continuation — exit cleanly, leave status=running for next run
+        # Self-rescheduled continuation - exit cleanly, leave status=running for next run
         if self._continuation_scheduled:
             logger.info(
                 "Pipeline %s handed off to continuation after %.1fs",
@@ -408,11 +408,11 @@ class PipelineRunner:
         self._log_task("Computing analytics and generating insights...", metadata={"phase": "analytics"})
         self._run_collection_gates()
 
-        # Final status — users see this immediately; drift reconciliation
+        # Final status - users see this immediately; drift reconciliation
         # (recount) runs in the background below.
         self._set_final_status()
 
-        # Reconcile counters after final status — drift is typically zero, and
+        # Reconcile counters after final status - drift is typically zero, and
         # running it async means the user's "success" indicator isn't blocked
         # by a full subcollection stream. Still instrumented so PR-6/7 can
         # decide whether to remove it entirely once drift data is in hand.
@@ -422,7 +422,7 @@ class PipelineRunner:
             name=f"recount-{self.collection_id[:8]}",
         ).start()
 
-        # Check if this collection is part of a task — trigger continuation if all done
+        # Check if this collection is part of a task - trigger continuation if all done
         self._check_agent_completion()
 
         # Cleanup post states (transient data)
@@ -433,12 +433,12 @@ class PipelineRunner:
 
 
         self._log_task(
-            f"Collection {self.collection_id[:8]}: pipeline complete — {self._total_posts_collected} posts collected",
+            f"Collection {self.collection_id[:8]}: pipeline complete - {self._total_posts_collected} posts collected",
             metadata={"posts_collected": self._total_posts_collected},
         )
 
         logger.info(
-            "━━━ Pipeline V2 DONE %s — total=%.1fs ━━━",
+            "━━━ Pipeline V2 DONE %s - total=%.1fs ━━━",
             self.collection_id,
             _time.monotonic() - pipeline_start,
         )
@@ -455,13 +455,13 @@ class PipelineRunner:
 
             from api.middleware.request_id import outbound_headers
         except Exception:
-            logger.exception("Cannot import tasks_v2 — continuation not scheduled for %s", self.collection_id)
+            logger.exception("Cannot import tasks_v2 - continuation not scheduled for %s", self.collection_id)
             return False
 
         worker_url = (self.settings.worker_service_url or "").rstrip("/")
         if not worker_url:
             logger.warning(
-                "worker_service_url not set — cannot schedule continuation for %s",
+                "worker_service_url not set - cannot schedule continuation for %s",
                 self.collection_id,
             )
             return False
@@ -631,7 +631,7 @@ class PipelineRunner:
 
         Runs on continuation when the DAG is already populated. Protects
         against the prior-run scenario where the pipeline thread died between
-        the BQ insert and state_manager.mark_collected — those posts would
+        the BQ insert and state_manager.mark_collected - those posts would
         otherwise be silently lost (present in BQ but never enriched).
         """
         # Gather DAG post_ids in a single Firestore pass.
@@ -717,7 +717,7 @@ class PipelineRunner:
             return sum(1 for _ in docs)
         except Exception:
             logger.error(
-                "Failed to count downloaded snapshots for %s — may trigger spurious re-crawl",
+                "Failed to count downloaded snapshots for %s - may trigger spurious re-crawl",
                 self.collection_id, exc_info=True,
             )
             return 0
@@ -779,7 +779,7 @@ class PipelineRunner:
 
         # When parallel_adapters is on, fan BrightData/Vetric across threads
         # so the slower adapter doesn't serialize the faster one. Off by
-        # default — canary one agent first.
+        # default - canary one agent first.
         if self.settings.parallel_adapters:
             batches = wrapper.collect_all_parallel()
         else:
@@ -805,7 +805,7 @@ class PipelineRunner:
             if not new_posts:
                 continue
 
-            # BQ-level dedup — for ongoing/re-run collections, posts already in
+            # BQ-level dedup - for ongoing/re-run collections, posts already in
             # BQ for THIS collection_id must NOT be re-inserted. Instead we
             # append a new engagement snapshot (source="dedup_refresh") so
             # views/likes growth is captured as a time series, and refresh the
@@ -825,7 +825,7 @@ class PipelineRunner:
                 existing_ids = {r["post_id"] for r in existing}
             except Exception:
                 logger.warning(
-                    "BQ dedup query failed for %s — proceeding with in-memory dedup only",
+                    "BQ dedup query failed for %s - proceeding with in-memory dedup only",
                     self.collection_id, exc_info=True,
                 )
                 existing_ids = set()
@@ -859,19 +859,19 @@ class PipelineRunner:
                     )
 
                 logger.info(
-                    "Collection %s: BQ dedup — refreshed %d engagement(s) + %d channel(s), %d new",
+                    "Collection %s: BQ dedup - refreshed %d engagement(s) + %d channel(s), %d new",
                     self.collection_id, len(existing_ids), len(refresh_channels), len(new_posts),
                 )
 
             if not new_posts:
-                # All posts in this batch were BQ duplicates — engagement/channel
+                # All posts in this batch were BQ duplicates - engagement/channel
                 # refresh already happened above, nothing to insert.
                 continue
 
             # Download media to GCS *before* the BQ insert so the posts row
             # carries durable gcs_uri refs from the start. Previously posts were
             # inserted with raw, expiring CDN URLs and a post-insert UPDATE tried
-            # to backfill gcs_uri — but that UPDATE is blocked by BQ's streaming
+            # to backfill gcs_uri - but that UPDATE is blocked by BQ's streaming
             # buffer (up to ~90 min) and gave up after ~65s, so most posts stayed
             # on signed CDN links that 403 once they expire. Downloading first
             # makes BQ media_refs correct at insert time (mutates p.media_refs).
@@ -880,7 +880,7 @@ class PipelineRunner:
                 executor=self._media_executor,
             )
 
-            # Write posts to BQ (always — no dedup, timestamps differentiate)
+            # Write posts to BQ (always - no dedup, timestamps differentiate)
             post_rows = [post_to_bq_row(p, self.collection_id) for p in new_posts]
             failed_posts = self.bq.insert_rows("posts", post_rows)
             funnel_bq_insert_failures += failed_posts
@@ -915,7 +915,7 @@ class PipelineRunner:
             # media posts skip the download step and go straight to enrichment.
             self.state_manager.mark_collected(in_range, media_resolved=True)
 
-            # Usage tracking (fire-and-forget) — group by (provider, platform)
+            # Usage tracking (fire-and-forget) - group by (provider, platform)
             # so the Finance "platform × provider" matrix gets accurate
             # per-bucket counts (Apify charges IG vs FB vs TikTok at different
             # rates, so a provider-only aggregate hides the variance).
@@ -934,7 +934,7 @@ class PipelineRunner:
                 if failed_posts and sum(bucket_counts.values()) > 0:
                     total = sum(bucket_counts.values())
                     # Distribute failed_posts pro-rata so totals still sum to
-                    # actual_stored. Tiny per-bucket inaccuracy is acceptable —
+                    # actual_stored. Tiny per-bucket inaccuracy is acceptable -
                     # we're already in BQ-insert-failure territory.
                     remaining = actual_stored
                     items = list(bucket_counts.items())
@@ -947,7 +947,7 @@ class PipelineRunner:
                             remaining -= scaled
 
                 # Pass agent_id explicitly so attribution doesn't depend on
-                # ContextVar inheritance across the crawl thread boundary —
+                # ContextVar inheritance across the crawl thread boundary -
                 # the helper at the thread spawn already propagates context
                 # but defensive explicit passing also surfaces bugs faster.
                 owner_agent_id = self._status_doc.get("agent_id")
@@ -1028,7 +1028,7 @@ class PipelineRunner:
 
         # 0 posts is only a *collection failure* if nothing actually ran
         # (silent platform skip, missing adapter) or every platform errored.
-        # A clean run with no matches is a valid empty result — the rest of
+        # A clean run with no matches is a valid empty result - the rest of
         # the pipeline will short-circuit to status=success via
         # _set_final_status.
         attempted = bool(stats)
@@ -1039,7 +1039,7 @@ class PipelineRunner:
         if errors:
             error_platforms = [e.get("platform", "unknown") for e in errors]
             self._log_task(
-                f"Data collection complete: {total_posts} posts. Some sources had issues ({', '.join(error_platforms)}) — continuing with available data.",
+                f"Data collection complete: {total_posts} posts. Some sources had issues ({', '.join(error_platforms)}) - continuing with available data.",
                 level="warning",
                 metadata={"phase": "collecting", "posts_collected": total_posts, "errors": len(errors)},
             )
@@ -1058,7 +1058,7 @@ class PipelineRunner:
         if run_failed:
             if not attempted:
                 error_message = (
-                    "No collection ran — no adapter on this worker supports the requested platforms. "
+                    "No collection ran - no adapter on this worker supports the requested platforms. "
                     "Check worker env (data-provider tokens) and platform routing."
                 )
             else:
@@ -1128,7 +1128,7 @@ class PipelineRunner:
                 "Failed to transition %d posts for step '%s' in %s",
                 len(transitions), step.name, self.collection_id,
             )
-            return True  # attempted work — posts will be re-picked up next iter
+            return True  # attempted work - posts will be re-picked up next iter
 
         # After download step, persist GCS URIs back to BQ in the background
         if step.name == "download" and media_refs:
@@ -1146,7 +1146,7 @@ class PipelineRunner:
         """Touch collection_status.updated_at only when post-state counts change.
 
         A blind heartbeat would mask the run-3 failure mode (a wedged step
-        worker holding a hung Gemini call while the process stays alive) —
+        worker holding a hung Gemini call while the process stays alive) -
         the watchdog would see a fresh `updated_at` forever and never recover
         the pipeline. Tying the write to actual progress (the post-state
         counts dict changing) means a stuck DAG starves `updated_at` and the
@@ -1171,7 +1171,7 @@ class PipelineRunner:
             stop_event.wait(interval)
 
     def _log_progress(self) -> None:
-        """Periodic progress log — called once per loop iter, not per step."""
+        """Periodic progress log - called once per loop iter, not per step."""
         counts = self.state_manager.get_counts()
         # Counter keys are PostState.value (lowercase). Earlier code looked up
         # uppercase names here and silently reported zero progress forever.
@@ -1204,7 +1204,7 @@ class PipelineRunner:
     def _step_worker(self, step, ctx: StepContext, stop_event: threading.Event) -> None:
         """Run one step in a dedicated loop until stop_event is set.
 
-        Each step iterates independently — enrich and embed don't wait for a
+        Each step iterates independently - enrich and embed don't wait for a
         slow download batch. When the step has no work, it backs off adaptively
         (50ms → 500ms) instead of sleeping a fixed second.
         """
@@ -1220,7 +1220,7 @@ class PipelineRunner:
             if did_work:
                 idle_backoff = 0.05
             else:
-                # Interruptible sleep — stop_event.set() wakes us immediately
+                # Interruptible sleep - stop_event.set() wakes us immediately
                 # so shutdown isn't blocked by a 500ms tail.
                 stop_event.wait(timeout=idle_backoff)
                 idle_backoff = min(0.5, idle_backoff * 1.5)
@@ -1228,7 +1228,7 @@ class PipelineRunner:
     def _run_loop(self, ctx: StepContext) -> None:
         """Drive the processing DAG until all posts are terminal or we timeout.
 
-        Each step runs in its own thread with adaptive backoff — a slow download
+        Each step runs in its own thread with adaptive backoff - a slow download
         batch no longer blocks enrich/embed, and the idle wait has no fixed 1s
         floor. This thread only watches for timeouts, cancellation, and
         termination.
@@ -1249,7 +1249,7 @@ class PipelineRunner:
         step_threads: list[threading.Thread] = []
 
         # Streaming runners for download + enrich. They claim posts atomically
-        # and run on persistent executors — no per-batch drain.
+        # and run on persistent executors - no per-batch drain.
         from workers.pipeline.post_state import PostState
         from workers.pipeline.steps import (
             download_process_one,
@@ -1323,7 +1323,7 @@ class PipelineRunner:
             while True:
                 elapsed = _time.monotonic() - loop_start
 
-                # Hard timeout — should never hit this in normal runs now that
+                # Hard timeout - should never hit this in normal runs now that
                 # the soft timeout self-reschedules a continuation first.
                 if elapsed > PIPELINE_LOOP_TIMEOUT:
                     logger.error(
@@ -1332,14 +1332,14 @@ class PipelineRunner:
                     )
                     break
 
-                # Soft timeout — self-reschedule a continuation if posts remain.
+                # Soft timeout - self-reschedule a continuation if posts remain.
                 if (
                     elapsed > PIPELINE_LOOP_SOFT_TIMEOUT
                     and not self._continuation_scheduled
                     and not self.state_manager.all_posts_terminal()
                 ):
                     logger.info(
-                        "Soft-timeout reached for %s at %.0fs — enqueueing continuation",
+                        "Soft-timeout reached for %s at %.0fs - enqueueing continuation",
                         self.collection_id, elapsed,
                     )
                     if self._schedule_continuation():
@@ -1380,7 +1380,7 @@ class PipelineRunner:
                     if self.state_manager.get_total_posts() == 0:
                         break
 
-                # Main-thread tick — step workers iterate independently, so
+                # Main-thread tick - step workers iterate independently, so
                 # this only gates termination/cancellation/progress checks.
                 _time.sleep(1.0)
         finally:
@@ -1416,7 +1416,7 @@ class PipelineRunner:
             "WHERE t.post_id = s.pid"
         )
 
-        # Short backoff — streaming-buffer conflicts normally clear in seconds,
+        # Short backoff - streaming-buffer conflicts normally clear in seconds,
         # not minutes. Any misses here are swept up by _reconcile_bq_media_refs
         # at the end of the pipeline.
         backoffs = [5, 15, 45]
@@ -1453,7 +1453,7 @@ class PipelineRunner:
         correct starting set. If either query fails, the step actions fall
         back to per-batch BQ pre-checks (defense-in-depth).
 
-        Enrichment skip is keyed on (agent_id, agent_version) — strict match,
+        Enrichment skip is keyed on (agent_id, agent_version) - strict match,
         NULL legacy rows DO NOT count as a hit, so a new agent re-enriches
         them. Embedding skip widens to all of the agent's collections (one
         embedding per post regardless of which agent triggered it).
@@ -1576,7 +1576,7 @@ class PipelineRunner:
 
         The per-batch updater is fire-and-forget with a short retry budget;
         anything that slipped through is caught here. Safe to run unconditionally
-        — the UPDATE is idempotent (same GCS URIs overwrite identically).
+        - the UPDATE is idempotent (same GCS URIs overwrite identically).
         """
         try:
             done_posts = self.state_manager.get_posts_by_state(
@@ -1667,7 +1667,7 @@ class PipelineRunner:
         """Map raw exception strings to user-friendly messages."""
         err_lower = error.lower()
         if "ssl" in err_lower or "eof occurred" in err_lower or "connection reset" in err_lower:
-            return "Temporary connection issue with our infrastructure. Your data is safe — please retry."
+            return "Temporary connection issue with our infrastructure. Your data is safe - please retry."
         if "timeout" in err_lower and "brightdata" in err_lower:
             return "Data collection took longer than expected. Partial results may be available."
         if "429" in error or "too many requests" in err_lower or "rate limit" in err_lower:
@@ -1679,7 +1679,7 @@ class PipelineRunner:
     def _set_crashed_status(self, error: str) -> None:
         """Set status to failed after an unhandled crash.
 
-        Best-effort — if even this fails, we log and give up.
+        Best-effort - if even this fails, we log and give up.
         """
         # Preserve any stage timings accumulated before the crash.
         self._persist_stage_timings()
@@ -1789,18 +1789,18 @@ class PipelineRunner:
         # downstream artifacts (BQ topic_clusters rows + Firestore topic docs
         # with topic_name/topic_summary/post_count surface fields).
         # If the agent has opted out via topics_config.auto_regenerate_on_pipeline=False,
-        # skip entirely — they will regenerate manually via the API/UI.
+        # skip entirely - they will regenerate manually via the API/UI.
         try:
             agent_id = self._get_agent_id()
             if not agent_id:
-                logger.info("No agent_id for %s — skipping topic generation", self.collection_id)
+                logger.info("No agent_id for %s - skipping topic generation", self.collection_id)
             else:
                 agent_doc = self.fs.get_agent(agent_id) or {}
                 topics_config = agent_doc.get("topics_config") or {}
                 auto = topics_config.get("auto_regenerate_on_pipeline", True)
                 if not auto:
                     logger.info(
-                        "Agent %s topics_config.auto_regenerate_on_pipeline=False — skipping",
+                        "Agent %s topics_config.auto_regenerate_on_pipeline=False - skipping",
                         agent_id,
                     )
                 else:

@@ -150,7 +150,7 @@ export function EditPostDrawer({ open, onOpenChange, post, agentId, collectionId
         description: err instanceof Error ? err.message : 'Unknown error',
       });
     },
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   const approveMutation = useMutation({
@@ -185,7 +185,7 @@ export function EditPostDrawer({ open, onOpenChange, post, agentId, collectionId
         description: err instanceof Error ? err.message : 'Unknown error',
       });
     },
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   const isLoading = draftMutation.isPending;
@@ -223,7 +223,7 @@ export function EditPostDrawer({ open, onOpenChange, post, agentId, collectionId
           <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs">
             <div className="font-medium text-foreground/90 truncate">@{post.channel_handle}</div>
             <div className="mt-1 line-clamp-3 text-muted-foreground">
-              {post.title || post.content || post.ai_summary || '—'}
+              {post.title || post.content || post.ai_summary || '-'}
             </div>
           </div>
 
@@ -497,7 +497,7 @@ function FieldSelect({
     <FieldShell label={label} changed={original !== value} originalDisplay={original} compact>
       <Select value={value || undefined} onValueChange={onChange}>
         <SelectTrigger className="h-7 text-xs">
-          <SelectValue placeholder="—" />
+          <SelectValue placeholder="-" />
         </SelectTrigger>
         <SelectContent>
           {options.map((o) => (
@@ -622,7 +622,7 @@ function normalizeCustomFields(
   defs: CustomFieldDef[],
 ): Record<string, unknown> | undefined {
   if (defs.length === 0) {
-    // No schema known — pass values through (filter empty strings).
+    // No schema known - pass values through (filter empty strings).
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(values)) {
       if (v === '' || v == null) continue;

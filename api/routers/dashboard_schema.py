@@ -79,8 +79,8 @@ CustomMetric = Literal[
 
 # ─── Topic widget vocabulary (when widget.dataSource === 'topics') ────────────
 # Mirrors TopicDimension / TopicMetric in types-social-dashboard.ts. Topic
-# widgets read from `social_listening.topic_metrics(@agent_id)` — see
-# api/services/dashboard_service.py — and have their own dim/metric vocabularies
+# widgets read from `social_listening.topic_metrics(@agent_id)` - see
+# api/services/dashboard_service.py - and have their own dim/metric vocabularies
 # distinct from the post-side `Custom*` literals.
 
 TopicDimension = Literal[
@@ -122,7 +122,7 @@ AnyMetric = Union[CustomMetric, TopicMetric]
 
 DataSource = Literal["posts", "topics"]
 
-# Post-level field — used in post-mode tables (one row per post). Mirrors
+# Post-level field - used in post-mode tables (one row per post). Mirrors
 # the PostField union in types-social-dashboard.ts.
 PostField = Literal[
     "post_url",
@@ -149,7 +149,7 @@ PostField = Literal[
 CustomFieldPost = Annotated[str, StringConstraints(pattern=r"^custom:[^\s]+$")]
 PostFieldRef = Union[PostField, CustomFieldPost]
 
-# Valid chart types per aggregation — mirrors VALID_CHART_TYPES in TS.
+# Valid chart types per aggregation - mirrors VALID_CHART_TYPES in TS.
 VALID_CHART_TYPES: dict[str, tuple[str, ...]] = {
     "kpi": ("number-card",),
     "sentiment": ("doughnut", "pie", "bar", "progress-list"),
@@ -170,7 +170,7 @@ VALID_CHART_TYPES: dict[str, tuple[str, ...]] = {
     "embeds": ("embed",),
 }
 
-# Per-aggregation defaults — mirrors AGGREGATION_META in TS.
+# Per-aggregation defaults - mirrors AGGREGATION_META in TS.
 # (label/icon/description live on the frontend; backend only needs the
 # defaults used by self-heal.)
 AGGREGATION_DEFAULTS: dict[str, dict] = {
@@ -291,7 +291,7 @@ class ReportScope(BaseModel):
     Stored on the dashboard layout doc when an agent generates a report. Charts
     apply this as a base filter before viewer-applied filters; viewer filters
     intersect with the scope (can narrow, cannot widen). Absence (= None) means
-    standalone mode — viewer filters apply freely as today.
+    standalone mode - viewer filters apply freely as today.
 
     Dimensions mirror `SocialWidgetFilters` minus widget-only `conditions`.
     """

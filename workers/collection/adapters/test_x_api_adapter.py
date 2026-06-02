@@ -1,4 +1,4 @@
-"""Unit tests for XAPIAdapter — focused on Option B unpacking of referenced
+"""Unit tests for XAPIAdapter - focused on Option B unpacking of referenced
 tweets (`x_api_unpack_referenced_posts` flag) and pagination behavior.
 
 Mocks XAPIClient so tests run offline.
@@ -86,7 +86,7 @@ def _tweet(
 
 
 # ---------------------------------------------------------------------------
-# Unpack flag OFF — backwards-compat baseline
+# Unpack flag OFF - backwards-compat baseline
 # ---------------------------------------------------------------------------
 
 def test_unpack_off_emits_only_primary_posts():
@@ -112,14 +112,14 @@ def test_unpack_off_emits_only_primary_posts():
     primary = posts[0]
     assert primary.enrichment_dependency_post_id is None
     assert primary.enrichment_dependency_type is None
-    # Defensive cache still populated even when unpack is off — cheap to keep.
+    # Defensive cache still populated even when unpack is off - cheap to keep.
     assert primary.platform_metadata["referenced_post"]["id"] == "8000"
     assert primary.platform_metadata["referenced_post"]["text"] == "source body"
     assert adapter._referenced_post_count == 0
 
 
 # ---------------------------------------------------------------------------
-# Unpack flag ON — basic unpack
+# Unpack flag ON - basic unpack
 # ---------------------------------------------------------------------------
 
 def test_unpack_on_emits_dep_post_and_links_parent():
@@ -149,7 +149,7 @@ def test_unpack_on_emits_dep_post_and_links_parent():
 
     assert parent_post.enrichment_dependency_post_id == "8000"
     assert parent_post.enrichment_dependency_type == "quoted"
-    # Dep itself has no dep — 1-level cap.
+    # Dep itself has no dep - 1-level cap.
     assert dep_post.enrichment_dependency_post_id is None
     assert dep_post.enrichment_dependency_type is None
     assert dep_post.channel_handle == "bob"
@@ -217,7 +217,7 @@ def test_unpack_dedupes_when_same_source_referenced_by_multiple_parents():
 
 def test_unpack_skips_when_source_already_a_primary_post():
     """If we directly collected the source AND a quote of it in the same page,
-    don't duplicate the source — just link the parent."""
+    don't duplicate the source - just link the parent."""
     adapter = _build_adapter(unpack=True)
     src_as_primary = _tweet("8000", "200", "source body")
     parent = _tweet("9001", "100", "quote!", refs=[{"type": "quoted", "id": "8000"}])
@@ -236,7 +236,7 @@ def test_unpack_skips_when_source_already_a_primary_post():
 
     posts = batches[0].posts
     ids = [p.post_id for p in posts]
-    # Exactly two posts — no duplicate of 8000.
+    # Exactly two posts - no duplicate of 8000.
     assert sorted(ids) == ["8000", "9001"]
     parent_post = next(p for p in posts if p.post_id == "9001")
     assert parent_post.enrichment_dependency_post_id == "8000"
@@ -271,7 +271,7 @@ def test_unpack_skips_retweets():
 
 
 def test_unpack_skips_when_ref_not_in_includes_tweets():
-    """Source deleted/protected — referenced_tweets[] points at id but no full
+    """Source deleted/protected - referenced_tweets[] points at id but no full
     tweet in includes.tweets. Parent stays without dep, only defensive cache."""
     adapter = _build_adapter(unpack=True)
     parent = _tweet("9001", "100", "quote", refs=[{"type": "quoted", "id": "8000"}])
@@ -325,7 +325,7 @@ def test_hard_cap_counts_only_primary_posts_not_refs():
 
 
 # ---------------------------------------------------------------------------
-# Direct-fetch by post_urls — new in fetch-posts-by-URL feature
+# Direct-fetch by post_urls - new in fetch-posts-by-URL feature
 # ---------------------------------------------------------------------------
 
 def test_collect_with_post_urls_hits_tweets_ids_endpoint():
@@ -362,7 +362,7 @@ def test_collect_with_post_urls_hits_tweets_ids_endpoint():
 
 
 def test_collect_with_post_urls_ignores_keywords_and_searchall():
-    """When post_urls is set we never hit /tweets/search/all — only /tweets?ids="""
+    """When post_urls is set we never hit /tweets/search/all - only /tweets?ids="""
     adapter = _build_adapter(unpack=False)
     adapter._client.get.return_value = _make_response(
         primary_tweets=[_tweet("12345", "100", "hi")],
@@ -404,7 +404,7 @@ def test_collect_with_post_urls_invalid_urls_recorded_in_stats():
 
 
 def test_collect_with_post_urls_chunks_at_100():
-    """X API caps /2/tweets?ids= at 100 ids per request — 250 urls = 3 calls."""
+    """X API caps /2/tweets?ids= at 100 ids per request - 250 urls = 3 calls."""
     adapter = _build_adapter(unpack=False)
     adapter._client.get.return_value = _make_response(primary_tweets=[], users=[])
 

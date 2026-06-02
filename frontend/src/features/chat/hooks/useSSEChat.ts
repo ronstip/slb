@@ -41,7 +41,7 @@ export function useSSEChat() {
       abortRef.current = abortController;
 
       // Access stores via getState() to avoid subscribing to reactive updates.
-      // Action functions are stable references — no re-renders from store changes.
+      // Action functions are stable references - no re-renders from store changes.
       const cs = useChatStore.getState();
 
       if (!opts?.isSystem) {
@@ -80,7 +80,7 @@ export function useSSEChat() {
 
           const chatState = useChatStore.getState();
 
-          // Track which agent is active (skip orchestrator — it's just routing)
+          // Track which agent is active (skip orchestrator - it's just routing)
           if ('author' in event && event.author && event.author !== 'orchestrator') {
             chatState.setActiveAgent(messageId, event.author);
           }
@@ -98,7 +98,7 @@ export function useSSEChat() {
             }
 
             case 'text': {
-              // Final aggregated text — strip markers, append clean text only.
+              // Final aggregated text - strip markers, append clean text only.
               const cleanText = event.content.replace(/<!--[\s\S]*?-->/g, '').trimEnd();
               if (cleanText) {
                 chatState.appendTextBlock(messageId, cleanText);
@@ -204,7 +204,7 @@ export function useSSEChat() {
                           sourcesState.updateSource(cid, { taskId, sessionId: currentSessionId });
                         }
                       } else if (taskId) {
-                        // Collection was just created — store a pending link and force a
+                        // Collection was just created - store a pending link and force a
                         // refetch so it enters the store (and polling) immediately rather
                         // than waiting for the 30s stale timer.
                         sourcesState.setPendingLink(cid, taskId, currentSessionId);
@@ -249,7 +249,7 @@ export function useSSEChat() {
                   navigate(`/agents/${createdTaskId}?tab=chat`, { replace: true });
                 }
                 // If no task yet (e.g. ask_user approval still pending), stay on
-                // the current page — AgentHome will show a ChatPanel for interaction.
+                // the current page - AgentHome will show a ChatPanel for interaction.
               } else if (createdTaskId) {
                 navigate(`/agents/${createdTaskId}?tab=chat`);
               }
@@ -297,7 +297,7 @@ export function useSSEChat() {
   return { sendMessage, sendSystemMessage, cancelStream };
 }
 
-/** Live MapperContext — wall-clock timestamps, Date.now-based fallback IDs. */
+/** Live MapperContext - wall-clock timestamps, Date.now-based fallback IDs. */
 function liveCtx(): MapperContext {
   const now = Date.now();
   return {

@@ -98,7 +98,7 @@ export function DescribePanel({
             />
           </div>
 
-          {/* Template cards — side-by-side with the textarea on lg+ */}
+          {/* Template cards - side-by-side with the textarea on lg+ */}
           {!isClarifying && (
             <div className="flex-1 min-w-0 flex flex-col gap-2.5">
               <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -169,7 +169,7 @@ export function DescribePanel({
 
         {hasPlan && isStale && !isPlanning && (
           <p className="text-[11px] text-amber-600 dark:text-amber-500">
-            Description changed — click Continue to re-plan.
+            Description changed - click Continue to re-plan.
           </p>
         )}
       </div>
@@ -249,7 +249,7 @@ export function DescribePanel({
 
       {hasPlan && isStale && !isPlanning && (
         <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-500">
-          Description changed — click Re-plan to refresh.
+          Description changed - click Re-plan to refresh.
         </p>
       )}
 

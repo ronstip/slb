@@ -1,4 +1,4 @@
-"""Dashboard Report Tools — read, create-from-template, update, verify, publish.
+"""Dashboard Report Tools - read, create-from-template, update, verify, publish.
 
 Used by the dashboard-report studio skill. The agent reads a template dashboard
 to get per-section briefs, creates a hidden copy, fills text widgets section by
@@ -8,10 +8,10 @@ duplicate anchors / `§` symbols, and finally calls `publish_dashboard` to make
 the new dashboard visible in the explorer dropdown. `publish_dashboard` runs
 verify internally and refuses to publish on errors.
 
-Distinct from `create_markdown`, which produces a single markdown artifact —
+Distinct from `create_markdown`, which produces a single markdown artifact -
 this skill produces a live filterable dashboard.
 
-Five narrow tools — one verb each — instead of one multi-mode tool. The
+Five narrow tools - one verb each - instead of one multi-mode tool. The
 docstrings carry the one-tool-one-job contract.
 """
 
@@ -74,7 +74,7 @@ def _verify_dashboard_ownership(fs, layout_id: str, user_id: str) -> tuple[dict 
     if data.get("user_id") != user_id:
         return None, {
             "status": "error",
-            "message": f"Access denied — dashboard '{layout_id}' is owned by a different user.",
+            "message": f"Access denied - dashboard '{layout_id}' is owned by a different user.",
         }
     return data, None
 
@@ -83,7 +83,7 @@ def _load_template_widgets(fs, template_id: str | None) -> list[dict] | None:
     """Return the widget list of the template doc that a dashboard was cloned
     from, or None if `template_id` is empty / the doc is gone / it isn't a
     template. Used by the semantic leakage check in `_check_dashboard_for_publish`.
-    Failures here are non-fatal — verify still runs with the literal-marker checks.
+    Failures here are non-fatal - verify still runs with the literal-marker checks.
     """
     widgets, _ = _load_template_meta(fs, template_id)
     return widgets
@@ -119,7 +119,7 @@ def _load_template_meta(
 
 def _refuse_if_template(data: dict, layout_id: str, action: str) -> dict | None:
     """Reject writes targeting a template doc. Templates are user-curated and
-    must remain immutable from the agent's side — the agent works on the COPY
+    must remain immutable from the agent's side - the agent works on the COPY
     returned by `create_dashboard_from_template`, never on the source template.
     """
     if data.get("is_template"):
@@ -155,7 +155,7 @@ def _validate_layout(
     except ValidationError as e:
         return {
             "status": "error",
-            "message": "Resulting layout failed schema validation — no changes persisted.",
+            "message": "Resulting layout failed schema validation - no changes persisted.",
             "validation_errors": _summarize_validation_errors(e.errors()),
         }
 
@@ -179,7 +179,7 @@ def _validate_layout(
     if cross_errors:
         return {
             "status": "error",
-            "message": "Resulting layout failed cross-field validation — no changes persisted.",
+            "message": "Resulting layout failed cross-field validation - no changes persisted.",
             "validation_errors": cross_errors,
         }
     return None
@@ -211,23 +211,23 @@ def _summarize_validation_errors(errors: list[dict]) -> list[str]:
     return out
 
 
-# ─── Tool 1 — read_dashboard ────────────────────────────────────────────────
+# ─── Tool 1 - read_dashboard ────────────────────────────────────────────────
 
 
 def read_dashboard(
     layout_id: str,
     tool_context: ToolContext = None,
 ) -> dict:
-    """Read a dashboard's current state — widgets, title, filter pills, orientation.
+    """Read a dashboard's current state - widgets, title, filter pills, orientation.
 
     WHEN TO USE:
       - At session start, to read the report TEMPLATE. Each text widget's
         markdownContent is the per-section brief for the report you're writing.
-      - During iteration, at "junctions" — after writing a section that other
+      - During iteration, at "junctions" - after writing a section that other
         sections cite (executive summary, KPI/SoV table, recommendations). Read
         the live state and cross-check it against the data and against earlier
         sections.
-      - At end-of-run, as the mandatory final validation pass — read the full
+      - At end-of-run, as the mandatory final validation pass - read the full
         dashboard and verify every number, post, and external citation.
 
     WHEN NOT TO USE:
@@ -241,12 +241,12 @@ def read_dashboard(
 
     Returns:
         On success: ``{status, layout_id, title, widgets, filter_bar_filters, orientation}``.
-        On error: ``{status: "error", message}`` — dashboard not found or
+        On error: ``{status: "error", message}`` - dashboard not found or
         access denied.
     """
     user_id = _user_id(tool_context)
     if not user_id:
-        return {"status": "error", "message": "No user_id in session — cannot read dashboard."}
+        return {"status": "error", "message": "No user_id in session - cannot read dashboard."}
     if not layout_id:
         return {"status": "error", "message": "layout_id is required."}
 
@@ -263,11 +263,11 @@ def read_dashboard(
         "widgets": widgets,
         "filter_bar_filters": data.get("filterBarFilters") or [],
         "orientation": data.get("orientation") or "vertical",
-        "message": f"Read dashboard '{layout_id}' — {len(widgets)} widgets.",
+        "message": f"Read dashboard '{layout_id}' - {len(widgets)} widgets.",
     }
 
 
-# ─── Tool 2 — create_dashboard_from_template ────────────────────────────────
+# ─── Tool 2 - create_dashboard_from_template ────────────────────────────────
 
 
 def create_dashboard_from_template(
@@ -290,19 +290,19 @@ def create_dashboard_from_template(
         constant.
 
     WHEN NOT TO USE:
-      - More than once per run — you only need one output dashboard.
-      - Before research is done — create the dashboard when you have data to
+      - More than once per run - you only need one output dashboard.
+      - Before research is done - create the dashboard when you have data to
         write into it.
 
     Args:
         template_id: Layout ID of the template to clone. The prompt provides
             this as a hardcoded constant.
-        title: The new dashboard's title — typically includes the report
-            period, e.g. "Weekly Competitive Brand Report — 2026-05-04 → 2026-05-11".
+        title: The new dashboard's title - typically includes the report
+            period, e.g. "Weekly Competitive Brand Report - 2026-05-04 → 2026-05-11".
             Match the data language.
         report_scope: Optional data scope this report commits to. When provided,
             both the chart render path and pre-publish numerical verification
-            treat it as the single source of truth — viewer filters intersect
+            treat it as the single source of truth - viewer filters intersect
             with the scope (can narrow, cannot widen). Keys mirror the global
             filter bar dimensions: ``date_range`` (object with `from`/`to`),
             ``sentiment``, ``emotion``, ``platform``, ``themes``, ``entities``,
@@ -312,14 +312,14 @@ def create_dashboard_from_template(
         tool_context: ADK tool context (injected automatically).
 
     Returns:
-        On success: ``{status, layout_id, widget_ids, message}`` — `widget_ids`
+        On success: ``{status, layout_id, widget_ids, message}`` - `widget_ids`
         is the list of every widget's stable `i`, so you can address them in
         update_dashboard without an extra read_dashboard call.
         On error: ``{status: "error", message}``.
     """
     user_id = _user_id(tool_context)
     if not user_id:
-        return {"status": "error", "message": "No user_id in session — cannot create dashboard."}
+        return {"status": "error", "message": "No user_id in session - cannot create dashboard."}
     if not template_id:
         return {"status": "error", "message": "template_id is required."}
     if not title or not title.strip():
@@ -353,7 +353,7 @@ def create_dashboard_from_template(
     if not widgets:
         return {
             "status": "error",
-            "message": f"Template '{template_id}' has no widgets — nothing to clone.",
+            "message": f"Template '{template_id}' has no widgets - nothing to clone.",
         }
 
     new_layout_id = uuid.uuid4().hex
@@ -392,7 +392,7 @@ def create_dashboard_from_template(
     }
 
 
-# ─── Tool 3 — update_dashboard ──────────────────────────────────────────────
+# ─── Tool 3 - update_dashboard ──────────────────────────────────────────────
 
 
 def update_dashboard(
@@ -405,7 +405,7 @@ def update_dashboard(
 ) -> dict:
     """Apply one or more edits to a dashboard's widgets. The workhorse tool.
 
-    Three independent typed list params — pick the one that matches your intent.
+    Three independent typed list params - pick the one that matches your intent.
     Batch related edits in a single call to save round-trips. Edits are applied
     in order (patches → additions → removals). The resulting layout is
     validated against the dashboard schema; if validation fails, NO changes
@@ -419,47 +419,47 @@ def update_dashboard(
         ``removals=[widget_i]``. Better than leaving a stub that reads as
         forgotten. Note the removal in the methodology appendix.
       - Rarely, to add a new widget (use ``additions``). The template defines
-        the structure — only add when the data genuinely demands a new section.
+        the structure - only add when the data genuinely demands a new section.
       - To patch ``title`` or ``figureText`` on chart widgets when localizing
-        for the data's language — these are display-only and safe to edit.
+        for the data's language - these are display-only and safe to edit.
 
     WHEN NOT TO USE:
       - To edit chart widgets' ``customConfig`` / ``tableConfig`` / ``kpiIndex``
         / ``aggregation`` / ``chartType``. Those are deliberate and frozen.
       - To reorder widgets. Positions (`x`, `y`, `w`, `h`) should not change.
 
-    PATCHES — most common operation.
+    PATCHES - most common operation.
         Each patch: ``{"widget_i": "<i>", "fields": {<field>: <value>, ...}}``.
         Server does a SHALLOW merge: ``widget = {**existing, **fields}``. To
         change a nested config (e.g. ``customConfig.topN``), pass the full
-        nested object — there is no deep-merge.
+        nested object - there is no deep-merge.
 
-        Example (the common case — replace one text widget's markdown):
+        Example (the common case - replace one text widget's markdown):
             patches=[{
                 "widget_i": "kyod4xo8j",
                 "fields": {"markdownContent": "## §4 Executive summary\\n\\n..."}
             }]
 
-        Example (batched — fill three sections in one call):
+        Example (batched - fill three sections in one call):
             patches=[
                 {"widget_i": "037e1nzcl", "fields": {"markdownContent": "..."}},
                 {"widget_i": "kyod4xo8j", "fields": {"markdownContent": "..."}},
                 {"widget_i": "0r5pikd9h", "fields": {"markdownContent": "..."}},
             ]
 
-    ADDITIONS — appends new widgets.
+    ADDITIONS - appends new widgets.
         Each item is a full widget dict. If it lacks `i`, the server assigns
         one and returns it in `touched_widget_ids`.
 
-    REMOVALS — removes widgets by `i`. Each item is the widget's `i` string.
+    REMOVALS - removes widgets by `i`. Each item is the widget's `i` string.
 
-    REPORT_SCOPE — optional. Pass to set or refine the dashboard's committed
+    REPORT_SCOPE - optional. Pass to set or refine the dashboard's committed
         data scope after creation (normally set at create_dashboard_from_template
         time; this is the escape hatch). Same shape as the create-time argument.
 
     Args:
         layout_id: The dashboard to modify (the new dashboard's ID from
-            create_dashboard_from_template — never the template ID).
+            create_dashboard_from_template - never the template ID).
         patches: Optional list of patch operations.
         additions: Optional list of full widget dicts to append.
         removals: Optional list of widget `i`s to remove.
@@ -472,11 +472,11 @@ def update_dashboard(
         touched_widget_ids, message}``.
         On error: ``{status: "error", message, validation_errors?}``. If
         validation_errors is present, the layout would have been invalid and
-        NO writes were made — fix the issues and retry.
+        NO writes were made - fix the issues and retry.
     """
     user_id = _user_id(tool_context)
     if not user_id:
-        return {"status": "error", "message": "No user_id in session — cannot update dashboard."}
+        return {"status": "error", "message": "No user_id in session - cannot update dashboard."}
     if not layout_id:
         return {"status": "error", "message": "layout_id is required."}
 
@@ -487,7 +487,7 @@ def update_dashboard(
         return {
             "status": "error",
             "message": (
-                "No edits provided — pass at least one of patches/additions/removals/report_scope."
+                "No edits provided - pass at least one of patches/additions/removals/report_scope."
             ),
         }
 
@@ -513,7 +513,7 @@ def update_dashboard(
     by_id = {w.get("i"): i for i, w in enumerate(widgets) if isinstance(w, dict) and w.get("i")}
     touched: list[str] = []
 
-    # 1. patches — shallow merge into existing widget by `i`.
+    # 1. patches - shallow merge into existing widget by `i`.
     for idx, patch in enumerate(patches):
         if not isinstance(patch, dict):
             return {"status": "error", "message": f"patches[{idx}] is not a dict."}
@@ -532,7 +532,7 @@ def update_dashboard(
         widgets[pos] = {**widgets[pos], **fields}
         touched.append(widget_i)
 
-    # 2. additions — append (assign `i` if missing).
+    # 2. additions - append (assign `i` if missing).
     for idx, w in enumerate(additions):
         if not isinstance(w, dict):
             return {"status": "error", "message": f"additions[{idx}] is not a dict."}
@@ -548,7 +548,7 @@ def update_dashboard(
         by_id[new_widget["i"]] = len(widgets) - 1
         touched.append(new_widget["i"])
 
-    # 3. removals — drop by `i` and repack `y` of widgets below the removed slot.
+    # 3. removals - drop by `i` and repack `y` of widgets below the removed slot.
     # Without repack, removals leave a visible blank band where the widget was.
     for idx, widget_i in enumerate(removals):
         if not isinstance(widget_i, str) or not widget_i:
@@ -574,7 +574,7 @@ def update_dashboard(
                 wy = w.get("y")
                 if isinstance(wy, int) and wy >= rem_bottom:
                     w["y"] = wy - rem_h
-        # rebuild index — positions shifted
+        # rebuild index - positions shifted
         by_id = {w.get("i"): i for i, w in enumerate(widgets) if isinstance(w, dict) and w.get("i")}
         touched.append(widget_i)
 
@@ -639,7 +639,7 @@ def update_dashboard(
 _TEMPLATE_LEAKAGE_MARKERS = (
     "Agent instructions",                                          # catches "Agent instructions." AND "Agent instructions for ..."
     "Reference example",
-    "Senior intelligence analyst writing for a decision-maker",    # Voice block — every section's brief has this
+    "Senior intelligence analyst writing for a decision-maker",    # Voice block - every section's brief has this
     "Body skeleton (every section follows this shape)",
     "Template v3.",                                                # header-widget brief opener
     "Template v4.",
@@ -668,7 +668,7 @@ _SERP_PATTERNS = (
 # a real link the agent retrieved. The agent invents these when it cites a
 # source it never actually grounded (e.g. https://www.cbsnews.com/news/sample-url).
 # Matched case-insensitively against the full URL string. Distinct from SERP
-# placeholders — these have no host/path structure to leverage.
+# placeholders - these have no host/path structure to leverage.
 _FAKE_URL_SUBSTRINGS = (
     "sample-url",
     "example.com",
@@ -684,7 +684,7 @@ _FAKE_URL_SUBSTRINGS = (
 )
 
 # Hostnames where the corpus itself was collected. Links to these domains are
-# NOT external grounding — they're the data itself. §App-A requires independent
+# NOT external grounding - they're the data itself. §App-A requires independent
 # journalism / polls / reports, which means hostnames OFF this list. Match is
 # done after stripping a leading `www.` and lowercasing.
 _CORPUS_PLATFORM_HOSTNAMES = frozenset({
@@ -699,22 +699,22 @@ _CORPUS_PLATFORM_HOSTNAMES = frozenset({
     "threads.net",
 })
 
-# Pull every markdown link [label](url) — we only audit explicit links, not
+# Pull every markdown link [label](url) - we only audit explicit links, not
 # raw URLs in prose. Markdown links are how the agent is asked to cite §App-A.
 _MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]*\]\((https?://[^)\s]+)\)")
 
-# `§` symbol anywhere in markdown text — the template was overhauled in v3 to
+# `§` symbol anywhere in markdown text - the template was overhauled in v3 to
 # use plain numbering (`## 5. Share of voice`) and `§` has no place in the
 # customer-facing output, whether in headings or in body prose ("see §4").
 _SECTION_SYMBOL_PATTERN = re.compile(r"§")
 
-# `<a id="sec-xxx">` anchor declarations — used to detect duplicates.
+# `<a id="sec-xxx">` anchor declarations - used to detect duplicates.
 _ANCHOR_PATTERN = re.compile(r'<a\s+id="(sec-[A-Za-z0-9-]+)"\s*>')
 
 # Hebrew code-point block. If a meaningful fraction of a text widget's content
 # is in this range the dashboard's dominant language is Hebrew and chart titles
 # should be too. Mirror block for Arabic / RTL extensions intentionally omitted
-# — add when we see customers in that script.
+# - add when we see customers in that script.
 _HEBREW_CHAR_PATTERN = re.compile(r"[֐-׿]")
 
 # `<fact src="metric_key">value</fact>` provenance tag for load-bearing numbers.
@@ -722,7 +722,7 @@ _HEBREW_CHAR_PATTERN = re.compile(r"[֐-׿]")
 # verifier audits the `src` attribute against the canonical metric re-derived
 # from `scope_posts(@agent_id)` + the dashboard's reportScope.
 #
-# Supported metric_key forms (v1 — keep small and extend as adoption grows):
+# Supported metric_key forms (v1 - keep small and extend as adoption grows):
 #   total_posts                       Total post count in scope.
 #   posts:<dim>:<value>               COUNT where <dim> = <value>.
 #   pct:<dim>:<value>                 100 * COUNT(<dim>=<value>) / total. Compared
@@ -738,7 +738,7 @@ _FACT_TAG_PATTERN = re.compile(
 )
 
 # Scalar dimensions on enriched_posts that we can filter by `field = value`.
-# Arrays (themes, entities) need ARRAY_CONTAINS — handled separately.
+# Arrays (themes, entities) need ARRAY_CONTAINS - handled separately.
 _SCOPE_SCALAR_DIMS = (
     "sentiment",
     "emotion",
@@ -749,7 +749,7 @@ _SCOPE_SCALAR_DIMS = (
     "collection",  # maps to collection_id
 )
 
-# Same set, but the verifier accepts singular tokens in `posts:<dim>:<value>` —
+# Same set, but the verifier accepts singular tokens in `posts:<dim>:<value>` -
 # `theme` and `entity` (singular) → array membership; the others → equality.
 _FACT_DIM_SCALAR = {
     "sentiment": "sentiment",
@@ -827,7 +827,7 @@ def _fact_metric_sql(metric_key: str) -> tuple[str, dict[str, Any]] | None:
     and runs against BigQuery. Returns ``(value_expression_sql, extra_params)``
     where the value-expression SQL returns a single column named `v`.
 
-    Returns None for unrecognized metric keys — the verifier silently skips
+    Returns None for unrecognized metric keys - the verifier silently skips
     those (untagged or future metrics).
     """
     key = metric_key.strip()
@@ -890,7 +890,7 @@ def _parse_fact_value(raw: str) -> float | None:
 
     Tolerates thousands separators, percent signs, surrounding whitespace,
     and trailing notes ("12,345 posts", "37%", "~12.5"). Returns None when
-    the inner text doesn't parse as a number — the verifier reports those
+    the inner text doesn't parse as a number - the verifier reports those
     as malformed fact tags rather than mismatches.
     """
     if not raw:
@@ -932,7 +932,7 @@ def _verify_fact_tags(
     malformed tag). Empty list means clean.
 
     Untagged numbers and tags with unknown metric keys are reported with a
-    short hint so the agent learns the vocabulary — but verification only
+    short hint so the agent learns the vocabulary - but verification only
     blocks publish when a *known* metric mismatches its committed value. Set
     of metrics is intentionally small; expand as the report templates adopt
     more anchors.
@@ -963,7 +963,7 @@ def _verify_fact_tags(
     )
 
     bq = get_bq()
-    # Cache per-metric-key results — multiple widgets often cite the same
+    # Cache per-metric-key results - multiple widgets often cite the same
     # canonical fact (e.g. total_posts cited in §0, §1, §14).
     metric_cache: dict[str, float | None] = {}
 
@@ -1001,7 +1001,7 @@ def _verify_fact_tags(
                 metric_cache[cache_key] = None
                 errors.append(
                     f"widget '{widget_i}': could not verify fact src='{src}' "
-                    f"(BQ query failed). The number may still be wrong — re-run."
+                    f"(BQ query failed). The number may still be wrong - re-run."
                 )
                 continue
             actual = float(rows[0]["v"]) if rows and rows[0].get("v") is not None else None
@@ -1039,7 +1039,7 @@ def _looks_like_serp(url: str) -> bool:
 def _looks_like_fake_url(url: str) -> str | None:
     """Return the matching placeholder substring if the URL is a fabrication,
     else None. Catches the `sample-url` / `example.com` / etc. family that
-    `_looks_like_serp` doesn't cover — the agent invents these when it cites
+    `_looks_like_serp` doesn't cover - the agent invents these when it cites
     a source it never actually retrieved via web grounding.
     """
     low = url.lower()
@@ -1053,7 +1053,7 @@ def _hebrew_fraction(text: str) -> float:
     if not text:
         return 0.0
     hebrew = sum(1 for c in text if "֐" <= c <= "׿")
-    # Total chars excluding whitespace — keeps the ratio meaningful on dense markdown.
+    # Total chars excluding whitespace - keeps the ratio meaningful on dense markdown.
     total = sum(1 for c in text if not c.isspace())
     return hebrew / total if total else 0.0
 
@@ -1061,7 +1061,7 @@ def _hebrew_fraction(text: str) -> float:
 def _is_section_widget(wi: str) -> bool:
     """A 'section' widget owns one numbered section of the report and must use
     `##` for its heading (not `#`, which is reserved for the page title).
-    The naming convention is `vNsec<suffix>` — section number widgets
+    The naming convention is `vNsec<suffix>` - section number widgets
     (`v3sec05sov`, `v3sec08a00`), the appendix (`v3secapp00`), and §14's intro
     (`v3sec14int`). Recommendation sub-section widgets (`v3sec14r01`…
     `v3sec14r05`) use `###` and are intentionally excluded.
@@ -1086,7 +1086,7 @@ def _check_dashboard_for_publish(
     means clean.
 
     If ``template_widgets`` is provided (from the source template doc), each
-    text widget is also compared to its same-`i` template counterpart — an
+    text widget is also compared to its same-`i` template counterpart - an
     exact-or-near-exact match means the widget was never filled. This catches
     cases the literal-string markers miss when the template wording shifts.
 
@@ -1108,7 +1108,7 @@ def _check_dashboard_for_publish(
                 continue
             template_md_by_i[tw.get("i") or ""] = (tw.get("markdownContent") or "")
 
-    # Mandatory-widget enforcement — opt-in via template's `enforce_widget_set`.
+    # Mandatory-widget enforcement - opt-in via template's `enforce_widget_set`.
     # Any template widget without `removable: True` that is missing from the
     # final layout is an error. Run BEFORE the per-widget checks so missing
     # mandatory widgets surface even when the present ones are clean.
@@ -1128,7 +1128,7 @@ def _check_dashboard_for_publish(
             if tw_id not in present_ids:
                 errors.append(
                     f"widget '{tw_id}': MANDATORY template widget is missing "
-                    f"from the final dashboard — likely removed via "
+                    f"from the final dashboard - likely removed via "
                     f"`update_dashboard(removals=[\"{tw_id}\"])`. This widget is "
                     f"not marked `removable: True` in the template, so it must "
                     f"be present in the published brief. Re-add it by calling "
@@ -1172,16 +1172,16 @@ def _check_dashboard_for_publish(
         if not isinstance(mc, str):
             continue
 
-        # 1. Template leakage — unfilled briefs (literal-substring markers).
+        # 1. Template leakage - unfilled briefs (literal-substring markers).
         for marker in _TEMPLATE_LEAKAGE_MARKERS:
             if marker in mc:
                 errors.append(
-                    f"widget '{wi}': contains template-brief marker '{marker}' — "
+                    f"widget '{wi}': contains template-brief marker '{marker}' - "
                     f"the section was never filled. Patch markdownContent with real content."
                 )
                 break  # one error per widget for this class is enough
 
-        # 1b. Template leakage — semantic (widget content matches template
+        # 1b. Template leakage - semantic (widget content matches template
         # content). Catches the case the literal markers miss when wording
         # shifts. Compare first 200 non-whitespace chars exactly.
         tmpl_md = template_md_by_i.get(wi)
@@ -1191,7 +1191,7 @@ def _check_dashboard_for_publish(
             if _head(mc) and _head(mc) == _head(tmpl_md):
                 errors.append(
                     f"widget '{wi}': first 200 chars are identical to the template's "
-                    f"brief for this widget — agent did not patch it. Write the section."
+                    f"brief for this widget - agent did not patch it. Write the section."
                 )
 
         # 2. Angle-bracket placeholders left in the prose.
@@ -1199,7 +1199,7 @@ def _check_dashboard_for_publish(
         if placeholders:
             sample = ", ".join(placeholders[:5])
             errors.append(
-                f"widget '{wi}': unreplaced placeholder(s) {sample} — these come "
+                f"widget '{wi}': unreplaced placeholder(s) {sample} - these come "
                 f"from the template's reference example and must be replaced with real values."
             )
 
@@ -1207,7 +1207,7 @@ def _check_dashboard_for_publish(
         for url in _MARKDOWN_LINK_PATTERN.findall(mc):
             if _looks_like_serp(url):
                 errors.append(
-                    f"widget '{wi}': cites a search-results URL ({url}) — replace "
+                    f"widget '{wi}': cites a search-results URL ({url}) - replace "
                     f"with the underlying article URL or drop the claim."
                 )
                 break  # one SERP error per widget; fix-then-reverify is fast
@@ -1221,18 +1221,18 @@ def _check_dashboard_for_publish(
             if marker and url not in seen_fake_urls:
                 seen_fake_urls.add(url)
                 errors.append(
-                    f"widget '{wi}': cites a placeholder URL ({url}) — the substring "
+                    f"widget '{wi}': cites a placeholder URL ({url}) - the substring "
                     f"'{marker}' marks it as fabricated, not an article you actually "
                     f"retrieved. Re-run web grounding or drop the claim."
                 )
 
-        # 4. `§` symbol anywhere — heading OR body prose.
+        # 4. `§` symbol anywhere - heading OR body prose.
         # The v3 template uses plain numbering ("## 5. Share of voice", "see §4" → "see section 4").
         if _SECTION_SYMBOL_PATTERN.search(mc):
             errors.append(
-                f"widget '{wi}': contains the '§' symbol — drop it everywhere "
+                f"widget '{wi}': contains the '§' symbol - drop it everywhere "
                 f"(headings AND body prose). Use plain numbering: '## 5. ...' and "
-                f"'see section 4', not '## §5 — ...' / 'see §4'."
+                f"'see section 4', not '## §5 - ...' / 'see §4'."
             )
 
         # 5. Duplicate `<a id="sec-...">` anchors across the dashboard.
@@ -1241,7 +1241,7 @@ def _check_dashboard_for_publish(
             if prior and prior != wi:
                 errors.append(
                     f"widget '{wi}': declares anchor '{anchor}' that is also used "
-                    f"by widget '{prior}'. Each section anchor must be unique — "
+                    f"by widget '{prior}'. Each section anchor must be unique - "
                     f"likely off-by-one widget assignment; move the content to the "
                     f"widget whose i matches the section."
                 )
@@ -1255,7 +1255,7 @@ def _check_dashboard_for_publish(
             first_heading = re.search(r"^(#{1,6})\s+\S", mc, re.MULTILINE)
             if first_heading and len(first_heading.group(1)) == 1:
                 errors.append(
-                    f"widget '{wi}': section heading uses '# ' (H1) — section "
+                    f"widget '{wi}': section heading uses '# ' (H1) - section "
                     f"headers must be '## ' (H2). '#' is reserved for the page title."
                 )
 
@@ -1273,7 +1273,7 @@ def _check_dashboard_for_publish(
                 if host and host not in _CORPUS_PLATFORM_HOSTNAMES:
                     appendix_external_hostnames.add(host)
 
-        # 8. §7b coverage — the format/channel performance table must cover
+        # 8. §7b coverage - the format/channel performance table must cover
         # ≥80% of total reach. The brief asks the agent to add an "Other /
         # residual" row when named cuts leave a larger gap. We identify the
         # §7b table by widget id pattern `vNsec07*` AND by the presence of a
@@ -1284,11 +1284,11 @@ def _check_dashboard_for_publish(
                 errors.append(coverage_error)
 
     # 9. Appendix link-count + external-domain check (§App-A web grounding).
-    # If the agent dropped the appendix entirely, skip — that's an allowed
+    # If the agent dropped the appendix entirely, skip - that's an allowed
     # removal. When present:
     #   - ≥5 total markdown links to http URLs
     #   - ≥3 DISTINCT external hostnames (not on _CORPUS_PLATFORM_HOSTNAMES).
-    #     The corpus platforms are forbidden as "external grounding" — they
+    #     The corpus platforms are forbidden as "external grounding" - they
     #     ARE the corpus. Independent journalism / polls / reports come from
     #     other domains.
     if appendix_widget_i is not None:
@@ -1329,11 +1329,11 @@ _SHARE_OF_REACH_HEADERS = (
 def _check_section_7b_coverage(wi: str, mc: str) -> str | None:
     """Find the §7b format/channel-performance table inside the §7 widget and
     confirm its 'Share of reach %' column sums to ≥80%. The agent is allowed
-    to add an 'Other / residual' row to close the gap — that row's value
+    to add an 'Other / residual' row to close the gap - that row's value
     counts toward the sum.
 
     Returns the error string on failure, or None when:
-      - no §7b table is identifiable (skip silently — the widget may have
+      - no §7b table is identifiable (skip silently - the widget may have
         intentionally dropped the cut),
       - the sum is ≥80%,
       - the table can't be parsed (skip silently rather than false-positive).
@@ -1392,7 +1392,7 @@ def _check_section_7b_coverage(wi: str, mc: str) -> str | None:
     )
 
 
-# ─── Tool 4 — verify_dashboard ──────────────────────────────────────────────
+# ─── Tool 4 - verify_dashboard ──────────────────────────────────────────────
 
 
 def verify_dashboard(
@@ -1404,7 +1404,7 @@ def verify_dashboard(
     This is the hard check for everything `publish_dashboard` would reject.
     Run it before publish, fix every error via `update_dashboard`, run it
     again, repeat until ok. `publish_dashboard` runs the same check internally
-    and refuses on errors — this tool is your way to *see* the errors before
+    and refuses on errors - this tool is your way to *see* the errors before
     that final step.
 
     What it catches:
@@ -1412,19 +1412,19 @@ def verify_dashboard(
         still contains `Agent instructions`, `Reference example`, the canonical
         Voice block, or other brief-only phrases.
       - Template-brief leakage (semantic): widget content whose first 200
-        characters exactly match the source template's same-`i` brief — proves
+        characters exactly match the source template's same-`i` brief - proves
         the agent never patched the widget even if the wording shifted.
       - Angle-bracket placeholders: `<Subject>`, `<Rival1>`, `<TopicA>`, etc.
       - SERP-host URLs: `google.com/search`, `bing.com/search`, `duckduckgo.com/?q=...`.
       - Fabricated placeholder URLs: `sample-url`, `example.com`, `your-url`,
-        `placeholder`, etc. — markers the agent invents when it cites a source
+        `placeholder`, etc. - markers the agent invents when it cites a source
         it never actually retrieved.
-      - English chart titles in a Hebrew dashboard (or vice-versa) — chart
+      - English chart titles in a Hebrew dashboard (or vice-versa) - chart
         `title` must match the body's dominant script.
       - Section heading level: section widgets must use `##` (H2). `#` (H1) is
         reserved for the page title.
-      - `§` symbol anywhere — heading OR body prose. Use plain numbering.
-      - Duplicate `<a id="sec-...">` anchors — symptom of off-by-one widget
+      - `§` symbol anywhere - heading OR body prose. Use plain numbering.
+      - Duplicate `<a id="sec-...">` anchors - symptom of off-by-one widget
         assignment, breaks intra-page TOC links.
       - Appendix link count: the §App-A web-grounding widget must carry ≥5
         external markdown links to real articles.
@@ -1436,14 +1436,14 @@ def verify_dashboard(
         publish. Supported metric_keys: ``total_posts``, ``posts:<dim>:<value>``,
         ``pct:<dim>:<value>``, ``unique:<dim>`` (dim ∈ sentiment / emotion /
         platform / language / content_type / channel_type / channel_handle /
-        theme / entity). Untagged numbers are not verified — wrap your
+        theme / entity). Untagged numbers are not verified - wrap your
         load-bearing values in `<fact>` to opt them in.
 
     What it does NOT catch:
-      - Content quality (depth, accuracy, tone) — those are your judgment.
+      - Content quality (depth, accuracy, tone) - those are your judgment.
       - Numbers without a `<fact>` wrapper or with an unsupported metric_key
-        — re-run the query if uncertain.
-      - Missing-anchor breakage from removals (intentionally lenient — removing
+        - re-run the query if uncertain.
+      - Missing-anchor breakage from removals (intentionally lenient - removing
         a section is allowed and the TOC isn't structurally enforced).
 
     Args:
@@ -1459,7 +1459,7 @@ def verify_dashboard(
     """
     user_id = _user_id(tool_context)
     if not user_id:
-        return {"status": "error", "message": "No user_id in session — cannot verify dashboard."}
+        return {"status": "error", "message": "No user_id in session - cannot verify dashboard."}
     if not layout_id:
         return {"status": "error", "message": "layout_id is required."}
 
@@ -1482,7 +1482,7 @@ def verify_dashboard(
         enforce_widget_set=enforce_widget_set,
     )
 
-    # Numerical verification — only runs when reportScope is committed AND we
+    # Numerical verification - only runs when reportScope is committed AND we
     # have an active agent_id (the TVF needs both). Standalone dashboards and
     # template-mode runs skip this layer entirely.
     report_scope = data.get("reportScope")
@@ -1502,7 +1502,7 @@ def verify_dashboard(
             "errors": errors,
             "checked_widget_count": text_widget_count,
             "message": (
-                f"verify_dashboard found {len(errors)} defect(s) — fix via "
+                f"verify_dashboard found {len(errors)} defect(s) - fix via "
                 f"update_dashboard and re-run verify_dashboard. publish_dashboard "
                 f"will refuse the same errors."
             ),
@@ -1527,7 +1527,7 @@ def verify_dashboard(
         "checked_widget_count": text_widget_count,
         "scope_verified": bool(report_scope and agent_id),
         "message": (
-            f"verify_dashboard passed — {text_widget_count} text widget(s) "
+            f"verify_dashboard passed - {text_widget_count} text widget(s) "
             f"clean"
             + (" (incl. numerical scope check)" if (report_scope and agent_id) else "")
             + ". Safe to call publish_dashboard."
@@ -1535,7 +1535,7 @@ def verify_dashboard(
     }
 
 
-# ─── Tool 5 — publish_dashboard ─────────────────────────────────────────────
+# ─── Tool 5 - publish_dashboard ─────────────────────────────────────────────
 
 
 def publish_dashboard(
@@ -1543,7 +1543,7 @@ def publish_dashboard(
     title: str | None = None,
     tool_context: ToolContext = None,
 ) -> dict:
-    """Make a hidden dashboard visible in the explorer dropdown — the FINAL
+    """Make a hidden dashboard visible in the explorer dropdown - the FINAL
     action of a run.
 
     Writes the explorer_layouts metadata doc that the explorer's layout-picker
@@ -1578,12 +1578,12 @@ def publish_dashboard(
     Returns:
         On success: ``{status, layout_id, explorer_url, published: True, message}``.
         On verify failure: ``{status: "error", layout_id, errors: [...], message}``
-          — fix via update_dashboard, then republish.
+          - fix via update_dashboard, then republish.
         On other error: ``{status: "error", message}``.
     """
     user_id = _user_id(tool_context)
     if not user_id:
-        return {"status": "error", "message": "No user_id in session — cannot publish dashboard."}
+        return {"status": "error", "message": "No user_id in session - cannot publish dashboard."}
     if not layout_id:
         return {"status": "error", "message": "layout_id is required."}
 
@@ -1591,7 +1591,7 @@ def publish_dashboard(
     if not agent_id:
         return {
             "status": "error",
-            "message": "No active_agent_id in session — cannot determine which agent's explorer to publish to.",
+            "message": "No active_agent_id in session - cannot determine which agent's explorer to publish to.",
         }
 
     fs = get_fs()
@@ -1602,7 +1602,7 @@ def publish_dashboard(
     if err:
         return err
 
-    # Hard pre-publish gate — same checks as verify_dashboard. The agent is
+    # Hard pre-publish gate - same checks as verify_dashboard. The agent is
     # asked to call verify_dashboard first; this is the safety net for when
     # it doesn't, or when content drifted between verify and publish.
     template_widgets, enforce_widget_set = _load_template_meta(
@@ -1614,7 +1614,7 @@ def publish_dashboard(
         template_widgets=template_widgets,
         enforce_widget_set=enforce_widget_set,
     )
-    # Numerical scope check — same as verify_dashboard but inside the publish
+    # Numerical scope check - same as verify_dashboard but inside the publish
     # gate so a stale verify-pass can't smuggle drift through.
     report_scope = data.get("reportScope")
     if report_scope:
@@ -1643,7 +1643,7 @@ def publish_dashboard(
     explorer_doc_ref = fs._db.collection(EXPLORER_LAYOUTS).document(layout_id)
     existing = explorer_doc_ref.get()
     if existing.exists:
-        # Idempotent re-publish — refresh title + updated_at only.
+        # Idempotent re-publish - refresh title + updated_at only.
         explorer_doc_ref.update({
             "title": final_title,
             "updated_at": now,
@@ -1673,5 +1673,5 @@ def publish_dashboard(
         "layout_id": layout_id,
         "explorer_url": explorer_url,
         "published": True,
-        "message": f"Dashboard '{final_title}' {published_action} — visible in the explorer dropdown at {explorer_url}.",
+        "message": f"Dashboard '{final_title}' {published_action} - visible in the explorer dropdown at {explorer_url}.",
     }

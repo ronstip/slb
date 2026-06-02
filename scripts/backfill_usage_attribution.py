@@ -4,12 +4,12 @@ Why
 ---
 Two upstream bugs hid real cost from the admin breakdown:
 
-1. **Empty `user_id`** — `workers/collection/adapters/apify.py` (and any other
+1. **Empty `user_id`** - `workers/collection/adapters/apify.py` (and any other
    direct `cost_meter.log_cost` site that pre-dated the context-fallback in
    `cost_meter.log_cost`) wrote rows with `user_id = ""`. Those rows are real
    spend, but the admin user-detail query (`WHERE user_id = @uid`) hides them.
 
-2. **NULL `cost_micros` for X API** — `crawl_provider = "xapi"` ≠ rate-table
+2. **NULL `cost_micros` for X API** - `crawl_provider = "xapi"` ≠ rate-table
    key `"x_api"` → `compute_cost_micros` returned None → row went in with
    NULL cost. The Finance + UserDetail breakdowns filter
    `cost_micros IS NOT NULL`, so those rows were invisible too.
@@ -22,27 +22,27 @@ What it does
 ------------
 Idempotent BQ MERGE-style UPDATEs in two passes:
 
-* **Pass A** — attribution. For rows with `user_id = ''` and a
+* **Pass A** - attribution. For rows with `user_id = ''` and a
   `collection_id` we recognise in `social_listening.collections`, set
   `user_id` / `org_id` from the collection's owner.
 
-* **Pass B** — X API cost. For rows with `provider IN ('xapi','x_api')`,
+* **Pass B** - X API cost. For rows with `provider IN ('xapi','x_api')`,
   `cost_micros IS NULL`, and `units > 0`, recompute
   `cost_micros = units * 0.005 USD * 1e6` (the X API search-per-post rate
   from `config/cost_rates.py:120`) and set `billed_micros = cost_micros`
   (margin = 1×).
 
-* **Pass C** — Apify cost. Apify uses `PROVIDER_REPORTED` in the rate
+* **Pass C** - Apify cost. Apify uses `PROVIDER_REPORTED` in the rate
   table, so the legacy `track_posts_collected` path lands `cost_micros =
   NULL` (no provider-reported number passed at that call site). Reprice
   those rows from `units × apify_assumed_per_post_usd` (the same per-post
   estimate the pre-flight gate uses, defined in `config/cost_rates.py`).
-  This is an **assumption**, not the exact USD Apify charged us — better
+  This is an **assumption**, not the exact USD Apify charged us - better
   than NULL for admin attribution, but flag in the UI later if you ever
   want to distinguish "real reported" from "estimated".
 
 Apify rows that were never written (cost-extraction key-path bug in
-`apify.py::_run_actor`, fixed separately) cannot be recovered — there's
+`apify.py::_run_actor`, fixed separately) cannot be recovered - there's
 no row to update for those.
 
 Safety
@@ -92,7 +92,7 @@ _APIFY_ASSUMED_RATE_USD = DEFAULT_APIFY_ASSUMED_PER_POST_USD
 
 # Hard cutoff so a future re-run can never re-price rows produced AFTER the
 # upstream bugs were fixed. `track_posts_collected` still writes a NULL-cost
-# posts_collected row for every Apify batch — the apify adapter's
+# posts_collected row for every Apify batch - the apify adapter's
 # provider_call row is the source of truth for cost on those runs. Without
 # this cutoff, re-running the script would double-bill those new runs.
 # Set to the instant after the original 2026-05-24 backfill execution.
@@ -109,7 +109,7 @@ def _cutoff_params() -> bigquery.QueryJobConfig:
 def _count_pass_a(client: bigquery.Client) -> int:
     """How many empty-user_id rows can we attribute via collections?
 
-    Cutoff applies — once the upstream fix landed, `cost_meter.log_cost`
+    Cutoff applies - once the upstream fix landed, `cost_meter.log_cost`
     reads user_id from `collection_context_scope`, so legitimate new rows
     can never be empty-user_id. Any new empty rows past the cutoff
     indicate a fresh logging gap that should be fixed at the source.
@@ -185,7 +185,7 @@ def _count_pass_c(client: bigquery.Client) -> int:
 
 def _run_pass_b(client: bigquery.Client) -> int:
     """Recompute cost/billed for xapi rows that lost their cost to the
-    provider-name mismatch. Margin is hardcoded to 1× — same as the
+    provider-name mismatch. Margin is hardcoded to 1× - same as the
     runtime default; admins who set a non-1× margin AFTER this backfill
     should adjust the billed_micros via a separate one-shot if they care
     about the historical accounting."""
@@ -249,31 +249,31 @@ def main(dry_run: bool) -> None:
     # Always count first so the dry-run output and the actual run report
     # the same numbers (counts before the write). Pass C runs BEFORE pass B
     # in the affected-count display because it generally touches more rows;
-    # the actual write order doesn't matter — passes are independent.
+    # the actual write order doesn't matter - passes are independent.
     n_a = _count_pass_a(client)
     n_b = _count_pass_b(client)
     n_c = _count_pass_c(client)
-    logger.info("Pass A — attributable empty-user_id rows: %d", n_a)
-    logger.info("Pass B — x_api NULL-cost rows with units:  %d", n_b)
-    logger.info("Pass C — apify NULL-cost rows with units:  %d (rate $%.4f/post)",
+    logger.info("Pass A - attributable empty-user_id rows: %d", n_a)
+    logger.info("Pass B - x_api NULL-cost rows with units:  %d", n_b)
+    logger.info("Pass C - apify NULL-cost rows with units:  %d (rate $%.4f/post)",
                 n_c, _APIFY_ASSUMED_RATE_USD)
 
     if dry_run:
-        logger.info("Dry run — no rows written. Re-run without --dry-run to apply.")
+        logger.info("Dry run - no rows written. Re-run without --dry-run to apply.")
         return
 
     if n_a:
         affected_a = _run_pass_a(client)
-        logger.info("Pass A complete — %d rows attributed.", affected_a)
+        logger.info("Pass A complete - %d rows attributed.", affected_a)
     if n_b:
         affected_b = _run_pass_b(client)
-        logger.info("Pass B complete — %d rows priced.", affected_b)
+        logger.info("Pass B complete - %d rows priced.", affected_b)
     if n_c:
         affected_c = _run_pass_c(client)
-        logger.info("Pass C complete — %d rows priced (apify estimate).", affected_c)
+        logger.info("Pass C complete - %d rows priced (apify estimate).", affected_c)
 
-    # Re-count after — should be ~0 for all three, confirms idempotency.
-    logger.info("After-state — A residual: %d, B residual: %d, C residual: %d",
+    # Re-count after - should be ~0 for all three, confirms idempotency.
+    logger.info("After-state - A residual: %d, B residual: %d, C residual: %d",
                 _count_pass_a(client), _count_pass_b(client), _count_pass_c(client))
 
 

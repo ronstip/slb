@@ -1,4 +1,4 @@
-"""Brothers clustering algorithm — groups posts by embedding similarity.
+"""Brothers clustering algorithm - groups posts by embedding similarity.
 
 Adapted from legacy code. Pure numpy/scipy, no external service dependencies.
 
@@ -32,7 +32,7 @@ def brothers_cluster(
         max_distance_for_ungrouped: Max distance to assign stragglers.
 
     Returns:
-        clusters: (N,) array — cluster ID per post, NaN if unclustered.
+        clusters: (N,) array - cluster ID per post, NaN if unclustered.
         stats: Algorithm statistics dict.
     """
     n = embeddings.shape[0]

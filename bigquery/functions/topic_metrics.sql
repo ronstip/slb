@@ -6,15 +6,15 @@
 --     keywords, anchor_*)
 --   * pre-materialised aggregates from `topic_clusters` (post_count, sentiment
 --     counts, engagement totals, extrapolated estimates, recency_score, time
---     range) — these are EXACT at the moment of clustering
+--     range) - these are EXACT at the moment of clustering
 --   * query-time aggregates over the cluster's members, computed against
 --     enrichment / engagement rows whose timestamps are <= clustered_at
 --     (the "as-of-clustered_at" freeze). This eliminates drift from
 --     post-clustering re-enrichment or new engagement snapshots, so query-time
 --     totals reconcile with the pre-materialised ones.
---   * representative_summaries — JSON array of {post_id, ai_summary} for the
+--   * representative_summaries - JSON array of {post_id, ai_summary} for the
 --     cluster's representative posts, in their original order
---   * share-of-voice within the run — denominator is the sum of `estimated_*`
+--   * share-of-voice within the run - denominator is the sum of `estimated_*`
 --     across all clusters in this run. SOVs sum to ~1.0 across the run by
 --     construction. This is the correct universe: clustering analyses a
 --     windowed / post-stratified sample of the agent's corpus, so SOV against

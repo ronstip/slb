@@ -569,7 +569,7 @@ function addToStats(map: Map<string, Stats>, key: string, val: number) {
   map.set(key, cur);
 }
 
-/** Sum two Stats together — used to merge tail categories into an "Others" bucket. */
+/** Sum two Stats together - used to merge tail categories into an "Others" bucket. */
 function mergeStats(a: Stats, b: Stats): Stats {
   return {
     sum: a.sum + b.sum,
@@ -588,7 +588,7 @@ const DEFAULT_BREAKDOWN_LIMIT = 10;
 export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfig): WidgetData {
   // CustomChartConfig.dimension/metric are widened to AnyDimension/AnyMetric
   // to carry topic widgets through the same shape. This aggregator is the
-  // post-side path — only invoked when widget.dataSource === 'posts'. The
+  // post-side path - only invoked when widget.dataSource === 'posts'. The
   // caller guarantees these narrow to the post-side vocabulary; cast at the
   // boundary so internal helpers can keep their narrow signatures.
   const dimension = config.dimension as CustomDimension | undefined;
@@ -735,7 +735,7 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
   }
 
   if (dimension === 'posted_at') {
-    // Time series — natural chronological order, no topN/Others.
+    // Time series - natural chronological order, no topN/Others.
     const resolved: Array<{ label: string; value: number }> = [];
     for (const [label, s] of acc) {
       resolved.push({ label, value: resolveAgg(s, metricAgg) });
@@ -862,7 +862,7 @@ export interface TableRow {
   __platform?: string;
   /** Per-column resolved values, keyed by TableColumn.id. Dimension columns
    *  hold the row's dimension value (string); metric columns hold the agg.
-   *  Post-field columns hold the raw value — strings, numbers, or arrays. */
+   *  Post-field columns hold the raw value - strings, numbers, or arrays. */
   [columnId: string]: number | string | string[] | undefined;
 }
 
@@ -883,7 +883,7 @@ function compoundDimensionKeys(
   for (const col of dimCols) {
     if (!col.dimension) continue;
     // TableColumn.dimension is widened to AnyDimension for topic-table reuse.
-    // aggregateTable is the post-side path — cast back to CustomDimension.
+    // aggregateTable is the post-side path - cast back to CustomDimension.
     const vs = getDimensionKeys(p, col.dimension as CustomDimension, 'day');
     if (vs.length === 0) return [];
     const next: Array<{ key: string; values: string[] }> = [];
@@ -929,7 +929,7 @@ export function aggregateTable(posts: DashboardPost[], rawConfig: CustomTableCon
       for (const col of columns) {
         if (isDimensionColumn(col)) continue;
         // TableColumn.metric is widened to AnyMetric for topic-table reuse.
-        // aggregateTable is the post-side path — cast to CustomMetric.
+        // aggregateTable is the post-side path - cast to CustomMetric.
         if (col.metric) addToStats(perMetric, col.id, getMetricValue(p, col.metric as CustomMetric));
       }
       if (channelDimCol && p.platform && !platformOf.has(key)) {

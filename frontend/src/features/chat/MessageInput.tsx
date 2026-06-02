@@ -116,7 +116,7 @@ export function MessageInput({ onSend, onCancel, centered = false, compact = fal
         </div>
       )}
 
-      {/* Template pill — shown when a .pptx has been uploaded */}
+      {/* Template pill - shown when a .pptx has been uploaded */}
       {attachedTemplate && (
         <div className="mb-2 flex items-center gap-1 px-1">
           <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-500">

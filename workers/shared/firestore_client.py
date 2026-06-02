@@ -73,7 +73,7 @@ class FirestoreClient:
         """Add an immutable statistical signature doc to the sub-collection.
 
         Doc ID is a unix millisecond timestamp so the latest is always the
-        lexicographically largest ID — no extra index needed.
+        lexicographically largest ID - no extra index needed.
         """
         import time
 
@@ -330,7 +330,7 @@ class FirestoreClient:
                 data["agent_id"] = doc.id
 
                 # Only fetch collection statuses for the missed-handoff path
-                # — it's the only signal that needs them, and the fetch is
+                # - it's the only signal that needs them, and the fetch is
                 # pricey (one read per collection).
                 collection_statuses: list[dict] | None = None
                 if (
@@ -359,7 +359,7 @@ class FirestoreClient:
         """List agents visible to the user: all of their own, plus org agents the
         owner has explicitly shared (`visibility == "org"`).
 
-        Sharing is opt-in — an org member must NOT see another member's private
+        Sharing is opt-in - an org member must NOT see another member's private
         agents. (Previously this returned every agent stamped with the org_id,
         which leaked all org members' agents to each other.)
         """
@@ -377,7 +377,7 @@ class FirestoreClient:
 
         if org_id:
             # Filter `visibility == "org"` in Python (not a second `.where`) to
-            # avoid any composite-index requirement — mirrors list_collections.
+            # avoid any composite-index requirement - mirrors list_collections.
             # Agents with no `visibility` field are private and excluded here.
             for doc in (
                 self._db.collection("agents")
@@ -983,12 +983,12 @@ class FirestoreClient:
             return {}
 
     # ------------------------------------------------------------------
-    # Credit wallet ($-based, USD micros) — §E.
+    # Credit wallet ($-based, USD micros) - §E.
     #
     # Firestore `users/{uid}.credit` is the authoritative BALANCE; BigQuery
     # `usage_events.cost_micros` is the authoritative SPEND log used for the
     # admin breakdown + periodic reconciliation. The `credit_transactions`
-    # ledger records credit-IN only (grants/purchases/adjustments) — spend is
+    # ledger records credit-IN only (grants/purchases/adjustments) - spend is
     # too high-volume to ledger and already lives in BigQuery.
     # ------------------------------------------------------------------
 
@@ -1021,7 +1021,7 @@ class FirestoreClient:
 
         Runs in a transaction so `balance_after_micros` is consistent under
         concurrent grants. `total_in_micros` (the progress-bar denominator)
-        only ever grows — negative amounts (refunds) reduce balance but not
+        only ever grows - negative amounts (refunds) reduce balance but not
         the lifetime total. Returns the new balance.
         """
         user_ref = self._db.collection("users").document(uid)
@@ -1067,7 +1067,7 @@ class FirestoreClient:
         """Deduct a real spend from the wallet (atomic increment).
 
         Called fire-and-forget from the cost meter on every priced provider/LLM
-        call. Never raises into the caller. Spend detail is NOT ledgered here —
+        call. Never raises into the caller. Spend detail is NOT ledgered here -
         BigQuery `usage_events` holds it.
         """
         if not uid or micros <= 0:
@@ -1085,7 +1085,7 @@ class FirestoreClient:
                 },
                 merge=True,
             )
-        except Exception as e:  # noqa: BLE001 — wallet deduction must never break a request
+        except Exception as e:  # noqa: BLE001 - wallet deduction must never break a request
             logger.warning("apply_spend_micros failed for %s: %s", uid, e)
 
     def list_credit_transactions(self, uid: str, limit: int = 50) -> list[dict]:
@@ -1145,13 +1145,13 @@ class FirestoreClient:
         """Sum the live ``users.credit`` counters across the whole platform.
 
         Returns ``{balance_micros, total_in_micros, spent_micros}``. Used by the
-        admin Finance page to surface **unspent purchased credit** — the
+        admin Finance page to surface **unspent purchased credit** - the
         wallet liability we still owe users in deliverable usage. Phantom
-        Firestore docs (no email AND no created_at — see ``admin.py``) are
+        Firestore docs (no email AND no created_at - see ``admin.py``) are
         skipped so the totals match the user table.
 
         Streams the (small) ``users`` collection in Python; no composite index
-        required. Returned values are a point-in-time snapshot — they are NOT
+        required. Returned values are a point-in-time snapshot - they are NOT
         range-filterable because Firestore stores only the live counter.
         """
         out: dict[str, int] = {"balance_micros": 0, "total_in_micros": 0, "spent_micros": 0}
@@ -1197,7 +1197,7 @@ class FirestoreClient:
             return []
 
     # ------------------------------------------------------------------
-    # Pricing config (§E) — admin-editable provider rates + profit margin.
+    # Pricing config (§E) - admin-editable provider rates + profit margin.
     # Singleton doc `app_config/pricing` deep-merged over the code seed in
     # config/cost_rates.py. Read on a short cache by the cost layer.
     # ------------------------------------------------------------------
@@ -1229,7 +1229,7 @@ class FirestoreClient:
         """Merge pricing fields into `app_config/pricing` (stamps updated_at).
 
         ``scraper_rates_per_platform`` is the full
-        ``{provider: {platform_or_star: usd}}`` matrix — caller is
+        ``{provider: {platform_or_star: usd}}`` matrix - caller is
         responsible for merging in the cells they touched on top of the
         existing dict before passing in, so partial UI edits don't drop
         un-touched cells.
@@ -1388,7 +1388,7 @@ class FirestoreClient:
     ) -> dict | None:
         """Find an active (non-revoked) random-token share for a dashboard+owner pair.
 
-        Custom-slug shares are intentionally excluded — they live in the same
+        Custom-slug shares are intentionally excluded - they live in the same
         collection but are managed via the separate admin endpoint, so the
         regular share dialog's idempotency lookup must not return them.
 

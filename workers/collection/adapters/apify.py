@@ -5,12 +5,12 @@ Supports: Instagram, Facebook, TikTok.
 Uses the apify-client Python SDK in synchronous mode (start → block on
 .call() until the actor finishes → iterate dataset items). Each platform
 maps to a configurable actor ID via env, with a parser registered per
-(platform, actor_id) — swapping actors is an env change *plus* a parser
+(platform, actor_id) - swapping actors is an env change *plus* a parser
 registration.
 
 Time-window correctness: server-side filters are passed to the actor when
 supported (cost), and a client-side gate runs after parsing (correctness).
-TikTok is an exception — we deliberately collect against TikTok's "Top"
+TikTok is an exception - we deliberately collect against TikTok's "Top"
 section without a date filter so we get engagement-ranked results across
 the brand's full history (most viral posts are not from the past 7 days).
 The client-side time gate is therefore skipped for TikTok.
@@ -24,7 +24,7 @@ stay under the account-level cap (32 GB on the STARTER plan).
 
 Streaming: TikTok and Facebook keyword fan-outs yield batches as each
 keyword's actor run completes (via `as_completed`). This way a host crash
-or pipeline termination still preserves all completed-keyword data — the
+or pipeline termination still preserves all completed-keyword data - the
 old behavior accumulated everything into a single list and only flushed
 after every keyword finished, so killing the process mid-flight lost
 already-scraped (and already-paid-for) posts.
@@ -121,7 +121,7 @@ class ApifyAdapter(DataProviderAdapter):
             "facebook": s.apify_actor_facebook,
             "tiktok": s.apify_actor_tiktok,
         }
-        # Resolve parsers at init — fail fast if any configured actor has no entry.
+        # Resolve parsers at init - fail fast if any configured actor has no entry.
         self._parsers = {
             platform: get_parsers(platform, actor_id)
             for platform, actor_id in self._actor_ids.items()
@@ -141,7 +141,7 @@ class ApifyAdapter(DataProviderAdapter):
         # bounded regardless of how many platforms run concurrently.
         self._concurrent_runs = threading.BoundedSemaphore(self._max_parallel)
 
-        # Per-collection state — reset at the top of collect().
+        # Per-collection state - reset at the top of collect().
         self._stats_lock = threading.Lock()
         self._runs_used = 0
         self._collection_errors: list[dict] = []
@@ -195,7 +195,7 @@ class ApifyAdapter(DataProviderAdapter):
             if self._runs_used >= self._max_runs:
                 self._funnel["apify_runs_budget_exhausted"] += 1
                 logger.warning(
-                    "Apify run budget exhausted: %d/%d — skipping further runs",
+                    "Apify run budget exhausted: %d/%d - skipping further runs",
                     self._runs_used, self._max_runs,
                 )
                 return False
@@ -241,7 +241,7 @@ class ApifyAdapter(DataProviderAdapter):
         # Run platforms in parallel via dedicated threads pushing into a shared
         # queue. A ThreadPoolExecutor would be wrong here: TikTok and Facebook
         # collectors are now generators, so their bodies don't execute until
-        # iterated — submitting them to a pool would just return the generator
+        # iterated - submitting them to a pool would just return the generator
         # objects synchronously and serialize the work in the consumer thread.
         # The shared `_concurrent_runs` semaphore inside `_run_actor_collect_raw`
         # keeps total in-flight actor calls bounded across all platform threads.
@@ -285,14 +285,14 @@ class ApifyAdapter(DataProviderAdapter):
             t.join()
 
     # ------------------------------------------------------------------
-    # Instagram — apidojo/instagram-hashtag-scraper
+    # Instagram - apidojo/instagram-hashtag-scraper
     #   Single actor run with `startUrls` (hashtag URLs derived from
     #   keywords), `until` (server-side date floor), and `getReels`/`getPosts`
     #   toggles. The actor returns engagement-rich items (likeCount,
     #   commentCount, video.playCount) so we re-rank client-side by an
     #   engagement score and trim to the requested per-keyword count.
     #
-    #   channel_urls is intentionally not handled here — this actor accepts
+    #   channel_urls is intentionally not handled here - this actor accepts
     #   hashtag URLs only. The frontend's channel_urls input is a global
     #   field shared with other platforms; for IG we now collect on
     #   keywords/hashtags only. A WARN is emitted when channel_urls arrive
@@ -317,7 +317,7 @@ class ApifyAdapter(DataProviderAdapter):
     def _collect_instagram(self, config: dict) -> list[Batch]:
         post_urls = config.get("post_urls") or []
         if post_urls:
-            # Direct-fetch mode — keywords / channel_urls / time_range ignored.
+            # Direct-fetch mode - keywords / channel_urls / time_range ignored.
             # Same actor as the keyword path; passes URLs through startUrls.
             return self._collect_instagram_by_urls(post_urls, config)
 
@@ -326,26 +326,26 @@ class ApifyAdapter(DataProviderAdapter):
 
         if channel_urls:
             logger.warning(
-                "[apify/instagram] channel_urls=%d ignored — IG path is "
+                "[apify/instagram] channel_urls=%d ignored - IG path is "
                 "keyword-only with apidojo/instagram-hashtag-scraper",
                 len(channel_urls),
             )
 
         if not keywords:
-            logger.info("[apify/instagram] no keywords — skipping")
+            logger.info("[apify/instagram] no keywords - skipping")
             return []
 
         time_range = config.get("time_range", {}) or {}
         n_posts = config.get("max_posts_per_keyword") or 0
 
         # Multi-word phrases get collapsed by `_hashtag_url` (spaces removed).
-        # IG falls back to prefix-match when the concat isn't a real hashtag —
-        # noisy but not silent — so we send the run anyway and let enrichment
+        # IG falls back to prefix-match when the concat isn't a real hashtag -
+        # noisy but not silent - so we send the run anyway and let enrichment
         # filter. A multi-word phrase that IS a real hashtag (#sociallistening)
         # works as expected.
         hashtag_urls = [_hashtag_url(k) for k in keywords if (k or "").strip()]
         if not hashtag_urls:
-            logger.info("[apify/instagram] no usable keywords — skipping")
+            logger.info("[apify/instagram] no usable keywords - skipping")
             return []
 
         run_input: dict = {
@@ -403,13 +403,13 @@ class ApifyAdapter(DataProviderAdapter):
         """Direct-fetch IG posts via the post-scraper actor.
 
         Uses `apify/instagram-scraper` (configurable via
-        `apify_actor_instagram_post`) with `directUrls` mode — the keyword
+        `apify_actor_instagram_post`) with `directUrls` mode - the keyword
         path's `apidojo/instagram-hashtag-scraper` only accepts hashtag URLs
         and silently returns 0 items for post URLs. Parser is resolved per-call
         from the registry since this is a different actor than the platform
         default at init.
         """
-        # Defend against direct callers — front-door parser canonicalises,
+        # Defend against direct callers - front-door parser canonicalises,
         # but the adapter has no guarantee its input came through there.
         # Also dedupe: apify/instagram-scraper rejects the whole run with
         # "directUrls must NOT have duplicate items" if any pair matches.
@@ -503,7 +503,7 @@ class ApifyAdapter(DataProviderAdapter):
         return out
 
     # ------------------------------------------------------------------
-    # Facebook — scrapeforge/facebook-search-posts
+    # Facebook - scrapeforge/facebook-search-posts
     #   Schema accepts a single `query` string per run. Fan out one run per
     #   keyword (parallelism capped by the adapter's run budget). Each run
     #   takes precise `start_date` / `end_date` (YYYY-MM-DD).
@@ -512,7 +512,7 @@ class ApifyAdapter(DataProviderAdapter):
     def _collect_facebook(self, config: dict) -> Iterator[Batch]:
         keywords = config.get("keywords", []) or []
         if not keywords:
-            logger.info("[apify/facebook] no keywords — skipping")
+            logger.info("[apify/facebook] no keywords - skipping")
             return
 
         time_range = config.get("time_range", {}) or {}
@@ -525,7 +525,7 @@ class ApifyAdapter(DataProviderAdapter):
         # weights recency as a factor); combined with start_date/end_date this
         # yields "most relevant within window" instead of strict recency.
         # `max_results` is per-query and described as "Maximum unique results"
-        # — the actor dedupes server-side, so a 1.5x buffer (capped at the
+        # - the actor dedupes server-side, so a 1.5x buffer (capped at the
         # documented hard max of 1000) closes the under-delivery gap.
         per_query_max = min(1000, max(1, math.ceil(n_posts * 1.5))) if n_posts > 0 else n_posts
 
@@ -568,7 +568,7 @@ class ApifyAdapter(DataProviderAdapter):
         )
 
     # ------------------------------------------------------------------
-    # TikTok — clockworks/tiktok-scraper
+    # TikTok - clockworks/tiktok-scraper
     #   Hits TikTok's default "Top" search section (engagement-ranked).
     #   We deliberately skip date filtering: the actor's `oldest/newest`
     #   params are silently ignored for `searchQueries` (validated against
@@ -580,7 +580,7 @@ class ApifyAdapter(DataProviderAdapter):
     def _collect_tiktok(self, config: dict) -> Iterator[Batch]:
         keywords = config.get("keywords", []) or []
         if not keywords:
-            logger.info("[apify/tiktok] no keywords — skipping")
+            logger.info("[apify/tiktok] no keywords - skipping")
             return
 
         n_posts = config.get("max_posts_per_keyword") or 0
@@ -655,12 +655,12 @@ class ApifyAdapter(DataProviderAdapter):
         """Trigger one actor run and return raw dataset items. Empty on failure.
 
         Centralizes run-budget claim, error capture, timing, and raw-record
-        funnel accounting. Callers do their own parsing — IG uses this directly
+        funnel accounting. Callers do their own parsing - IG uses this directly
         because it merges items from two passes before parsing once.
 
         `feature` controls the cost-log tag (e.g. "scrape" for collection,
         "comments" for per-post comment fetches). `actor_id`, when set,
-        overrides the per-platform default actor — used by the comments
+        overrides the per-platform default actor - used by the comments
         path to invoke a different actor than the collection actor.
         """
         if not self._claim_run():
@@ -668,7 +668,7 @@ class ApifyAdapter(DataProviderAdapter):
 
         actor_id = actor_id or self._actor_ids[platform]
         started = time.monotonic()
-        # Cap total in-flight actor calls across all platforms — see __init__.
+        # Cap total in-flight actor calls across all platforms - see __init__.
         with self._concurrent_runs:
             try:
                 run = self._client.run_actor(
@@ -700,7 +700,7 @@ class ApifyAdapter(DataProviderAdapter):
         with self._stats_lock:
             self._funnel["apify_raw_records"] += len(raw_items)
 
-        # Cost telemetry — Apify exposes the total USD on the run object as
+        # Cost telemetry - Apify exposes the total USD on the run object as
         # `usageTotalUsd` (top-level). Older SDK shapes used `run.usage.cost`
         # or `run.usage.totalUsageUsd`; try in order so we capture whichever
         # the runtime returned. When Apify reports nothing we fall back to
@@ -744,7 +744,7 @@ class ApifyAdapter(DataProviderAdapter):
                     raw_provider_payload=payload,
                 )
             else:
-                # Provider went silent — estimate from the admin-configured
+                # Provider went silent - estimate from the admin-configured
                 # assumed per-post knob so the row still shows up under the
                 # right agent (`cost_source` makes the estimate explicit).
                 from config.cost_rates import get_apify_assumed_per_post_usd
@@ -755,7 +755,7 @@ class ApifyAdapter(DataProviderAdapter):
                 estimated_usd = max(0.0, float(assumed) * len(raw_items))
                 logger.warning(
                     "Apify run %s returned no cost (run.usageTotalUsd=%s, "
-                    "run.usage=%s) — logging estimated_fallback at $%.6f "
+                    "run.usage=%s) - logging estimated_fallback at $%.6f "
                     "($%s/post × %d posts)",
                     run.get("id"), run.get("usageTotalUsd"), usage,
                     estimated_usd, assumed, len(raw_items),
@@ -831,7 +831,7 @@ class ApifyAdapter(DataProviderAdapter):
                 continue
             seen_ids.add(post.post_id)
 
-            # Client-side time gate — server-side filters are coarse for TikTok
+            # Client-side time gate - server-side filters are coarse for TikTok
             # (bucketed) and approximate for IG/FB (relative duration). Drop
             # anything outside the precise window.
             if gate_start and post.posted_at < gate_start:
@@ -885,7 +885,7 @@ class ApifyAdapter(DataProviderAdapter):
         return dt
 
     # ------------------------------------------------------------------
-    # Engagement refresh — one batched run per platform via directUrls.
+    # Engagement refresh - one batched run per platform via directUrls.
     # ------------------------------------------------------------------
 
     def fetch_engagements(self, post_urls: list[str]) -> list[dict]:
@@ -907,7 +907,7 @@ class ApifyAdapter(DataProviderAdapter):
                 logger.exception("Apify engagement refresh failed for %s", platform)
         return results
 
-    # Per-platform comments config — each Apify actor accepts a different
+    # Per-platform comments config - each Apify actor accepts a different
     # set of input field names + URL payload shape, so we carry the URL
     # key + limit key + URL wrapper here alongside the parsers.
     #
@@ -966,7 +966,7 @@ class ApifyAdapter(DataProviderAdapter):
         config = self._COMMENTS_CONFIG.get(platform)
         if config is None:
             raise NotImplementedError(
-                f"fetch_comments not supported by ApifyAdapter on {platform!r} — "
+                f"fetch_comments not supported by ApifyAdapter on {platform!r} - "
                 f"supported: {sorted(self._COMMENTS_CONFIG)}"
             )
         (
@@ -1076,7 +1076,7 @@ class ApifyAdapter(DataProviderAdapter):
         # Cost telemetry for engagement-refresh runs (same provider-reported
         # pattern). See `_run_actor_collect_raw` for the key-path rationale.
         # Engagement refresh is far less common than the initial crawl, so a
-        # missing-cost row is more visible — keep the fallback symmetric.
+        # missing-cost row is more visible - keep the fallback symmetric.
         try:
             from api.services.cost_meter import (
                 COST_SOURCE_ESTIMATED_FALLBACK,
@@ -1112,7 +1112,7 @@ class ApifyAdapter(DataProviderAdapter):
                 assumed = get_apify_assumed_per_post_usd(platform)
                 estimated_usd = max(0.0, float(assumed) * len(urls))
                 logger.warning(
-                    "Apify engagement-refresh run %s returned no cost — "
+                    "Apify engagement-refresh run %s returned no cost - "
                     "logging estimated_fallback at $%.6f",
                     run.get("id"), estimated_usd,
                 )

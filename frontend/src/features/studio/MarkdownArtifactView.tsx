@@ -81,7 +81,7 @@ async function buildPortableMarkdown(source: string, container: HTMLElement): Pr
       title = String(spec.title ?? '');
       caption = String(spec.caption ?? '');
     } catch {
-      // unreachable — canonicalizeSpec already validated JSON
+      // unreachable - canonicalizeSpec already validated JSON
     }
     const alt = title || 'chart';
     const titleLine = title ? `**${title}**\n\n` : '';

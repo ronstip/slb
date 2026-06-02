@@ -103,7 +103,7 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
           {editPreset !== 'hourly' && (
             <div className="space-y-1">
               <label className="text-xs font-medium">
-                Run at <span className="text-muted-foreground font-normal">(your local time{getLocalTzAbbrev() ? ` — ${getLocalTzAbbrev()}` : ''})</span>
+                Run at <span className="text-muted-foreground font-normal">(your local time{getLocalTzAbbrev() ? ` - ${getLocalTzAbbrev()}` : ''})</span>
               </label>
               <Select value={editTime} onValueChange={setEditTime}>
                 <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>

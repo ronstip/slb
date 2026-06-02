@@ -62,12 +62,12 @@ export function AgentHome() {
 
   const hasAgents = agents.length > 0;
   // Show chat panel when the wizard has kicked off a session (agent is responding
-  // or has already replied — e.g. with an ask_user approval prompt).
+  // or has already replied - e.g. with an ask_user approval prompt).
   const hasChatActivity = messages.length > 0 || isAgentResponding;
 
   return (
     <div className="flex h-dvh bg-background">
-      {/* Desktop sidebar — hidden on mobile, where it becomes the drawer below */}
+      {/* Desktop sidebar - hidden on mobile, where it becomes the drawer below */}
       <aside
         className="hidden shrink-0 overflow-hidden md:block"
         style={{ width: sidebarCollapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_EXPANDED_W }}
@@ -83,7 +83,7 @@ export function AgentHome() {
       <div className="flex min-w-0 flex-1 flex-col">
       <MobileHeader />
 
-      {/* Wizard — always keep mounted so AgentCreationWizard's useSSEChat stream is
+      {/* Wizard - always keep mounted so AgentCreationWizard's useSSEChat stream is
           not aborted when we switch to the chat view. Just hide it visually. */}
       <main
         className={`${hasChatActivity ? 'hidden' : 'flex'} relative flex-1 flex-col items-center overflow-y-auto px-4 py-6 md:px-8 md:py-8`}
@@ -98,7 +98,7 @@ export function AgentHome() {
         {/* Content */}
         {(!isLoading || agents.length > 0) && (
           <div className="relative z-10 w-full">
-            {/* Top eyebrow line — date + theme/notifications */}
+            {/* Top eyebrow line - date + theme/notifications */}
             {hasAgents && !createMode && (
               <div className="mb-6">
                 <UtilityTopBar><span>{formatToday()}</span></UtilityTopBar>
@@ -156,7 +156,7 @@ export function AgentHome() {
         )}
       </main>
 
-      {/* Chat panel — shown once the wizard submits and the stream is live.
+      {/* Chat panel - shown once the wizard submits and the stream is live.
           The wizard above stays mounted (hidden) to keep its useSSEChat stream alive.
           ChatPanel handles user follow-up messages (e.g. approving the ask_user prompt). */}
       {hasChatActivity && (
@@ -172,7 +172,7 @@ export function AgentHome() {
       </div>
 
       {/* Home route is rendered outside AuthGate, so mount the drawer here
-          too — without it, the sidebar's "New agent" button no-ops on /. */}
+          too - without it, the sidebar's "New agent" button no-ops on /. */}
       <NewAgentDrawer />
     </div>
   );

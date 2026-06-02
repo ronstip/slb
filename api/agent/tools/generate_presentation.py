@@ -1,5 +1,5 @@
 """
-Generate Presentation Tool — agent-driven PowerPoint deck builder.
+Generate Presentation Tool - agent-driven PowerPoint deck builder.
 
 Renders a branded .pptx from the agent's structured `slides` spec.
 Colors are derived from the user's selected accent color and light/dark theme
@@ -81,7 +81,7 @@ def _hsl_to_rgb(h: float, s: float, l: float) -> tuple[int, int, int]:
 
 
 def _build_chart_palette(accent_hex: str, is_dark: bool) -> list[RGBColor]:
-    """Generate 5-color monochromatic palette from accent — mirrors accent-colors.ts."""
+    """Generate 5-color monochromatic palette from accent - mirrors accent-colors.ts."""
     r, g, b = _hex_to_rgb(accent_hex)
     h, s, _ = _rgb_to_hsl(r, g, b)
     shades = (
@@ -326,7 +326,7 @@ def _remove_chart_bg(chart) -> None:
 
 
 def _style_chart_axes(chart, t: "_Theme") -> None:
-    """Muted axis labels + light gridlines — readable on any background."""
+    """Muted axis labels + light gridlines - readable on any background."""
     try:
         from pptx.oxml.ns import qn
         from lxml import etree
@@ -376,7 +376,7 @@ def _style_chart_axes(chart, t: "_Theme") -> None:
                     sf2 = etree.SubElement(ln, qn('a:solidFill'))
                     etree.SubElement(sf2, qn('a:srgbClr')).set('val', grid_hex)
 
-                # Axis line — invisible
+                # Axis line - invisible
                 ax_sp = ax.find(qn('c:spPr'))
                 if ax_sp is None:
                     ax_sp = etree.SubElement(ax, qn('c:spPr'))
@@ -497,7 +497,7 @@ def _render_title_slide(slide, spec: dict, t: "_Theme") -> None:
 
 
 def _render_section(slide, spec: dict, t: "_Theme") -> None:
-    """Section divider — accent-colored background."""
+    """Section divider - accent-colored background."""
     _set_bg(slide, t.accent)
 
     title = spec.get("title", "")
@@ -780,7 +780,7 @@ def _render_key_finding(slide, spec: dict, t: "_Theme") -> None:
     br.text = badge
     _set_run_font(br, 9, bold=True, color=t.accent, theme=t)
 
-    # Finding body — ALL segments inline on one paragraph
+    # Finding body - ALL segments inline on one paragraph
     if finding:
         para = tf.add_paragraph()
         para.space_before = Pt(14)
@@ -900,12 +900,12 @@ def generate_presentation(
     collected data. Always gather data first via execute_sql, then design the
     slides and call this tool.
 
-    CONTEXT-ADAPTIVE DESIGN — think like a senior analyst deciding what the
+    CONTEXT-ADAPTIVE DESIGN - think like a senior analyst deciding what the
     audience needs:
     - Read the session: what data was collected, what queries were run, what
       the user's actual question was. Let THAT determine the slide structure.
     - A simple question deserves 3-4 focused slides. A deep comparative study
-      may warrant 8-10. Never pad — never cut insights to hit a target count.
+      may warrant 8-10. Never pad - never cut insights to hit a target count.
     - Only include slide types that add new information not already visible in
       other slides. Don't repeat the same insight in different formats.
     - VARY the structure based on what the data shows:
@@ -919,22 +919,22 @@ def generate_presentation(
 
     SLIDE TYPES SUPPORTED:
     - title_slide:  {type, title, subtitle}
-    - section:      {type, title, subtitle?}  — visual section divider (use only
+    - section:      {type, title, subtitle?}  - visual section divider (use only
                     for decks with 7+ slides, to break into logical chapters)
-    - bullets:      {type, title, bullets: [str, ...]}  — supports **bold** markdown
-    - kpi_grid:     {type, title, items: [{label, value}, ...]}  — up to 8 KPIs
+    - bullets:      {type, title, bullets: [str, ...]}  - supports **bold** markdown
+    - kpi_grid:     {type, title, items: [{label, value}, ...]}  - up to 8 KPIs
     - chart_bar:    {type, title, labels: [str], values: [num]}
     - chart_pie:    {type, title, labels: [str], values: [num]}
     - chart_line:   {type, title, dates: [str], values: [num]}
     - chart_row:    {type, title?, charts: [{type, title, labels/dates, values}]}
-                    — 2 related charts side-by-side (saves a slide)
+                    - 2 related charts side-by-side (saves a slide)
     - table:        {type, title, columns: [str], rows: [[val, ...], ...]}
     - key_finding:  {type, title, finding: str, significance: "surprising"|"notable"}
     - closing:      {type, title, message?}
 
     MARKDOWN: Use **bold** in bullet text and key_finding finding text.
     CHART_ROW: Prefer chart_row when showing 2 related distributions (e.g.
-    sentiment split + platform split) — one slide, two charts.
+    sentiment split + platform split) - one slide, two charts.
 
     Args:
         collection_ids: Collections this presentation covers.
@@ -998,7 +998,7 @@ def generate_presentation(
         slide_type = spec.get("type", "")
         renderer = _RENDERERS.get(slide_type)
         if renderer is None:
-            logger.warning("generate_presentation: unknown slide type %r — skipping", slide_type)
+            logger.warning("generate_presentation: unknown slide type %r - skipping", slide_type)
             continue
         try:
             slide = prs.slides.add_slide(blank_layout)
@@ -1008,7 +1008,7 @@ def generate_presentation(
             logger.warning("generate_presentation: failed to render %r: %s", slide_type, e)
 
     if rendered == 0:
-        return {"status": "error", "message": "No slides could be rendered — check the slides spec."}
+        return {"status": "error", "message": "No slides could be rendered - check the slides spec."}
 
     # ── Serialize and upload ──────────────────────────────────────────────────
     presentation_id = f"ppt-{uuid.uuid4().hex[:10]}"

@@ -1,4 +1,4 @@
-"""Admin router — Super admin endpoints for platform-wide analytics."""
+"""Admin router - Super admin endpoints for platform-wide analytics."""
 
 import asyncio
 import logging
@@ -47,7 +47,7 @@ async def admin_check(user: CurrentUser = Depends(_admin_user)):
 
 
 # ---------------------------------------------------------------------------
-# Overview — platform-wide KPIs
+# Overview - platform-wide KPIs
 # ---------------------------------------------------------------------------
 
 
@@ -70,7 +70,7 @@ async def admin_overview(user: CurrentUser = Depends(_admin_user)):
     total_revenue_cents = sum(p.get("amount_cents", 0) for p in all_purchases)
     total_credits_purchased = sum(p.get("credits", 0) for p in all_purchases)
 
-    # §E: outstanding wallet liability — sum of remaining $ balances (USD micros).
+    # §E: outstanding wallet liability - sum of remaining $ balances (USD micros).
     credit_outstanding_micros = sum(
         int((u.get("credit") or {}).get("balance_micros", 0)) for u in all_users
     )
@@ -153,7 +153,7 @@ async def admin_overview(user: CurrentUser = Depends(_admin_user)):
 
 
 # ---------------------------------------------------------------------------
-# Users — list + detail
+# Users - list + detail
 # ---------------------------------------------------------------------------
 
 
@@ -187,17 +187,17 @@ async def admin_users(
             user_posts_map[uid] = user_posts_map.get(uid, 0) + c.get("posts_collected", 0)
             user_collections_map[uid] = user_collections_map.get(uid, 0) + 1
 
-    # Fetch usage counters for query counts — single batched round-trip
+    # Fetch usage counters for query counts - single batched round-trip
     # instead of one Firestore read per user (N+1).
     try:
         usage_map = await asyncio.to_thread(
             fs.get_usage_many, [u["uid"] for u in all_users]
         )
     except Exception:
-        logger.exception("Batch usage fetch failed — continuing with empty usage")
+        logger.exception("Batch usage fetch failed - continuing with empty usage")
         usage_map = {}
 
-    # §E: MTD + all-time $ spend per user — one grouped BigQuery query.
+    # §E: MTD + all-time $ spend per user - one grouped BigQuery query.
     # BigQuery bills per byte SCANNED, so one full scan + conditional SUM is
     # cheaper than two scans. We bill on BILLED amount (cost × margin) here
     # to match the Finance KPIs; numerically identical at margin = 1×.
@@ -221,7 +221,7 @@ async def admin_users(
             spend_map[uid] = int(r.get("mtd_micros") or 0)
             total_spend_map[uid] = int(r.get("total_micros") or 0)
     except Exception:
-        logger.warning("Spend query failed — continuing without spend", exc_info=True)
+        logger.warning("Spend query failed - continuing without spend", exc_info=True)
         spend_map = {}
         total_spend_map = {}
 
@@ -231,7 +231,7 @@ async def admin_users(
         uid = u["uid"]
         # Skip phantom docs: `apply_spend_micros` merge-creates a users/{uid}
         # doc (credit map only) if cost is ever logged for a uid that was never
-        # provisioned — e.g. the test placeholder "u1" or an orphaned id. They
+        # provisioned - e.g. the test placeholder "u1" or an orphaned id. They
         # have no email and no created_at; they aren't real accounts.
         if not u.get("email") and not u.get("created_at"):
             continue
@@ -399,13 +399,13 @@ def _agent_cost_breakdown(
 
     Rows with NULL ``agent_id`` (legacy events from before agents were
     introduced) bucket into an "Unassigned" group surfaced in the UI as a
-    signal that some paid activity isn't tied to an agent — every priced
+    signal that some paid activity isn't tied to an agent - every priced
     event going forward should carry one.
 
     ``agent_meta`` is a ``{agent_id: agent_doc}`` map (passed by the caller
     so we don't hit Firestore once per agent inside the loop). Any agent_id
     that appears in BQ but isn't in the map is fetched via ``fs.get_agent``
-    so the UI shows the agent's real name, not the raw id — covers agents
+    so the UI shows the agent's real name, not the raw id - covers agents
     that were deleted, transferred, or shared from another owner.
     """
     range_sql, range_params = _range_clause(range_key, start, end)
@@ -535,11 +535,11 @@ async def admin_user_detail(
 
     try:
         # Pull a large window so the grouped Recent Activity shows every
-        # priced event per agent — the UI default-collapses each accordion
+        # priced event per agent - the UI default-collapses each accordion
         # so the wire size only matters when an admin actually expands one.
         # Cost-only view: hide bare counter rows (event_type=posts_collected
         # for Apify writes a row with cost_micros=NULL because Apify is
-        # PROVIDER_REPORTED — rate-table lookup returns None for it; the real
+        # PROVIDER_REPORTED - rate-table lookup returns None for it; the real
         # cost shows up on the sibling provider_call row). Without the
         # filter, Recent Activity surfaces both side-by-side and the
         # NULL-cost counter row visually competes with the real $-cost row.
@@ -561,7 +561,7 @@ async def admin_user_detail(
         logger.warning("BQ recent events query failed for %s: %s", user_id, e)
         recent_events = []
 
-    # Usage trend (last 30 days) — per-user cost vs revenue from usage_events
+    # Usage trend (last 30 days) - per-user cost vs revenue from usage_events
     # (replaces the old queries/collections/posts counters; the $ view is the
     # useful one now that we bill for usage).
     now = datetime.now(timezone.utc)
@@ -630,7 +630,7 @@ async def admin_user_detail(
 
 
 # ---------------------------------------------------------------------------
-# §E — plan + credit administration (super-admin only)
+# §E - plan + credit administration (super-admin only)
 # ---------------------------------------------------------------------------
 
 
@@ -757,7 +757,7 @@ async def admin_user_cost(
 
 
 # ---------------------------------------------------------------------------
-# Activity — daily breakdown by event type
+# Activity - daily breakdown by event type
 # ---------------------------------------------------------------------------
 
 
@@ -794,7 +794,7 @@ async def admin_activity(
 
 
 # ---------------------------------------------------------------------------
-# Collections — platform-wide
+# Collections - platform-wide
 # ---------------------------------------------------------------------------
 
 
@@ -867,7 +867,7 @@ async def admin_collections(
     #
     # Both enriched_posts and post_embeddings lack a collection_id stamp, so a
     # naive USING(post_id) join inflates counts whenever the same post appears
-    # in sibling collections (very common — shared keywords/sources). The funnel
+    # in sibling collections (very common - shared keywords/sources). The funnel
     # column should reflect "what THIS run did", so we filter per-collection:
     # - enriched: (agent_id, agent_version) matches the collection's owning
     #   agent AND enriched_at >= collection.created_at. The agent match mirrors
@@ -956,7 +956,7 @@ async def admin_collections(
                 r = bq_by_id.get(c["collection_id"])
                 if r is None:
                     continue
-                # BQ is authoritative — overwrite even if Firestore has a value.
+                # BQ is authoritative - overwrite even if Firestore has a value.
                 c["posts_stored"] = int(r["stored"])
                 c["posts_enriched"] = int(r["enriched"])
                 c["posts_embedded"] = int(r["embedded"])
@@ -1046,14 +1046,14 @@ async def admin_collection_audit(
 
 
 # ---------------------------------------------------------------------------
-# Finance — platform-wide economics (§E).
-#   cost      = SUM(usage_events.cost_micros)        — what WE pay providers (all usage)
-#   revenue   = SUM(credit_transactions purchases)   — real cash users paid us
-#   granted   = non-purchase credit-in (admin grants/adjustments) — NOT revenue
-#   net       = revenue − cost                       — true P&L (negative while
+# Finance - platform-wide economics (§E).
+#   cost      = SUM(usage_events.cost_micros)        - what WE pay providers (all usage)
+#   revenue   = SUM(credit_transactions purchases)   - real cash users paid us
+#   granted   = non-purchase credit-in (admin grants/adjustments) - NOT revenue
+#   net       = revenue − cost                       - true P&L (negative while
 #               you subsidise free/trial/test usage with no paying customers)
 # billed_micros (cost × margin) is still tracked per usage row and surfaced in
-# the by-tier breakdown as "usage value", but it is NOT counted as revenue —
+# the by-tier breakdown as "usage value", but it is NOT counted as revenue -
 # a wallet funded by an admin grant isn't money we earned.
 # ---------------------------------------------------------------------------
 
@@ -1183,13 +1183,13 @@ def _finance_breakdown(
     purchases = int(credit.get("purchase", 0))
     granted = int(credit.get("grant", 0)) + int(credit.get("adjustment", 0)) + int(credit.get("refund", 0))
 
-    # Platform × provider matrix — each (provider, platform) pair has its
+    # Platform × provider matrix - each (provider, platform) pair has its
     # own per-call price. Apify alone splits IG/FB/TikTok runs into
     # separately-priced actor calls; rolling them into "Apify $0.26" hides
     # whether a single platform dominates the cost.
     matrix = _platform_provider_matrix(where, params)
 
-    # Cost-source roll-up — tells the operator what fraction of recorded
+    # Cost-source roll-up - tells the operator what fraction of recorded
     # cost is "real" (provider-reported) vs "estimated" (apify fallback)
     # vs "rate_table". One row per source so the Finance page surfaces
     # estimate exposure without drilling into individual events.
@@ -1221,7 +1221,7 @@ def _finance_breakdown(
         "granted_micros": granted,              # credit we issued (not revenue)
         "net_micros": purchases - cost_micros,  # true P&L
         "usage_billed_micros": revenue_micros,  # cost × margin across all usage (informational)
-        # Point-in-time snapshot (NOT range-filterable — credit balances are
+        # Point-in-time snapshot (NOT range-filterable - credit balances are
         # live counters in Firestore). The wallet liability we still owe
         # users in deliverable usage.
         "unspent_purchased_micros": int(unspent_purchased_micros or 0),
@@ -1254,7 +1254,7 @@ async def admin_finance(
             continue
         tier = (u.get("plan") or {}).get("tier") or "blocked"
         tier_by_uid[uid] = "admin" if is_super_admin_email(u.get("email")) else tier
-        # Derive wallet liability in the same loop — avoids a second
+        # Derive wallet liability in the same loop - avoids a second
         # Firestore stream just to sum credit balances. Skip phantom docs
         # (same rule as admin_users at line 225).
         if u.get("email") or u.get("created_at"):
@@ -1270,7 +1270,7 @@ async def admin_finance(
 
 
 # ---------------------------------------------------------------------------
-# Pricing — admin-editable provider rates + profit margin (§E).
+# Pricing - admin-editable provider rates + profit margin (§E).
 # Curated knobs only (see config/cost_rates.py); persisted to app_config/pricing
 # and deep-merged over the code seed at runtime.
 # ---------------------------------------------------------------------------
@@ -1300,7 +1300,7 @@ def _scraper_matrix_view() -> dict[str, dict[str, float | None]]:
 
     The wildcard "*" cell falls through to the **legacy single rate** from
     ``COST_RATES`` (BrightData per-record, X_api per-unit, Vetric per-call,
-    Apify assumed-per-post) when the matrix hasn't been edited yet — that
+    Apify assumed-per-post) when the matrix hasn't been edited yet - that
     way the admin opens the editor and immediately sees the rates that
     were in effect, instead of an empty grid that looks like everything
     is unconfigured.
@@ -1312,7 +1312,7 @@ def _scraper_matrix_view() -> dict[str, dict[str, float | None]]:
     matrix = cost_rates.get_scraper_rates_per_platform()
     legacy_rates = cost_rates.get_active_rates()
 
-    # Effective wildcard rate per provider — prefer an explicit matrix cell,
+    # Effective wildcard rate per provider - prefer an explicit matrix cell,
     # fall back to the legacy single rate in COST_RATES so the editor shows
     # the value that's actually being applied.
     legacy_wildcard = {
@@ -1338,7 +1338,7 @@ def _curated_pricing_view() -> dict:
     return {
         "margin_multiplier": cost_rates.get_margin_multiplier(),
         "apify_assumed_per_post_usd": cost_rates.get_apify_assumed_per_post_usd(),
-        # Per-(provider, platform) scraper matrix — drives the live cost
+        # Per-(provider, platform) scraper matrix - drives the live cost
         # row $ for all scrapers (Apify fallback path + BrightData / X_api /
         # Vetric rate-table replacement). The Pricing editor renders this
         # as a grid; a cell that's NULL means "no override, use wildcard".
@@ -1507,7 +1507,7 @@ async def admin_update_pricing(
 
 
 # ---------------------------------------------------------------------------
-# Impersonation — "View as User" for super admins
+# Impersonation - "View as User" for super admins
 # ---------------------------------------------------------------------------
 
 
@@ -1524,7 +1524,7 @@ def _write_audit_entry(
 ) -> None:
     """Append an entry to the impersonation_audit Firestore collection.
 
-    Best-effort — failures are logged but do not block the request.
+    Best-effort - failures are logged but do not block the request.
     """
     try:
         fs = get_fs()
@@ -1552,7 +1552,7 @@ async def impersonate_start(
 ):
     """Begin an impersonation session. Writes an audit log entry.
 
-    This endpoint does NOT mutate server state — the actual impersonation
+    This endpoint does NOT mutate server state - the actual impersonation
     is performed per-request via the `X-Impersonate-User-Id` header. This
     call exists to validate the target and record the start event.
     """
@@ -1586,7 +1586,7 @@ async def impersonate_stop(
     """End an impersonation session. Writes an audit log entry.
 
     Accepts requests regardless of whether an impersonation header is
-    currently set — the frontend fires this during teardown.
+    currently set - the frontend fires this during teardown.
     """
     target_uid = request.headers.get("X-Impersonate-User-Id", "").strip() or None
     target_email: str | None = None

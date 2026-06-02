@@ -5,7 +5,7 @@ Pipeline context:
     diversity-stratified by a 6-dim signature
     (platform, channel_type, top_theme, top_brand, content_type, time_bucket).
   - Pass-1/pass-2 LLM passes assign membership ONLY among sampled posts.
-  - The full-pool count for each topic is unknown — we estimate it via
+  - The full-pool count for each topic is unknown - we estimate it via
     post-stratification using the same signature dimensions.
 
 For each topic `t` and signature bucket `b`:
@@ -56,7 +56,7 @@ def extrapolate_topic_counts(
     """Populate each Topic's `estimated_pool_count` + CI fields in-place.
 
     Returns the same list (for chaining). The Topic.member_post_ids are
-    untouched — extrapolation only sets the three count fields.
+    untouched - extrapolation only sets the three count fields.
 
     If `pool_posts` and `sampled_posts` are the same (sample_size >= pool_size),
     extrapolation reduces to the sample count and CI is zero.
@@ -89,7 +89,7 @@ def extrapolate_topic_counts(
 
     # 3. Detect sample-only mode (no extrapolation needed). Sampler returns the
     # full pool when pool_size <= target_size, so the "list-identity" check is
-    # too strict — compare sizes instead.
+    # too strict - compare sizes instead.
     full_coverage = sample_size >= pool_size
 
     for t in topics:
@@ -105,7 +105,7 @@ def extrapolate_topic_counts(
             sig = pid_to_sig.get(pid)
             if sig is not None:
                 members_per_sig[sig] += 1
-        # else: a member post not in the sample — shouldn't happen in v2 since
+        # else: a member post not in the sample - shouldn't happen in v2 since
         # members come from sampled posts, but be robust.
 
         if full_coverage:
@@ -121,7 +121,7 @@ def extrapolate_topic_counts(
             n_b = sample_sigs.get(sig, 0)
             N_b = pool_sigs.get(sig, 0)
             if n_b == 0 or N_b == 0:
-                # Defensive: shouldn't occur — if m>0 then n_b>0.
+                # Defensive: shouldn't occur - if m>0 then n_b>0.
                 continue
             p = m / n_b
             contrib = m * (N_b / n_b)

@@ -7,7 +7,7 @@ import { getCollectionStatus } from '../../api/endpoints/collections.ts';
 import { formatNumber } from '../../lib/format.ts';
 import type { CollectionStatusResponse } from '../../api/types.ts';
 
-// Lazy — the drawer pulls in StatsModal, TableModal, activity log, schedule
+// Lazy - the drawer pulls in StatsModal, TableModal, activity log, schedule
 // dialog, and a wall of icons. Only loaded when the user actually opens it.
 const AgentDetailDrawer = lazy(() =>
   import('../agents/AgentDetailDrawer.tsx').then((m) => ({ default: m.AgentDetailDrawer })),
@@ -134,7 +134,7 @@ export function TaskProgressPill() {
           toast.error(`Collection failed${c.error_message ? `: ${c.error_message}` : ''}`);
         } else {
           toast.success(
-            `Collection complete — ${formatNumber(c.posts_collected)} posts collected` +
+            `Collection complete - ${formatNumber(c.posts_collected)} posts collected` +
             (c.posts_enriched > 0 ? `, ${formatNumber(c.posts_enriched)} enriched` : ''),
           );
         }
@@ -153,7 +153,7 @@ export function TaskProgressPill() {
     return () => clearInterval(interval);
   }, [activeAgent]);
 
-  // Nothing to show — hide when no active task, no collections, still loading, or done
+  // Nothing to show - hide when no active task, no collections, still loading, or done
   if (!activeAgent || noCollections || collectionsLoading || dismissed) return null;
 
   const isFailed = phase === 'Failed';
@@ -232,7 +232,7 @@ export function TaskProgressPill() {
       </button>
       </div>
 
-      {/* Task detail drawer — lazy-mounted to keep the chat bundle slim. */}
+      {/* Task detail drawer - lazy-mounted to keep the chat bundle slim. */}
       {(drawerOpen || activeAgent) && (
         <Suspense fallback={null}>
           <AgentDetailDrawer

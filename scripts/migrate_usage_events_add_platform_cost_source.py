@@ -2,15 +2,15 @@
 to ``social_listening.usage_events``.
 
 Why:
-    The Finance page needs to break costs down by (provider, platform) —
+    The Finance page needs to break costs down by (provider, platform) -
     Apify charges different per-call prices for Instagram vs Facebook vs
     TikTok, so a single "by provider" row hides the variance. The admin
     Recent Activity view also needs to label whether each priced row came
     from a provider-reported number, a rate-table lookup, or an estimated
-    fallback (`apify_assumed_per_post_usd`) — `cost_source` carries that.
+    fallback (`apify_assumed_per_post_usd`) - `cost_source` carries that.
 
 Safety / idempotency:
-    ALTER TABLE ADD COLUMN IF NOT EXISTS — safe to re-run. Existing rows
+    ALTER TABLE ADD COLUMN IF NOT EXISTS - safe to re-run. Existing rows
     keep their data; the two new columns simply read NULL until a future
     write fills them in.
 
@@ -65,7 +65,7 @@ def main(dry_run: bool) -> None:
     needed = {"platform", "cost_source"} - existing
 
     if not needed:
-        logger.info("usage_events already has `platform` + `cost_source` — nothing to do.")
+        logger.info("usage_events already has `platform` + `cost_source` - nothing to do.")
         return
 
     sql = ALTER_SQL.format(project=project)

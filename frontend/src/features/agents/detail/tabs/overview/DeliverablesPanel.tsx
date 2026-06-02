@@ -66,7 +66,7 @@ function getExpectedKinds(task: Agent): DeliverableKind[] {
         case 'data_export':
           kinds.push('data_export');
           break;
-        // post_examples is rendered inside the briefing today — no separate slot
+        // post_examples is rendered inside the briefing today - no separate slot
         default:
           break;
       }

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# ── Social Listening Platform — GCP Setup ──
+# ── Social Listening Platform - GCP Setup ──
 #
 # Prerequisites:
 #   1. Install gcloud CLI: https://cloud.google.com/sdk/docs/install

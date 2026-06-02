@@ -3,7 +3,7 @@
 Two discipline rules are enforced inside the tool (rather than the prompt):
   1. Exactly ONE todo may be 'in_progress' at a time.
   2. Once a todo is 'completed', it cannot transition back to pending /
-     in_progress — the agent must add a fresh todo if there's more work.
+     in_progress - the agent must add a fresh todo if there's more work.
 """
 
 import json
@@ -53,7 +53,7 @@ def test_two_in_progress_rejected():
 
 
 def test_zero_in_progress_is_allowed():
-    # All pending or all-completed is fine — the rule is "at most one",
+    # All pending or all-completed is fine - the rule is "at most one",
     # not "exactly one".
     ctx = _ctx()
     result = update_todos(

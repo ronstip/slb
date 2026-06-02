@@ -1,4 +1,4 @@
-# api — "Share with org" missing on agents owned by users who joined an org after signup
+# api - "Share with org" missing on agents owned by users who joined an org after signup
 
 ## Symptom
 User B accepts an invite to user A's org and signs in. User B's own agents have NO **Share with org** option in the 3-dots menu, even though the share toggle works fine for user A. Same issue for users who created an org themselves but had pre-existing agents.
@@ -22,16 +22,16 @@ Re-stamping naively would also leak: an agent shared with org A would silently b
 - **Reconcile on demand.** New `reconcile_user_org_membership(user_id, current_org_id)` in `api/services/agent_service.py` enforces the invariant `agent.org_id == owner.org_id` across all of the user's agents. When the stamp drifts:
   - Stamp the current org_id on the agent + propagate to its collections.
   - If the agent was `visibility=="org"`, reset to `private` so a stale share never follows the owner across an org switch (or after leaving an org).
-- **Wire reconcile** into `create_org` / `join_org` / `leave_org` / `remove_member` (proactive) and into `list_agents` (lazy / idempotent — heals users who joined before the fix landed, and any future drift).
+- **Wire reconcile** into `create_org` / `join_org` / `leave_org` / `remove_member` (proactive) and into `list_agents` (lazy / idempotent - heals users who joined before the fix landed, and any future drift).
 
 ## Regression tests
 `api/tests/test_agent_access.py`:
-- `test_reconcile_stamps_org_id_on_orphan_agents` — primary bug.
-- `test_reconcile_unshares_when_switching_orgs` — no share leak across orgs.
-- `test_reconcile_drops_share_when_leaving_org` — no orphan share after leaving.
-- `test_reconcile_preserves_private_visibility_on_join` — joining doesn't auto-share.
-- `test_reconcile_is_noop_when_org_matches` — steady-state idempotence.
-- `test_reconcile_ignores_other_users_agents` — query scoped to owner.
+- `test_reconcile_stamps_org_id_on_orphan_agents` - primary bug.
+- `test_reconcile_unshares_when_switching_orgs` - no share leak across orgs.
+- `test_reconcile_drops_share_when_leaving_org` - no orphan share after leaving.
+- `test_reconcile_preserves_private_visibility_on_join` - joining doesn't auto-share.
+- `test_reconcile_is_noop_when_org_matches` - steady-state idempotence.
+- `test_reconcile_ignores_other_users_agents` - query scoped to owner.
 - `test_invalidate_user_cache_drops_entry` + missing-key no-op.
 
 ## Fix commit

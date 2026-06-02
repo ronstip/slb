@@ -85,7 +85,7 @@ Presets are auto-converted to `custom` config when opening the config dialog (`p
 
 ## AI Agent Integration (Future)
 
-Widget configs are structured JSON — ideal for AI agent tool calls:
+Widget configs are structured JSON - ideal for AI agent tool calls:
 - Agent can generate `SocialDashboardWidget[]` from natural language
 - Each widget config maps directly to visual output
 - Layout coordinates can be auto-computed (y=Infinity for bottom placement)

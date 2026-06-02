@@ -23,7 +23,7 @@ export const STATUS_ACCENT: Record<string, string> = {
   archived: 'bg-muted-foreground/30',
 };
 
-// ── StatusBadge — claude-design "pill" style ────────────────────────────────
+// ── StatusBadge - claude-design "pill" style ────────────────────────────────
 //
 // Filled rounded pill with a small leading dot and an uppercase mono label.
 // Maps each status to a tinted background/foreground pair. Used everywhere

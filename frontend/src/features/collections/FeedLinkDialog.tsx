@@ -65,7 +65,7 @@ export function FeedLinkDialog({
     onError: () => {
       toast.error('Failed to create feed link');
     },
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   const revokeMutation = useMutation({
@@ -161,7 +161,7 @@ export function FeedLinkDialog({
           {/* Tip */}
           <p className="text-[10px] text-muted-foreground leading-relaxed">
             In <strong>Excel</strong>: Data &rarr; Get Data &rarr; From Web. In <strong>Power BI</strong>: Get Data &rarr; Web.
-            No authentication needed — anyone with the link can access the data.
+            No authentication needed - anyone with the link can access the data.
           </p>
         </div>
 

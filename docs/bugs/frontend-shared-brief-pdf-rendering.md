@@ -1,17 +1,17 @@
-# frontend — shared brief PDF rendering
+# frontend - shared brief PDF rendering
 
 ## Symptoms
 
 Downloading `/shared/<token>` as PDF (`exportDashboardPdf`) produced four
 visible defects, all in the same render path:
 
-1. **Tables show ellipsized junk** — e.g. topic column with single Hebrew char
+1. **Tables show ellipsized junk** - e.g. topic column with single Hebrew char
    `ת`, channel handles like `@RonenMane…`, post-type chips like `re…`.
-2. **Column widths cramped** — same root cause as (1): `table-fixed` with
+2. **Column widths cramped** - same root cause as (1): `table-fixed` with
    `w-[8%]`/`w-[11%]` etc. + cell `truncate`/`overflow-hidden`.
-3. **Header date was always "today"** — `new Date()` at export time, not the
+3. **Header date was always "today"** - `new Date()` at export time, not the
    brief's `meta.created_at`.
-4. **Embedded post widgets were blank** — third-party iframes (X, YouTube, FB,
+4. **Embedded post widgets were blank** - third-party iframes (X, YouTube, FB,
    LinkedIn) don't capture in `html2canvas`.
 
 ## Root cause
@@ -57,4 +57,4 @@ embed widgets render as a one-line placeholder rather than blank space.
 
 ## Commit
 
-(uncommitted at time of writing — branch `dev`)
+(uncommitted at time of writing - branch `dev`)

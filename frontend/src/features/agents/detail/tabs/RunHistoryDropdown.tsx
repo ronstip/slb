@@ -29,9 +29,9 @@ const STATUS_DOT_COLOR: Record<string, string> = {
 };
 
 function formatDuration(startIso: string, endIso: string | null): string {
-  if (!endIso) return '—';
+  if (!endIso) return '-';
   const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
-  if (ms < 0) return '—';
+  if (ms < 0) return '-';
   const mins = Math.round(ms / 60_000);
   if (mins < 1) return '<1m';
   if (mins < 60) return `${mins}m`;

@@ -1,19 +1,19 @@
 -- window_metrics TVF.
 --
 -- Single-row, whole-window summary for a single agent's scoped posts.
--- Companion to `daily_metrics` (per-day breakdown) — call this when you want
+-- Companion to `daily_metrics` (per-day breakdown) - call this when you want
 -- "the totals" without dragging dozens of daily rows.
 --
 -- Filters / params (NULL = sensible default):
---   p_start    — inclusive lower bound on posted_at; NULL → no extra floor
+--   p_start    - inclusive lower bound on posted_at; NULL → no extra floor
 --                beyond the agent's data_start_date (enforced by `scope_posts`)
---   p_end      — inclusive upper bound on posted_at; NULL → CURRENT_TIMESTAMP()
---   p_timezone — IANA timezone, used only for `active_days` and `n_days`;
+--   p_end      - inclusive upper bound on posted_at; NULL → CURRENT_TIMESTAMP()
+--   p_timezone - IANA timezone, used only for `active_days` and `n_days`;
 --                NULL → 'UTC'
 --
 -- Engagement = likes + comments_count + shares + saves (same as daily_metrics).
 -- Channel uniqueness keyed on (platform, channel_handle).
--- No share-of-voice columns — window vs. itself is 1.0 by definition.
+-- No share-of-voice columns - window vs. itself is 1.0 by definition.
 --
 -- Top-N qualitative arrays (each [{value, count}] ordered desc) use larger
 -- caps than `daily_metrics` since this is a single row over a wider corpus:
@@ -31,7 +31,7 @@
 -- `entity_metrics`, just grouped over the whole window. Falls back to JSON '{}'
 -- when no custom_fields keys are observed.
 --
--- Always returns exactly one row — even on an empty corpus (posts=0, top_*
+-- Always returns exactly one row - even on an empty corpus (posts=0, top_*
 -- fields are NULL, n_days NULL if no bound resolvable).
 
 CREATE OR REPLACE TABLE FUNCTION social_listening.window_metrics(

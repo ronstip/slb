@@ -16,7 +16,7 @@ interface CollectionSettingsPanelProps {
   settings: WizardCollectionSettings;
   onChange: (settings: WizardCollectionSettings) => void;
   planStatus: PlanStatus;
-  /** When true, render contents only — no outer card / step badge.
+  /** When true, render contents only - no outer card / step badge.
    *  Parent stepper provides those instead. */
   embedded?: boolean;
 }
@@ -163,7 +163,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus, embedd
 
       {(planStatus === 'ready' || planStatus === 'error') && (
       <div className="space-y-6 flex-1">
-        {/* Existing collections picker — shown only when the user actually has
+        {/* Existing collections picker - shown only when the user actually has
             other agents whose data they could attach. Hidden by default in
             the new-agent flow to keep the design cohesive with the demo. */}
         {!agentsLoading && availableAgents.length > 0 && settings.existingAgentIds.length > 0 && (
@@ -179,7 +179,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus, embedd
 
         {settings.newCollectionEnabled && (
           <>
-            {/* Platforms — every chip is a flat white pill with a subtle
+            {/* Platforms - every chip is a flat white pill with a subtle
                 border + colored brand icon. Inactive chips are dimmed via
                 opacity only so the row reads as a calm uniform set. */}
             <Section label="Platforms" count={`${settings.platforms.length} active`}>
@@ -235,7 +235,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus, embedd
               </div>
             </Section>
 
-            {/* Time + Region — two rows side by side */}
+            {/* Time + Region - two rows side by side */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <Section label="Time window">
                 <div className="flex flex-wrap gap-1.5">
@@ -284,7 +284,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus, embedd
               </Section>
             </div>
 
-            {/* Max posts — two-tone track that fills primary up to the
+            {/* Max posts - two-tone track that fills primary up to the
                 thumb position. The fill % is fed via a CSS custom prop so
                 the WebKit gradient stop tracks the value. */}
             <Section label="Max posts per run">
@@ -309,7 +309,7 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus, embedd
           </>
         )}
 
-        {/* Relevance filter — flat textarea (no collapsible chrome, mirrors design). */}
+        {/* Relevance filter - flat textarea (no collapsible chrome, mirrors design). */}
         <Section
           label="Relevance filter"
           hint={settings.enrichmentFromAI ? 'AI' : undefined}
@@ -319,12 +319,12 @@ export function CollectionSettingsPanel({ settings, onChange, planStatus, embedd
             onChange={(e) =>
               update({ enrichmentContext: e.target.value, enrichmentFromAI: false })
             }
-            placeholder="Describe what counts as relevant — and what doesn't."
+            placeholder="Describe what counts as relevant - and what doesn't."
             className="min-h-[110px] resize-none rounded-xl border-border bg-background text-[13px] leading-relaxed shadow-none focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15"
           />
         </Section>
 
-        {/* Custom field chips — quick-add presets, plus per-field details. */}
+        {/* Custom field chips - quick-add presets, plus per-field details. */}
         <Section label="Custom fields" hint="optional">
           <CustomFieldChips
             fields={settings.customFields}
@@ -395,7 +395,7 @@ function CustomFieldChips({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Active fields — solid filled chip in primary so they read as "added". */}
+      {/* Active fields - solid filled chip in primary so they read as "added". */}
       {fields.map((f) => (
         <span
           key={f.name}

@@ -1,7 +1,7 @@
 """Session setup, state-refresh, event windowing, and flush semantics for /chat.
 
 This owns every piece of state manipulation that happens *around* the ADK
-runner loop — from fetching or creating the session to trimming the event
+runner loop - from fetching or creating the session to trimming the event
 history for the LLM context window and restoring it before persistence.
 """
 
@@ -146,7 +146,7 @@ def _maybe_load_dashboard_context(session, chat_request: ChatRequest, user: Curr
     them in the system prompt without re-reading Firestore on every LLM turn.
 
     Only fires when mode="report_editor". For mode="chat" we deliberately
-    leave these keys absent — the broad chat agent doesn't need them.
+    leave these keys absent - the broad chat agent doesn't need them.
     """
     if chat_request.mode != "report_editor" or not chat_request.active_dashboard_id:
         return
@@ -160,14 +160,14 @@ def _maybe_load_dashboard_context(session, chat_request: ChatRequest, user: Curr
     try:
         doc = get_fs()._db.collection("dashboard_layouts").document(layout_id).get()
     except Exception:
-        # Firestore hiccup — proceed with just the ID, no summary. The agent
+        # Firestore hiccup - proceed with just the ID, no summary. The agent
         # can still call read_dashboard to discover the layout.
         session.state["active_dashboard_id"] = layout_id
         session.state.pop("active_dashboard_summary", None)
         return
 
     if not doc.exists:
-        # Don't pin a non-existent dashboard — the agent will see the ID is
+        # Don't pin a non-existent dashboard - the agent will see the ID is
         # absent from operational context and the user's first prompt will
         # error cleanly from read_dashboard ("not found").
         session.state.pop("active_dashboard_id", None)
@@ -188,14 +188,14 @@ def _maybe_load_dashboard_context(session, chat_request: ChatRequest, user: Curr
 
 
 def _summarize_widgets(widgets: list) -> str:
-    """One-line widget census: '12 widgets — 4 KPI cards, 3 charts (bar, line), 2 markdown, 1 table'.
+    """One-line widget census: '12 widgets - 4 KPI cards, 3 charts (bar, line), 2 markdown, 1 table'.
 
     Cheap to produce; helps the agent answer questions like "what's in the
     report?" without an extra `read_dashboard` round-trip. The agent still
     calls `read_dashboard` when it needs widget-level detail (IDs, content).
     """
     if not widgets:
-        return "Empty dashboard — no widgets yet."
+        return "Empty dashboard - no widgets yet."
 
     total = len(widgets)
     by_agg: dict[str, int] = {}
@@ -213,7 +213,7 @@ def _summarize_widgets(widgets: list) -> str:
     # Most common aggregations first
     for agg, count in sorted(by_agg.items(), key=lambda kv: -kv[1]):
         parts.append(f"{count} {agg}")
-    summary = ", ".join(parts[:1]) + " — " + ", ".join(parts[1:])
+    summary = ", ".join(parts[:1]) + " - " + ", ".join(parts[1:])
     if chart_types:
         summary += f" (chart types: {', '.join(chart_types[:6])})"
     return summary
@@ -249,7 +249,7 @@ def _maybe_load_agent_context(session, chat_request: ChatRequest, user: CurrentU
     session.state["agent_selected_sources"] = _cids
     if _cids:
         session.state["active_collection_id"] = _cids[0]
-    # Not loading todos from agent doc — those are from previous runs; chat
+    # Not loading todos from agent doc - those are from previous runs; chat
     # mode starts fresh and creates todos as needed.
     get_fs().add_agent_session(chat_request.agent_id, session_id)
 
@@ -257,7 +257,7 @@ def _maybe_load_agent_context(session, chat_request: ChatRequest, user: CurrentU
 def window_events_for_llm(session, flow: FlowFlags) -> list:
     """Trim the session's events to the last N user-message turns.
 
-    Trimming is only for the LLM context window — callers MUST restore the
+    Trimming is only for the LLM context window - callers MUST restore the
     prefix before persisting via `restore_and_flush`. Returns the trimmed
     prefix (empty list if no trim happened).
     """
@@ -332,7 +332,7 @@ def refresh_live_state(session, user_id: str) -> None:
         else:
             session.state.pop("ppt_template", None)
     except Exception:
-        # Template refresh is non-critical — agent works fine without it.
+        # Template refresh is non-critical - agent works fine without it.
         pass
 
 

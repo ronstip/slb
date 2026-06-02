@@ -6,7 +6,7 @@ Changes from v2 (f7c9e2b81e1a4d9caaa18b5f3d2c7a04):
   - Appendix A + Appendix B merged into ONE widget with two parts.
   - 7b format/channel performance sub-table restored (lost from v1→v2).
   - 9 narratives table now requires a reach/exposure column.
-  - 8a top-posts schema gets a "Link" column — agent must link the actual post URL.
+  - 8a top-posts schema gets a "Link" column - agent must link the actual post URL.
   - Body skeleton standardized: opening paragraph → table → closing paragraph
     → chart reference (when applicable). Every section follows the same shape.
   - Tone block injected into every section brief: senior intelligence analyst,
@@ -57,9 +57,9 @@ VOICE = (
 
 BODY_SKELETON = (
     "**Body skeleton (every section follows this shape).** "
-    "1) Opening paragraph — what is the headline finding for this section. "
-    "2) Table or compact list — the data. "
-    "3) Closing paragraph — interpretation and so-what. "
+    "1) Opening paragraph - what is the headline finding for this section. "
+    "2) Table or compact list - the data. "
+    "3) Closing paragraph - interpretation and so-what. "
     "4) Reference to the matching chart widget (when one exists), one sentence. "
     "Do not invert this order."
 )
@@ -67,16 +67,16 @@ BODY_SKELETON = (
 
 # ─── Text briefs ────────────────────────────────────────────────────────────
 
-HEADER_MD = """# Weekly Competitive Brand Report — `<Subject>` (Week of `<YYYY-MM-DD>` → `<YYYY-MM-DD>`)
+HEADER_MD = """# Weekly Competitive Brand Report - `<Subject>` (Week of `<YYYY-MM-DD>` → `<YYYY-MM-DD>`)
 
-**Template v3.** Every text widget below carries (a) an instruction to the agent and (b) a compact reference example. At runtime the agent replaces both with the actual current-period analysis. Chart widgets pull live data from the agent's scope — configs are frozen.
+**Template v3.** Every text widget below carries (a) an instruction to the agent and (b) a compact reference example. At runtime the agent replaces both with the actual current-period analysis. Chart widgets pull live data from the agent's scope - configs are frozen.
 """
 
 SEC_2_MD = f"""## 2. Metadata & contextual frame
 
 {VOICE}
 
-**Agent instructions.** Open with a quantitative spec block (one line per field, in this exact order), then a 2–3 line contextual frame. Numbers are real or `n/a` — never a hedge. Localize field labels into the data's language; preserve order.
+**Agent instructions.** Open with a quantitative spec block (one line per field, in this exact order), then a 2–3 line contextual frame. Numbers are real or `n/a` - never a hedge. Localize field labels into the data's language; preserve order.
 
 ```
 - Period: <YYYY-MM-DD> → <YYYY-MM-DD>
@@ -90,7 +90,7 @@ SEC_2_MD = f"""## 2. Metadata & contextual frame
 - Primary entities tracked: <Entity1>, <Entity2>, …
 ```
 
-Close with a **Contextual frame** — 2–3 lines: where this period sits in the longer campaign arc (early / mid / late) and what happened in the world during it that matters. Positioning, not background.
+Close with a **Contextual frame** - 2–3 lines: where this period sits in the longer campaign arc (early / mid / late) and what happened in the world during it that matters. Positioning, not background.
 
 ---
 
@@ -117,7 +117,7 @@ SEC_3_MD = """## 3. Table of contents
 
 **Anchor rule (load-bearing).** GitHub-flavored auto-anchors fail for non-Latin scripts. Place an explicit HTML anchor on its own line immediately above every section heading: `<a id="sec-N"></a>` (`sec-4`, `sec-8a`, `sec-app`, etc.). Reference these IDs in the TOC as `[Section title](#sec-N)`. Never link to the heading text itself.
 
-**Renumbering forbidden.** If you remove a sub-widget (e.g. §8b for missing emotion data), the surviving sub-sections keep their letters — 8c stays `8c`, 8d stays `8d`. Do not slide them down to fill the gap. The TOC shows only the sub-sections that exist.
+**Renumbering forbidden.** If you remove a sub-widget (e.g. §8b for missing emotion data), the surviving sub-sections keep their letters - 8c stays `8c`, 8d stays `8d`. Do not slide them down to fill the gap. The TOC shows only the sub-sections that exist.
 
 ---
 
@@ -128,10 +128,10 @@ SEC_3_MD = """## 3. Table of contents
 
 1. [Executive summary](#sec-4)
 2. [Share of Voice & KPI dashboard](#sec-5)
-3. [Competitive positioning — per actor](#sec-6)
-4. [Chronology — what shaped the week](#sec-7)
+3. [Competitive positioning - per actor](#sec-6)
+4. [Chronology - what shaped the week](#sec-7)
 5. Subject deep dive
-   - 5a. [Top posts — pro & anti](#sec-8a)
+   - 5a. [Top posts - pro & anti](#sec-8a)
    - 5b. [Tone & emotion correlation](#sec-8b)
    - 5c. [Stance distribution (custom fields)](#sec-8c)
    - 5d. [What was missed](#sec-8d)
@@ -142,7 +142,7 @@ SEC_3_MD = """## 3. Table of contents
 10. [Risks & opportunities](#sec-13)
 11. Operational recommendations
    - [14.1](#sec-14-1) · [14.2](#sec-14-2) · [14.3](#sec-14-3) · [14.4](#sec-14-4) · [14.5](#sec-14-5)
-- [Appendix — External context & methodology](#sec-app)
+- [Appendix - External context & methodology](#sec-app)
 ```
 """
 
@@ -155,9 +155,9 @@ SEC_4_MD = f"""<a id="sec-4"></a>
 
 **Agent instructions.**
 
-1. Open with the single most important insight given the user's framing — no preamble. One sentence naming actors, direction, and the strategic stake.
+1. Open with the single most important insight given the user's framing - no preamble. One sentence naming actors, direction, and the strategic stake.
 2. Then **4–6 callout findings**, each a bolded one-line title + one short hard-claim paragraph that cites actors, numbers, and direction. Bold the load-bearing words. No finding survives without a number, a named account, or a specific post.
-3. Close with **up to 5 operational recommendations for the next period** in a numbered list. Each: (i) the specific number / finding that motivates it, (ii) a target date or window, (iii) a one-line execution template. These are *headlines*; the long form lives in 14.1–14.5. If the analysis produces fewer than 5, write fewer — and remove the unused §14.x sub-widgets via `update_dashboard`.
+3. Close with **up to 5 operational recommendations for the next period** in a numbered list. Each: (i) the specific number / finding that motivates it, (ii) a target date or window, (iii) a one-line execution template. These are *headlines*; the long form lives in 14.1–14.5. If the analysis produces fewer than 5, write fewer - and remove the unused §14.x sub-widgets via `update_dashboard`.
 
 **Hard rule.** No finding survives that the subject would say about themselves anyway, or that could be guessed without the data.
 
@@ -165,13 +165,13 @@ SEC_4_MD = f"""<a id="sec-4"></a>
 
 **Reference example.**
 
-> `<Subject>` is winning the contest of **initiative** but is now under coordinated and effective attack on **`<AxisX>`** — and the data shows the campaign has not matched the attack with a counter-narrative of equivalent reach.
+> `<Subject>` is winning the contest of **initiative** but is now under coordinated and effective attack on **`<AxisX>`** - and the data shows the campaign has not matched the attack with a counter-narrative of equivalent reach.
 
-**Findings (excerpt — full version has 4–6):**
+**Findings (excerpt - full version has 4–6):**
 
-- **`<Rival1>` dominates reach but bleeds sentiment.** 8.1M views; **136 pro / 344 anti** — the worst ratio in the field. Compensated by viral `<Format>` content (one item alone = 3.5M views).
+- **`<Rival1>` dominates reach but bleeds sentiment.** 8.1M views; **136 pro / 344 anti** - the worst ratio in the field. Compensated by viral `<Format>` content (one item alone = 3.5M views).
 - **The `<RivalCamp>` "<AttackLine>" landed.** Three pro-`<RivalCamp>` posts crossed 300K combined views; `<Subject>`'s response (50K views) is **6× under-amplified** vs. the attack.
-- **`<Rival2>`'s `<Event>` was a gift the `<Subject>` camp did not collect.** 686K views of organic anger — `<Subject>` published **zero** posts framing it.
+- **`<Rival2>`'s `<Event>` was a gift the `<Subject>` camp did not collect.** 686K views of organic anger - `<Subject>` published **zero** posts framing it.
 
 **Operational recommendations (headlines):**
 
@@ -193,13 +193,13 @@ SEC_5_MD = f"""<a id="sec-5"></a>
 
 - **Posts**: count of in-scope posts by or about the actor.
 - **Reach**: sum of views.
-- **SoV %**: share of total reach (or share of total posts when reach is unreliable — say which in one footnote).
+- **SoV %**: share of total reach (or share of total posts when reach is unreliable - say which in one footnote).
 - **Sentiment (Pro / Anti)**: `<pro count> / <anti count>`.
-- **Indicator**: ONE glyph convention, used consistently. Default: reach trajectory — 🟢 leading by reach, 🟡 contested, 🔴 trailing. (NOT sentiment.)
+- **Indicator**: ONE glyph convention, used consistently. Default: reach trajectory - 🟢 leading by reach, 🟡 contested, 🔴 trailing. (NOT sentiment.)
 
-**Data sources — two-signal UNION (load-bearing).** Build §5 from a UNION of two signals, presented in ONE table (not split across sections):
-- `social_listening.entity_metrics(...)` — exact-string match on `entities`.
-- `custom_fields.candidate_stance` — stance-tagged posts that mention the actor implicitly.
+**Data sources - two-signal UNION (load-bearing).** Build §5 from a UNION of two signals, presented in ONE table (not split across sections):
+- `social_listening.entity_metrics(...)` - exact-string match on `entities`.
+- `custom_fields.candidate_stance` - stance-tagged posts that mention the actor implicitly.
 
 Report `Posts` and `Reach` as the union, deduped by `post_id`. If the two signals diverge by >2×, add a one-line note ("entity-match: N; stance: M; reported: union").
 
@@ -229,7 +229,7 @@ Below the table, **1–2 paragraphs** that interpret the asymmetries (volume vs.
 
 *SoV % = share of total reach (22.6M). Counts UNION entity-match and stance-tagged posts; deduped by `post_id`.*
 
-**Strategic insight.** `<Rival1>`'s reach lead rests on a single viral mechanic (one `<Format>` item = 43% of his weekly reach); his **pro:anti ratio 1:2.5 is the worst in the field**. `<Subject>` holds a clean #2 with a stable sentiment profile and a credible gap to #3. The four trailing actors together produce 20.7% SoV — *less than `<Subject>` alone*.
+**Strategic insight.** `<Rival1>`'s reach lead rests on a single viral mechanic (one `<Format>` item = 43% of his weekly reach); his **pro:anti ratio 1:2.5 is the worst in the field**. `<Subject>` holds a clean #2 with a stable sentiment profile and a credible gap to #3. The four trailing actors together produce 20.7% SoV - *less than `<Subject>` alone*.
 """
 
 SEC_6_MD = f"""<a id="sec-6"></a>
@@ -239,11 +239,11 @@ SEC_6_MD = f"""<a id="sec-6"></a>
 
 **Agent instructions.** Every material actor in scope gets a sub-section, written as **flowing prose** (not a bullet list). Inclusion bar is data-driven: ≥ 20 mentions via either signal OR ≥ 100K reach. If 8 actors clear, write 8 sub-sections.
 
-**Header levels are load-bearing.** This section's heading is `## 6.`. Each actor sub-section uses `### <Actor> — "<dominant-narrative>"`. Never `##` for an actor sub-section.
+**Header levels are load-bearing.** This section's heading is `## 6.`. Each actor sub-section uses `### <Actor> - "<dominant-narrative>"`. Never `##` for an actor sub-section.
 
 Each sub-section opens with a 1–3 word "dominant narrative" tagline, then 2–4 paragraphs covering:
 
-- What they did well — cite the specific top posts inline (date, format, views, message, *why it worked*).
+- What they did well - cite the specific top posts inline (date, format, views, message, *why it worked*).
 - Where they were weak.
 - What they missed (the move the data shows they could have made but didn't).
 
@@ -253,39 +253,39 @@ Bold the asymmetric findings. A 2–3 row embedded table of the actor's top post
 
 **Reference example (one sub-section).**
 
-### `<Subject>` — *"initiative, under pressure"*
+### `<Subject>` - *"initiative, under pressure"*
 
-`<Subject>`'s week was structurally strong: the launch posted 1.27M views on the announcement alone, the formal merger created a coherent two-name brand without splitting reach, and `<Subject>` held the **#2 SoV position (20.5%)** with a stable sentiment profile (1 : 2.9 pro:anti). The strongest tactical move was the 1.1M-view post on `<TopicA>` — a hawkish signal that pre-empted `<RivalCamp>`'s "soft on `<TopicA>`" frame. **This is the post pattern to replicate**: short text, `<TopicA>`-anchored, morning window (07:30–09:00).
+`<Subject>`'s week was structurally strong: the launch posted 1.27M views on the announcement alone, the formal merger created a coherent two-name brand without splitting reach, and `<Subject>` held the **#2 SoV position (20.5%)** with a stable sentiment profile (1 : 2.9 pro:anti). The strongest tactical move was the 1.1M-view post on `<TopicA>` - a hawkish signal that pre-empted `<RivalCamp>`'s "soft on `<TopicA>`" frame. **This is the post pattern to replicate**: short text, `<TopicA>`-anchored, morning window (07:30–09:00).
 
 The weakness was **defensive posture against the "<AttackLine>"**. The libel-suit announcement scored well by its own measure (50K views, 8% engagement) but was 6× under-amplified vs. the aggregate attack (≈300K combined views across three accounts). The campaign treated it as a legal item rather than a narrative arc to be **reframed**.
 
-What `<Subject>` **missed**: the `<Rival2>` `<Event>` opening — 686K views of organic anger; `<Subject>` published zero posts using this story. Cost: an estimated 0.3–0.5M earned-reach equivalent on a converting frame.
+What `<Subject>` **missed**: the `<Rival2>` `<Event>` opening - 686K views of organic anger; `<Subject>` published zero posts using this story. Cost: an estimated 0.3–0.5M earned-reach equivalent on a converting frame.
 
 *(Repeat for every material actor in scope.)*
 """
 
 SEC_7_MD = f"""<a id="sec-7"></a>
-## 7. Chronology — what shaped the week
+## 7. Chronology - what shaped the week
 
 {VOICE}
 
 {BODY_SKELETON}
 
-**Agent instructions.** Three sub-sections. Numbers and dates here are the highest-risk surface for errors — build every cell from a single query result, not memory. Sub-section headers use `###` (not `##`).
+**Agent instructions.** Three sub-sections. Numbers and dates here are the highest-risk surface for errors - build every cell from a single query result, not memory. Sub-section headers use `###` (not `##`).
 
-**7a. Day-by-day table.** One row per day in the requested period — **every day, even if the data is sparse**. Sparse days are signal, not noise; mark them `—` rather than dropping the row.
+**7a. Day-by-day table.** One row per day in the requested period - **every day, even if the data is sparse**. Sparse days are signal, not noise; mark them `-` rather than dropping the row.
 
 | Date | Posts | Reach | Pro / Anti | Dominant emotion / one-line daily inflection |
 
-Fill missing days by left-joining against a generated date series, OR by explicitly listing every day in the period and marking blanks as `—`.
+Fill missing days by left-joining against a generated date series, OR by explicitly listing every day in the period and marking blanks as `-`.
 
-**7b. Format / channel performance.** A compact table over the same period. Rows are either platform × `content_type` (X-text, X-image, X-video, TikTok-video) **OR** `channel_type` (Official / Media / UGC / Influencer); pick whichever cuts the data best — one, not both.
+**7b. Format / channel performance.** A compact table over the same period. Rows are either platform × `content_type` (X-text, X-image, X-video, TikTok-video) **OR** `channel_type` (Official / Media / UGC / Influencer); pick whichever cuts the data best - one, not both.
 
 | Cut | Posts | Total reach | Avg reach / post | Share of reach % | Takeaway |
 
 Call out over- or under-performing formats relative to their volume.
 
-**7c. Inflection points.** In prose, name the 2–3 days that **changed the shape of the period** and what drove them. Each inflection cites specific post(s) — date, time, platform, account, views — sourced from the data. Tie each spike to either a verified external event (web grounding) or a specific post. Do not leave it as "volume rose".
+**7c. Inflection points.** In prose, name the 2–3 days that **changed the shape of the period** and what drove them. Each inflection cites specific post(s) - date, time, platform, account, views - sourced from the data. Tie each spike to either a verified external event (web grounding) or a specific post. Do not leave it as "volume rose".
 
 Reference the daily-volume line chart on the dashboard once.
 
@@ -297,17 +297,17 @@ Reference the daily-volume line chart on the dashboard once.
 
 | Date  | Posts | Reach | Pro / Anti | Daily inflection |
 | :---- | ----: | ----: | :--------: | :--------------- |
-| MM-DD |   391 |  4.1M |   95 / 130 | Launch — initiative |
+| MM-DD |   391 |  4.1M |   95 / 130 | Launch - initiative |
 | MM-DD |   368 |  3.4M |   82 / 121 | Foreign-policy signal; 1.1M post |
-| MM-DD |    —  |   —   |     —      | (sparse — only N posts; cause: <reason>) |
+| MM-DD |    -  |   -   |     -      | (sparse - only N posts; cause: <reason>) |
 
 **7b. Format / channel performance.**
 
 | Cut | Posts | Total reach | Avg reach / post | Share of reach % | Takeaway |
 | :--- | ----: | ----------: | ---------------: | ---------------: | :------- |
-| X — official statements | 12 | 1.55M | 129K | 10.5% | Few posts, huge per-post weight |
-| X — text commentary     | 482 | 2.58M | 5.4K |  17.5% | Workhorse format for argumentation |
-| TikTok — opinion video  |  17 | 434K  | 25K  |   2.9% | Punches above its volume |
+| X - official statements | 12 | 1.55M | 129K | 10.5% | Few posts, huge per-post weight |
+| X - text commentary     | 482 | 2.58M | 5.4K |  17.5% | Workhorse format for argumentation |
+| TikTok - opinion video  |  17 | 434K  | 25K  |   2.9% | Punches above its volume |
 
 **7c. Inflection points.**
 
@@ -316,7 +316,7 @@ Reference the daily-volume line chart on the dashboard once.
 """
 
 SEC_8A_MD = f"""<a id="sec-8a"></a>
-## 8a. Subject deep dive — top posts, pro & anti
+## 8a. Subject deep dive - top posts, pro & anti
 
 {VOICE}
 
@@ -324,13 +324,13 @@ SEC_8A_MD = f"""<a id="sec-8a"></a>
 
 **Agent instructions.** Two sub-tables, each ranked by views (engagement as tie-breaker). Sub-section headers use `###`.
 
-Use **this exact column schema for both tables — including the `Link` column** (mandatory; every cited post must point to its source URL):
+Use **this exact column schema for both tables - including the `Link` column** (mandatory; every cited post must point to its source URL):
 
 | Date | Platform | Format | Account | Views | Likes | Link | Message (1 line, original language) | Why it worked / landed | Replication template / Counter-move |
 
 - **Top 5 pro-subject posts.** Last column = **replication template**.
 - **Top 5 anti-subject posts.** Last column = **counter-move**.
-- **Link** column is `[view](URL)` — the actual `post_url` from the database. If the URL is missing, write `—` and add a footnote naming the missing-URL count.
+- **Link** column is `[view](URL)` - the actual `post_url` from the database. If the URL is missing, write `-` and add a footnote naming the missing-URL count.
 
 Query template:
 ```sql
@@ -380,7 +380,7 @@ GROUP BY emotion
 ORDER BY avg_reach DESC
 ```
 
-**If emotion enrichment is unavailable, REMOVE this widget** (`update_dashboard(layout_id, removals=["<this-i>"])`). Do NOT fabricate emotion analysis. Note the removal in the appendix's data-quality scoreboard. The sibling widgets 8c/8d KEEP their letters — do not renumber them to 8b/8c.
+**If emotion enrichment is unavailable, REMOVE this widget** (`update_dashboard(layout_id, removals=["<this-i>"])`). Do NOT fabricate emotion analysis. Note the removal in the appendix's data-quality scoreboard. The sibling widgets 8c/8d KEEP their letters - do not renumber them to 8b/8c.
 
 ---
 
@@ -388,8 +388,8 @@ ORDER BY avg_reach DESC
 
 | Emotion        | Posts | Avg Reach / Post | Total Reach | Implication                          |
 | :------------- | ----: | ---------------: | ----------: | :----------------------------------- |
-| trust          |    14 |          92,000 |       1.29M | High-performing tone — keep cadence |
-| anger          |     7 |          18,000 |        126K | Under-performs trust 5× — pull back |
+| trust          |    14 |          92,000 |       1.29M | High-performing tone - keep cadence |
+| anger          |     7 |          18,000 |        126K | Under-performs trust 5× - pull back |
 | excitement     |     5 |          71,000 |        355K | Strong on launch posts only         |
 
 **Implication.** The subject's reach concentrates in *trust-anchored* posts. Anger-tagged content under-performs by 5×. Recommendation: anger-tagged posts only when the news cycle demands them, not as a default tone.
@@ -408,7 +408,7 @@ Use this table schema:
 
 | Stance | Posts | Avg Reach / Post | Sentiment (Pro / Anti) |
 
-Below the table, **a one-line reconciliation note** with the §5 SoV row for the same actor — name the gap between entity-match and stance counts in absolute numbers, not in prose.
+Below the table, **a one-line reconciliation note** with the §5 SoV row for the same actor - name the gap between entity-match and stance counts in absolute numbers, not in prose.
 
 Query template:
 ```sql
@@ -448,7 +448,7 @@ SEC_8D_MD = f"""<a id="sec-8d"></a>
 
 **Agent instructions.** A candid list of opportunities the subject did **not** capitalize on. Each item names:
 - The specific opportunity (with date and one-line description).
-- The cost (lost reach, ceded narrative ground, missed news cycle — quantified).
+- The cost (lost reach, ceded narrative ground, missed news cycle - quantified).
 - Why it matters strategically.
 
 This sub-section is what separates an analyst from a clipping service. **Do not soften.** If the campaign missed something, say so plainly and price it.
@@ -468,9 +468,9 @@ SEC_9_MD = f"""<a id="sec-9"></a>
 
 {BODY_SKELETON}
 
-**Agent instructions.** A table of live narrative clusters covering the period. Use `list_topics` to pull semantic clusters — reference **at least 5–10 by name** in the body.
+**Agent instructions.** A table of live narrative clusters covering the period. Use `list_topics` to pull semantic clusters - reference **at least 5–10 by name** in the body.
 
-Schema (the `Reach` column is mandatory — without it cluster importance is unintelligible):
+Schema (the `Reach` column is mandatory - without it cluster importance is unintelligible):
 
 | Cluster | Posts | Reach | Lead voices (handles) | Status | Recommended response |
 
@@ -498,7 +498,7 @@ Reference the word-cloud widget once.
 
 **Cross-platform note.** The launch reads as **coalition / strategy** on X (high pro/anti ratio, policy-flavored discussion) but reads as **personality / character** on TikTok (heavy anti-subject emotional content). Narrative tools must be platform-specific.
 
-**Branded-hashtag adoption.** Campaign hashtag `<#TAG>` appears in 89 posts (3.6% of corpus) — under-adopted for a launch week. Rival hashtag `<#RIVAL_TAG>` appears in 142 posts.
+**Branded-hashtag adoption.** Campaign hashtag `<#TAG>` appears in 89 posts (3.6% of corpus) - under-adopted for a launch week. Rival hashtag `<#RIVAL_TAG>` appears in 142 posts.
 """
 
 SEC_10_MD = f"""<a id="sec-10"></a>
@@ -512,7 +512,7 @@ SEC_10_MD = f"""<a id="sec-10"></a>
 
 | Platform | Post share % | Reach share % | Pro % | Anti % | Audience implication |
 
-One paragraph below naming the asymmetry and what it implies *strategically*. The Sentiment Mix doughnut and Platform Mix bar are the visual anchors — reference once.
+One paragraph below naming the asymmetry and what it implies *strategically*. The Sentiment Mix doughnut and Platform Mix bar are the visual anchors - reference once.
 
 If the corpus is single-platform, REMOVE this widget rather than writing "n/a" prose.
 
@@ -533,7 +533,7 @@ SEC_11_MD = f"""<a id="sec-11"></a>
 
 {VOICE}
 
-**Agent instructions.** Three sub-sections (`###` headers). The Top Channels widget on the dashboard is the data source — *interpret* it, do not re-table it.
+**Agent instructions.** Three sub-sections (`###` headers). The Top Channels widget on the dashboard is the data source - *interpret* it, do not re-table it.
 
 **11a. Top channels.** Reference the widget's top 10 channels by handle. In one paragraph: which are official, which are media, which are UGC; who is amplifying the subject; who is amplifying rivals.
 
@@ -566,8 +566,8 @@ SEC_12_MD = f"""<a id="sec-12"></a>
 **Agent instructions.** Who is actually doing the talking. Three to four short paragraphs covering:
 
 - **Dominant cohorts** (age band, region, language, platform skew where the data supports it).
-- **Named influencer accounts** with handles — not "various influencers".
-- **Audience overlap with adjacent actors** — when commenters under subject posts also engage with rival accounts. **Quantify the overlap explicitly** (e.g., "41% of accounts commenting on the subject's launch also commented on `<Rival>` within the prior 14 days"). Without a number, the section's load-bearing finding is missing.
+- **Named influencer accounts** with handles - not "various influencers".
+- **Audience overlap with adjacent actors** - when commenters under subject posts also engage with rival accounts. **Quantify the overlap explicitly** (e.g., "41% of accounts commenting on the subject's launch also commented on `<Rival>` within the prior 14 days"). Without a number, the section's load-bearing finding is missing.
 - **Persuasion targets vs. lost causes.** Who is gettable, who is not, with one line each.
 
 If demographic enrichment isn't available, replace claims with what *is* observable: handle patterns, follower-count distributions, time-of-engagement patterns. Do not fabricate cohort descriptions.
@@ -591,9 +591,9 @@ SELECT
 
 **Reference example.**
 
-The dominant pro-`<Subject>` cohort on X is **center-`<wing>` adults 35–55**, identifiable by handle patterns (heavy concentration of `<patternA>`, military-rank prefixes, reservist-flagged bios). Engagement clusters in 07:00–10:00 — workday morning, consistent with a working professional base. On TikTok the pro-`<Subject>` audience is materially younger and **smaller** — average post engagement < 1/4 of the X analog.
+The dominant pro-`<Subject>` cohort on X is **center-`<wing>` adults 35–55**, identifiable by handle patterns (heavy concentration of `<patternA>`, military-rank prefixes, reservist-flagged bios). Engagement clusters in 07:00–10:00 - workday morning, consistent with a working professional base. On TikTok the pro-`<Subject>` audience is materially younger and **smaller** - average post engagement < 1/4 of the X analog.
 
-**Load-bearing overlap finding.** 41% of accounts commenting on the subject's launch post also commented on `<Rival3>` launch content within the prior 14 days. This is a **persuasion-target zone**, not a loyalty base — these voters are shopping for an alternative.
+**Load-bearing overlap finding.** 41% of accounts commenting on the subject's launch post also commented on `<Rival3>` launch content within the prior 14 days. This is a **persuasion-target zone**, not a loyalty base - these voters are shopping for an alternative.
 
 **Lost causes:** the anti-`<Subject>` TikTok cohort engaging with the "<AttackLine>" line shows near-zero crossover into pro-`<Subject>` content (3% overlap). Do not spend energy here.
 """
@@ -609,7 +609,7 @@ SEC_13_MD = f"""<a id="sec-13"></a>
 
 | Risk | Area | Urgency | Recommended action |
 
-- Urgency: `critical` / `high` / `medium` / `low`. Use sparingly — not everything is critical.
+- Urgency: `critical` / `high` / `medium` / `low`. Use sparingly - not everything is critical.
 
 **Opportunities.**
 
@@ -626,35 +626,35 @@ SEC_13_MD = f"""<a id="sec-13"></a>
 
 | Risk | Area | Urgency | Recommended action |
 | :--- | :--- | :------ | :----------------- |
-| "<AttackLine>" consolidates into `<RivalCamp>` doctrine | Defensive — character | **critical** | Counter-narrative arc within 72h; see 14.1 |
-| TikTok anti-skew compounds with no `<Subject>` TikTok answer | Defensive — platform | high | Daily on-camera TikTok 18:00–22:00 |
+| "<AttackLine>" consolidates into `<RivalCamp>` doctrine | Defensive - character | **critical** | Counter-narrative arc within 72h; see 14.1 |
+| TikTok anti-skew compounds with no `<Subject>` TikTok answer | Defensive - platform | high | Daily on-camera TikTok 18:00–22:00 |
 
 **Opportunities.**
 
 | Opportunity | Size (est.) | Time window | Recommended next move |
 | :---------- | :---------- | :---------- | :-------------------- |
-| `<Rival2>` `<Event>` — "responsible `<Wing>`" reframe | 0.3–0.5M earned reach | 48h | Split-screen video; see 14.2 |
+| `<Rival2>` `<Event>` - "responsible `<Wing>`" reframe | 0.3–0.5M earned reach | 48h | Split-screen video; see 14.2 |
 """
 
 SEC_14_INTRO_MD = f"""<a id="sec-14"></a>
-## 14. Operational recommendations — detailed
+## 14. Operational recommendations - detailed
 
 {VOICE}
 
-**Agent instructions for the whole §14.** The long form of the recommendations from §4. Each lives in its own sub-section widget (14.1 through 14.5). If §4 lists fewer than 5, REMOVE the unused sub-section widgets via `update_dashboard(layout_id, removals=[...])`. Do not leave empty placeholders. Do not renumber after removal — 14.4 stays 14.4 even if 14.3 was dropped.
+**Agent instructions for the whole §14.** The long form of the recommendations from §4. Each lives in its own sub-section widget (14.1 through 14.5). If §4 lists fewer than 5, REMOVE the unused sub-section widgets via `update_dashboard(layout_id, removals=[...])`. Do not leave empty placeholders. Do not renumber after removal - 14.4 stays 14.4 even if 14.3 was dropped.
 
 Required content per recommendation:
 
-1. **Quantitative justification** — the finding from this report that motivates it, cited by section.
-2. **Execution plan** — calendar table: `Day | Time | Channel | Format | Template`.
+1. **Quantitative justification** - the finding from this report that motivates it, cited by section.
+2. **Execution plan** - calendar table: `Day | Time | Channel | Format | Template`.
 3. **Specific accounts / formats / times** to target.
-4. **Success KPI** — what measurement says it worked, and the threshold.
+4. **Success KPI** - what measurement says it worked, and the threshold.
 
 Generic recommendations ("increase engagement", "use more video") fail the specificity test and must be cut.
 """
 
 SEC_14_X_MD_TEMPLATE = f"""<a id="sec-14-{{n}}"></a>
-### 14.{{n}} — `<headline matching §4 item {{n}}>`
+### 14.{{n}} - `<headline matching §4 item {{n}}>`
 
 {VOICE}
 
@@ -662,7 +662,7 @@ SEC_14_X_MD_TEMPLATE = f"""<a id="sec-14-{{n}}"></a>
 
 Required structure:
 - **Justification (cite §X, §Y, …).** Specific findings from earlier sections.
-- **Execution plan** — calendar table: `Day | Time | Channel | Format | Template`. Time windows must be specific ("09:00–09:30"), not vague ("morning").
+- **Execution plan** - calendar table: `Day | Time | Channel | Format | Template`. Time windows must be specific ("09:00–09:30"), not vague ("morning").
 - **Target accounts for amplification.** Named handles, with one-line "why this account".
 - **Success KPI.** Specific threshold and time window.
 
@@ -672,7 +672,7 @@ Required structure:
 
 **Justification (§4, §5, §9, §13).** Three pro-`<RivalCamp>` posts (combined 308K views) carried "<AttackLine>". `<Subject>`'s libel-suit response (50K views) is 6× under-amplified. Cluster `<Subject> mental fitness` is flagged `dangerous` in §9.
 
-**Execution plan — 72h cadence.**
+**Execution plan - 72h cadence.**
 
 | Day  | Time  | Channel             | Format            | Template |
 | :--- | :---: | :------------------ | :---------------- | :------- |
@@ -680,13 +680,13 @@ Required structure:
 | Day 1 | 19:00 | @<subject>_movement + 4 aligned influencers | quote-card image | Side-by-side comparison |
 | Day 2 | 09:00 | @<subject>_tiktok | 45s video | On-camera response monologue, no studio set |
 
-**Target accounts for amplification:** @ally1, @ally2, @ally3 — confirmed aligned center-`<wing>` (§11c).
+**Target accounts for amplification:** @ally1, @ally2, @ally3 - confirmed aligned center-`<wing>` (§11c).
 
 **Success KPI.** Cumulative reach ≥ 600K within 72h (2× the original attack). Sentiment ratio on the libel-suit narrative shifts from 2.1 : 1 (pro) to ≥ 4 : 1.
 """
 
 APPENDIX_MD = f"""<a id="sec-app"></a>
-## Appendix — External context & methodology
+## Appendix - External context & methodology
 
 {VOICE}
 
@@ -696,10 +696,10 @@ APPENDIX_MD = f"""<a id="sec-app"></a>
 
 ### A. External context (web grounding)
 
-**MANDATORY — ≥ 5 sources with WORKING article URLs.** Polls, press articles, web research, market data, third-party reports. Use **web grounding** to pull current sources.
+**MANDATORY - ≥ 5 sources with WORKING article URLs.** Polls, press articles, web research, market data, third-party reports. Use **web grounding** to pull current sources.
 
 - Each entry: one-line summary, markdown link `[label](url)`, and the specific section it grounds (e.g. "grounds 7c inflection MM-DD").
-- **URL hygiene.** Links must point to a specific article, poll page, or report — NOT to a Google/Bing search results URL. SERP URLs do not count as grounding.
+- **URL hygiene.** Links must point to a specific article, poll page, or report - NOT to a Google/Bing search results URL. SERP URLs do not count as grounding.
 - Group by type when there are enough (Polls / Press / Market / Official / Regulatory).
 - Run web grounding for each inflection point in 7c and any anomaly explanation in the body.
 - A source that doesn't connect to a specific body finding doesn't earn its place.
@@ -709,14 +709,14 @@ APPENDIX_MD = f"""<a id="sec-app"></a>
 **Reference example.**
 
 #### Polls
-- **[<Outlet> — <Pollster> (YYYY-MM-DD)](https://outlet.example/polls/2026-05).** `<Subject>` bloc projected at 36 seats vs. `<Rival1>` 27. **Grounds §4** consolidation claim.
+- **[<Outlet> - <Pollster> (YYYY-MM-DD)](https://outlet.example/polls/2026-05).** `<Subject>` bloc projected at 36 seats vs. `<Rival1>` 27. **Grounds §4** consolidation claim.
 
 #### Press
-- **[<Outlet> — "<Headline>" (YYYY-MM-DD)](https://outlet.example/article-id).** Launch coverage; **grounds §7c inflection MM-DD**.
-- **[<Outlet2> — "<Headline2>" (YYYY-MM-DD)](https://outlet2.example/article).** Attack-line coverage; **grounds §9 cluster `<cluster>`**.
+- **[<Outlet> - "<Headline>" (YYYY-MM-DD)](https://outlet.example/article-id).** Launch coverage; **grounds §7c inflection MM-DD**.
+- **[<Outlet2> - "<Headline2>" (YYYY-MM-DD)](https://outlet2.example/article).** Attack-line coverage; **grounds §9 cluster `<cluster>`**.
 
 #### Market / context
-- **[<Institution> — <Report> (YYYY-Q2)](https://institution.example/reports/q2-2026).** 31% trust in `<institution>`; **grounds §12 audience cohort**.
+- **[<Institution> - <Report> (YYYY-Q2)](https://institution.example/reports/q2-2026).** 31% trust in `<institution>`; **grounds §12 audience cohort**.
 
 ---
 
@@ -725,13 +725,13 @@ APPENDIX_MD = f"""<a id="sec-app"></a>
 **Agent instructions.** Transparent about what the data does and does not cover. One short paragraph + a structured list.
 
 Required fields:
-- **Data scope** — agent ID, total source-collection count.
-- **Period** — exact start / end timestamps.
-- **Corpus** — total posts (raw / dedup), platform mix, language mix.
-- **Classification taxonomy** — sentiment categories, stance values, topic-cluster count from `list_topics`, emotion categories.
-- **Tools used in this run** — `entity_metrics`, `execute_sql` queries, `list_topics`, web-grounding queries.
-- **External sources consulted** — count, with link to Part A.
-- **Data-quality scoreboard** (required) — per-field non-null coverage:
+- **Data scope** - agent ID, total source-collection count.
+- **Period** - exact start / end timestamps.
+- **Corpus** - total posts (raw / dedup), platform mix, language mix.
+- **Classification taxonomy** - sentiment categories, stance values, topic-cluster count from `list_topics`, emotion categories.
+- **Tools used in this run** - `entity_metrics`, `execute_sql` queries, `list_topics`, web-grounding queries.
+- **External sources consulted** - count, with link to Part A.
+- **Data-quality scoreboard** (required) - per-field non-null coverage:
 
 | Field | Non-null % | Notes |
 | :---- | ---------: | :---- |
@@ -753,13 +753,13 @@ FROM social_listening.scope_posts(@agent_id)
 WHERE posted_at BETWEEN @period_start AND @period_end
 ```
 
-- **Known data gaps** — platforms missing, periods sparse, voices absent, enrichment fields not populated. Be specific.
+- **Known data gaps** - platforms missing, periods sparse, voices absent, enrichment fields not populated. Be specific.
 
 **Confident silence beats false synthesis.** If a finding upstream was hedged because of a data gap, name the gap here.
 """
 
 
-# ─── Chart widgets — copy verbatim from v2 ──────────────────────────────────
+# ─── Chart widgets - copy verbatim from v2 ──────────────────────────────────
 
 
 def _chart_widgets() -> list[dict]:
@@ -916,7 +916,7 @@ def write_template(dry_run: bool) -> None:
     print(f"  max y: {max(w['y'] + w['h'] for w in layout)}")
 
     if dry_run:
-        print("\nDRY RUN — not writing to Firestore.")
+        print("\nDRY RUN - not writing to Firestore.")
         return
 
     fs = get_fs()

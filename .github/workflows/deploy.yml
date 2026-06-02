@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       # Smoke build skips SEO prerender (DISABLE_PRERENDER) so the gate never
-      # touches puppeteer/Chromium — keeps the gate fast and reliable.
+      # touches puppeteer/Chromium - keeps the gate fast and reliable.
       - name: Build frontend (dev mode - no Firebase)
         working-directory: frontend
         env:

@@ -1,4 +1,4 @@
-# X-API cost rows never priced — provider-name mismatch hid them in admin
+# X-API cost rows never priced - provider-name mismatch hid them in admin
 
 ## Repro
 - A user runs collections through the X (Twitter) adapter (and/or fetches
@@ -21,24 +21,24 @@ Two related gaps:
    because its `crawl_provider` already matches the rate-table key.
 
 2. **Comments worker never priced.** `workers/comments/worker.py` calls X
-   API but issues no `cost_meter.log_cost` — every reply-tree fetch costs
+   API but issues no `cost_meter.log_cost` - every reply-tree fetch costs
    money and was invisible to BigQuery + the wallet.
 
 ## Fix
-- `config/cost_rates.py` — add `normalize_provider()` and a small alias map
+- `config/cost_rates.py` - add `normalize_provider()` and a small alias map
   (`{"xapi": "x_api"}`); `compute_cost_micros` calls it before the rate
   lookup so every caller benefits.
-- `api/services/cost_meter.py` + `api/services/usage_service.py` — normalize
+- `api/services/cost_meter.py` + `api/services/usage_service.py` - normalize
   the `provider` value before the BQ row is written so historical "xapi"
   rows + new ones converge on the canonical "x_api" label in admin views.
-- `api/services/usage_service.py::_log_event` — also write `agent_id`
+- `api/services/usage_service.py::_log_event` - also write `agent_id`
   (added param + ContextVar fallback) so legacy event types (`scrape`)
   participate in the new per-agent admin rollup.
-- `workers/comments/worker.py` — log one `cost_meter.log_cost(provider=
+- `workers/comments/worker.py` - log one `cost_meter.log_cost(provider=
   "x_api", feature="comments", units=len(comments) + 1)` per run; +1
   accounts for the root-tweet lookup we issue to resolve the
   `conversation_id`.
-- `api/routers/posts.py::fetch_post_comments_endpoint` — thread `user_id` +
+- `api/routers/posts.py::fetch_post_comments_endpoint` - thread `user_id` +
   `org_id` into the task payload so cost attribution survives even in dev
   mode where `workers/server.py` context binding is bypassed.
 
@@ -51,18 +51,18 @@ admin cost-by-provider for every user.
   (exercises the COALESCE-NULL-to-"_unassigned" path used by the new
   per-agent admin rollup, which depends on `_log_event` writing
   `agent_id`).
-- Existing `api/tests/test_cost_meter.py` (12 cases) still pass — the
+- Existing `api/tests/test_cost_meter.py` (12 cases) still pass - the
   provider-normalize call sits before the row build and is a no-op for
   already-canonical names.
 
-## Related — second & third silent bugs in the same area
+## Related - second & third silent bugs in the same area
 
 While verifying the fix two more cost-attribution gaps surfaced:
 
 1. **`cost_meter.log_cost` had no context fallback for `user_id`.**
    `workers/collection/adapters/apify.py` passed `user_id=""` thinking the
    bound `collection_context_scope` (from `workers/server.py`) would fill
-   it — but only `log_gemini_response` actually read the context. Every
+   it - but only `log_gemini_response` actually read the context. Every
    priced Apify run since cost telemetry shipped landed with empty
    `user_id`, hidden from the per-user admin breakdown. Fixed by reading
    `user_id`/`org_id`/`collection_id`/`agent_id` from the ContextVar
@@ -70,7 +70,7 @@ While verifying the fix two more cost-attribution gaps surfaced:
    `api/tests/test_cost_meter.py::test_log_cost_inherits_user_id_from_collection_context`.
 
 2. **Apify cost-extraction key path was wrong.** `apify.py::_run_actor`
-   looked for `run["usage"]["totalUsageUsd"]` — but the Apify API
+   looked for `run["usage"]["totalUsageUsd"]` - but the Apify API
    exposes the total USD at the **run top level** as `usageTotalUsd`.
    `run["usage"]` is the per-resource (compute units, dataset writes)
    dict; it has NO USD key. Result: Apify never reported a cost number,

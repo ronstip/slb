@@ -36,7 +36,7 @@ ignoring two other equally-strong signals:
 
 ## Fix
 
-[api/auth/dependencies.py](../../api/auth/dependencies.py) —
+[api/auth/dependencies.py](../../api/auth/dependencies.py) -
 `_resolve_real_user` now bypasses the allowlist when
 `_has_invite_or_membership(uid, email)` returns true:
 
@@ -55,7 +55,7 @@ ignoring two other equally-strong signals:
 
 `InviteHandler` could distinguish 403 "allowlist" from 403 "email
 mismatch" by looking at the response detail string. Today both render the
-same "Wrong Account" card. Not blocking now — once this backend fix
+same "Wrong Account" card. Not blocking now - once this backend fix
 deploys, allowlist 403 stops happening for invitees. Leave as polish.
 
 ## Commit / branch

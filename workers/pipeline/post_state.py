@@ -7,17 +7,17 @@ class PostState(str, Enum):
     """State of an individual post in the pipeline DAG.
 
     Non-terminal states represent posts actively progressing.
-    Terminal states (stumps) are final — the post stops here.
+    Terminal states (stumps) are final - the post stops here.
     """
 
-    # Non-terminal — actively progressing
+    # Non-terminal - actively progressing
     COLLECTED_WITH_MEDIA = "collected_with_media"
     DOWNLOADING = "downloading"
     READY_FOR_ENRICHMENT = "ready_for_enrichment"
     ENRICHING = "enriching"
     ENRICHED = "enriched"
 
-    # Terminal — stumps
+    # Terminal - stumps
     DONE = "done"
     MISSING_MEDIA = "missing_media"
     DOWNLOAD_FAILED = "download_failed"
@@ -65,7 +65,7 @@ RETRY_MAP: dict[PostState, PostState] = {
     PostState.EMBEDDING_FAILED: PostState.ENRICHED,
 }
 
-# Map failure stump states to the step that produced them — used to bump the
+# Map failure stump states to the step that produced them - used to bump the
 # per-post attempt counter (attempts.<step>) on transition.
 FAILURE_TO_STEP: dict[PostState, str] = {
     PostState.DOWNLOAD_FAILED: "download",

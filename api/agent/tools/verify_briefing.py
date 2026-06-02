@@ -1,4 +1,4 @@
-"""Verify Briefing Tool — independent quality check before publication.
+"""Verify Briefing Tool - independent quality check before publication.
 
 Sits between ``generate_briefing`` and ``compose_briefing`` in autonomous mode.
 Pulls ground-truth facts directly from BigQuery, sends the briefing draft +
@@ -34,7 +34,7 @@ def verify_briefing(tool_context: ToolContext) -> dict:
 
     WHEN NOT TO USE:
       - In chat mode (this is autonomous-only).
-      - More than twice per run — the second call is your retry budget.
+      - More than twice per run - the second call is your retry budget.
       - Before ``generate_briefing`` (there's nothing to verify).
 
     Args:
@@ -54,12 +54,12 @@ def verify_briefing(tool_context: ToolContext) -> dict:
     if not agent_id or not run_id:
         return {
             "status": "error",
-            "message": "No active agent or run — cannot verify briefing.",
+            "message": "No active agent or run - cannot verify briefing.",
         }
     if not collection_ids:
         return {
             "status": "error",
-            "message": "No collections in scope — cannot pull ground-truth facts.",
+            "message": "No collections in scope - cannot pull ground-truth facts.",
         }
 
     # Track call count to prevent verify-loop pathology.
@@ -71,7 +71,7 @@ def verify_briefing(tool_context: ToolContext) -> dict:
             "verdict": "PARTIAL",
             "message": (
                 f"verify_briefing already called {call_count - 1} times this run "
-                "— that's the budget. Proceed to compose_briefing with whatever "
+                "- that's the budget. Proceed to compose_briefing with whatever "
                 "fixes you've made, or accept partial verification."
             ),
             "findings": [],
@@ -160,7 +160,7 @@ def _gather_ground_truth(
 ) -> dict[str, Any]:
     """Pull a small packet of sanity-check facts from BigQuery.
 
-    Reads through the `scope_posts` TVF — same gate the agent uses, so
+    Reads through the `scope_posts` TVF - same gate the agent uses, so
     verification facts reflect the same scope and dedup rules. Date and
     collection filters are applied via WHERE.
     """
@@ -190,7 +190,7 @@ def _gather_ground_truth(
     if total_posts == 0:
         return {
             "total_posts": 0,
-            "note": "No posts found in scope — verifier cannot reconcile.",
+            "note": "No posts found in scope - verifier cannot reconcile.",
         }
 
     sentiment_rows = bq.query(
@@ -344,14 +344,14 @@ def _format_message(verdict: dict) -> str:
     n_high = sum(1 for f in findings if (f.get("severity") or "").lower() == "high")
 
     if v == "PASS":
-        return f"PASS — {summary} Proceed to compose_briefing."
+        return f"PASS - {summary} Proceed to compose_briefing."
     if v == "PARTIAL":
         return (
-            f"PARTIAL — {summary} {len(findings)} finding(s), {n_high} high-severity. "
+            f"PARTIAL - {summary} {len(findings)} finding(s), {n_high} high-severity. "
             "Review findings, fix the briefing via generate_briefing, then compose_briefing."
         )
     return (
-        f"FAIL — {summary} {len(findings)} finding(s), {n_high} high-severity. "
+        f"FAIL - {summary} {len(findings)} finding(s), {n_high} high-severity. "
         "Do NOT publish. Re-call generate_briefing with corrected claims, "
         "then verify_briefing once more before compose_briefing."
     )

@@ -97,7 +97,7 @@ export function CommentsDrawer({ open, onOpenChange, post, agentId }: CommentsDr
         description: err instanceof Error ? err.message : 'Unknown error',
       });
     },
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   const threads = useMemo(
@@ -178,7 +178,7 @@ export function CommentsDrawer({ open, onOpenChange, post, agentId }: CommentsDr
         {commentsSupported && (
           <div className="border-t px-4 py-3 flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              Replies are append-only — refetch to pull new ones.
+              Replies are append-only - refetch to pull new ones.
             </span>
             <div className="flex gap-2">
               <Button

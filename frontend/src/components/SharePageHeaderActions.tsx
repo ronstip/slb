@@ -4,7 +4,7 @@ import { Button } from './ui/button.tsx';
 interface SharePageHeaderActionsProps {
   downloading: boolean;
   copied: boolean;
-  /** Omit to hide the Download button (e.g. presentation shares — no DOM to capture). */
+  /** Omit to hide the Download button (e.g. presentation shares - no DOM to capture). */
   onDownload?: () => void;
   onShare: () => void;
 }

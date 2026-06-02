@@ -1,4 +1,4 @@
-"""Unit tests for _resolve_referenced_post — the helper that builds the
+"""Unit tests for _resolve_referenced_post - the helper that builds the
 ReferencedPost enrichment context from either (1) the dep's DAG state +
 BQ row, or (2) the parent's defensive `platform_metadata.referenced_post`
 cache when the dep didn't enter the DAG.
@@ -29,7 +29,7 @@ def _row_with_metadata(meta: dict | None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# DAG path — awaits_dep_post_id is set, dep is in DAG
+# DAG path - awaits_dep_post_id is set, dep is in DAG
 # ---------------------------------------------------------------------------
 
 def test_dag_path_uses_dep_bq_content_and_state_media():
@@ -74,7 +74,7 @@ def test_dag_path_replied_to_type_is_preserved():
 
 
 def test_dag_path_falls_back_to_defensive_cache_when_dep_bq_missing():
-    """Dep was in DAG (awaits set) but BQ query returned 0 rows — race between
+    """Dep was in DAG (awaits set) but BQ query returned 0 rows - race between
     parent claim and dep insertion. Fall back to defensive cache."""
     post_state = {"awaits_dep_post_id": "8000", "enrichment_dependency_type": "quoted"}
     ctx = _ctx(dep_post_state={"media_refs": []}, dep_bq_rows=[])
@@ -105,7 +105,7 @@ def test_dag_path_handles_dep_with_no_media_refs_field():
 
 
 # ---------------------------------------------------------------------------
-# Defensive cache path — no awaits_dep, dep didn't enter DAG
+# Defensive cache path - no awaits_dep, dep didn't enter DAG
 # ---------------------------------------------------------------------------
 
 def test_defensive_cache_used_when_no_awaits_dep():
@@ -115,7 +115,7 @@ def test_defensive_cache_used_when_no_awaits_dep():
             "text": "the source said this", "author": "bob",
         },
     })
-    ctx = _ctx()  # no DAG dep — bq + state_manager won't be consulted
+    ctx = _ctx()  # no DAG dep - bq + state_manager won't be consulted
 
     ref = _resolve_referenced_post({}, parent_row, ctx)
 
@@ -156,7 +156,7 @@ def test_returns_none_when_metadata_lacks_referenced_post_key():
 
 
 def test_returns_none_when_referenced_post_has_no_text():
-    """Dep was deleted/protected — defensive cache only has id+type. Useless
+    """Dep was deleted/protected - defensive cache only has id+type. Useless
     for context, so we don't waste tokens with an empty Context block."""
     parent_row = _row_with_metadata({
         "referenced_post": {"id": "8000", "type": "quoted"},  # no text
@@ -170,7 +170,7 @@ def test_returns_none_when_metadata_json_is_malformed():
 
 
 def test_returns_none_when_referenced_type_is_unrecognized():
-    """Future-proof — if we ever store a type we don't expect, ignore it."""
+    """Future-proof - if we ever store a type we don't expect, ignore it."""
     parent_row = _row_with_metadata({
         "referenced_post": {"type": "retweeted", "text": "RT body", "author": "bob"},
     })
@@ -178,7 +178,7 @@ def test_returns_none_when_referenced_type_is_unrecognized():
 
 
 # ---------------------------------------------------------------------------
-# Robustness — exceptions in dep lookup don't crash enrichment
+# Robustness - exceptions in dep lookup don't crash enrichment
 # ---------------------------------------------------------------------------
 
 def test_state_manager_exception_falls_through_to_defensive_cache():

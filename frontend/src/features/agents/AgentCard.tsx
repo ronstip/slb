@@ -137,12 +137,12 @@ function describeDataWindow(task: Agent): string {
 }
 
 function formatCount(n: number): string {
-  if (n === 0) return '—';
+  if (n === 0) return '-';
   if (n >= 1000) return n.toLocaleString();
   return String(n);
 }
 
-// ── Stats card — Mentions / Sentiment / Sparkline ──
+// ── Stats card - Mentions / Sentiment / Sparkline ──
 function StatsRow({ task, data }: { task: Agent; data?: FeedResponse }) {
   const total = data?.total ?? 0;
   const sentiment = useMemo(() => {
@@ -154,14 +154,14 @@ function StatsRow({ task, data }: { task: Agent; data?: FeedResponse }) {
       return acc;
     }, 0);
     if (score === 0) return null;
-    // Scale up so the value reads as "+12" / "−3" — mirrors the design.
+    // Scale up so the value reads as "+12" / "−3" - mirrors the design.
     const total = posts.length || 1;
     return Math.round((score / total) * 24);
   }, [data]);
 
   const sentimentLabel =
     sentiment === null
-      ? '—'
+      ? '-'
       : sentiment > 0
         ? `+${sentiment}`
         : sentiment < 0
@@ -297,7 +297,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
   const [renameValue, setRenameValue] = useState('');
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
-  // Single source of truth for the card's posts data — feeds both the
+  // Single source of truth for the card's posts data - feeds both the
   // thumbnail collage and the Mentions / Sentiment stats footer.
   const collectionIds = task.collection_ids;
   const startDate = task.data_start_date;
@@ -435,7 +435,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
     }
   };
 
-  // Non-owners get a read-only view of a shared agent — owner-only mutations
+  // Non-owners get a read-only view of a shared agent - owner-only mutations
   // (run, stop, pause, schedule, rename, archive) are hidden.
   const canRun =
     isOwner && RUNNABLE_STATUSES.includes(task.status) && task.status !== 'running';
@@ -489,7 +489,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
               compact={compact}
               agentId={task.agent_id}
             />
-            {/* Status badge — overlay on thumbnail top-right (simple mode only) */}
+            {/* Status badge - overlay on thumbnail top-right (simple mode only) */}
             {simple && (
               <div className="absolute right-2 top-2 z-20">
                 <StatusBadge status={task.status} paused={task.paused} />
@@ -525,7 +525,7 @@ export function AgentCard({ task, compact, simple, skipThumbnails, onClick }: Ta
 
               {sharedBadge && <div className="mb-1.5">{sharedBadge}</div>}
 
-              {/* Meta info — hidden in compact mode */}
+              {/* Meta info - hidden in compact mode */}
               {!compact && (
                 <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
                   <span className="flex items-center gap-1">

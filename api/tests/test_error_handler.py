@@ -1,6 +1,6 @@
 """Tests for the global exception handler + safe_error_detail.
 
-Keeps these small and self-contained — building a tiny FastAPI app per test
+Keeps these small and self-contained - building a tiny FastAPI app per test
 avoids pulling Firestore/BQ deps from `api.main` into the test process.
 """
 
@@ -47,7 +47,7 @@ def test_unhandled_exception_returns_safe_body_with_request_id() -> None:
 
 
 def test_unhandled_exception_uses_unknown_when_request_id_missing() -> None:
-    # No X-Request-ID header — middleware generates one. The handler must
+    # No X-Request-ID header - middleware generates one. The handler must
     # still emit it (not "unknown"), so the FE has a correlation id.
     client = TestClient(_build_app(), raise_server_exceptions=False)
     res = client.get("/boom")
@@ -58,7 +58,7 @@ def test_unhandled_exception_uses_unknown_when_request_id_missing() -> None:
 
 
 def test_handler_can_read_request_id_in_isolation() -> None:
-    """Sanity check that get_request_id() works inside an asyncio context —
+    """Sanity check that get_request_id() works inside an asyncio context -
     the handler reads it before composing the response."""
 
     async def _go() -> str | None:

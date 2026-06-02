@@ -65,7 +65,7 @@ export function FeedControls({
 
   function toggleCollection(id: string) {
     if (collectionFilter.length === 0) {
-      // Currently all shown — uncheck means show everyone except this one
+      // Currently all shown - uncheck means show everyone except this one
       onCollectionFilterChange(
         activeSources.map((s) => s.collectionId).filter((cid) => cid !== id),
       );
@@ -130,7 +130,7 @@ export function FeedControls({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              {/* Collection filter — only when 2+ active */}
+              {/* Collection filter - only when 2+ active */}
               {activeSources.length >= 2 && (
                 <>
                   <DropdownMenuLabel className="text-[10px]">Collection</DropdownMenuLabel>

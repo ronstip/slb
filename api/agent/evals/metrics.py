@@ -5,14 +5,14 @@ event stream so a baseline run is comparable to a candidate run weeks later
 without re-spending tokens.
 
 Headline metrics (the ones we'll move on this refactor):
-  - output_tokens          — total agent text tokens
-  - tool_calls_total       — every tool invocation
-  - tool_calls_unique      — distinct (tool_name, sha1(args)) pairs
-  - duplicate_action_count — total - unique. Headline metric for Problem 3.
-  - turns_to_completion    — number of turns
-  - preamble_tokens        — text tokens emitted BEFORE the first tool call
+  - output_tokens          - total agent text tokens
+  - tool_calls_total       - every tool invocation
+  - tool_calls_unique      - distinct (tool_name, sha1(args)) pairs
+  - duplicate_action_count - total - unique. Headline metric for Problem 3.
+  - turns_to_completion    - number of turns
+  - preamble_tokens        - text tokens emitted BEFORE the first tool call
                              each turn. Tracks Problem 1 (forced preamble).
-  - restated_tokens        — text tokens after a tool result that overlap
+  - restated_tokens        - text tokens after a tool result that overlap
                              with prior text in the same scenario. Crude
                              proxy for Problem 2 (repetition).
 

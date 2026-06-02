@@ -79,7 +79,7 @@ class TemplateTheme:
         self.dk2 = _hex_to_rgbcolor(colors.get("dk2", _DEFAULT_COLORS["dk2"]))
         self.lt2 = _hex_to_rgbcolor(colors.get("lt2", _DEFAULT_COLORS["lt2"]))
 
-        # Accent colors (1-6) — accent1 can be overridden by user preference
+        # Accent colors (1-6) - accent1 can be overridden by user preference
         accent1_hex = accent_override or colors.get("accent1", _DEFAULT_COLORS["accent1"])
         self.accent1 = _hex_to_rgbcolor(accent1_hex)
         self.accent2 = _hex_to_rgbcolor(colors.get("accent2", _DEFAULT_COLORS["accent2"]))
@@ -101,7 +101,7 @@ class TemplateTheme:
         lt1_brightness = (lt1_r * 299 + lt1_g * 587 + lt1_b * 114) / 1000
         self._template_is_dark = lt1_brightness < 140
 
-        # Convenience aliases — adapt to template darkness
+        # Convenience aliases - adapt to template darkness
         dark = self._template_is_dark
         self.accent = self.accent1
         # In dark templates: dk1=white (fg), lt1=dark bg, dk2=lighter muted, lt2=lighter surface
@@ -119,7 +119,7 @@ class TemplateTheme:
         The template's inherent dark/light nature drives all color decisions.
         The user's accent_color preference can override accent1 for emphasis,
         but it does NOT override the template's background/foreground scheme.
-        The user's theme preference (light/dark) is ignored for presentations —
+        The user's theme preference (light/dark) is ignored for presentations -
         the template is the authority.
         """
         accent_override = None

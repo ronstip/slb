@@ -1,12 +1,12 @@
-"""List Topics Tool — ranked semantic clusters for the active agent.
+"""List Topics Tool - ranked semantic clusters for the active agent.
 
 Topics are semantic clusters of posts built automatically after enrichment
 ([workers/clustering/worker.py]). The clusterer embeds each post's AI summary,
 runs density-based clustering, and attempts to auto-label each cluster using
 Gemini. Labels are sometimes generic ("Topic 1", "Topic 7") for large clusters
-the labeler couldn't name cleanly — those are still legitimate signal.
+the labeler couldn't name cleanly - those are still legitimate signal.
 
-Reads from `social_listening.topic_metrics(@agent_id)` — a single TVF call
+Reads from `social_listening.topic_metrics(@agent_id)` - a single TVF call
 that pre-materialises per-cluster aggregates, sample posts, thumbnails, and
 the composite signal score used for ranking.
 """
@@ -64,7 +64,7 @@ def list_topics(
             "topics": [
                 {
                     "topic_id": str,
-                    "topic_name": str,               # may be "Topic N" — provisional
+                    "topic_name": str,               # may be "Topic N" - provisional
                     "topic_keywords": [str],
                     "topic_summary": str,
                     "post_count": int,

@@ -73,10 +73,10 @@ def render(baseline_dir: Path, candidate_dir: Path) -> str:
         a = base_by.get(sid, {})
         b = cand_by.get(sid, {})
         if not a:
-            out.append(f"| **{sid}** | — | — | — | — | — (candidate only) |")
+            out.append(f"| **{sid}** | - | - | - | - | - (candidate only) |")
             continue
         if not b:
-            out.append(f"| **{sid}** | — | — | — | — | — (baseline only) |")
+            out.append(f"| **{sid}** | - | - | - | - | - (baseline only) |")
             continue
         out.append(
             f"| **{sid}** | "
@@ -103,7 +103,7 @@ def render(baseline_dir: Path, candidate_dir: Path) -> str:
                 f"`{json.dumps(d.get('args') or {}, default=str)[:160]}`"
             )
     if not any_dups:
-        out.append("*(none — clean run)*")
+        out.append("*(none - clean run)*")
     out.append("")
 
     # ── Judge scores (if both runs were judged) ─────────────────────────
@@ -115,7 +115,7 @@ def render(baseline_dir: Path, candidate_dir: Path) -> str:
             a = base_j["averages"].get(key)
             b = cand_j["averages"].get(key)
             if a is None or b is None:
-                out.append(f"| {key} | {a} | {b} | — |")
+                out.append(f"| {key} | {a} | {b} | - |")
             else:
                 out.append(f"| {key} | {a} | {b} | {b - a:+.2f} |")
         out.append("")

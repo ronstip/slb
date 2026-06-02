@@ -42,7 +42,7 @@ export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent, compact 
       // Guard: don't send if agent is already responding
       if (useChatStore.getState().isAgentResponding) return;
       sendSystemMessage(
-        `[CONTINUE] All collections for task "${title ?? 'unknown'}" complete. ${totalPosts ?? 0} posts collected and enriched. Resume remaining todos — analyze the data and deliver findings.`,
+        `[CONTINUE] All collections for task "${title ?? 'unknown'}" complete. ${totalPosts ?? 0} posts collected and enriched. Resume remaining todos - analyze the data and deliver findings.`,
       );
     };
     window.addEventListener('collection-complete', handler);
@@ -75,7 +75,7 @@ export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent, compact 
       const totalPosts = taskCollections.reduce((sum, s) => sum + (s.postsCollected ?? 0), 0);
       mountContinuationFiredRef.current = true;
       sendSystemMessage(
-        `[CONTINUE] All collections for task "${task.title ?? 'unknown'}" complete. ${totalPosts} posts collected and enriched. Resume remaining todos — analyze the data and deliver findings.`,
+        `[CONTINUE] All collections for task "${task.title ?? 'unknown'}" complete. ${totalPosts} posts collected and enriched. Resume remaining todos - analyze the data and deliver findings.`,
       );
       break; // Only continue one task at a time
     }
@@ -89,7 +89,7 @@ export function ChatPanel({ hideHeader, hideWelcome, emptyStateContent, compact 
 
   return (
     <main data-testid="chat-panel" className={cn('flex flex-1 flex-col overflow-hidden', compact ? 'compact-chat bg-transparent' : 'bg-background md:min-w-[480px]')}>
-      {/* Top bar — collection + task selectors */}
+      {/* Top bar - collection + task selectors */}
       {!hideHeader && (
         <div className="flex shrink-0 items-center gap-2 px-4 py-2">
           <TaskSelector />

@@ -1,4 +1,4 @@
-// Public legal pages — Privacy Policy, Terms of Service, Refund Policy.
+// Public legal pages - Privacy Policy, Terms of Service, Refund Policy.
 //
 // These are reachable from the landing-page footer and are required for the
 // Lemon Squeezy (merchant-of-record) account review. Styling intentionally
@@ -15,6 +15,7 @@ import { type ReactNode, type CSSProperties } from 'react';
 import { Link } from 'react-router';
 import { useHead } from '@unhead/react';
 import { ScoltoMark } from '../components/Logo.tsx';
+import { SiteFooter } from '../landing/SiteFooter.tsx';
 
 // ── Brand tokens (subset of LandingPage's LP_BRAND) ─────────────────────────
 const C = {
@@ -36,7 +37,7 @@ const BODY = "'Inter Tight', sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
 // Legal party named in the Terms/Privacy. Scolto is run as an Israeli sole
-// proprietorship (עוסק פטור/מורשה), so there is no company name — the operator's
+// proprietorship (עוסק פטור/מורשה), so there is no company name - the operator's
 // personal identity and registration number are intentionally NOT published
 // (sensitive personal data). Those live in the Lemon Squeezy account KYC and are
 // disclosed on request. Governing law: Israel.
@@ -169,24 +170,8 @@ function LegalShell({
         </div>
       </main>
 
-      {/* Footer */}
-      <footer style={{ padding: '32px', background: C.footerBg, color: C.footerText }}>
-        <div style={{
-          maxWidth: 760, margin: '0 auto', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', gap: 24, flexWrap: 'wrap',
-        }}>
-          <Link to="/" style={{ textDecoration: 'none' }}><Logo onDark /></Link>
-          <div style={{ display: 'flex', gap: 24, fontFamily: BODY, fontSize: 13 }}>
-            {LEGAL_LINKS.map((l) => (
-              <Link key={l.to} to={l.to} style={{ color: C.footerText, textDecoration: 'none' }}>{l.label}</Link>
-            ))}
-            <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: C.footerText, textDecoration: 'none' }}>Contact</a>
-          </div>
-        </div>
-        <div style={{ maxWidth: 760, margin: '20px auto 0', paddingTop: 16, borderTop: '1px solid #2A2520' }}>
-          <Mono size={9.5} color={C.footerMuted}>© 2026 Scolto — the first AI agent on social</Mono>
-        </div>
-      </footer>
+      {/* Footer - shared site footer (same as landing page) */}
+      <SiteFooter />
     </div>
   );
 }
@@ -269,11 +254,11 @@ export function PrivacyPage() {
         We share data with vetted providers who process it on our behalf under contract, including:
       </P>
       <UL>
-        <li><strong>Google Cloud Platform &amp; Firebase</strong> — hosting, database, authentication.</li>
-        <li><strong>Google Vertex AI / Gemini</strong> — AI model processing.</li>
-        <li><strong>Lemon Squeezy</strong> — payments and billing (merchant of record).</li>
-        <li><strong>Licensed data providers</strong> — supply of public social and web content.</li>
-        <li><strong>Analytics and infrastructure providers</strong> — performance and security.</li>
+        <li><strong>Google Cloud Platform &amp; Firebase</strong> - hosting, database, authentication.</li>
+        <li><strong>Google Vertex AI / Gemini</strong> - AI model processing.</li>
+        <li><strong>Lemon Squeezy</strong> - payments and billing (merchant of record).</li>
+        <li><strong>Licensed data providers</strong> - supply of public social and web content.</li>
+        <li><strong>Analytics and infrastructure providers</strong> - performance and security.</li>
       </UL>
       <P>
         We may also disclose information to comply with law, to protect our rights and users, or as

@@ -1,1 +1,1 @@
-"""LLM-taxonomy topic clustering — embedding-free alternative to brothers_v1."""
+"""LLM-taxonomy topic clustering - embedding-free alternative to brothers_v1."""

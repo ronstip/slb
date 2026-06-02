@@ -11,7 +11,7 @@ import { openTopUp } from '../features/settings/topup-host.tsx';
  * - Errors only. Success is usually self-evident; we don't toast it.
  * - Credit problems (`insufficient_credit` / `trial_expired`) get a LONGER
  *   toast plus a "Buy credit" action that opens the top-up dialog in place.
- * - Globally-handled statuses (401 sign-out, `account_blocked` redirect — both
+ * - Globally-handled statuses (401 sign-out, `account_blocked` redirect - both
  *   done in api/client.ts) are suppressed here to avoid a redundant toast.
  */
 
@@ -36,7 +36,7 @@ export function mapError(p: ParsedError, fallback?: string): ToastPlan {
     silent: opts.silent ?? false,
   });
 
-  // Handled elsewhere — stay quiet.
+  // Handled elsewhere - stay quiet.
   if (p.status === 401 || p.code === 'account_blocked') return plan('', { silent: true });
 
   // Credit problems → long toast + Buy-credit action.
@@ -68,9 +68,9 @@ export function mapError(p: ParsedError, fallback?: string): ToastPlan {
     case 403:
       return plan("You don't have access to that.");
     case 429:
-      return plan("You're going a bit fast — try again in a moment.");
+      return plan("You're going a bit fast - try again in a moment.");
     case 501:
-      return plan("Payments aren't enabled yet — please check back soon.");
+      return plan("Payments aren't enabled yet - please check back soon.");
   }
   if (p.status && p.status >= 500) {
     return plan('Something went wrong on our end. Please try again.');

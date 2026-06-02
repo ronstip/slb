@@ -26,7 +26,7 @@ export function abortAllChatStreams(): void {
  * Native EventSource doesn't support POST or custom headers.
  *
  * Auth headers (including the `X-Impersonate-User-Id` header for "View as
- * User" sessions) come from the shared `buildAuthHeaders()` helper — do
+ * User" sessions) come from the shared `buildAuthHeaders()` helper - do
  * NOT hand-roll them here, or SSE will bypass impersonation.
  */
 export async function* streamChat(

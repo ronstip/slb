@@ -1,4 +1,4 @@
-"""Dashboard sharing router — CRUD for share tokens + public data endpoint."""
+"""Dashboard sharing router - CRUD for share tokens + public data endpoint."""
 
 import asyncio
 import logging
@@ -48,7 +48,7 @@ def resolve_current_dashboard_title(fs_db, dashboard_id: str, fallback: str) -> 
     for collection in ("explorer_layouts", "artifacts"):
         try:
             doc = fs_db.collection(collection).document(dashboard_id).get()
-        except Exception:  # noqa: BLE001 — best-effort lookup
+        except Exception:  # noqa: BLE001 - best-effort lookup
             continue
         if not doc.exists:
             continue
@@ -121,7 +121,7 @@ async def create_share(
     request: CreateDashboardShareRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Create a shareable link for a dashboard. Idempotent — returns existing if active."""
+    """Create a shareable link for a dashboard. Idempotent - returns existing if active."""
     fs = get_fs()
 
     _assert_can_access_collections(fs, user, request.collection_ids)
@@ -164,7 +164,7 @@ async def create_custom_slug_share(
     """Create a vanity-URL shareable link. Super-admin only.
 
     Replaces any previous custom slug for the same dashboard. Coexists with
-    the standard random-token share — the random link keeps working untouched.
+    the standard random-token share - the random link keeps working untouched.
     """
     if user.impersonated_by is not None or not is_super_admin_email(user.email):
         raise HTTPException(status_code=403, detail="Super admin access required")
@@ -180,7 +180,7 @@ async def create_custom_slug_share(
     if fs.get_dashboard_share(request.slug):
         raise HTTPException(status_code=409, detail="slug_taken")
 
-    # One custom slug per dashboard — revoke the previous one if it exists.
+    # One custom slug per dashboard - revoke the previous one if it exists.
     previous = fs.get_custom_share_by_dashboard(request.dashboard_id)
     if previous:
         fs.revoke_dashboard_share(previous["token"])
@@ -260,14 +260,14 @@ async def get_shared_dashboard(
     request: Request,  # required by slowapi
     token: str,
 ):
-    """Public endpoint — serves shared dashboard data without authentication."""
+    """Public endpoint - serves shared dashboard data without authentication."""
     fs = get_fs()
     share = fs.get_dashboard_share(token)
 
     if not share or share.get("revoked"):
         raise HTTPException(status_code=404, detail="Dashboard not found or link has been revoked")
 
-    # Resolve live title — the share doc freezes the title at create time;
+    # Resolve live title - the share doc freezes the title at create time;
     # owner renames go to explorer_layouts / artifacts and never touch the
     # share doc. Look up the current title so renames propagate to the link.
     current_title = await asyncio.to_thread(
@@ -300,7 +300,7 @@ async def get_shared_dashboard(
             orientation = layout_data.get("orientation")
             report_scope = layout_data.get("reportScope")
             filter_bar_hidden = layout_data.get("filterBarHidden")
-    except Exception:  # noqa: BLE001 — layout is non-critical, fall back to defaults
+    except Exception:  # noqa: BLE001 - layout is non-critical, fall back to defaults
         logger.exception("Failed to load layout for shared dashboard %s", token)
 
     bq = get_bq()
@@ -320,7 +320,7 @@ async def get_shared_dashboard(
                     fs._db.collection("dashboard_shares").document(token).update,
                     {"agent_id": agent_id},
                 )
-            except Exception:  # noqa: BLE001 — best-effort backfill
+            except Exception:  # noqa: BLE001 - best-effort backfill
                 logger.exception("Failed to backfill agent_id on share %s", token)
 
     name_rows = await asyncio.to_thread(
@@ -332,7 +332,7 @@ async def get_shared_dashboard(
     }
 
     if not agent_id:
-        # Orphan share — collections were never linked to an agent. Return
+        # Orphan share - collections were never linked to an agent. Return
         # empty rather than running cross-agent SQL that conflicts with the
         # rest of the agent-scoped surfaces.
         asyncio.create_task(_record_access(fs, token))

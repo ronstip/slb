@@ -51,7 +51,7 @@ def test_check_or_register_dry_run_after_register():
 
 
 def test_check_or_register_handles_missing_context():
-    # No tool_context (some test paths) — should not crash, just no-op the dedup.
+    # No tool_context (some test paths) - should not crash, just no-op the dedup.
     key = action_key("t", {"x": 1})
     assert check_or_register(None, key, dry_run=True) is None
     assert check_or_register(None, key, artifact_id="x") is None

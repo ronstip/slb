@@ -1,5 +1,5 @@
 """Regression: wizard planner must issue two Gemini calls when search grounding
-is enabled — one search-grounded research call, then one schema-strict synthesis
+is enabled - one search-grounded research call, then one schema-strict synthesis
 call with no tools.
 
 Background: response_schema (controlled generation) is incompatible with the
@@ -78,13 +78,13 @@ def test_two_calls_when_grounding_enabled(monkeypatch, stub_cost_meter):
     assert result.status == "plan"
     assert len(fake.calls) == 2, "expected 2 Gemini calls (research + synthesis)"
 
-    # Call 1: research — search tool attached, NO response_schema.
+    # Call 1: research - search tool attached, NO response_schema.
     c1 = fake.calls[0]["config"]
     assert c1.tools and any(t.google_search is not None for t in c1.tools), \
         "research call must include google_search tool"
     assert c1.response_schema is None, "research call must NOT use response_schema"
 
-    # Call 2: synthesis — schema attached, NO tools.
+    # Call 2: synthesis - schema attached, NO tools.
     c2 = fake.calls[1]["config"]
     assert c2.response_schema is not None, "synthesis call must use response_schema"
     assert not c2.tools, "synthesis call must NOT pass tools alongside schema"
@@ -153,7 +153,7 @@ def test_research_failure_falls_back_to_single_call(monkeypatch, stub_cost_meter
 
 def test_no_research_when_answering_clarifications(monkeypatch, stub_cost_meter):
     """Once user has answered prior clarification questions, the research step
-    is skipped — we already know enough to plan, and a second turn shouldn't
+    is skipped - we already know enough to plan, and a second turn shouldn't
     repeat the search."""
     fake = _FakeClient([SimpleNamespace(text=_plan_json())])
     monkeypatch.setattr(wizard_planner.genai, "Client", lambda **kw: fake)

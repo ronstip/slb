@@ -4,7 +4,7 @@ Reads Firestore directly (no API auth) and prints:
   1. The agent doc summary.
   2. Each artifact in agent.artifact_ids (existence + key fields).
   3. Orphan artifacts: docs whose session_id matches one of agent.session_ids
-     but whose id is NOT in agent.artifact_ids — the smoking gun for an
+     but whose id is NOT in agent.artifact_ids - the smoking gun for an
      add_agent_artifact failure.
   4. Per-session generate_presentation function_response events found in the
      stored ADK events, with their result payload.
@@ -96,7 +96,7 @@ def inspect(agent_id: str, repair: bool) -> int:
     print("=" * 70)
     orphans: list[tuple[str, dict]] = []
     if not session_ids:
-        print("  (no session_ids on agent — skipping orphan query)")
+        print("  (no session_ids on agent - skipping orphan query)")
     else:
         # Firestore "in" supports up to 30 values per query.
         chunks = [session_ids[i : i + 30] for i in range(0, len(session_ids), 30)]
@@ -107,7 +107,7 @@ def inspect(agent_id: str, repair: bool) -> int:
                     continue
                 orphans.append((doc.id, doc.to_dict()))
         if not orphans:
-            print("  (none — every session-scoped artifact is linked to the agent)")
+            print("  (none - every session-scoped artifact is linked to the agent)")
         else:
             print(f"  Found {len(orphans)} orphan(s):")
             for aid, d in orphans:
@@ -260,7 +260,7 @@ def inspect(agent_id: str, repair: bool) -> int:
     print()
 
     # Look for the "Analysis agent completed" log line that fires at the
-    # end of _async_agent_continuation — its presence/absence tells us
+    # end of _async_agent_continuation - its presence/absence tells us
     # whether the runner loop terminated cleanly (and therefore whether
     # _persist_continuation_artifacts ever had a chance to run).
     print("=" * 70)
@@ -280,7 +280,7 @@ def inspect(agent_id: str, repair: bool) -> int:
                      or "Recurring run completed" in (log.get("message") or "")))
         ]
         if not analysis_done:
-            print("  ⚠  No 'Analysis agent completed' log found — the runner")
+            print("  ⚠  No 'Analysis agent completed' log found - the runner")
             print("     loop in _async_agent_continuation did NOT terminate")
             print("     cleanly. Events were emitted but the post-loop")
             print("     _persist_continuation_artifacts call never ran, so")
@@ -316,7 +316,7 @@ def inspect(agent_id: str, repair: bool) -> int:
         })
         print(f"  Linked {len(ids_to_add)} artifact(s): {ids_to_add}")
     elif repair:
-        print("REPAIR: nothing to do — no orphans found.")
+        print("REPAIR: nothing to do - no orphans found.")
 
     return 0
 

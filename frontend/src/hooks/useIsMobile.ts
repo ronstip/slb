@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Tracks whether the viewport is below the given breakpoint (default 768px —
+ * Tracks whether the viewport is below the given breakpoint (default 768px -
  * Tailwind's `md`). Use for the handful of places that need to switch layout
  * in JS (e.g. forcing the card view on the agents list); prefer Tailwind
  * `md:` utilities for pure-CSS responsiveness.

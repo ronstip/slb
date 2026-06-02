@@ -1,7 +1,7 @@
 """Transcript dataclasses and event extraction for the eval harness.
 
 A transcript is the canonical record of one scenario run. All metrics and
-the judge work off transcripts — they never re-run the agent. This means
+the judge work off transcripts - they never re-run the agent. This means
 a baseline run can be compared against a candidate run weeks later without
 re-spending model tokens.
 """
@@ -85,7 +85,7 @@ def extract_events(adk_event, turn_idx: int) -> list[TranscriptEvent]:
     author = getattr(adk_event, "author", "agent") or "agent"
 
     for part in adk_event.content.parts:
-        # Skip partial streaming chunks — final events repeat them.
+        # Skip partial streaming chunks - final events repeat them.
         if getattr(adk_event, "partial", False):
             continue
 

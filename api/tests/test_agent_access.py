@@ -286,7 +286,7 @@ class _ReconcileFS:
 
 
 def test_reconcile_stamps_org_id_on_orphan_agents(monkeypatch):
-    """User joined an org after creating agents — their old agents have
+    """User joined an org after creating agents - their old agents have
     org_id=None and the UI can't share them. Reconcile must stamp the new org."""
     fake = _ReconcileFS([
         {"agent_id": "a1", "user_id": "u", "org_id": None,
@@ -318,7 +318,7 @@ def test_reconcile_is_noop_when_org_matches(monkeypatch):
 
 def test_reconcile_unshares_when_switching_orgs(monkeypatch):
     """User left orgA (where agent was shared) and joined orgB. The share
-    must NOT silently follow them into orgB — reset to private."""
+    must NOT silently follow them into orgB - reset to private."""
     fake = _ReconcileFS([
         {"agent_id": "a1", "user_id": "u", "org_id": "orgA",
          "visibility": "org", "collection_ids": ["c1"]},

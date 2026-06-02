@@ -227,7 +227,7 @@ def test_collect_tiktok_fans_out_per_keyword_with_top_section():
         return []
 
     with patch.object(adapter, "_run_and_parse", side_effect=_capture):
-        # _collect_tiktok is a generator (streams batches per-keyword) — drain
+        # _collect_tiktok is a generator (streams batches per-keyword) - drain
         # it so the futures actually execute.
         list(adapter._collect_tiktok({
             "keywords": ["alo yoga", "lululemon", "athleta"],
@@ -306,7 +306,7 @@ def test_collect_facebook_caps_max_results_at_1000():
 
 
 # ---------------------------------------------------------------------------
-# Instagram — apidojo/instagram-hashtag-scraper
+# Instagram - apidojo/instagram-hashtag-scraper
 # ---------------------------------------------------------------------------
 
 def _build_ig_adapter() -> ApifyAdapter:
@@ -373,7 +373,7 @@ def test_collect_instagram_warns_and_ignores_channel_urls():
 def test_collect_instagram_concats_multi_word_keywords():
     """IG hashtag scraper matches contiguous hashtag tokens only. Multi-word
     phrases get collapsed by `_hashtag_url` so #sociallistening works when
-    the concat is a real hashtag. When it isn't, IG prefix-matches — noisy
+    the concat is a real hashtag. When it isn't, IG prefix-matches - noisy
     but visible, so enrichment can filter. We send the run rather than
     dropping the keyword so that 0 posts means "no matches" not "silent skip"
     (whitespace-only entries are still dropped)."""
@@ -400,7 +400,7 @@ def test_collect_instagram_concats_multi_word_keywords():
 
 def test_collect_instagram_runs_when_all_keywords_multi_word():
     """If every keyword is multi-word, still run with concat'd hashtags
-    rather than silently skipping — caller relies on a real attempt so that
+    rather than silently skipping - caller relies on a real attempt so that
     0 posts means 'no matches', not 'didn't run'."""
     adapter = _build_ig_adapter()
 

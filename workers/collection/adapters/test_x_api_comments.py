@@ -1,4 +1,4 @@
-"""Unit tests for XAPIAdapter.fetch_comments — mocks XAPIClient so tests run offline.
+"""Unit tests for XAPIAdapter.fetch_comments - mocks XAPIClient so tests run offline.
 
 Covers:
 - Comment + Channel rows produced from a paged /search/all response.
@@ -35,7 +35,7 @@ def _settings(**overrides) -> Settings:
 
 
 def _build_adapter(**setting_overrides):
-    """Return (adapter, settings_patch) — caller starts the patch so it stays
+    """Return (adapter, settings_patch) - caller starts the patch so it stays
     alive across both __init__ and fetch_comments (which calls get_settings)."""
     s = _settings(**setting_overrides)
     settings_patch = patch("workers.collection.adapters.x_api.get_settings", return_value=s)

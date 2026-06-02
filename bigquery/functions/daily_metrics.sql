@@ -2,15 +2,15 @@
 --
 -- Per-day analytics for a single agent's scoped posts. Returns one row for
 -- EVERY DATE in [p_start, p_end] (empty days kept with zero/NULL metrics),
--- with both quantitative aggregates and qualitative top-N JSON summaries —
+-- with both quantitative aggregates and qualitative top-N JSON summaries -
 -- everything an LLM needs to read the dataset day-by-day.
 --
 -- Filters / params (NULL = sensible default):
---   p_start    — inclusive lower bound on posted_at; NULL → MIN(posted_at)
+--   p_start    - inclusive lower bound on posted_at; NULL → MIN(posted_at)
 --                across the agent's scoped corpus (which itself respects
 --                the agent's data_start_date floor via `scope_posts`)
---   p_end      — inclusive upper bound on posted_at; NULL → CURRENT_TIMESTAMP()
---   p_timezone — IANA timezone for the day bucket and dow label; NULL → 'UTC'
+--   p_end      - inclusive upper bound on posted_at; NULL → CURRENT_TIMESTAMP()
+--   p_timezone - IANA timezone for the day bucket and dow label; NULL → 'UTC'
 --
 -- Day bucket = DATE(posted_at, COALESCE(p_timezone, 'UTC')).
 -- Channel uniqueness keyed on (platform, channel_handle), same as entity_metrics.
@@ -28,7 +28,7 @@
 --   [{post_id, url, platform, channel_handle, posted_at, content_type,
 --     sentiment, ai_summary, engagement, views}]
 --
--- custom_fields_stats: same auto-discovery cascade as `entity_metrics` —
+-- custom_fields_stats: same auto-discovery cascade as `entity_metrics` -
 -- a JSON object keyed by every top-level custom_fields key observed that day,
 -- with type/value-count/numeric-stat summaries.
 

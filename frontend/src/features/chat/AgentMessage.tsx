@@ -60,7 +60,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
 
   return (
     <div className="flex gap-3 overflow-hidden max-w-3xl">
-      {/* Avatar — agent's BotAvatar when in agent context, otherwise the brand mark. */}
+      {/* Avatar - agent's BotAvatar when in agent context, otherwise the brand mark. */}
       <div className="mt-0.5 shrink-0">
         {activeAgentId ? (
           <BotAvatar seed={activeAgentId} size={32} className="border border-border/50" />
@@ -155,7 +155,7 @@ export function AgentMessage({ message, onSuggestionClick }: AgentMessageProps) 
           }
         })}
 
-        {/* Artifact cards — 2-column grid */}
+        {/* Artifact cards - 2-column grid */}
         {artifactCards.length > 0 && (
           <div className="mt-3 grid grid-cols-2 gap-2.5">
             {artifactCards.map((card, i) => (

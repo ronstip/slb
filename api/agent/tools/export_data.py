@@ -17,12 +17,12 @@ def export_data(
     as a CSV or spreadsheet. Returns all posts with engagement metrics and
     enrichment data (sentiment, themes, entities, AI summary).
 
-    Supports multi-collection exports — the output includes a `collection_id`
+    Supports multi-collection exports - the output includes a `collection_id`
     column for attribution when exporting across multiple collections.
 
     Args:
         collection_ids: List of collection IDs to export. Preferred parameter.
-        collection_id: Single collection ID (deprecated — use collection_ids).
+        collection_id: Single collection ID (deprecated - use collection_ids).
 
     Returns:
         A dictionary with status, rows (list of dicts), row_count, and column_names.

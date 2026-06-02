@@ -37,7 +37,7 @@ describe('detectDirection', () => {
   });
 
   it('returns ltr for numbers and punctuation only', () => {
-    expect(detectDirection(['1,234 · 56% — 7.89'])).toBe('ltr');
+    expect(detectDirection(['1,234 · 56% - 7.89'])).toBe('ltr');
   });
 
   it('handles mixed null and string samples', () => {

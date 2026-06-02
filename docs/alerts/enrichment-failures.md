@@ -49,7 +49,7 @@ Cloud Logging entry, `severity=ERROR`:
 
 1. Query Cloud Logging with the structured filter above and extract
    `collection_id`, `post_ids`, and `reason`.
-2. If `reason=empty_result`, the model call returned no JSON rows — usually a
+2. If `reason=empty_result`, the model call returned no JSON rows - usually a
    prompt-length or safety filter issue. Inspect the posts' content/media.
 3. If `reason=exception`, follow the `exc_info` stacktrace. Common causes:
    GCS fetch timeouts on media, Vertex rate limits, malformed media refs.

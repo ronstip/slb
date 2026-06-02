@@ -12,7 +12,7 @@ from workers.collection.adapters.x_api_parsers import (
 
 
 # ---------------------------------------------------------------------------
-# Fixtures — minimal shapes mirroring real /2/tweets/search/all responses.
+# Fixtures - minimal shapes mirroring real /2/tweets/search/all responses.
 # ---------------------------------------------------------------------------
 
 def _includes(
@@ -102,7 +102,7 @@ def test_reply_tweet_populates_referenced_post_snapshot():
 
 
 def test_referenced_post_snapshot_id_only_when_not_hydrated():
-    """Deleted/protected source — ref id present, but includes.tweets is empty."""
+    """Deleted/protected source - ref id present, but includes.tweets is empty."""
     tweet = _quote_tweet()
     includes = _includes(referenced=None)  # nothing in includes.tweets
 
@@ -183,7 +183,7 @@ def test_index_tweets_by_id_handles_missing_ids_and_empty_includes():
 
 
 # ---------------------------------------------------------------------------
-# Backwards-compat — existing fields still parse correctly
+# Backwards-compat - existing fields still parse correctly
 # ---------------------------------------------------------------------------
 
 def test_parent_post_id_still_set_for_quote():
@@ -200,7 +200,7 @@ def test_parent_post_id_still_set_for_reply():
 
 
 def test_enrichment_dependency_fields_default_none():
-    """parse_x_post does NOT set enrichment_dependency_* — that's the adapter's job."""
+    """parse_x_post does NOT set enrichment_dependency_* - that's the adapter's job."""
     tweet = _quote_tweet()
     post = parse_x_post(tweet, _includes(referenced=_quoted_source_tweet()))
     assert post.enrichment_dependency_post_id is None

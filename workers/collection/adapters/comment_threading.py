@@ -27,7 +27,7 @@ def resolve_comment_roots(comments: list[Comment], post_id: str) -> None:
         visited: set[str] = set()
         while True:
             if cur.comment_id in visited:
-                # Cycle — defensive; well-formed platforms shouldn't produce one.
+                # Cycle - defensive; well-formed platforms shouldn't produce one.
                 c.root_comment_id = c.comment_id
                 break
             visited.add(cur.comment_id)
@@ -36,7 +36,7 @@ def resolve_comment_roots(comments: list[Comment], post_id: str) -> None:
                 break
             parent = by_id.get(cur.replied_to_id)
             if parent is None:
-                # Ancestor not in this batch — fall back to self.
+                # Ancestor not in this batch - fall back to self.
                 c.root_comment_id = c.comment_id
                 break
             cur = parent

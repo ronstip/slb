@@ -66,7 +66,7 @@ export function SharedArtifactPage() {
 
   // The app shell sets a global body min-width: 1280px for desktop-only
   // surfaces. The public share page is a viral landing surface that must
-  // render on phones — drop the constraint while mounted, restore on unmount.
+  // render on phones - drop the constraint while mounted, restore on unmount.
   useEffect(() => {
     const prev = document.body.style.minWidth;
     document.body.style.minWidth = '0';
@@ -83,7 +83,7 @@ export function SharedArtifactPage() {
 
   const style = data ? ARTIFACT_STYLES[data.meta.type] ?? ARTIFACT_STYLES.chart : null;
 
-  // Presentation shares are downloadable .pptx files — no DOM to capture as
+  // Presentation shares are downloadable .pptx files - no DOM to capture as
   // PDF. Hide the Download button for that type; the body renders its own
   // .pptx download link.
   const supportsPdf = data?.meta.type === 'chart' || data?.meta.type === 'data_export';

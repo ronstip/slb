@@ -58,20 +58,20 @@ export function AgentChatTab({
   const collapseStudioPanel = useUIStore((s) => s.collapseStudioPanel);
   const [resizing, setResizing] = useState(false);
 
-  // Search-in-chat state — local to this tab.
+  // Search-in-chat state - local to this tab.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   useCollectionsSync();
   useCollectionPolling();
 
-  // Force-collapse the Workspace panel on chat tab entry — keeps the chat
+  // Force-collapse the Workspace panel on chat tab entry - keeps the chat
   // surface focused. Users can still expand it from its rail handle.
   useEffect(() => {
     collapseStudioPanel();
   }, [collapseStudioPanel]);
 
-  // Consume `compose` search param once — seed the chat composer then strip it
+  // Consume `compose` search param once - seed the chat composer then strip it
   // from the URL so refresh/back-nav doesn't re-apply it.
   useEffect(() => {
     if (!compose) return;
@@ -174,7 +174,7 @@ export function AgentChatTab({
         </ErrorBoundary>
       </div>
 
-      {/* Right: Workspace sidebar — desktop only; the rail/resize UX doesn't
+      {/* Right: Workspace sidebar - desktop only; the rail/resize UX doesn't
           translate to mobile, where chat needs the full width. */}
       <aside
         className="relative hidden shrink-0 overflow-hidden border-l border-border bg-card md:block"

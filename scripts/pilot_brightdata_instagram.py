@@ -1,15 +1,15 @@
 """One-off pilot: trigger Bright Data's Instagram dataset, dump raw output, summarize.
 
-Stage 1 gating step for the IG redesign — confirms BD's per-hashtag yield, Reels
+Stage 1 gating step for the IG redesign - confirms BD's per-hashtag yield, Reels
 view-count fill rate, sort order, and field shape BEFORE we wire IG into the
 production BrightDataAdapter.
 
-The BD IG dataset ID is not yet hardcoded in the codebase — find it in your
+The BD IG dataset ID is not yet hardcoded in the codebase - find it in your
 Bright Data dashboard under "Web Data Marketplace" -> "Instagram" datasets and
 pass it via --dataset-id. Common IG datasets BD offers include:
-  - "Instagram - Posts (by hashtag)" — keyword discovery
-  - "Instagram - Profile" — URL discovery
-  - "Instagram - Reels" — keyword/URL discovery
+  - "Instagram - Posts (by hashtag)" - keyword discovery
+  - "Instagram - Profile" - URL discovery
+  - "Instagram - Reels" - keyword/URL discovery
 The pilot defaults to keyword-discovery on the posts dataset.
 
 Usage:
@@ -87,7 +87,7 @@ def _has_views(item: dict) -> bool:
 
 
 def _summarize_per_hashtag(items: list[dict], hashtag: str) -> dict:
-    """Per-hashtag breakdown — count, time-window, sort-order, view fill, likes."""
+    """Per-hashtag breakdown - count, time-window, sort-order, view fill, likes."""
     if not items:
         return {"hashtag": hashtag, "count": 0}
 
@@ -140,7 +140,7 @@ def _summarize_per_hashtag(items: list[dict], hashtag: str) -> dict:
 
 
 def _global_summary(all_items: list[dict]) -> dict:
-    """Cross-hashtag info — field-name discovery, type distribution, error items."""
+    """Cross-hashtag info - field-name discovery, type distribution, error items."""
     if not all_items:
         return {"count": 0}
 
@@ -201,7 +201,7 @@ def main() -> int:
         choices=["hashtag", "profile"],
         help=(
             "What to feed BD. 'hashtag' constructs https://www.instagram.com/explore/tags/<tag>/ "
-            "URLs (the use case we actually need — UNTESTED, BD's example only shows profiles). "
+            "URLs (the use case we actually need - UNTESTED, BD's example only shows profiles). "
             "'profile' treats each --hashtag value as an IG handle and feeds "
             "https://www.instagram.com/<handle>/ (sanity-check that the dataset works at all)."
         ),
@@ -272,7 +272,7 @@ def main() -> int:
             limit_per_input=args.limit,
         )
     except BrightDataAPIError as e:
-        print(f"ERROR: BD scrape failed — {e}", file=sys.stderr)
+        print(f"ERROR: BD scrape failed - {e}", file=sys.stderr)
         return 3
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

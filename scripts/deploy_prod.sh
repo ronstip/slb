@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# ── Social Listening Platform — Production Deployment ──
+# ── Social Listening Platform - Production Deployment ──
 #
 # This script handles the ENTIRE production deployment:
 #   1. Enables required GCP APIs
@@ -40,7 +40,7 @@ fi
 PROJECT_ID="social-listening-pl"
 REGION="us-central1"
 
-# Source .env (data-provider tokens live here — keep this script in sync with
+# Source .env (data-provider tokens live here - keep this script in sync with
 # .github/workflows/deploy.yml so manual + CI deploys produce identical env)
 if [ -f "$ROOT_DIR/.env" ]; then
     set -a
@@ -49,7 +49,7 @@ if [ -f "$ROOT_DIR/.env" ]; then
     set +a
 fi
 
-# Fail fast if any required data-provider token is missing — otherwise the
+# Fail fast if any required data-provider token is missing - otherwise the
 # Cloud Run revision boots with no adapter for twitter/instagram and every
 # collection silently fails with "No posts were collected."
 REQUIRED_VARS=(
@@ -69,7 +69,7 @@ done
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
-echo "║   Social Listening Platform — Prod Deployment    ║"
+echo "║   Social Listening Platform - Prod Deployment    ║"
 echo "╠══════════════════════════════════════════════════╣"
 echo "║  Project: $PROJECT_ID"
 echo "║  Region:  $REGION"
@@ -251,7 +251,7 @@ gcloud run services update sl-api \
     --update-env-vars "^|^WORKER_SERVICE_URL=$WORKER_URL|CORS_ORIGINS=${CORS_ORIGINS}|FRONTEND_URL=${FRONTEND_URL}" \
     --quiet
 
-# Tell the worker where the API is — used by Cloud Task continuation dispatches
+# Tell the worker where the API is - used by Cloud Task continuation dispatches
 gcloud run services update sl-worker \
     --region "$REGION" \
     --update-env-vars "API_SERVICE_URL=$API_URL,CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA" \

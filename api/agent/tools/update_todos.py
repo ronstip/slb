@@ -18,7 +18,7 @@ def update_todos(
     BEFORE starting multi-step work to create your plan, then call it
     again as you complete each step.
 
-    This replaces the entire todo list each time — send the full list
+    This replaces the entire todo list each time - send the full list
     with updated statuses.
 
     Args:
@@ -72,14 +72,14 @@ def update_todos(
         return {
             "status": "error",
             "message": (
-                f"Exactly ONE todo may be 'in_progress' at a time — you marked "
+                f"Exactly ONE todo may be 'in_progress' at a time - you marked "
                 f"{len(in_progress_ids)}: {in_progress_ids}. Mark all but one "
                 "as 'pending' or 'completed' and call update_todos again."
             ),
         }
 
     # Merge with existing automated steps managed by the system.
-    # Automated steps (collect, enrich) are ALWAYS preserved — even if the
+    # Automated steps (collect, enrich) are ALWAYS preserved - even if the
     # agent explicitly includes a conflicting ID, the system version wins.
     if tool_context:
         existing = tool_context.state.get("todos") or []
@@ -88,7 +88,7 @@ def update_todos(
 
         # Discipline rule (Phase 2): completed is sticky. Once a todo is
         # marked completed, it cannot transition back to pending or
-        # in_progress — that pattern is the agent re-doing finished work.
+        # in_progress - that pattern is the agent re-doing finished work.
         prior_completed = {
             t["id"] for t in existing
             if t.get("status") == "completed" and not t.get("automated")

@@ -1,6 +1,6 @@
 """Classify whether an agent is stuck.
 
-Pure logic — no IO. Used by the watchdog to decide which agents to retry,
+Pure logic - no IO. Used by the watchdog to decide which agents to retry,
 and tested independently of Firestore.
 """
 
@@ -41,7 +41,7 @@ def classify_stuck(
         [docs/bugs/api-agent-stuck-terminal-inconsistent.md].
       - ``orphaned_running``: status=running, continuation entered
         (continuation_ready_at set) but the doc has not updated for
-        ``stale_minutes`` — the continuation process died.
+        ``stale_minutes`` - the continuation process died.
       - ``missed_handoff``: status=running, all collections terminal, but
         continuation_ready_at was never set. Requires ``collection_statuses``
         to verify; returns None if not provided.

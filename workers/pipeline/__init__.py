@@ -1,9 +1,9 @@
-"""Collection pipeline — post-level DAG.
+"""Collection pipeline - post-level DAG.
 
 Public API (backward-compatible with the pre-rename `workers.pipeline` module):
-- `run_pipeline(collection_id, continuation=False)` — synchronous entry point
-- `dispatch_collection_pipeline(collection_id, continuation=False)` — dev-mode thread dispatch or prod Cloud Task dispatch
-- `recover_stale_pipelines(max_age_minutes=10)` — scheduler-driven recovery
+- `run_pipeline(collection_id, continuation=False)` - synchronous entry point
+- `dispatch_collection_pipeline(collection_id, continuation=False)` - dev-mode thread dispatch or prod Cloud Task dispatch
+- `recover_stale_pipelines(max_age_minutes=10)` - scheduler-driven recovery
 """
 
 import json
@@ -19,7 +19,7 @@ def run_pipeline(collection_id: str, continuation: bool = False) -> None:
     """Run the post-level DAG pipeline for a collection.
 
     When `continuation=True`, the runner skips the crawl phase and picks up
-    remaining non-terminal posts — used when the prior run hit the soft
+    remaining non-terminal posts - used when the prior run hit the soft
     timeout and self-rescheduled.
     """
     from workers.pipeline.runner import PipelineRunner

@@ -7,7 +7,7 @@ queries always operate on a deduplicated dataset.
 Posts receive a double-dedup: first within each collection, then globally across
 collections (a post can appear in multiple collections).
 
-Usage — as CTEs (parametrised with @collection_ids):
+Usage - as CTEs (parametrised with @collection_ids):
 
     query = f'''
     {DEDUP_CTES}

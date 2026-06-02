@@ -1,4 +1,4 @@
-"""Impersonation denylist — block high-risk endpoints while impersonating."""
+"""Impersonation denylist - block high-risk endpoints while impersonating."""
 
 from fastapi import Depends, HTTPException
 
@@ -11,7 +11,7 @@ def block_during_impersonation(
     """FastAPI dependency that rejects requests made under an impersonated session.
 
     Apply to mutating endpoints that must never be triggered while a super
-    admin is viewing the app as another user — e.g. billing checkouts,
+    admin is viewing the app as another user - e.g. billing checkouts,
     account linking, any irreversible action with real-world side effects.
     """
     if user.impersonated_by is not None:

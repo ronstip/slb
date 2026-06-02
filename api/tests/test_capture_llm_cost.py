@@ -198,7 +198,7 @@ def test_grounding_metadata_strips_empty_query_strings(fake_bq: _FakeBQ):
 
 
 def test_no_grounding_metadata_emits_only_token_row(fake_bq: _FakeBQ):
-    # grounding_metadata is None — no second row.
+    # grounding_metadata is None - no second row.
     capture_llm_cost(_ctx(), _llm_response())
     _wait_for_rows(fake_bq, n=1)
     time.sleep(0.05)

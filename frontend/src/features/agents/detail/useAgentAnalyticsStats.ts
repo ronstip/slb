@@ -33,7 +33,7 @@ export function useAgentAnalyticsStats(task: Agent): AnalyticsStats | null {
 
   const dedup = collectionIds.length > 1;
   const hasSelection = collectionIds.length > 0;
-  // Apply the agent's data window — keeps these stats consistent with
+  // Apply the agent's data window - keeps these stats consistent with
   // PostsDataPanel and the Live Feed.
   const startDate = task.data_start_date ?? undefined;
   const endDate = task.data_end_date ?? undefined;

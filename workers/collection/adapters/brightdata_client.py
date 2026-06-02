@@ -21,7 +21,7 @@ _DOWNLOAD_TIMEOUT = 180  # Snapshot downloads can be large
 
 
 def _parse_response_data(text: str) -> list[dict]:
-    """Parse Bright Data response — handles both JSON array and NDJSON formats."""
+    """Parse Bright Data response - handles both JSON array and NDJSON formats."""
     stripped = text.strip()
     if not stripped:
         logger.warning("Empty response body from Bright Data")
@@ -176,7 +176,7 @@ class BrightDataClient:
         on the actual download. We detect this and retry up to _DOWNLOAD_BUILD_RETRIES times.
         """
         _DOWNLOAD_BUILD_RETRIES = 6   # 6 × 30s = up to 3 extra minutes
-        _DOWNLOAD_BUILD_WAIT = 30     # seconds — matches BD's own suggestion
+        _DOWNLOAD_BUILD_WAIT = 30     # seconds - matches BD's own suggestion
 
         for attempt in range(_DOWNLOAD_BUILD_RETRIES + 1):
             t0 = time.monotonic()
@@ -200,14 +200,14 @@ class BrightDataClient:
             ):
                 if attempt < _DOWNLOAD_BUILD_RETRIES:
                     logger.warning(
-                        "Snapshot %s: BD returned 'building' on download (attempt %d/%d, %.1fs) — "
+                        "Snapshot %s: BD returned 'building' on download (attempt %d/%d, %.1fs) - "
                         "waiting %ds before retry",
                         snapshot_id, attempt + 1, _DOWNLOAD_BUILD_RETRIES, elapsed, _DOWNLOAD_BUILD_WAIT,
                     )
                     time.sleep(_DOWNLOAD_BUILD_WAIT)
                     continue
                 logger.error(
-                    "Snapshot %s: still returning 'building' after %d retries — giving up",
+                    "Snapshot %s: still returning 'building' after %d retries - giving up",
                     snapshot_id, _DOWNLOAD_BUILD_RETRIES,
                 )
                 return []
@@ -260,12 +260,12 @@ class BrightDataClient:
         trigger_elapsed = time.monotonic() - t_trigger
         logger.info("BD trigger completed in %.1fs", trigger_elapsed)
 
-        # Sync response — data returned directly
+        # Sync response - data returned directly
         if isinstance(result, list):
             logger.info("BD sync response: %d records (no polling needed)", len(result))
             return result
 
-        # Async — poll until ready
+        # Async - poll until ready
         snapshot_id = result
 
         # Persist snapshot ID for crash recovery before polling starts
@@ -282,8 +282,8 @@ class BrightDataClient:
         last_log_elapsed = 0.0
         t_poll_start = time.monotonic()
 
-        # Track time spent in "closing" state — BD sometimes stalls here.
-        # We attempt early downloads periodically, but NEVER give up — the
+        # Track time spent in "closing" state - BD sometimes stalls here.
+        # We attempt early downloads periodically, but NEVER give up - the
         # snapshot may legitimately take a long time to finalize.  We rely on
         # poll_max_wait_sec as the only hard timeout.
         _CLOSING_DOWNLOAD_THRESHOLD = 120  # seconds in "closing" before we try downloading
@@ -319,17 +319,17 @@ class BrightDataClient:
             elif state == "closing":
                 # BD "closing" means data collection finished but the snapshot
                 # is being finalised.  If it stays here too long, the data is
-                # likely downloadable already — attempt an early download.
+                # likely downloadable already - attempt an early download.
                 if closing_entered_at is None:
                     closing_entered_at = elapsed
                 elif (elapsed - closing_entered_at) >= _CLOSING_DOWNLOAD_THRESHOLD:
                     logger.warning(
-                        "BD snapshot %s stuck in 'closing' for %.0fs — attempting download",
+                        "BD snapshot %s stuck in 'closing' for %.0fs - attempting download",
                         snapshot_id, elapsed - closing_entered_at,
                     )
                     try:
                         records = self.download_snapshot(snapshot_id)
-                        # Filter out BrightData "not ready yet" error items — these look
+                        # Filter out BrightData "not ready yet" error items - these look
                         # like real records but are actually status messages indicating the
                         # snapshot isn't actually ready.  Returning them would cause the
                         # caller to retry with a new scrape, creating a cascade of retries.
@@ -346,13 +346,13 @@ class BrightDataClient:
                             return valid_records
                         if records:
                             logger.info(
-                                "BD early download returned only error items (%d) — will keep polling",
+                                "BD early download returned only error items (%d) - will keep polling",
                                 len(records),
                             )
                         else:
-                            logger.info("BD early download returned 0 records — will keep polling")
+                            logger.info("BD early download returned 0 records - will keep polling")
                     except BrightDataAPIError as e:
-                        logger.info("BD early download failed (%s) — will keep polling", e)
+                        logger.info("BD early download failed (%s) - will keep polling", e)
                     # Reset so we don't hammer download every poll cycle
                     closing_entered_at = elapsed
             else:

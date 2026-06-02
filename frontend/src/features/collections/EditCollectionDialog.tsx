@@ -24,7 +24,7 @@ interface EditCollectionDialogProps {
 }
 
 // Org sharing now lives on the agent (see AgentCard "Share with org"), not on
-// individual collections — this dialog only edits the collection title.
+// individual collections - this dialog only edits the collection title.
 export function EditCollectionDialog({
   source,
   open,
@@ -50,7 +50,7 @@ export function EditCollectionDialog({
     onError: () => {
       toast.error('Failed to update collection');
     },
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   const handleSave = () => {

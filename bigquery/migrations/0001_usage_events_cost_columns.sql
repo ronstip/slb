@@ -1,4 +1,4 @@
--- Migration 0001 — extend usage_events with cost-attribution columns.
+-- Migration 0001 - extend usage_events with cost-attribution columns.
 --
 -- Safe to run live: every new column is nullable, no existing column or
 -- type is modified, partitioning and clustering keys are unchanged. Legacy

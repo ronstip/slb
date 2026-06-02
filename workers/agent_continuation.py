@@ -1,4 +1,4 @@
-"""Agent continuation — triggers agent analysis when all agent collections complete.
+"""Agent continuation - triggers agent analysis when all agent collections complete.
 
 Called from the pipeline runner when a collection reaches a terminal state
 (success, failed, or crash). Checks if the collection belongs to an agent,
@@ -77,8 +77,8 @@ def check_agent_completion(collection_id: str) -> None:
         )
         return
 
-    logger.info("Agent %s: all collections complete — signaling for continuation", agent_id)
-    fs.add_agent_log(agent_id, "All collections complete — ready for analysis", source="continuation")
+    logger.info("Agent %s: all collections complete - signaling for continuation", agent_id)
+    fs.add_agent_log(agent_id, "All collections complete - ready for analysis", source="continuation")
 
     active_run_id = agent.get("active_run_id")
     run_status = "failed" if any_failed else "success"
@@ -135,7 +135,7 @@ def _delayed_fallback(agent_id: str, delay_seconds: int = 10) -> None:
     if not agent:
         return
     if agent.get("status") == "running" and agent.get("continuation_ready"):
-        logger.info("Agent %s: offline fallback — running agent server-side", agent_id)
+        logger.info("Agent %s: offline fallback - running agent server-side", agent_id)
         _run_agent_continuation(agent_id)
     else:
         logger.info("Agent %s: frontend already picked up continuation", agent_id)
@@ -222,7 +222,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
             )
             session_id = session.id
             fs.add_agent_session(agent_id, session_id)
-            logger.info("Agent %s: prior session missing — created new session %s", agent_id, session_id)
+            logger.info("Agent %s: prior session missing - created new session %s", agent_id, session_id)
 
     # Scope to the active run's collections (not all agent collections across runs)
     active_run_id = agent.get("active_run_id")
@@ -277,7 +277,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
             "",
             "## Previous Run Briefing",
             "This was written by you at the end of your previous run. "
-            "Treat quantitative claims as hypotheses — verify against current data before citing.",
+            "Treat quantitative claims as hypotheses - verify against current data before citing.",
             "",
         ]
         if previous_briefing.get("state_of_the_world"):
@@ -299,7 +299,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
                 *remaining_steps,
                 "",
                 "Complete each step above. Use `update_todos` to mark each step done as you go.",
-                "Do NOT remove or modify the completed steps above — they are managed by the system.",
+                "Do NOT remove or modify the completed steps above - they are managed by the system.",
                 "Do NOT skip steps. Every step must be executed, including custom ones like sending emails or creating specific charts.",
             ]
     else:
@@ -340,7 +340,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
         r.get("started_at", "") for r in all_runs if r.get("started_at")
     ]
 
-    # Note: continuation_mode and autonomous_mode flags are no longer needed —
+    # Note: continuation_mode and autonomous_mode flags are no longer needed -
     # the agent is created with mode="autonomous" which selects the executor
     # persona, tools, and context injection. Kept for backwards compatibility
     # with any code that reads these flags.
@@ -350,7 +350,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
     session.state["user_id"] = user_id
     session.state["org_id"] = org_id
 
-    # Set working collections — scoped to this run, not all agent collections
+    # Set working collections - scoped to this run, not all agent collections
     session.state["agent_selected_sources"] = run_collection_ids
     if run_collection_ids:
         session.state["active_collection_id"] = run_collection_ids[0]
@@ -361,7 +361,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
         parts=[types.Part.from_text(text=continuation_message)],
     )
 
-    # Run agent — emit structured activity logs and persist artifacts as
+    # Run agent - emit structured activity logs and persist artifacts as
     # tool results stream in. Per-event persistence (instead of a single
     # post-loop pass) means a Cloud Run timeout / OOM mid-run no longer
     # silently drops completed deliverables.
@@ -413,14 +413,14 @@ async def _async_agent_continuation(agent_id: str) -> None:
 
     # Detect silent termination: the executor MUST end with `compose_briefing`
     # (the autonomous prompt's exit tool). If the loop ended without it being
-    # called, the model returned text instead of calling the publish tool —
+    # called, the model returned text instead of calling the publish tool -
     # the run produced no user-facing briefing. Mark this as a failure with
     # a clear, actionable summary so the UI shows an error and the user can
     # resume manually rather than silently believing the run succeeded.
     if not tool_call_counts.get("compose_briefing"):
         called = sorted(tool_call_counts) or ["(none)"]
         summary = (
-            "Run ended without calling `compose_briefing` — no user-facing "
+            "Run ended without calling `compose_briefing` - no user-facing "
             "briefing was published. The model finished the loop with a text "
             "response instead of completing the generate → verify → compose "
             f"sequence. Tools called this run: {', '.join(called)}. "
@@ -429,7 +429,7 @@ async def _async_agent_continuation(agent_id: str) -> None:
         logger.warning("Agent %s: %s", agent_id, summary)
         fs.add_agent_log(
             agent_id,
-            "Run ended without compose_briefing — see context_summary",
+            "Run ended without compose_briefing - see context_summary",
             source="continuation", level="error",
         )
         fs.update_agent(
@@ -516,7 +516,7 @@ _TOOL_DISPLAY_NAMES: dict[str, str] = {
     "google_search": "Searching the web",
 }
 
-# Tools that are internal plumbing — skip from activity log
+# Tools that are internal plumbing - skip from activity log
 _INTERNAL_TOOLS = {"set_working_collections"}
 
 
@@ -632,7 +632,7 @@ def _emit_activity(fs, agent_id: str, event, tool_start_times: dict[str, float])
 
             fs.add_agent_log(
                 agent_id,
-                display + (f" — {error_msg[:80]}" if error_msg else ""),
+                display + (f" - {error_msg[:80]}" if error_msg else ""),
                 source="agent",
                 level="error" if status == "error" else "info",
                 metadata=metadata,
@@ -671,7 +671,7 @@ def _notify_agent_completion(agent_id: str, agent: dict, user_id: str) -> None:
 def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0) -> None:
     """Dispatch agent continuation via Cloud Tasks (production).
 
-    Targets the api service's /internal/agent/continue endpoint — the worker
+    Targets the api service's /internal/agent/continue endpoint - the worker
     container lacks api/* imports, so continuation must run on sl-api.
     """
     import json
@@ -682,7 +682,7 @@ def _dispatch_continuation_task(settings, agent_id: str, delay_seconds: int = 0)
     target_url = (settings.api_service_url or "").rstrip("/")
     if not target_url:
         raise RuntimeError(
-            "api_service_url is not set — cannot dispatch continuation Cloud Task. "
+            "api_service_url is not set - cannot dispatch continuation Cloud Task. "
             "Set the API_SERVICE_URL env var on every Cloud Run service that may "
             "invoke continuation dispatch (sl-api runs the watchdog via "
             "/internal/scheduler/tick; sl-worker calls this after pipeline "
@@ -741,7 +741,7 @@ def recover_stuck_agents(stale_minutes: int = 10) -> int:
     (Cloud Run instance restart, OOM, deploy) or the dispatched Cloud Task
     silently fails to fire. The endpoint at /internal/agent/continue handles
     *Cloud Tasks retries* via a liveness check, but once Cloud Tasks gives
-    up there is no other recovery path — the agent is stranded in
+    up there is no other recovery path - the agent is stranded in
     status='running' forever. This function fills that gap.
 
     For each stuck agent: increment continuation_attempts and re-dispatch

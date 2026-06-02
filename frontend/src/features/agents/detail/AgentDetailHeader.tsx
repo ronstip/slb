@@ -42,7 +42,7 @@ interface AgentDetailHeaderProps {
   editMode?: EditModeBundle;
   /** Called when user clicks the "Settings" link button (Overview only). */
   onGoToSettings?: () => void;
-  /** Optional content rendered below the main row — used by Settings to render its sub-tab nav. */
+  /** Optional content rendered below the main row - used by Settings to render its sub-tab nav. */
   children?: React.ReactNode;
   /**
    * When provided, replaces the default action cluster (run/stop/edit/schedule)
@@ -108,7 +108,7 @@ export function AgentDetailHeader({
                 <StatusBadge status={task.status} paused={task.paused} />
                 {task.status === 'running' && <RadarPulse />}
               </div>
-              {/* Meta — ID dropped (users don't care); fields spaced out. */}
+              {/* Meta - ID dropped (users don't care); fields spaced out. */}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
                 <span>Created {startDate}</span>
                 {stepsCount > 0 && (

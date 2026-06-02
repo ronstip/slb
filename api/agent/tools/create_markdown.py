@@ -1,4 +1,4 @@
-"""Create Markdown Tool — emit a long-form markdown report as an artifact.
+"""Create Markdown Tool - emit a long-form markdown report as an artifact.
 
 The agent calls this when the user asks for narrative output: a written report,
 memo, summary, brief, or filled-in templated structure (e.g. an exec summary
@@ -7,10 +7,10 @@ artifact pipeline ([api/services/artifact_service.py]) and surfaces in the
 Studio Artifacts tab and the agent's deliverables list.
 
 Distinct from:
-- ``compose_briefing`` — the autonomous exit artifact (structured topic/data
+- ``compose_briefing`` - the autonomous exit artifact (structured topic/data
   layout, not freeform prose). Use that as the FINAL action of an autonomous run.
-- ``compose_email`` — for email drafts.
-- ``create_chart`` — for visualizations.
+- ``compose_email`` - for email drafts.
+- ``create_chart`` - for visualizations.
 """
 
 import logging
@@ -32,17 +32,17 @@ def create_markdown(
 ) -> dict:
     """Write a long-form markdown report as a Studio artifact.
 
-    WHEN TO USE: the user asks for prose output — "write me a report on X",
+    WHEN TO USE: the user asks for prose output - "write me a report on X",
     "draft a memo", "summarize the findings", "fill in this report template".
     Markdown is ideal for narrative content: headings, bullets, takeaways,
     tables. Available in both chat and autonomous modes.
 
     WHEN NOT TO USE:
-      - As the autonomous exit artifact — use ``compose_briefing`` instead.
+      - As the autonomous exit artifact - use ``compose_briefing`` instead.
         Markdown is a side-channel deliverable, not a run terminator.
-      - For emails — use ``compose_email``.
-      - For charts/visualizations — use ``create_chart``.
-      - For raw data tables the user wants to download — use ``export_data``.
+      - For emails - use ``compose_email``.
+      - For charts/visualizations - use ``create_chart``.
+      - For raw data tables the user wants to download - use ``export_data``.
 
     Args:
         title: Short human-readable title for the report (shown in the
@@ -52,8 +52,8 @@ def create_markdown(
             if you have more material, split into multiple reports or summarize.
         summary: Optional one-sentence abstract shown in the artifact card.
         collection_ids: Optional list of source collection IDs the report
-            draws from — enables the "Show underlying data" affordance.
-        source_sql: Optional SQL that produced the underlying data — surfaced
+            draws from - enables the "Show underlying data" affordance.
+        source_sql: Optional SQL that produced the underlying data - surfaced
             via the same "Show underlying data" dialog used by charts.
         tool_context: ADK tool context (injected automatically).
 
@@ -72,7 +72,7 @@ def create_markdown(
         return {
             "status": "error",
             "message": (
-                f"content is {size} bytes — exceeds the {MAX_CONTENT_BYTES} byte "
+                f"content is {size} bytes - exceeds the {MAX_CONTENT_BYTES} byte "
                 "cap. Split the report into multiple markdown artifacts or summarize."
             ),
         }
