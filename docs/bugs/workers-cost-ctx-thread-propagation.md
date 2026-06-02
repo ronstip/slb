@@ -3,7 +3,7 @@
 ## Symptom
 
 Per-agent **Recent Activity** in the admin User Detail page showed only
-chat-side priced events (autonomous / verify_briefing / Gemini) — every
+chat-side priced events (autonomous / verify_briefing / Gemini) - every
 worker-pipeline row (Apify scrape, X API search, BrightData posts_collected,
 enrichment Gemini calls) was either:
 
@@ -42,11 +42,11 @@ attribution silently dropped.
 
 `api/services/cost_meter.py` gained two helpers:
 
-- `start_thread_with_cost_context(target, args=, ...)` — drop-in for
+- `start_thread_with_cost_context(target, args=, ...)` - drop-in for
   `threading.Thread(target=...)` that captures the parent context via
   `contextvars.copy_context()` and `Context.run()`s the target inside the
   snapshot in the child thread.
-- `submit_with_cost_context(executor, target, ...)` — same idea for
+- `submit_with_cost_context(executor, target, ...)` - same idea for
   `ThreadPoolExecutor.submit`.
 
 Applied at every spawn site that can lead to a `log_cost` /
@@ -77,7 +77,7 @@ asserts the row has the parent's `user_id` / `agent_id` /
 While here we also wired:
 
 - `platform` column on every `usage_events` row (Finance can now render a
-  platform × provider matrix — Apify charges different per-call prices for
+  platform × provider matrix - Apify charges different per-call prices for
   IG vs FB vs TikTok).
 - `cost_source` column distinguishing `provider_reported` /
   `rate_table` / `estimated_fallback` (Apify now logs an estimate when

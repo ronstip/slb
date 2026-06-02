@@ -55,7 +55,7 @@ function LiveCollectionProgressImpl({ collectionIds }: LiveCollectionProgressPro
           </div>
           <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
             <p className="text-sm font-bold tabular-nums">
-              {posts > 0 ? `${Math.round((enriched / posts) * 100)}%` : '—'}
+              {posts > 0 ? `${Math.round((enriched / posts) * 100)}%` : '-'}
             </p>
             <p className="text-[9px] text-muted-foreground">Progress</p>
           </div>

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # ─── Canned tool responses ────────────────────────────────────────────────
 # These are what the model "sees" when it calls a tool in stub mode. They
 # need to look realistic enough that the model's downstream behavior matches
-# production, but they don't need to be richly varied — the same canned
+# production, but they don't need to be richly varied - the same canned
 # responses every run is the point.
 
 _CANNED_TOPICS = [
@@ -122,7 +122,7 @@ def stub_before_tool_callback(
         # set state["_eval_verifier_force"] to "PARTIAL" or "FAIL" (initial dict
         # reads from the session_state set in scenarios.yaml). The flag is
         # consumed after the first call so a follow-up verify_briefing returns
-        # PASS — mimicking "the agent fixed the briefing".
+        # PASS - mimicking "the agent fixed the briefing".
         forced = tool_context.state.get("_eval_verifier_force")
         if forced in ("PARTIAL", "FAIL"):
             tool_context.state["_eval_verifier_force"] = ""
@@ -139,7 +139,7 @@ def stub_before_tool_callback(
                 }],
                 "facts": {"total_posts": 412, "stubbed": True},
                 "message": (
-                    f"{forced} — seeded test error. Re-call generate_briefing "
+                    f"{forced} - seeded test error. Re-call generate_briefing "
                     "with corrected claims, then verify_briefing once more."
                 ),
                 "stubbed": True,
@@ -150,7 +150,7 @@ def stub_before_tool_callback(
             "summary": "All quantitative claims reconcile with ground-truth data.",
             "findings": [],
             "facts": {"total_posts": 412, "stubbed": True},
-            "message": "PASS — proceed to compose_briefing.",
+            "message": "PASS - proceed to compose_briefing.",
             "stubbed": True,
         }
     if name == "compose_briefing":
@@ -166,8 +166,8 @@ def stub_before_tool_callback(
     if name == "set_active_agent":
         return {"status": "success", "agent_id": args.get("agent_id"), "stubbed": True}
 
-    # ── ask_user — let it through; the harness handles the pause ─────────
-    # update_todos — let it through; it mutates session state, which the
+    # ── ask_user - let it through; the harness handles the pause ─────────
+    # update_todos - let it through; it mutates session state, which the
     # context injector reads on the next turn. That's important for the
     # autonomous scenario.
 

@@ -60,7 +60,7 @@ export interface WizardAgentSettings {
   scheduleTimes: string[];
   /** Day-of-week (0=Sun..6=Sat) for weekly cadence, or day-of-month (1..31)
    *  for monthly. Ignored for hourly/daily. Surfaced to the planner via the
-   *  agent prompt — the schedule string itself stays cadence-only. */
+   *  agent prompt - the schedule string itself stays cadence-only. */
   scheduleDay: number;
   outputs: AgentOutput[];
   outputsFromAI: boolean;
@@ -222,7 +222,7 @@ export function AgentCreationWizard() {
       }
     } catch (err) {
       console.error('wizard planner failed', err);
-      // Credit/trial 402s now surface here (the planner is a gated paid call) —
+      // Credit/trial 402s now surface here (the planner is a gated paid call) -
       // notifyError yields the Buy-credit toast; other failures fall back to
       // the manual-config hint.
       notifyError(err, 'Could not generate a plan. You can still configure the agent manually.');
@@ -277,7 +277,7 @@ export function AgentCreationWizard() {
     if (planStatus === 'ready' && currentStep === 0) {
       setCurrentStep(1);
     }
-    // We deliberately omit currentStep — we only want to push forward on the
+    // We deliberately omit currentStep - we only want to push forward on the
     // ready transition, not whenever the user navigates back to step 0.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planStatus]);
@@ -341,7 +341,7 @@ export function AgentCreationWizard() {
     else { nextLabel = 'Create agent'; nextDisabled = !canSubmit; nextIcon = <Sparkles className="h-4 w-4" />; }
   }
 
-  // Footer eyebrow stat — varies per step to nudge the user about what's
+  // Footer eyebrow stat - varies per step to nudge the user about what's
   // about to happen next. Mirrors the design copy.
   const estMinutes = Math.max(1, Math.round(collectionSettings.nPosts / 500));
   let footerStat: string | null = null;
@@ -359,14 +359,14 @@ export function AgentCreationWizard() {
            plan-identity header (after plan ready), then the step body and
            footer all share the same outer card and border. ── */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        {/* Stepper tabs — divided into 3 columns with vertical separators. */}
+        {/* Stepper tabs - divided into 3 columns with vertical separators. */}
         <StepperTabs
           currentStep={currentStep}
           onStepClick={handleStepClick}
           stepEnabled={stepEnabled}
         />
 
-        {/* Header bar — agent identity (after plan ready, shown on steps 2 & 3) */}
+        {/* Header bar - agent identity (after plan ready, shown on steps 2 & 3) */}
         {isPlanReady && currentStep > 0 && (
           <div className="flex items-start gap-3 border-b border-border bg-[color:var(--color-accent-vibrant)]/5 px-5 py-4">
             <BotAvatar seed={agentTitle || 'new-agent'} size={44} />
@@ -516,7 +516,7 @@ export function AgentCreationWizard() {
 //
 // Three columns in a single row, divided by faint vertical separators. The
 // active column gets a brighter background and a primary underline along
-// its bottom edge — mirrors the Claude design exactly.
+// its bottom edge - mirrors the Claude design exactly.
 function StepperTabs({
   currentStep,
   onStepClick,

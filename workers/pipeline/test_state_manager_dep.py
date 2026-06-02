@@ -1,4 +1,4 @@
-"""Unit tests for StateManager.mark_collected — focused on the new
+"""Unit tests for StateManager.mark_collected - focused on the new
 `awaits_dep_post_id` post_meta field set when a Post depends on another
 in-range post (X API quote/reply unpack).
 """
@@ -67,7 +67,7 @@ def test_awaits_dep_set_when_dep_is_in_range():
     parent's post_meta gets awaits_dep_post_id pointing at the dep."""
     mgr = _make_manager()
     parent = _post("9001", dep="8000", dep_type="quoted")
-    dep = _post("8000")  # the source — also in this batch
+    dep = _post("8000")  # the source - also in this batch
     captured = _captured_post_meta(mgr)
 
     mgr.mark_collected([parent, dep])
@@ -75,7 +75,7 @@ def test_awaits_dep_set_when_dep_is_in_range():
     parent_meta = captured["post_meta"]["9001"]
     assert parent_meta["awaits_dep_post_id"] == "8000"
     assert parent_meta["enrichment_dependency_type"] == "quoted"
-    # Dep itself never has awaits set — 1-level cap.
+    # Dep itself never has awaits set - 1-level cap.
     dep_meta = captured["post_meta"]["8000"]
     assert "awaits_dep_post_id" not in dep_meta
 
@@ -95,12 +95,12 @@ def test_awaits_dep_set_for_replied_to():
 
 def test_awaits_dep_NOT_set_when_dep_is_out_of_range():
     """Parent depends on a tweet not in the in-range list (e.g. dep is too old).
-    Parent must NOT wait — would deadlock on a non-existent post_state."""
+    Parent must NOT wait - would deadlock on a non-existent post_state."""
     mgr = _make_manager()
     parent = _post("9001", dep="8000", dep_type="quoted")
     captured = _captured_post_meta(mgr)
 
-    mgr.mark_collected([parent])  # only parent — dep absent from in-range list
+    mgr.mark_collected([parent])  # only parent - dep absent from in-range list
 
     parent_meta = captured["post_meta"]["9001"]
     assert "awaits_dep_post_id" not in parent_meta
@@ -108,7 +108,7 @@ def test_awaits_dep_NOT_set_when_dep_is_out_of_range():
 
 
 def test_awaits_dep_NOT_set_when_post_has_no_dep():
-    """Standalone tweet — no dep field on the Post."""
+    """Standalone tweet - no dep field on the Post."""
     mgr = _make_manager()
     standalone = _post("9001")
     captured = _captured_post_meta(mgr)
@@ -152,7 +152,7 @@ def test_initial_state_classification_unchanged():
 
 def test_media_resolved_skips_download_state():
     """When media is already downloaded upstream (media_resolved=True), media
-    posts skip COLLECTED_WITH_MEDIA and go straight to READY_FOR_ENRICHMENT —
+    posts skip COLLECTED_WITH_MEDIA and go straight to READY_FOR_ENRICHMENT -
     the download streaming step would otherwise re-download into GCS."""
     mgr = _make_manager()
     text_only = _post("9001", content="just text")

@@ -172,7 +172,7 @@ def test_member_cannot_rename_layout_on_private_agent():
     assert exc.value.status_code == 403
 
 
-# ── dashboard (widget) layouts — gated via owning artifact ─────────────────
+# ── dashboard (widget) layouts - gated via owning artifact ─────────────────
 
 
 class _ArtifactFS(_FS):

@@ -1,4 +1,4 @@
-# api: /agents/{id}/topics 500 — `algorithm_version` not in TVF
+# api: /agents/{id}/topics 500 - `algorithm_version` not in TVF
 
 ## Symptom
 
@@ -23,7 +23,7 @@ Any agent with topics works. Issue is purely the SELECT projection, not data.
 
 ## Root cause
 
-Commit `1c69637` ("refactor(topics): transition to topic_metrics TVF") switched `_load_agent_topics` from reading `topic_clusters` directly to the `topic_metrics` TVF. The new SELECT keeps `algorithm_version` in its column list, but the TVF in `bigquery/functions/topic_metrics.sql` never projected that column from `clusters` — drift between router query and TVF schema.
+Commit `1c69637` ("refactor(topics): transition to topic_metrics TVF") switched `_load_agent_topics` from reading `topic_clusters` directly to the `topic_metrics` TVF. The new SELECT keeps `algorithm_version` in its column list, but the TVF in `bigquery/functions/topic_metrics.sql` never projected that column from `clusters` - drift between router query and TVF schema.
 
 `algorithm_version` exists on the base table (`bigquery/schemas/topic_clusters.sql:6`) and is consumed by the frontend (`TopicsRegenerateDialog`, `TopicCluster` type, regenerate endpoint).
 
@@ -36,8 +36,8 @@ bq query --use_legacy_sql=false --project_id=social-listening-pl \
   < bigquery/functions/topic_metrics.sql
 ```
 
-No code change in `api/` needed — the router already reads `r.get("algorithm_version")` from the row.
+No code change in `api/` needed - the router already reads `r.get("algorithm_version")` from the row.
 
 ## Regression note
 
-No test for this surface — TVF column drift wouldn't be caught by `pytest`. Pattern to watch: every column the router selects from the TVF must be projected by the TVF SELECT (lines 463-549). Future TVFs that wrap a base table should either project `SELECT *` from the base CTE or have a contract test.
+No test for this surface - TVF column drift wouldn't be caught by `pytest`. Pattern to watch: every column the router selects from the TVF must be projected by the TVF SELECT (lines 463-549). Future TVFs that wrap a base table should either project `SELECT *` from the base CTE or have a contract test.

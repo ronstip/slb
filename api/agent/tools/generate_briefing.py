@@ -1,4 +1,4 @@
-"""Generate Briefing Tool — persists the agent's run briefing to Firestore.
+"""Generate Briefing Tool - persists the agent's run briefing to Firestore.
 
 Called by the agent as its final action in a run. The briefing captures
 the agent's synthesized understanding for continuity into the next run.
@@ -26,11 +26,11 @@ def generate_briefing(
 
     WHEN TO USE: ONCE near the end of an autonomous run, BEFORE
     ``compose_briefing``. This captures what was learned this run for
-    continuity into the NEXT run — it's not user-facing.
+    continuity into the NEXT run - it's not user-facing.
 
     WHEN NOT TO USE:
-      - As the final user-facing summary — that's ``compose_briefing``.
-      - More than once per run — the dedup guard will reject identical
+      - As the final user-facing summary - that's ``compose_briefing``.
+      - More than once per run - the dedup guard will reject identical
         re-calls; if you want to revise, change the content meaningfully.
 
     Args:
@@ -38,7 +38,7 @@ def generate_briefing(
             Markdown. Headline + dek + 3-4 bullets pairing fact with implication
             + italic closing line. 80-150 words. Audience already knows the
             collection scope; tell them the ripple and what to act on.
-        state_of_the_world: Cumulative understanding — findings backed by
+        state_of_the_world: Cumulative understanding - findings backed by
             numbers and specific examples. What the data says and what it means.
         open_threads: Unresolved questions, signals to track, hypotheses
             to test. Each thread should include a trigger condition for when
@@ -58,7 +58,7 @@ def generate_briefing(
     if not agent_id or not run_id:
         return {
             "status": "error",
-            "message": "No active agent or run — cannot persist briefing.",
+            "message": "No active agent or run - cannot persist briefing.",
         }
 
     # Validate required sections are present
@@ -89,7 +89,7 @@ def generate_briefing(
             "status": "duplicate",
             "message": (
                 "An identical run briefing was already saved this session. "
-                "Don't re-call generate_briefing — call `verify_briefing` next "
+                "Don't re-call generate_briefing - call `verify_briefing` next "
                 "(mandatory quality check), then `compose_briefing`."
             ),
         }
@@ -122,7 +122,7 @@ def generate_briefing(
         "message": (
             f"Run briefing saved ({word_count} words). "
             "Next: call `verify_briefing` (mandatory independent quality check). "
-            "Only after the verifier returns PASS — or after one fix-and-reverify "
-            "cycle — call `compose_briefing` to publish the user-facing briefing."
+            "Only after the verifier returns PASS - or after one fix-and-reverify "
+            "cycle - call `compose_briefing` to publish the user-facing briefing."
         ),
     }

@@ -1,4 +1,4 @@
-"""Agent Constitution — the agent's static identity document.
+"""Agent Constitution - the agent's static identity document.
 
 Replaces the old AgentContext (4 flat fields) with a 6-section constitution
 that defines who the agent is, what it's trying to achieve, and how it thinks.
@@ -100,7 +100,7 @@ def migrate_context_to_constitution(ctx: dict) -> dict:
         "mission": ctx.get("mission", ""),
         "methodology": (
             "Analyze data critically. Verify claims against evidence before stating findings. "
-            "When reading previous briefings, treat quantitative claims as hypotheses — "
+            "When reading previous briefings, treat quantitative claims as hypotheses - "
             "re-verify against current data before carrying forward."
         ),
         "scope_and_relevance": ctx.get("relevance_boundaries", ""),

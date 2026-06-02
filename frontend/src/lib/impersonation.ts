@@ -23,7 +23,7 @@ import { useAgentStore } from '../stores/agent-store.ts';
  *      leaks into the post-impersonation view.
  *   3. Reset user-scoped Zustand stores.
  *
- * Note: does NOT touch the `ui-store` (layout/panel state) — that's
+ * Note: does NOT touch the `ui-store` (layout/panel state) - that's
  * not user-scoped.
  */
 export function resetUserScopedState(queryClient: QueryClient): void {
@@ -48,7 +48,7 @@ interface ImpersonationTarget {
  *
  * 1. Hit the start endpoint (validates target, writes audit entry).
  * 2. Reset client state so nothing from the real admin's session leaks.
- * 3. Flip the impersonation store — from this point on, every request
+ * 3. Flip the impersonation store - from this point on, every request
  *    the API client makes carries the `X-Impersonate-User-Id` header.
  * 4. Caller is responsible for refetching `/me` so the `profile` object
  *    updates and UI gates flip (pass in `refreshProfile` from AuthContext).

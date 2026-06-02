@@ -4,7 +4,7 @@ gcs_uri back to BigQuery posts.media_refs.
 Why: posts collected before the "download-before-insert" fix carry only the raw
 (often signed/expiring) CDN original_url. This re-downloads media to GCS now and
 UPDATEs the BQ rows. Rows are old (out of the streaming buffer), so the UPDATE
-succeeds. Expired/blocked CDN URLs that can't be re-fetched stay as-is — except
+succeeds. Expired/blocked CDN URLs that can't be re-fetched stay as-is - except
 TikTok/Reddit videos, which yt-dlp re-resolves from the post URL.
 
 Usage:
@@ -129,7 +129,7 @@ def main() -> None:
 
     post_ids = list(updates.keys())
     refs_jsons = [json.dumps(updates[pid]) for pid in post_ids]
-    # Old rows — not in the streaming buffer — so the UPDATE succeeds.
+    # Old rows - not in the streaming buffer - so the UPDATE succeeds.
     bq.query(UPDATE_SQL, {"post_ids": post_ids, "refs_jsons": refs_jsons})
     print(f"Updated media_refs in BQ for {len(post_ids)} post(s).")
 

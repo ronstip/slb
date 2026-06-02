@@ -43,7 +43,7 @@ def test_honors_incoming_header(app: FastAPI):
 
 def test_rejects_invalid_incoming_header_and_regenerates(app: FastAPI):
     client = TestClient(app)
-    # Contains characters outside the allowed set — should be discarded.
+    # Contains characters outside the allowed set - should be discarded.
     r = client.get("/echo", headers={HEADER_NAME: "bad id with spaces & symbols"})
     rid = r.headers[HEADER_NAME]
     assert rid != "bad id with spaces & symbols"
@@ -63,7 +63,7 @@ def test_get_request_id_returns_none_outside_request_scope():
 
 
 def test_outbound_headers_omits_request_id_when_absent():
-    # No request scope active — outbound_headers should not add the header.
+    # No request scope active - outbound_headers should not add the header.
     headers = outbound_headers({"Content-Type": "application/json"})
     assert HEADER_NAME not in headers
     assert headers["Content-Type"] == "application/json"

@@ -135,7 +135,7 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
     ? kpi.format === 'percent'
       ? `${kpi.value}%`
       : formatNumber(kpi.value)
-    : '—';
+    : '-';
 
   const Icon = kpi ? ICON_MAP[kpi.icon] : Hash;
   const hasSparkline = styles.showSparkline && (kpi?.sparklineData?.length ?? 0) > 1;
@@ -208,7 +208,7 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
 
       <div className={`flex flex-col justify-center h-full ${styles.container}`}>
         <div className={`font-semibold text-muted-foreground/70 uppercase tracking-[0.1em] leading-none ${styles.label}`}>
-          {kpi?.label ?? '—'}
+          {kpi?.label ?? '-'}
         </div>
         {!kpi ? (
           <div className={`rounded bg-muted animate-pulse ${styles.skeleton}`} />

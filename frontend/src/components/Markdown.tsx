@@ -12,7 +12,7 @@ import { ReportChart, tryParseChartSpec } from '../features/studio/ReportChart.t
  *  `<avg eng/post>`) is escaped to `&lt;…>` so the browser stops emitting
  *  it as an unknown custom element. Unknown elements wrap inline content
  *  with default zero-styling, but their presence interacts badly with
- *  layout measurements — that's the "jumping" near the bottom of the
+ *  layout measurements - that's the "jumping" near the bottom of the
  *  dashboard. Lowercased on comparison because HTML parsing normalizes
  *  tag case. */
 const ALLOWED_HTML_TAGS = new Set([

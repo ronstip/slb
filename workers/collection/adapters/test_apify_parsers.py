@@ -2,7 +2,7 @@
 
 Fixtures are minimal frozen samples that mirror the shape each actor returns.
 If an actor's output schema changes, update the fixture and adjust the
-parser — the registry will catch missing parsers at adapter init time.
+parser - the registry will catch missing parsers at adapter init time.
 """
 
 from datetime import datetime, timezone
@@ -24,7 +24,7 @@ from workers.collection.adapters.apify_parsers import (
 
 
 # ---------------------------------------------------------------------------
-# Fixtures — captured from real actor runs (smoke_apify_out.json).
+# Fixtures - captured from real actor runs (smoke_apify_out.json).
 # ---------------------------------------------------------------------------
 
 _IG_FIXTURE = {
@@ -51,7 +51,7 @@ _IG_FIXTURE = {
 }
 
 
-# apidojo/instagram-hashtag-scraper output shape — captured 2026-05-05 from
+# apidojo/instagram-hashtag-scraper output shape - captured 2026-05-05 from
 # logs/runs/pilot_apidojo_ig_climate_*.json. Differs from the legacy shape:
 # singular likeCount/commentCount, nested owner.{id,username,fullName},
 # nested image.url / video.{playCount,url}, ISO createdAt, and `type="post"`
@@ -207,7 +207,7 @@ def test_instagram_video_views_prefers_videoPlayCount():
     item = dict(_IG_FIXTURE)
     item["type"] = "Video"
     item["videoPlayCount"] = 12000
-    item["videoViewCount"] = 8000  # actor sometimes ships both — playCount wins
+    item["videoViewCount"] = 8000  # actor sometimes ships both - playCount wins
     post = parse_apify_instagram_post(item)
     assert post.post_type == "video"
     assert post.views == 12000
@@ -223,7 +223,7 @@ def test_instagram_video_views_falls_back_when_playCount_missing():
 
 
 def test_instagram_image_post_has_no_views():
-    # Image/Sidecar posts never carry view fields — should remain None.
+    # Image/Sidecar posts never carry view fields - should remain None.
     post = parse_apify_instagram_post(_IG_FIXTURE)
     assert post.post_type == "carousel"
     assert post.views is None
@@ -240,7 +240,7 @@ def test_instagram_channel_parsing():
 
 
 # ---------------------------------------------------------------------------
-# Instagram — apidojo/instagram-hashtag-scraper
+# Instagram - apidojo/instagram-hashtag-scraper
 # ---------------------------------------------------------------------------
 
 def test_apidojo_ig_image_post_normalizes_nested_fields():

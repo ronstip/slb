@@ -61,7 +61,7 @@ export function useUpdateMarkdownContent() {
     onSuccess: (_data, { id, content }) => {
       updateArtifactContent(id, content);
       qc.invalidateQueries({ queryKey: ['artifact', id] });
-      // Standalone artifact route uses a separate cache key — invalidate it too
+      // Standalone artifact route uses a separate cache key - invalidate it too
       // so /artifacts/{id} refetches the updated content without a page reload.
       qc.invalidateQueries({ queryKey: ['artifact-standalone', id] });
       qc.invalidateQueries({ queryKey: ['artifacts'] });

@@ -12,7 +12,7 @@ interface MobileHeaderProps {
 /**
  * Mobile-only top bar. Hidden on `md` and up so the desktop layout is
  * untouched. The hamburger opens the off-canvas navigation drawer
- * (AppSidebar rendered inside a Sheet — see MobileSidebar).
+ * (AppSidebar rendered inside a Sheet - see MobileSidebar).
  */
 export function MobileHeader({ title }: MobileHeaderProps) {
   const openMobileSidebar = useUIStore((s) => s.openMobileSidebar);

@@ -103,7 +103,7 @@ def main() -> int:
             print(f"(could not serialize: {e})")
 
     if total_posts == 0:
-        print("\nWARNING: 0 posts collected — TikTok pathway is broken.")
+        print("\nWARNING: 0 posts collected - TikTok pathway is broken.")
         return 1
 
     print("\nSUCCESS: TikTok collection working.")

@@ -23,7 +23,7 @@ import { type FieldDef, extractFieldOptions } from './fieldRegistry.ts';
 import type { ColumnPref } from './ColumnPicker.tsx';
 
 /* ------------------------------------------------------------------ */
-/* Unified column filter state — keyed by FieldDef.key. Shape varies   */
+/* Unified column filter state - keyed by FieldDef.key. Shape varies   */
 /* by field kind. Empty / absent value means no filter on that column. */
 /* ------------------------------------------------------------------ */
 
@@ -124,7 +124,7 @@ export function applyColumnFilters(
 
 function renderGenericValue(field: FieldDef, value: unknown): ReactNode {
   if (value == null || (typeof value === 'string' && value === '')) {
-    return <span className="text-xs text-muted-foreground">—</span>;
+    return <span className="text-xs text-muted-foreground">-</span>;
   }
   switch (field.kind) {
     case 'bool':
@@ -135,7 +135,7 @@ function renderGenericValue(field: FieldDef, value: unknown): ReactNode {
       return <span className="text-xs text-muted-foreground">{timeAgo(String(value))}</span>;
     case 'multi_enum': {
       const arr = Array.isArray(value) ? value.map(String) : parseStringList(value as string);
-      if (arr.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
+      if (arr.length === 0) return <span className="text-xs text-muted-foreground">-</span>;
       return (
         <div className="flex flex-wrap gap-1 overflow-hidden">
           {arr.slice(0, 2).map((v) => (
@@ -236,7 +236,7 @@ function FilterHeaderForField({
 }
 
 /* ------------------------------------------------------------------ */
-/* Bespoke cell renderers — only for columns that need rich rendering. */
+/* Bespoke cell renderers - only for columns that need rich rendering. */
 /* The HEADER for these is still the generic FilterHeaderForField, but */
 /* with an enum option renderer to keep the platform icon / sentiment  */
 /* dot affordances we had before.                                       */
@@ -250,7 +250,7 @@ const CHANNEL_TYPE_COLORS: Record<string, string> = {
 
 interface BespokeColumnSpec {
   width?: string;
-  /** Minimum pixel width — drives the table's horizontal-scroll threshold. */
+  /** Minimum pixel width - drives the table's horizontal-scroll threshold. */
   minWidth?: number;
   align?: 'left' | 'right';
   sortable?: boolean;
@@ -310,7 +310,7 @@ const BESPOKE_COLUMNS: Record<string, BespokeColumnSpec> = {
     render: (row) => {
       const v = row.views ?? 0;
       return v === 0
-        ? <span className="text-xs text-muted-foreground">—</span>
+        ? <span className="text-xs text-muted-foreground">-</span>
         : <span className="tabular-nums text-xs font-medium">{formatNumber(v)}</span>;
     },
   },
@@ -372,7 +372,7 @@ interface CollectionPostColumnsOptions {
   registry: FieldDef[];
   /** Visible-key list with order. Only entries with `visible: true` are rendered. */
   columnPrefs: ColumnPref[];
-  /** All posts (pre-filter) — used to derive enum option lists with counts. */
+  /** All posts (pre-filter) - used to derive enum option lists with counts. */
   allPosts: FeedPost[];
   /** When set, the right-most column shows a per-row actions menu (Exclude / Edit). */
   agentId?: string;

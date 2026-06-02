@@ -73,7 +73,7 @@ export function BriefingView({ title, briefing, onOpenStory }: BriefingViewProps
           dir="auto"
           className="mt-6 border-s-2 border-foreground/30 ps-4 font-serif text-[15px] italic leading-relaxed text-foreground/75"
         >
-          <span className="font-semibold not-italic">Editor's note —</span> {briefing.editors_note}
+          <span className="font-semibold not-italic">Editor's note -</span> {briefing.editors_note}
         </p>
       )}
 
@@ -189,7 +189,7 @@ function PostsSparkline({ series }: { series: number[] }) {
     <div
       dir="ltr"
       className="flex flex-col justify-center sm:border-s sm:border-border sm:ps-6"
-      title={`Posts per day (last ${series.length}d) — total ${total}`}
+      title={`Posts per day (last ${series.length}d) - total ${total}`}
     >
       <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
         Last {series.length}d
@@ -543,7 +543,7 @@ const _PLATFORM_LABEL: Record<string, string> = {
 };
 
 function platformLabel(name?: string | null): string {
-  if (!name) return '—';
+  if (!name) return '-';
   return _PLATFORM_LABEL[name.toLowerCase()] ?? name;
 }
 

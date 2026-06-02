@@ -182,7 +182,7 @@ def test_fetch_comments_passes_results_limit_to_actor():
 
 
 def test_fetch_comments_facebook_still_unsupported():
-    """Facebook isn't wired yet — should raise NotImplementedError, not silently
+    """Facebook isn't wired yet - should raise NotImplementedError, not silently
     succeed via the new platform-table dispatcher."""
     adapter, settings_patch = _build_adapter()
     try:

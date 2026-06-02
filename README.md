@@ -77,7 +77,7 @@ cd api && uvicorn main:app --reload
 # Terminal 2: Start frontend
 cd frontend && npm run dev
 
-# Then ask Claude Code to test flows — it can navigate, click, type, and screenshot
+# Then ask Claude Code to test flows - it can navigate, click, type, and screenshot
 ```
 
 ## Deployment
@@ -139,7 +139,7 @@ Key env vars set on Cloud Run (see `.env.example` for full list):
 | Variable | Purpose |
 |---|---|
 | `ENVIRONMENT` | `development` or `production` |
-| `ALLOWED_EMAILS` | Email allowlist — empty = anyone can sign in |
+| `ALLOWED_EMAILS` | Email allowlist - empty = anyone can sign in |
 | `SUPER_ADMIN_EMAILS` | Emails with admin dashboard access |
 | `CORS_ORIGINS` | Comma-separated allowed origins |
 | `WORKER_SERVICE_URL` | Cloud Run worker URL (for Cloud Tasks dispatch) |
@@ -147,7 +147,7 @@ Key env vars set on Cloud Run (see `.env.example` for full list):
 
 ## Scaling
 
-Current config (dev/staging — scale to zero, ~$0/month idle):
+Current config (dev/staging - scale to zero, ~$0/month idle):
 
 ```bash
 # Switch to always-on for production traffic:

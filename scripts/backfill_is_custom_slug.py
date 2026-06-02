@@ -6,9 +6,9 @@ Why:
     "regular" share lookup never returns admin-only vanity links. Firestore's
     `.where(...)` does NOT match documents where the field is missing, so
     existing pre-feature shares become invisible to the dialog (the public
-    link still works — that path reads docs by ID).
+    link still works - that path reads docs by ID).
 
-Idempotent — docs that already have the field are skipped.
+Idempotent - docs that already have the field are skipped.
 
 Usage:
     .\.venv\Scripts\python.exe -m scripts.backfill_is_custom_slug --dry-run

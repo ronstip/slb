@@ -27,7 +27,7 @@ function vendorChunk(id: string): string | undefined {
   // Only chunk leaf libraries that don't share React internals. Splitting
   // anything inside the React ecosystem (react, radix, router, react-query,
   // motion, …) creates cross-chunk circular imports that crash the app on
-  // first paint — `Cannot read properties of undefined (reading 'forwardRef')`
+  // first paint - `Cannot read properties of undefined (reading 'forwardRef')`
   // because the shared React module hasn't finished initializing when a peer
   // chunk's top-level forwardRef call runs. Keep them together in `vendor`.
   if (id.includes('recharts')) return 'vendor-recharts'
@@ -39,7 +39,7 @@ function vendorChunk(id: string): string | undefined {
   if (id.includes('firebase')) return 'vendor-firebase'
   if (id.includes('lucide-react')) return 'vendor-icons'
   // Keep the entire unified/remark/rehype pipeline in a single chunk. Splitting
-  // any of these out causes cross-chunk circular imports — e.g. `mdast-util-to-hast`
+  // any of these out causes cross-chunk circular imports - e.g. `mdast-util-to-hast`
   // calls `convert` from `unist-util-is` at module top-level, so if they land in
   // different chunks the importing chunk hits `Cannot access 'Bn' before
   // initialization` on first paint.
@@ -86,7 +86,7 @@ export default defineConfig({
     // run JavaScript still see the full hero content.
     //
     // Prerender drives a headless Chromium via puppeteer. Set
-    // DISABLE_PRERENDER=true to skip it entirely — used by the CI smoke-test
+    // DISABLE_PRERENDER=true to skip it entirely - used by the CI smoke-test
     // build, which only needs a working SPA and shouldn't pay the
     // (slow, flaky) Chromium download. Only the deploy build needs SEO HTML.
     ...(process.env.DISABLE_PRERENDER === 'true'
@@ -100,7 +100,7 @@ export default defineConfig({
               // loading spinner and render LandingPage directly during snapshot.
               inject: true,
               injectProperty: '__PRERENDER_INJECTED',
-              // Capture after a fixed delay — long enough for React to mount,
+              // Capture after a fixed delay - long enough for React to mount,
               // lazy-load the LandingPage chunk, and render the hero.
               renderAfterTime: 8_000,
               maxConcurrentRoutes: 1,
@@ -126,7 +126,7 @@ export default defineConfig({
     // popup-based sign-in can interact with the Google OAuth popup. Without
     // this, modern Chrome blocks `popup.closed` polling and `popup.close()`
     // calls when accounts.google.com (which sets COOP `same-origin`) is
-    // opened from an opener with no COOP — the popup completes the auth
+    // opened from an opener with no COOP - the popup completes the auth
     // dance but the parent never learns the credential arrived.
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',

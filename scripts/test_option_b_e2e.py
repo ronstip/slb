@@ -1,6 +1,6 @@
 """End-to-end smoke test for Option B (X API quote/reply unpacking).
 
-Hits the real X API + real Gemini. Skips BQ/Firestore — runs the adapter
+Hits the real X API + real Gemini. Skips BQ/Firestore - runs the adapter
 in-memory, finds an unpacked quote/reply pair, enriches both posts, and prints
 funnel numbers + side-by-side AI summaries so we can verify the parent's
 enrichment now references the dep's content.
@@ -61,7 +61,7 @@ def main() -> None:
     print(f"{'='*72}\n")
 
     if not settings.x_api_unpack_referenced_posts:
-        print("ABORT — flag is OFF. Set X_API_UNPACK_REFERENCED_POSTS=true in .env.")
+        print("ABORT - flag is OFF. Set X_API_UNPACK_REFERENCED_POSTS=true in .env.")
         return
 
     # ---------------------------------------------------------------------
@@ -101,7 +101,7 @@ def main() -> None:
     print(f"\n  Parents with hydrated dep in-batch: {len(parents_with_deps)}")
 
     if not parents_with_deps:
-        print("\nABORT — no quote/reply pair where the dep was hydrated. "
+        print("\nABORT - no quote/reply pair where the dep was hydrated. "
               "Try a wider window or different keyword.")
         return
 
@@ -122,7 +122,7 @@ def main() -> None:
     print(f"          content: {(dep.content or '')[:120]}")
 
     # ---------------------------------------------------------------------
-    # 2. Build ReferencedPost context for the parent (text-only — we skip
+    # 2. Build ReferencedPost context for the parent (text-only - we skip
     #    media download since this is a non-pipeline test). Mirrors what
     #    `_resolve_referenced_post` would build at runtime.
     # ---------------------------------------------------------------------
@@ -134,7 +134,7 @@ def main() -> None:
     )
 
     # ---------------------------------------------------------------------
-    # 3. Enrich both — parent WITH context, dep STANDALONE
+    # 3. Enrich both - parent WITH context, dep STANDALONE
     # ---------------------------------------------------------------------
     client = genai.Client(
         vertexai=True,
@@ -212,12 +212,12 @@ def main() -> None:
         print(f"  context:     {r.context[:300]}")
         print(f"  ai_summary:  {r.ai_summary[:500]}")
 
-    _print_summary(f"DEP (@{dep.channel_handle}) — standalone", dep_result)
-    _print_summary(f"PARENT (@{parent.channel_handle}) — WITHOUT context (baseline)", parent_result_without)
-    _print_summary(f"PARENT (@{parent.channel_handle}) — WITH context (Option B)", parent_result_with)
+    _print_summary(f"DEP (@{dep.channel_handle}) - standalone", dep_result)
+    _print_summary(f"PARENT (@{parent.channel_handle}) - WITHOUT context (baseline)", parent_result_without)
+    _print_summary(f"PARENT (@{parent.channel_handle}) - WITH context (Option B)", parent_result_with)
 
     # ---------------------------------------------------------------------
-    # 5. Semantic check — does parent-with-context reference the dep?
+    # 5. Semantic check - does parent-with-context reference the dep?
     # ---------------------------------------------------------------------
     print(f"\n{'='*72}")
     print(f"SEMANTIC CHECK")
@@ -248,15 +248,15 @@ def main() -> None:
 
     print()
     if with_context_signal and not without_context_signal:
-        print("  ✓ Option B improves grounding — context aware vs. not.")
+        print("  ✓ Option B improves grounding - context aware vs. not.")
     elif with_context_signal and without_context_signal:
-        print("  ~ Both versions have some dep grounding — pair may be too easy "
+        print("  ~ Both versions have some dep grounding - pair may be too easy "
               "to interpret without context. Try a more cryptic quote-tweet.")
     elif not with_context_signal and not without_context_signal:
-        print("  ✗ Neither version references the dep — context likely didn't "
+        print("  ✗ Neither version references the dep - context likely didn't "
               "land (check prompt rendering or pick another pair).")
     else:
-        print("  ?? baseline references dep but Option B doesn't — unexpected.")
+        print("  ?? baseline references dep but Option B doesn't - unexpected.")
 
     print(f"\n{'='*72}\n")
 

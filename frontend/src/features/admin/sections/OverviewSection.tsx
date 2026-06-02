@@ -111,7 +111,7 @@ export function OverviewSection() {
         />
         <StatCard
           title="Relevancy"
-          value={overview?.avg_relevancy_pct != null ? `${overview.avg_relevancy_pct}%` : '—'}
+          value={overview?.avg_relevancy_pct != null ? `${overview.avg_relevancy_pct}%` : '-'}
           icon={Target}
           subtitle={overview?.total_posts_related != null
             ? `${overview.total_posts_related.toLocaleString()} on-task`

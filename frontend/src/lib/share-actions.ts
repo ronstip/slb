@@ -40,7 +40,7 @@ export function useSharePageActions({
         await navigator.share({ title, url });
         return;
       } catch (err) {
-        // User dismissed the native sheet — don't fall through to copy.
+        // User dismissed the native sheet - don't fall through to copy.
         if (err instanceof Error && err.name === 'AbortError') return;
       }
     }
@@ -49,7 +49,7 @@ export function useSharePageActions({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* clipboard blocked — nothing actionable */
+      /* clipboard blocked - nothing actionable */
     }
   }, [title]);
 

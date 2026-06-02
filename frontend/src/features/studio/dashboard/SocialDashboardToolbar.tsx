@@ -26,7 +26,7 @@ interface SocialDashboardToolbarProps {
   canRedo: boolean;
 }
 
-// Cmd on macOS, Ctrl elsewhere. Pure heuristic — fine for tooltip copy.
+// Cmd on macOS, Ctrl elsewhere. Pure heuristic - fine for tooltip copy.
 const MOD_KEY =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
     ? '⌘'

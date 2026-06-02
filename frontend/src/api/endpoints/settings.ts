@@ -47,7 +47,7 @@ export function joinOrg(inviteCode: string): Promise<{ status: string; org_id: s
   return apiPost(`/orgs/join/${inviteCode}`, {});
 }
 
-/** Public — no auth required. Used by the signed-out invite page. */
+/** Public - no auth required. Used by the signed-out invite page. */
 export function getInvitePreview(inviteCode: string): Promise<OrgInvitePreview> {
   return apiGet<OrgInvitePreview>(`/orgs/invites/preview/${inviteCode}`);
 }

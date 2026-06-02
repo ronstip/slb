@@ -3,7 +3,7 @@
 Responsibilities:
 - Hold a single ApifyClient instance (auth + connection reuse).
 - Run an actor synchronously (start → wait → fetch dataset) and yield items.
-- Translate Apify run statuses into success / failure / timeout outcomes —
+- Translate Apify run statuses into success / failure / timeout outcomes -
   ActorClient.call() does not raise on actor FAILED/TIMED-OUT/ABORTED, it just
   returns the run dict, so callers must inspect the status explicitly.
 """

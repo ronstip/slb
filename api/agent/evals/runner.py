@@ -60,7 +60,7 @@ _SCENARIOS_PATH = _EVAL_DIR / "scenarios.yaml"
 # exactly the bug class this benchmark is built to surface) burns unbounded
 # Vertex AI quota. Hit during the first baseline attempt: the agent looped
 # `get_agent_status` 122 times in 12 minutes before being killed manually.
-# Any individual scenario that exceeds this is a bug — capture what we have
+# Any individual scenario that exceeds this is a bug - capture what we have
 # and move on.
 MAX_TOOL_CALLS_PER_SCENARIO = 25
 
@@ -73,7 +73,7 @@ def _build_runner(mode: str, *, live: bool, model_override: str | None) -> Runne
 
     In stub mode, prepend stub_before_tool_callback to short-circuit
     side-effect tools. Production callbacks (SQL budget, access control,
-    tool-call cap) DO NOT fire in eval mode — the eval measures pure
+    tool-call cap) DO NOT fire in eval mode - the eval measures pure
     prompt-driven agent behavior, not callback-bounded behavior. This is
     deliberate: phase1 retrospective showed the agent thrashes on
     budget_exhausted responses (it issues SQL variants until it hits the
@@ -186,7 +186,7 @@ async def _run_scenario(
                     capped = True
                     turn.events.append(TranscriptEvent(
                         type="text", turn=idx, author="harness",
-                        text=f"[harness cap: stopped after {tool_call_total} tool calls — runaway loop]",
+                        text=f"[harness cap: stopped after {tool_call_total} tool calls - runaway loop]",
                     ))
                     logger.warning(
                         "scenario %s hit MAX_TOOL_CALLS_PER_SCENARIO=%d at turn %d",

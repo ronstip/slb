@@ -1,4 +1,4 @@
-"""Artifact sharing router — CRUD for share tokens + public artifact endpoint."""
+"""Artifact sharing router - CRUD for share tokens + public artifact endpoint."""
 
 import asyncio
 import logging
@@ -55,7 +55,7 @@ async def create_share(
     request: CreateArtifactShareRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Create a shareable link for an artifact. Idempotent — returns existing if active."""
+    """Create a shareable link for an artifact. Idempotent - returns existing if active."""
     fs = get_fs()
     artifact = await asyncio.to_thread(_check_artifact_owner, fs, user, request.artifact_id)
 
@@ -121,7 +121,7 @@ async def get_shared_artifact(
     request: Request,  # required by slowapi
     token: str,
 ):
-    """Public endpoint — serves shared artifact without authentication."""
+    """Public endpoint - serves shared artifact without authentication."""
     fs = get_fs()
     share = fs.get_artifact_share(token)
 
@@ -171,7 +171,7 @@ async def download_shared_presentation(
     request: Request,  # required by slowapi
     token: str,
 ):
-    """Public presentation download — serves the .pptx for a shared presentation artifact."""
+    """Public presentation download - serves the .pptx for a shared presentation artifact."""
     fs = get_fs()
     share = fs.get_artifact_share(token)
     if not share or share.get("revoked"):

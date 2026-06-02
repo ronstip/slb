@@ -5,7 +5,7 @@ Changes from v5 (response to the v5-report audit):
   §2  Metadata & contextual frame
       - Adds a "Verified events of the period" block REQUIRED before the
         contextual-frame paragraph. Each named event (party launch, merger,
-        scandal, appointment) carries a date verified via web grounding —
+        scandal, appointment) carries a date verified via web grounding -
         NOT the date of a corpus post mentioning the event. Corpus posts
         about events typically come weeks after the event itself (the
         Bennett-Lapid merger was treated as 12.05 in v5 because the agent
@@ -22,7 +22,7 @@ Changes from v5 (response to the v5-report audit):
          actors per post: <avg_entities>." Forces real reconciliation,
          not hand-waving.
       - Methodology line ("data UNION of entity-match + stance signals")
-        REMOVED from the body — it belongs in §App-B if anywhere.
+        REMOVED from the body - it belongs in §App-B if anywhere.
 
   §7  Chronology
       - Inflection-point cross-checks happen behind the scenes; the
@@ -46,13 +46,13 @@ Changes from v5 (response to the v5-report audit):
         and forbids linking to corpus platforms (x.com, twitter.com,
         tiktok.com, youtube.com, instagram.com, facebook.com). At least
         3 distinct external hostnames required.
-      - §App-B methodology stripped of internal tool slugs — describe
+      - §App-B methodology stripped of internal tool slugs - describe
         what was done in plain Hebrew/operational terms, not by naming
         `entity_metrics` / `scope_posts` / `execute_sql` etc.
 
   Overall tone hardening
-      - Internal terminology — `Entity Match`, `Candidate Stance`,
-        `UNION`, `dedupe`, tool slugs — is forbidden in §2 through §14.
+      - Internal terminology - `Entity Match`, `Candidate Stance`,
+        `UNION`, `dedupe`, tool slugs - is forbidden in §2 through §14.
         Methodology lives in §App-B only.
 
 All other briefs imported from v3 verbatim.
@@ -102,9 +102,9 @@ SEC_2_MD = f"""## 2. Metadata & contextual frame
 
 {VOICE}
 
-**Agent instructions.** Three blocks, in this order: (1) quantitative spec, (2) verified events of the period, (3) contextual frame. Numbers are real or `n/a` — never a hedge. Localize field labels into the data's language; preserve order.
+**Agent instructions.** Three blocks, in this order: (1) quantitative spec, (2) verified events of the period, (3) contextual frame. Numbers are real or `n/a` - never a hedge. Localize field labels into the data's language; preserve order.
 
-**Block 1 — Quantitative spec.**
+**Block 1 - Quantitative spec.**
 ```
 - Period: <YYYY-MM-DD> → <YYYY-MM-DD>
 - Total posts: <raw> raw / <dedup> after dedup
@@ -116,16 +116,16 @@ SEC_2_MD = f"""## 2. Metadata & contextual frame
 - Primary entities tracked: <Entity1>, <Entity2>, …
 ```
 
-**Block 2 — Verified events of the period (load-bearing).** A compact list of the named events that shaped the period — party launches, mergers, scandals, appointments, major speeches. Each event line states the VERIFIED ACTUAL DATE — confirmed against an independent news source via web grounding — NOT the date of a corpus post mentioning it.
+**Block 2 - Verified events of the period (load-bearing).** A compact list of the named events that shaped the period - party launches, mergers, scandals, appointments, major speeches. Each event line states the VERIFIED ACTUAL DATE - confirmed against an independent news source via web grounding - NOT the date of a corpus post mentioning it.
 
 | Date | Event | Source |
 | :--- | :---- | :----- |
 
-**Why this matters.** A corpus post on day Y about event X does NOT mean X happened on Y. Anniversary/commemorative/recap posts are common in political corpora — they reference an event from weeks earlier. Conflating post-date with event-date is the single most embarrassing failure mode of this report. If you cannot find an external news source dating the event, mark the date as `~MM` (approximate month) and footnote the uncertainty — do NOT invent precision.
+**Why this matters.** A corpus post on day Y about event X does NOT mean X happened on Y. Anniversary/commemorative/recap posts are common in political corpora - they reference an event from weeks earlier. Conflating post-date with event-date is the single most embarrassing failure mode of this report. If you cannot find an external news source dating the event, mark the date as `~MM` (approximate month) and footnote the uncertainty - do NOT invent precision.
 
-**Block 3 — Contextual frame.** 2–3 lines: where this period sits in the longer campaign arc (early / mid / late) and what happened in the world during it that matters. Positioning, not background. Reference the events from Block 2 — do NOT introduce new events here.
+**Block 3 - Contextual frame.** 2–3 lines: where this period sits in the longer campaign arc (early / mid / late) and what happened in the world during it that matters. Positioning, not background. Reference the events from Block 2 - do NOT introduce new events here.
 
-**Internal terminology — forbidden in this widget.** No `entity_metrics`, no "Entity Match", no "Candidate Stance", no `UNION`, no tool names. The customer reads this. Methodology lives in §App-B.
+**Internal terminology - forbidden in this widget.** No `entity_metrics`, no "Entity Match", no "Candidate Stance", no `UNION`, no tool names. The customer reads this. Methodology lives in §App-B.
 
 ---
 
@@ -150,7 +150,7 @@ SEC_2_MD = f"""## 2. Metadata & contextual frame
 | 2026-05-08 | `<Rival>` defamation suit filed       | [`<Outlet2>` (2026-05-08)](https://news2.example/article)  |
 | 2026-05-10 | `<Subject>` interview airs on `<Show>` | [`<Outlet3>` (2026-05-10)](https://news3.example/article)  |
 
-**Contextual frame.** Week 3 post-merger. Mid-campaign. The defamation suit anchors the period's narrative; the foreign-press interview gives the rival camp a global stage. The merger itself is two weeks old — posts referencing it now are reinforcement, not announcement.
+**Contextual frame.** Week 3 post-merger. Mid-campaign. The defamation suit anchors the period's narrative; the foreign-press interview gives the rival camp a global stage. The merger itself is two weeks old - posts referencing it now are reinforcement, not announcement.
 """
 
 
@@ -167,15 +167,15 @@ SEC_5_MD = f"""<a id="sec-5"></a>
 
 - **Posts**: count of in-scope posts mentioning the actor.
 - **Reach**: sum of views.
-- **SoV %**: copy `sov_views` from the `entity_metrics` row, formatted as a percent. **Do NOT re-normalize by summing the table's rows.** The TVF computes SoV against the corpus's full reach. If row SoVs sum to >100%, that is the expected overlap signal — see the math footnote below.
+- **SoV %**: copy `sov_views` from the `entity_metrics` row, formatted as a percent. **Do NOT re-normalize by summing the table's rows.** The TVF computes SoV against the corpus's full reach. If row SoVs sum to >100%, that is the expected overlap signal - see the math footnote below.
 - **Sentiment (Pro / Anti)**: `<pro count> / <anti count>`.
-- **Trend** (column header in Hebrew: **מגמה**): the actor's net tone — glyph + one descriptive word, from the TVF's `net_sentiment` field. Three values only:
+- **Trend** (column header in Hebrew: **מגמה**): the actor's net tone - glyph + one descriptive word, from the TVF's `net_sentiment` field. Three values only:
   - `▲ חיובי`   when `net_sentiment > +0.10`
   - `▬ מעורב`   when `−0.10 ≤ net_sentiment ≤ +0.10`
   - `▼ שלילי`   when `net_sentiment < −0.10`
   Apply the threshold uniformly. Do not pick by impression. Localize the word into the data's language (Hebrew: חיובי / מעורב / שלילי; English: positive / mixed / negative).
 
-**Math footnote (mandatory, exactly this shape — one line).** Below the table:
+**Math footnote (mandatory, exactly this shape - one line).** Below the table:
 
 > *סך חשיפת הקורפוס: `<N>` · סכום החשיפה לשחקנים: `<M>` · מכפלה: `<M÷N>×` · ממוצע אזכורים לפוסט: `<avg>`. מסביר את סכום הנתחים החורג מ-100%.*
 
@@ -189,7 +189,7 @@ WHERE posted_at BETWEEN @period_start AND @period_end
   AND ARRAY_LENGTH(entities) > 0
 ```
 
-**No methodology in the body.** Do NOT write "data UNION of entity-match and stance signals" or any equivalent phrasing in the §5 widget. The deduplication and signal sources are implementation detail — they belong in §App-B if anywhere. The reader sees the rows and the math footnote; that's it.
+**No methodology in the body.** Do NOT write "data UNION of entity-match and stance signals" or any equivalent phrasing in the §5 widget. The deduplication and signal sources are implementation detail - they belong in §App-B if anywhere. The reader sees the rows and the math footnote; that's it.
 
 **Before calling the TVF**, sample what's actually in `entities`:
 ```sql
@@ -217,24 +217,24 @@ Below the table and footnote, **1–2 paragraphs** of operational interpretation
 
 *סך חשיפת הקורפוס: 22.6M · סכום החשיפה לשחקנים: 24.1M · מכפלה: 1.07× · ממוצע אזכורים לפוסט: 1.12. מסביר את סכום הנתחים החורג מ-100%.*
 
-**Strategic insight.** `<Rival1>`'s reach lead rests on a single viral mechanic; the pro/anti ratio is the most negative in the field. `<Subject>` holds a clean #2 with a stable sentiment profile and a credible gap to #3. The four trailing actors together produce 20.7% — less than `<Subject>` alone.
+**Strategic insight.** `<Rival1>`'s reach lead rests on a single viral mechanic; the pro/anti ratio is the most negative in the field. `<Subject>` holds a clean #2 with a stable sentiment profile and a credible gap to #3. The four trailing actors together produce 20.7% - less than `<Subject>` alone.
 """
 
 
 SEC_7_MD = f"""<a id="sec-7"></a>
-## 7. Chronology — what shaped the week
+## 7. Chronology - what shaped the week
 
 {VOICE}
 
 {BODY_SKELETON}
 
-**Agent instructions.** Three sub-sections. Sub-section headers use `###` (not `##`). Numbers and dates here are the highest-risk surface for errors — build every cell from a single query result, not memory.
+**Agent instructions.** Three sub-sections. Sub-section headers use `###` (not `##`). Numbers and dates here are the highest-risk surface for errors - build every cell from a single query result, not memory.
 
-**7a. Day-by-day table.** One row per day in the requested period — **every day, even if the data is sparse**. Sparse days are signal, not noise; mark them `—` rather than dropping the row.
+**7a. Day-by-day table.** One row per day in the requested period - **every day, even if the data is sparse**. Sparse days are signal, not noise; mark them `-` rather than dropping the row.
 
 | Date | Posts | Reach | Pro / Anti | Daily inflection (one line) |
 
-Fill missing days by left-joining against a generated date series, OR by explicitly listing every day in the period and marking blanks as `—`.
+Fill missing days by left-joining against a generated date series, OR by explicitly listing every day in the period and marking blanks as `-`.
 
 **7b. Format / channel performance.** A compact table over the same period. Pick ONE cut: platform × `content_type` OR `channel_type`. Don't mix.
 
@@ -242,11 +242,11 @@ Fill missing days by left-joining against a generated date series, OR by explici
 
 **Coverage rule (load-bearing).** The named cuts must cover **≥80% of total reach** for the period. If the cuts you chose leave more than 20% uncategorized, add a final row `Other / residual` showing the remainder so the column sums clean. The customer must be able to add the column and get back to the §2 corpus reach.
 
-**7c. Inflection points (load-bearing).** 2–3 days that **changed the shape of the period** and what drove them. Each inflection cites specific post(s) — date, time, platform, account, views — sourced from the data.
+**7c. Inflection points (load-bearing).** 2–3 days that **changed the shape of the period** and what drove them. Each inflection cites specific post(s) - date, time, platform, account, views - sourced from the data.
 
 **Two non-negotiable rules:**
 
-1. **Event-date verification.** When a row names an event ("merger announced", "interview airs", "appointment"), the event date MUST match the verified date in §2's "Verified events of the period" block — NOT the post date. A post on Day Y about an event from week-N-2 is a commemorative / reinforcement post; it does not move the inflection to Day Y. If a post-date and an event-date diverge, write the inflection around the event-date and treat the recent post as amplification.
+1. **Event-date verification.** When a row names an event ("merger announced", "interview airs", "appointment"), the event date MUST match the verified date in §2's "Verified events of the period" block - NOT the post date. A post on Day Y about an event from week-N-2 is a commemorative / reinforcement post; it does not move the inflection to Day Y. If a post-date and an event-date diverge, write the inflection around the event-date and treat the recent post as amplification.
 
 2. **Plausibility cross-check.** For every claim of the form *"X drove the spike on Day Y"*, run ONE targeted query before writing it:
 
@@ -259,7 +259,7 @@ GROUP BY platform
 ORDER BY reach DESC
 ```
 
-If `<X>`'s share is below 30% of Day Y's reach, the claim is wrong — rewrite it. **The cross-check happens silently — DO NOT write the word "cross-check" or "*בדיקת הצלבה*" in the customer-facing prose.** State the result operationally: instead of *"בדיקת הצלבה: TikTok contributed 66% of the daily reach"*, write *"TikTok carried 66% of the day's reach, almost entirely from three @60minutes clips"*. The customer reads the finding, not the diagnostic.
+If `<X>`'s share is below 30% of Day Y's reach, the claim is wrong - rewrite it. **The cross-check happens silently - DO NOT write the word "cross-check" or "*בדיקת הצלבה*" in the customer-facing prose.** State the result operationally: instead of *"בדיקת הצלבה: TikTok contributed 66% of the daily reach"*, write *"TikTok carried 66% of the day's reach, almost entirely from three @60minutes clips"*. The customer reads the finding, not the diagnostic.
 
 Reference the daily-volume line chart on the dashboard once.
 
@@ -271,26 +271,26 @@ Reference the daily-volume line chart on the dashboard once.
 
 | Date  | Posts | Reach | Pro / Anti | Daily inflection |
 | :---- | ----: | ----: | :--------: | :--------------- |
-| MM-DD |   391 |  4.1M |   95 / 130 | Counter-attack lands — 3 anti posts at 300K combined |
+| MM-DD |   391 |  4.1M |   95 / 130 | Counter-attack lands - 3 anti posts at 300K combined |
 | MM-DD |   368 |  3.4M |   82 / 121 | Foreign-press interview airs (verified airdate, see §2) |
-| MM-DD |    —  |   —   |     —      | (sparse — only N posts; cause: weekend / holiday) |
+| MM-DD |    -  |   -   |     -      | (sparse - only N posts; cause: weekend / holiday) |
 
 **7b. Format / channel performance.**
 
 | Cut | Posts | Total reach | Avg reach / post | Share of reach % | Takeaway |
 | :--- | ----: | ----------: | ---------------: | ---------------: | :------- |
-| X — official statements | 12 | 1.55M | 129K | 10.5% | Few posts, huge per-post weight |
-| X — text commentary     | 482 | 2.58M | 5.4K |  17.5% | Workhorse format for argumentation |
-| TikTok — opinion video  |  17 | 434K  | 25K  |   2.9% | Punches above its volume |
-| X — image / quote-card  | 198 | 8.34M | 42K  |  56.5% | Where the period's reach concentrates |
+| X - official statements | 12 | 1.55M | 129K | 10.5% | Few posts, huge per-post weight |
+| X - text commentary     | 482 | 2.58M | 5.4K |  17.5% | Workhorse format for argumentation |
+| TikTok - opinion video  |  17 | 434K  | 25K  |   2.9% | Punches above its volume |
+| X - image / quote-card  | 198 | 8.34M | 42K  |  56.5% | Where the period's reach concentrates |
 | **Other / residual**    | 142 | 1.92M | 13.5K | 12.6% | UGC + small-handle replies |
 
 *(Coverage: rows cover 100% of period reach.)*
 
 **7c. Inflection points.**
 
-- **MM-DD: counter-attack lands.** Three pro-`<RivalCamp>` posts ([302K](https://x.com/...), [180K](https://x.com/...), [110K](https://x.com/...)) carry the "<AttackLine>" frame on X — they account for 71% of the day's reach. `<Subject>`'s response (50K views) is 6× under-amplified.
-- **MM-DD: foreign-press interview lands.** The actual interview aired on `<DATE-verified>` (see §2); the corpus spike on this day is the Hebrew-language repackaging — three @60minutes-clipped TikTok cuts together produce 66% of the day's reach.
+- **MM-DD: counter-attack lands.** Three pro-`<RivalCamp>` posts ([302K](https://x.com/...), [180K](https://x.com/...), [110K](https://x.com/...)) carry the "<AttackLine>" frame on X - they account for 71% of the day's reach. `<Subject>`'s response (50K views) is 6× under-amplified.
+- **MM-DD: foreign-press interview lands.** The actual interview aired on `<DATE-verified>` (see §2); the corpus spike on this day is the Hebrew-language repackaging - three @60minutes-clipped TikTok cuts together produce 66% of the day's reach.
 """
 
 
@@ -309,11 +309,11 @@ Use this table schema:
 
 **Label translation (load-bearing).** Raw `custom_fields` keys are snake_case English (`pro_bibi`, `anti_bennett`, …). Translate every label to a human phrase in the data's language. The raw key never appears in a customer-facing cell.
 
-**Closing line — operational, not diagnostic.** Below the table, one short paragraph (not a bullet, not a "Reconciliation note:" heading) interpreting the gap between this table's stance-tagged count and §5's broader Posts count. Phrase it as an insight, not as a methodology footnote. Example phrasing:
+**Closing line - operational, not diagnostic.** Below the table, one short paragraph (not a bullet, not a "Reconciliation note:" heading) interpreting the gap between this table's stance-tagged count and §5's broader Posts count. Phrase it as an insight, not as a methodology footnote. Example phrasing:
 
-  *"Of <Subject>'s 449 corpus mentions, only 107 are organic supporters; the rest is the rival camp's amplification machine. <Rival>'s own ratio is inverted — his supporters out-amplify his attackers by 2.5×."*
+  *"Of <Subject>'s 449 corpus mentions, only 107 are organic supporters; the rest is the rival camp's amplification machine. <Rival>'s own ratio is inverted - his supporters out-amplify his attackers by 2.5×."*
 
-Do NOT write "data UNION", "Entity Match", "Candidate Stance" or the literal field names — those are implementation detail.
+Do NOT write "data UNION", "Entity Match", "Candidate Stance" or the literal field names - those are implementation detail.
 
 Query template:
 ```sql
@@ -341,7 +341,7 @@ SEC_9_MD = f"""<a id="sec-9"></a>
 
 {BODY_SKELETON}
 
-**Agent instructions.** A table of live narrative clusters covering the period. Use `list_topics` to pull semantic clusters — reference **at least 5–10 by name** in the body.
+**Agent instructions.** A table of live narrative clusters covering the period. Use `list_topics` to pull semantic clusters - reference **at least 5–10 by name** in the body.
 
 | Cluster | Posts | Reach | Lead voices (handles) | Status | Recommended response |
 
@@ -351,9 +351,9 @@ SEC_9_MD = f"""<a id="sec-9"></a>
 
 Rank rows by reach.
 
-**Cluster vs. slice reconciliation (load-bearing).** Topic-cluster reach is keyword/embedding-based — it can undercount when the §7b platform×content_type slice picks up the same content. If a cluster's reach is materially smaller (>2×) than the §7b slice covering the same content, add ONE operational line that explains it. Example: *"The foreign-press cluster shows 945K here because the topic-extractor matched Hebrew references only; the actual airdate spike (5.3M, §7b) includes the English-language clips."*
+**Cluster vs. slice reconciliation (load-bearing).** Topic-cluster reach is keyword/embedding-based - it can undercount when the §7b platform×content_type slice picks up the same content. If a cluster's reach is materially smaller (>2×) than the §7b slice covering the same content, add ONE operational line that explains it. Example: *"The foreign-press cluster shows 945K here because the topic-extractor matched Hebrew references only; the actual airdate spike (5.3M, §7b) includes the English-language clips."*
 
-Do NOT use the words "topic-extractor", "embedding", "cluster recall" or any technical framing in the body — the operational sentence above is fine.
+Do NOT use the words "topic-extractor", "embedding", "cluster recall" or any technical framing in the body - the operational sentence above is fine.
 
 Track **branded-hashtag adoption** explicitly. If the campaign's own hashtag has 0 appearances in 1,000+ posts, that's a finding, not a footnote.
 
@@ -373,12 +373,12 @@ Reference the word-cloud widget once.
 
 **Cross-platform note.** The launch reads as **coalition / strategy** on X (high pro/anti ratio, policy-flavored discussion) but reads as **personality / character** on TikTok (heavy anti-subject emotional content). Narrative tools must be platform-specific.
 
-**Branded-hashtag adoption.** Campaign hashtag `<#TAG>` appears in 89 posts (3.6% of corpus) — under-adopted for a launch week.
+**Branded-hashtag adoption.** Campaign hashtag `<#TAG>` appears in 89 posts (3.6% of corpus) - under-adopted for a launch week.
 """
 
 
 APPENDIX_MD = f"""<a id="sec-app"></a>
-## Appendix — External grounding & methodology
+## Appendix - External grounding & methodology
 
 {VOICE}
 
@@ -388,44 +388,44 @@ APPENDIX_MD = f"""<a id="sec-app"></a>
 
 ### A. External grounding (independent sources only)
 
-**Strict rule — corpus platforms are FORBIDDEN here.** No `x.com`, `twitter.com`, `tiktok.com`, `youtube.com`, `instagram.com`, `facebook.com` links. The corpus posts those platforms produced are NOT external grounding — they are the data itself. External grounding means independent journalism, polls, market research, third-party reports, official statements from outlets/institutions OFF those platforms.
+**Strict rule - corpus platforms are FORBIDDEN here.** No `x.com`, `twitter.com`, `tiktok.com`, `youtube.com`, `instagram.com`, `facebook.com` links. The corpus posts those platforms produced are NOT external grounding - they are the data itself. External grounding means independent journalism, polls, market research, third-party reports, official statements from outlets/institutions OFF those platforms.
 
-**Minimum: ≥3 distinct external hostnames**, ≥5 total links. If web grounding cannot produce ≥3 distinct news/poll/report domains, you have not actually grounded the report — re-run web grounding before publishing.
+**Minimum: ≥3 distinct external hostnames**, ≥5 total links. If web grounding cannot produce ≥3 distinct news/poll/report domains, you have not actually grounded the report - re-run web grounding before publishing.
 
 - Each entry: one-line summary, markdown link `[label](url)`, and the specific section it grounds (e.g. "grounds 7c inflection MM-DD" or "grounds §2 event-date for `<Event>`").
 - Group by type when there are enough (Polls / Press / Market / Official / Regulatory).
-- **Run web grounding for each verified event in §2** — the article you used to date the event is exactly the link that belongs here.
+- **Run web grounding for each verified event in §2** - the article you used to date the event is exactly the link that belongs here.
 - A source that doesn't connect to a specific body finding doesn't earn its place.
 
-**SERP and placeholder URLs rejected.** `google.com/search?q=…`, `bing.com/search?q=…`, `…/sample-url`, `example.com`, etc. are forbidden — `verify_dashboard` rejects them.
+**SERP and placeholder URLs rejected.** `google.com/search?q=…`, `bing.com/search?q=…`, `…/sample-url`, `example.com`, etc. are forbidden - `verify_dashboard` rejects them.
 
 ---
 
 **Reference example.**
 
 #### Press
-- **[`<Outlet1>` — "<Headline>" (2026-MM-DD)](https://www.outlet1.example/article-id).** Reports the announcement of `<Event>`; **grounds §2 verified event-date for `<Event>` and §7c inflection MM-DD**.
-- **[`<Outlet2>` — "<Headline2>" (2026-MM-DD)](https://www.outlet2.example/article).** Attack-line coverage; **grounds §9 cluster `<cluster>`**.
+- **[`<Outlet1>` - "<Headline>" (2026-MM-DD)](https://www.outlet1.example/article-id).** Reports the announcement of `<Event>`; **grounds §2 verified event-date for `<Event>` and §7c inflection MM-DD**.
+- **[`<Outlet2>` - "<Headline2>" (2026-MM-DD)](https://www.outlet2.example/article).** Attack-line coverage; **grounds §9 cluster `<cluster>`**.
 
 #### Polls
-- **[`<Pollster>` — `<Poll-Topic>` (2026-MM-DD)](https://www.pollster.example/polls/2026-05).** `<Subject>` bloc projected at 36 seats vs. `<Rival1>` 27; **grounds §4 consolidation claim**.
+- **[`<Pollster>` - `<Poll-Topic>` (2026-MM-DD)](https://www.pollster.example/polls/2026-05).** `<Subject>` bloc projected at 36 seats vs. `<Rival1>` 27; **grounds §4 consolidation claim**.
 
 #### Market / context
-- **[`<Institution>` — `<Report>` (2026-Q2)](https://www.institution.example/reports/q2-2026).** 31% trust in `<institution>`; **grounds §12 audience cohort**.
+- **[`<Institution>` - `<Report>` (2026-Q2)](https://www.institution.example/reports/q2-2026).** 31% trust in `<institution>`; **grounds §12 audience cohort**.
 
 ---
 
 ### B. Methodology & sources
 
-**Agent instructions.** Plain operational language. Describe what was done, not which functions were called. Internal tool names (`entity_metrics`, `scope_posts`, `execute_sql`, `list_topics`) and signal labels (`Entity Match`, `Candidate Stance`, `UNION`) MAY appear here — but the reader still benefits from a plain-language explanation alongside the slug.
+**Agent instructions.** Plain operational language. Describe what was done, not which functions were called. Internal tool names (`entity_metrics`, `scope_posts`, `execute_sql`, `list_topics`) and signal labels (`Entity Match`, `Candidate Stance`, `UNION`) MAY appear here - but the reader still benefits from a plain-language explanation alongside the slug.
 
 Cover:
-- **Data scope** — agent ID, source-collection count.
-- **Period** — exact start / end timestamps.
-- **Corpus** — total posts (raw / dedup), platform mix, language mix.
-- **Classification** — how sentiment / stance / emotion / themes were derived. Plain language; no jargon-only sentences.
-- **External sources consulted** — count and brief description, with link back to Part A.
-- **Data-quality scoreboard** (required) — per-field non-null coverage:
+- **Data scope** - agent ID, source-collection count.
+- **Period** - exact start / end timestamps.
+- **Corpus** - total posts (raw / dedup), platform mix, language mix.
+- **Classification** - how sentiment / stance / emotion / themes were derived. Plain language; no jargon-only sentences.
+- **External sources consulted** - count and brief description, with link back to Part A.
+- **Data-quality scoreboard** (required) - per-field non-null coverage:
 
 | Field | Non-null % | Notes |
 | :---- | ---------: | :---- |
@@ -435,7 +435,7 @@ Cover:
 | custom_fields.<field1> | 88.7% | Stance enrichment |
 | themes | 95.5% | |
 
-- **Known data gaps** — platforms missing, periods sparse, voices absent, enrichment fields not populated. Be specific. **Confident silence beats false synthesis.** If a finding upstream was hedged because of a data gap, name the gap here.
+- **Known data gaps** - platforms missing, periods sparse, voices absent, enrichment fields not populated. Be specific. **Confident silence beats false synthesis.** If a finding upstream was hedged because of a data gap, name the gap here.
 """
 
 
@@ -527,7 +527,7 @@ def build_layout() -> list[dict]:
         # Default fall-through path: full-width text widgets are inset by 1
         # column to match the header's narrowed layout (x=1, w=10 on a 12-col
         # grid). The user narrowed the header in v6 and asked for the same
-        # treatment everywhere — this matches that visual rhythm.
+        # treatment everywhere - this matches that visual rhythm.
         if w.get("aggregation") == "text":
             w_ = {**w, "x": 1, "y": y, "w": 10}
         else:
@@ -548,7 +548,7 @@ def write_template(dry_run: bool) -> None:
     print(f"  max y: {max(w['y'] + w['h'] for w in layout)}")
 
     if dry_run:
-        print("\nDRY RUN — not writing to Firestore.")
+        print("\nDRY RUN - not writing to Firestore.")
         return
 
     fs = get_fs()

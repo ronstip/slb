@@ -170,7 +170,7 @@ export function CollectionForm({ prefill, onClose, variant = 'modal', onSubmitSt
       if (!suppressSystemMessage) {
         const platformNames = platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ');
         addSystemMessage(
-          `Collection started: ${description || keywords.join(', ')} on ${platformNames} — ${keywords.length} keywords, last ${timeRangeDays === 1 ? '24 hours' : `${timeRangeDays} days`}.`,
+          `Collection started: ${description || keywords.join(', ')} on ${platformNames} - ${keywords.length} keywords, last ${timeRangeDays === 1 ? '24 hours' : `${timeRangeDays} days`}.`,
         );
       }
 

@@ -1,6 +1,6 @@
 """Tests for the PII redaction helper.
 
-The exact format-preserving output is part of the contract — ops staff rely on
+The exact format-preserving output is part of the contract - ops staff rely on
 the ``xx***@yy***`` shape when scanning logs, so any change here must update
 this test deliberately.
 """
@@ -18,7 +18,7 @@ def test_redact_short_local_and_domain() -> None:
 
 def test_redact_single_char_parts() -> None:
     # Single-char local: `local[:2]` returns just "a". Domain "b.com"[:2] is
-    # "b." — the dot is preserved on purpose so the redaction is purely a
+    # "b." - the dot is preserved on purpose so the redaction is purely a
     # left-prefix slice (no special-casing per-character).
     assert redact_email("a@b.com") == "a***@b.***"
 

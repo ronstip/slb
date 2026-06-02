@@ -34,7 +34,7 @@ interface AuthContextValue {
   profile: UserProfile | null;
   loading: boolean;
   isAnonymous: boolean;
-  /** `loginHint` (Google) pre-selects the matching account in the chooser —
+  /** `loginHint` (Google) pre-selects the matching account in the chooser -
    *  used by the invite flow to force the visitor to sign in as the invited
    *  email. */
   signIn: (loginHint?: string) => Promise<void>;
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await apiGet<UserProfile>('/me');
       setProfile(data);
     } catch {
-      // Profile fetch failed — user may not be provisioned yet
+      // Profile fetch failed - user may not be provisioned yet
       setProfile(null);
     }
   };
@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthStateChanged(auth, async (u) => {
       // If the Firebase identity changed, drop stale per-user data. We compare
       // against a uid persisted in localStorage (not just an in-memory ref) so a
-      // change ACROSS page loads is caught too — e.g. signing in as user B in a
+      // change ACROSS page loads is caught too - e.g. signing in as user B in a
       // browser that previously held user A's persisted stores (collection ids,
       // studio state). Without this, B's first requests fire with A's ids → 403.
       const newUid = u?.uid ?? null;
@@ -154,11 +154,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         if (newUid) localStorage.setItem('slb-auth-uid', newUid);
         else localStorage.removeItem('slb-auth-uid');
-      } catch { /* storage unavailable — non-fatal */ }
+      } catch { /* storage unavailable - non-fatal */ }
 
       if (!u) {
         setUser(null);
-        // No user — sign in anonymously (once)
+        // No user - sign in anonymously (once)
         if (!anonSignInAttempted.current) {
           anonSignInAttempted.current = true;
           try {
@@ -184,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // (persisted in sessionStorage across page refreshes).
       // When it is, we MUST await fetchProfile before setting loading=false.
       // Otherwise child components mount and fire data-fetching effects
-      // (e.g. fetchAgents) that race with fetchProfile — the early requests
+      // (e.g. fetchAgents) that race with fetchProfile - the early requests
       // may resolve first and populate stores with the admin's own data,
       // which then stays visible even though the profile shows the target user.
       let isImpersonating = false;
@@ -246,7 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       googleProvider.setCustomParameters(loginHint ? { login_hint: loginHint } : {});
     }
 
-    // No current user (anonymous auth disabled/failed) — sign in directly
+    // No current user (anonymous auth disabled/failed) - sign in directly
     if (!auth.currentUser) {
       try {
         await signInWithPopup(auth, authProvider);
@@ -256,12 +256,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Anonymous user exists — link the account
+    // Anonymous user exists - link the account
     const oldUid = auth.currentUser.uid;
 
     try {
       const result = await linkWithPopup(auth.currentUser, authProvider);
-      // Link succeeded — UID may have changed
+      // Link succeeded - UID may have changed
       if (oldUid !== result.user.uid) {
         await apiPost('/auth/link-account', { old_uid: oldUid });
       }
@@ -269,7 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: unknown) {
       const firebaseError = error as AuthError;
       if (firebaseError.code === 'auth/credential-already-in-use') {
-        // The account already exists — sign in with it and migrate data
+        // The account already exists - sign in with it and migrate data
         const credential =
           GoogleAuthProvider.credentialFromError(firebaseError) ||
           OAuthProvider.credentialFromError(firebaseError);

@@ -1,4 +1,4 @@
-# api — credit gate not enforced (paid/$0 user could still run agents)
+# api - credit gate not enforced (paid/$0 user could still run agents)
 
 ## Symptom
 A `paid`-tier user with `$0` (or negative) wallet balance could start the agent
@@ -18,9 +18,9 @@ also flips the separate, still-pending signup/access rollout (read-gating,
 
 ## Fix
 Split enforcement into two independent switches in `api/services/entitlements.py`:
-- `_credit_enforced()` → new `settings.enforce_credits` (default **True**) — drives
+- `_credit_enforced()` → new `settings.enforce_credits` (default **True**) - drives
   `require_active` + `require_credit_for_run`. Now active in every env.
-- `_access_enforced()` → `signup_gate == "entitlements"` — drives `require_access`
+- `_access_enforced()` → `signup_gate == "entitlements"` - drives `require_access`
   (read gate), left off until the signup flip is ready.
 
 Super-admin bypass (`_check_tier_and_get_balance`) is unchanged, so admins still run

@@ -6,13 +6,13 @@ Center panel. Users converse with the AI agent via SSE streaming. Agent tool cal
 
 ## Key Files
 
-- `ChatPanel.tsx` — Main container
-- `MessageList.tsx`, `MessageInput.tsx` — Message display + input
-- `WelcomeScreen.tsx` — Empty state with example prompts
-- `ThinkingBox.tsx`, `StatusLine.tsx` — Streaming indicators
-- `FollowUpChips.tsx`, `polls/QuickChoicePoll.tsx` — Interactive UX
-- `hooks/useSSEChat.ts` — SSE connection to `/chat` endpoint
-- `cards/` — Structured cards from agent tool responses
+- `ChatPanel.tsx` - Main container
+- `MessageList.tsx`, `MessageInput.tsx` - Message display + input
+- `WelcomeScreen.tsx` - Empty state with example prompts
+- `ThinkingBox.tsx`, `StatusLine.tsx` - Streaming indicators
+- `FollowUpChips.tsx`, `polls/QuickChoicePoll.tsx` - Interactive UX
+- `hooks/useSSEChat.ts` - SSE connection to `/chat` endpoint
+- `cards/` - Structured cards from agent tool responses
 
 ## Agent Tool → UI Mapping
 

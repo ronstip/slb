@@ -23,7 +23,7 @@ export function SharedDashboardPage() {
 
   // The app shell sets a global body min-width: 1280px for desktop-only
   // surfaces. The public share page is a viral landing surface that must
-  // render on phones — drop the constraint while mounted, restore on unmount.
+  // render on phones - drop the constraint while mounted, restore on unmount.
   useEffect(() => {
     const prev = document.body.style.minWidth;
     document.body.style.minWidth = '0';
@@ -63,7 +63,7 @@ export function SharedDashboardPage() {
 
   // Seed filter-bar pills from the owner's saved choice once the shared
   // response arrives. Inside SocialDashboardView, the authed layout fetch 401s
-  // for public viewers and falls back to defaults — so without this the
+  // for public viewers and falls back to defaults - so without this the
   // owner's pill selection wouldn't survive sharing.
   useEffect(() => {
     const persisted = response?.filterBarFilters;
@@ -154,7 +154,7 @@ export function SharedDashboardPage() {
       {!isLoading && !error && response && (
         <>
           <SharePageDefinitionRow deliverable="dashboard" platforms={availableOptions.platform} />
-          {/* Filter bar — editor can hide it for curated reports. */}
+          {/* Filter bar - editor can hide it for curated reports. */}
           {!response.filterBarHidden && (
             <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
               <div className="mx-auto max-w-6xl px-3 sm:px-6">

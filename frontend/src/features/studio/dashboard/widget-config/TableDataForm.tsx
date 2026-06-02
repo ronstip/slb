@@ -99,7 +99,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
   // Migrate legacy `dimension` slot into a first dim column so the form only
   // has to think about one model.
   const config = useMemo(() => normalizeTableConfig(rawConfig), [rawConfig]);
-  // The legacy field is now redundant — strip it on any mutation so saved
+  // The legacy field is now redundant - strip it on any mutation so saved
   // widgets converge on the canonical shape.
   const emit = (next: CustomTableConfig) => {
     const { dimension: _drop, ...rest } = next;
@@ -178,7 +178,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
 
   /** Switch the whole table between group-by and post-level modes. Replaces
    *  columns with the new mode's defaults; preserves cosmetic settings only
-   *  — column shapes are incompatible across modes. */
+   *  - column shapes are incompatible across modes. */
   const setMode = (next: 'group' | 'post') => {
     if (next === (config.mode ?? 'group')) return;
     if (next === 'post') {
@@ -219,7 +219,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
 
   return (
     <div className="space-y-4">
-      {/* Mode toggle — Group (cross-product rows) vs Post (one row per post).
+      {/* Mode toggle - Group (cross-product rows) vs Post (one row per post).
           Hidden for topic widgets: topic_metrics rows are already 1:1 with
           topics, so "post mode" doesn't apply. */}
       {!isTopics && (
@@ -252,7 +252,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
         </div>
       )}
 
-      {/* Columns list — group mode: dimension cols define grouping, metric cols
+      {/* Columns list - group mode: dimension cols define grouping, metric cols
           aggregate. Post mode: each col reads one raw post field. */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -300,7 +300,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
 
         {config.columns.length === 0 ? (
           <p className="text-xs text-muted-foreground italic px-1">
-            No columns — add at least one to render the table.
+            No columns - add at least one to render the table.
           </p>
         ) : (
           <div className="space-y-1.5">
@@ -310,7 +310,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
               const kind: 'metric' | 'dimension' = isDim ? 'dimension' : 'metric';
               const isPostCount = !isDim && !isPost && col.metric === 'post_count';
               const effectiveAgg: TableColumnAgg = isPostCount ? 'count' : (col.agg ?? 'sum');
-              // Post-field numeric flag — drives viz/display toggle visibility in post mode.
+              // Post-field numeric flag - drives viz/display toggle visibility in post mode.
               const postRender = isPost ? getPostFieldMeta(col.postField).render : null;
               // Viz/format toggles only make sense for numeric cells.
               const isNumericCol = (!isDim && !isPost) || postRender === 'numeric';
@@ -343,7 +343,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
                     </button>
                   </div>
 
-                  {/* Kind toggle — group mode only; post mode columns are all
+                  {/* Kind toggle - group mode only; post mode columns are all
                        post-field, no inter-kind switching. */}
                   {isPost ? (
                     <span className="text-[11px] font-medium text-muted-foreground w-[100px] px-1 truncate">
@@ -364,7 +364,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
                     </Select>
                   )}
 
-                  {/* Field selector — post-field, dimension, or metric */}
+                  {/* Field selector - post-field, dimension, or metric */}
                   {isPost ? (
                     <Select
                       value={col.postField ?? 'content'}
@@ -415,10 +415,10 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
                     </Select>
                   )}
 
-                  {/* Aggregation — group-mode metric columns only. Dimensions
+                  {/* Aggregation - group-mode metric columns only. Dimensions
                        contribute to the compound key; post-field columns read
                        raw values with no agg. Topic widgets have 1:1 rows
-                       (no grouping) — metric columns also read raw values. */}
+                       (no grouping) - metric columns also read raw values. */}
                   {isPost ? (
                     <span className="text-[11px] text-muted-foreground w-[120px] px-1 truncate">
                       Raw value
@@ -460,7 +460,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
                     className="h-7 text-xs flex-1 min-w-0"
                   />
 
-                  {/* In-cell viz toggle — numeric columns only */}
+                  {/* In-cell viz toggle - numeric columns only */}
                   {isNumericCol && (
                     <div className="flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
                       {VIZ_OPTIONS.map(({ value, label, Icon }) => {
@@ -487,7 +487,7 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
                     </div>
                   )}
 
-                  {/* Numeric display format toggle — numeric columns only */}
+                  {/* Numeric display format toggle - numeric columns only */}
                   {isNumericCol && (
                     <div className="flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
                       {DISPLAY_OPTIONS.map(({ value, label, title }) => {

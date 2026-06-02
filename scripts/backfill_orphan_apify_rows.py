@@ -12,7 +12,7 @@ Heuristic to recover attribution:
 
   - For each orphan, look at every ``collection_status`` doc whose
     ``created_at`` is within ``_LOOKBACK_MIN`` minutes BEFORE the orphan
-    row and whose ``config.platforms`` is exactly one platform — and
+    row and whose ``config.platforms`` is exactly one platform - and
     that platform matches the row.
   - If exactly one matches, stamp ``user_id`` / ``agent_id`` /
     ``collection_id`` from it. If zero or more than one match, skip
@@ -54,7 +54,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("backfill_orphan_apify")
 
 # An Apify actor run takes seconds to ~minutes after the collection is
-# dispatched. 60 minutes is generous — wide enough for slow IG hashtag
+# dispatched. 60 minutes is generous - wide enough for slow IG hashtag
 # scrapes, tight enough that the next day's collection won't accidentally
 # match. We also gate on platform so cross-platform collisions are
 # already filtered out.
@@ -167,7 +167,7 @@ def main(dry_run: bool) -> None:
     logger.info("Matched %d / %d orphans (skipped %d).", len(updates), len(orphans), skipped)
     if not updates or dry_run:
         if dry_run:
-            logger.info("(dry-run — no MERGE issued)")
+            logger.info("(dry-run - no MERGE issued)")
         return
 
     # MERGE-by-event_id so we only touch each orphan once, even if the

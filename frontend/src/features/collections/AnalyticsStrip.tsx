@@ -176,7 +176,7 @@ export function computeAnalyticsFromCollectionStats(
 }
 
 /* ------------------------------------------------------------------ */
-/* Component — Expandable KPI strip                                    */
+/* Component - Expandable KPI strip                                    */
 /* ------------------------------------------------------------------ */
 
 interface AnalyticsStripProps {
@@ -190,7 +190,7 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
 
   const sectionLabel = "text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-none";
 
-  // Status: activity pulse — compute volume per time window from daily_volume
+  // Status: activity pulse - compute volume per time window from daily_volume
   const dv = stats.dailyVolume ?? [];
   const nowMs = Date.now();
   const msInDay = 86_400_000;
@@ -216,7 +216,7 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
     <div className="border-b border-border/40 bg-gradient-to-r from-card via-card to-primary/[0.02] shrink-0 overflow-hidden">
       {/* Main strip: KPI grid | Platforms | Sentiment | Status (TBD) | expand toggle */}
       <div className="flex items-stretch">
-        {/* KPI grid — 2 rows × 3 columns */}
+        {/* KPI grid - 2 rows × 3 columns */}
         <div className="shrink-0 grid grid-cols-[repeat(3,minmax(160px,auto))] grid-rows-2 divide-x divide-border/30">
           <KpiCard icon={<Eye className="h-4 w-4 text-cyan-500" />} label="Views" value={formatNumber(stats.totalViews)} iconBg="bg-cyan-500/10" />
           <KpiCard icon={<Eye className="h-4 w-4 text-emerald-500" />} label="Avg Views" value={formatNumber(stats.avgViews)} iconBg="bg-emerald-500/10" />
@@ -275,9 +275,9 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps) {
 
         <div className="w-px bg-border/30 my-2 shrink-0" />
 
-        {/* Status area — pushed to the right */}
+        {/* Status area - pushed to the right */}
         <div className="flex flex-col px-4 py-2 ml-auto shrink-0 justify-center gap-[5px]">
-          {/* Activity — volume per time window */}
+          {/* Activity - volume per time window */}
           <div className="flex items-center gap-2 min-w-0">
             <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', SIGNAL_COLORS[activitySignal])} />
             <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground w-[52px] shrink-0">Activity</span>

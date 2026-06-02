@@ -1,4 +1,4 @@
-"""Task continuation — triggers agent analysis when all task collections complete.
+"""Task continuation - triggers agent analysis when all task collections complete.
 
 Called from the pipeline runner's _set_final_status when a collection finishes.
 Checks if the collection belongs to a task, and if all task collections are done,
@@ -66,8 +66,8 @@ def check_task_completion(collection_id: str) -> None:
         )
         return
 
-    logger.info("Task %s: all collections complete — signaling for continuation", task_id)
-    fs.add_task_log(task_id, "All collections complete — ready for analysis", source="continuation")
+    logger.info("Task %s: all collections complete - signaling for continuation", task_id)
+    fs.add_task_log(task_id, "All collections complete - ready for analysis", source="continuation")
 
     # Progress automated workflow steps (collect + enrich → completed, analyze → in_progress)
     from workers.shared.workflow_steps import progress_automated_steps
@@ -79,14 +79,14 @@ def check_task_completion(collection_id: str) -> None:
     # Signal continuation readiness via Firestore.
     # The frontend detects this via collection polling and re-engages the agent
     # in the user's session. The server-side agent is a fallback for offline users.
-    # Status stays "running" — the agent is still working (analysis phase).
+    # Status stays "running" - the agent is still working (analysis phase).
     fs.update_task(
         task_id,
         continuation_ready=True,
         continuation_ready_at=datetime.now(timezone.utc).isoformat(),
     )
 
-    # Schedule offline fallback — if the task is still awaiting_analysis after
+    # Schedule offline fallback - if the task is still awaiting_analysis after
     # 5 minutes, the user likely isn't watching. Run the agent server-side.
     if settings.is_dev:
         thread = threading.Thread(
@@ -110,9 +110,9 @@ def _delayed_fallback(task_id: str, delay_seconds: int = 60) -> None:
     task = fs.get_task(task_id)
     if not task:
         return
-    # If still running with continuation_ready, the user isn't online — run server-side
+    # If still running with continuation_ready, the user isn't online - run server-side
     if task.get("status") == "running" and task.get("continuation_ready"):
-        logger.info("Task %s: offline fallback — running agent server-side", task_id)
+        logger.info("Task %s: offline fallback - running agent server-side", task_id)
         _run_agent_continuation(task_id)
     else:
         logger.info("Task %s: frontend already picked up continuation", task_id)
@@ -208,7 +208,7 @@ async def _async_agent_continuation(task_id: str) -> None:
     session.state["active_task_title"] = title
     session.state["active_task_status"] = "executing"
     session.state["active_task_type"] = task.get("task_type", "one_shot")
-    session.state["continuation_mode"] = True  # Softer signal — prefer not to ask user, but don't hard-block
+    session.state["continuation_mode"] = True  # Softer signal - prefer not to ask user, but don't hard-block
 
     # Set working collections
     collection_ids = task.get("collection_ids", [])

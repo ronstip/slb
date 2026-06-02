@@ -184,7 +184,7 @@ def test_run_negative_balance_blocks(monkeypatch):
     assert exc.value.detail["error"] == ent.ERR_INSUFFICIENT
 
 
-# ── require_access (read gate — balance NOT enforced) ─────────────────
+# ── require_access (read gate - balance NOT enforced) ─────────────────
 
 
 def test_require_access_blocks_blocked(monkeypatch):
@@ -218,6 +218,6 @@ def test_super_admin_bypasses_gate_even_when_blocked(monkeypatch):
     monkeypatch.setattr(admin_mod, "is_super_admin_email", lambda email: email == "admin@x.com")
     doc = {"plan": {"tier": "blocked"}, "credit": {"balance_micros": 0}, "email": "admin@x.com"}
     monkeypatch.setattr(ent, "get_fs", lambda: _FakeFS(doc))
-    # A blocked super admin must never be locked out — both gates pass.
+    # A blocked super admin must never be locked out - both gates pass.
     ent.require_active(UID)
     ent.require_credit_for_run(UID, 10_000_000)

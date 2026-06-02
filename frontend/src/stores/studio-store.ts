@@ -49,7 +49,7 @@ interface MarkdownArtifact {
   createdAt: Date;
 }
 
-// Used ONLY by the Explore tab to render dashboards. Not an artifact —
+// Used ONLY by the Explore tab to render dashboards. Not an artifact -
 // dashboards are not part of the Artifact union, are not persisted to the
 // `artifacts` Firestore collection, and never appear in the Studio
 // Artifacts panel or the agent Deliverables panel.

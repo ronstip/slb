@@ -14,7 +14,7 @@ const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'Who is Scolto for?',
-    a: "Brand and insights leads at consumer companies. Agencies and competitive-intel teams use it too — anyone who walks into a room and has to explain what just happened in their category.",
+    a: "Brand and insights leads at consumer companies. Agencies and competitive-intel teams use it too - anyone who walks into a room and has to explain what just happened in their category.",
   },
   {
     q: 'How does Scolto work?',
@@ -22,23 +22,23 @@ const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'Where does the data come from?',
-    a: "Public social, comments, video, reviews, forums and press — across TikTok, Instagram, YouTube, X, Reddit, Facebook and the open web. Licensed providers where required. No private DMs, ever.",
+    a: "Public social, comments, video, reviews, forums and press - across TikTok, Instagram, YouTube, X, Reddit, Facebook and the open web. Licensed providers where required. No private DMs, ever.",
   },
   {
     q: 'How is hallucination handled?',
-    a: "Every claim cites the post, clip or comment it came from — timecoded for video. If Scolto can't source it, it flags the gap instead of guessing. The receipts sit next to the read-out.",
+    a: "Every claim cites the post, clip or comment it came from - timecoded for video. If Scolto can't source it, it flags the gap instead of guessing. The receipts sit next to the read-out.",
   },
   {
     q: 'What does it cost?',
-    a: "Usage-based — you pay for the work, not a seat. Plans run from $149/mo (Solo) to Studio for agencies, plus Scale for brand teams. Credits meter the reading; run out and you roll onto pay-as-you-go at the same rate. Full breakdown under Pricing above.",
+    a: "Usage-based - you pay for the work, not a seat. Plans run from $149/mo (Solo) to Studio for agencies, plus Scale for brand teams. Credits meter the reading; run out and you roll onto pay-as-you-go at the same rate. Full breakdown under Pricing above.",
   },
   {
     q: "How is this different from a social-listening dashboard?",
-    a: "Dashboards count mentions and ask you to interpret them. Scolto ships the interpretation — what happened, why it matters, what to do — with the dashboard as a side artifact when you want one.",
+    a: "Dashboards count mentions and ask you to interpret them. Scolto ships the interpretation - what happened, why it matters, what to do - with the dashboard as a side artifact when you want one.",
   },
   {
     q: 'What about privacy?',
-    a: "Only public conversation. Your briefs, outputs and workspace stay yours — we don't train on them or share them. Single sign-on with Google or Microsoft.",
+    a: "Only public conversation. Your briefs, outputs and workspace stay yours - we don't train on them or share them. Single sign-on with Google or Microsoft.",
   },
 ];
 
@@ -335,7 +335,7 @@ const ROTATING_DELIVERABLES = [
 
 // Typewriter rotator: types a word, holds it, deletes back to empty, advances.
 // Renders as plain inline text (no absolute positioning + no `overflow: hidden`)
-// so the baseline matches surrounding inline text on every line wrap — that's
+// so the baseline matches surrounding inline text on every line wrap - that's
 // what previously raised the rotator above "Reads the comments." on mobile.
 const TYPE_MS = 65;
 const DELETE_MS = 35;
@@ -520,7 +520,7 @@ const LP_DailyRead = () => {
         <p style={{ margin: '8px 0 0', fontFamily: "'Inter Tight',sans-serif", fontSize: 12.5, lineHeight: 1.5, color: LP_BRAND.muted }}>
           Michael B. Jordan's upset Best Actor win and the In-N-Out after-party are carrying positive sentiment.
           Sinners and One Battle After Another are splitting the prestige conversation. The KPop Demon Hunters
-          speech cut-off is the only loud negative thread — and it's still climbing on TikTok.
+          speech cut-off is the only loud negative thread - and it's still climbing on TikTok.
         </p>
       </div>
 
@@ -566,7 +566,7 @@ const LP_DailyRead = () => {
       </div>
 
       <div style={{ padding: '0 20px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-        <LP_FeedThumb photo={OSCARS.jordan}   platform="instagram" handle="@eentertainment" caption="Michael B. Jordan: 'Yo momma, what's up?' — Best Actor speech for Sinners" meta="4.1M · 1:24" />
+        <LP_FeedThumb photo={OSCARS.jordan}   platform="instagram" handle="@eentertainment" caption="Michael B. Jordan: 'Yo momma, what's up?' - Best Actor speech for Sinners" meta="4.1M · 1:24" />
         <LP_FeedThumb photo={OSCARS.pta}      platform="x"         handle="@PopBase"        caption="Paul Thomas Anderson finally wins his first Oscar after 14 nominations" meta="8.4M views" />
         <LP_FeedThumb photo={OSCARS.dolby}    platform="x"         handle="@nextbestpic"    caption="The mess celebs left inside the Dolby Theatre after the ceremony…" meta="7.2M views" />
       </div>
@@ -621,7 +621,7 @@ const LP_DailyRead = () => {
   );
 };
 
-// Top-down beach umbrella — 8 scalloped fabric petals alternating rust / cream,
+// Top-down beach umbrella - 8 scalloped fabric petals alternating rust / cream,
 // with a tiny ink finial. The petal edges bulge outward (not straight radial
 // lines) so it reads as canopy fabric, not a cog. Lifted from the design kit.
 const LP_BeachUmbrellaWatermark = ({ size = 240 }: { size?: number }) => {
@@ -666,7 +666,7 @@ const LP_BeachUmbrellaWatermark = ({ size = 240 }: { size?: number }) => {
   );
 };
 
-// Credibility strip — single-row "by the numbers" beat. Sits between
+// Credibility strip - single-row "by the numbers" beat. Sits between
 // MeetScolto and the Friday preview. Editorial pull-line on the left,
 // four Fraunces big stats on the right, divided by warm 1px rules.
 const LP_Credibility = () => {
@@ -714,7 +714,7 @@ const LP_Credibility = () => {
   );
 };
 
-// "What Friday looks like" — anchors its own beat below the centered hero.
+// "What Friday looks like" - anchors its own beat below the centered hero.
 // The Weekly Read card, rotated -1.2°, with a Live pill rotated -0.6°.
 const LP_FridayPreview = () => (
   <section className="lp-section lp-friday-section" style={{ padding: '96px 64px 80px', position: 'relative' }}>
@@ -1169,7 +1169,7 @@ const MR3_BriefsDemo = () => (
         flex: 1,
         fontFamily: "'Fraunces',serif", fontStyle: 'italic', fontWeight: 400,
         fontSize: 13, color: LP_BRAND.ink, lineHeight: 1.2, letterSpacing: -0.2,
-      }}>Fit issue forming on Drift V2 — same pattern as V1.</span>
+      }}>Fit issue forming on Drift V2 - same pattern as V1.</span>
     </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1196,7 +1196,7 @@ const MR3_BriefsDemo = () => (
             <div style={{
               fontFamily: "'Inter Tight',sans-serif", fontSize: 10, color: LP_BRAND.ink,
               lineHeight: 1.3, marginTop: 1,
-            }}>Heads up — sizing pattern forming. Suggest comms hold.</div>
+            }}>Heads up - sizing pattern forming. Suggest comms hold.</div>
           </div>
         </div>
       </div>
@@ -1221,7 +1221,7 @@ const MR3_BriefsDemo = () => (
           fontFamily: "'Inter Tight',sans-serif", fontSize: 9.5,
           color: LP_BRAND.ink, lineHeight: 1.3,
         }}>
-          fyi — sizing pattern, V1 redux. brief Fri 9? <span style={{ color: '#3DA37D', marginLeft: 2 }}>✓✓</span>
+          fyi - sizing pattern, V1 redux. brief Fri 9? <span style={{ color: '#3DA37D', marginLeft: 2 }}>✓✓</span>
         </div>
       </div>
 
@@ -1236,7 +1236,7 @@ const MR3_BriefsDemo = () => (
         <div style={{
           fontFamily: "'Fraunces',serif", fontWeight: 500, fontSize: 11.5,
           color: LP_BRAND.ink, lineHeight: 1.2, letterSpacing: -0.2,
-        }}>Friday Brief — Drift V2 sizing</div>
+        }}>Friday Brief - Drift V2 sizing</div>
         <div style={{
           fontFamily: "'Inter Tight',sans-serif", fontSize: 9, color: LP_BRAND.muted,
           lineHeight: 1.3,
@@ -1270,7 +1270,7 @@ const MR3_BriefsDemo = () => (
           <div style={{
             fontFamily: "'Fraunces',serif", fontStyle: 'italic',
             fontSize: 11, color: LP_BRAND.ink, lineHeight: 1.2,
-          }}>Drift V2 — Friday Brief</div>
+          }}>Drift V2 - Friday Brief</div>
           <LP_Mono size={7.5} color={LP_BRAND.orangeDeep} style={{ display: 'block', marginTop: 2 }}>for CMO · Fri 9am</LP_Mono>
         </div>
       </div>
@@ -1309,7 +1309,7 @@ const MR3_BriefsDemo = () => (
           <div style={{
             fontFamily: "'Fraunces',serif", fontStyle: 'italic',
             fontSize: 11, color: LP_BRAND.ink, lineHeight: 1.2,
-          }}>Drift V2 — QBR</div>
+          }}>Drift V2 - QBR</div>
           <LP_Mono size={7.5} color={LP_BRAND.orangeDeep} style={{ display: 'block', marginTop: 2 }}>for QBR · Mon</LP_Mono>
         </div>
       </div>
@@ -1466,12 +1466,12 @@ const LP_MeetScolto = () => {
       <div className="lp-3col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
         <MR3_JobCard
           n="01" head="Watches the" hi="field."
-          body="Every platform, every format, every entity — around the clock. Posts, replies, video frames, audio, on-screen text, logos, prices. Indexed and ready, nothing for you to set up."
+          body="Every platform, every format, every entity - around the clock. Posts, replies, video frames, audio, on-screen text, logos, prices. Indexed and ready, nothing for you to set up."
           demo={<MR3_FieldDemo />}
         />
         <MR3_JobCard
           n="02" head="Reads the" hi="room."
-          body="Groups every mention by what it's actually about — across languages, formats, platforms. The fit complaint in Korean and the heel-slip reel in Spanish go in the same column, not different feeds."
+          body="Groups every mention by what it's actually about - across languages, formats, platforms. The fit complaint in Korean and the heel-slip reel in Spanish go in the same column, not different feeds."
           demo={<MR3_RoomTopicsDemo />}
         />
         <MR3_JobCard
@@ -2386,7 +2386,7 @@ const LP_WhyScolto = () => (
           margin: '22px 0 0', maxWidth: 460, fontFamily: "'Inter Tight',sans-serif", fontSize: 15,
           color: LP_BRAND.muted, lineHeight: 1.6,
         }}>
-          Brandwatch, Sprinklr, Talkwalker — they all ship the same thing in the end: a dashboard with a search bar, and a deal that asks you to fill it. Scolto ships an agent that fills it for you, and tells you what it found.
+          Brandwatch, Sprinklr, Talkwalker - they all ship the same thing in the end: a dashboard with a search bar, and a deal that asks you to fill it. Scolto ships an agent that fills it for you, and tells you what it found.
         </p>
       </div>
 
@@ -2452,7 +2452,7 @@ const LP_TIERS: ReadonlyArray<LP_Tier> = [
     monthly: 149,
     credits: '500 credits / mo',
     seats: '1 seat',
-    overage: 'Then pay as you go — same rate, no cliff',
+    overage: 'Then pay as you go - same rate, no cliff',
     features: [
       { text: 'Every platform', icons: ['tiktok', 'instagram', 'youtube', 'x', 'reddit', 'facebook', 'web'] },
       { text: 'Get briefs, decks, dashboards, access to data' },
@@ -2472,7 +2472,7 @@ const LP_TIERS: ReadonlyArray<LP_Tier> = [
     overage: 'Then pay as you go - same rate, no cliff',
     features: [
       { text: 'Everything in Solo' },
-      { text: 'Lower credit rate — more reading per dollar' },
+      { text: 'Lower credit rate - more reading per dollar' },
       { text: '5 seats, collaborate in real time' },
       { text: '1-year history' },
     ],
@@ -2488,7 +2488,7 @@ const LP_TIERS: ReadonlyArray<LP_Tier> = [
     overage: 'Custom volume pricing',
     features: [
       { text: 'Everything in Studio' },
-      { text: 'Lowest credit rate — custom volume pricing' },
+      { text: 'Lowest credit rate - custom volume pricing' },
       { text: 'Agent integration to Slack & WhatsApp', icons: ['slack', 'whatsapp'] },
       { text: 'An analyst on hand to support your team' },
       { text: 'Unlimited history' },
@@ -2518,7 +2518,7 @@ const LP_Pricing = ({ openWaitlist }: { openWaitlist: () => void }) => {
           margin: '22px auto 0', maxWidth: 520, fontFamily: "'Inter Tight',sans-serif", fontSize: 15,
           color: LP_BRAND.muted, lineHeight: 1.6,
         }}>
-          Every plan ships briefs, decks, dashboards, digests — and the raw data behind them. Credits buy the reading — no kickoff call, no $30k annual seat.
+          Every plan ships briefs, decks, dashboards, digests - and the raw data behind them. Credits buy the reading - no kickoff call, no $30k annual seat.
         </p>
       </div>
 
@@ -2705,7 +2705,7 @@ const LP_Pricing = ({ openWaitlist }: { openWaitlist: () => void }) => {
       }}>
         <LP_Mono size={9.5} color={LP_BRAND.orangeDeep}>How credits work</LP_Mono>
         <span style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: LP_BRAND.muted, lineHeight: 1.5 }}>
-          <strong style={{ color: LP_BRAND.ink, fontWeight: 600 }}>Credits meter the reading</strong> — posts pulled, video watched, comments weighed. Deeper questions read more. Run out before month-end and you roll straight onto pay-as-you-go at the same rate; nothing pauses.
+          <strong style={{ color: LP_BRAND.ink, fontWeight: 600 }}>Credits meter the reading</strong> - posts pulled, video watched, comments weighed. Deeper questions read more. Run out before month-end and you roll straight onto pay-as-you-go at the same rate; nothing pauses.
         </span>
       </div>
     </section>
@@ -3001,7 +3001,7 @@ function WaitlistModal({
     } catch (err: unknown) {
       const code = (err as { code?: string } | null)?.code;
       if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        // User dismissed the popup — silently return to idle.
+        // User dismissed the popup - silently return to idle.
         setStatus('idle');
         return;
       }
@@ -3103,7 +3103,7 @@ function WaitlistModal({
               <p style={{
                 margin: 0, fontSize: 13.5, color: LP_BRAND.muted, lineHeight: 1.5,
               }}>
-                One click with Google — we'll grab your email and let you know the moment a seat opens up.
+                One click with Google - we'll grab your email and let you know the moment a seat opens up.
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 22 }}>
@@ -3132,7 +3132,7 @@ function WaitlistModal({
               margin: '14px auto 0', maxWidth: 320, fontSize: 11.5, color: LP_BRAND.muted,
               textAlign: 'center', lineHeight: 1.5,
             }}>
-              We only use your email to invite you in — no marketing, no sharing.
+              We only use your email to invite you in - no marketing, no sharing.
             </p>
             <button
               onClick={onClose}
@@ -3241,7 +3241,7 @@ export function LandingPage() {
 
   // The app shell sets a global body { min-width: 1280px } for desktop-only
   // surfaces (see globals.css). The landing page is a public/viral surface
-  // that must render on phones — drop the constraint while mounted.
+  // that must render on phones - drop the constraint while mounted.
   useEffect(() => {
     const prev = document.body.style.minWidth;
     document.body.style.minWidth = '0';
@@ -3265,7 +3265,7 @@ export function LandingPage() {
       else await signInWithMicrosoft();
       setAuthOpen(false);
     } catch {
-      // popup closed or cancelled — handled internally
+      // popup closed or cancelled - handled internally
     } finally {
       setLoadingProvider(null);
     }
@@ -3334,7 +3334,7 @@ export function LandingPage() {
             padding-top: 40px !important;
             padding-bottom: 40px !important;
           }
-          /* Hero sits right under the nav — keep the gap tight. */
+          /* Hero sits right under the nav - keep the gap tight. */
           .lp-root .lp-hero-section {
             padding-top: 20px !important;
             padding-bottom: 32px !important;
@@ -3347,7 +3347,7 @@ export function LandingPage() {
             display: none !important;
           }
           /* The floating "live · 27.4M mentions" pill collides with the
-             DailyRead header on small screens — it's noise on mobile. */
+             DailyRead header on small screens - it's noise on mobile. */
           .lp-root .lp-hero-live-pill {
             display: none !important;
           }
@@ -3366,7 +3366,7 @@ export function LandingPage() {
             font-size: 12.5px !important;
             gap: 6px !important;
           }
-          /* minmax(0, 1fr) — without the 0 min, a child's min-content can
+          /* minmax(0, 1fr) - without the 0 min, a child's min-content can
              expand the column past the container and cause horizontal scroll. */
           .lp-root .lp-2col,
           .lp-root .lp-3col {

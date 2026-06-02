@@ -1,4 +1,4 @@
-"""Debug IO callback — full LLM round-trip + tool call/response capture.
+"""Debug IO callback - full LLM round-trip + tool call/response capture.
 
 Gated by the ``AGENT_DEBUG_LOG`` env var. When set to ``1`` / ``true`` / a
 directory path, every model request, model response, tool call, and tool
@@ -19,7 +19,7 @@ Wiring (see ``agent.py``):
         # Note: ADK has no after_model_callback hook in the public API of
         # the version we use; we capture the response by inspecting the
         # NEXT before_model_callback's contents (the function_response is
-        # part of the contents at that point) — see _capture_prior_response.
+        # part of the contents at that point) - see _capture_prior_response.
 
 Output schema (one line per event):
     {
@@ -30,7 +30,7 @@ Output schema (one line per event):
       "agent_name": str,
       "model": str | None,        # model_request only
       "system_instruction": str,  # model_request only, truncated to 8000 chars
-      "user_messages": [...],     # model_request only — last 3 user/model turns
+      "user_messages": [...],     # model_request only - last 3 user/model turns
       "tool_name": str | None,    # tool events only
       "tool_args": {...},         # tool_call only
       "tool_response": {...},     # tool_response only
@@ -85,10 +85,10 @@ def _resolve_debug_dir() -> Optional[Path]:
     """Return the debug output directory if AGENT_DEBUG_LOG is enabled.
 
     Accepted values for AGENT_DEBUG_LOG:
-      - "1", "true", "yes", "on" (case-insensitive) — use the default dir
+      - "1", "true", "yes", "on" (case-insensitive) - use the default dir
         ``api/agent/evals/runs/_debug/``.
-      - any other non-empty string — treated as the directory path.
-      - empty / unset — debug logging is OFF, returns None.
+      - any other non-empty string - treated as the directory path.
+      - empty / unset - debug logging is OFF, returns None.
     """
     raw = os.environ.get("AGENT_DEBUG_LOG", "").strip()
     if not raw:
@@ -96,7 +96,7 @@ def _resolve_debug_dir() -> Optional[Path]:
     if raw.lower() in ("0", "false", "no", "off"):
         return None
     if raw.lower() in ("1", "true", "yes", "on"):
-        # Default location — same parent as eval runs so it's easy to find.
+        # Default location - same parent as eval runs so it's easy to find.
         default = Path(__file__).resolve().parent / "evals" / "runs" / "_debug"
         default.mkdir(parents=True, exist_ok=True)
         return default
@@ -149,7 +149,7 @@ def _safe_serialize(obj: Any, depth: int = 0) -> Any:
 
 
 def _summarize_part(part: Any) -> dict:
-    """Pull the interesting fields off a genai Part — text / function_call / function_response."""
+    """Pull the interesting fields off a genai Part - text / function_call / function_response."""
     out: dict[str, Any] = {}
     text = getattr(part, "text", None)
     if text:
@@ -169,7 +169,7 @@ def _summarize_part(part: Any) -> dict:
         }
     thought = getattr(part, "thought", None)
     if thought:
-        # Thinking parts can be huge — truncate aggressively.
+        # Thinking parts can be huge - truncate aggressively.
         thought_text = getattr(part, "text", "") or ""
         out["thought"] = thought_text[:1500]
     return out
@@ -213,7 +213,7 @@ def make_debug_io_callbacks() -> Optional[DebugIOCallbacks]:
     if debug_dir is None:
         return None
 
-    logger.info("AGENT_DEBUG_LOG enabled — writing to %s", debug_dir)
+    logger.info("AGENT_DEBUG_LOG enabled - writing to %s", debug_dir)
 
     def before_model(
         callback_context: CallbackContext,

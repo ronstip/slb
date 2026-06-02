@@ -24,7 +24,7 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
     """
     fs = get_fs()
 
-    # Run the two Firestore reads in parallel — previously they were sync and
+    # Run the two Firestore reads in parallel - previously they were sync and
     # sequential on the asyncio loop, blocking every other request for the
     # duration of both gets. /me is hit on every page load.
     if user.org_id:
@@ -38,7 +38,7 @@ async def get_me(user: CurrentUser = Depends(get_current_user)):
 
     org_name = org.get("name") if org else None
 
-    # is_super_admin reflects the TARGET user's privileges — during
+    # is_super_admin reflects the TARGET user's privileges - during
     # impersonation this is always false because admin-on-admin is blocked.
     # The real caller's super admin status is not leaked through this field.
     from api.auth.admin import is_super_admin_email
@@ -99,7 +99,7 @@ async def link_account(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Migrate anonymous user data to linked account after UID change."""
-    # Block while impersonating — mutates user docs and would corrupt the
+    # Block while impersonating - mutates user docs and would corrupt the
     # target user's data if triggered as another user.
     if user.impersonated_by is not None:
         raise HTTPException(

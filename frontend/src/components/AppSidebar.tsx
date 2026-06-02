@@ -71,7 +71,7 @@ export const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] =
   { id: 'data', label: 'Data', icon: Database },
 ];
 
-// ── Shared class fragments — sidebar uses the always-dark sidebar-* tokens ──
+// ── Shared class fragments - sidebar uses the always-dark sidebar-* tokens ──
 const NAV_ITEM_BASE =
   'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] transition-colors';
 const NAV_ITEM_IDLE =
@@ -169,7 +169,7 @@ function AppSidebarImpl({
   const isAgentsPage = location.pathname === '/agents';
   const isHomePage = location.pathname === '/';
 
-  // Always open the wizard in a drawer — keeps the user where they are
+  // Always open the wizard in a drawer - keeps the user where they are
   // instead of dropping them into the home-page createMode layout.
   const handleNewAgent = () => {
     openWizardDrawer();
@@ -182,7 +182,7 @@ function AppSidebarImpl({
   const canRun = activeAgent && RUNNABLE_STATUSES.includes(activeAgent.status) && activeAgent.status !== 'running';
 
   // Recent-agents section: filter, sort, and cap once per agents-array change.
-  // Hot path — re-running on every render adds up when the parent re-renders.
+  // Hot path - re-running on every render adds up when the parent re-renders.
   const recentAgents = useMemo(
     () =>
       [...agents]
@@ -193,7 +193,7 @@ function AppSidebarImpl({
   );
 
   // During impersonation, profile contains the target user's data from /me,
-  // while user is still the real admin's Firebase auth object — prefer profile.
+  // while user is still the real admin's Firebase auth object - prefer profile.
   const displayName = isAnonymous ? 'Guest' : (isImpersonating
     ? (profile?.display_name || profile?.email || 'User')
     : (user?.displayName || profile?.display_name || 'Guest'));
@@ -371,7 +371,7 @@ function AppSidebarImpl({
         )}
       </div>
 
-      {/* New Agent — primary action button */}
+      {/* New Agent - primary action button */}
       <div className="mb-2 px-3">
         <button
           onClick={handleNewAgent}
@@ -441,7 +441,7 @@ function AppSidebarImpl({
                           setExplorerHistoryOpen((v) => !v);
                         }
                         // Switching to a different tab on mobile shows its
-                        // content full-screen — close the drawer. Toggling the
+                        // content full-screen - close the drawer. Toggling the
                         // expander on the already-active tab keeps it open.
                         if (!isTabActive) afterNav();
                       }}
@@ -657,7 +657,7 @@ function AppSidebarImpl({
       {/* Divider before recent agents */}
       {agents.length > 0 && <div className="mx-3 my-2 border-t border-sidebar-border" />}
 
-      {/* Recent Agents — collapsible */}
+      {/* Recent Agents - collapsible */}
       {agents.length > 0 && (
         <div className="flex flex-col overflow-hidden px-3">
           <button

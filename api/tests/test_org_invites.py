@@ -178,7 +178,7 @@ class _UpgradeFS:
 
 
 def test_anon_to_linked_backfills_email_on_user_doc(monkeypatch):
-    """Anonymous user linked to Google. Existing doc has email="" — the upgrade
+    """Anonymous user linked to Google. Existing doc has email="" - the upgrade
     path must overwrite it with the Google email so /me + invite-email-match
     work afterwards."""
     fake = _UpgradeFS(existing={"email": "", "is_anonymous": True, "org_id": None})
@@ -196,7 +196,7 @@ def test_anon_to_linked_backfills_email_on_user_doc(monkeypatch):
 
 
 def test_allowlist_bypass_pending_invite_passes(monkeypatch):
-    """Allowlist gate must let through emails that have a pending invite —
+    """Allowlist gate must let through emails that have a pending invite -
     otherwise the invitee can never accept (/orgs/join 403s before it runs)."""
 
     class _FS:
@@ -212,7 +212,7 @@ def test_allowlist_bypass_pending_invite_passes(monkeypatch):
 
 def test_allowlist_bypass_existing_member_passes(monkeypatch):
     """Once a user is in an org (after accepting), allowlist must still wave
-    them through — otherwise they get locked out on the next request."""
+    them through - otherwise they get locked out on the next request."""
 
     class _FS:
         def get_user(self, _uid):
@@ -241,7 +241,7 @@ def test_allowlist_bypass_random_user_blocked(monkeypatch):
 
 def test_anon_to_linked_invalidates_user_cache():
     """Regression: same uid, anon CurrentUser cached with email="". After link
-    the token carries the Google email — `_resolve_real_user` must NOT keep
+    the token carries the Google email - `_resolve_real_user` must NOT keep
     returning the stale anon CurrentUser (would 403 the invite join)."""
     anon = CurrentUser(uid="X", email="", display_name=None, org_id=None,
                        org_role=None, is_anonymous=True)
@@ -455,7 +455,7 @@ def test_join_org_does_not_downgrade_paid_user(monkeypatch):
 
     _run(settings_router.join_org("abc", user=user))
 
-    # Already-paying user keeps their tier — no set_plan call.
+    # Already-paying user keeps their tier - no set_plan call.
     assert fake.plan_updates == {}
 
 

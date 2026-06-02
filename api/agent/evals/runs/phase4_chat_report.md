@@ -23,7 +23,7 @@
 
 ## Duplicate actions (candidate)
 
-*(none — clean run)*
+*(none - clean run)*
 
 ## LLM judge averages
 

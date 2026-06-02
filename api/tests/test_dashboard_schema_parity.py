@@ -71,7 +71,7 @@ def test_social_aggregation_matches():
     ts_set = _extract_union(ts, "SocialAggregation")
     py_set = set(get_args(SocialAggregation))
     assert ts_set == py_set, (
-        f"SocialAggregation drift — TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
+        f"SocialAggregation drift - TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
     )
 
 
@@ -80,7 +80,7 @@ def test_social_chart_type_matches():
     ts_set = _extract_union(ts, "SocialChartType")
     py_set = set(get_args(SocialChartType))
     assert ts_set == py_set, (
-        f"SocialChartType drift — TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
+        f"SocialChartType drift - TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
     )
 
 
@@ -103,7 +103,7 @@ def test_topic_dimension_matches():
     ts_set = _extract_union(ts, "TopicDimension")
     py_set = set(get_args(TopicDimension))
     assert ts_set == py_set, (
-        f"TopicDimension drift — TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
+        f"TopicDimension drift - TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
     )
 
 
@@ -112,7 +112,7 @@ def test_topic_metric_matches():
     ts_set = _extract_union(ts, "TopicMetric")
     py_set = set(get_args(TopicMetric))
     assert ts_set == py_set, (
-        f"TopicMetric drift — TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
+        f"TopicMetric drift - TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
     )
 
 
@@ -131,7 +131,7 @@ def test_post_field_matches():
     # template-literal arm by intersecting with the static Python set.
     py_set = set(get_args(PostField))
     assert ts_set == py_set, (
-        f"PostField drift — TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
+        f"PostField drift - TS only: {ts_set - py_set}, Python only: {py_set - ts_set}"
     )
 
 
@@ -140,12 +140,12 @@ def test_valid_chart_types_matches():
     ts_map = _extract_valid_chart_types(ts)
     py_map = {k: set(v) for k, v in VALID_CHART_TYPES.items()}
     assert ts_map.keys() == py_map.keys(), (
-        f"VALID_CHART_TYPES key drift — TS only: {ts_map.keys() - py_map.keys()}, "
+        f"VALID_CHART_TYPES key drift - TS only: {ts_map.keys() - py_map.keys()}, "
         f"Python only: {py_map.keys() - ts_map.keys()}"
     )
     for agg, ts_types in ts_map.items():
         assert ts_types == py_map[agg], (
-            f"VALID_CHART_TYPES['{agg}'] drift — TS: {ts_types}, Python: {py_map[agg]}"
+            f"VALID_CHART_TYPES['{agg}'] drift - TS: {ts_types}, Python: {py_map[agg]}"
         )
 
 
@@ -169,7 +169,7 @@ def test_widget_round_trip_preserves_figure_text_and_number_size():
     """`figureText` (figcaption under a chart) and `numberSize` (KPI scale)
     are persisted on `SocialDashboardWidget` in the frontend. The backend
     Pydantic model uses `extra='ignore'`, so any field missing from the model
-    is silently dropped on save — round-tripping the widget would lose the
+    is silently dropped on save - round-tripping the widget would lose the
     user's caption / size. Both must be declared on the model."""
     from api.routers.dashboard_schema import SocialDashboardWidget
 
@@ -198,7 +198,7 @@ def test_custom_config_accepts_custom_field_dimension():
     """Frontend `CustomDimension` includes `custom:<name>` for agent-defined
     enrichment fields (see TS definition). The Pydantic model must accept these
     on `customConfig.dimension`, `customConfig.breakdownDimension`, and the
-    table-config dimensions — otherwise saving a layout with a custom-field
+    table-config dimensions - otherwise saving a layout with a custom-field
     group-by 422s the Done button."""
     from api.routers.dashboard_schema import (
         CustomChartConfig,

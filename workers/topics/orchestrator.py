@@ -83,7 +83,7 @@ def run_llm_topics(
     )
     if len(posts) < 2:
         logger.warning(
-            "Agent %s: only %d posts in pool — skipping topic generation",
+            "Agent %s: only %d posts in pool - skipping topic generation",
             agent_id, len(posts),
         )
         return {
@@ -121,7 +121,7 @@ def run_llm_topics(
     # 4. Pass 2
     topics = run_pass2(candidates)
 
-    # 4b. Pass 3 — post-hoc per-topic membership filter (optional, default on).
+    # 4b. Pass 3 - post-hoc per-topic membership filter (optional, default on).
     # Strips members whose primary subject/stance doesn't match the beat.
     # Adds ~30s wallclock on a typical run; removes ~30% of noisy memberships.
     if settings.topics_pass3_filter_enabled and topics:

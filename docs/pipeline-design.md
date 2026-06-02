@@ -3,7 +3,7 @@
 ## Overview
 
 The pipeline processes social media posts through a series of independent steps.
-Each post progresses through a decision tree (DAG). Steps are modular — adding,
+Each post progresses through a decision tree (DAG). Steps are modular - adding,
 removing, or reordering steps only requires changing the step registry.
 
 Two levels of operation:
@@ -72,8 +72,8 @@ the next action based on the post's current state and preconditions.
 | State              | Meaning                                          |
 |--------------------|--------------------------------------------------|
 | `DONE`             | Post fully processed (or enrichment+embedding already existed) |
-| `MISSING_MEDIA`    | Media post but no URLs available — cannot enrich |
-| `DOWNLOAD_FAILED`  | Media download failed — cannot enrich            |
+| `MISSING_MEDIA`    | Media post but no URLs available - cannot enrich |
+| `DOWNLOAD_FAILED`  | Media download failed - cannot enrich            |
 | `ENRICHMENT_FAILED`| Gemini enrichment failed after retries           |
 | `EMBEDDING_FAILED` | BQ embedding failed                              |
 
@@ -169,7 +169,7 @@ Subcollection: `collection_status/{collection_id}/post_states/{post_id}`
 ```
 
 - State transitions written as batch ops (up to 500 per batch)
-- Transient — can be deleted after collection completes
+- Transient - can be deleted after collection completes
 - Source of truth DURING processing
 
 ### Aggregate counters: Firestore
@@ -191,7 +191,7 @@ On the `collection_status/{collection_id}` document:
 }
 ```
 
-Updated via atomic `Increment` after each batch — no read-before-write.
+Updated via atomic `Increment` after each batch - no read-before-write.
 
 ### Post-hoc state: derived from BQ
 
@@ -285,7 +285,7 @@ Target: ~3K posts in ~5 minutes.
 
 Bottleneck is Gemini API quota (per-GCP-project). Single well-tuned Cloud Run
 instance with ~50 concurrent Gemini calls saturates the quota. Splitting into
-microservices doesn't help — same quota, more coordination overhead.
+microservices doesn't help - same quota, more coordination overhead.
 
 ### Scaling path (future, if needed)
 

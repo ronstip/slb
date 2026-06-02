@@ -30,20 +30,20 @@ There is no API error in either case; the call just degrades quietly.
 
 Two-call pattern in `api/agent/interpreters/wizard_planner.py`:
 
-1. **Call 1 — research** (`_research_context`): free-text, `google_search`
+1. **Call 1 - research** (`_research_context`): free-text, `google_search`
    tool attached, no schema. Pulls a 200–400-word factual brief.
-2. **Call 2 — synthesis** (`plan_wizard`): unchanged schema-strict call with
+2. **Call 2 - synthesis** (`plan_wizard`): unchanged schema-strict call with
    `tools=None`. Research brief is injected into the prompt via a new
    `research=` arg on `_build_prompt`.
 
 Research is skipped when `enable_search_grounding` is False, and also when
-`prior_answers` is set (the user already answered clarifications — no need to
+`prior_answers` is set (the user already answered clarifications - no need to
 re-research on the follow-up turn). Research failures are non-fatal: the
 planner falls back to the un-grounded synthesis call.
 
 ## Regression test
 
-`api/tests/test_wizard_planner_two_call.py` — asserts:
+`api/tests/test_wizard_planner_two_call.py` - asserts:
 - 2 calls when grounding enabled, with the tool/schema split.
 - 1 call when grounding disabled.
 - Research failure → fallback to 1 synthesis call, no exception.

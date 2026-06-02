@@ -21,13 +21,13 @@ Two bugs in series:
 2. `runner.py` `_run_crawl` marked `status=failed` whenever
    `total_posts == 0`, even when at least one adapter ran successfully. That
    conflated "no usable adapter / silent skip" with "ran cleanly, 0 matches"
-   — a legitimate empty search surfaced to the user as a hard failure.
+   - a legitimate empty search surfaced to the user as a hard failure.
 
 ## Fix
 - `apify.py::_collect_instagram`: drop the multi-word filter. `_hashtag_url`
   concats spaces; IG returns posts when the concat IS a real hashtag,
   prefix-match noise otherwise. Enrichment is the right place to filter
-  noise, not the adapter — and the user explicitly preferred the noisy
+  noise, not the adapter - and the user explicitly preferred the noisy
   positive over the silent zero.
 - `runner.py::_run_crawl`: a 0-post crawl is only a failure when no adapter
   ran (`not stats`) or every adapter errored (`bool(errors) and
@@ -42,6 +42,6 @@ Two bugs in series:
 ## Related
 - Failure example: collection `65fedf1b-9c9d-492b-8286-c428541b6126`
   (2026-05-19), Hebrew + English multi-word IG keywords.
-- Memory: `project_silent_platform_skip.md` — the runner change makes the
+- Memory: `project_silent_platform_skip.md` - the runner change makes the
   silent-skip diagnostic more specific (lists the platforms instead of the
   generic "No posts were collected").

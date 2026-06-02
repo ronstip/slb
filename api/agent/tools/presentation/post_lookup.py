@@ -72,8 +72,8 @@ def fetch_posts_by_ids(
 ) -> list[dict]:
     """Fetch full post payloads for a list of {post_id, collection_id} refs.
 
-    When ``agent_id`` is provided, reads through the ``scope_posts`` TVF —
-    the same gate the agent uses — so dedup and enrichment selection match
+    When ``agent_id`` is provided, reads through the ``scope_posts`` TVF -
+    the same gate the agent uses - so dedup and enrichment selection match
     everywhere. Falls back to legacy SQL for orphan callers.
 
     Returns rows in the same order as the input refs. Posts not found in BQ

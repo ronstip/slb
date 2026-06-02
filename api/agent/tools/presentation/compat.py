@@ -1,4 +1,4 @@
-"""Backward compatibility — convert old slide specs to new DeckPlan format.
+"""Backward compatibility - convert old slide specs to new DeckPlan format.
 
 The old format used 'type' per slide (e.g., "chart_pie", "kpi_grid").
 This module translates to the new layout + component structure.
@@ -129,7 +129,7 @@ def _convert_slide(old_spec: dict) -> dict:
     if converter:
         return converter(old_spec)
 
-    # Unknown type — try to render as bullets
+    # Unknown type - try to render as bullets
     return {
         "layout": "Title and Content",
         "content": {

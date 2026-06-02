@@ -4,7 +4,7 @@
  * event-mapper so live and reconstructed sessions agree on state.
  *
  * Side effects (nav, studio panel, sources updates, query invalidation) do
- * not happen here — those are live-only and handled by useSSEChat. On
+ * not happen here - those are live-only and handled by useSSEChat. On
  * reload, the current backend state is fetched fresh by dedicated hooks.
  */
 

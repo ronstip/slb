@@ -1,7 +1,7 @@
 export type ToolCategory = 'thinking' | 'tools' | 'outputs';
 
 export const TOOL_CATEGORY: Record<string, ToolCategory> = {
-  // Thinking — research, lookup, status
+  // Thinking - research, lookup, status
   google_search: 'thinking',
   google_search_agent: 'thinking',
   design_research: 'thinking',
@@ -10,10 +10,10 @@ export const TOOL_CATEGORY: Record<string, ToolCategory> = {
   get_agent_status: 'thinking',
   set_active_agent: 'thinking',
   ask_user: 'thinking',
-  // Tools — execution, processing
+  // Tools - execution, processing
   execute_sql: 'tools',
   start_agent: 'tools',
-  // Outputs — deliverables
+  // Outputs - deliverables
   create_chart: 'outputs',
   generate_presentation: 'outputs',
   export_data: 'outputs',
@@ -63,7 +63,7 @@ export const PLATFORM_LABELS: Record<string, string> = {
 };
 
 export const SENTIMENT_COLORS: Record<string, string> = {
-  // Editorial palette — warm-toned, brand-tuned. Tracks the Claude Design
+  // Editorial palette - warm-toned, brand-tuned. Tracks the Claude Design
   // sentiment family so widgets, donut charts, and the channel-mix stacked
   // bar stay consistent with the rest of the cream/ink/terracotta surface.
   positive: '#2F8E6C',
@@ -72,7 +72,7 @@ export const SENTIMENT_COLORS: Record<string, string> = {
   mixed: '#B6843A',
   confused: '#B6843A',
   sarcastic: '#7B5BD9',
-  // Stance / reception variants — kept distinct in hue (not just value) so
+  // Stance / reception variants - kept distinct in hue (not just value) so
   // adjacent segments in a stacked bar remain readable. supportive=green,
   // opposed=terracotta, skeptical=amber matches the positive/negative/mixed
   // mapping used elsewhere.

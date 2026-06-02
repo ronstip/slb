@@ -1,4 +1,4 @@
-"""Agent CRUD service — creates, reads, updates agents in Firestore + BigQuery."""
+"""Agent CRUD service - creates, reads, updates agents in Firestore + BigQuery."""
 
 import json
 import logging
@@ -17,7 +17,7 @@ def _max_source_time_range_days(sources: list[dict]) -> int:
     """Broadest configured window across an agent's sources, in days.
 
     Used to derive the agent-level `data_start_date` default. MAX rather
-    than MIN so the default window covers every source — users can narrow
+    than MIN so the default window covers every source - users can narrow
     it from the Settings UI later.
     """
     days = [int(s.get("time_range_days") or 0) for s in (sources or [])]
@@ -148,7 +148,7 @@ _TOPICS_ALGORITHMS = {"brothers_v1", "llm_taxonomy_v2"}
 def _normalize_topics_config(topics_config: dict | None) -> dict:
     """Strip unknown keys, validate ranges. Returns empty dict for falsy input
     so unset agents fall back to global settings + brothers_v1 default.
-    NOT in VERSIONED_FIELDS — this is a presentation knob, not a data-shape
+    NOT in VERSIONED_FIELDS - this is a presentation knob, not a data-shape
     change, so editing it must not bump agent.version.
     """
     if not topics_config:
@@ -238,7 +238,7 @@ def create_agent(
     # Firestore (real-time state)
     fs.create_agent(agent_id, agent_data)
 
-    # BigQuery (analytics) — append-only / SCD-style: scope_posts reads the
+    # BigQuery (analytics) - append-only / SCD-style: scope_posts reads the
     # row with the most recent `created_at` to bound `posted_at`.
     bq.insert_rows(
         "agents",
@@ -282,7 +282,7 @@ def _backfill_data_window(agent: dict) -> dict:
     start = _compute_default_data_start_date(sources, anchor=anchor)
     agent["data_start_date"] = start
     agent.setdefault("data_end_date", None)
-    # Preserve the agent's existing updated_at — this is a system-driven
+    # Preserve the agent's existing updated_at - this is a system-driven
     # backfill, not a user edit, so it must not bump the "Last Run" stamp.
     persisted_fields: dict = {"data_start_date": start, "data_end_date": None}
     existing_updated_at = agent.get("updated_at")
@@ -298,7 +298,7 @@ def _backfill_data_window(agent: dict) -> dict:
     try:
         get_fs().update_agent(agent["agent_id"], **persisted_fields)
     except Exception:
-        # Backfill is best-effort — surface the value to the caller even
+        # Backfill is best-effort - surface the value to the caller even
         # if the persist failed; it'll retry on the next read.
         logger.exception("Failed to persist data_start_date backfill for %s", agent.get("agent_id"))
     return agent
@@ -323,7 +323,7 @@ def list_agents(user_id: str, org_id: str | None = None) -> list[dict]:
 
     # Self-heal: stamp the user's current org_id on any of their own agents
     # that drifted (created before joining an org, or carried over from a
-    # previous org). Idempotent — a no-op when nothing has drifted, which is
+    # previous org). Idempotent - a no-op when nothing has drifted, which is
     # the steady state after the first call. Costs one extra `agents` stream
     # per list call to detect drift; in return, every membership change
     # converges without manual migration.
@@ -331,7 +331,7 @@ def list_agents(user_id: str, org_id: str | None = None) -> list[dict]:
 
     agents = fs.list_user_agents(user_id, org_id)
 
-    # Resolve owner labels for shared (non-owned) agents in one pass — small
+    # Resolve owner labels for shared (non-owned) agents in one pass - small
     # number of distinct owners, so a per-owner Firestore read is cheap and
     # cached well enough for a list view.
     owner_labels: dict[str, str] = {}
@@ -354,7 +354,7 @@ def _record_data_window_row(agent_id: str, agent_before: dict, fields: dict) -> 
     """Append a fresh agents-table row in BigQuery when `data_start_date`
     changes, so the SCD-style table stays current. The row carries the
     agent's identity columns alongside the new `data_start_date` and a
-    fresh `created_at` — `scope_posts` picks the latest `created_at` and
+    fresh `created_at` - `scope_posts` picks the latest `created_at` and
     uses its `data_start_date` to bound `posted_at`.
 
     No-op when `data_start_date` is absent from the update or unchanged.
@@ -406,7 +406,7 @@ def reconcile_user_org_membership(user_id: str, current_org_id: str | None) -> i
     Invariant after this call: for every agent owned by `user_id`,
     `agent.org_id == current_org_id`, and if `current_org_id` differs from the
     previous stamp, `visibility="private"` (owner must re-share explicitly with
-    the new org). Idempotent — a no-op when nothing has drifted.
+    the new org). Idempotent - a no-op when nothing has drifted.
 
     Returns the number of agents reconciled (for logging / tests).
     """
@@ -434,7 +434,7 @@ def reconcile_user_org_membership(user_id: str, current_org_id: str | None) -> i
 
         # Fan the reconciled state out to every component so per-component access
         # checks (feed / posts / dashboard / artifacts / layouts) stay consistent
-        # with the agent. visibility=None when the agent stayed private — restamp
+        # with the agent. visibility=None when the agent stayed private - restamp
         # org_id only, don't move a share state that doesn't exist.
         agent_sharing.propagate_to_components(
             fs,
@@ -471,7 +471,7 @@ def set_agent_visibility(agent_id: str, visibility: str) -> dict:
 
     # Fan the new visibility out to every component the agent owns (collections,
     # artifacts, layouts). The registry of "what is a component" lives in one
-    # place — agent_sharing.propagate_to_components.
+    # place - agent_sharing.propagate_to_components.
     agent_sharing.propagate_to_components(
         fs, agent, org_id=agent.get("org_id"), visibility=visibility
     )
@@ -594,7 +594,7 @@ def run_agent_sources(
     ``source_idx`` wins if both are passed.
 
     Each selected source becomes a fresh collection linked to the agent. No
-    run record is created and the agent's status / todos are not changed —
+    run record is created and the agent's status / todos are not changed -
     this is a data refresh, not an agent run.
 
     Returns the list of new collection IDs.
@@ -641,7 +641,7 @@ def run_agent_sources(
         fs.update_agent(agent_id, collection_ids=transforms.ArrayUnion(collection_ids))
         log_agent_activity(
             agent_id,
-            f"Source refresh — collecting from {len(collection_ids)} source(s)",
+            f"Source refresh - collecting from {len(collection_ids)} source(s)",
             source="agent_service",
         )
     return collection_ids
@@ -649,7 +649,7 @@ def run_agent_sources(
 
 # Platforms with both a registered URL parser AND adapter `post_urls` support.
 # Grow this set in lockstep with workers.collection.url_parsers + the adapter
-# `collect()` branch — a mismatch would 500 on dispatch.
+# `collect()` branch - a mismatch would 500 on dispatch.
 SUPPORTED_PLATFORMS_FOR_URL_FETCH = {"twitter", "instagram"}
 
 
@@ -673,7 +673,7 @@ def fetch_posts_by_url(
 
     Mirrors `run_agent_sources`: one fresh collection per platform, linked to
     the agent, no run record, no agent-status change. Pipeline reuse is total
-    — `create_collection_from_request` is the same entry point keyword runs use,
+    - `create_collection_from_request` is the same entry point keyword runs use,
     so credits gate / Firestore status / enrichment / embedding all apply.
 
     Raises UrlFetchValidationError if any URL fails to parse or routes to a
@@ -697,7 +697,7 @@ def fetch_posts_by_url(
         if parsed.platform not in SUPPORTED_PLATFORMS_FOR_URL_FETCH:
             unsupported.add(parsed.platform)
             continue
-        # Dedupe by canonical URL — Apify's instagram-scraper rejects the whole
+        # Dedupe by canonical URL - Apify's instagram-scraper rejects the whole
         # run when directUrls contains duplicates; X /tweets?ids= silently
         # dedupes but pre-dedupe keeps our run-cost estimates honest.
         if parsed.canonical_url in seen_canonical:
@@ -721,9 +721,9 @@ def fetch_posts_by_url(
     collection_ids: list[str] = []
     for platform, urls_for_platform in by_platform.items():
         description = (
-            f"{base_desc} — {platform} ({len(urls_for_platform)} URL(s))"
+            f"{base_desc} - {platform} ({len(urls_for_platform)} URL(s))"
             if base_desc
-            else f"{title or 'Agent'}: direct fetch — {platform} ({len(urls_for_platform)} URL(s))"
+            else f"{title or 'Agent'}: direct fetch - {platform} ({len(urls_for_platform)} URL(s))"
         )
         from api.schemas.requests import CreateCollectionRequest
         request = CreateCollectionRequest(
@@ -749,7 +749,7 @@ def fetch_posts_by_url(
         fs.update_agent(agent_id, collection_ids=transforms.ArrayUnion(collection_ids))
         log_agent_activity(
             agent_id,
-            f"Direct fetch — collecting {sum(len(v) for v in by_platform.values())} post(s) across {len(collection_ids)} collection(s)",
+            f"Direct fetch - collecting {sum(len(v) for v in by_platform.values())} post(s) across {len(collection_ids)} collection(s)",
             source="agent_service",
         )
     return collection_ids
@@ -795,7 +795,7 @@ def dispatch_agent_run(
     runnable_sources = [s for s in sources if s.get("keywords") or s.get("channels")]
     # Sources that carry neither keywords nor channels collect nothing. Without
     # this guard the run dispatches 0 collections yet the agent gets marked
-    # "running"→"completed" — an empty, misleading agent. Bail like `not sources`.
+    # "running"→"completed" - an empty, misleading agent. Bail like `not sources`.
     if not runnable_sources:
         logger.warning("Agent %s has no runnable sources (no keywords/channels)", agent_id)
         return "", []
@@ -862,7 +862,7 @@ def dispatch_agent_run(
     fs.update_agent(agent_id, **update_fields)
 
     logger.info("Dispatched agent %s run %s: created %d collections", agent_id, run_id, len(collection_ids))
-    log_agent_activity(agent_id, f"Run dispatched — creating {len(collection_ids)} collection(s)", source="agent_service")
+    log_agent_activity(agent_id, f"Run dispatched - creating {len(collection_ids)} collection(s)", source="agent_service")
     return run_id, collection_ids
 
 

@@ -23,7 +23,7 @@ from workers.pipeline.post_state import (
 
 logger = logging.getLogger(__name__)
 
-# Continuation retry policy — don't re-attempt a post that failed within this
+# Continuation retry policy - don't re-attempt a post that failed within this
 # window and don't exceed this many total attempts per step.
 RETRY_COOLDOWN_SEC = 300
 MAX_RETRY_ATTEMPTS = 3
@@ -55,7 +55,7 @@ class StateManager:
         `media_resolved=True` means media was already downloaded to GCS before
         this call (the normal crawl path now downloads pre-insert so BQ carries
         durable gcs_uri refs). In that case media posts skip COLLECTED_WITH_MEDIA
-        and go straight to READY_FOR_ENRICHMENT — the download streaming step is
+        and go straight to READY_FOR_ENRICHMENT - the download streaming step is
         reserved for continuation/recovery, where media may not yet be in GCS.
 
         Also stores media_refs in Firestore so the download step can read them
@@ -71,7 +71,7 @@ class StateManager:
         media_refs: dict[str, list[dict]] = {}
         post_meta: dict[str, dict] = {}
 
-        # Only set awaits_dep when the dep is in this same in-range batch — i.e.
+        # Only set awaits_dep when the dep is in this same in-range batch - i.e.
         # the dep is actually entering the DAG. Out-of-range deps wouldn't have
         # a post_state to gate on, and would deadlock the parent.
         in_range_ids = {p.post_id for p in posts}
@@ -172,7 +172,7 @@ class StateManager:
 
         if not is_initial:
             # Batch-read current states in a single RPC (via BatchGet) instead of
-            # N sequential .get()s — this was the dominant per-batch latency cost.
+            # N sequential .get()s - this was the dominant per-batch latency cost.
             doc_refs = [self._posts_ref.document(post_id) for post_id, _ in chunk]
             for snapshot in self._db.get_all(doc_refs):
                 if snapshot.exists:
@@ -262,11 +262,11 @@ class StateManager:
         """Claim one post for enrichment, gated on its dependency being past download.
 
         Posts with `awaits_dep_post_id` set wait until the dep reaches a state
-        where its content + media_refs are stable (any state past download —
+        where its content + media_refs are stable (any state past download -
         success or failure). Eliminates the race where a parent enriches before
         its quoted source's media has uploaded to GCS.
 
-        Returns None if no eligible post is available — producer backs off and
+        Returns None if no eligible post is available - producer backs off and
         retries.
         """
         transaction = self._db.transaction()
@@ -374,7 +374,7 @@ class StateManager:
 
         Firestore doesn't allow combining equality on `status` with an
         inequality on `attempts.<step>`, so we filter in-memory.
-        EMBEDDING_FAILED is excluded — BQ batch embed is deterministic;
+        EMBEDDING_FAILED is excluded - BQ batch embed is deterministic;
         whatever broke will break again until the underlying issue is fixed.
         """
         candidates: list[tuple[str, PostState]] = []
@@ -402,7 +402,7 @@ class StateManager:
         """Check if all posts are in terminal states.
 
         Reads the status doc once to pull both counts and total_posts_in_dag
-        — this check fires every processing-loop iteration, so a single read
+        - this check fires every processing-loop iteration, so a single read
         matters.
         """
         doc = self._status_ref.get()
@@ -487,7 +487,7 @@ class StateManager:
     def cleanup_post_states(self) -> None:
         """Delete all post_state docs after collection completes.
 
-        Post states are transient — final state is derivable from BQ table presence.
+        Post states are transient - final state is derivable from BQ table presence.
         """
         batch_size = 500
         while True:
@@ -525,7 +525,7 @@ def _claim_one_txn(
     Returns the post's data (with `post_id` populated) or None if no work.
 
     Firestore transactions retry on contention, so multiple producer threads
-    targeting the same query won't double-claim — but in our current design
+    targeting the same query won't double-claim - but in our current design
     there's a single producer per step, so contention is essentially zero.
     """
     query = posts_ref.where("status", "==", claim_state.value).limit(1)
@@ -551,7 +551,7 @@ def _claim_one_txn(
 
 
 # Dep states that mean "media_refs are stable, parent can enrich now."
-# Any state past download (success OR failure) qualifies — the parent only
+# Any state past download (success OR failure) qualifies - the parent only
 # needs whatever GCS-or-CDN refs the dep ended up with; even if download
 # ultimately failed, the post_state.media_refs still has the seed CDN URLs.
 # Excluded: COLLECTED_WITH_MEDIA, DOWNLOADING (still resolving).
@@ -577,12 +577,12 @@ def _claim_one_for_enrichment_txn(
 
     Reads a candidate (the first post in READY_FOR_ENRICHMENT). If the
     candidate has `awaits_dep_post_id`, also reads the dep's post_state
-    transactionally — only claims if the dep is past download. Otherwise
+    transactionally - only claims if the dep is past download. Otherwise
     returns None so the producer can back off and retry; the dep will
     eventually advance and the parent will become claimable.
 
     NOTE: this scans only the head of the queue. If the head is blocked
-    on its dep, we don't auto-skip to the next candidate — we wait. In
+    on its dep, we don't auto-skip to the next candidate - we wait. In
     practice the dep advances within seconds (download is the only step
     we wait on) and idle backoff is forgiving. If this becomes a
     throughput bottleneck we can paginate the candidate query.
@@ -600,7 +600,7 @@ def _claim_one_for_enrichment_txn(
     if awaits:
         dep_doc = posts_ref.document(awaits).get(transaction=transaction)
         # Dep missing from post_states means it never entered the DAG (already
-        # enriched in a prior run, or out-of-range). Either way, no waiting —
+        # enriched in a prior run, or out-of-range). Either way, no waiting -
         # parent uses the defensive cache. Same for dep already-ready states.
         if dep_doc.exists:
             dep_status = (dep_doc.to_dict() or {}).get("status", "")

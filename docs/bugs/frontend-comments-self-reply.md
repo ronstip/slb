@@ -1,4 +1,4 @@
-# frontend — comments shown as reply to themselves
+# frontend - comments shown as reply to themselves
 
 ## Symptom
 In the comments drawer, every top-level comment rendered twice: once as the
@@ -13,7 +13,7 @@ Data-convention mismatch between backend and frontend.
 
 The backend (`workers/collection/adapters/comment_threading.py:resolve_comment_roots`)
 sets `root_comment_id == comment_id` for top-level comments (direct replies to
-the post) — it is never NULL. The frontend `groupIntoThreads` assumed top-level
+the post) - it is never NULL. The frontend `groupIntoThreads` assumed top-level
 meant `root_comment_id == null`. So a self-referential root:
 - never matched the `== null` branch → got pushed into `replies[comment_id]`
   (a reply to itself), and
@@ -32,7 +32,7 @@ so it can be unit-tested without pulling the React/UI tree (vitest has no `@`
 alias and runs in the `node` env).
 
 ## Regression test
-`frontend/src/features/post-overrides/comment-threads.test.ts` — covers
+`frontend/src/features/post-overrides/comment-threads.test.ts` - covers
 self-referential root (no self-reply), NULL root, real nested reply, orphan
 promotion, and likes-desc ordering. Confirmed red against old logic (2 failing),
 green after fix.

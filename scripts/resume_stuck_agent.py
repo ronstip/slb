@@ -1,7 +1,7 @@
 """One-off: resume a specific stuck agent run.
 
 Flips agent status back to 'running' and invokes the agent continuation
-synchronously. Safe to run repeatedly — the continuation function itself
+synchronously. Safe to run repeatedly - the continuation function itself
 handles resumption from whatever state the todos are in.
 """
 import os

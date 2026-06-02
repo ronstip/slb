@@ -78,7 +78,7 @@ class BQClient:
         """Insert rows via streaming API. Returns count of failed rows (0 = all succeeded).
 
         Raises RuntimeError only if ALL rows fail (likely a connectivity/auth issue).
-        Partial failures are logged as warnings — successfully inserted rows are kept.
+        Partial failures are logged as warnings - successfully inserted rows are kept.
         Retries automatically on transient network errors (SSL, connection reset).
         """
         table_ref = self.table_ref(table)

@@ -155,14 +155,14 @@ function renderEntry(entry: ActivityEntry): ReactNode {
         <div className="flex flex-col">
           <span>
             <span className="font-semibold">{entry.text}</span>
-            <span className="ml-1.5 text-[11px] font-normal"> — {entry.error}</span>
+            <span className="ml-1.5 text-[11px] font-normal"> - {entry.error}</span>
           </span>
         </div>
       );
     case 'tool_blocked':
       return (
         <span className="opacity-60">
-          {entry.text} — blocked
+          {entry.text} - blocked
         </span>
       );
     case 'thinking': {

@@ -210,7 +210,7 @@ def _retry_single_cluster(
     return {
         "cluster_index": idx,
         "topic_name": f"Topic {idx + 1}",
-        "topic_summary": "Topic labeling failed — placeholder.",
+        "topic_summary": "Topic labeling failed - placeholder.",
         "topic_keywords": [],
     }
 

@@ -1,9 +1,9 @@
-"""Global exception handling — keeps tracebacks out of HTTP responses.
+"""Global exception handling - keeps tracebacks out of HTTP responses.
 
 Unhandled exceptions used to surface as raw ``str(e)`` strings in 500 bodies
 (see the audit in PRODUCTION_PLAN.md §B.2). This handler is the safety net
-that gives clients a stable shape — ``{"error": "internal_error", "request_id"}``
-— while the real trace lands in Cloud Logging tagged with the same id.
+that gives clients a stable shape - ``{"error": "internal_error", "request_id"}``
+- while the real trace lands in Cloud Logging tagged with the same id.
 
 Inline ``HTTPException`` raises in routers are unaffected: FastAPI has its own
 ``HTTPException`` handler that runs first, so this handler only fires for the

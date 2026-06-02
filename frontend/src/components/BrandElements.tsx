@@ -3,7 +3,7 @@ import { Bell, Moon, Sun } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useTheme } from './theme-provider.tsx';
 
-// Curated palette of warm, saturated bot colors — mirrors the design's
+// Curated palette of warm, saturated bot colors - mirrors the design's
 // agent characters (rust, indigo, forest, rose, amber, slate-blue, plum…).
 const BOT_COLORS = [
   '#D97757', // rust orange (Claude primary)
@@ -29,7 +29,7 @@ const BOT_COLORS = [
 // position of its visor, where its eyes/mouth sit, and where the
 // antennae anchor on top. Different chassis have visibly different
 // proportions (boxy TV vs. tall canister vs. squat mini) so two bots
-// from different chassis read as genuinely different characters — not
+// from different chassis read as genuinely different characters - not
 // just a recolour of the same shape.
 //
 // Coordinate system: 48×64 viewBox. The body lives in y ≈ 12..50.
@@ -55,15 +55,15 @@ type Chassis = {
    *  the mushroom-stem where the design calls for big, prominent eyes that
    *  fill the visor instead of the default dot-sized eyes. */
   eyeScale?: number;
-  /** Suppress antennae rendering — for chassis that read better with a
+  /** Suppress antennae rendering - for chassis that read better with a
    *  clean top (the mushroom-stem cap, etc.). */
   noAntenna?: boolean;
-  /** Suppress the mouth mark — for chassis whose face is just the visor. */
+  /** Suppress the mouth mark - for chassis whose face is just the visor. */
   noMouth?: boolean;
 };
 
 const CHASSIS: Chassis[] = [
-  // 0 — TV box: squat, wide rectangular body with a big horizontal visor.
+  // 0 - TV box: squat, wide rectangular body with a big horizontal visor.
   // Body: y 18..50 (32 tall), x 6..42 (36 wide). The widest, shortest chassis.
   {
     body:   'M6 20 Q6 18 8 18 H40 Q42 18 42 20 V48 Q42 50 40 50 H8 Q6 50 6 48 Z',
@@ -75,7 +75,7 @@ const CHASSIS: Chassis[] = [
     topY: 18,
     antennaX: [14, 34],
   },
-  // 1 — Upright: classic balanced rounded shoulders, medium proportions.
+  // 1 - Upright: classic balanced rounded shoulders, medium proportions.
   // Body: y 14..50 (36 tall), x 11..37 (26 wide).
   {
     body:   'M11 26 Q11 14 24 14 Q37 14 37 26 V46 Q37 50 33 50 H15 Q11 50 11 46 Z',
@@ -87,7 +87,7 @@ const CHASSIS: Chassis[] = [
     topY: 14,
     antennaX: [17, 31],
   },
-  // 2 — Wide mushroom-dome: the demo's plump purple bot. Squat and wide
+  // 2 - Wide mushroom-dome: the demo's plump purple bot. Squat and wide
   // with a strongly rounded dome top and a near-full-width dark visor band
   // that takes up most of the upper face.
   // Body: y 10..50 (40 tall), x 6..42 (36 wide).
@@ -101,7 +101,7 @@ const CHASSIS: Chassis[] = [
     topY: 10,
     antennaX: [16, 32],
   },
-  // 3 — Pebble: the rounded ceramic-figurine pebble from the All Agents
+  // 3 - Pebble: the rounded ceramic-figurine pebble from the All Agents
   // demo. Smooth dome top, gently rounded body, strong horizontal eye
   // band that takes up roughly half the face. Reads as a friendly,
   // squat character. Body: y 12..50 (38 tall), x 14..34 (20 wide).
@@ -115,7 +115,7 @@ const CHASSIS: Chassis[] = [
     topY: 12,
     antennaX: [22, 26],
   },
-  // 4 — Egg: wider, slightly taller plump rounded body — the second
+  // 4 - Egg: wider, slightly taller plump rounded body - the second
   // demo character. Two-eye band sits high. Reads as an "egg" or
   // chunkier sibling of the Pebble. Body: y 14..50 (36 tall), x 10..38 (28 wide).
   {
@@ -128,12 +128,12 @@ const CHASSIS: Chassis[] = [
     topY: 14,
     antennaX: [18, 30],
   },
-  // 5 — Mushroom-on-stem: the desk-lamp / mushroom-shaped character
+  // 5 - Mushroom-on-stem: the desk-lamp / mushroom-shaped character
   // straight from the All Agents template. A wide rounded cap sits on a
-  // shorter, wider pedestal — two-part silhouette unlike any other
+  // shorter, wider pedestal - two-part silhouette unlike any other
   // chassis. Cap: y 8..32 (24 tall), x 9..39 (30 wide). Stem: y 32..46
   // (14 tall), x 17..31 (14 wide). Big round eyes fill the visor band,
-  // no antenna, no mouth — the face is just the visor.
+  // no antenna, no mouth - the face is just the visor.
   {
     body:   'M9 22 Q9 8 24 8 Q39 8 39 22 V28 Q39 32 35 32 H31 V44 Q31 46 29 46 H19 Q17 46 17 44 V32 H13 Q9 32 9 28 Z',
     shadow: 'M9 22 Q9 8 24 8 V46 H19 Q17 46 17 44 V32 H13 Q9 32 9 28 Z',
@@ -153,7 +153,7 @@ const CHASSIS: Chassis[] = [
  * Seed-based bot character avatar.
  *
  * Renders the Claude design's stylised "agent character". The bot is built
- * from a seeded chassis (6 distinct silhouettes — boxy TV, upright,
+ * from a seeded chassis (6 distinct silhouettes - boxy TV, upright,
  * mushroom-dome, pebble, egg, mushroom-stem) plus seeded color, antennae,
  * eyes, and mouth marks. Bots from different chassis read as genuinely
  * different characters, not just colour swaps of the same shape.
@@ -174,7 +174,7 @@ export function BotAvatar({
       hash = s.charCodeAt(i) + ((hash << 5) - hash);
     }
     const h = Math.abs(hash);
-    // Weighted picker — chassis index 5 (mushroom-on-stem) appears in
+    // Weighted picker - chassis index 5 (mushroom-on-stem) appears in
     // multiple slots so it shows up more often than the legacy shapes.
     // Without weighting, with 6 chassis the new shape only lands ~17% of
     // the time, which can be invisible across small agent libraries.
@@ -188,7 +188,7 @@ export function BotAvatar({
     };
   }, [seed]);
   // Defensive defaults: HMR can occasionally preserve a stale useMemo
-  // result whose shape predates the current module — guarantee every
+  // result whose shape predates the current module - guarantee every
   // field is defined before we read into it.
   const color           = memo.color           ?? BOT_COLORS[0];
   const chassis         = memo.chassis         ?? CHASSIS[0];
@@ -196,14 +196,14 @@ export function BotAvatar({
   const eyeVariant      = memo.eyeVariant      ?? 0;
   const mouthVariant    = memo.mouthVariant    ?? 0;
 
-  // 48×64 viewBox — the body sits in the upper portion and the soft drop
+  // 48×64 viewBox - the body sits in the upper portion and the soft drop
   // shadow lives in the bottom 14 px. Render at the requested width and
   // scale height proportionally.
   const w = size;
   const h = Math.round((size * 64) / 48);
   const shadowId = `bot-shadow-${color.replace('#', '')}`;
 
-  // Light tinted version of the bot color for eyes — so they pop against
+  // Light tinted version of the bot color for eyes - so they pop against
   // the dark visor band. Mirrors the demo's creamy/lit eye marks.
   const eyeColor = `color-mix(in oklab, ${color} 38%, #FFF7F0)`;
 
@@ -231,10 +231,10 @@ export function BotAvatar({
         </radialGradient>
       </defs>
 
-      {/* Soft drop shadow under the bot — sits below the body. */}
+      {/* Soft drop shadow under the bot - sits below the body. */}
       <ellipse cx="24" cy="56" rx="14" ry="2.5" fill={`url(#${shadowId})`} />
 
-      {/* Antennae — four variants, anchored to the chassis. Suppressed for
+      {/* Antennae - four variants, anchored to the chassis. Suppressed for
           chassis whose silhouette reads better with a clean top. */}
       {!chassis.noAntenna && antennaVariant === 0 && (
         // Short twins
@@ -262,7 +262,7 @@ export function BotAvatar({
         </>
       )}
       {!chassis.noAntenna && antennaVariant === 3 && (
-        // Bare — just two tiny knobs poking up off the body's top edge
+        // Bare - just two tiny knobs poking up off the body's top edge
         <>
           <rect x={ax1 - 1} y={aTop - 2} width="2" height="2.4" rx="0.6" fill="#1B1815" />
           <rect x={ax2 - 1} y={aTop - 2} width="2" height="2.4" rx="0.6" fill="#1B1815" />
@@ -273,7 +273,7 @@ export function BotAvatar({
       <path d={chassis.body} fill={color} />
       <path d={chassis.shadow} fill={`color-mix(in oklab, ${color} 80%, #1B1815)`} />
 
-      {/* Visor — position from chassis */}
+      {/* Visor - position from chassis */}
       <rect
         x={chassis.visor.x}
         y={chassis.visor.y}
@@ -283,7 +283,7 @@ export function BotAvatar({
         fill="#1B1815"
       />
 
-      {/* Eyes — four variants positioned by chassis. Filled with a light
+      {/* Eyes - four variants positioned by chassis. Filled with a light
           tinted version of the bot color so they pop against the dark visor.
           Chassis can opt into bigger eyes via `eyeScale`. */}
       {(() => {
@@ -310,7 +310,7 @@ export function BotAvatar({
           );
         }
         if (eyeVariant === 2) {
-          // Visor-bar — a long pulsing horizontal line that spans the visor
+          // Visor-bar - a long pulsing horizontal line that spans the visor
           return (
             <motion.rect
               x={chassis.visor.x + 2} y={chassis.cyclop.cy - 0.7}
@@ -319,13 +319,13 @@ export function BotAvatar({
             />
           );
         }
-        // eyeVariant === 3 — single cyclop eye
+        // eyeVariant === 3 - single cyclop eye
         return (
           <circle cx={chassis.cyclop.cx} cy={chassis.cyclop.cy} r={cyclopR} fill={eyeColor} />
         );
       })()}
 
-      {/* Mouth — four small dark marks (no smile, no cheeks). Suppressed
+      {/* Mouth - four small dark marks (no smile, no cheeks). Suppressed
           for chassis whose face is just the visor. */}
       {!chassis.noMouth && mouthVariant === 0 && (
         // Tiny dot
@@ -398,7 +398,7 @@ export function UtilityTopBar({
 }
 
 /**
- * Pulsing green dot — signals an "active"/"running" state.
+ * Pulsing green dot - signals an "active"/"running" state.
  * Size: 12px outer hit area, 8px inner dot.
  */
 export function RadarPulse() {

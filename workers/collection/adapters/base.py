@@ -43,7 +43,7 @@ class DataProviderAdapter(ABC):
         Default: empty (adapter raises NotImplementedError from fetch_comments).
         Override per-adapter to whitelist specific platforms. The wrapper uses
         this to route a fetch_comments call to the *first* adapter that
-        explicitly supports comments for the given platform — independent of
+        explicitly supports comments for the given platform - independent of
         the post-collection routing precedence.
         """
         return []

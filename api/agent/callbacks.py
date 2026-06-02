@@ -4,12 +4,12 @@ Callbacks are registered on the agent in agent.py. This module
 keeps callback logic separate from agent construction.
 
 Categories:
-1. State tracking    — after_tool_callback captures collection state
-2. Gating            — before_tool_callback blocks tools during pipeline runs
-3. Access control    — before_tool_callback enforces user-scoped collection access
-4. Context injection — before_model_callback prepends context (mode-aware)
-5. Tool reordering   — before_model_callback prioritizes relevant tools (chat only)
-6. Observability     — after_tool_callback logs all tool invocations
+1. State tracking    - after_tool_callback captures collection state
+2. Gating            - before_tool_callback blocks tools during pipeline runs
+3. Access control    - before_tool_callback enforces user-scoped collection access
+4. Context injection - before_model_callback prepends context (mode-aware)
+5. Tool reordering   - before_model_callback prioritizes relevant tools (chat only)
+6. Observability     - after_tool_callback logs all tool invocations
 """
 
 import logging
@@ -55,7 +55,7 @@ TOOLS_WITH_COLLECTION_IDS = {
 
 
 # ---------------------------------------------------------------------------
-# 1. State tracking — after_tool_callback
+# 1. State tracking - after_tool_callback
 # ---------------------------------------------------------------------------
 
 
@@ -85,7 +85,7 @@ def collection_state_tracker(
                 tool_context.state["active_collection_id"] = cids[0]
                 tool_context.state["agent_selected_sources"] = cids
             logger.info(
-                "start_agent succeeded: agent=%s collections=%s — collection_running=True, turn will end",
+                "start_agent succeeded: agent=%s collections=%s - collection_running=True, turn will end",
                 agent_id, cids,
             )
 
@@ -103,7 +103,7 @@ def collection_state_tracker(
 
 
 # ---------------------------------------------------------------------------
-# 2. Gating — before_tool_callback
+# 2. Gating - before_tool_callback
 # ---------------------------------------------------------------------------
 
 
@@ -125,13 +125,13 @@ def gate_expensive_tools(
                 "status": "blocked",
                 "message": (
                     "A collection is currently running. The UI shows live progress. "
-                    "Do NOT call collection tools — confirm to the user and move on."
+                    "Do NOT call collection tools - confirm to the user and move on."
                 ),
             }
         if tool.name == "ask_user":
             return {
                 "status": "blocked",
-                "message": "Collection is running. Do not ask questions — confirm briefly and wait.",
+                "message": "Collection is running. Do not ask questions - confirm briefly and wait.",
             }
 
     if tool.name in ANONYMOUS_BLOCKED and tool_context.state.get("is_anonymous"):
@@ -149,7 +149,7 @@ def gate_expensive_tools(
 
 
 # ---------------------------------------------------------------------------
-# 3. Access control — before_tool_callback
+# 3. Access control - before_tool_callback
 # ---------------------------------------------------------------------------
 
 
@@ -157,20 +157,20 @@ def gate_expensive_tools(
 # Two-pronged guard: (1) per-session count cap, (2) per-query whitespace-
 # normalized dedup. Set generously enough that deep strategic-planning runs
 # (18+ sections, per-section verification queries, EDA fan-out) finish without
-# being throttled — the dedup + loop-repeat guards catch runaway loops.
+# being throttled - the dedup + loop-repeat guards catch runaway loops.
 _MAX_SQL_CALLS_PER_SESSION = 120
 
 # Serializes the read-decide-write of `_execute_sql_count` across parallel
 # tool calls fanned out within a single turn. Without this, two concurrent
 # execute_sql callbacks both read N, both pass the < cap check, and both
-# write N+1 — silently exceeding the budget. Phase 1 retrospective saw 22+
+# write N+1 - silently exceeding the budget. Phase 1 retrospective saw 22+
 # SQL calls slip past the 8-call cap this way.
 _sql_budget_lock = threading.Lock()
 
 
 # Match qualified references to the three gated tables. The TVF names
 # (`scope_posts`, `scope_post_ids`) intentionally do NOT match this regex
-# — `social_listening.posts` requires the literal `posts` token to follow
+# - `social_listening.posts` requires the literal `posts` token to follow
 # the dot, not `scope_posts`.
 _FORBIDDEN_RAW_TABLE_RE = re.compile(
     r"social_listening\.(posts|enriched_posts|post_engagements)\b",
@@ -188,7 +188,7 @@ def enforce_data_window_in_sql(
     Posts must be read through `social_listening.scope_posts(p_agent_id)` or
     `social_listening.scope_post_ids(p_agent_id)`. The TVFs centralize the
     relevance gate (`is_related_to_task IS TRUE`) and dedup of
-    posts/enrichment/engagement — bypassing them lets the agent silently
+    posts/enrichment/engagement - bypassing them lets the agent silently
     read posts outside its scope or inflate counts via undeduped joins.
 
     Runs before `dedup_sql_calls` so a rejected query doesn't consume the
@@ -222,7 +222,7 @@ def enforce_data_window_in_sql(
             "`social_listening.scope_posts('<active_agent_id>')` (full row) "
             "or `social_listening.scope_post_ids('<active_agent_id>')` "
             "(post_id only, for joining tables like `post_embeddings`). The "
-            "TVFs apply the relevance gate and dedup for you — skipping them "
+            "TVFs apply the relevance gate and dedup for you - skipping them "
             "silently pulls in out-of-scope or duplicated rows. Add date / "
             "platform / collection filters in `WHERE`."
         ),
@@ -237,7 +237,7 @@ def dedup_sql_calls(
     """Block duplicate or excessive `execute_sql` calls within a session.
 
     The chat baseline showed the agent issuing 25 near-identical SQL probes
-    on the same table — same bug class as the artifact-tool dedup, but on
+    on the same table - same bug class as the artifact-tool dedup, but on
     the BigQuery toolset (which we don't own and can't wrap directly). The
     Phase 1 candidate revealed the agent bypasses naive whitespace dedup
     by varying column aliases. This callback uses both:
@@ -259,14 +259,14 @@ def dedup_sql_calls(
     with _sql_budget_lock:
         sql_count = int(state.get("_execute_sql_count", 0))
 
-        # Budget exhausted — refuse further probes regardless of args.
+        # Budget exhausted - refuse further probes regardless of args.
         if sql_count >= _MAX_SQL_CALLS_PER_SESSION:
             return {
                 "status": "budget_exhausted",
                 "rows": [],
                 "row_count": 0,
                 "message": (
-                    f"You've already issued {sql_count} SQL queries this session — "
+                    f"You've already issued {sql_count} SQL queries this session - "
                     "stop probing and answer the user from what you have. If you "
                     "genuinely need more data, tell the user what's blocking you "
                     "instead of issuing another query."
@@ -289,7 +289,7 @@ def dedup_sql_calls(
                 "row_count": 0,
                 "message": (
                     "An identical SQL query was already executed earlier in this "
-                    "session — its results are above. Don't re-issue paraphrases. "
+                    "session - its results are above. Don't re-issue paraphrases. "
                     "Either use those results or query a different dimension."
                 ),
             }
@@ -311,7 +311,7 @@ def refund_failed_sql_budget(
     so a syntactically-broken query consumes a slot. With the cap at 8, a
     handful of false starts can starve a real run. This callback decrements
     the counter when BigQuery returned an error so the model gets a real
-    retry budget — duplicates and budget-exhausted short-circuits never
+    retry budget - duplicates and budget-exhausted short-circuits never
     incremented in the first place, so we don't refund those.
     """
     if tool.name != "execute_sql":
@@ -387,7 +387,7 @@ def enforce_collection_access(
 
 
 # ---------------------------------------------------------------------------
-# 3a. Publish gate — before_tool_callback
+# 3a. Publish gate - before_tool_callback
 # ---------------------------------------------------------------------------
 
 
@@ -406,15 +406,15 @@ def enforce_verify_before_publish(
     receive `status: "ok"`, and only then publish.
 
     State invariants (written by the dashboard tools):
-      - `dashboard_last_update_ts[layout_id]` — ISO timestamp set by
+      - `dashboard_last_update_ts[layout_id]` - ISO timestamp set by
         `update_dashboard` after a successful persist.
-      - `dashboard_last_verify_ok[layout_id]` — ISO timestamp set by
+      - `dashboard_last_verify_ok[layout_id]` - ISO timestamp set by
         `verify_dashboard` on a passing run (including the numerical scope
         check when reportScope is set).
 
     Publish is allowed when `last_verify_ok >= last_update_ts` (or when
     `last_update_ts` is absent and `last_verify_ok` is present). Standalone
-    dashboards (no reportScope on the doc) do not get the gate — the agent
+    dashboards (no reportScope on the doc) do not get the gate - the agent
     isn't committing any numbers against a scope, so there's nothing for the
     numerical verify to enforce. Structural defects are still caught by
     `publish_dashboard`'s internal pre-publish check.
@@ -428,7 +428,7 @@ def enforce_verify_before_publish(
         return None
 
     # Read the dashboard doc to check whether reportScope is committed. If the
-    # doc is unreachable, fall through — the tool will surface the access error.
+    # doc is unreachable, fall through - the tool will surface the access error.
     try:
         from api.deps import get_fs
 
@@ -440,7 +440,7 @@ def enforce_verify_before_publish(
         return None
     data = doc.to_dict() or {}
     if not data.get("reportScope"):
-        return None  # standalone-mode dashboard — gate doesn't apply
+        return None  # standalone-mode dashboard - gate doesn't apply
 
     state = tool_context.state
     last_update = (state.get("dashboard_last_update_ts") or {}).get(layout_id)
@@ -472,14 +472,14 @@ def enforce_verify_before_publish(
 
 
 # ---------------------------------------------------------------------------
-# 3b. Loop bounding — before_tool_callback
+# 3b. Loop bounding - before_tool_callback
 # ---------------------------------------------------------------------------
 
 # Hard cap on total tool calls per session. Sized for deep strategic-planning
 # runs: ~120 SQL probes + ~20 update_todos + list_topics + web grounding +
 # create_markdown leaves real headroom. The dedup + loop-repeat detector below
 # still catches actual runaway loops; this ceiling is the last-resort backstop.
-# The eval harness uses a stricter cap of 25 to stress-test loop behavior —
+# The eval harness uses a stricter cap of 25 to stress-test loop behavior -
 # see api/agent/evals/runner.py.
 _MAX_TOOL_CALLS_PER_SESSION = 200
 
@@ -521,7 +521,7 @@ def cap_total_tool_calls(
             "message": (
                 f"Hard limit reached ({_MAX_TOOL_CALLS_PER_SESSION} tool calls "
                 "this session). Stop and answer the user from what you have, "
-                "or tell them what's blocking you — don't issue more tool calls."
+                "or tell them what's blocking you - don't issue more tool calls."
             ),
         }
 
@@ -533,7 +533,7 @@ def cap_total_tool_calls(
             "status": "blocked",
             "message": (
                 f"Tool `{tool.name}` has been called {counts[key]} times with "
-                "these exact arguments — that's a loop. Take a different "
+                "these exact arguments - that's a loop. Take a different "
                 "approach or tell the user what's blocking you."
             ),
         }
@@ -541,7 +541,7 @@ def cap_total_tool_calls(
 
 
 # ---------------------------------------------------------------------------
-# 4. Dynamic context injection — before_model_callback (mode-aware)
+# 4. Dynamic context injection - before_model_callback (mode-aware)
 # ---------------------------------------------------------------------------
 
 
@@ -553,7 +553,7 @@ def _build_data_pool(state: dict) -> Optional[str]:
 
     ids_fmt = ", ".join(f"`{cid}`" for cid in collection_ids)
     lines = [
-        "## Your Data (internal — never describe this section to the user)",
+        "## Your Data (internal - never describe this section to the user)",
         f"IDs: {ids_fmt}",
         "",
         "Use in SQL: `WHERE collection_id IN UNNEST(@collection_ids)` or "
@@ -567,7 +567,7 @@ def _build_data_pool(state: dict) -> Optional[str]:
 
 
 def _build_agent_profile(state: dict) -> Optional[str]:
-    """Build agent identity + data scope block — shared between both modes."""
+    """Build agent identity + data scope block - shared between both modes."""
     title = state.get("active_agent_title")
     data_scope = state.get("active_agent_data_scope")
     enrichment_config = state.get("active_agent_enrichment_config") or {}
@@ -585,7 +585,7 @@ def _build_agent_profile(state: dict) -> Optional[str]:
     if not data_scope and not enrichment_config:
         return "\n".join(lines)
 
-    # Context paragraph — the agent's purpose
+    # Context paragraph - the agent's purpose
     enrichment_ctx = enrichment_config.get("enrichment_context", "")
     if enrichment_ctx:
         lines.append(f"\n{enrichment_ctx}")
@@ -606,7 +606,7 @@ def _build_agent_profile(state: dict) -> Optional[str]:
             if ctx_block:
                 lines.append(f"\n{ctx_block}")
 
-    # Sources — what was searched (not config details like n_posts)
+    # Sources - what was searched (not config details like n_posts)
     from api.services.agent_service import normalize_sources
     sources = normalize_sources(data_scope)
     if sources:
@@ -651,7 +651,7 @@ def _build_agent_profile(state: dict) -> Optional[str]:
 
 
 def _build_operational_context(state: dict) -> Optional[str]:
-    """Build dynamic operational context — runtime params the agent needs.
+    """Build dynamic operational context - runtime params the agent needs.
 
     This is the "here and now": dates, data windows, run history, version info.
     Assembled per-invocation by the orchestrator, never persisted.
@@ -668,7 +668,7 @@ def _build_operational_context(state: dict) -> Optional[str]:
         trigger_note = f" (trigger: {run_trigger})" if run_trigger else ""
         lines.append(f"**Run:** #{run_number}{trigger_note}")
 
-    # Agent identity — the agent_id is required as the first argument to
+    # Agent identity - the agent_id is required as the first argument to
     # `scope_posts` / `scope_post_ids`. Surface it explicitly so the agent
     # can substitute the literal value into its SQL. This is the only id
     # the agent is permitted to pass to the TVFs (hard rule in the prompt).
@@ -681,7 +681,7 @@ def _build_operational_context(state: dict) -> Optional[str]:
     if version:
         lines.append(f"**Agent version:** {version}")
 
-    # Data window — applied via WHERE clauses on `posted_at` against the
+    # Data window - applied via WHERE clauses on `posted_at` against the
     # scope TVFs. The agent reads posts exclusively through
     # `scope_posts` / `scope_post_ids`; date / platform / collection filters
     # are normal SQL on the result.
@@ -689,8 +689,8 @@ def _build_operational_context(state: dict) -> Optional[str]:
     data_end_date = state.get("active_agent_data_end_date")
     if data_start_date or data_end_date:
         end_label = data_end_date or "open-ended (no upper bound)"
-        lines.append(f"**Data window — start:** `{data_start_date or 'open-ended'}`")
-        lines.append(f"**Data window — end:** `{end_label}`")
+        lines.append(f"**Data window - start:** `{data_start_date or 'open-ended'}`")
+        lines.append(f"**Data window - end:** `{end_label}`")
         end_predicate = (
             f"\n  AND DATE(posted_at) < DATE '{data_end_date}'" if data_end_date else ""
         )
@@ -709,7 +709,7 @@ def _build_operational_context(state: dict) -> Optional[str]:
             "Do not interpret the start of your data window as a trend inflection point or anomaly."
         )
 
-    # Per-source dates — informational only (the real SQL bound is the agent
+    # Per-source dates - informational only (the real SQL bound is the agent
     # window above). Useful for understanding what each source covers.
     from api.services.agent_service import normalize_sources
     data_scope = state.get("active_agent_data_scope") or {}
@@ -738,10 +738,10 @@ def _build_operational_context(state: dict) -> Optional[str]:
 
 
 def _build_chat_context(state: dict) -> Optional[str]:
-    """Build context for chat mode — lightweight agent summary."""
+    """Build context for chat mode - lightweight agent summary."""
     blocks: list[str] = []
 
-    # Todo list (lightweight — no heavy "CURRENT: focus on this" directive)
+    # Todo list (lightweight - no heavy "CURRENT: focus on this" directive)
     todos: list[dict] = state.get("todos", [])
     if todos:
         completed = sum(1 for t in todos if t.get("status") == "completed")
@@ -776,12 +776,12 @@ def _build_chat_context(state: dict) -> Optional[str]:
     if operational_block:
         blocks.append(operational_block)
 
-    # Continuation mode (chat-side — user is online after collection completes)
+    # Continuation mode (chat-side - user is online after collection completes)
     if state.get("continuation_mode"):
         blocks.append(
             "## Continuation\n"
             "Data collection is complete. Resume from your todo list. "
-            "Think critically about the data — consider alternative explanations "
+            "Think critically about the data - consider alternative explanations "
             "and potential biases before drawing conclusions. "
             "Deliver what fits the original question."
         )
@@ -794,7 +794,7 @@ def _build_chat_context(state: dict) -> Optional[str]:
             f"The user has a saved PowerPoint template: **{ppt_template['filename']}** "
             f"(gcs_path: `{ppt_template['gcs_path']}`). "
             f"Before using it for a presentation, always confirm: "
-            f"\"I see you have a saved template ({ppt_template['filename']}) — should I use it for this deck?\" "
+            f"\"I see you have a saved template ({ppt_template['filename']}) - should I use it for this deck?\" "
             f"Only pass the gcs_path to generate_presentation if the user confirms."
         )
         manifest = ppt_template.get("manifest")
@@ -824,12 +824,12 @@ def _build_chat_context(state: dict) -> Optional[str]:
 
 
 def _build_report_editor_context(state: dict) -> Optional[str]:
-    """Build context for report_editor mode — active dashboard + agent scope.
+    """Build context for report_editor mode - active dashboard + agent scope.
 
     Lighter than chat mode: no todo list (rarely used by the popover UX),
     no agent profile (the agent isn't doing analysis-from-scratch), no PPT
     template (no presentations from this surface). Just:
-      - operational context (agent ID + data window — needed for execute_sql
+      - operational context (agent ID + data window - needed for execute_sql
         grounding and list_topics scoping)
       - the active dashboard ID + widget summary (the *thing* being edited)
     """
@@ -840,7 +840,7 @@ def _build_report_editor_context(state: dict) -> Optional[str]:
     if operational_block:
         blocks.append(operational_block)
 
-    # Active dashboard — the only thing the editor is allowed to touch.
+    # Active dashboard - the only thing the editor is allowed to touch.
     # `active_dashboard_id` is written into session state by setup_chat_session
     # when the chat request carries mode="report_editor". The summary is
     # cached at session init too so we don't re-read Firestore per LLM turn.
@@ -859,7 +859,7 @@ def _build_report_editor_context(state: dict) -> Optional[str]:
 
 
 def _build_autonomous_context(state: dict) -> Optional[str]:
-    """Build context for autonomous mode — full plan execution context."""
+    """Build context for autonomous mode - full plan execution context."""
     blocks: list[str] = []
 
     # Full todo list with current step highlighted
@@ -911,7 +911,7 @@ def _build_autonomous_context(state: dict) -> Optional[str]:
         briefing_lines = [
             "## Previous Briefing",
             "Written by you at the end of your previous run. "
-            "Treat quantitative claims as hypotheses — verify against current data before citing.",
+            "Treat quantitative claims as hypotheses - verify against current data before citing.",
         ]
         if previous_briefing.get("state_of_the_world"):
             briefing_lines.append(f"\n### State of the World\n{previous_briefing['state_of_the_world']}")
@@ -925,7 +925,7 @@ def _build_autonomous_context(state: dict) -> Optional[str]:
     blocks.append(
         "## Continuation\n"
         "Data collection is complete. Resume from your todo list. "
-        "Think critically about the data — consider alternative explanations "
+        "Think critically about the data - consider alternative explanations "
         "and potential biases before drawing conclusions. "
         "Complete all remaining steps and generate deliverables."
     )
@@ -973,14 +973,14 @@ def _get_phase_priority(state: dict) -> list[set[str]]:
     )
 
     if not has_collection:
-        # Research/task phase — task tools and context first
+        # Research/task phase - task tools and context first
         return [PLANNING_TOOLS, AGENT_TOOLS, RESEARCH_SUPPORT_TOOLS, CORE_TOOLS, OUTPUT_TOOLS]
     elif collection_status in ("collecting", "enriching"):
-        # Collection in progress — push analysis tools first, agent doesn't have
+        # Collection in progress - push analysis tools first, agent doesn't have
         # collection polling tools anymore so no need to push them last
         return [PLANNING_TOOLS, AGENT_TOOLS, CORE_TOOLS, RESEARCH_SUPPORT_TOOLS, OUTPUT_TOOLS]
     else:
-        # Collection complete (or unknown) — analysis + output first
+        # Collection complete (or unknown) - analysis + output first
         return [PLANNING_TOOLS, AGENT_TOOLS, CORE_TOOLS, OUTPUT_TOOLS, RESEARCH_SUPPORT_TOOLS]
 
 
@@ -1111,12 +1111,12 @@ inject_collection_context = get_context_injector("chat")
 
 
 # ---------------------------------------------------------------------------
-# 5. Observability logging — after_tool_callback
+# 5. Observability logging - after_tool_callback
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# 7. Cost telemetry — after_model_callback
+# 7. Cost telemetry - after_model_callback
 # ---------------------------------------------------------------------------
 
 
@@ -1133,7 +1133,7 @@ def capture_llm_cost(
     streamed to BigQuery on a daemon thread. Returns ``None`` to leave the
     response unchanged.
 
-    Failure to log NEVER blocks the model response — every step is wrapped
+    Failure to log NEVER blocks the model response - every step is wrapped
     in try/except.
     """
     try:
@@ -1206,7 +1206,7 @@ def capture_llm_cost(
 
         # Google Search Grounding is billed SEPARATELY from tokens. Emit a
         # second row so the dashboard can distinguish "the model thought
-        # for $X" from "the model grounded for $Y" — they have very
+        # for $X" from "the model grounded for $Y" - they have very
         # different cost curves.
         _maybe_log_grounding_cost(
             llm_response,
@@ -1243,7 +1243,7 @@ def _maybe_log_grounding_cost(
     Detection: ``llm_response.grounding_metadata.web_search_queries`` is
     populated by the Gemini SDK with the list of search terms the model
     actually issued. An empty list means grounding was available but the
-    model didn't fire it — no charge.
+    model didn't fire it - no charge.
     """
     try:
         gm = getattr(llm_response, "grounding_metadata", None)
@@ -1251,7 +1251,7 @@ def _maybe_log_grounding_cost(
             return
 
         queries = getattr(gm, "web_search_queries", None) or []
-        # Strip empties — Google's docs say those don't count for billing.
+        # Strip empties - Google's docs say those don't count for billing.
         queries = [q for q in queries if q]
         if not queries:
             return

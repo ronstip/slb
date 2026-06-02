@@ -85,7 +85,7 @@ def test_signature_uses_first_sorted_theme_and_brand():
         post_id="x", themes=["zebra", "Apple", "moon"], brands=["MicroSoft", "acme"],
     )
     sig = compute_signature(p, _WINDOW_START, _NOW)
-    # third element is top_theme, fourth is top_brand — alphabetic, lowercased
+    # third element is top_theme, fourth is top_brand - alphabetic, lowercased
     assert sig[2] == "apple"
     assert sig[3] == "acme"
 
@@ -112,7 +112,7 @@ def test_time_bucket_spreads_across_window():
 
 
 # ---------------------------------------------------------------------------
-# sample_for_taxonomy — coverage properties
+# sample_for_taxonomy - coverage properties
 # ---------------------------------------------------------------------------
 
 
@@ -152,7 +152,7 @@ def test_sample_under_target_when_caps_bind_intentional():
     sampled, _ = sample_for_taxonomy(
         posts, target_size=200, per_signature=3, channel_cap=3,
     )
-    # 10 signatures × cap of 3 = 30 max — channel cap is doing its job
+    # 10 signatures × cap of 3 = 30 max - channel cap is doing its job
     assert len(sampled) <= 30
     assert len(sampled) <= 200
 
@@ -176,7 +176,7 @@ def test_niche_signature_survives_against_dominant_majority():
                 views=1000,
             )
         )
-    # Niche cluster — distinct on every diversity dim
+    # Niche cluster - distinct on every diversity dim
     for i in range(10):
         posts.append(
             make_post(

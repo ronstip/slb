@@ -111,7 +111,7 @@ def validate_deck_plan(
     if len(plan.slides) > 15:
         warnings.append({
             "slide_index": -1,
-            "message": f"Deck has {len(plan.slides)} slides — consider trimming to 10-12 for impact.",
+            "message": f"Deck has {len(plan.slides)} slides - consider trimming to 10-12 for impact.",
         })
 
     # Track chart-only slides for optimization hints
@@ -154,7 +154,7 @@ def validate_deck_plan(
                         warnings.append({
                             "slide_index": i,
                             "message": (
-                                f"Component '{comp_type}' in 'custom' slot — "
+                                f"Component '{comp_type}' in 'custom' slot - "
                                 f"only kpi_grid and key_finding are supported in custom slot."
                             ),
                         })

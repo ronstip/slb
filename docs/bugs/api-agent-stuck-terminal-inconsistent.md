@@ -19,7 +19,7 @@ Single-agent observation, agent `140a3591-6e8c-4d0d-9b1c-fbc3966db297`
 collection B finishing, something flipped the agent to `status='success'`
 (suspected race with the attach-success path in
 `api/routers/agents.py:158` / `api/agent/tools/start_agent.py:197`, but
-unconfirmed — those paths only fire on attach). When collection B's
+unconfirmed - those paths only fire on attach). When collection B's
 `_check_agent_completion()` ran, the early-return skipped setting
 `continuation_ready=True`, so the analyze/validate/deliver phase never
 fired.
@@ -42,7 +42,7 @@ stale), so it could not recover this state either.
 
 ## Regression test
 
-`workers/shared/test_stuck_detector.py` — 12 cases covering all three
+`workers/shared/test_stuck_detector.py` - 12 cases covering all three
 signals and their negatives.
 
 ## One-off recovery for the affected agent

@@ -41,15 +41,15 @@ export function computeStatusData(stats: AnalyticsStats): StatusData {
   return {
     dailyVolume: [],
     negativePct,
-    enrichedPct: 100, // Placeholder — real value needs collection stats
-    latestDate: null,  // Placeholder — real value needs collection stats
+    enrichedPct: 100, // Placeholder - real value needs collection stats
+    latestDate: null,  // Placeholder - real value needs collection stats
     totalPosts: stats.totalPosts,
     avgEngagement,
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Mini sparkline — pure SVG                                           */
+/* Mini sparkline - pure SVG                                           */
 /* ------------------------------------------------------------------ */
 
 function Sparkline({ data, className }: { data: number[]; className?: string }) {

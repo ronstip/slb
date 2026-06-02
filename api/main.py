@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app_: FastAPI):
     settings = get_settings()
 
-    # Fail-closed startup gates — prod refuses to boot if the signup gate is
+    # Fail-closed startup gates - prod refuses to boot if the signup gate is
     # set to "allowlist" but `ALLOWED_EMAILS` is empty (would otherwise let
     # every Google account in silently), or if `SUPER_ADMIN_EMAILS` is empty
     # (admin endpoints would have nobody to authorise). Dev mode is exempt
@@ -67,11 +67,11 @@ async def lifespan(app_: FastAPI):
     if not settings.is_dev:
         if settings.signup_gate == "allowlist" and not settings.allowed_emails.strip():
             raise RuntimeError(
-                "SIGNUP_GATE=allowlist but ALLOWED_EMAILS is empty — refusing to start"
+                "SIGNUP_GATE=allowlist but ALLOWED_EMAILS is empty - refusing to start"
             )
         if not settings.super_admin_emails.strip():
             raise RuntimeError(
-                "SUPER_ADMIN_EMAILS is empty in production — refusing to start"
+                "SUPER_ADMIN_EMAILS is empty in production - refusing to start"
             )
 
     async def _bg_cleanup() -> None:
@@ -99,19 +99,19 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# Global safety net for unhandled exceptions — keep AFTER more specific
+# Global safety net for unhandled exceptions - keep AFTER more specific
 # handlers (e.g. RateLimitExceeded). FastAPI runs `HTTPException` through
 # its own built-in handler, so router-level raises with shaped detail
 # bodies are unaffected.
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
-# Request-ID middleware — must run before handlers so request_id is bound for
+# Request-ID middleware - must run before handlers so request_id is bound for
 # the entire request lifecycle (cost telemetry, logs, downstream propagation).
 app.add_middleware(RequestIDMiddleware)
 
 # §E defense-in-depth: gate private data routers server-side so a blocked /
 # expired-trial account can't fetch data via direct API calls (the UI also
-# gates them). NOT applied to: public/shared (token) routers, /me (auth) — must
+# gates them). NOT applied to: public/shared (token) routers, /me (auth) - must
 # work for blocked users to render the pending page, billing, admin (super-admin
 # gated), media (proxies images for public shared dashboards), health, chat
 # (already gated by require_active), and the public waitlist. No-op unless
@@ -150,7 +150,7 @@ app.include_router(waitlist_router.router)
 # matter functionally but it documents the integration boundary.
 app.include_router(share_html_router.router)
 
-# CORS middleware — permissive in dev, configurable via CORS_ORIGINS env var in prod
+# CORS middleware - permissive in dev, configurable via CORS_ORIGINS env var in prod
 _settings = get_settings()
 if _settings.is_dev:
     app.add_middleware(

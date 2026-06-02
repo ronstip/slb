@@ -34,7 +34,7 @@ export function extractChartSeriesLabels(
     if (chartType === 'bar' || chartType === 'progress-list') {
       // Grouped bar / progress-list legend = dataset labels, axis = primary
       // labels. User may want to rename either, so include both (primary axis
-      // first, then dataset labels — de-duped).
+      // first, then dataset labels - de-duped).
       const seen = new Set<string>();
       const out: string[] = [];
       for (const l of data.groupedCategorical.labels) {

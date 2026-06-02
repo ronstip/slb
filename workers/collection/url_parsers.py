@@ -6,7 +6,7 @@ caller can build a `CreateCollectionRequest` with `post_urls=[...]` and route
 through the unified pipeline.
 
 Adapter-internal helpers (e.g. `extract_twitter_id` in `x_api_parsers.py`) stay
-where they are — this module is additive, not a refactor. Add a new platform
+where they are - this module is additive, not a refactor. Add a new platform
 by registering a parser in `_PARSERS`.
 """
 

@@ -1,4 +1,4 @@
-"""Start an agent — create it and dispatch data collection.
+"""Start an agent - create it and dispatch data collection.
 
 This is the lightweight replacement for create_task_protocol.
 The agent calls this AFTER getting user approval via ask_user.
@@ -25,7 +25,7 @@ def start_agent(
     existing_collection_ids: str = "",
     tool_context: ToolContext = None,
 ) -> dict:
-    """Start a new agent — create it and dispatch data collection.
+    """Start a new agent - create it and dispatch data collection.
 
     Call this AFTER the user approves your collection plan (via ask_user).
     This creates the agent, links it to the current session, and starts
@@ -33,7 +33,7 @@ def start_agent(
 
     Args:
         title: A concise title for the agent (e.g., "NBA TikTok Exposure").
-        searches: JSON array of source definitions — one per platform/query
+        searches: JSON array of source definitions - one per platform/query
             combination. Each source becomes a NEW data collection. Format:
             [{"platform": "tiktok", "keywords": ["NBA highlights"],
               "time_range_days": 1, "n_posts": 500, "geo_scope": "global"}]
@@ -57,7 +57,7 @@ def start_agent(
             Leave empty if not needed.
         enrichment_context: A concise description of what makes posts relevant
             to this agent. Used during enrichment to judge post relevance.
-            Leave empty if not needed — falls back to search keyword.
+            Leave empty if not needed - falls back to search keyword.
         existing_collection_ids: JSON array of collection IDs to attach to the
             new agent without re-collecting. Use this when the user wants to
             reuse one or more already-created collections as sources for the
@@ -173,7 +173,7 @@ def start_agent(
     for cid in existing_ids:
         status_doc = fs.get_collection_status(cid)
         if not status_doc:
-            logger.warning("start_agent: existing collection %s not found — skipping", cid)
+            logger.warning("start_agent: existing collection %s not found - skipping", cid)
             continue
         owner_id = status_doc.get("user_id")
         owner_org = status_doc.get("org_id")
@@ -213,7 +213,7 @@ def start_agent(
         "run_id": run_id,
         "collection_ids": all_ids,
         "message": (
-            f"Agent **{title}** started — {summary}. "
+            f"Agent **{title}** started - {summary}. "
             "The UI shows live progress. Continue with your next steps when data is ready."
         ),
     }

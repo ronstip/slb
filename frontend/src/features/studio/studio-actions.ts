@@ -27,7 +27,7 @@ export interface StudioAction {
   iconBubble: string;
   // If omitted, the action is handled specially (e.g. opens a dialog).
   prompt?: string;
-  // Visual variant — 'dashed' renders the tile as a "create new" affordance.
+  // Visual variant - 'dashed' renders the tile as a "create new" affordance.
   variant?: 'dashed';
 }
 

@@ -7,14 +7,14 @@ def wrap_html(body_html: str, subject: str, app_url: str = "") -> str:
     # Preheader text (shows in email list preview)
     preheader = f'<span style="display:none;font-size:1px;color:#f4f4f5;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{subject}</span>'
 
-    # Header logo — link to app if URL provided
+    # Header logo - link to app if URL provided
     logo_text = '<span style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.03em;">SLB</span>'
     if app_url:
         logo_html = f'<a href="{app_url}" style="text-decoration:none;">{logo_text}</a>'
     else:
         logo_html = logo_text
 
-    # CTA button — only if app_url is provided
+    # CTA button - only if app_url is provided
     cta_html = ""
     if app_url:
         cta_html = f"""\

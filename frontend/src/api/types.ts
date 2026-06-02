@@ -13,15 +13,15 @@ export type ChatMode = 'chat' | 'report_editor';
 export interface ChatRequest {
   message: string;
   session_id?: string;
-  agent_id?: string;  // Active agent — auto-loads context into session
+  agent_id?: string;  // Active agent - auto-loads context into session
   model?: ChatModelKey;  // omit → backend default ("flash")
   thinking_level?: ThinkingLevel;  // omit → backend default
   search_grounding?: boolean;  // omit → backend default
   is_system?: boolean;
-  accent_color?: string;  // hex, e.g. "#4A7C8F" — user's selected accent
+  accent_color?: string;  // hex, e.g. "#4A7C8F" - user's selected accent
   theme?: 'light' | 'dark';  // resolved theme (never "system")
   /** Agent persona. 'chat' (default) = broad analyst. 'report_editor' = the
-   *  AI button in the report top bar — co-authors the open dashboard. */
+   *  AI button in the report top bar - co-authors the open dashboard. */
   mode?: ChatMode;
   /** Required when mode='report_editor'. The dashboard_layouts doc id the
    *  agent is scoped to. */
@@ -283,7 +283,7 @@ export interface MultiFeedParams {
   dedup?: boolean;
   start_date?: string;
   end_date?: string;
-  /** When set, the feed scopes posts via the agent's scope_posts TVF — picks
+  /** When set, the feed scopes posts via the agent's scope_posts TVF - picks
    *  enrichment rows for this agent (not the latest cross-agent row). */
   agent_id?: string;
 }
@@ -911,7 +911,7 @@ export interface FinancePoint {
 
 export interface FinanceSummary {
   cost_micros: number;            // total provider cost (all usage, money out)
-  revenue_micros: number;         // real cash in — purchases only (excludes grants)
+  revenue_micros: number;         // real cash in - purchases only (excludes grants)
   granted_micros: number;         // admin grants/adjustments issued (NOT revenue)
   net_micros: number;             // revenue − total cost (true P&L)
   usage_billed_micros: number;    // cost × margin across all usage (informational)
@@ -922,7 +922,7 @@ export interface FinanceSummary {
   by_provider: FinanceItem[];
   by_feature: FinanceItem[];
   by_tier: FinanceItem[];         // revenue_micros here = billed usage value, not cash
-  /** Platform × provider matrix — see CostBreakdown.by_platform_provider. */
+  /** Platform × provider matrix - see CostBreakdown.by_platform_provider. */
   by_platform_provider: PlatformProviderCell[];
   /** Group costs by their source ("provider_reported" vs "estimated_fallback"
    *  vs "rate_table") so the admin can see how much of the recorded cost is
@@ -946,7 +946,7 @@ export interface PricingConfig {
    *  - Apify: the fallback estimate when Apify returns no usageTotalUsd.
    *  - BrightData / X_api / Vetric: the authoritative rate (replaces the
    *    legacy single per-record / per-call rate when set).
-   *  Cell value `null` means "no override — fall through to '*'". */
+   *  Cell value `null` means "no override - fall through to '*'". */
   scraper_rates_per_platform: Record<string, Record<string, number | null>>;
   gemini: Record<string, GeminiModelRate>;
   google_search_gemini3_per_query_usd: number | null;
@@ -993,7 +993,7 @@ export interface AdminEvent {
    *  x / reddit / youtube). Null for LLM-only events that don't carry a
    *  platform (chat, wizard, topic_cluster). */
   platform: string | null;
-  /** "Where cost_micros came from" — see api/services/cost_meter.py
+  /** "Where cost_micros came from" - see api/services/cost_meter.py
    *  constants. "provider_reported" = Apify's actual usageTotalUsd;
    *  "estimated_fallback" = our assumed_per_post fallback when the
    *  provider went silent; "rate_table" = lookup against config/cost_rates. */

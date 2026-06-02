@@ -27,8 +27,8 @@ def seed_media_refs(post: Post) -> None:
 def seed_comment_media_refs(comment: Comment) -> None:
     """Populate comment media_refs from media_urls if not already set.
 
-    Mirrors seed_media_refs for posts. Comments stay URL-only in v1 — no GCS
-    download — so this is the entire media pipeline for a comment.
+    Mirrors seed_media_refs for posts. Comments stay URL-only in v1 - no GCS
+    download - so this is the entire media pipeline for a comment.
     """
     if comment.media_urls and not comment.media_refs:
         comment.media_refs = _build_media_refs_from_urls(comment.media_urls)

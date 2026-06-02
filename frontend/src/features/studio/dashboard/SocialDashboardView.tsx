@@ -24,7 +24,7 @@ function nanoid(): string {
   return Math.random().toString(36).slice(2, 11);
 }
 
-/** Old hardcoded KPI accent colors — strip these so cards fall back to theme-derived colors */
+/** Old hardcoded KPI accent colors - strip these so cards fall back to theme-derived colors */
 const LEGACY_KPI_ACCENTS = new Set([
   '#3574d4', '#1a9e6f', '#c9a030', '#d45432', '#8b55c8',
   '#2B5066', '#4A7C8F', '#3E6B52', '#6B3040', '#4A5568',
@@ -82,7 +82,7 @@ interface SocialDashboardViewProps {
   defaultOrientation?: DashboardOrientation;
   /** Server-computed KPIs (passed only when no client filters are active) */
   serverKpis?: DashboardKpis;
-  /** Agent context — used to ground AI compose for widget annotations. */
+  /** Agent context - used to ground AI compose for widget annotations. */
   agentId?: string;
   /** Bumped by the parent when an external mutation (e.g. AI co-author writes
    *  via update_dashboard) lands. Triggers a re-sync of local `widgets` state
@@ -124,7 +124,7 @@ export function SocialDashboardView({
     [agentId, navigate],
   );
 
-  // Distinct custom enrichment field names present on the dataset — surfaced
+  // Distinct custom enrichment field names present on the dataset - surfaced
   // as additional Group by options in the widget config dialog.
   const customFieldNames = useMemo(() => {
     const names = new Set<string>();
@@ -152,7 +152,7 @@ export function SocialDashboardView({
   const [configWidget, setConfigWidget] = useState<SocialDashboardWidget | null>(null);
   const [configMode, setConfigMode] = useState<'add' | 'edit'>('edit');
 
-  // Load persisted layout. Skipped in readOnly (shared) mode — the layout is
+  // Load persisted layout. Skipped in readOnly (shared) mode - the layout is
   // already inlined in the public share response and the authed endpoint 401s
   // for unauthenticated viewers, which now globally redirects to landing.
   const { data: layoutData, isLoading: layoutLoading } = useDashboardLayout(
@@ -188,7 +188,7 @@ export function SocialDashboardView({
   // mutated the layout via update_dashboard, the parent invalidates the
   // dashboard-layout query and bumps `externalSyncKey`. We push the new
   // snapshot through `applyExternalSnapshot` so the change lands as a
-  // single undo step — user hits Cmd+Z once to revert an AI edit, even
+  // single undo step - user hits Cmd+Z once to revert an AI edit, even
   // when it touched multiple widgets at once. Skipped on the first render
   // (key starts at 0) so we don't fight the one-shot initialiser above.
   const lastSyncedKey = useRef(0);
@@ -404,7 +404,7 @@ export function SocialDashboardView({
     });
   }, [historyStore, scheduleAutoSave]);
 
-  // Save from config dialog (handles both add and update) — save immediately, don't rely on debounce
+  // Save from config dialog (handles both add and update) - save immediately, don't rely on debounce
   const handleSaveWidget = useCallback((saved: SocialDashboardWidget) => {
     setConfigWidget(null);
     const prev = widgetsRef.current;
@@ -438,7 +438,7 @@ export function SocialDashboardView({
   );
 
   // Undo/redo. Both mutate the history store, then nudge autosave so the
-  // restored state lands in Firestore — without this, the user undoes
+  // restored state lands in Firestore - without this, the user undoes
   // locally but the next reload brings the un-undone version back.
   const handleUndo = useCallback(() => {
     const temporalState = historyStore.temporal.getState();
@@ -456,7 +456,7 @@ export function SocialDashboardView({
     scheduleAutoSave(next.widgets, undefined, next.orientation);
   }, [historyStore, scheduleAutoSave]);
 
-  // Keyboard shortcuts — only active while editing the report. Cmd/Ctrl+Z
+  // Keyboard shortcuts - only active while editing the report. Cmd/Ctrl+Z
   // undoes, Cmd/Ctrl+Shift+Z or Ctrl+Y redoes. Suppressed inside form
   // fields so widget-title inputs still get native undo.
   useEffect(() => {
@@ -534,7 +534,7 @@ export function SocialDashboardView({
         onAutoSize={handleAutoSize}
       />
 
-      {/* Single config dialog — used for both add and edit */}
+      {/* Single config dialog - used for both add and edit */}
       <SocialWidgetConfigDialog
         open={configWidget !== null}
         widget={configWidget}

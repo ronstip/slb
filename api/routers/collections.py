@@ -54,7 +54,7 @@ async def update_collection(
 ):
     """Update collection metadata (title). Only the owner can update.
 
-    Org sharing is no longer set per-collection — it is driven by the owning
+    Org sharing is no longer set per-collection - it is driven by the owning
     agent's visibility (see agents `PATCH /agents/{id}/visibility`), which
     propagates down to its collections.
     """
@@ -407,7 +407,7 @@ async def get_collection_stats(
     collection_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Return statistical signature — from Firestore cache if available, else compute fresh."""
+    """Return statistical signature - from Firestore cache if available, else compute fresh."""
     from api.services.statistical_signature_service import refresh_statistical_signature
 
     fs = get_fs()

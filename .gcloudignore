@@ -1,4 +1,4 @@
-# Cloud Build ignore — based on .gitignore but includes uv.lock for Docker builds
+# Cloud Build ignore - based on .gitignore but includes uv.lock for Docker builds
 .git/
 .github/
 .venv/

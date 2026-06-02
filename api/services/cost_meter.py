@@ -1,4 +1,4 @@
-"""Centralised cost telemetry — one row per paid external call.
+"""Centralised cost telemetry - one row per paid external call.
 
 Use :func:`log_cost` from every site that hits a metered third-party API
 (Gemini, Apify, BrightData, X, Vetric, BigQuery, GCS). The function:
@@ -7,7 +7,7 @@ Use :func:`log_cost` from every site that hits a metered third-party API
      explicit ``provider_reported_cost_usd`` for providers (Apify) that
      return the exact cost themselves.
   2. Builds a row matching the extended ``usage_events`` schema.
-  3. Streams it to BigQuery on a daemon thread — failures are logged but
+  3. Streams it to BigQuery on a daemon thread - failures are logged but
      **never** propagate to the caller.
 
 Pairing with the originating user request: the current ``X-Request-ID``
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Collection-owner context — set by long-running workers (pipeline runner,
+# Collection-owner context - set by long-running workers (pipeline runner,
 # enrichment, topic clusterer) at the start of processing one collection so
 # the many downstream Gemini calls in the same job can attribute cost to the
 # right user / org / collection without each helper threading the params
@@ -112,7 +112,7 @@ EVENT_GCS = "gcs_op"
 # Cost-source labels (written to usage_events.cost_source so the admin UI can
 # tell apart "this is what the provider actually charged us" from "we estimated
 # because the provider didn't report a number" from "we looked it up in our
-# rate table"). Keep the set small + stable — frontend renders by string.
+# rate table"). Keep the set small + stable - frontend renders by string.
 COST_SOURCE_PROVIDER_REPORTED = "provider_reported"   # apify run.usageTotalUsd, etc.
 COST_SOURCE_RATE_TABLE = "rate_table"                 # gemini tokens, brightdata $/record
 COST_SOURCE_ESTIMATED_FALLBACK = "estimated_fallback" # provider went silent → assumed_per_post
@@ -122,7 +122,7 @@ COST_SOURCE_ESTIMATED_FALLBACK = "estimated_fallback" # provider went silent →
 # ContextVar propagation across thread boundaries
 # ---------------------------------------------------------------------------
 #
-# `threading.Thread` does NOT inherit ContextVars from the parent thread —
+# `threading.Thread` does NOT inherit ContextVars from the parent thread -
 # the child starts with a fresh, default context. That silently drops the
 # cost-meter user_id / org_id / collection_id / agent_id binding the
 # worker (workers/server.py) carefully set up, so every priced event
@@ -144,7 +144,7 @@ def start_thread_with_cost_context(
     daemon: bool = True,
 ) -> threading.Thread:
     """Spawn a ``Thread`` that runs ``target`` inside a snapshot of the
-    current contextvar context — propagates cost-meter attribution
+    current contextvar context - propagates cost-meter attribution
     (and ``X-Request-ID``) across thread boundaries.
 
     Drop-in replacement for ``threading.Thread(target=..., args=..., ...)``
@@ -167,7 +167,7 @@ def submit_with_cost_context(executor, target, /, *args, **kwargs):
     current contextvar context into the pool worker thread.
 
     Use instead of bare ``pool.submit(fn, ...)`` whenever the submitted
-    callable might log cost — otherwise the futures execute with empty
+    callable might log cost - otherwise the futures execute with empty
     cost-meter context and rows lose user / agent attribution.
     """
     ctx = contextvars.copy_context()
@@ -222,7 +222,7 @@ def log_cost(
 
     # Inherit any unset attribution fields from the bound collection context.
     # Worker adapters (e.g. Apify in workers/collection/adapters/apify.py)
-    # pass user_id="" because they don't know it directly — the runner binds
+    # pass user_id="" because they don't know it directly - the runner binds
     # it via `collection_context_scope` at the entry. log_gemini_response
     # already does this fallback; doing it once here covers every caller.
     ctx = _collection_context.get() or {}
@@ -263,7 +263,7 @@ def log_cost(
             )
         except Exception:
             # Cost computation must never block the row. NULL cost is preferred
-            # over no row at all — we can backfill from raw payload later.
+            # over no row at all - we can backfill from raw payload later.
             logger.warning(
                 "cost_meter: compute_cost_micros failed for provider=%s model=%s",
                 provider, model, exc_info=True,
@@ -272,14 +272,14 @@ def log_cost(
 
     if cost_micros is None:
         logger.info(
-            "cost_meter: NULL cost for provider=%s model=%s sub_kind=%s — rate table miss",
+            "cost_meter: NULL cost for provider=%s model=%s sub_kind=%s - rate table miss",
             provider, model, sub_kind,
         )
 
-    # §E billed amount — what the user's wallet is actually debited: raw
+    # §E billed amount - what the user's wallet is actually debited: raw
     # provider cost × the admin-set profit margin. Stored alongside cost_micros
     # so the Finance page can report cost vs revenue. NULL when cost is NULL
-    # (rate-table miss) — never block on telemetry.
+    # (rate-table miss) - never block on telemetry.
     billed_micros: int | None = None
     if cost_micros is not None:
         try:
@@ -287,21 +287,21 @@ def log_cost(
 
             billed_micros = int(round(cost_micros * get_margin_multiplier()))
         except Exception:
-            logger.warning("cost_meter: margin lookup failed — billing at cost", exc_info=True)
+            logger.warning("cost_meter: margin lookup failed - billing at cost", exc_info=True)
             billed_micros = cost_micros
 
     # Safety net: a priced event with no user_id is cost we can't attribute or
-    # bill. It shouldn't happen — surface it loudly so the gap gets fixed at the
+    # bill. It shouldn't happen - surface it loudly so the gap gets fixed at the
     # call site (e.g. an LLM call outside a request/collection context).
     if cost_micros and not user_id:
         logger.warning(
-            "cost_meter: priced event has NO user_id — unattributed cost "
+            "cost_meter: priced event has NO user_id - unattributed cost "
             "(provider=%s model=%s feature=%s)", provider, model, feature,
         )
 
     metadata: dict[str, Any] = {}
     if raw_provider_payload is not None:
-        # Cap raw payload size — provider responses can be huge and BQ has
+        # Cap raw payload size - provider responses can be huge and BQ has
         # row size limits. Trim to a JSON-string ~64 KB.
         try:
             payload_str = json.dumps(raw_provider_payload, default=str)
@@ -399,7 +399,7 @@ def log_gemini_response(
     Caller may pass identity fields explicitly; missing ones are pulled from
     :func:`get_collection_context` (set by the pipeline runner) so worker
     code doesn't have to thread user_id through every helper. Never raises
-    — telemetry failure must not break the surrounding feature.
+    - telemetry failure must not break the surrounding feature.
     """
     try:
         usage = getattr(response, "usage_metadata", None)

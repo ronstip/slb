@@ -1,4 +1,4 @@
-// Shared site footer ("lower banner") for all public pages — the landing page,
+// Shared site footer ("lower banner") for all public pages - the landing page,
 // the manifesto, and the legal pages. This is the canonical footer; the landing
 // page is the source of truth for its design. Self-contained (no import from
 // LandingPage.tsx) so it can be reused without dragging in the whole landing
@@ -42,7 +42,7 @@ export const SiteFooter = () => (
           <Link to="/" aria-label="Scolto home" style={{ textDecoration: 'none' }}><Logo /></Link>
         </div>
         <div style={{ fontFamily: "'Inter Tight',sans-serif", fontSize: 13, color: '#A29A8B', lineHeight: 1.55 }}>
-          The first AI agent on social — reads the internet so you don't have to.
+          The first AI agent on social - reads the internet so you don't have to.
         </div>
       </div>
       <div className="lp-footer-links" style={{ display: 'flex', gap: 64, fontFamily: "'Inter Tight',sans-serif", fontSize: 13 }}>
@@ -71,7 +71,7 @@ export const SiteFooter = () => (
       marginTop: 36, paddingTop: 18, borderTop: '1px solid #2A2520',
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     }}>
-      <Mono size={9.5} color="#7E7666">© 2026 Scolto — the first AI agent on social</Mono>
+      <Mono size={9.5} color="#7E7666">© 2026 Scolto - the first AI agent on social</Mono>
       <Mono size={9.5} color="#7E7666">made for people who'd rather read than scroll</Mono>
     </div>
   </footer>

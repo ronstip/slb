@@ -239,7 +239,7 @@ export function CollectionsPage() {
         />
       )}
 
-      {/* Collection Modal — rendered here so it overlays this page */}
+      {/* Collection Modal - rendered here so it overlays this page */}
       {collectionModalOpen && <CollectionModal />}
     </div>
   );

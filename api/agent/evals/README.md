@@ -9,22 +9,22 @@ and a manual smoke protocol see [STATUS.md](STATUS.md).
 
 ```
 evals/
-  scenarios.yaml      fixed scenarios — chat + autonomous
+  scenarios.yaml      fixed scenarios - chat + autonomous
   stubs.py            canned tool responses (hermetic mode)
   transcript.py       Transcript dataclasses + ADK event extraction
   runner.py           CLI: drive scenarios, save transcripts
   metrics.py          deterministic metrics (no LLM calls)
-  judge.py            LLM-as-judge — scores 1-5 on 4 dimensions
+  judge.py            LLM-as-judge - scores 1-5 on 4 dimensions
   report.py           markdown diff between two runs
   runs/               per-run output (gitignored except metrics.json + judge.json)
 ```
 
 ## Modes
 
-- **stub (default)** — `stubs.py` short-circuits side-effect tools with
+- **stub (default)** - `stubs.py` short-circuits side-effect tools with
   canned responses. Hermetic, no GCP credentials needed, fully reproducible.
   Use this for CI and for the headline before/after comparisons.
-- **`--live`** — bypasses stubs and hits real services. Requires:
+- **`--live`** - bypasses stubs and hits real services. Requires:
   - `EVAL_USER_ID` (real Firebase uid in your dev env)
   - A real collection in BigQuery dev
   - A real agent doc in Firestore dev (for autonomous scenarios)
@@ -37,7 +37,7 @@ evals/
 .venv/Scripts/python -m api.agent.evals.judge --run api/agent/evals/runs/baseline-<sha>-<ts>
 ```
 
-The judge step is optional but recommended — judge scores are needed to
+The judge step is optional but recommended - judge scores are needed to
 clear the "correctness within −0.2" gate.
 
 ## Capture a candidate (after a phase lands)
@@ -82,7 +82,7 @@ The bottom of the report shows the Phase 1 gates:
 ## What metrics actually measure
 
 Token counts use a 4-char-per-token heuristic. Cheap, model-agnostic,
-deterministic — not an exact match for Gemini's tokenizer, but consistent
+deterministic - not an exact match for Gemini's tokenizer, but consistent
 enough that deltas between runs are meaningful signal.
 
 `duplicate_action_count` hashes `(tool_name, sha1(json.dumps(args, sort_keys=True)))`
@@ -95,5 +95,5 @@ each turn. This is the metric that moves when we kill the
 
 `restated_tokens_estimate` is a crude proxy: it counts tokens of any 6+ word
 phrase from prior turns that reappears in this text. It will overcount on
-boilerplate and undercount on paraphrased restatements — treat it as a
+boilerplate and undercount on paraphrased restatements - treat it as a
 trend indicator, not a hard number.

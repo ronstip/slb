@@ -61,7 +61,7 @@ export function AddPostByUrlDrawer({ open, onOpenChange, agentId }: AddPostByUrl
     onError: (err) => {
       toast.error('Could not fetch posts', { description: describeError(err) });
     },
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   const submitDisabled = urls.length === 0 || mutation.isPending;
@@ -117,7 +117,7 @@ export function AddPostByUrlDrawer({ open, onOpenChange, agentId }: AddPostByUrl
             <span>
               Also fetch replies
               <span className="block text-[11px] text-muted-foreground">
-                Off by default — fetching replies can be expensive on X.
+                Off by default - fetching replies can be expensive on X.
               </span>
             </span>
           </label>

@@ -81,13 +81,13 @@ def create_chart(
 
     Chart types and their expected data format:
 
-        bar / pie / doughnut — single dimension:
+        bar / pie / doughnut - single dimension:
             {"labels": ["Category A", "Category B", ...],
              "values": [10, 20, ...]}
 
-        bar / pie / doughnut — two dimensions (breakdown):
+        bar / pie / doughnut - two dimensions (breakdown):
             When the user asks for a breakdown or your SQL groups by two
-            columns, use the "breakdown" shorthand — just pass your SQL rows
+            columns, use the "breakdown" shorthand - just pass your SQL rows
             and name the columns. The tool pivots them automatically.
 
             {"breakdown": {
@@ -110,7 +110,7 @@ def create_chart(
             You can also pass pre-pivoted "grouped_categorical" if you prefer:
             {"grouped_categorical": {"labels": [...], "datasets": [...]}}
 
-        line — time series data:
+        line - time series data:
             Single series:
                 {"time_series": [{"date": "2026-01-15", "value": 42}, ...]}
             Multiple series:
@@ -119,11 +119,11 @@ def create_chart(
                     "Series B": [{"date": "2026-01-15", "value": 18}, ...]
                 }}
 
-        table — tabular data:
+        table - tabular data:
             {"columns": ["Name", "Count", "Avg Views"],
              "rows": [["Entity A", 42, 1500], ["Entity B", 30, 900], ...]}
 
-        number — single KPI value:
+        number - single KPI value:
             {"value": 1234, "label": "Total Posts"}
 
     Args:
@@ -159,7 +159,7 @@ def create_chart(
             - If your data came from a CTE (e.g. `latest_eng`), include the
               `WITH ... AS (...)` definition inline in this string. Don't
               paste a fragment that references a CTE defined in a different
-              `execute_sql` call — anyone re-running this query later won't
+              `execute_sql` call - anyone re-running this query later won't
               have that scope.
 
         bar_orientation: For bar charts only. "horizontal" (default) or

@@ -1,4 +1,4 @@
-"""Scolto branding — logo and footer for slides.
+"""Scolto branding - logo and footer for slides.
 
 Canonical source for the brand mark is the frontend Logo component
 (frontend/src/components/Logo.tsx). Update both when the brand changes.
@@ -67,7 +67,7 @@ def draw_scolto_logo(
     _rect(bl_x, bl_y - stroke_t, arm_len, stroke_t, bracket_color)
     _rect(bl_x, bl_y - arm_len, stroke_t, arm_len, bracket_color)
 
-    # Centre dot (always the brand orange — matches Logo.tsx)
+    # Centre dot (always the brand orange - matches Logo.tsx)
     oval = slide.shapes.add_shape(9, cx - dot_r, cy - dot_r, dot_r * 2, dot_r * 2)
     oval.fill.solid()
     oval.fill.fore_color.rgb = BRAND_DOT_COLOR

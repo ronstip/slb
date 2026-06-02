@@ -160,7 +160,7 @@ def test_sample_posts_capped_and_truncated():
 
 
 def test_sample_posts_decoded_when_dict_passthrough():
-    """The BQ client may return JSON columns already-parsed in some versions —
+    """The BQ client may return JSON columns already-parsed in some versions -
     the tool must accept both strings and lists."""
     parsed_sample = [
         {

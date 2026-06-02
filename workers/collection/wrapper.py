@@ -34,27 +34,27 @@ class DataProviderWrapper:
         else:
             self._providers = []
             mode = "dev" if settings.is_dev else "production"
-            # BrightData first — default for youtube, reddit, facebook (tiktok now routes to Apify)
+            # BrightData first - default for youtube, reddit, facebook (tiktok now routes to Apify)
             if settings.brightdata_api_token:
                 try:
                     self._providers.append(BrightDataAdapter(snapshot_tracker=snapshot_tracker, max_snapshots=max_snapshots))
                     logger.info("BrightDataAdapter initialized (%s mode)", mode)
                 except ValueError:
                     logger.warning("BrightDataAdapter init failed, skipping")
-            # X API — official vendor; default for twitter via fallback ordering
+            # X API - official vendor; default for twitter via fallback ordering
             if settings.x_api_bearer_token:
                 try:
                     self._providers.append(XAPIAdapter())
                     logger.info("XAPIAdapter initialized (%s mode)", mode)
                 except ValueError:
                     logger.info("XAPIAdapter skipped (no bearer token)")
-            # Vetric — handles instagram and acts as twitter fallback when overridden
+            # Vetric - handles instagram and acts as twitter fallback when overridden
             try:
                 self._providers.append(VetricAdapter())
                 logger.info("VetricAdapter initialized (%s mode)", mode)
             except ValueError:
                 logger.info("VetricAdapter skipped (no API keys)")
-            # Apify — ships AFTER Vetric so the natural first-supporting fallback
+            # Apify - ships AFTER Vetric so the natural first-supporting fallback
             # keeps existing IG/FB routing on Vetric/BrightData. TikTok defaults
             # to Apify via DEFAULT_VENDOR_TIKTOK; other platforms only select
             # Apify when env or per-collection vendor_config names "apify".
@@ -70,7 +70,7 @@ class DataProviderWrapper:
                     logger.info("Using MockAdapter (dev mode, no API keys)")
                 else:
                     raise RuntimeError(
-                        "No data providers available — configure BRIGHTDATA_API_TOKEN, "
+                        "No data providers available - configure BRIGHTDATA_API_TOKEN, "
                         "X_API_BEARER_TOKEN, VETRIC_API_KEY_*, or APIFY_API_TOKEN"
                     )
 
@@ -87,7 +87,7 @@ class DataProviderWrapper:
         1. Per-collection `vendor_config.platform_overrides[platform]`
         2. Env `DEFAULT_VENDOR_<PLATFORM>` (e.g. DEFAULT_VENDOR_INSTAGRAM)
         3. Per-collection `vendor_config.default`
-        4. None — caller falls back to first-supporting adapter
+        4. None - caller falls back to first-supporting adapter
         """
         override = self._vendor_config.get("platform_overrides", {}).get(platform)
         if override:
@@ -113,13 +113,13 @@ class DataProviderWrapper:
                     if isinstance(provider, target_class) and platform in provider.supported_platforms():
                         return provider
                 logger.warning(
-                    "Preferred vendor %r for platform %r is not initialized — "
+                    "Preferred vendor %r for platform %r is not initialized - "
                     "falling back to first-supporting adapter",
                     preferred, platform,
                 )
             else:
                 logger.warning(
-                    "Unknown preferred vendor %r for platform %r — falling back",
+                    "Unknown preferred vendor %r for platform %r - falling back",
                     preferred, platform,
                 )
 
@@ -164,7 +164,7 @@ class DataProviderWrapper:
         """
         adapter_platforms = self._resolve_adapter_platforms()
         if len(adapter_platforms) <= 1:
-            # Nothing to parallelize — avoid the queue overhead.
+            # Nothing to parallelize - avoid the queue overhead.
             yield from self.collect_all()
             return
 

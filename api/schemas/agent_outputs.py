@@ -1,4 +1,4 @@
-"""Agent outputs — typed list of artifacts/side-effects an agent run produces.
+"""Agent outputs - typed list of artifacts/side-effects an agent run produces.
 
 Outputs are first-class user intent. Each entry maps to a deliver-phase step in
 the workflow plan; removing an output removes its step. The agent can extend
@@ -52,7 +52,7 @@ def derive_outputs(agent: dict) -> list[dict]:
 
     New agents store outputs explicitly under ``agent['outputs']``. Legacy agents
     (created before the outputs migration) only have data_scope.auto_report /
-    auto_email / auto_slides flags — derive an outputs list from those.
+    auto_email / auto_slides flags - derive an outputs list from those.
     """
     outputs = agent.get("outputs")
     if isinstance(outputs, list):

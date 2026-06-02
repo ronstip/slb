@@ -51,7 +51,7 @@ export function parseError(err: unknown): ParsedError {
     try {
       detail = (JSON.parse(err.body) as { detail?: unknown })?.detail;
     } catch {
-      // non-JSON body — fall through to the raw text
+      // non-JSON body - fall through to the raw text
     }
     if (detail && typeof detail === 'object') {
       const parsed = fromDetailObject(detail as Record<string, unknown>, err.status);

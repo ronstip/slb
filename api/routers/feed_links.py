@@ -1,4 +1,4 @@
-"""Feed links router — CRUD for feed link tokens + public data endpoint.
+"""Feed links router - CRUD for feed link tokens + public data endpoint.
 
 Feed links allow users to generate shareable URLs that serve collection data
 as JSON or CSV without authentication, usable as data sources in Excel,
@@ -131,7 +131,7 @@ async def get_feed_link_data(
     format: str = Query("json", regex="^(json|csv)$"),
     limit: int = Query(5000, ge=1, le=10000),
 ):
-    """Public endpoint — serves feed link data without authentication."""
+    """Public endpoint - serves feed link data without authentication."""
     fs = get_fs()
     link = fs.get_feed_link(token)
 
@@ -155,11 +155,11 @@ async def get_feed_link_data(
                     fs._db.collection("feed_links").document(token).update,
                     {"agent_id": agent_id},
                 )
-            except Exception:  # noqa: BLE001 — best-effort backfill
+            except Exception:  # noqa: BLE001 - best-effort backfill
                 logger.exception("Failed to backfill agent_id on feed link %s", token)
 
     if not agent_id:
-        # Orphan link — collections never linked to an agent. The legacy
+        # Orphan link - collections never linked to an agent. The legacy
         # cross-agent SQL has been retired; return an empty result instead
         # of mixing data sources.
         asyncio.create_task(_record_access(fs, token))

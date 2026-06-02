@@ -1,4 +1,4 @@
-// Field registry for the posts table — single source of truth for which
+// Field registry for the posts table - single source of truth for which
 // fields exist (built-in + agent custom), how to read them, and what filter
 // operators apply. Both the per-column header filters and the ColumnPicker
 // consume this so they can't drift apart.

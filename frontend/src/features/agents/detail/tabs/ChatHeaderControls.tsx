@@ -157,7 +157,7 @@ export function ChatHeaderControls({
         <Search className="h-3.5 w-3.5" />
       </button>
 
-      {/* Overflow — agent-level actions */}
+      {/* Overflow - agent-level actions */}
       {hasOverflow && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

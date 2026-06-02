@@ -3,7 +3,7 @@
 Supports: Instagram, TikTok, Twitter/X, Reddit, YouTube.
 
 Platforms and keywords are collected in parallel via ThreadPoolExecutor for
-speed and fault isolation — a single failed API call does not block others.
+speed and fault isolation - a single failed API call does not block others.
 """
 
 import logging
@@ -55,7 +55,7 @@ class VetricAdapter(DataProviderAdapter):
             if key:
                 self._api_keys[platform] = key
         if not self._api_keys:
-            raise ValueError("No Vetric API keys configured — set at least one VETRIC_API_KEY_* env var")
+            raise ValueError("No Vetric API keys configured - set at least one VETRIC_API_KEY_* env var")
         self._client = VetricClient(self._api_keys)
         self._platform_stats: dict[str, dict] = {}
         self._stats_lock = threading.Lock()

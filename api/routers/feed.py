@@ -27,7 +27,7 @@ async def get_multi_collection_feed(
         return FeedResponse(posts=[], total=0, offset=request.offset, limit=request.limit)
 
     fs = get_fs()
-    # Fan out the per-collection Firestore reads in parallel — the previous
+    # Fan out the per-collection Firestore reads in parallel - the previous
     # sequential loop blocked the asyncio loop and added one round-trip per
     # collection (4 collections = 4× the validation latency).
     statuses = await asyncio.gather(
@@ -74,7 +74,7 @@ async def get_multi_collection_feed(
             except (json.JSONDecodeError, TypeError):
                 media_refs = []
 
-        # Skip rows with missing post_id — corrupted ingestion can produce
+        # Skip rows with missing post_id - corrupted ingestion can produce
         # rows with null ids and non-null string fields that fail the
         # response model.
         if not row.get("post_id"):
@@ -228,7 +228,7 @@ def _build_tvf_sql(request: MultiFeedRequest) -> tuple[str, dict]:
 def _build_legacy_sql(request: MultiFeedRequest) -> tuple[str, dict]:
     """Build the non-agent-scoped feed query (back-compat for callers without agent_id).
 
-    Picks the latest enrichment per post by enriched_at, regardless of agent_id —
+    Picks the latest enrichment per post by enriched_at, regardless of agent_id -
     so it can show posts enriched by legacy / cross-agent runs. Use the TVF path
     (pass agent_id) when you want this agent's view of the data.
     """

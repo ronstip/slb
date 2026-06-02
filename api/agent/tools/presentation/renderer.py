@@ -133,7 +133,7 @@ def _load_presentation(template_gcs_path: str) -> Presentation:
         for sld_id in list(xml_slides):
             xml_slides.remove(sld_id)
 
-        # Do NOT override slide dimensions — respect template
+        # Do NOT override slide dimensions - respect template
         return prs
 
     except Exception as e:
@@ -224,28 +224,28 @@ def generate_presentation(
     - text: {component: "text", text: "...", bullets: ["..."], style: "heading|body|subtitle"}
     - chart: {component: "chart", chart_type: "bar|pie|line", labels: [...], values: [...]}
     - table: {component: "table", columns: [...], rows: [[...]]}
-    - kpi_grid: {component: "kpi_grid", items: [{label, value}]} — custom slot only
-    - key_finding: {component: "key_finding", finding: "...", significance: "surprising|notable"} — custom slot only
+    - kpi_grid: {component: "kpi_grid", items: [{label, value}]} - custom slot only
+    - key_finding: {component: "key_finding", finding: "...", significance: "surprising|notable"} - custom slot only
     - post_examples: {component: "post_examples", layout: "single|grid_2|grid_3",
-        posts: [{post_id, collection_id}]} — custom slot only.
+        posts: [{post_id, collection_id}]} - custom slot only.
         Tool fetches full post content + image from BQ at render time.
         Use exactly 1 post for "single", 2 for "grid_2", 3 for "grid_3".
         Pick post_ids the user has cited or that came back from a search query.
 
     LAYOUT GUIDE:
-    - "Title Slide" [title, subtitle] — opening/closing
-    - "Title and Content" [title, body] — single chart, table, or text
-    - "Two Content" [title, left, right] — two charts or chart + text
-    - "Section Header" [title, body] — section divider
-    - "Comparison" [title, body, left, body_2, right] — labeled comparison
-    - "Title Only" [title] + custom — kpi_grid, key_finding, post_examples
+    - "Title Slide" [title, subtitle] - opening/closing
+    - "Title and Content" [title, body] - single chart, table, or text
+    - "Two Content" [title, left, right] - two charts or chart + text
+    - "Section Header" [title, body] - section divider
+    - "Comparison" [title, body, left, body_2, right] - labeled comparison
+    - "Title Only" [title] + custom - kpi_grid, key_finding, post_examples
 
     Args:
         deck_plan: Structured deck plan (preferred).
         collection_ids: Collections this presentation covers.
         title: Presentation title.
         template_gcs_path: Optional GCS path to user template.
-        slides: Legacy slide spec (backward compat — use deck_plan instead).
+        slides: Legacy slide spec (backward compat - use deck_plan instead).
 
     Returns:
         status, presentation_id, title, collection_ids, slide_count on success.
@@ -278,7 +278,7 @@ def generate_presentation(
             "status": "duplicate",
             "presentation_id": _existing["artifact_id"],
             "message": (
-                "An identical presentation was already rendered earlier in this session — "
+                "An identical presentation was already rendered earlier in this session - "
                 "reusing it. Don't render another."
             ),
         }
@@ -384,7 +384,7 @@ def generate_presentation(
                     continue
 
                 # Dispatch to component filler
-                # Charts and tables work with any placeholder type — they
+                # Charts and tables work with any placeholder type - they
                 # render at the placeholder's bounds and remove its XML element.
                 # This handles both OBJECT placeholders (python-pptx templates)
                 # and BODY placeholders (Google Slides templates).
@@ -410,7 +410,7 @@ def generate_presentation(
             )
 
     if rendered == 0:
-        return {"status": "error", "message": "No slides could be rendered — check the deck plan."}
+        return {"status": "error", "message": "No slides could be rendered - check the deck plan."}
 
     # Serialize and upload
     presentation_id = f"ppt-{uuid.uuid4().hex[:10]}"

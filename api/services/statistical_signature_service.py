@@ -1,4 +1,4 @@
-"""Statistical Signature service — re-exports from workers.shared.statistical_signature.
+"""Statistical Signature service - re-exports from workers.shared.statistical_signature.
 
 All logic now lives in workers/shared/ so both the API and worker can use it.
 """

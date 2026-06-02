@@ -1,4 +1,4 @@
-"""FastAPI auth dependencies — Firebase ID token verification + user provisioning."""
+"""FastAPI auth dependencies - Firebase ID token verification + user provisioning."""
 
 import asyncio
 import logging
@@ -60,7 +60,7 @@ def _has_invite_or_membership(uid: str, email: str) -> bool:
 async def _resolve_real_user(request: Request) -> CurrentUser:
     """Verify the Firebase token and return the real caller.
 
-    Does NOT apply impersonation — used by `get_current_user` internally
+    Does NOT apply impersonation - used by `get_current_user` internally
     and by endpoints that must always resolve against the true caller
     (e.g. start/stop impersonation).
     """
@@ -74,7 +74,7 @@ async def _resolve_real_user(request: Request) -> CurrentUser:
 
     token = auth_header.removeprefix("Bearer ")
 
-    # Verify with Firebase Admin SDK (CPU-bound crypto — run in thread pool)
+    # Verify with Firebase Admin SDK (CPU-bound crypto - run in thread pool)
     try:
         decoded = await asyncio.to_thread(firebase_auth.verify_id_token, token)
     except Exception as e:
@@ -86,7 +86,7 @@ async def _resolve_real_user(request: Request) -> CurrentUser:
     firebase_info = decoded.get("firebase", {})
     is_anonymous = firebase_info.get("sign_in_provider") == "anonymous"
 
-    # Signup-gate check — anonymous Firebase users (landing-page chat preview)
+    # Signup-gate check - anonymous Firebase users (landing-page chat preview)
     # always bypass; for everyone else, the behaviour depends on `signup_gate`:
     #   - "open"         → no check (dev default).
     #   - "allowlist"    → reject emails not in ALLOWED_EMAILS.
@@ -94,7 +94,7 @@ async def _resolve_real_user(request: Request) -> CurrentUser:
     #                      as "open" here until that lands.
     if settings.signup_gate == "allowlist" and not is_anonymous:
         if not settings.allowed_emails:
-            # Defense in depth — `lifespan()` should have hardfailed at boot.
+            # Defense in depth - `lifespan()` should have hardfailed at boot.
             raise HTTPException(
                 status_code=503, detail={"error": "service_misconfigured"}
             )
@@ -148,7 +148,7 @@ def invalidate_user_cache(uid: str) -> None:
     Why: org membership writes (join/create/leave/role-change/remove) update the
     Firestore user doc directly, but `_resolve_real_user` serves a 5-minute
     cached `CurrentUser` with the OLD `org_id`. Without invalidation the user
-    keeps acting as if they were not in the new org — e.g. agents they create
+    keeps acting as if they were not in the new org - e.g. agents they create
     get `org_id=None` and become unshareable.
     """
     _user_cache.pop(uid, None)
@@ -179,17 +179,17 @@ async def get_current_user(request: Request) -> CurrentUser:
     if not target_uid:
         return real_user
 
-    # Impersonation requested — gate behind super admin check.
+    # Impersonation requested - gate behind super admin check.
     # Import locally to avoid a circular import (admin.py imports CurrentUser).
     from api.auth.admin import is_super_admin_email
 
     if not is_super_admin_email(real_user.email):
         # IGNORE the header (don't 403). A non-admin should never be able to
         # impersonate, but a *stale* impersonation header left in sessionStorage
-        # from a prior admin session must not brick the user's whole app — every
+        # from a prior admin session must not brick the user's whole app - every
         # request would otherwise 403 → /access-denied. Treat them as themselves.
         logger.warning(
-            "Non-admin %s sent impersonation header for %s — ignoring",
+            "Non-admin %s sent impersonation header for %s - ignoring",
             redact_email(real_user.email), target_uid,
         )
         return real_user
@@ -209,7 +209,7 @@ async def get_current_user(request: Request) -> CurrentUser:
         raise HTTPException(status_code=403, detail="Cannot impersonate another super admin")
 
     # Build a CurrentUser for the target. CRUCIAL: do NOT write to
-    # `_user_cache` or `_last_login_written` for the target uid — normal
+    # `_user_cache` or `_last_login_written` for the target uid - normal
     # requests from the target would then incorrectly see `impersonated_by`
     # set (cache poisoning).
     return CurrentUser(
@@ -231,7 +231,7 @@ async def enforce_access(user: CurrentUser = Depends(get_current_user)) -> Curre
     fetch data via direct API calls even though the UI gates them. Anonymous
     landing-preview users and super admins pass; balance is NOT enforced here
     (out-of-credit paid users can still read). Reuses the same `get_current_user`
-    resolution as the endpoint (FastAPI caches it per request — no double work).
+    resolution as the endpoint (FastAPI caches it per request - no double work).
     """
     if not user.is_anonymous:
         from api.services.entitlements import require_access
@@ -241,14 +241,14 @@ async def enforce_access(user: CurrentUser = Depends(get_current_user)) -> Curre
 
 
 def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = False) -> dict:
-    """Lazy user provisioning — create Firestore user doc on first login."""
+    """Lazy user provisioning - create Firestore user doc on first login."""
     fs = get_fs()
 
     existing = fs.get_user(uid)
     if existing:
         # Anon → linked: the doc was created when the user was anonymous
         # (email="", is_anonymous=True). After linkWithPopup the same uid now
-        # has a real Google identity — backfill the profile so Finance/audit/
+        # has a real Google identity - backfill the profile so Finance/audit/
         # invite-email-match all see the real address.
         if existing.get("is_anonymous") and not is_anonymous:
             email = decoded_token.get("email", "")
@@ -271,7 +271,7 @@ def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = Fals
             _last_login_written[uid] = now_mono
         return existing
 
-    # New user — check for domain auto-join
+    # New user - check for domain auto-join
     email = decoded_token.get("email", "")
     domain = email.split("@")[1] if "@" in email else None
 
@@ -301,7 +301,7 @@ def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = Fals
         "created_at": now,
         "last_login_at": now,
         # §E entitlements: new accounts start blocked (admin must promote) with
-        # an empty $ wallet. Anonymous landing-page users get blocked too — they
+        # an empty $ wallet. Anonymous landing-page users get blocked too - they
         # never hit a gated action, and signing in upgrades the same uid.
         "plan": {"tier": "blocked", "trial_expires_at": None, "notes": "", "updated_at": now},
         "credit": {"balance_micros": 0, "total_in_micros": 0, "spent_micros": 0, "updated_at": now},

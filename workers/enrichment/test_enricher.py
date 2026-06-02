@@ -1,4 +1,4 @@
-"""Unit tests for the enricher's prompt rendering — focused on the new
+"""Unit tests for the enricher's prompt rendering - focused on the new
 `referenced_post` context block (Option B).
 """
 
@@ -10,7 +10,7 @@ from workers.enrichment.schema import MediaRef, PostData, ReferencedPost
 
 
 # ---------------------------------------------------------------------------
-# _render_referenced_post_block — pure-function rendering
+# _render_referenced_post_block - pure-function rendering
 # ---------------------------------------------------------------------------
 
 def test_render_referenced_block_returns_empty_when_no_ref():
@@ -61,7 +61,7 @@ def test_render_referenced_block_falls_back_to_unknown_author():
 
 
 # ---------------------------------------------------------------------------
-# ENRICHMENT_PROMPT format — placeholder must accept the block (or empty)
+# ENRICHMENT_PROMPT format - placeholder must accept the block (or empty)
 # ---------------------------------------------------------------------------
 
 def test_enrichment_prompt_renders_with_empty_referenced_block():
@@ -71,7 +71,7 @@ def test_enrichment_prompt_renders_with_empty_referenced_block():
         title="", content="hello world", enrichment_context="brand X",
         referenced_post_block="",
     )
-    assert "Context — this post is" not in body
+    assert "Context - this post is" not in body
     assert "Content:  hello world" in body
 
 
@@ -88,8 +88,8 @@ def test_enrichment_prompt_renders_with_referenced_block():
     )
     assert "the source content the parent is reacting to" in body
     assert "@bob" in body
-    # Context block precedes the Post block — anchors the model on context first.
-    assert body.index("Context — this post") < body.index("Post:\n  Platform:")
+    # Context block precedes the Post block - anchors the model on context first.
+    assert body.index("Context - this post") < body.index("Post:\n  Platform:")
 
 
 # ---------------------------------------------------------------------------

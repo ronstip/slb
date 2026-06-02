@@ -75,7 +75,7 @@ function getTopicMetricValue(t: TopicMetric, metric: TopicMetricKey): number {
 }
 
 /** Pull the scalar dimension key off a TopicMetric row. Returns the empty
- *  bucket label when the field is missing — keeps every topic visible rather
+ *  bucket label when the field is missing - keeps every topic visible rather
  *  than silently dropping rows. */
 function getScalarTopicDimKey(t: TopicMetric, dim: TopicDimension): string {
   switch (dim) {
@@ -89,7 +89,7 @@ function getScalarTopicDimKey(t: TopicMetric, dim: TopicDimension): string {
 
 /** For a JSON-unnested dimension, return the (value, perEntryCount) pairs for a
  *  given topic. `perEntryCount` is the value of the entry's `count` (or `posts`
- *  for platforms_breakdown) — the per-(topic, value) weight that count-style
+ *  for platforms_breakdown) - the per-(topic, value) weight that count-style
  *  metrics use. Ratio metrics ignore it and use the topic-level value instead. */
 function getJsonDimEntries(
   t: TopicMetric,
@@ -137,7 +137,7 @@ function platformEntryValue(
 /** Aggregate topic rows for chart/number-card widgets. Mirrors aggregateCustom
  *  on the posts side but operates over TopicMetric rows (already aggregated).
  *
- *  Topic widgets are snapshot data — no time series, no 2D breakdowns in phase 1.
+ *  Topic widgets are snapshot data - no time series, no 2D breakdowns in phase 1.
  *  The renderer must guard against `dimension === 'posted_at'` and
  *  `breakdownDimension` being set; this function ignores both. */
 export function aggregateTopicsCustom(
@@ -184,14 +184,14 @@ export function aggregateTopicsCustom(
           // fall back to the topic-level value at this entry.
           weight = pv ?? topicVal;
         } else if (TOPIC_RATIO_METRICS.has(metric)) {
-          // Ratios aren't decomposable per breakdown value — copy the topic-
+          // Ratios aren't decomposable per breakdown value - copy the topic-
           // level value at each (topic, value) pair. UI blocks this combo
           // but a stale widget config may still hit this path.
           weight = topicVal;
         } else {
           // Count-only breakdowns (themes/entities/emotion/brand/channel_type)
           // expose only `count` per entry. That's per-topic posts-with-value
-          // — the most natural mapping for post_count/views/etc.
+          // - the most natural mapping for post_count/views/etc.
           weight = entry.entryCount;
         }
         const s = acc.get(entry.value) ?? emptyStats();
@@ -257,7 +257,7 @@ function rankAndPick(
 /** Resolve the value for a topic table cell. Dimension columns return the
  *  scalar field; JSON-unnested dim columns return the top-N entry labels
  *  joined as a comma list. Metric columns return the raw per-topic value
- *  (no aggregation — rows are 1:1 with topics). */
+ *  (no aggregation - rows are 1:1 with topics). */
 function getTopicTableCell(t: TopicMetric, col: TableColumn): number | string {
   if (isDimensionColumn(col)) {
     const dim = col.dimension as TopicDimension | undefined;
@@ -276,7 +276,7 @@ function getTopicTableCell(t: TopicMetric, col: TableColumn): number | string {
   return getTopicMetricValue(t, metric);
 }
 
-/** Table aggregator for topic widgets. One row per topic — no grouping. Sort
+/** Table aggregator for topic widgets. One row per topic - no grouping. Sort
  *  by configured column, then slice to rowLimit. Populates the rows' `__key`
  *  with the cluster_id so the renderer's click-through can navigate. */
 export function aggregateTopicsTable(

@@ -59,7 +59,7 @@ export async function handleResponse(res: Response): Promise<Response> {
 
   if (res.status === 403) {
     // Resource-level 403s are routine (e.g. POST /feed referencing a collection
-    // you don't own — common when stale client state from a previous user
+    // you don't own - common when stale client state from a previous user
     // lingers). Surface them to the caller (TanStack query / component) instead
     // of yanking the entire app to /access-denied. Admin-only screens self-gate
     // on `profile.is_super_admin`, so they don't rely on this redirect.
@@ -80,7 +80,7 @@ export async function handleResponse(res: Response): Promise<Response> {
     try {
       code = JSON.parse(body)?.detail?.error ?? '';
     } catch {
-      // non-JSON body — fall through with empty code
+      // non-JSON body - fall through with empty code
     }
     if (
       code === 'account_blocked' &&
@@ -111,7 +111,7 @@ function getImpersonationUid(): string | null {
       return parsed?.state?.targetUid ?? null;
     }
   } catch {
-    // Corrupted or missing — treat as no impersonation.
+    // Corrupted or missing - treat as no impersonation.
   }
   return null;
 }
@@ -165,7 +165,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
       body: JSON.stringify(body),
     }),
   );
-  // 204 No Content — no body to parse
+  // 204 No Content - no body to parse
   if (res.status === 204) return undefined as T;
   return res.json();
 }
@@ -201,7 +201,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiUploadFile<T>(path: string, file: File): Promise<T> {
-  // multipart/form-data — browser sets Content-Type with boundary, so omit it.
+  // multipart/form-data - browser sets Content-Type with boundary, so omit it.
   const headers = await buildAuthHeaders();
   const formData = new FormData();
   formData.append('file', file);

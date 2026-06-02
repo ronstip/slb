@@ -47,7 +47,7 @@ def can_access_agent(user: CurrentUser, agent: dict) -> bool:
 
     The owner always has access. Other org members have access only when the
     owner has explicitly shared the agent (`visibility == "org"`). Sharing is
-    opt-in: an absent/`"private"` visibility means org members see nothing —
+    opt-in: an absent/`"private"` visibility means org members see nothing -
     this is the single source of truth replacing the old per-collection share.
     """
     if agent.get("user_id") == user.uid:
@@ -85,7 +85,7 @@ def can_access_component(user: CurrentUser, doc: dict) -> bool:
 
     Components inherit their owning agent's org-share state, denormalized onto
     each doc by `agent_sharing.propagate_to_components`. The owner always has
-    access; an org member has access when the doc is shared to their org —
+    access; an org member has access when the doc is shared to their org -
     expressed either as `visibility == "org"` (collections, layouts) or the
     legacy `shared` bool (artifacts). Both are accepted so a single helper gates
     every component type.
@@ -158,7 +158,7 @@ def create_collection_from_request(
     if request.vendor_config:
         config["vendor_config"] = request.vendor_config.model_dump(exclude_none=True)
     if request.post_urls:
-        # Direct-fetch mode (from /agents/{id}/fetch-posts). Drop time_range —
+        # Direct-fetch mode (from /agents/{id}/fetch-posts). Drop time_range -
         # user asked for specific posts; out-of-window gate would discard them.
         config["post_urls"] = request.post_urls
         config.pop("time_range", None)

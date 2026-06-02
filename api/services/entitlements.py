@@ -1,4 +1,4 @@
-"""§E entitlements — per-user access + prepaid-credit enforcement.
+"""§E entitlements - per-user access + prepaid-credit enforcement.
 
 Tiers live at ``users/{uid}.plan.tier`` (blocked | free | trial | paid) and the
 $ wallet at ``users/{uid}.credit`` (balance/total_in/spent micros).
@@ -49,7 +49,7 @@ def _credit_enforced() -> bool:
 
 
 def _access_enforced() -> bool:
-    """Read/access gating (require_access) — blocks `blocked`/expired-trial.
+    """Read/access gating (require_access) - blocks `blocked`/expired-trial.
 
     Still tied to the signup-gate flip; left off until that rollout is ready.
     """
@@ -110,11 +110,11 @@ def _trial_expired(plan: dict) -> bool:
 def _check_tier_and_get_balance(uid: str) -> int | None:
     """Shared gate: raise for blocked/expired-trial, else return balance.
 
-    Returns ``None`` for `free` / super admins (unlimited — caller skips the
+    Returns ``None`` for `free` / super admins (unlimited - caller skips the
     balance check)."""
     data = _load(uid)
 
-    # Super admins are never gated — otherwise a blocked admin could lock
+    # Super admins are never gated - otherwise a blocked admin could lock
     # themselves out of the very admin panel needed to fix it.
     from api.auth.admin import is_super_admin_email
     if is_super_admin_email(data.get("email", "")):
@@ -134,7 +134,7 @@ def _check_tier_and_get_balance(uid: str) -> int | None:
 
 def require_access(uid: str) -> None:
     """Gate READ / data access: the account must be active (not blocked, not an
-    expired trial). Balance is deliberately NOT enforced — a trial/paid user
+    expired trial). Balance is deliberately NOT enforced - a trial/paid user
     who's out of credit can still VIEW their existing data; only cost-incurring
     actions (chat, collection/agent runs) enforce balance via require_active /
     require_credit_for_run. Free tier + super admins always pass. No-op unless
@@ -165,7 +165,7 @@ def require_credit_for_run(uid: str, estimated_micros: int) -> None:
     if balance is None:  # free
         return
     estimated_micros = max(int(estimated_micros or 0), 0)
-    # A non-positive balance can't start ANY paid run — even one whose estimate
+    # A non-positive balance can't start ANY paid run - even one whose estimate
     # rounds to 0 (e.g. sources with no keywords → empty runnable_sources).
     # Checked first because `0 < 0` is False, which used to let $0 users slip
     # through. Mirrors require_active's `balance <= 0` rule.

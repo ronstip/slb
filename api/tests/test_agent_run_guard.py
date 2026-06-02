@@ -16,7 +16,7 @@ from api.services import agent_service
 
 
 class _ExplodingFS:
-    """Any write would mean we wrongly started a run — fail loudly."""
+    """Any write would mean we wrongly started a run - fail loudly."""
 
     def create_run(self, *a, **kw):  # pragma: no cover - must not be called
         raise AssertionError("create_run called for a no-runnable-source agent")

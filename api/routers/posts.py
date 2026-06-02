@@ -1,8 +1,8 @@
 """Manual user overrides on enriched posts.
 
 Two endpoints:
-  - POST /posts/{post_id}/override        — write a user_override row (CRUD)
-  - POST /posts/{post_id}/draft-override  — LLM-assisted draft (no write)
+  - POST /posts/{post_id}/override        - write a user_override row (CRUD)
+  - POST /posts/{post_id}/draft-override  - LLM-assisted draft (no write)
 
 Append-only model: every override is a new row with source='user_override'.
 DEDUP_ENRICHED orders user_override rows ahead of auto rows, so the latest
@@ -41,7 +41,7 @@ router = APIRouter()
 class OverrideRequest(BaseModel):
     """Body for POST /posts/{post_id}/override.
 
-    `fields` may be partial — unspecified fields are copied from the latest
+    `fields` may be partial - unspecified fields are copied from the latest
     dedup'd row (post can have an existing user_override or auto enrichment).
     """
 
@@ -61,7 +61,7 @@ class DraftRequest(BaseModel):
 class FetchCommentsRequest(BaseModel):
     """Body for POST /posts/{post_id}/fetch-comments.
 
-    agent_id is optional — when present it's stamped on every comment row
+    agent_id is optional - when present it's stamped on every comment row
     so per-agent cost/audit views work. The post itself is located by post_id;
     collection_id is read from the post row in BQ (single source of truth).
     """
@@ -158,7 +158,7 @@ async def draft_post_override(
     body: DraftRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Generate a proposed override using Gemini — does NOT write.
+    """Generate a proposed override using Gemini - does NOT write.
 
     The LLM gets the current enrichment row + user's NL instruction and
     returns a full updated EnrichmentResult. Frontend shows it for approval
@@ -221,7 +221,7 @@ async def fetch_post_comments_endpoint(
 
     Dispatches a Cloud Task to the worker service (`/comments/run`), which
     runs the platform adapter's `fetch_comments` and appends rows to the
-    `comments` + `channels` tables. Fire-and-forget — UI refetches once done.
+    `comments` + `channels` tables. Fire-and-forget - UI refetches once done.
     """
     post = await asyncio.to_thread(_read_post_for_comments, post_id)
     if post is None:
@@ -238,7 +238,7 @@ async def fetch_post_comments_endpoint(
     if not post.get("post_url"):
         raise HTTPException(
             status_code=400,
-            detail=f"Post {post_id} has no post_url — cannot fetch comments",
+            detail=f"Post {post_id} has no post_url - cannot fetch comments",
         )
 
     payload = {
@@ -501,7 +501,7 @@ def _call_llm_draft(
 ) -> EnrichmentResult:
     """Call Gemini once to propose an updated EnrichmentResult.
 
-    No multimodal — the LLM works from the existing enrichment + instruction.
+    No multimodal - the LLM works from the existing enrichment + instruction.
     Heavy prompts and media live in the auto enricher; this is a focused edit.
     """
     settings = get_settings()
@@ -527,7 +527,7 @@ def _call_llm_draft(
 
     custom_fields_doc = ""
     if custom_fields:
-        lines = ["", "Custom fields (defined for this agent — return values for each):"]
+        lines = ["", "Custom fields (defined for this agent - return values for each):"]
         for f in custom_fields:
             if f.type == "literal" and f.options:
                 hint = f"one of: {', '.join(f.options)}"

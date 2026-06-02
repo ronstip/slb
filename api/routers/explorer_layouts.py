@@ -1,4 +1,4 @@
-"""Explorer layouts router — per-agent named layout configurations."""
+"""Explorer layouts router - per-agent named layout configurations."""
 
 import asyncio
 import logging
@@ -74,7 +74,7 @@ async def list_explorer_layouts(
 
     # Sort client-side to avoid requiring a composite (agent_id, updated_at) index.
     # Firestore's Python client is synchronous; running .stream() on the asyncio
-    # loop stalls every concurrent request — push it to a worker thread.
+    # loop stalls every concurrent request - push it to a worker thread.
     def _fetch():
         return list(
             fs._db.collection(COLLECTION)

@@ -119,7 +119,7 @@ interface AgentArtifactsTabProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Seed prompts — used when the user picks "+ New → <Type>".
+// Seed prompts - used when the user picks "+ New → <Type>".
 
 const CREATION_SEEDS: Record<CreationKind, string> = {
   slides: 'Generate a slide deck summarizing ',
@@ -238,7 +238,7 @@ export function AgentArtifactsTab({
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-background relative">
-      {/* Decorative background glow — matches Overview/Settings */}
+      {/* Decorative background glow - matches Overview/Settings */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none" />
 
       <AgentDetailHeader
@@ -312,7 +312,7 @@ function DeliverablesControls({
 
   return (
     <div className="flex items-center gap-2">
-      {/* Filter chips — horizontally scrollable if they overflow */}
+      {/* Filter chips - horizontally scrollable if they overflow */}
       <div className="flex max-w-[420px] items-center gap-1.5 overflow-x-auto pr-1">
         <FilterChip
           active={filter === 'all'}
@@ -442,7 +442,7 @@ function EmptyState({
           </p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             Briefings, dashboards, slide decks and data exports from this agent will appear
-            here. You can also create one now — describe what you want and the agent will
+            here. You can also create one now - describe what you want and the agent will
             build it using this agent's sources.
           </p>
         </div>
@@ -512,7 +512,7 @@ function DaySection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cards — one per kind
+// Cards - one per kind
 
 function DeliverableCard({ item, size }: { item: DeliverableItem; size: CardSize }) {
   switch (item.kind) {
@@ -694,7 +694,7 @@ function NumberPreview({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-violet-500/15 to-transparent">
       <span className="font-heading text-3xl font-bold tabular-nums text-foreground">
-        {value != null ? formatNumber(value) : '—'}
+        {value != null ? formatNumber(value) : '-'}
       </span>
       {label && (
         <span className="mt-1 truncate px-3 text-[11px] text-muted-foreground">
@@ -900,7 +900,7 @@ function ExportTablePreview({
 }
 
 function formatCell(cell: unknown): string {
-  if (cell == null) return '—';
+  if (cell == null) return '-';
   if (typeof cell === 'number') return formatNumber(cell);
   if (typeof cell === 'boolean') return cell ? 'true' : 'false';
   const s = String(cell);

@@ -45,7 +45,7 @@ from textual.widgets import (
 
 PLATFORMS = ["tiktok", "youtube", "reddit", "instagram", "twitter", "linkedin"]
 
-# State display config: (label, color) — order matches pipeline flow
+# State display config: (label, color) - order matches pipeline flow
 STATE_DISPLAY = {
     "collected_with_media": ("DL Queue", "cyan"),
     "downloading": ("DL Now", "cyan"),

@@ -1,4 +1,4 @@
-# workers — data-page media empty (expiring CDN URLs, gcs_uri never persisted)
+# workers - data-page media empty (expiring CDN URLs, gcs_uri never persisted)
 
 ## Symptom
 Data page → posts table → expand row → image/video shows empty/broken for most
@@ -31,7 +31,7 @@ twitter 17%.
 
 ## Fix
 Download media to GCS **before** the BQ posts insert so the row carries durable
-`gcs_uri` refs at insert time — no post-insert UPDATE, no streaming-buffer race.
+`gcs_uri` refs at insert time - no post-insert UPDATE, no streaming-buffer race.
 - `workers/pipeline/runner.py`: replaced the seed-CDN-refs block in the crawl
   loop with `download_media_batch(self.gcs, new_posts, ...)` before
   `insert_rows("posts", ...)`; pass `media_resolved=True` to `mark_collected`.

@@ -11,7 +11,7 @@ import { accountBlock } from '../../lib/entitlement.ts';
 
 /**
  * Shown to signed-in users who can't use the app yet under §E: either `blocked`
- * (new-signup default — awaiting admin approval) or an expired `trial`. The
+ * (new-signup default - awaiting admin approval) or an expired `trial`. The
  * backend returns 402 on every gated action; the shell routes here.
  */
 export function AccountPendingPage() {
@@ -22,7 +22,7 @@ export function AccountPendingPage() {
   const description =
     reason === 'trial_expired'
       ? "Your trial has ended. Reach out to your admin to extend it or upgrade your account to continue."
-      : `Thanks for signing up${profile?.email ? ` as ${profile.email}` : ''}. Your account is awaiting approval. You'll get access as soon as an admin activates it — please check back soon.`;
+      : `Thanks for signing up${profile?.email ? ` as ${profile.email}` : ''}. Your account is awaiting approval. You'll get access as soon as an admin activates it - please check back soon.`;
 
   return (
     <div className="flex h-screen items-center justify-center bg-background p-6">

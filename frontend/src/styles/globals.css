@@ -31,7 +31,7 @@
   --color-platform-reddit: #E05A00;
   --color-platform-youtube: #E03030;
 
-  /* Vibrant accents (app-specific) — use for colored touches */
+  /* Vibrant accents (app-specific) - use for colored touches */
   --color-accent-vibrant: #D97757;
   --color-accent-success: #2F8E6C;
   --color-accent-blue: #3A6FB6;
@@ -109,7 +109,7 @@
   --chart-4: #B6843A;
   --chart-5: #2F8E6C;
 
-  /* Sidebar stays dark warm — matches design */
+  /* Sidebar stays dark warm - matches design */
   --sidebar: #1A1714;
   --sidebar-foreground: #D6CFBF;
   --sidebar-primary: #D97757;
@@ -174,7 +174,7 @@
     -moz-osx-font-smoothing: grayscale;
   }
   /* Desktop-only surfaces (studio editor) assume a 1280px canvas. Gate the
-     constraint behind a media query so mobile viewports never inherit it —
+     constraint behind a media query so mobile viewports never inherit it -
      phones rendering shared/landing pages must size to the actual viewport. */
   @media (min-width: 1280px) {
     body {
@@ -198,7 +198,7 @@
   opacity: 0.85;
 }
 
-/* Compact chat (e.g. embedded overview chat box) — scale down agent prose */
+/* Compact chat (e.g. embedded overview chat box) - scale down agent prose */
 .compact-chat .agent-prose p,
 .compact-chat .agent-prose li {
   font-size: 12px;
@@ -231,7 +231,7 @@
   margin-bottom: 0;
 }
 
-/* Headings — three distinct visual levels */
+/* Headings - three distinct visual levels */
 .agent-prose h1 {
   /* Scale H1 with container/viewport so a hero headline never overruns a narrow
      phone (~340px content width) where 28px bold + tight tracking would clip. */
@@ -401,7 +401,7 @@
   50% { opacity: 0; }
 }
 
-/* Custom scrollbar — visible enough that users notice it on the cream background */
+/* Custom scrollbar - visible enough that users notice it on the cream background */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -507,7 +507,7 @@
 /* MDXEditor portals its toolbar dropdowns (BlockTypeSelect, link dialog, etc.)
    into a `.mdxeditor-popup-container` div appended to <body> with z-index 2.
    Radix Dialog uses z-50, so without this override the popups render behind
-   the dialog overlay — visible but unclickable. Bump above the dialog stack. */
+   the dialog overlay - visible but unclickable. Bump above the dialog stack. */
 .mdxeditor-popup-container {
   z-index: 60;
 }

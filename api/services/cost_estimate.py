@@ -2,12 +2,12 @@
 
 `require_credit_for_run` uses this to refuse a run the prepaid wallet can't
 cover, so a run never dies mid-way and wastes a user's credit. Numbers are
-deliberately CONSERVATIVE (over-estimate) — the real returned post count and
+deliberately CONSERVATIVE (over-estimate) - the real returned post count and
 enrichment token usage aren't known until the run executes, so we bill the
 requested `n_posts` ceiling, assume per-post enrichment tokens, and multiply
 the whole thing by a safety buffer.
 
-All rates come from :mod:`config.cost_rates` — never hard-code USD here beyond
+All rates come from :mod:`config.cost_rates` - never hard-code USD here beyond
 the estimation-only assumptions below.
 """
 
@@ -22,7 +22,7 @@ from config.cost_rates import (
     get_margin_multiplier,
 )
 
-# Estimation-only assumptions (not real telemetry — see module docstring).
+# Estimation-only assumptions (not real telemetry - see module docstring).
 RUN_COST_BUFFER = 1.2
 ASSUMED_INPUT_TOKENS_PER_POST = 1_200
 ASSUMED_OUTPUT_TOKENS_PER_POST = 300
@@ -76,7 +76,7 @@ def estimate_run_cost_micros(
     """
     n_posts = max(int(n_posts or 0), 0)
 
-    # 1) Crawl — bill the requested ceiling at the most expensive selected
+    # 1) Crawl - bill the requested ceiling at the most expensive selected
     #    provider's per-post rate (conservative).
     if providers:
         per_post = max(_provider_per_post_usd(p) for p in providers)
@@ -87,7 +87,7 @@ def estimate_run_cost_micros(
         crawl_usd *= COMMENTS_MULTIPLIER
     total_micros = _usd_to_micros(crawl_usd)
 
-    # 2) Enrichment — assumed Gemini tokens per post.
+    # 2) Enrichment - assumed Gemini tokens per post.
     if enrichment_enabled and n_posts > 0:
         enrich = compute_cost_micros(
             "gemini",

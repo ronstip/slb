@@ -1,4 +1,4 @@
-"""Key Finding component — accent-bordered card with finding text."""
+"""Key Finding component - accent-bordered card with finding text."""
 
 import logging
 
@@ -33,7 +33,7 @@ def render_key_finding(
 
     area_left, area_top, area_width, area_height = free_area
 
-    # Use most of the area but not all — leave breathing room
+    # Use most of the area but not all - leave breathing room
     card_margin = Inches(0.1)
     card_left = area_left + card_margin
     card_top = area_top + card_margin
@@ -66,7 +66,7 @@ def render_key_finding(
     badge_run.text = badge_text
     set_run_font(badge_run, 10, theme, bold=True, color=theme.accent)
 
-    # Finding body with markdown support — use larger text for impact
+    # Finding body with markdown support - use larger text for impact
     if finding:
         body_box = slide.shapes.add_textbox(
             card_left + Inches(0.3), card_top + Inches(0.7),

@@ -10,9 +10,9 @@ interface WelcomeScreenProps {
 
 const SUGGESTIONS = [
   {
-    label: 'Catch me up — what did you find?',
+    label: 'Catch me up - what did you find?',
     prompt:
-      'Give me a summary of what you found so far — key insights, highlights, anything I should know about',
+      'Give me a summary of what you found so far - key insights, highlights, anything I should know about',
     icon: Eye,
   },
   {
@@ -41,8 +41,8 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
     : "I'm on it. Ask me anything.";
 
   const subtitle = activeAgent
-    ? 'I have access to this agent’s data and tools — just say the word.'
-    : 'I have access to your data and tools — just say the word.';
+    ? 'I have access to this agent’s data and tools - just say the word.'
+    : 'I have access to your data and tools - just say the word.';
 
   return (
     <div

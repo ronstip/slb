@@ -49,7 +49,7 @@ interface MarkdownArtifactEditorProps {
   /** Where MDXEditor portals its popups (BlockTypeSelect dropdown, link
    *  dialog). When the editor sits inside a Radix Dialog with modal pointer
    *  events, the default `document.body` target falls outside the dialog's
-   *  interactive scope and the popups become unclickable — pass a node
+   *  interactive scope and the popups become unclickable - pass a node
    *  inside the dialog content instead. */
   overlayContainer?: HTMLElement | null;
 }
@@ -103,7 +103,7 @@ const CODE_BLOCK_LANGUAGES = {
 
 /** Toolbar button that injects a raw markdown/HTML snippet at the cursor.
  *  Used for features markdown can't express natively (alignment, RTL/LTR,
- *  vertical spacing) — the snippet is rendered correctly by Markdown.tsx
+ *  vertical spacing) - the snippet is rendered correctly by Markdown.tsx
  *  via rehype-raw, but appears as HTML source inside the editor itself. */
 function InsertSnippetButton({
   title,
@@ -128,7 +128,7 @@ const DIR_SNIPPET = (dir: 'ltr' | 'rtl') =>
   `\n\n<div dir="${dir}">\n\nYour text here\n\n</div>\n\n`;
 const SPACER_SNIPPET = '\n\n<br />\n\n';
 
-/** Replacement for MDXEditor's `InsertImage` button — the built-in dialog
+/** Replacement for MDXEditor's `InsertImage` button - the built-in dialog
  *  portals into the editor root and uses `position: fixed`, which breaks
  *  when the editor is nested inside a Radix Dialog (the dialog's
  *  `transform` creates a new containing block, pushing the image dialog
@@ -211,7 +211,7 @@ function Toolbar() {
  *  on every keystroke, which manifests as the bottom of the editor
  *  "jumping". Escape `<` → `&lt;` for any tag whose name isn't in the
  *  allowlist; recognized HTML tags pass through. Allowlist is the
- *  subset relevant to markdown — same set the read-only Markdown
+ *  subset relevant to markdown - same set the read-only Markdown
  *  component uses. */
 const ALLOWED_HTML_TAGS = new Set([
   'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio',

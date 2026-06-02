@@ -15,7 +15,7 @@ const FIELDS: Array<{
   {
     key: 'identity',
     label: 'Identity',
-    placeholder: "Who this agent is — its role, analytical character, and voice…",
+    placeholder: "Who this agent is - its role, analytical character, and voice…",
   },
   {
     key: 'mission',
@@ -25,17 +25,17 @@ const FIELDS: Array<{
   {
     key: 'methodology',
     label: 'Methodology',
-    placeholder: "How it thinks — evidence standards, when to be conservative vs. exploratory…",
+    placeholder: "How it thinks - evidence standards, when to be conservative vs. exploratory…",
   },
   {
     key: 'scope_and_relevance',
     label: 'Scope & Relevance',
-    placeholder: "What's signal vs. noise — entities, themes, domains to focus on…",
+    placeholder: "What's signal vs. noise - entities, themes, domains to focus on…",
   },
   {
     key: 'standards',
     label: 'Standards',
-    placeholder: "Quality bar — confidence thresholds, what to never claim without evidence…",
+    placeholder: "Quality bar - confidence thresholds, what to never claim without evidence…",
   },
   {
     key: 'perspective',

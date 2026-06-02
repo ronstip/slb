@@ -54,7 +54,7 @@ interface DataSourceFormProps {
   config: CustomChartConfig;
   onChange: (config: CustomChartConfig) => void;
   onChartTypeChange: (type: SocialChartType) => void;
-  /** Current chart type — drives which controls are relevant (e.g. stacked only
+  /** Current chart type - drives which controls are relevant (e.g. stacked only
    *  applies to bar). */
   chartType: SocialChartType;
   /**
@@ -162,7 +162,7 @@ export function DataSourceForm({
         </Select>
       </div>
 
-      {/* Aggregation — visible whenever there's a dimension */}
+      {/* Aggregation - visible whenever there's a dimension */}
       {config.dimension && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Aggregation</Label>
@@ -218,7 +218,7 @@ export function DataSourceForm({
         </Select>
       </div>
 
-      {/* Breakdown (hue) — posts-mode only; topics defer breakdown to phase 2 */}
+      {/* Breakdown (hue) - posts-mode only; topics defer breakdown to phase 2 */}
       {!isTopics && config.dimension && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Breakdown</Label>
@@ -243,7 +243,7 @@ export function DataSourceForm({
         </div>
       )}
 
-      {/* Time bucket — posts-mode only (topic_metrics is a snapshot) */}
+      {/* Time bucket - posts-mode only (topic_metrics is a snapshot) */}
       {!isTopics && config.dimension === 'posted_at' && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Time Bucket</Label>
@@ -267,7 +267,7 @@ export function DataSourceForm({
         </div>
       )}
 
-      {/* Stacked vs grouped — bar only, when a breakdown is set */}
+      {/* Stacked vs grouped - bar only, when a breakdown is set */}
       {!isTopics && chartType === 'bar' && config.breakdownDimension && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Bars</Label>
@@ -340,7 +340,7 @@ export function DataSourceForm({
         </div>
       )}
 
-      {/* Top N + include Others — categorical primary or time+breakdown */}
+      {/* Top N + include Others - categorical primary or time+breakdown */}
       {config.dimension && (
         <div className="flex items-start gap-3">
           <Label className="text-xs w-24 shrink-0 pt-1.5">

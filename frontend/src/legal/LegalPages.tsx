@@ -1,4 +1,4 @@
-// Public legal pages — Privacy Policy, Terms of Service, Refund Policy.
+// Public legal pages - Privacy Policy, Terms of Service, Refund Policy.
 //
 // These are reachable from the landing-page footer and are required for the
 // Lemon Squeezy (merchant-of-record) account review. Styling intentionally
@@ -37,7 +37,7 @@ const BODY = "'Inter Tight', sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
 // Legal party named in the Terms/Privacy. Scolto is run as an Israeli sole
-// proprietorship (עוסק פטור/מורשה), so there is no company name — the operator's
+// proprietorship (עוסק פטור/מורשה), so there is no company name - the operator's
 // personal identity and registration number are intentionally NOT published
 // (sensitive personal data). Those live in the Lemon Squeezy account KYC and are
 // disclosed on request. Governing law: Israel.
@@ -170,7 +170,7 @@ function LegalShell({
         </div>
       </main>
 
-      {/* Footer — shared site footer (same as landing page) */}
+      {/* Footer - shared site footer (same as landing page) */}
       <SiteFooter />
     </div>
   );
@@ -254,11 +254,11 @@ export function PrivacyPage() {
         We share data with vetted providers who process it on our behalf under contract, including:
       </P>
       <UL>
-        <li><strong>Google Cloud Platform &amp; Firebase</strong> — hosting, database, authentication.</li>
-        <li><strong>Google Vertex AI / Gemini</strong> — AI model processing.</li>
-        <li><strong>Lemon Squeezy</strong> — payments and billing (merchant of record).</li>
-        <li><strong>Licensed data providers</strong> — supply of public social and web content.</li>
-        <li><strong>Analytics and infrastructure providers</strong> — performance and security.</li>
+        <li><strong>Google Cloud Platform &amp; Firebase</strong> - hosting, database, authentication.</li>
+        <li><strong>Google Vertex AI / Gemini</strong> - AI model processing.</li>
+        <li><strong>Lemon Squeezy</strong> - payments and billing (merchant of record).</li>
+        <li><strong>Licensed data providers</strong> - supply of public social and web content.</li>
+        <li><strong>Analytics and infrastructure providers</strong> - performance and security.</li>
       </UL>
       <P>
         We may also disclose information to comply with law, to protect our rights and users, or as

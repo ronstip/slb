@@ -1,4 +1,4 @@
-"""Build v4 DEMO dashboard — v3 demo content + tuned heights from v3 measurements."""
+"""Build v4 DEMO dashboard - v3 demo content + tuned heights from v3 measurements."""
 
 import argparse
 import copy
@@ -99,12 +99,12 @@ def write_demo(dry_run: bool) -> None:
     template_layout = fetch_template_layout(db)
     filled = fill_layout(template_layout)
 
-    title = "דוח תחרותי שבועי v4 (Demo) — קמפיין נפתלי בנט (2026-05-06 → 2026-05-12)"
+    title = "דוח תחרותי שבועי v4 (Demo) - קמפיין נפתלי בנט (2026-05-06 → 2026-05-12)"
     print(f"v4 demo: {len(filled)} widgets")
     print(f"  max y: {max(w['y'] + w['h'] for w in filled)}")
 
     if dry_run:
-        print("DRY RUN — not writing.")
+        print("DRY RUN - not writing.")
         return
 
     db.collection("dashboard_layouts").document(V4_DEMO_ID).set({

@@ -55,7 +55,7 @@ def create_agent(
     settings = get_settings()
     model_name = model_override or settings.meta_agent_model
 
-    # ─── Prompts — selected by mode ─────────────────────────────────
+    # ─── Prompts - selected by mode ─────────────────────────────────
     if mode == "chat":
         from api.agent.prompts.chat_prompt import (
             CHAT_DYNAMIC_PROMPT,
@@ -94,14 +94,14 @@ def create_agent(
         tool_filter=["execute_sql"],
     )
 
-    # ─── Tool list — profile-based ──────────────────────────────────
+    # ─── Tool list - profile-based ──────────────────────────────────
     tools: list = compose_tools(profile=mode)
     tools.append(bq_toolset)
 
-    # Google Search — only in chat mode for full context awareness.
+    # Google Search - only in chat mode for full context awareness.
     #
     # ADK's stock `create_google_search_agent` instructs the sub-agent to
-    # "use the `google_search` tool" — which Gemini 3 Flash Preview now
+    # "use the `google_search` tool" - which Gemini 3 Flash Preview now
     # interprets as a function call rather than the built-in. The function
     # name is unresolvable (no `_get_declaration`), so the call fails with
     # "Tool 'google_search' not found." We wrap our own sub-agent with an
@@ -122,7 +122,7 @@ def create_agent(
             instruction=(
                 "You receive a search query. Answer it concisely using "
                 "current web information. Respond with the answer text "
-                "directly — do not call any tool by name."
+                "directly - do not call any tool by name."
             ),
             tools=[google_search],
             after_model_callback=capture_llm_cost,
@@ -156,7 +156,7 @@ def create_agent(
     elif mode == "report_editor":
         name = "report_editor"
         description = (
-            "Co-author for the active report — adds, modifies, or removes "
+            "Co-author for the active report - adds, modifies, or removes "
             "widgets on the user's request."
         )
     else:
@@ -166,10 +166,10 @@ def create_agent(
             "and generates deliverables."
         )
 
-    # ─── Callbacks — mode-aware context injector ────────────────────
+    # ─── Callbacks - mode-aware context injector ────────────────────
     before_model = get_context_injector(mode)
 
-    # ─── Debug IO logging — gated by AGENT_DEBUG_LOG env var ────────
+    # ─── Debug IO logging - gated by AGENT_DEBUG_LOG env var ────────
     # When set, captures every model request, tool call, and tool response
     # to a per-session JSONL file. Off by default; never fires in production
     # unless explicitly opted in. See api/agent/debug_io.py for details.
@@ -204,7 +204,7 @@ def create_agent(
     # Both halves go into `instruction` so ADK routes them to system_instruction.
     # If `static_instruction` is also set, ADK's instructions flow appends
     # `instruction` as a role='user' Content to llm_request.contents on every
-    # ReAct continuation — see google/adk/flows/llm_flows/instructions.py — and
+    # ReAct continuation - see google/adk/flows/llm_flows/instructions.py - and
     # the model treats the schema/date reminder as a fresh user request to
     # acknowledge, producing "I've updated my context, what's next?" instead of
     # answering. Caching is already disabled (see create_app below), so there

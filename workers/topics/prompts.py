@@ -11,11 +11,11 @@ Granularity is enforced by:
 """
 
 # ---------------------------------------------------------------------------
-# Pass 1 — candidate generation
+# Pass 1 - candidate generation
 # ---------------------------------------------------------------------------
 
 PASS1_GOOD_EXAMPLES = """\
-GOOD examples — each names a specific actor + specific action/stance/move, \
+GOOD examples - each names a specific actor + specific action/stance/move, \
 and the subheader carries strategic so-what:
 
   type: EVENT
@@ -36,11 +36,11 @@ and the subheader carries strategic so-what:
 """
 
 PASS1_BAD_EXAMPLES = """\
-BAD examples (FORBIDDEN — these patterns must never appear in your output):
+BAD examples (FORBIDDEN - these patterns must never appear in your output):
 
   "Product feedback"                          (generic, no entity, no actor)
   "Anti-Netanyahu sentiment grows"            (vague stance, no specific framing)
-  "New release sparks debate among users"     (missing entity — which release?)
+  "New release sparks debate among users"     (missing entity - which release?)
   "Major announcement draws mixed reactions"  (missing entity, missing actor)
   "Political commentary on the right"         (no actor, no stance)
   "Why everyone is talking about this"        (not self-explanatory, vague)
@@ -55,7 +55,7 @@ news beat or strategic intelligence item.
 
 {customer_brief}
 
-BEAT TYPES (each candidate must be ONE of these — your choice depends on the \
+BEAT TYPES (each candidate must be ONE of these - your choice depends on the \
 posts in the batch):
 
   - EVENT beat (default): a specific incident, announcement, statement, or news \
@@ -67,7 +67,7 @@ candidates should be this type.
 storyline around a NAMED actor or bloc, when 2+ posts express overlapping framing \
 without tying to a single event. Header must name the actor AND the specific stance. \
 Single-post commentary that fits an existing narrative beat for the same actor \
-must be assigned to that beat — do not drop it just because the post is one voice.
+must be assigned to that beat - do not drop it just because the post is one voice.
       Example: "Netanyahu base mobilizes against 'Oct-7 accountability' framing of opposition"
       NOT allowed: "Anti-Netanyahu sentiment grows" (too vague, no specific stance)
 
@@ -81,11 +81,11 @@ Whatever the type, set the `beat_type` field to "event", "narrative", or \
 Emit ONE candidate per distinct subject with:
 
   - header:    A 6-14 word headline naming a SPECIFIC entity, brand, product, \
-event, named concept, or named-actor-plus-stance. Self-contained — a reader who \
+event, named concept, or named-actor-plus-stance. Self-contained - a reader who \
 saw only the header should understand what the story is.
   - subheader: ONE sentence (<= 25 words) phrased from the customer's perspective \
-above — what's the so-what for THIS customer (sentiment shift, power-balance \
-implication, coalition risk/opening) — without repeating the header verbatim.
+above - what's the so-what for THIS customer (sentiment shift, power-balance \
+implication, coalition risk/opening) - without repeating the header verbatim.
   - keywords:  3-6 short phrases (words or 2-3 word terms) that characterise this \
 topic. These will later be used as case-insensitive substring matchers, so prefer \
 distinctive terms over common words.
@@ -93,12 +93,12 @@ distinctive terms over common words.
 Specific values (names of actors/parties/orgs/locations for entities; topic \
 phrases for themes; named outlets/products for brands; the type of content for \
 content_type) that this topic clusters around. Extract them DIRECTLY from the \
-posts' summaries — do not invent values that don't appear there. \
-At least ONE anchor (across entities + themes + brands) is REQUIRED — \
+posts' summaries - do not invent values that don't appear there. \
+At least ONE anchor (across entities + themes + brands) is REQUIRED - \
 a topic without any anchor is invalid and must be dropped.
   - source_post_indices: A list of 1-based indices of the POSTS IN THIS BATCH \
 that belong to this beat. This is the MOST IMPORTANT field. \
-A post belongs ONLY when its PRIMARY SUBJECT matches the beat — same specific \
+A post belongs ONLY when its PRIMARY SUBJECT matches the beat - same specific \
 event, same specific stance, same specific move. Ask: "if I had to label what \
 this single post is about in one phrase, would that phrase match the beat's \
 header?" If not, the post does not belong, even if it mentions a shared actor. \
@@ -109,13 +109,13 @@ reactions, jokes, hot-takes, and partisan spin THAT TAKE THE BEAT EVENT AS \
 THEIR PRIMARY SUBJECT. \
 \
 DO NOT include: \
-  (a) STANCE-MISMATCH posts — a post critical of X assigned to a "pro-X" \
+  (a) STANCE-MISMATCH posts - a post critical of X assigned to a "pro-X" \
 narrative beat, or a post praising X assigned to an "anti-X" beat. These \
 belong to a DIFFERENT beat (the opposing-stance beat), not to this one. \
-  (b) ACTOR-OVERLAP-ONLY posts — a post primarily about Smotrich's Hebron \
+  (b) ACTOR-OVERLAP-ONLY posts - a post primarily about Smotrich's Hebron \
 visit is NOT a source for the "Smotrich's Oct 7 tactical-failure quote" beat, \
 even though both name Smotrich. \
-  (c) THEME-OVERLAP-ONLY posts — a post about judicial-system corruption \
+  (c) THEME-OVERLAP-ONLY posts - a post about judicial-system corruption \
 should NOT be assigned to a "Netanyahu base mobilization" beat just because \
 both touch the legal-system theme. \
 When in doubt about a single post, OMIT it from this beat. Pass-2 will not \
@@ -139,7 +139,7 @@ merges true duplicates. PRECISION OVER RECALL: a topic with 5 tightly-on-beat \
 posts is more useful than a topic with 25 loosely-related posts.
   7. Each post in the batch should appear in source_post_indices of AT MOST ONE \
 candidate.
-  8. WHAT TO LEAVE UNASSIGNED (this is normal and expected — not every post \
+  8. WHAT TO LEAVE UNASSIGNED (this is normal and expected - not every post \
 needs to fit somewhere):
        - Single-voice opinions/jokes that don't match the stance of any \
 candidate you have emitted.
@@ -167,9 +167,9 @@ have placed in its source_post_indices. For each (candidate, post) pair, ask: \
   "If I had to summarize this single post in one phrase, would that phrase \
 match the beat's header? Same event? Same stance? Same move?" \
 \
-If the answer is no — if the post's primary subject is different, or its \
+If the answer is no - if the post's primary subject is different, or its \
 stance opposes the beat's framing, or it only shares an actor/theme without \
-being about THIS specific beat — REMOVE it from source_post_indices. Do not \
+being about THIS specific beat - REMOVE it from source_post_indices. Do not \
 look for a different beat to put it in unless one obviously matches; \
 unassigned is fine. \
 \
@@ -183,7 +183,7 @@ beat with 30 loosely-related ones.
 
 
 # ---------------------------------------------------------------------------
-# Pass 2 — merge + assignment rule generation
+# Pass 2 - merge + assignment rule generation
 # ---------------------------------------------------------------------------
 
 PASS2_MERGE_PROMPT = """\
@@ -225,11 +225,11 @@ date, same statement, same incident). Different statements by the same actor \
 
     DIFFERENT events (don't merge):
       - "Smotrich's Oct 7 tactical-failure quote" vs "Smotrich's Hamas-asset \
-2015 video resurfaces" — different statements, different time frames
+2015 video resurfaces" - different statements, different time frames
       - "Ben-Gvir birthday-party police-attendance scandal" vs "Ben-Gvir \
-politicization-of-police criticism" — specific incident vs ongoing pattern
+politicization-of-police criticism" - specific incident vs ongoing pattern
       - "Liberman recruits Sharon Sharabi" vs "Liberman expands Yisrael \
-Beiteinu with multiple security recruits" — specific recruitment vs broader \
+Beiteinu with multiple security recruits" - specific recruitment vs broader \
 campaign
 
   NARRATIVE vs NARRATIVE: merge only if SAME actor AND SAME stance/framing \
@@ -245,7 +245,7 @@ campaign
       - Anti-X-on-corruption vs Anti-X-on-security: different stances on same actor
       - Pro-X-as-security-leader vs Pro-X-as-economic-manager: different framings
       - "Golan positions as anti-Netanyahu" vs "Golan calls Smotrich \
-illegitimate" — different specific positioning claims
+illegitimate" - different specific positioning claims
 
   DYNAMIC vs DYNAMIC: merge only if SAME named cross-actor move (same merger, \
 same alliance, same defection). Different merger talks = different beats.
@@ -254,7 +254,7 @@ VOLUME EXPECTATION: groups should be at least 50% of candidates. A run of 100 \
 candidates with heavy duplication (multiple batches converging on the dominant \
 news story) might produce 50-70 groups. A run with little duplication produces \
 80-95 groups. If you produce fewer than 50 groups for 100 candidates you are \
-over-merging — re-examine.
+over-merging - re-examine.
 
 CONSTRAINTS (validated):
   - Every candidate index 1..N must appear EXACTLY ONCE across all groups.
@@ -274,7 +274,7 @@ def render_pass2_merge_prompt(candidates_section: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Pass 3 — post-hoc per-topic membership filter
+# Pass 3 - post-hoc per-topic membership filter
 # ---------------------------------------------------------------------------
 
 PASS3_FILTER_PROMPT = """\
@@ -282,7 +282,7 @@ You are a strict beat-membership checker. You will see a topic header+subheader 
 and a numbered list of post summaries currently claimed to belong to this beat. \
 Decide which posts genuinely BELONG.
 
-A post BELONGS only when its primary subject matches the beat — same specific \
+A post BELONGS only when its primary subject matches the beat - same specific \
 event, same specific stance, same specific move.
 
 A post is NOISE if any of these is true:
@@ -293,7 +293,7 @@ X in a "pro-X" beat is noise; a post praising X in an "anti-X" beat is noise);
   (c) the post is only THEMATICALLY adjacent (same broad theme, e.g. judicial \
 system or media bias) but is not about THIS specific beat.
 
-When in doubt, prefer NOISE — high precision matters more than catching every \
+When in doubt, prefer NOISE - high precision matters more than catching every \
 borderline case.
 
 Topic:
@@ -371,7 +371,7 @@ def render_customer_brief(constitution: dict | None, title: str | None = None) -
     parts.append(
         "\nUse this brief to (a) drop out-of-scope posts even when they look "
         "like beats, and (b) phrase subheaders from this customer's perspective "
-        "— what each beat means strategically for THEIR mission."
+        "- what each beat means strategically for THEIR mission."
     )
     return "\n".join(parts)
 
@@ -387,7 +387,7 @@ def build_pass1_batch_section(posts: list[dict]) -> str:
     """Format a sampled post batch for pass-1 consumption.
 
     ITERATION 1: AI-summary-only mode. Pre-extracted enrichment tags
-    (entities/themes/brands/content_type) are intentionally omitted —
+    (entities/themes/brands/content_type) are intentionally omitted -
     the hypothesis is that the LLM groups better when it must reason
     from semantic content rather than overlapping closed-set tags.
     """

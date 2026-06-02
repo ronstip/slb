@@ -38,13 +38,13 @@ def cleanup_stuck_collections() -> None:
             pending = fs.get_pending_snapshots(collection_id=doc_id)
             if pending:
                 logger.info(
-                    "Startup cleanup: collection %s has %d pending snapshot(s) — deferring to scheduler",
+                    "Startup cleanup: collection %s has %d pending snapshot(s) - deferring to scheduler",
                     doc_id, len(pending),
                 )
                 continue
 
             logger.warning(
-                "Startup cleanup: collection %s stuck in '%s' — marking completed_with_errors",
+                "Startup cleanup: collection %s stuck in '%s' - marking completed_with_errors",
                 doc_id, status,
             )
             fs.update_collection_status(

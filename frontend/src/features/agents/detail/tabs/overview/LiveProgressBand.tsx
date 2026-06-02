@@ -56,7 +56,7 @@ export function LiveProgressBand({ task, onRun, onGoToBriefing }: LiveProgressBa
                 Step {Math.min(completed + 1, Math.max(total, 1))} of {total || '?'}
               </span>
               {currentStep && (
-                <span className="text-muted-foreground truncate">— {currentStep.content}</span>
+                <span className="text-muted-foreground truncate">- {currentStep.content}</span>
               )}
             </div>
             {total > 0 && (

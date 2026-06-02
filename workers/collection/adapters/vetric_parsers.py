@@ -36,7 +36,7 @@ def parse_instagram_post(item: dict) -> Post:
 
     if likes is None and comments_count is None:
         logger.debug(
-            "IG post %s missing engagement — available keys: %s",
+            "IG post %s missing engagement - available keys: %s",
             post_id,
             [k for k in item.keys() if "count" in k.lower() or "like" in k.lower()],
         )

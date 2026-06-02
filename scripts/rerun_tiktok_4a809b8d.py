@@ -8,7 +8,7 @@ per-keyword and max_parallel is 10, so all 9 keywords run concurrently.
 
 This script:
 1. Resets agent + run + collection_status to a runnable state.
-2. Calls run_pipeline(8c3fd544) locally — uses the fixed apify adapter.
+2. Calls run_pipeline(8c3fd544) locally - uses the fixed apify adapter.
 3. Pipeline completion triggers check_agent_completion which auto-dispatches
    continuation, producing a refreshed briefing.
 

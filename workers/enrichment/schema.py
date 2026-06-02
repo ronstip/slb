@@ -13,7 +13,7 @@ from workers.enrichment.normalize import normalize_label, normalize_labels
 
 
 class MediaRef(BaseModel):
-    """A single media attachment — GCS URI preferred, original CDN URL as fallback."""
+    """A single media attachment - GCS URI preferred, original CDN URL as fallback."""
 
     gcs_uri: str = ""          # GCS URI (permanent, proxied)
     original_url: str = ""     # CDN/original URL (may expire, used if no gcs_uri)
@@ -36,7 +36,7 @@ class ReferencedPost(BaseModel):
 
 
 class PostData(BaseModel):
-    """Input data for enrichment — everything the LLM needs to analyze a post."""
+    """Input data for enrichment - everything the LLM needs to analyze a post."""
 
     post_id: str
     platform: str
@@ -107,7 +107,7 @@ class EnrichmentResult(BaseModel):
     @classmethod
     def _normalize_content_type(cls, v) -> str:
         # mode=before so this runs BEFORE Literal[...] validation when the
-        # dynamic subclass narrows content_type to a closed vocabulary —
+        # dynamic subclass narrows content_type to a closed vocabulary -
         # otherwise mixed-case input would get rejected before normalization.
         if not isinstance(v, str):
             return v

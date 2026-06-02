@@ -166,7 +166,7 @@ function HomeRoute() {
   if (isAnonymous && !devMode) return <LandingPageRoute />;
 
   // §E: '/' renders the app outside AuthGate, so gate blocked / expired-trial
-  // accounts here too — otherwise they'd see the home screen (and fire data
+  // accounts here too - otherwise they'd see the home screen (and fire data
   // requests) instead of the pending page. Super admins / impersonation pass.
   if (accountBlock(profile)) {
     return <AccountPendingPageRoute />;
@@ -181,7 +181,7 @@ function LegacyTaskRedirect() {
   return <Navigate to={`/agents/${taskId}`} replace />;
 }
 
-// Static router — never recreated. Auth is handled by the AuthGate layout route.
+// Static router - never recreated. Auth is handled by the AuthGate layout route.
 // All routes live under RootLayout so NavigationBridge mounts once and the
 // API client's navigate handle stays registered across route transitions.
 export const router = createBrowserRouter([
@@ -199,7 +199,7 @@ export const router = createBrowserRouter([
         element: <Navigate to="/" replace />,
       },
       {
-        // Public — must live OUTSIDE AuthGate so a 403 redirect doesn't
+        // Public - must live OUTSIDE AuthGate so a 403 redirect doesn't
         // bounce back to '/' via AuthGate's anonymous-user redirect.
         path: '/access-denied',
         element: <AccessDeniedPageRoute />,
@@ -211,7 +211,7 @@ export const router = createBrowserRouter([
         element: <AccountPendingPageRoute />,
       },
       {
-        // Public legal pages — reachable by Lemon Squeezy reviewers and any
+        // Public legal pages - reachable by Lemon Squeezy reviewers and any
         // anonymous visitor. Must live outside AuthGate.
         path: '/privacy',
         element: <PrivacyPageRoute />,
@@ -241,7 +241,7 @@ export const router = createBrowserRouter([
         element: <SharedDashboardPageRoute />,
       },
       {
-        // Public — InviteHandler manages its own anon vs signed-in branches
+        // Public - InviteHandler manages its own anon vs signed-in branches
         // (lets a non-registered invitee sign in + auto-join in one click).
         path: '/invite/:code',
         element: <InviteRoute />,

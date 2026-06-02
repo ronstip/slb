@@ -5,18 +5,18 @@
 # from the transcript.
 #
 # Fields:
-#   id           — short unique slug
-#   mode         — chat | autonomous
-#   description  — what this scenario stresses
-#   targets      — which problems this scenario probes (verbosity, dedup, ...)
-#   state        — initial session state (merged into the in-memory session)
-#   turns        — list of user messages (chat mode) or [] for autonomous
-#   judge_focus  — what the LLM judge should weigh heaviest
+#   id           - short unique slug
+#   mode         - chat | autonomous
+#   description  - what this scenario stresses
+#   targets      - which problems this scenario probes (verbosity, dedup, ...)
+#   state        - initial session state (merged into the in-memory session)
+#   turns        - list of user messages (chat mode) or [] for autonomous
+#   judge_focus  - what the LLM judge should weigh heaviest
 
 scenarios:
   - id: chat-bare-greeting
     mode: chat
-    description: Bare "Hi" on a configured agent — must reply in plain text, zero tool calls.
+    description: Bare "Hi" on a configured agent - must reply in plain text, zero tool calls.
     targets: [persona, scope_discipline]
     state:
       selected_sources: ["eval-collection-1"]
@@ -33,7 +33,7 @@ scenarios:
     turns:
       - "Hi"
     judge_focus: |
-      The user said "Hi" with no question. The agent MUST reply in plain text —
+      The user said "Hi" with no question. The agent MUST reply in plain text -
       one or two sentences naming what it can do, then stop. ZERO tool calls
       expected (no get_collection_stats, no list_topics, no execute_sql, no
       compose_briefing). Bad: any tool call, any unsolicited analysis, any
@@ -42,7 +42,7 @@ scenarios:
 
   - id: simple-q-engagement
     mode: chat
-    description: Simple Q&A — expect a short answer, no preamble, at most one tool call.
+    description: Simple Q&A - expect a short answer, no preamble, at most one tool call.
     targets: [verbosity]
     state:
       selected_sources: ["eval-collection-1"]
@@ -55,7 +55,7 @@ scenarios:
 
   - id: repeat-dashboard
     mode: chat
-    description: Two consecutive identical dashboard requests — second must reuse, not recreate.
+    description: Two consecutive identical dashboard requests - second must reuse, not recreate.
     targets: [dedup]
     state:
       selected_sources: ["eval-collection-1"]
@@ -69,7 +69,7 @@ scenarios:
 
   - id: ambiguous-data-overview
     mode: chat
-    description: Ambiguous request — should ask_user OR make a reasonable assumption + state it.
+    description: Ambiguous request - should ask_user OR make a reasonable assumption + state it.
     targets: [persona, judgment]
     state:
       selected_sources: ["eval-collection-1"]
@@ -83,7 +83,7 @@ scenarios:
 
   - id: chat-followup-no-restate
     mode: chat
-    description: Follow-up question — must NOT restate prior findings.
+    description: Follow-up question - must NOT restate prior findings.
     targets: [repetition, verbosity]
     state:
       selected_sources: ["eval-collection-1"]
@@ -105,7 +105,7 @@ scenarios:
       active_agent_status: "running"
       active_agent_type: "one_shot"
       # Constitution must match api/schemas/agent_constitution.py:Constitution
-      # — a dict with 6 string fields, NOT a bare string.
+      # - a dict with 6 string fields, NOT a bare string.
       active_agent_constitution:
         identity: "An evaluation harness test agent for benchmarking the executor."
         mission: "Analyze the test collection and report findings."
@@ -123,7 +123,7 @@ scenarios:
       active_collection_id: "eval-collection-1"
       agent_selected_sources: ["eval-collection-1"]
       # Schema: id (str), content (str), status (pending|in_progress|completed)
-      # — matches api/agent/tools/update_todos.py and what callbacks._build_autonomous_context reads.
+      # - matches api/agent/tools/update_todos.py and what callbacks._build_autonomous_context reads.
       todos:
         - { id: "1", content: "Analyze: query patterns, identify themes", status: "pending" }
         - { id: "2", content: "Validate: cross-reference and check biases", status: "pending" }
@@ -144,7 +144,7 @@ scenarios:
 
   - id: autonomous-recurring-trend
     mode: autonomous
-    description: Recurring agent — must compare to prior run, not restart from scratch.
+    description: Recurring agent - must compare to prior run, not restart from scratch.
     targets: [continuity, dedup, repetition]
     state:
       active_agent_id: "eval-agent-2"
@@ -188,7 +188,7 @@ scenarios:
 
   - id: autonomous-verifier-catches-bad-claim
     mode: autonomous
-    description: Verifier seeded to FAIL on first call — agent must fix the briefing and re-verify before publishing.
+    description: Verifier seeded to FAIL on first call - agent must fix the briefing and re-verify before publishing.
     targets: [verification, scope_discipline]
     state:
       active_agent_id: "eval-agent-verifier"
@@ -236,7 +236,7 @@ scenarios:
 
   - id: autonomous-narrow-scope
     mode: autonomous
-    description: Narrow scope — agent must NOT expand into platforms/artifacts the constitution didn't ask for.
+    description: Narrow scope - agent must NOT expand into platforms/artifacts the constitution didn't ask for.
     targets: [scope_discipline, dedup]
     state:
       active_agent_id: "eval-agent-3"
@@ -248,9 +248,9 @@ scenarios:
         mission: "Identify the top 3 themes on TikTok in the eval collection and deliver a briefing only."
         methodology: "Query TikTok posts, cluster, pick top 3 themes by post count."
         scope_and_relevance: "TikTok posts ONLY in eval-collection-1. No Reddit, no other platforms."
-        standards: "Three themes, briefing only — no dashboard, no presentation."
+        standards: "Three themes, briefing only - no dashboard, no presentation."
         perspective: "Time-pressed reader who needs a one-page brief."
-      active_agent_context: "Eval scenario — narrow-scope discipline test."
+      active_agent_context: "Eval scenario - narrow-scope discipline test."
       active_run_id: "eval-run-3"
       active_run_number: 1
       active_run_trigger: "manual"

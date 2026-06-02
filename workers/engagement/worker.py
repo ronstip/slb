@@ -1,4 +1,4 @@
-"""Engagement Worker — re-fetches metrics + comments and appends snapshots.
+"""Engagement Worker - re-fetches metrics + comments and appends snapshots.
 
 Usage:
     python -m workers.engagement.worker '{"input_type": "collection_id", "collection_id": "..."}'

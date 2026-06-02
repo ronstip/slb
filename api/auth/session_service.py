@@ -133,7 +133,7 @@ class FirestoreSessionService(BaseSessionService):
         app_name: str,
         user_id: Optional[str] = None,
     ) -> ListSessionsResponse:
-        # Firestore's Python client is synchronous — running its blocking I/O
+        # Firestore's Python client is synchronous - running its blocking I/O
         # (`query.stream()`) directly on the asyncio loop stalls every other
         # coroutine in the process. Off-load to a worker thread.
         def _fetch() -> list[Session]:
@@ -172,7 +172,7 @@ class FirestoreSessionService(BaseSessionService):
         self._db.collection(SESSIONS_COLLECTION).document(session_id).delete()
 
     # ------------------------------------------------------------------
-    # Event handling — persist after base class processes state deltas
+    # Event handling - persist after base class processes state deltas
     # ------------------------------------------------------------------
 
     @override
@@ -241,7 +241,7 @@ class FirestoreSessionService(BaseSessionService):
                 events_safe.append(json.loads(json.dumps(dumped)))
             except Exception as exc:
                 logger.warning(
-                    "Failed to serialize event %d (author=%s) in session %s: %s — skipping",
+                    "Failed to serialize event %d (author=%s) in session %s: %s - skipping",
                     idx, getattr(e, "author", "?"), session.id, exc,
                 )
 

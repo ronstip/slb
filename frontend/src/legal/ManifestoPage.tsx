@@ -239,7 +239,7 @@ export function ManifestoPage() {
         </div>
       </main>
 
-      {/* Footer — shared site footer (same as landing page) */}
+      {/* Footer - shared site footer (same as landing page) */}
       <SiteFooter />
     </div>
   );

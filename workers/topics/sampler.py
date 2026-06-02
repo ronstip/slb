@@ -21,7 +21,7 @@ Strategy:
      entries unless we ran out of new signatures).
 
 Engagement weights chosen so that scarcer signals (saves, comments) carry
-more — matches the existing intuition elsewhere in the codebase.
+more - matches the existing intuition elsewhere in the codebase.
 """
 
 from __future__ import annotations
@@ -239,7 +239,7 @@ def sample_for_taxonomy(
     # Phase 3: if under budget, fill from unsampled high-engagement posts that
     # expand signature coverage. Prefer signatures we haven't picked at all
     # yet, then signatures still under `per_signature`. Channel cap is
-    # enforced in all phases — a single channel can't dominate any signature.
+    # enforced in all phases - a single channel can't dominate any signature.
     elif len(capped) < target_size:
         chosen_ids = {id(p) for _, _, p in capped}
         sig_counts: Counter = Counter(sig for sig, _, _ in capped)

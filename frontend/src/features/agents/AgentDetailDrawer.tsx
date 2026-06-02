@@ -206,7 +206,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
       queryClient.invalidateQueries({ queryKey: ['agent-detail', displayTask.agent_id] });
       fetchAgents();
     } catch {
-      // 409 or other error — task may already be running
+      // 409 or other error - task may already be running
     } finally {
       setIsRunning(false);
     }
@@ -599,7 +599,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
                   || displayTask.context_summary
                   || displayTask.title
                   + (displayTask.data_scope?.sources?.length
-                    ? ` — ${displayTask.data_scope.sources.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`
+                    ? ` - ${displayTask.data_scope.sources.map((s) => (s.keywords ?? []).join(', ')).join('; ')}`
                     : '')}
               </div>
             </div>
@@ -617,7 +617,7 @@ export function AgentDetailDrawer({ task, open, onOpenChange, autoOpenSchedule, 
             {editPreset !== 'hourly' && (
               <div className="space-y-1">
                 <label className="text-xs font-medium">
-                  Run at <span className="text-muted-foreground font-normal">(your local time{getLocalTzAbbrev() ? ` — ${getLocalTzAbbrev()}` : ''})</span>
+                  Run at <span className="text-muted-foreground font-normal">(your local time{getLocalTzAbbrev() ? ` - ${getLocalTzAbbrev()}` : ''})</span>
                 </label>
                 <Select value={editTime} onValueChange={setEditTime}>
                   <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>

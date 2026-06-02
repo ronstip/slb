@@ -1,4 +1,4 @@
-"""Chart component — renders a chart at placeholder bounds."""
+"""Chart component - renders a chart at placeholder bounds."""
 
 import logging
 from typing import Optional
@@ -150,7 +150,7 @@ def _style_chart_axes(chart, theme: TemplateTheme) -> None:
                     sf2 = etree.SubElement(ln, qn("a:solidFill"))
                     etree.SubElement(sf2, qn("a:srgbClr")).set("val", grid_hex)
 
-                # Axis line — invisible
+                # Axis line - invisible
                 ax_sp = ax.find(qn("c:spPr"))
                 if ax_sp is None:
                     ax_sp = etree.SubElement(ax, qn("c:spPr"))

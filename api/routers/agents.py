@@ -29,7 +29,7 @@ async def list_agents(user: CurrentUser = Depends(get_current_user)):
     """List all agents visible to the user."""
     from api.services.agent_service import list_agents as _list_agents
 
-    # _list_agents does synchronous Firestore I/O — off-load to a worker thread
+    # _list_agents does synchronous Firestore I/O - off-load to a worker thread
     # so it doesn't block the asyncio loop while other concurrent requests pile up.
     agents = await asyncio.to_thread(_list_agents, user.uid, user.org_id)
     return agents
@@ -64,7 +64,7 @@ async def create_from_wizard_endpoint(
     body: CreateFromWizardRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Create an agent directly from the wizard UI — no LLM round-trip.
+    """Create an agent directly from the wizard UI - no LLM round-trip.
 
     Replicates what the start_agent agent tool does but as a deterministic
     REST call: creates the agent, attaches existing collections, and
@@ -158,7 +158,7 @@ async def create_from_wizard_endpoint(
         run_id, dispatched_ids = dispatch_agent_run(agent_id, fresh_agent)
         # dispatch_agent_run bails with ("", []) when no source has keywords/
         # channels. Don't strand an empty agent in a fake "running"/"completed"
-        # state — fail it and tell the user what's missing.
+        # state - fail it and tell the user what's missing.
         if not dispatched_ids and not attached_existing:
             fs.update_agent(agent_id, status="failed")
             raise HTTPException(
@@ -212,7 +212,7 @@ async def wizard_plan_endpoint(
     if len(description) < 10:
         raise HTTPException(status_code=400, detail="Description too short (min 10 chars)")
 
-    # §E: the planner is a paid Gemini call — gate it like chat so an
+    # §E: the planner is a paid Gemini call - gate it like chat so an
     # out-of-credit user can't rack up overdraft just by stepping through the
     # wizard. No-op for free/admins or when enforce_credits is off.
     from api.services.entitlements import require_active
@@ -354,7 +354,7 @@ async def update_agent_endpoint(
     }
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
 
-    # Outputs are frozen during a run — reject edits while running.
+    # Outputs are frozen during a run - reject edits while running.
     if "outputs" in safe_updates and agent.get("status") == "running":
         raise HTTPException(
             status_code=409,
@@ -423,7 +423,7 @@ async def approve_agent_protocol(
     request: dict,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Approve an agent — creates the agent and optionally starts collections.
+    """Approve an agent - creates the agent and optionally starts collections.
 
     Legacy endpoint kept for backwards compat. New flow uses start_agent tool directly.
     """
@@ -519,7 +519,7 @@ async def run_agent_sources_endpoint(
 ):
     """Re-collect data for one source or all sources on the agent.
 
-    This dispatches collection pipelines only — it does NOT trigger the agent's
+    This dispatches collection pipelines only - it does NOT trigger the agent's
     analyze/briefing workflow or change agent status. Use /agents/{id}/run for
     the full run.
     """
@@ -554,7 +554,7 @@ async def fetch_posts_by_url_endpoint(
     URLs are parsed server-side and grouped by platform; each group becomes its
     own collection (mirrors keyword-mode where one source = one collection).
     Same credits gate, same enrichment, same dedup as keyword-collected posts.
-    Owner-only — runs are billed to the agent owner's wallet.
+    Owner-only - runs are billed to the agent owner's wallet.
     """
     from api.services.agent_service import (
         UrlFetchValidationError, fetch_posts_by_url, get_agent,
@@ -602,7 +602,7 @@ async def resume_agent_endpoint(
          (e.g. via /agents/{id}/sources/run) so continuation_ready was never
          set, but all collections are in a terminal state.
 
-    Either way, no fresh BrightData calls — only the agent phase runs.
+    Either way, no fresh BrightData calls - only the agent phase runs.
     """
     from api.services.agent_service import get_agent
 
@@ -626,7 +626,7 @@ async def resume_agent_endpoint(
         if not all_done:
             raise HTTPException(
                 status_code=409,
-                detail="Agent is not in a resumable state — collections have not finished",
+                detail="Agent is not in a resumable state - collections have not finished",
             )
         fs_check.update_agent(
             agent_id,
@@ -638,12 +638,12 @@ async def resume_agent_endpoint(
     if todos and all(t.get("status") == "completed" for t in todos):
         raise HTTPException(
             status_code=409,
-            detail="Nothing to resume — all steps already completed",
+            detail="Nothing to resume - all steps already completed",
         )
 
     # If already running, treat as a stuck state and re-kick the continuation
     # rather than 409. Liveness gate: if updated_at is recent (< 5 min) the
-    # previous attempt is probably alive — skip to avoid duplicate runs.
+    # previous attempt is probably alive - skip to avoid duplicate runs.
     if agent.get("status") == "running":
         from datetime import datetime, timedelta, timezone
         updated_at = agent.get("updated_at")
@@ -661,7 +661,7 @@ async def resume_agent_endpoint(
 
     # Reconcile stale todo state: if collect/enrich automated todos were never
     # progressed (manual-collection path, or a prior progression failure), the
-    # first incomplete todo can still be "Collect…" — misleads the UI and the
+    # first incomplete todo can still be "Collect…" - misleads the UI and the
     # agent's own decisions. Idempotent: a no-op when todos are already correct.
     from workers.shared.workflow_steps import progress_automated_steps
     progressed = progress_automated_steps(todos, phase="collection_complete", status="success")
@@ -669,7 +669,7 @@ async def resume_agent_endpoint(
         fs.update_agent(agent_id, todos=progressed)
 
     fs.update_agent(agent_id, status="running", completed_at=None)
-    fs.add_agent_log(agent_id, "Resumed by user — continuing agent phase", source="continuation")
+    fs.add_agent_log(agent_id, "Resumed by user - continuing agent phase", source="continuation")
 
     settings = get_settings()
     if settings.is_dev:
@@ -696,7 +696,7 @@ async def resume_agent_endpoint(
                 start_new_session=True,
             )
         except Exception:
-            # Don't strand the agent in `running` if the spawn fails — flip
+            # Don't strand the agent in `running` if the spawn fails - flip
             # back to success so the Resume button stays available, and
             # surface a clean 500 to the client.
             logger.exception("Failed to spawn continuation subprocess for agent %s", agent_id)
@@ -714,7 +714,7 @@ async def refresh_agent_context(
     agent_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Deprecated: Constitution is static — world awareness evolves through briefings.
+    """Deprecated: Constitution is static - world awareness evolves through briefings.
 
     Kept for backward compatibility with old frontend builds. Returns a no-op success.
     """

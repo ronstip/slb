@@ -25,7 +25,7 @@ def _safe(fn, label: str) -> None:
     """Run a single per-component write, swallowing failures.
 
     A missing / legacy / orphaned component doc must never abort the whole
-    share toggle — the agent's own visibility is already written by the caller,
+    share toggle - the agent's own visibility is already written by the caller,
     so a partial fan-out is recoverable (re-toggle, or the reconcile path) while
     a raised exception would leave the agent flipped but the toggle 500'd.
     """
@@ -55,10 +55,10 @@ def propagate_to_components(
         owner's org changed but the agent itself stayed private (so there is no
         share state to move).
 
-    Artifacts have no `visibility` field — they gate on a `shared` bool — so the
+    Artifacts have no `visibility` field - they gate on a `shared` bool - so the
     visibility is translated to ``shared = (visibility == "org")`` for them.
     """
-    # 1. Collections — the feed / posts / dashboard access checks all read the
+    # 1. Collections - the feed / posts / dashboard access checks all read the
     #    per-collection `visibility` + `org_id`, so these must mirror the agent.
     col_updates: dict[str, Any] = {"org_id": org_id}
     if visibility is not None:
@@ -69,7 +69,7 @@ def propagate_to_components(
             f"collection {cid}",
         )
 
-    # 2. Artifacts — deliverables (briefs / slides / exports). They predate the
+    # 2. Artifacts - deliverables (briefs / slides / exports). They predate the
     #    `visibility` field and gate on a `shared` bool, so the visibility is
     #    translated: org -> shared=True, private -> shared=False.
     art_updates: dict[str, Any] = {"org_id": org_id}
@@ -82,5 +82,5 @@ def propagate_to_components(
         )
 
     # Explorer / dashboard layouts are wired in later steps of
-    # docs/agent-sharing-architecture.md §5 — added here so this stays the one
+    # docs/agent-sharing-architecture.md §5 - added here so this stays the one
     # place the registry lives.

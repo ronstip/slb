@@ -165,7 +165,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
         )}
 
         {titleAdornment}
-        {/* Spacer pushes buttons to the right (desktop only — on mobile the
+        {/* Spacer pushes buttons to the right (desktop only - on mobile the
             toolbar wraps instead of overflowing). */}
         <div className="hidden flex-1 md:block" />
         {/* Right-side controls */}
@@ -258,7 +258,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
         agentId={artifact.agentId}
       />
 
-      {/* Filter bar — hidden when the editor disabled viewer filtering for this
+      {/* Filter bar - hidden when the editor disabled viewer filtering for this
        *  report (toolbarHandlers.filterBarHidden), unless we're currently in
        *  edit mode where the editor still needs to see/configure it. */}
       {!isLoading && !error && (!toolbarHandlers?.filterBarHidden || isEditMode) && (

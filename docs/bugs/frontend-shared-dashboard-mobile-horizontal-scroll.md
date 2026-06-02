@@ -4,7 +4,7 @@
 
 Opening `/shared/<token>` on iPhone 12 Pro (390px viewport) showed:
 
-- A persistent horizontal scrollbar — page rendered ~1280px wide regardless of
+- A persistent horizontal scrollbar - page rendered ~1280px wide regardless of
   viewport.
 - No horizontal padding around the dashboard content (KPIs/charts butting up to
   the screen edge).
@@ -25,7 +25,7 @@ Three layered issues:
    sets `body { min-width: 1280px }` for desktop-only surfaces. The shared
    *artifact* page already overrides this on mount
    ([SharedArtifactPage.tsx](frontend/src/features/artifacts/SharedArtifactPage.tsx#L52)),
-   but the shared *dashboard* page never did — so body stayed pinned at 1280px,
+   but the shared *dashboard* page never did - so body stayed pinned at 1280px,
    forcing the whole page wider than the viewport.
 2. **No page padding.** `<main>` and the filter-bar wrapper in
    [SharedDashboardPage.tsx](frontend/src/features/studio/dashboard/SharedDashboardPage.tsx)
@@ -34,23 +34,23 @@ Three layered issues:
 3. **KPI compact layout crammed cards into too-narrow cells.**
    `buildCompactLayout` divided cols evenly across all designed-row KPIs even
    when the result was < 2 cols per card. At `sm` (4 cols) with 3 KPIs each card
-   got 1 col (~80px) — the number formatter then overflowed.
+   got 1 col (~80px) - the number formatter then overflowed.
 
 ## Fix
 
 1. [SharedDashboardPage.tsx](frontend/src/features/studio/dashboard/SharedDashboardPage.tsx)
-   — same pattern as `SharedArtifactPage`: set `document.body.style.minWidth =
+   - same pattern as `SharedArtifactPage`: set `document.body.style.minWidth =
    '0'` on mount, restore on unmount. Added `px-3 sm:px-6` to `<main>` and the
    filter-bar inner wrapper.
 2. [buildCompactLayout.ts](frontend/src/features/studio/dashboard/buildCompactLayout.ts)
-   — KPI rows now wrap to extra rows when cards would be < 2 cols wide. At `xs`
+   - KPI rows now wrap to extra rows when cards would be < 2 cols wide. At `xs`
    (2 cols) each KPI is full width and stacks; at `sm` (4 cols) two cards per
    row.
 
 ## Regression test
 
 [SocialDashboardGrid.test.ts](frontend/src/features/studio/dashboard/SocialDashboardGrid.test.ts)
-— added cases for the wrap behaviour at narrow cols, full-width stacking at the
+- added cases for the wrap behaviour at narrow cols, full-width stacking at the
 narrowest breakpoint, and a "following widget sits below wrapped KPI rows"
 check that guards against overlap with the next chart.
 

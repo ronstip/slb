@@ -8,7 +8,7 @@ import type {
 import { DEFAULT_DASHBOARD_ORIENTATION } from './types-social-dashboard.ts';
 
 /** The undoable slice of a dashboard report. Filter-bar pill membership
- *  lives in the parent DashboardView and is *not* tracked here — keep the
+ *  lives in the parent DashboardView and is *not* tracked here - keep the
  *  history focused on what users actually mean by "undo my edit". */
 export interface ReportSnapshot {
   widgets: SocialDashboardWidget[];
@@ -24,7 +24,7 @@ interface ReportHistoryActions {
   ) => void;
   setOrientation: (orientation: DashboardOrientation) => void;
   setFilterBarHidden: (hidden: boolean) => void;
-  /** Atomic multi-field replace — used by the AI co-author so a single
+  /** Atomic multi-field replace - used by the AI co-author so a single
    *  remote edit lands as one undo step instead of three. */
   applyExternalSnapshot: (snap: ReportSnapshot) => void;
 }
@@ -128,7 +128,7 @@ function createReportHistoryStore(): ReportHistoryStoreApi {
         equality: snapshotsEqual,
         // Leading-edge debounce: forward only the first set in a 600ms
         // window. Zundo's handleSet signature has gnarly overload juggling
-        // around Zustand's setState — cast to a permissive shape rather
+        // around Zustand's setState - cast to a permissive shape rather
         // than fight the type system.
         handleSet: makeLeadingDebounceHandleSet(GROUPING_WINDOW_MS),
       },
@@ -137,7 +137,7 @@ function createReportHistoryStore(): ReportHistoryStoreApi {
 }
 
 /** One store per (open) report. Reports stay cached across remounts so
- *  toggling edit mode or switching tabs preserves the undo stack — only an
+ *  toggling edit mode or switching tabs preserves the undo stack - only an
  *  explicit hydrate or external takeover clears it. */
 const storeCache = new Map<string, ReportHistoryStoreApi>();
 
@@ -153,7 +153,7 @@ export function getReportHistoryStore(artifactId: string): ReportHistoryStoreApi
 
 
 /** Replace state without recording history. Use for the initial layout load
- *  and for foreign overwrites (another tab/user changed the report — keeping
+ *  and for foreign overwrites (another tab/user changed the report - keeping
  *  the local undo stack would let the user "undo" past someone else's edit
  *  and silently clobber it on the next save). */
 export function hydrateReportHistory(

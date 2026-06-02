@@ -1,10 +1,10 @@
-"""Time-range gate — single source of truth for filtering posts by an agent's
+"""Time-range gate - single source of truth for filtering posts by an agent's
 configured date window.
 
 Read by the pipeline before posts enter the enrichment/embedding state machine.
 The matching SQL gate (`posted_at BETWEEN c.time_range_start AND c.time_range_end`)
 lives in `bigquery/export_queries/underlying_data.sql` and `dashboard_service.py`
-— both read from the same `collections.time_range_start/end` columns.
+- both read from the same `collections.time_range_start/end` columns.
 """
 
 from datetime import datetime, timezone
@@ -28,7 +28,7 @@ def parse_time_range(config: dict) -> tuple[datetime, datetime] | None:
 def is_in_range(post, time_range: tuple[datetime, datetime]) -> bool:
     """In-range iff posted_at is set AND start <= posted_at <= end.
 
-    Posts with no posted_at are out of range — we can't verify, we drop.
+    Posts with no posted_at are out of range - we can't verify, we drop.
     """
     posted_at = getattr(post, "posted_at", None)
     if posted_at is None:
@@ -46,7 +46,7 @@ def is_in_range(post, time_range: tuple[datetime, datetime]) -> bool:
 
 def partition_by_time_range(posts: list, config: dict) -> tuple[list, list]:
     """Returns (in_range, out_of_range). If no time_range in config, all posts
-    pass through as in-range — gate is opt-in via config."""
+    pass through as in-range - gate is opt-in via config."""
     time_range = parse_time_range(config)
     if time_range is None:
         return list(posts), []

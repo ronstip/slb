@@ -51,7 +51,7 @@ class XAPIAdapter(DataProviderAdapter):
 
     SUPPORTED = ["twitter"]
     # `note_tweet` carries the long-form (>280 char) body for Premium-authored
-    # posts — supersedes the truncated `text` field when present. Same field
+    # posts - supersedes the truncated `text` field when present. Same field
     # is honored on referenced tweets (quoted/replied) hydrated via includes.
     DEFAULT_TWEET_FIELDS = (
         "created_at,lang,public_metrics,entities,referenced_tweets,"
@@ -117,7 +117,7 @@ class XAPIAdapter(DataProviderAdapter):
 
         post_urls = config.get("post_urls") or []
         if post_urls:
-            # Direct-fetch mode — keyword/channel/time_range are ignored. User
+            # Direct-fetch mode - keyword/channel/time_range are ignored. User
             # asked for these specific posts; pipeline routes them through the
             # same enrich/embed/stats steps as keyword-collected ones.
             return self._collect_by_post_urls(post_urls)
@@ -428,10 +428,10 @@ class XAPIAdapter(DataProviderAdapter):
 
         Skipped:
         - retweeted refs (we exclude RTs at query level; if present, source
-          content == original — no extra context value)
+          content == original - no extra context value)
         - refs not hydrated in includes.tweets (deleted/protected/missing)
         - refs whose ID matches a primary post already in this page (dep was
-          itself directly collected — no need to duplicate)
+          itself directly collected - no need to duplicate)
         """
         primary_ids = {p.post_id for p in primary_posts}
         primary_post_by_index = {i: p for i, p in enumerate(primary_posts)}
@@ -452,13 +452,13 @@ class XAPIAdapter(DataProviderAdapter):
                 if not ref_id:
                     continue
                 if ref_id in primary_ids:
-                    # Source already in this page as a primary post — link only.
+                    # Source already in this page as a primary post - link only.
                     primary_post.enrichment_dependency_post_id = ref_id
                     primary_post.enrichment_dependency_type = ref_type
                     continue
                 ref_tweet = tweets_by_id.get(ref_id)
                 if not ref_tweet:
-                    continue  # not hydrated — fall back to defensive cache
+                    continue  # not hydrated - fall back to defensive cache
                 if ref_id not in unpacked:
                     unpacked[ref_id] = parse_x_post(ref_tweet, includes)
                 primary_post.enrichment_dependency_post_id = ref_id
@@ -473,7 +473,7 @@ class XAPIAdapter(DataProviderAdapter):
             post.search_keyword = keyword
 
     # ------------------------------------------------------------------
-    # Direct-fetch by post URL — /2/tweets?ids=
+    # Direct-fetch by post URL - /2/tweets?ids=
     # ------------------------------------------------------------------
 
     def _collect_by_post_urls(self, post_urls: list[str]) -> list[Batch]:
@@ -549,7 +549,7 @@ class XAPIAdapter(DataProviderAdapter):
         return batches
 
     # ------------------------------------------------------------------
-    # Engagement refresh — /2/tweets?ids=
+    # Engagement refresh - /2/tweets?ids=
     # ------------------------------------------------------------------
 
     def fetch_engagements(self, post_urls: list[str]) -> list[dict]:
@@ -596,10 +596,10 @@ class XAPIAdapter(DataProviderAdapter):
         return results
 
     # ------------------------------------------------------------------
-    # Comments fetch — /2/tweets/search/all conversation_id:<id>
+    # Comments fetch - /2/tweets/search/all conversation_id:<id>
     # ------------------------------------------------------------------
 
-    # Narrower field set than DEFAULT_TWEET_FIELDS — context_annotations would
+    # Narrower field set than DEFAULT_TWEET_FIELDS - context_annotations would
     # force max_results <= 100 (PAYG quirk); we already cap there, and the
     # `note_tweet` + `referenced_tweets` fields are what matters for replies.
     _COMMENT_TWEET_FIELDS = (
@@ -611,7 +611,7 @@ class XAPIAdapter(DataProviderAdapter):
     )
     _COMMENT_EXPANSIONS = "author_id,referenced_tweets.id,in_reply_to_user_id"
     _COMMENT_PAGE_SIZE = 100  # PAYG cap on /search/all when context_annotations isn't requested
-    # X /search/all defaults to "recency" — wrong choice when we sample a
+    # X /search/all defaults to "recency" - wrong choice when we sample a
     # subset of a large thread (would yield only the newest 500). "relevancy"
     # surfaces top/engaged replies first; full-tree fetches still come in
     # whatever order, just with the high-signal slice up front.
@@ -634,7 +634,7 @@ class XAPIAdapter(DataProviderAdapter):
             )
             conversation_id = (root_resp.get("data") or {}).get("conversation_id") or post_id
         except (XAPIError, requests.RequestException) as e:
-            logger.warning("X API: root tweet lookup failed for %s (%s) — using post_id as conversation_id", post_id, e)
+            logger.warning("X API: root tweet lookup failed for %s (%s) - using post_id as conversation_id", post_id, e)
             conversation_id = post_id
 
         # 2. Page /search/all conversation_id:<id>.

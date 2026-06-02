@@ -1,7 +1,7 @@
 """Deprecated: Use agent_constitution.py instead.
 
 AgentContext (4 flat fields) is replaced by Constitution (6 rigid sections).
-This module is kept for backward compatibility during migration — existing agents
+This module is kept for backward compatibility during migration - existing agents
 with a `context` field but no `constitution` field still use these functions.
 """
 
@@ -92,7 +92,7 @@ async def refresh_world_context(ctx: AgentContext) -> str:
         "relevant to this agent's mission and world context. Merge the new information "
         "with the existing context. Keep the existing knowledge that is still relevant, "
         "add new findings, and note dates for recent items.\n\n"
-        "Return ONLY the updated world context text — no preamble, no headers."
+        "Return ONLY the updated world context text - no preamble, no headers."
     )
 
     tools = []

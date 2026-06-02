@@ -34,7 +34,7 @@ interface PostActionsMenuProps {
 
 /** Small overflow menu for per-post manual corrections (Exclude / Edit details).
  *
- * Renders nothing when `agentId` is missing — overrides are scoped per
+ * Renders nothing when `agentId` is missing - overrides are scoped per
  * (post, agent) and we only show the affordance where that's defined.
  */
 export function PostActionsMenu({ post, agentId, collectionIdOverride, className }: PostActionsMenuProps) {

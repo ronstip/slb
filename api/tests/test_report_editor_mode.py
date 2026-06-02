@@ -1,7 +1,7 @@
 """Unit tests for the `report_editor` agent mode wiring.
 
-Covers the cheap pieces — the tool-profile composition, the widget census
-helper, and the chat-session dashboard-context loader — without spinning
+Covers the cheap pieces - the tool-profile composition, the widget census
+helper, and the chat-session dashboard-context loader - without spinning
 up an LlmAgent or talking to Firestore for real.
 
 The agent-creation path is exercised by tests/test_startup_gates.py-style
@@ -23,7 +23,7 @@ from api.services.chat_session import (
 
 
 def test_report_editor_profile_has_narrow_toolset():
-    """report_editor must NOT include create-from-template or publish — those
+    """report_editor must NOT include create-from-template or publish - those
     are exit tools for the autonomous skill and would let the user accidentally
     spawn new dashboards from the popover."""
     expected = {"read_dashboard", "update_dashboard", "list_topics", "ask_user", "update_todos"}
@@ -46,7 +46,7 @@ def test_report_editor_compose_tools_returns_callables():
 
 
 def test_summarize_empty_dashboard():
-    assert _summarize_widgets([]) == "Empty dashboard — no widgets yet."
+    assert _summarize_widgets([]) == "Empty dashboard - no widgets yet."
 
 
 def test_summarize_counts_aggregations():
@@ -74,7 +74,7 @@ def test_summarize_ignores_non_dict_entries():
     ]
     summary = _summarize_widgets(widgets)
     # Total is len(widgets)=4 (we don't filter total count, just skip non-dicts
-    # when counting aggregations) — confirms we don't crash on bad entries.
+    # when counting aggregations) - confirms we don't crash on bad entries.
     assert "widget" in summary
     assert "2 kpi" in summary
 
@@ -95,7 +95,7 @@ def _make_chat_request(mode: str, layout_id: str | None):
 
 
 def test_loader_noop_when_mode_is_chat():
-    """The broad chat agent should never see dashboard state injected — it's
+    """The broad chat agent should never see dashboard state injected - it's
     a different persona with different prompts."""
     session = _make_session({})
     user = _make_user("user-1")
@@ -143,7 +143,7 @@ def test_loader_writes_id_and_summary_for_owner():
 
 def test_loader_rejects_cross_user_dashboard():
     """If the dashboard belongs to a different user, neither the ID nor the
-    summary should be pinned — the agent then has no valid layout to target
+    summary should be pinned - the agent then has no valid layout to target
     and the user sees a clean error from the first read_dashboard call."""
     session = _make_session({"active_dashboard_id": "stale-id"})
     user = _make_user("user-1")
@@ -165,10 +165,10 @@ def test_loader_rejects_cross_user_dashboard():
 
 
 def test_loader_skips_refetch_when_same_dashboard_already_loaded():
-    """Same session, same dashboard, second turn — should not hit Firestore."""
+    """Same session, same dashboard, second turn - should not hit Firestore."""
     session = _make_session({
         "active_dashboard_id": "layout-abc",
-        "active_dashboard_summary": "3 widgets — 3 kpi",
+        "active_dashboard_summary": "3 widgets - 3 kpi",
     })
     user = _make_user("user-1")
     req = _make_chat_request("report_editor", "layout-abc")

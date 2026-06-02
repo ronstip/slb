@@ -9,7 +9,7 @@ After the one-click invite flow shipped, a non-registered user opening
 > You're signed in as `client@example.com`, but this invite is for
 > `client@example.com`.
 
-Both displayed emails identical — but the backend still 403'd the join.
+Both displayed emails identical - but the backend still 403'd the join.
 
 ## Repro
 
@@ -44,7 +44,7 @@ all see `email=""` indefinitely.
 Two layers in [api/auth/dependencies.py](../../api/auth/dependencies.py):
 
 1. `_resolve_real_user` now skips the cache when the cached entry's
-   `is_anonymous` or `email` doesn't match the decoded token — i.e.
+   `is_anonymous` or `email` doesn't match the decoded token - i.e.
    detects an anon→linked identity drift and re-provisions.
 2. `_get_or_create_user` detects anon→linked on existing-user reads and
    backfills `email`, `display_name`, `photo_url`, `is_anonymous=False` on

@@ -1,4 +1,4 @@
-"""Layout matching — resolve requested layout names to template layout indices."""
+"""Layout matching - resolve requested layout names to template layout indices."""
 
 import logging
 from typing import Any, Optional
@@ -110,7 +110,7 @@ def resolve_layout(
         if _normalize(layout["name"]) == req_norm:
             return layout["index"]
 
-    # 2. Alias match — find the alias group, then check if the canonical name
+    # 2. Alias match - find the alias group, then check if the canonical name
     # OR any alias in that group matches a template layout name.
     matched_group = None
     for canon, aliases in _LAYOUT_ALIASES.items():
@@ -196,7 +196,7 @@ def compute_free_area(
         width = title_ph["width"]
         height = slide_height - top - Inches(0.5)
     else:
-        # No title — use most of the slide
+        # No title - use most of the slide
         left = Inches(0.5)
         top = Inches(0.5)
         width = slide_width - Inches(1.0)

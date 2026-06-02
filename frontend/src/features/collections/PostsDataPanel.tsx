@@ -52,8 +52,8 @@ interface PostsDataPanelProps {
    *  bar wired to this callback (used when the host has no header search of its own). */
   onGlobalSearchChange?: (value: string) => void;
   /** When provided, the toolbar controls (search, columns, export, view toggle) are
-   *  portaled into this element (e.g. the page header) and the inline filter bar —
-   *  including the source/platform/date/sentiment/channel filters — is not rendered. */
+   *  portaled into this element (e.g. the page header) and the inline filter bar -
+   *  including the source/platform/date/sentiment/channel filters - is not rendered. */
   toolbarContainer?: HTMLElement | null;
   dedup?: boolean;
   /** Default lower bound on `posted_at` (the agent's search-window start). User-picked dateRange overrides it. */
@@ -62,10 +62,10 @@ interface PostsDataPanelProps {
   endDate?: string | null;
   /** Filename prefix for the CSV export (slugified before use). */
   exportFilenamePrefix?: string;
-  /** When provided, the feed scopes posts via the agent's scope_posts TVF — only enrichment
+  /** When provided, the feed scopes posts via the agent's scope_posts TVF - only enrichment
    *  rows belonging to this agent are considered (no cross-agent NULL rows). */
   agentId?: string;
-  /** Legacy callback props — still accepted but optional */
+  /** Legacy callback props - still accepted but optional */
   onActiveFiltersChange?: (active: boolean) => void;
   onClearFiltersCallbackChange?: (cb: (() => void) | null) => void;
 }
@@ -95,7 +95,7 @@ export function PostsDataPanel({
   const [dateRange, setDateRange] = useState<DateTimeRange>({ from: null, to: null });
 
   // Fetch agent doc to read custom_fields schema for the field registry.
-  // Only when `agentId` is set — collections viewed without an agent context
+  // Only when `agentId` is set - collections viewed without an agent context
   // just get built-in fields (the registry still works, custom fields are
   // simply absent).
   const { data: agentDoc } = useQuery({
@@ -108,7 +108,7 @@ export function PostsDataPanel({
   const customFields = agentDoc?.enrichment_config?.custom_fields ?? null;
   const registry = useMemo(() => buildFieldRegistry(customFields), [customFields]);
 
-  // Column visibility / order — persisted per-agent in localStorage. Use
+  // Column visibility / order - persisted per-agent in localStorage. Use
   // 'default' when no agent is in scope (e.g. ad-hoc collection viewing).
   const prefsScope = agentId ?? 'default';
   const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(
@@ -150,7 +150,7 @@ export function PostsDataPanel({
   const effectiveStartDate = dateRange.from ?? startDate;
   const effectiveEndDate = dateRange.to ?? endDate ?? undefined;
 
-  // Initial page size. Earlier this was 5_000 — that forced every visit to
+  // Initial page size. Earlier this was 5_000 - that forced every visit to
   // download 1–10 MB of post JSON before the table could render, even though
   // the table only ever shows 50 rows at a time. Most agents have <500 posts
   // total, so 500 covers them in full; busy agents get a truncation banner +
@@ -175,7 +175,7 @@ export function PostsDataPanel({
         agent_id: agentId,
       }),
     enabled: hasSelection,
-    // Bumped from 30 s — posts data rarely changes mid-session; the 30 s window
+    // Bumped from 30 s - posts data rarely changes mid-session; the 30 s window
     // forced a fresh /feed (multi-second BQ query) every tab-switch.
     staleTime: 5 * 60_000,
   });
@@ -241,7 +241,7 @@ export function PostsDataPanel({
     staleTime: 5 * 60_000,
   });
 
-  // Analytics stats — computed from posts, then enriched with collection stats for status fields
+  // Analytics stats - computed from posts, then enriched with collection stats for status fields
   const analyticsStats = useMemo(() => {
     const base = computeAnalyticsStats(filteredPosts);
     if (!base) return base;
@@ -342,7 +342,7 @@ export function PostsDataPanel({
         disabled={filteredPosts.length === 0}
         onClick={() => {
           // Unnest custom_fields one level: each top-level key becomes its own column.
-          // Keys are agent-defined and dynamic — discover them from the rows being exported.
+          // Keys are agent-defined and dynamic - discover them from the rows being exported.
           // Skip keys that would collide with built-in columns (the built-in wins; the
           // collision is silent because exposing a custom_fields value under a built-in
           // header would be misleading).
@@ -415,7 +415,7 @@ export function PostsDataPanel({
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-white dark:bg-background">
-      {/* Toolbar — portaled into the page header when a container is provided
+      {/* Toolbar - portaled into the page header when a container is provided
           (data page); otherwise rendered inline alongside the filters. */}
       {toolbarContainer ? (
         createPortal(

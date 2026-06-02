@@ -26,7 +26,7 @@ interface MobileTabBarProps {
  * Mobile-only bottom navigation for the agent detail page. Docks the agent
  * tabs (Overview, Chat, Explorer, Deliverables, Data) to the bottom of the
  * screen. Tapping Chat or Explorer opens a bottom sheet of sub-options
- * (pick an existing chat/layout or create a new one) — mirroring the
+ * (pick an existing chat/layout or create a new one) - mirroring the
  * expandable sub-lists in the desktop sidebar. Hidden on `md` and up.
  */
 export function MobileTabBar({

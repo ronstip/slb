@@ -147,7 +147,7 @@ export function ContentPreview({ text }: { text: string | null | undefined; maxL
       className="line-clamp-2 break-words text-xs text-foreground/90"
       title={text || undefined}
     >
-      {text || '—'}
+      {text || '-'}
     </span>
   );
 }

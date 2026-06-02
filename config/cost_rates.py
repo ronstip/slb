@@ -33,18 +33,18 @@ DEFAULT_APIFY_ASSUMED_PER_POST_USD = 0.004  # apify is PROVIDER_REPORTED; assume
 #
 # Shape:
 #   gemini:       per-model {input_per_mtok, output_per_mtok, cached_per_mtok}
-#   apify:        PROVIDER_REPORTED sentinel — capture run.usage.cost directly
+#   apify:        PROVIDER_REPORTED sentinel - capture run.usage.cost directly
 #   brightdata:   per-dataset {per_record_usd}
 #   x_api:        per-endpoint {per_unit_usd}
 #   vetric:       {per_call_usd}
 #   bq:           {per_tb_processed_usd}
 #   gcs:          {per_gb_stored_usd, per_gb_egress_usd}
 #
-# Use "*" as a fallback key when an unrecognised model/dataset id is seen —
+# Use "*" as a fallback key when an unrecognised model/dataset id is seen -
 # avoids dropping cost on the floor while still flagging drift in logs.
 
 COST_RATES: dict[str, Any] = {
-    # ── Gemini API — token-priced models ──────────────────────────────
+    # ── Gemini API - token-priced models ──────────────────────────────
     # Source: https://ai.google.dev/gemini-api/docs/pricing
     # Rates are USD per 1M tokens. Pro models have tiered pricing by
     # prompt length (≤200K vs >200K); we apply the ≤200K tier here as a
@@ -71,9 +71,9 @@ COST_RATES: dict[str, Any] = {
             "output_per_mtok": 10.00,
             "cached_per_mtok": 0.125,
         },
-        # Fallback — bills like 3-flash (the codebase default). If we
+        # Fallback - bills like 3-flash (the codebase default). If we
         # see logs at this rate that means we routed a new/unknown model
-        # name and the rate is approximate — update this table.
+        # name and the rate is approximate - update this table.
         "*": {
             "input_per_mtok": 0.50,
             "output_per_mtok": 3.00,
@@ -95,11 +95,11 @@ COST_RATES: dict[str, Any] = {
         "*": {"per_prompt_usd": 0.035},
     },
 
-    # ── Apify — provider-reported exact cost on the run object ────────
+    # ── Apify - provider-reported exact cost on the run object ────────
     "apify": PROVIDER_REPORTED,
 
-    # ── BrightData — Web Scraper API + Datasets ───────────────────────
-    # Source: https://brightdata.com/pricing/datasets — IG & TikTok
+    # ── BrightData - Web Scraper API + Datasets ───────────────────────
+    # Source: https://brightdata.com/pricing/datasets - IG & TikTok
     # datasets at $250 / 100K records = $0.0025/record. The Web Scraper
     # API's pay-per-success price varies by scraper; the dataset
     # marketplace baseline is the closest public anchor we have.
@@ -107,7 +107,7 @@ COST_RATES: dict[str, Any] = {
         "*": {"per_record_usd": 0.0025},
     },
 
-    # ── X (Twitter) API — pay-per-use default tier ────────────────────
+    # ── X (Twitter) API - pay-per-use default tier ────────────────────
     # Source: X API pay-per-use pricing (Feb 2026, Apr 2026 update).
     # New developers default to pay-per-use: $0.005/post read,
     # $0.001/owned-resource read, $0.015/standard write, $0.20/write
@@ -120,9 +120,9 @@ COST_RATES: dict[str, Any] = {
         "*": {"per_unit_usd": 0.005},
     },
 
-    # ── Vetric — contracted private rate ──────────────────────────────
+    # ── Vetric - contracted private rate ──────────────────────────────
     # TODO: confirm from Vetric contract. Public pricing not available
-    # — placeholder until we get a copy of the invoice.
+    # - placeholder until we get a copy of the invoice.
     "vetric": {
         "*": {"per_call_usd": 0.0005},
     },
@@ -141,7 +141,7 @@ COST_RATES: dict[str, Any] = {
 # fields and the global profit margin from the Finance admin page; those
 # overrides live in Firestore (`app_config/pricing`) and are deep-merged over
 # the seed here. `compute_cost_micros` / `compute_grounding_cost_micros` read
-# the merged ("effective") table, so every existing caller — api AND workers —
+# the merged ("effective") table, so every existing caller - api AND workers -
 # automatically respects admin edits with no call-site change.
 #
 # Read is cached per-process for a short TTL so hot paths don't hit Firestore
@@ -174,7 +174,7 @@ def _load_pricing_doc() -> dict:
 
         return get_fs().get_pricing_config() or {}
     except Exception:
-        logger.debug("cost_rates: pricing doc read failed — using seed defaults", exc_info=True)
+        logger.debug("cost_rates: pricing doc read failed - using seed defaults", exc_info=True)
         return {}
 
 
@@ -253,7 +253,7 @@ def _refresh_pricing() -> dict[str, Any]:
             scraper_matrix["apify"] = merged_apify
 
     # Fold the scalar Apify wildcard into the matrix as `apify["*"]` if
-    # the matrix doesn't already pin one — keeps the historical behaviour
+    # the matrix doesn't already pin one - keeps the historical behaviour
     # of `get_apify_assumed_per_post_usd()` intact.
     apify_cells = scraper_matrix.setdefault("apify", {})
     apify_cells.setdefault("*", apify_pp)
@@ -376,7 +376,7 @@ def compute_grounding_cost_micros(
         the family is unknown without a fallback rate.
 
     Note: free-tier allowances (5K/month for Gemini 3, 1.5K/day for 2.5)
-    are NOT subtracted here — the rate table represents the marginal
+    are NOT subtracted here - the rate table represents the marginal
     price per unit so per-row attribution stays clean. Aggregate the
     monthly free tier off the totals in BQ if you want a "net of free"
     view.
@@ -489,7 +489,7 @@ def compute_cost_micros(
         return _usd_to_micros(max(cost_usd, 0.0))
 
     if provider == "brightdata":
-        # Per-(platform) matrix wins over the legacy "*" entry when set —
+        # Per-(platform) matrix wins over the legacy "*" entry when set -
         # lets the admin price IG vs TikTok vs FB records differently.
         matrix_rate = get_scraper_rate("brightdata", platform)
         if matrix_rate is not None:

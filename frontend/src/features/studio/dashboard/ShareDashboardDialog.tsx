@@ -63,7 +63,7 @@ export function ShareDashboardDialog({
     staleTime: 0,
   });
 
-  // Admin status from the cached user profile — avoids calling `/admin/check`,
+  // Admin status from the cached user profile - avoids calling `/admin/check`,
   // which 403s during impersonation and would bounce the user to /access-denied
   // via the global API error handler. Also matches AppSidebar's gating: the
   // section hides itself when an admin is viewing the app as another user.

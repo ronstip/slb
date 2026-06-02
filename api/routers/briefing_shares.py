@@ -1,4 +1,4 @@
-"""Briefing sharing router — CRUD for share tokens + public briefing endpoint."""
+"""Briefing sharing router - CRUD for share tokens + public briefing endpoint."""
 
 import asyncio
 import logging
@@ -46,7 +46,7 @@ async def create_share(
     request: CreateBriefingShareRequest,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Create a shareable link for an agent's briefing. Idempotent — returns existing if active."""
+    """Create a shareable link for an agent's briefing. Idempotent - returns existing if active."""
     fs = get_fs()
     await asyncio.to_thread(check_agent_access, fs, user, request.agent_id)
 
@@ -112,7 +112,7 @@ async def get_shared_briefing(
     request: Request,  # required by slowapi
     token: str,
 ):
-    """Public endpoint — serves shared briefing without authentication."""
+    """Public endpoint - serves shared briefing without authentication."""
     fs = get_fs()
     share = fs.get_briefing_share(token)
 

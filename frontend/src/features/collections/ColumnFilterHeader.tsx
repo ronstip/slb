@@ -23,14 +23,14 @@ import {
 } from './dateRange.ts';
 
 /* ------------------------------------------------------------------ */
-/* Shared trigger styling — keeps the "this column is filterable"      */
+/* Shared trigger styling - keeps the "this column is filterable"      */
 /* affordance consistent across every header kind.                     */
 /* ------------------------------------------------------------------ */
 
 const TRIGGER_BASE =
   'inline-flex items-center gap-1 rounded px-1 -mx-1 text-[11px] font-semibold uppercase tracking-wider transition-colors hover:bg-accent/60';
 
-/** Faint funnel shown when a column has no active filter — signals filterability. */
+/** Faint funnel shown when a column has no active filter - signals filterability. */
 function FilterAffordance({ active }: { active: boolean }) {
   return (
     <Filter className={cn('h-3 w-3', active ? '' : 'opacity-40')} />
@@ -154,7 +154,7 @@ export function MultiSelectFilterHeader({
                         ? renderOption(opt.value, opt.count)
                         : <span className="capitalize">{opt.value}</span>}
                     </span>
-                    {/* "Only" — clears every other value, keeps just this one. */}
+                    {/* "Only" - clears every other value, keeps just this one. */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -176,7 +176,7 @@ export function MultiSelectFilterHeader({
           </div>
         </div>
 
-        {/* Action buttons — pinned at bottom */}
+        {/* Action buttons - pinned at bottom */}
         <div className="shrink-0 flex items-center gap-1.5 border-t border-border/40 px-2 py-1.5 bg-muted/20">
           <Button
             variant="outline"

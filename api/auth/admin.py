@@ -1,4 +1,4 @@
-"""Super admin authentication — hardcoded email list from env vars."""
+"""Super admin authentication - hardcoded email list from env vars."""
 
 from fastapi import HTTPException
 

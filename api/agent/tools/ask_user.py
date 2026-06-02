@@ -1,4 +1,4 @@
-"""Structured prompt tool — ask the user interactive questions.
+"""Structured prompt tool - ask the user interactive questions.
 
 Provides predefined prompt templates for common collection-setup inputs
 (platforms, time range, keywords, etc.) and supports custom prompts for
@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ─── Predefined prompt templates ──────────────────────────────────────
-# The LLM never generates these — it just references them by ID.
+# The LLM never generates these - it just references them by ID.
 # Icons, labels, option lists live here as the single source of truth.
 
 PROMPT_TEMPLATES: dict[str, dict] = {
@@ -107,18 +107,18 @@ def ask_user(
     "approve this collection plan?", "which of these two brands?".
 
     WHEN NOT TO USE:
-      - You can pick a sensible default and STATE the assumption in one line —
+      - You can pick a sensible default and STATE the assumption in one line -
         prefer this over interrupting the user.
       - The user already answered or implied the answer earlier in the session.
       - The question is open-ended ("what do you want to know?"); make a call
         and proceed. Asking the user to design their own analysis is a tell.
-      - You're stuck on friction (a tool failed, a query returned 0 rows) —
+      - You're stuck on friction (a tool failed, a query returned 0 rows) -
         diagnose and try a fix first; only escalate to the user if you
         genuinely can't proceed without a decision they have to make.
 
     DISCIPLINE:
       - Max 4 prompts per call. If you have more than 4 things to ask, you're
-        not asking — you're outsourcing the work.
+        not asking - you're outsourcing the work.
       - Each select/pill prompt: max 4 options. Pre-select the recommended
         choice via ``preselected`` so the user can one-click approve.
       - Plan approval goes via ``prompt_ids="approve_plan"`` as a SEPARATE call
@@ -136,7 +136,7 @@ def ask_user(
         preselected: JSON object mapping prompt ID to preselected values.
             For multi-select (icon_grid, tag_input): list of values.
             For single-select (pill_row, card_select): list with one value.
-            For toggle_row: not needed — use the template default.
+            For toggle_row: not needed - use the template default.
             Example: '{"platforms": ["instagram", "tiktok"], "time_range": ["30"]}'
 
         custom_questions: JSON object mapping prompt ID to custom question text.
@@ -147,7 +147,7 @@ def ask_user(
             templates. Each object needs: id, type, question, and options
             (for select types). Optional: multi_select, preselected,
             description (per option).
-            Use sparingly — prefer templates when possible.
+            Use sparingly - prefer templates when possible.
             Example: '[{"id":"angle","type":"card_select","question":"Research angle?","options":[{"value":"sentiment","label":"Sentiment Deep Dive","description":"How people feel about the brand"},{"value":"themes","label":"Theme Analysis","description":"What topics come up most"}]}]'
 
         title: Optional card header text displayed above the prompts.

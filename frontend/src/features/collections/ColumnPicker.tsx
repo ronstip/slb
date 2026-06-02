@@ -140,7 +140,7 @@ export const DEFAULT_VISIBLE_KEYS = [
 ] as const;
 
 /** Order fields with agent custom fields first (so they're prominent in the
- *  picker and lead the table), built-ins after — each group in registry order. */
+ *  picker and lead the table), built-ins after - each group in registry order. */
 function customFirst(registry: FieldDef[]): FieldDef[] {
   return [
     ...registry.filter((f) => f.source === 'custom'),
@@ -177,7 +177,7 @@ export function mergeColumnPrefs(
       result.push({ key: f.key, visible: defaults.has(f.key) });
     }
   }
-  // Float custom fields to the top (stable — relative order within each group is
+  // Float custom fields to the top (stable - relative order within each group is
   // preserved), so they lead the picker even for users with older saved prefs.
   const sourceByKey = new Map(registry.map((f) => [f.key, f.source]));
   return [
@@ -209,7 +209,7 @@ export function saveColumnPrefs(scopeId: string, prefs: ColumnPref[]): void {
   try {
     window.localStorage.setItem(STORAGE_PREFIX + scopeId, JSON.stringify(prefs));
   } catch {
-    // localStorage may be unavailable (private mode, quota) — silently skip;
+    // localStorage may be unavailable (private mode, quota) - silently skip;
     // prefs revert to defaults on next load. Not worth surfacing.
   }
 }

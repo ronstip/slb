@@ -302,7 +302,7 @@ export function StatsModal({ source, open, onClose }: StatsModalProps) {
                   >
                     {stats.collection_status_at_compute === 'success'
                       ? 'complete snapshot'
-                      : 'partial — still running'}
+                      : 'partial - still running'}
                   </Badge>
                 )}
               </div>

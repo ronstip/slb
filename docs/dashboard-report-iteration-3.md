@@ -1,4 +1,4 @@
-# Dashboard Report — Iteration 3 (post-v6 production audit)
+# Dashboard Report - Iteration 3 (post-v6 production audit)
 
 **Date:** 2026-05-13
 **Trigger:** First end-to-end production run after v6 ship.
@@ -13,9 +13,9 @@ The v6 work in [iteration-2-final.md](./dashboard-report-iteration-2-final.md) w
 
 - The agent **published a dashboard that contains its own internal instructions** in 8 of ~22 text widgets. The customer is reading "Agent instructions. Build one row per material actor..." as if it were the report.
 - The prompt is **still pointing at the v2 template**. Every v3 improvement is dormant.
-- §12/§13/§14 have an **off-by-one widget mismatch** — content is filed against the wrong widget IDs.
+- §12/§13/§14 have an **off-by-one widget mismatch** - content is filed against the wrong widget IDs.
 - `update_dashboard(removals=...)` **leaves visual gaps** (28 grid rows here).
-- §App-A "external sources" are **all google.com/search SERP URLs** — the v2 fabrication defect we never blocked.
+- §App-A "external sources" are **all google.com/search SERP URLs** - the v2 fabrication defect we never blocked.
 
 The architectural fix in this iteration: replace the prose-only "validate before publish" with a real `verify_dashboard` tool that `publish_dashboard` cannot bypass. Plus the long-deferred template-id cutover and a small auto-repack on removal.
 
@@ -23,7 +23,7 @@ The architectural fix in this iteration: replace the prose-only "validate before
 
 ## 1. Audit findings (full)
 
-### 1.1 Template leakage — **8 widgets** still contain raw briefs
+### 1.1 Template leakage - **8 widgets** still contain raw briefs
 
 Each of these sections in the published dashboard begins with the literal string `**Agent instructions.**` followed by a `**Reference example (shape only).**` block carrying placeholders like `<Subject>`, `<Rival1>`, `<TopicA>`:
 
@@ -38,7 +38,7 @@ Each of these sections in the published dashboard begins with the literal string
 | `v2sec08d00`       | §8d What was missed                    | "A candid list of opportunities the subject did **not** capitalize on…" |
 | `ed747f8a17`       | §12 Audience insights                  | "Who is actually doing the talking. Three to four short paragraphs…" |
 
-This is the worst class of defect — the customer sees the agent's marching orders printed verbatim as the report.
+This is the worst class of defect - the customer sees the agent's marching orders printed verbatim as the report.
 
 ### 1.2 Off-by-one widget shift around §12 → §14
 
@@ -46,14 +46,14 @@ The agent wrote correctly-formed Hebrew §12, §13, §14.1–3 content, but **pa
 
 | Template widget    | Template anchor | What the agent wrote here |
 |--------------------|-----------------|----------------------------|
-| `ed747f8a17`       | `sec-12` (Audience) | (untouched — unfilled brief) |
+| `ed747f8a17`       | `sec-12` (Audience) | (untouched - unfilled brief) |
 | `80793eb294`       | `sec-13` (Risks)    | §12 Audience content + agent rewrote anchor to `sec-12` |
 | `v2sec14int`       | `sec-14` (Recs intro)| §13 Risks content + agent rewrote anchor to `sec-13` |
-| `v2sec14r01..r03`  | `sec-14-1..3`        | §14.1–3 (correctly aligned by chance — the drift stopped here) |
+| `v2sec14r01..r03`  | `sec-14-1..3`        | §14.1–3 (correctly aligned by chance - the drift stopped here) |
 
 User-visible consequences:
 - Two `<a id="sec-12">` anchors in the page (unfilled brief + filled content). Internal links that point to `#sec-12` jump to the brief.
-- No `<a id="sec-14">` anchor — the §14 intro section is not addressable.
+- No `<a id="sec-14">` anchor - the §14 intro section is not addressable.
 - The customer reads "§12 Audience insights" twice in a row (once as agent-instructions, once as actual content).
 
 ### 1.3 §14.4 + §14.5 removed but visual gap remained
@@ -62,7 +62,7 @@ The agent removed `v2sec14r04` and `v2sec14r05` via `update_dashboard(removals=.
 
 ### 1.4 §App-A external sources are all SERP placeholders
 
-Every `[label](url)` in §App-A is a `https://www.google.com/search?q=…` URL — the agent fabricated "verified external sources" by linking each claim to a search query for the topic, not to an article. This is the exact defect [iteration-1.md](./dashboard-report-iteration-1.md) caught in v2 and that v6 deferred to a v7 `verify_dashboard` tool that was never built.
+Every `[label](url)` in §App-A is a `https://www.google.com/search?q=…` URL - the agent fabricated "verified external sources" by linking each claim to a search query for the topic, not to an article. This is the exact defect [iteration-1.md](./dashboard-report-iteration-1.md) caught in v2 and that v6 deferred to a v7 `verify_dashboard` tool that was never built.
 
 ### 1.5 Wrong template version active
 
@@ -74,7 +74,7 @@ Every `[label](url)` in §App-A is a `https://www.google.com/search?q=…` URL �
 - Single appendix widget (Part A + Part B as H3 sub-headers) instead of two top-level appendices.
 - Heights pre-tuned for v1-depth content.
 
-None of these are active in the live agent because `TEMPLATE_ID` was never flipped. This is iteration-2-final.md §5 item 3 ("Update the agent prompt's `TEMPLATE_ID` to v3 — not done yet").
+None of these are active in the live agent because `TEMPLATE_ID` was never flipped. This is iteration-2-final.md §5 item 3 ("Update the agent prompt's `TEMPLATE_ID` to v3 - not done yet").
 
 ---
 
@@ -82,7 +82,7 @@ None of these are active in the live agent because `TEMPLATE_ID` was never flipp
 
 | # | Defect | Root cause |
 |---|--------|-----------|
-| 1.1 | 8 unfilled briefs | No hard guard against template leakage in publish. Prompt says "replace the entire markdownContent" — agent skipped 8 of them silently under tool-call budget pressure. |
+| 1.1 | 8 unfilled briefs | No hard guard against template leakage in publish. Prompt says "replace the entire markdownContent" - agent skipped 8 of them silently under tool-call budget pressure. |
 | 1.2 | Off-by-one anchors | Prompt does not name widget→section mapping explicitly per widget; agent walked the widget list and started shifting after a skipped widget. |
 | 1.3 | Visual gap on removal | `update_dashboard` `removals` is "drop without repack" by design (matched the array-only model). Renderer's auto-grow handles too-tall widgets, not missing positions. |
 | 1.4 | SERP-host citations | Web grounding tool returns search-API responses; agent serialized the *query URL* as the citation instead of the article URL. Prompt does not blacklist SERP hosts. |
@@ -125,7 +125,7 @@ When widgets are removed, the tool computes the cumulative `y`-shift and applies
 ### 3.5 Prompt strengthening
 
 Additions to `dashboard-report-prompt.ts`:
-- Explicit forbidden-output strings: if your widget content contains `Agent instructions.` or `Reference example`, you have left the brief in place — replace it.
+- Explicit forbidden-output strings: if your widget content contains `Agent instructions.` or `Reference example`, you have left the brief in place - replace it.
 - Mandatory: call `verify_dashboard(layout_id)` before `publish_dashboard`. Iterate update → verify until clean.
 - §App-A: links must be **direct article URLs**, not search queries; SERP hosts are explicitly listed as forbidden.
 
@@ -145,10 +145,10 @@ Demo / CSS / renderer files from iteration-2 are unchanged in this iteration.
 
 ## 5. What's NOT in this iteration
 
-- **Auto-persist auto-grown heights** (iteration-2-final §5 item 2) — still in view-mode only.
+- **Auto-persist auto-grown heights** (iteration-2-final §5 item 2) - still in view-mode only.
 - **PDF / shared-view auto-grow parity** (iteration-2-final §5 items 4, 5).
-- A real solver for the off-by-one drift root cause (1.2) beyond the duplicate-anchor / missing-anchor verifier — agent's widget-walking discipline can still fail; we now just refuse to publish when the symptom shows up.
-- Tone / depth defects from this run — the agent's English narrative voice is still operational where it filled in (the eight unfilled widgets dominated the visible failure, so we couldn't audit voice cleanly).
+- A real solver for the off-by-one drift root cause (1.2) beyond the duplicate-anchor / missing-anchor verifier - agent's widget-walking discipline can still fail; we now just refuse to publish when the symptom shows up.
+- Tone / depth defects from this run - the agent's English narrative voice is still operational where it filled in (the eight unfilled widgets dominated the visible failure, so we couldn't audit voice cleanly).
 
 After this iteration ships and the next live run lands, re-audit for content-depth defects.
 
@@ -159,5 +159,5 @@ After this iteration ships and the next live run lands, re-audit for content-dep
 1. Trigger a new dashboard report run on the same agent.
 2. Confirm `source_template_id` on the new layout doc is `c0a8d9e1f203450aa15b3c2d4e5f6a7b`.
 3. Confirm `verify_dashboard` was called at least once in the trace.
-4. Read the layout — every text widget should be in Hebrew, no `Agent instructions.`, no SERP URLs, no `§` symbols.
-5. Open the explorer URL — no visual gaps.
+4. Read the layout - every text widget should be in Hebrew, no `Agent instructions.`, no SERP URLs, no `§` symbols.
+5. Open the explorer URL - no visual gaps.

@@ -8,7 +8,7 @@ import { getUsage } from '../../../api/endpoints/settings.ts';
 import { formatUsdMicros } from '../../../lib/money.ts';
 import { TopUpDialog } from './TopUpDialog.tsx';
 
-/** "Credits & Usage" panel — just the $ wallet. No provider names, no cost
+/** "Credits & Usage" panel - just the $ wallet. No provider names, no cost
  *  breakdown (that lives in the admin Finance panel). `free` users see
  *  "Unlimited"; trial/paid see a balance + progress bar. */
 export function UsageSection() {
@@ -90,7 +90,7 @@ export function UsageSection() {
             </>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Unlimited usage — no balance to track.
+              Unlimited usage - no balance to track.
             </p>
           )}
         </CardContent>

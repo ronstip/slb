@@ -1,6 +1,6 @@
 """One-off pilot: trigger apify/instagram-hashtag-scraper, dump raw dataset, summarize.
 
-Phase 1 gating step for the IG redesign — confirms the new actor's per-hashtag
+Phase 1 gating step for the IG redesign - confirms the new actor's per-hashtag
 yield, video-views population, and result ordering before any code in the main
 adapter changes.
 

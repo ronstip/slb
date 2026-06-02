@@ -13,9 +13,9 @@
 -- against the `entities` array on `enriched_posts`.
 --
 -- Filters (NULL = no filter / "all"):
---   p_start     — inclusive lower bound on posted_at
---   p_end       — inclusive upper bound on posted_at
---   p_platforms — list of platforms to include; NULL or [] means all
+--   p_start     - inclusive lower bound on posted_at
+--   p_end       - inclusive upper bound on posted_at
+--   p_platforms - list of platforms to include; NULL or [] means all
 --
 -- Channel uniqueness keys on (platform, channel_handle) so the same handle
 -- on different platforms is counted as two distinct channels.

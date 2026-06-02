@@ -1,8 +1,8 @@
-"""Presentation generation package — template-native PowerPoint rendering.
+"""Presentation generation package - template-native PowerPoint rendering.
 
 Exports:
-    generate_presentation — render a deck from a validated plan
-    validate_deck_plan — check a plan against template capabilities
+    generate_presentation - render a deck from a validated plan
+    validate_deck_plan - check a plan against template capabilities
 """
 
 from api.agent.tools.presentation.renderer import generate_presentation

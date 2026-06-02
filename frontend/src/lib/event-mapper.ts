@@ -120,7 +120,7 @@ export function diffTodos(
  *
  * @param prevDescription  Carried from the matching tool_start entry so the
  *   completion carries it forward. Caller looks this up in the activity log.
- * @param prevTodos        Existing todos on the message — required for the
+ * @param prevTodos        Existing todos on the message - required for the
  *   update_todos diff.
  * @param durationMs       Wall-clock (live) or event-timestamp (replay) delta
  *   between tool_start and tool_result. Caller computes.
@@ -137,7 +137,7 @@ export function mapToolResult(
   const text = getToolDisplayText(toolName);
   const ts = ctx.now;
 
-  // Activity entry — skip for internal tools (their result still produces updates).
+  // Activity entry - skip for internal tools (their result still produces updates).
   if (!INTERNAL_TOOLS.has(toolName)) {
     if (result?.status === 'blocked' || result?.status === 'auth_required') {
       patch.activityEntry = { kind: 'tool_blocked', toolName, text, ts };
@@ -185,7 +185,7 @@ export function mapToolResult(
       createdAt: new Date(ts),
     });
   } else if (isStartAgentResult(toolName, result)) {
-    // No card or artifact — start_agent is an action. Sources/navigation are
+    // No card or artifact - start_agent is an action. Sources/navigation are
     // live-only side effects handled by useSSEChat; on replay they're already
     // baked into the fetched session state.
   } else if (isStructuredPromptResult(toolName, result)) {

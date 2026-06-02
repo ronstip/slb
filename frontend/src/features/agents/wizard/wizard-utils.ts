@@ -66,7 +66,7 @@ export function formatWizardAsPrompt(
     }
   } else {
     lines.push(
-      `No new collection to create — use only the existing collections listed above. Pass searches=[] to start_agent.`,
+      `No new collection to create - use only the existing collections listed above. Pass searches=[] to start_agent.`,
     );
   }
 
@@ -75,7 +75,7 @@ export function formatWizardAsPrompt(
     const firstTime = task.scheduleTimes[0] ?? '09:00';
     const schedule = intervalHoursToSchedule(task.scheduleIntervalHours, firstTime);
     lines.push(`Schedule: ${formatSchedule(schedule)}`);
-    // Surface richer scheduling intent to the planner — the cadence-only
+    // Surface richer scheduling intent to the planner - the cadence-only
     // schedule string can't carry day-of-week or multiple times yet.
     if (task.scheduleIntervalHours >= 168) {
       const dayLabel = WEEKDAY_LABELS[task.scheduleDay] ?? 'Monday';
@@ -100,7 +100,7 @@ export function formatWizardAsPrompt(
     lines.push(`Enrichment context: ${collection.enrichmentContext.trim()}`);
   }
 
-  // Custom enrichment fields — pass as JSON so the agent can forward to start_agent
+  // Custom enrichment fields - pass as JSON so the agent can forward to start_agent
   if (collection.customFields.length > 0) {
     const compact = collection.customFields.map((f) => ({
       name: f.name,
@@ -126,7 +126,7 @@ export function buildWizardRequestBody(
   constitution?: Constitution,
   startRun: boolean = true,
 ): CreateFromWizardPayload {
-  // Wizard creates one Source per selected platform — same shared defaults
+  // Wizard creates one Source per selected platform - same shared defaults
   // baked into each. Users can later edit each source independently in
   // Settings → Data Sources, or add additional sources for the same platform
   // (e.g. two Twitter sources with different keywords / quotas).

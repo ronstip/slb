@@ -1,4 +1,4 @@
-# Agent Constitution & Briefing System — Architecture Plan
+# Agent Constitution & Briefing System - Architecture Plan
 
 ## Overview
 
@@ -7,27 +7,27 @@ a **Constitution** (static identity document), a **Briefing** (evolving run-to-r
 and an **Operational Context** (dynamic runtime parameters injected by the orchestrator).
 
 The goal: give the agent a stable sense of identity and purpose, continuous awareness across runs,
-and grounded access to the information it needs — while minimizing bias and anchoring effects.
+and grounded access to the information it needs - while minimizing bias and anchoring effects.
 
 ---
 
 ## 1. The Constitution
 
 **What:** The agent's DNA. Defines who it is, what it's trying to achieve, and how it thinks.
-Pure static — no dates, no parameters, no runtime data. AI-generated at agent creation, human-editable after. Any edit creates a new agent version.
+Pure static - no dates, no parameters, no runtime data. AI-generated at agent creation, human-editable after. Any edit creates a new agent version.
 
 **Sections (rigid, ordered):**
 
 | # | Section | Purpose |
 |---|---------|---------|
 | 1 | **Identity** | Who this agent is. Its role, analytical character, voice. The persona it embodies when communicating and reasoning. |
-| 2 | **Mission** | What it's trying to achieve. Two dimensions: **Operational** (what to monitor, track, deliver — the recurring output) and **Theoretical** (what understanding to build over time — the deeper question). This is the north star. |
-| 3 | **Methodology** | How it thinks. What constitutes evidence. How to weigh conflicting signals. When to be conservative vs. exploratory. How to handle uncertainty. Includes the **verify-before-trust principle**: treat previous briefing claims as hypotheses, not facts — re-verify quantitative claims against fresh data before carrying forward or citing. |
+| 2 | **Mission** | What it's trying to achieve. Two dimensions: **Operational** (what to monitor, track, deliver - the recurring output) and **Theoretical** (what understanding to build over time - the deeper question). This is the north star. |
+| 3 | **Methodology** | How it thinks. What constitutes evidence. How to weigh conflicting signals. When to be conservative vs. exploratory. How to handle uncertainty. Includes the **verify-before-trust principle**: treat previous briefing claims as hypotheses, not facts - re-verify quantitative claims against fresh data before carrying forward or citing. |
 | 4 | **Scope & Relevance** | What's signal, what's noise. Entities, themes, domains to focus on. What to always watch for. What to ignore. |
 | 5 | **Standards** | Quality bar. Confidence thresholds. What to never claim without evidence. What good output looks like. |
 | 6 | **Perspective** | Whose lens to use. What decisions this analysis serves. What the audience cares about. |
 
-**Storage:** Firestore `agents/{id}` — replaces current `context` field with `constitution` field.
+**Storage:** Firestore `agents/{id}` - replaces current `context` field with `constitution` field.
 **Versioning:** Edit = new agent version (existing `agent_versions` subcollection behavior).
 **Generation:** AI generates full constitution from wizard inputs (title, searches, context fields). No new intake UX needed for v1.
 
@@ -41,32 +41,32 @@ Each run reads only the latest briefing. All briefings preserved in runs subcoll
 **Sections (loosely structured, prose content within each):**
 
 ### 2.1 State of the World
-The agent's cumulative understanding. Key findings, trends, patterns — **backed by numbers and specific examples**.
+The agent's cumulative understanding. Key findings, trends, patterns - **backed by numbers and specific examples**.
 Not "sentiment is trending negative" but "sentiment dropped from 72% to 58% positive over the last two runs,
 driven by 340 posts about X." Carries forward what's still valid from the previous briefing, drops what's stale,
 integrates new findings. This is both analytical (what the data says) and semantic (what it means).
 
 ### 2.2 Open Threads
 Unresolved questions. Signals to track. Hypotheses to test next run. Things noticed but not concluded on.
-The agent's curiosity — what it would investigate with more time or data.
-Each thread should include **when it becomes relevant** — not just "investigate X" but "investigate X when next run's data includes Y"
+The agent's curiosity - what it would investigate with more time or data.
+Each thread should include **when it becomes relevant** - not just "investigate X" but "investigate X when next run's data includes Y"
 or "relevant if sentiment continues declining." Actionable triggers, not a wishlist.
 
 ### 2.3 Process Notes
 What was done this run. What analytical approaches worked, what didn't. Methodology reflections.
 What web search revealed about world changes. Scope observations (e.g. "new platform added, data not yet comparable").
 
-**Size:** Article-length, 800-2000 words. Soft constraint — agent uses judgment on what's load-bearing.
+**Size:** Article-length, 800-2000 words. Soft constraint - agent uses judgment on what's load-bearing.
 The principle is distill, not append: each briefing compresses previous + new into bounded size.
 
-**Guardrails — what NOT to write in a briefing:**
+**Guardrails - what NOT to write in a briefing:**
 - Don't repeat the constitution (identity, mission, methodology are already in context).
-- Don't restate operational parameters (dates, collection scope — that's the orchestrator's job).
+- Don't restate operational parameters (dates, collection scope - that's the orchestrator's job).
 - Don't log tool calls or summarize activity (that's in activity logs).
-- Don't summarize — synthesize. The briefing is the agent's *interpretation*, not a transcript of what happened.
+- Don't summarize - synthesize. The briefing is the agent's *interpretation*, not a transcript of what happened.
 - Only preserve what would be **lost** if this briefing didn't exist.
 
-**Storage:** Firestore `agents/{id}/runs/{run_id}` — new `briefing` field on run record.
+**Storage:** Firestore `agents/{id}/runs/{run_id}` - new `briefing` field on run record.
 **Reading:** Orchestrator reads latest completed run's briefing and injects at run start.
 
 ---
@@ -78,7 +78,7 @@ Not part of the constitution or briefing. This is the "here and now" the agent n
 
 **Contents:**
 - Current date, run number, trigger type (wizard / manual / scheduled)
-- Data window boundaries + explicit framing: "data before {date} doesn't exist — boundaries are artifacts, not anomalies"
+- Data window boundaries + explicit framing: "data before {date} doesn't exist - boundaries are artifacts, not anomalies"
 - Collection scope summary (platforms, keywords, channels, post counts)
 - Agent version number + changelog summary if version changed since last run
 - Run history dates (list of all previous run dates)
@@ -111,9 +111,9 @@ Research shows pre-loaded context gets trusted passively; tool-fetched context g
 **Placement in flow:** Before the analyze phase (primary). Optionally more during/after analyze to fill information gaps.
 
 **Three motivations:**
-1. **World change detection** — Has something happened externally that affects interpretation?
-2. **Open thread investigation** — Previous briefing flagged questions, search for answers.
-3. **Finding contextualization** — Current data shows something, search to understand if local or part of a broader trend.
+1. **World change detection** - Has something happened externally that affects interpretation?
+2. **Open thread investigation** - Previous briefing flagged questions, search for answers.
+3. **Finding contextualization** - Current data shows something, search to understand if local or part of a broader trend.
 
 **Governance:** Soft guidance, not hard mandate. The constitution's methodology section encourages web grounding as analytical habit.
 
@@ -153,8 +153,8 @@ collect --> enrich --> web search --> analyze --> deliver --> generate briefing
 |------|---------|-----|
 | Agent identity | `AgentContext` (mission, world_context, relevance_boundaries, analytical_lens) | Constitution (6 rigid sections, article-style) |
 | Scope awareness | Implicit in `data_scope` params | Explicit in operational context with boundary-awareness framing |
-| Run continuity | None — each run starts fresh | Briefing from previous run injected as context |
-| Web grounding | Optional, ad-hoc | Guided habit — before analyze, with three explicit motivations |
+| Run continuity | None - each run starts fresh | Briefing from previous run injected as context |
+| Web grounding | Optional, ad-hoc | Guided habit - before analyze, with three explicit motivations |
 | Context access | Everything injected into system prompt | Hybrid: trusted context pre-loaded, evaluative context via tools |
 | Profile authoring | User fills 4 text fields | AI generates full constitution, user edits if desired |
 | Run history | Activity logs + todo snapshots | + Briefing document per run, accessible via tool |
@@ -165,17 +165,17 @@ collect --> enrich --> web search --> analyze --> deliver --> generate briefing
 
 These principles should guide implementation decisions across all phases:
 
-1. **Synthesize, don't summarize.** The agent writes interpretations, not transcripts. Applies to briefings, reports, and all outputs. "Based on your findings, write a briefing" is wrong — the agent must prove it understood.
+1. **Synthesize, don't summarize.** The agent writes interpretations, not transcripts. Applies to briefings, reports, and all outputs. "Based on your findings, write a briefing" is wrong - the agent must prove it understood.
 
 2. **Verify before trusting memory.** A claim in a previous briefing is a hypothesis, not a fact. Quantitative claims must be re-verified against current data before being carried forward or cited.
 
-3. **Only preserve what would be lost.** Briefings don't repeat the constitution, don't restate parameters, don't log activity. They capture only what exists nowhere else — the agent's understanding.
+3. **Only preserve what would be lost.** Briefings don't repeat the constitution, don't restate parameters, don't log activity. They capture only what exists nowhere else - the agent's understanding.
 
 4. **Pre-load what should be trusted, tool-access what should be evaluated.** Identity and scope are pre-loaded (passively trusted). Past artifacts and web results are fetched on demand (critically evaluated). Where information appears determines how it's weighted.
 
 5. **Boundaries are artifacts, not findings.** The agent must always know where its data starts and ends, and never mistake scope edges for real-world events.
 
-6. **Open threads are actionable, not aspirational.** Each unresolved question carries a trigger condition — when it becomes relevant, not just that it exists.
+6. **Open threads are actionable, not aspirational.** Each unresolved question carries a trigger condition - when it becomes relevant, not just that it exists.
 
 ---
 

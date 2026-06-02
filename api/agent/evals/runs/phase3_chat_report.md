@@ -16,7 +16,7 @@
 | Scenario | output_tokens | tool_calls | duplicates | preamble | turns |
 |---|---:|---:|---:|---:|---:|
 | **ambiguous-data-overview** | 352 → 136 | 4 → 2 | 1 → 0 | 0 → 0 | 1 → 1 |
-| **chat-bare-greeting** | — | — | — | — | — (candidate only) |
+| **chat-bare-greeting** | - | - | - | - | - (candidate only) |
 | **chat-followup-no-restate** | 158 → 159 | 26 → 25 | 3 → 1 | 0 → 0 | 2 → 2 |
 | **repeat-dashboard** | 338 → 311 | 11 → 14 | 2 → 0 | 0 → 0 | 2 → 2 |
 | **simple-q-engagement** | 145 → 36 | 4 → 3 | 0 → 0 | 0 → 0 | 1 → 1 |

@@ -15,7 +15,7 @@ export function useAgentDetail(taskId: string | undefined) {
     queryFn: () => getAgent(taskId!),
     enabled: !!taskId,
     staleTime: 5 * 60_000,
-    // Show the list-cached agent immediately while the detail call resolves —
+    // Show the list-cached agent immediately while the detail call resolves -
     // avoids a full-screen spinner when the user navigates from /agents or any
     // surface that already populated the agent store.
     placeholderData: () =>

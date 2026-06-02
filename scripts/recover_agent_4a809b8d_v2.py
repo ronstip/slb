@@ -1,7 +1,7 @@
 """One-off: recover agent 4a809b8d after a local crash mid-enrichment.
 
 Scenario: agent ran locally, computer died mid-enrichment for two collections.
-Posts are in BQ but the DAG never finished — most posts are un-enriched, none
+Posts are in BQ but the DAG never finished - most posts are un-enriched, none
 are embedded, and the watchdog gave up after 3 attempts (forced status=success
 with "partial data available", agent flipped to failed).
 
@@ -13,7 +13,7 @@ State at recovery time (read from Firestore + BQ):
                  DAG total=1052
                  enriching=690, downloading=1 (stuck transients)
 
-This script does NOT reset DAG counts — it relies on the runner's continuation
+This script does NOT reset DAG counts - it relies on the runner's continuation
 path to:
   1. _reconcile_bq_orphans()   → pulls the 1732 missing posts into the DAG
   2. recover_stale_transient() → reverts enriching/downloading to claim entry
@@ -111,7 +111,7 @@ def main() -> None:
 
     # 2. For each collection: revert status → running so the runner doesn't
     #    short-circuit on TERMINAL = {success, failed}. Clear pipeline_run_id
-    #    so a fresh run can acquire the lock. Leave counts/DAG alone — the
+    #    so a fresh run can acquire the lock. Leave counts/DAG alone - the
     #    orphan reconciler + stale-transient recovery in the continuation path
     #    depend on the existing DAG state.
     for cid in COLLECTION_IDS:
@@ -137,7 +137,7 @@ def main() -> None:
             )
         except Exception:
             log.exception(
-                "Continuation for %s FAILED after %.1fs — moving to next",
+                "Continuation for %s FAILED after %.1fs - moving to next",
                 cid[:8], time.time() - t0,
             )
 

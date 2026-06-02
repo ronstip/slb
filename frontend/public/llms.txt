@@ -1,6 +1,6 @@
 # Scolto
 
-> Scolto is a team of senior AI analysts you can brief on demand. It runs social listening, trend detection, campaign tracking, and competitive intelligence — surfacing the signals brand and marketing teams need without a permanent in-house analytics staff.
+> Scolto is a team of senior AI analysts you can brief on demand. It runs social listening, trend detection, campaign tracking, and competitive intelligence - surfacing the signals brand and marketing teams need without a permanent in-house analytics staff.
 
 ## Core
 
@@ -8,10 +8,10 @@
 
 ## What Scolto does
 
-- **Social listening** — monitors public conversation across platforms and surfaces what matters to your brand.
-- **Trend detection** — identifies emerging cultural and category trends early enough to act on them.
-- **Campaign tracking** — measures the reach, sentiment, and lift of marketing campaigns across channels.
-- **Competitive intelligence** — tracks what competing brands are doing, saying, and shipping.
+- **Social listening** - monitors public conversation across platforms and surfaces what matters to your brand.
+- **Trend detection** - identifies emerging cultural and category trends early enough to act on them.
+- **Campaign tracking** - measures the reach, sentiment, and lift of marketing campaigns across channels.
+- **Competitive intelligence** - tracks what competing brands are doing, saying, and shipping.
 
 ## Resources
 

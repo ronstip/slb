@@ -15,14 +15,14 @@ Secondary issue: `AgentExplorerTab` always sourced `artifact.title` from `task.t
 - `AgentExplorerTab` now reads the layout's own title from `agentLayouts` when a named layout is active, falling back to `task.title` for built-ins.
 - `DashboardView.commitTitle` detects when `artifact.id` matches a layout in `useExplorerLayoutStore.agentLayouts` and routes the rename to `updateExplorerLayout(layout_id, { title })`, updating the store via `upsertLayout`. Built-in/agent-id artifacts keep the old `updateArtifact` fallback.
 
-Built-in default explorer (`activeLayoutId === null` or `DASHBOARD_DEFAULT_ID`) still has no persistence target — rename there will silently fail. Out of scope for this fix; those views inherit the agent title.
+Built-in default explorer (`activeLayoutId === null` or `DASHBOARD_DEFAULT_ID`) still has no persistence target - rename there will silently fail. Out of scope for this fix; those views inherit the agent title.
 
 ## Files
-- `frontend/src/features/studio/dashboard/DashboardView.tsx` — `commitTitle`
-- `frontend/src/features/agents/detail/tabs/AgentExplorerTab.tsx` — title source
+- `frontend/src/features/studio/dashboard/DashboardView.tsx` - `commitTitle`
+- `frontend/src/features/agents/detail/tabs/AgentExplorerTab.tsx` - title source
 
 ## Regression test
-None added — wiring fix across hooks; covered manually. If we add one later, mock `useExplorerLayoutStore` + `updateExplorerLayout` and assert the right endpoint fires for a named layout vs a built-in.
+None added - wiring fix across hooks; covered manually. If we add one later, mock `useExplorerLayoutStore` + `updateExplorerLayout` and assert the right endpoint fires for a named layout vs a built-in.
 
 ## Fix commit
 TBD (current branch `dev`).

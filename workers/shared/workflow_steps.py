@@ -1,4 +1,4 @@
-"""Workflow step progression — shared between api/ and workers/.
+"""Workflow step progression - shared between api/ and workers/.
 
 Kept in workers/ because the sl-worker Cloud Run image does not include api/,
 so any import from `api.*` inside a worker fails with ModuleNotFoundError.

@@ -1,10 +1,10 @@
-"""Fetch posts for topic taxonomy — TVF-based, agent-scoped, window-filtered.
+"""Fetch posts for topic taxonomy - TVF-based, agent-scoped, window-filtered.
 
 The `scope_posts` table function already handles per-post dedup, the
 is_related_to_task filter, and the agent's data_start_date floor. We just
 add the recency window and optional collection filter in the WHERE clause.
 
-Window fallback widens the time window only — never disables the relevance
+Window fallback widens the time window only - never disables the relevance
 filter (different from brothers_v1 which had a "tier 4: any enrichment state"
 escape hatch). The new algorithm relies on relevance being correct because
 the LLM passes are sample-driven; pulling in irrelevant posts pollutes the
@@ -116,6 +116,6 @@ def fetch_posts_for_taxonomy(
         if len(rows) >= min_usable_posts:
             return rows, tier_window
 
-    # Return the last tier's rows even if below threshold — caller decides
+    # Return the last tier's rows even if below threshold - caller decides
     # whether to proceed.
     return rows, tier_window

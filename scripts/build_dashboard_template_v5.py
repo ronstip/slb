@@ -7,7 +7,7 @@ Targeted brief changes from v3 (response to the Bennett-week audit):
         FIXED threshold on `net_sentiment` from the entity_metrics TVF
         (▲ > +0.10, ▬ between −0.10 and +0.10, ▼ < −0.10). Removes the
         prior "agent picks the convention" ambiguity.
-      - SoV % comes from `sov_views` returned by the TVF — NOT re-normalized
+      - SoV % comes from `sov_views` returned by the TVF - NOT re-normalized
         by summing the rows. Sums >100% are expected (posts mention multiple
         actors) and must be footnoted with the actual overlap %.
       - One-line legend printed below the table is mandatory.
@@ -81,15 +81,15 @@ SEC_5_MD = f"""<a id="sec-5"></a>
 
 - **Posts**: count of in-scope posts by or about the actor (UNION of entity-match and stance signals, deduped by `post_id`).
 - **Reach**: sum of views over the deduped post set.
-- **SoV %**: copy `sov_views` from the `entity_metrics` TVF row, formatted as a percent. **Do NOT re-normalize across the rows of this table.** The TVF computes SoV against the full corpus reach. If the SoVs sum to >100%, that is the expected overlap signal — footnote it with the actual overlap rate (see "Overlap footnote" below).
+- **SoV %**: copy `sov_views` from the `entity_metrics` TVF row, formatted as a percent. **Do NOT re-normalize across the rows of this table.** The TVF computes SoV against the full corpus reach. If the SoVs sum to >100%, that is the expected overlap signal - footnote it with the actual overlap rate (see "Overlap footnote" below).
 - **Sentiment (Pro / Anti)**: `<pro count> / <anti count>`.
 - **Tone**: ONE arrow glyph from the TVF's `net_sentiment` field:
-  - ▲ — `net_sentiment > +0.10` (clearly positive net tone)
-  - ▬ — `−0.10 ≤ net_sentiment ≤ +0.10` (contested / mixed)
-  - ▼ — `net_sentiment < −0.10` (clearly negative net tone)
+  - ▲ - `net_sentiment > +0.10` (clearly positive net tone)
+  - ▬ - `−0.10 ≤ net_sentiment ≤ +0.10` (contested / mixed)
+  - ▼ - `net_sentiment < −0.10` (clearly negative net tone)
   Apply the threshold uniformly; do not pick the glyph by impression.
 
-**Legend (print immediately below the table — one line):**
+**Legend (print immediately below the table - one line):**
 > *Tone column: ▲ net-positive tone, ▬ mixed, ▼ net-negative. Threshold ±0.10 on `(pro − anti) / mentions`. SoV % is share of total corpus reach; rows can sum to >100% when posts mention multiple actors (overlap footnoted below).*
 
 **Overlap footnote (mandatory).** One line stating the actual overlap rate, computed as:
@@ -101,9 +101,9 @@ FROM social_listening.scope_posts(@agent_id)
 WHERE posted_at BETWEEN @period_start AND @period_end
 ```
 
-**Data sources — two-signal UNION (load-bearing).** Build §5 from a UNION of two signals, presented in ONE table (not split across sections):
-- `social_listening.entity_metrics(...)` — exact-string match on `entities`. Read `sov_views`, `net_sentiment`, `pos_mentions`, `neg_mentions`, `total_views`, `mentions` straight from the row. Do not derive them.
-- `custom_fields.candidate_stance` — stance-tagged posts that mention the actor implicitly.
+**Data sources - two-signal UNION (load-bearing).** Build §5 from a UNION of two signals, presented in ONE table (not split across sections):
+- `social_listening.entity_metrics(...)` - exact-string match on `entities`. Read `sov_views`, `net_sentiment`, `pos_mentions`, `neg_mentions`, `total_views`, `mentions` straight from the row. Do not derive them.
+- `custom_fields.candidate_stance` - stance-tagged posts that mention the actor implicitly.
 
 Report `Posts` and `Reach` as the union, deduped by `post_id`. If the two signals diverge by >2×, add a one-line note ("entity-match: N; stance: M; reported: union").
 
@@ -133,34 +133,34 @@ Below the table, **1–2 paragraphs** that interpret the asymmetries (volume vs.
 
 *Tone column: ▲ net-positive tone, ▬ mixed, ▼ net-negative. Threshold ±0.10 on `(pro − anti) / mentions`. SoV % is share of total corpus reach; rows can sum to >100% when posts mention multiple actors (overlap footnoted below).*
 
-*Multi-actor posts: 28.4% of in-scope posts mention two or more actors — explains the >100% row sum.*
+*Multi-actor posts: 28.4% of in-scope posts mention two or more actors - explains the >100% row sum.*
 
-**Strategic insight.** `<Rival1>`'s reach lead rests on a single viral mechanic (one `<Format>` item = 43% of his weekly reach); his **pro:anti ratio is the most negative in the field**. `<Subject>` holds a clean #2 with a stable sentiment profile and a credible gap to #3. The four trailing actors together produce 20.7% SoV — *less than `<Subject>` alone*.
+**Strategic insight.** `<Rival1>`'s reach lead rests on a single viral mechanic (one `<Format>` item = 43% of his weekly reach); his **pro:anti ratio is the most negative in the field**. `<Subject>` holds a clean #2 with a stable sentiment profile and a credible gap to #3. The four trailing actors together produce 20.7% SoV - *less than `<Subject>` alone*.
 """
 
 
 SEC_7_MD = f"""<a id="sec-7"></a>
-## 7. Chronology — what shaped the week
+## 7. Chronology - what shaped the week
 
 {VOICE}
 
 {BODY_SKELETON}
 
-**Agent instructions.** Three sub-sections. Numbers and dates here are the highest-risk surface for errors — build every cell from a single query result, not memory. Sub-section headers use `###` (not `##`).
+**Agent instructions.** Three sub-sections. Numbers and dates here are the highest-risk surface for errors - build every cell from a single query result, not memory. Sub-section headers use `###` (not `##`).
 
-**7a. Day-by-day table.** One row per day in the requested period — **every day, even if the data is sparse**. Sparse days are signal, not noise; mark them `—` rather than dropping the row.
+**7a. Day-by-day table.** One row per day in the requested period - **every day, even if the data is sparse**. Sparse days are signal, not noise; mark them `-` rather than dropping the row.
 
 | Date | Posts | Reach | Pro / Anti | Dominant emotion / one-line daily inflection |
 
-Fill missing days by left-joining against a generated date series, OR by explicitly listing every day in the period and marking blanks as `—`.
+Fill missing days by left-joining against a generated date series, OR by explicitly listing every day in the period and marking blanks as `-`.
 
-**7b. Format / channel performance.** A compact table over the same period. Rows are either platform × `content_type` (X-text, X-image, X-video, TikTok-video) **OR** `channel_type` (Official / Media / UGC / Influencer); pick whichever cuts the data best — one, not both.
+**7b. Format / channel performance.** A compact table over the same period. Rows are either platform × `content_type` (X-text, X-image, X-video, TikTok-video) **OR** `channel_type` (Official / Media / UGC / Influencer); pick whichever cuts the data best - one, not both.
 
 | Cut | Posts | Total reach | Avg reach / post | Share of reach % | Takeaway |
 
 Call out over- or under-performing formats relative to their volume.
 
-**7c. Inflection points.** In prose, name the 2–3 days that **changed the shape of the period** and what drove them. Each inflection cites specific post(s) — date, time, platform, account, views — sourced from the data. Tie each spike to either a verified external event (web grounding) or a specific post. Do not leave it as "volume rose".
+**7c. Inflection points.** In prose, name the 2–3 days that **changed the shape of the period** and what drove them. Each inflection cites specific post(s) - date, time, platform, account, views - sourced from the data. Tie each spike to either a verified external event (web grounding) or a specific post. Do not leave it as "volume rose".
 
 **Cross-check rule (load-bearing).** Every claim of the form *"X drove the spike on day Y"* MUST be cross-checked with one targeted query before being pasted. Run a per-day × per-platform OR per-day × per-entity slice for that date:
 
@@ -173,7 +173,7 @@ GROUP BY platform
 ORDER BY reach DESC
 ```
 
-If the platform/entity you blamed contributes <30% of the day's reach, the claim is wrong — rewrite or drop it. State the cross-check inline (e.g. "*Cross-check: TikTok contributed 1.4% of Day-N's 7.5M reach; X carried the spike.*").
+If the platform/entity you blamed contributes <30% of the day's reach, the claim is wrong - rewrite or drop it. State the cross-check inline (e.g. "*Cross-check: TikTok contributed 1.4% of Day-N's 7.5M reach; X carried the spike.*").
 
 Reference the daily-volume line chart on the dashboard once.
 
@@ -185,17 +185,17 @@ Reference the daily-volume line chart on the dashboard once.
 
 | Date  | Posts | Reach | Pro / Anti | Daily inflection |
 | :---- | ----: | ----: | :--------: | :--------------- |
-| MM-DD |   391 |  4.1M |   95 / 130 | Launch — initiative |
+| MM-DD |   391 |  4.1M |   95 / 130 | Launch - initiative |
 | MM-DD |   368 |  3.4M |   82 / 121 | Foreign-policy signal; 1.1M post |
-| MM-DD |    —  |   —   |     —      | (sparse — only N posts; cause: <reason>) |
+| MM-DD |    -  |   -   |     -      | (sparse - only N posts; cause: <reason>) |
 
 **7b. Format / channel performance.**
 
 | Cut | Posts | Total reach | Avg reach / post | Share of reach % | Takeaway |
 | :--- | ----: | ----------: | ---------------: | ---------------: | :------- |
-| X — official statements | 12 | 1.55M | 129K | 10.5% | Few posts, huge per-post weight |
-| X — text commentary     | 482 | 2.58M | 5.4K |  17.5% | Workhorse format for argumentation |
-| TikTok — opinion video  |  17 | 434K  | 25K  |   2.9% | Punches above its volume |
+| X - official statements | 12 | 1.55M | 129K | 10.5% | Few posts, huge per-post weight |
+| X - text commentary     | 482 | 2.58M | 5.4K |  17.5% | Workhorse format for argumentation |
+| TikTok - opinion video  |  17 | 434K  | 25K  |   2.9% | Punches above its volume |
 
 **7c. Inflection points.**
 
@@ -227,7 +227,7 @@ Use this table schema:
 | `anti_bennett`     | מתנגדי בנט                  |
 | `pro_ben_gvir`     | תומכי בן גביר               |
 
-Below the table, **a one-line reconciliation note** with the §5 SoV row for the same actor — name the gap between entity-match and stance counts in absolute numbers, not in prose.
+Below the table, **a one-line reconciliation note** with the §5 SoV row for the same actor - name the gap between entity-match and stance counts in absolute numbers, not in prose.
 
 Query template:
 ```sql
@@ -266,7 +266,7 @@ SEC_14_INTRO_MD = f"""<a id="sec-14"></a>
 
 {VOICE}
 
-Open with ONE paragraph (3–5 sentences) that frames the recommendation set: which strategic asymmetry the period exposes, why the moves below are the right answer to it, and what the unifying theme is. Reference §4's headline recommendations by number (14.1, 14.2, …) — the full plans live in the sub-section widgets below.
+Open with ONE paragraph (3–5 sentences) that frames the recommendation set: which strategic asymmetry the period exposes, why the moves below are the right answer to it, and what the unifying theme is. Reference §4's headline recommendations by number (14.1, 14.2, …) - the full plans live in the sub-section widgets below.
 
 This widget is the bridge between the analysis and the operational plans. Keep it tight; the substance lives in 14.1–14.5.
 
@@ -274,7 +274,7 @@ This widget is the bridge between the analysis and the operational plans. Keep i
 
 **Reference example (shape only, ~70 words).**
 
-The week's asymmetry is reach without conviction: `<Subject>` led the field on volume but did not convert the launch into a durable narrative gain. The recommendations below address the three places this leaked — the under-amplified libel-suit response (14.1), the missed `<Rival2>` opening (14.2), and the absent TikTok rebuttal cadence (14.3). Treat them as a single 72-hour cadence, not three independent moves.
+The week's asymmetry is reach without conviction: `<Subject>` led the field on volume but did not convert the launch into a durable narrative gain. The recommendations below address the three places this leaked - the under-amplified libel-suit response (14.1), the missed `<Rival2>` opening (14.2), and the absent TikTok rebuttal cadence (14.3). Treat them as a single 72-hour cadence, not three independent moves.
 """
 
 
@@ -380,7 +380,7 @@ def write_template(dry_run: bool) -> None:
     print(f"  max y: {max(w['y'] + w['h'] for w in layout)}")
 
     if dry_run:
-        print("\nDRY RUN — not writing to Firestore.")
+        print("\nDRY RUN - not writing to Firestore.")
         return
 
     fs = get_fs()

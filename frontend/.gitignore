@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Stray lockfiles from non-npm package managers — this project uses npm
+# Stray lockfiles from non-npm package managers - this project uses npm
 pnpm-lock.yaml
 yarn.lock
 

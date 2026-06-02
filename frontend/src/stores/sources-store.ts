@@ -18,7 +18,7 @@ export interface Source {
   visibility?: 'private' | 'org';
   userId?: string;
   taskId?: string;
-  /** Session that started this collection — used to route collection-complete events */
+  /** Session that started this collection - used to route collection-complete events */
   sessionId?: string;
   lastRunAt?: string;
   nextRunAt?: string;

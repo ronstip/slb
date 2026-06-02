@@ -9,7 +9,7 @@ import type {
   LayoutSavePayload,
 } from './useDashboardLayout.ts';
 
-/** A message in the report-editor mini-chat. Local to the popover — never
+/** A message in the report-editor mini-chat. Local to the popover - never
  *  written to the global chat store, because this conversation is about the
  *  open report, not the user's main session. */
 export interface ReportChatMessage {
@@ -29,7 +29,7 @@ interface UseReportAIChatOptions {
   agentId?: string;
   /** Fires after every successful update_dashboard, once the layout query
    *  has been refetched. The parent uses this to re-sync the grid's local
-   *  widget state — without it, AI additions stay invisible until a manual
+   *  widget state - without it, AI additions stay invisible until a manual
    *  page refresh. */
   onLayoutChanged?: () => void;
 }
@@ -233,13 +233,13 @@ export function useReportAIChat({
  *
  * We `await refetchQueries` (not just `invalidateQueries`) before pulsing
  * `onLayoutChanged` so the grid's re-sync effect can read fresh widgets from
- * the cache. Invalidate alone makes the refetch happen in the background —
+ * the cache. Invalidate alone makes the refetch happen in the background -
  * the parent would race ahead and re-sync to stale state.
  *
  * Once the resync runs, the per-artifact history store records the AI's
  * change as one undo step via `applyExternalSnapshot`. The toast's Undo
- * button piggybacks on that — it pops the entry and persists the restored
- * state — so it shares a single source of truth with Cmd+Z. Toast duration
+ * button piggybacks on that - it pops the entry and persists the restored
+ * state - so it shares a single source of truth with Cmd+Z. Toast duration
  * is intentionally longer than the sonner default so a user has time to
  * read and click without rushing.
  */
@@ -253,7 +253,7 @@ async function handleUpdateApplied(
   try {
     await queryClient.refetchQueries({ queryKey });
   } catch {
-    // Refetch failed (auth, network) — proceed with notification anyway so
+    // Refetch failed (auth, network) - proceed with notification anyway so
     // the user knows the server accepted the change; the grid will recover
     // on the next manual refresh.
   }
@@ -271,7 +271,7 @@ async function handleUpdateApplied(
 }
 
 /** Pop the AI's edit off the history stack and persist the restored state.
- *  Triggered from the toast — Cmd+Z goes through the toolbar handler in
+ *  Triggered from the toast - Cmd+Z goes through the toolbar handler in
  *  SocialDashboardView. Both call the same temporal store so the stacks
  *  stay coherent regardless of which path the user picks.
  *

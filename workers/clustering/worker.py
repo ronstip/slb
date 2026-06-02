@@ -1,9 +1,9 @@
-"""Topic clustering worker — orchestrates the full clustering pipeline.
+"""Topic clustering worker - orchestrates the full clustering pipeline.
 
 Flow: fetch embeddings from BQ -> run brothers algorithm -> compute centroids
 -> select representatives -> Gemini labeling -> write to BQ + Firestore.
 
-Scope: agent-wide — clusters ALL relevant posts across all agent collections,
+Scope: agent-wide - clusters ALL relevant posts across all agent collections,
 filtered to is_related_to_task=TRUE and posted within the last 30 days.
 """
 
@@ -79,7 +79,7 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
     fs = FirestoreClient()
 
     if not collection_ids:
-        logger.warning("No collection_ids for agent %s — skipping clustering", agent_id)
+        logger.warning("No collection_ids for agent %s - skipping clustering", agent_id)
         return {"topics_count": 0, "error": "no collections"}
 
     # 1. Fetch embeddings + metadata from BQ (agent-wide, progressive fallback).
@@ -91,7 +91,7 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
     rows = _fetch_posts_with_fallback(bq, agent_id, collection_ids)
 
     if len(rows) < 2:
-        logger.warning("Agent %s has %d eligible posts across all tiers — skipping clustering", agent_id, len(rows))
+        logger.warning("Agent %s has %d eligible posts across all tiers - skipping clustering", agent_id, len(rows))
         return {"topics_count": 0, "error": "not enough posts"}
 
     logger.info("Fetched %d posts with embeddings", len(rows))
@@ -104,7 +104,7 @@ def run_clustering(agent_id: str, collection_ids: list[str]) -> dict[str, Any]:
     # 2. Sampling for large datasets
     sample_indices = None
     if len(rows) > DIRECT_CLUSTER_LIMIT:
-        logger.info("Large dataset (%d posts) — sampling %d for clustering", len(rows), SAMPLE_SIZE)
+        logger.info("Large dataset (%d posts) - sampling %d for clustering", len(rows), SAMPLE_SIZE)
         sample_indices = _sample_indices(rows, SAMPLE_SIZE)
         sample_embeddings = embeddings[sample_indices]
     else:
@@ -274,7 +274,7 @@ def _build_brothers_cluster_row(
         "cluster_id": cluster_uuid,
         "clustered_at": clustered_at_iso,
         "algorithm_version": ALGORITHM_VERSION,
-        # definition — brothers_v1 only has labeler output, no anchors
+        # definition - brothers_v1 only has labeler output, no anchors
         "header": label.get("topic_name"),
         "subheader": label.get("topic_summary"),
         "beat_type": None,
@@ -299,7 +299,7 @@ def _build_brothers_cluster_row(
         "earliest_post": earliest.isoformat() if earliest else None,
         "median_post_time": median_t.isoformat() if median_t else None,
         "latest_post": latest.isoformat() if latest else None,
-        # brothers_v1 clusters the full pool — extrapolated equals real.
+        # brothers_v1 clusters the full pool - extrapolated equals real.
         "estimated_post_count": post_count,
         "estimated_views": total_views,
         "estimated_likes": total_likes,
@@ -313,7 +313,7 @@ def _post_time_stats(
     member_posts: list[dict],
 ) -> tuple[datetime | None, datetime | None, datetime | None]:
     """Returns (earliest, median, latest) posted_at. median_low avoids
-    averaging datetimes — fine for "where is the mass" semantics.
+    averaging datetimes - fine for "where is the mass" semantics.
     """
     times: list[datetime] = []
     for p in member_posts:
@@ -429,7 +429,7 @@ def _compute_recency_score(
 
 
 def _parse_embedding(value: Any) -> list[float]:
-    """Parse an embedding from BQ — may be a list, string, or struct."""
+    """Parse an embedding from BQ - may be a list, string, or struct."""
     if isinstance(value, (list, np.ndarray)):
         return [float(x) for x in value]
     if isinstance(value, str):

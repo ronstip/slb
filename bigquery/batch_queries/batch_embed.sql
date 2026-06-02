@@ -1,7 +1,7 @@
 -- Batch embedding: generate vector embeddings for enriched posts.
 -- Supports two input modes:
---   @collection_id — embed all enriched posts in a collection
---   @post_ids — embed specific posts by ID
+--   @collection_id - embed all enriched posts in a collection
+--   @post_ids - embed specific posts by ID
 INSERT INTO social_listening.post_embeddings (
     post_id, embedding, embedding_model, embedded_at
 )

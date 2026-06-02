@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
-    agent_id: str | None = None  # Active agent — auto-loads agent context into session
+    agent_id: str | None = None  # Active agent - auto-loads agent context into session
     model: str | None = None  # "flash" (default) or "pro"
     # Per-request thinking override: "off" disables, otherwise minimal|low|medium|high.
     # None = fall back to settings.agent_thinking_level.
@@ -139,10 +139,10 @@ class CreateFromWizardRequest(BaseModel):
     title: str
     description: str = ""
     agent_type: str = "one_shot"
-    # New flat shape — preferred. Each source is one platform with its own
+    # New flat shape - preferred. Each source is one platform with its own
     # keywords / n_posts / time_range / geo / channels.
     sources: list[dict] = []
-    # Legacy shape — accepted for backward compat with old clients. Server
+    # Legacy shape - accepted for backward compat with old clients. Server
     # normalizes either field into `data_scope.sources` before persisting.
     searches: list[dict] = []
     schedule: dict | None = None
@@ -153,9 +153,9 @@ class CreateFromWizardRequest(BaseModel):
     constitution: dict | None = None  # 6-section Constitution: {identity, mission, methodology, scope_and_relevance, standards, perspective}
     existing_collection_ids: list[str] = []
     existing_agent_ids: list[str] = []
-    # Typed outputs list — preferred. When provided, supersedes the auto_* flags.
+    # Typed outputs list - preferred. When provided, supersedes the auto_* flags.
     outputs: list[dict] | None = None
-    # Legacy flags — kept for backward compat with older clients. New code should
+    # Legacy flags - kept for backward compat with older clients. New code should
     # send `outputs` instead.
     auto_report: bool = True
     auto_email: bool = False

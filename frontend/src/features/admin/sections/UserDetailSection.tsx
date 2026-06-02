@@ -25,7 +25,7 @@ import { CostVsBilledChart } from '../CostVsBilledChart.tsx';
 
 const UNASSIGNED_HELP =
   'Paid activity not tied to an agent. Since agents were introduced, every priced ' +
-  'event should carry an agent_id — entries here signal a logging gap (typically ' +
+  'event should carry an agent_id - entries here signal a logging gap (typically ' +
   'legacy usage_service writes from before context propagation was added).';
 
 const COST_SOURCE_BADGE_LABELS: Record<string, string> = {
@@ -39,7 +39,7 @@ const COST_SOURCE_BADGE_HINT: Record<string, string> = {
     'Cost reported directly by the provider on the call (e.g. Apify ' +
     'run.usageTotalUsd). This is the source of truth.',
   estimated_fallback:
-    'Provider returned no cost on this call — we logged ' +
+    'Provider returned no cost on this call - we logged ' +
     'units × apify_assumed_per_post_usd as a fallback estimate. ' +
     'Adjust that knob in Finance → Pricing if it\'s drifting.',
   rate_table:
@@ -49,17 +49,17 @@ const COST_SOURCE_BADGE_HINT: Record<string, string> = {
 
 const TIER_HELP =
   'How access is gated:\n' +
-  '• blocked — no access; every action returns 402. Default for new signups.\n' +
-  '• free — unlimited; balance is tracked for visibility but never blocks. For internal/demo accounts.\n' +
-  '• trial — balance IS enforced (blocked at $0) AND can expire on a set date, whichever comes first.\n' +
-  '• paid — balance IS enforced (blocked at $0); no expiry. For real paying users.';
+  '• blocked - no access; every action returns 402. Default for new signups.\n' +
+  '• free - unlimited; balance is tracked for visibility but never blocks. For internal/demo accounts.\n' +
+  '• trial - balance IS enforced (blocked at $0) AND can expire on a set date, whichever comes first.\n' +
+  '• paid - balance IS enforced (blocked at $0); no expiry. For real paying users.';
 
 const EXPIRY_HELP =
   'Trial only. If this date passes, the user is blocked (402 "trial expired") even if they still have credit. Leave empty for no time limit.';
 
 const CREDIT_HELP =
   'Adjusts this user\'s wallet balance by the entered $ (positive adds, negative deducts) and writes a ledger entry. ' +
-  'The wallet exists for every tier, but only trial/paid are blocked when it hits $0 — free is never blocked, blocked has no access regardless.';
+  'The wallet exists for every tier, but only trial/paid are blocked when it hits $0 - free is never blocked, blocked has no access regardless.';
 
 interface UserDetailSectionProps {
   userId: string;
@@ -142,12 +142,12 @@ export function UserDetailSection({ userId, onBack }: UserDetailSectionProps) {
         </CardContent></Card>
       </div>
 
-      {/* Cost vs billed (at margin) trend — shared with Finance page */}
+      {/* Cost vs billed (at margin) trend - shared with Finance page */}
       {hasTrend && (
         <Card>
           <CardHeader>
             <CardTitle className="font-heading text-base font-semibold tracking-tight">
-              Cost vs billed (at margin) — Last 30 Days
+              Cost vs billed (at margin) - Last 30 Days
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -209,7 +209,7 @@ export function UserDetailSection({ userId, onBack }: UserDetailSectionProps) {
         </CardContent>
       </Card>
 
-      {/* Recent Activity — grouped by agent */}
+      {/* Recent Activity - grouped by agent */}
       <RecentActivityByAgent
         events={user.recent_events || []}
         agentCosts={user.cost_by_agent_all_time || []}
@@ -219,7 +219,7 @@ export function UserDetailSection({ userId, onBack }: UserDetailSectionProps) {
 }
 
 /** Bucket recent events by agent_id; events without one fall into the
- *  "Unassigned" group, which is surfaced as a signal (it should be empty —
+ *  "Unassigned" group, which is surfaced as a signal (it should be empty -
  *  every paid event since agents were introduced should carry an id).
  *
  *  The agent header shows the all-time billed roll-up from the parent
@@ -317,7 +317,7 @@ function RecentActivityByAgent({
                         // that genuinely never priced (rate-table miss).
                         const value = event.billed_micros ?? event.cost_micros;
                         if (value == null) {
-                          return <span className="text-xs text-muted-foreground">—</span>;
+                          return <span className="text-xs text-muted-foreground">-</span>;
                         }
                         return (
                           <span className="font-mono text-xs text-foreground">
@@ -404,7 +404,7 @@ function PlanEditor({ user }: { user: AdminUserDetail }) {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
     onError: () => toast.error('Failed to update plan'),
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   return (
@@ -470,7 +470,7 @@ function CreditPanel({ user }: { user: AdminUserDetail }) {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
     onError: () => toast.error('Failed to update credit'),
-    meta: { silent: true }, // handled above — don't double-toast via global net
+    meta: { silent: true }, // handled above - don't double-toast via global net
   });
 
   const valid = amount !== '' && !Number.isNaN(parseFloat(amount)) && parseFloat(amount) !== 0;
@@ -531,7 +531,7 @@ function CostBreakdownCard({ userId, mtd, all }: { userId: string; mtd: CostBrea
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-base">
-            Cost breakdown — {formatUsdMicros(breakdown.total_micros)}
+            Cost breakdown - {formatUsdMicros(breakdown.total_micros)}
             {isFetching && <span className="ml-2 text-xs font-normal text-muted-foreground">updating…</span>}
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -590,14 +590,14 @@ function PerUserPlatformProviderMatrix({ cells }: { cells: PlatformProviderCell[
         By platform × provider
         <InfoHint text={
           'How each cell is attributed:\n' +
-          '• Scraper rows (Apify / BrightData / X_api / Vetric) — the ' +
+          '• Scraper rows (Apify / BrightData / X_api / Vetric) - the ' +
           'platform of the post that was scraped.\n' +
-          '• Gemini rows — the platform of the post being enriched (each ' +
+          '• Gemini rows - the platform of the post being enriched (each ' +
           'enrichment call is tagged with `platform = post.platform`). It\'s ' +
-          'not Gemini pricing varying by platform — Gemini\'s $/token rate ' +
+          'not Gemini pricing varying by platform - Gemini\'s $/token rate ' +
           'is identical. What differs is which posts (and therefore which ' +
           'platform\'s token volume) drove that spend.\n' +
-          '• "Unspecified" — events that aren\'t platform-scoped at all ' +
+          '• "Unspecified" - events that aren\'t platform-scoped at all ' +
           '(chat sessions, wizard, briefing, topic_cluster).'
         } />
       </p>
@@ -622,7 +622,7 @@ function PerUserPlatformProviderMatrix({ cells }: { cells: PlatformProviderCell[
                   const cell = lookup.get(`${plat}|${prov}`);
                   return (
                     <td key={prov} className="px-3 py-2 text-right font-mono">
-                      {cell ? formatUsdMicros(cell.cost_micros) : <span className="text-muted-foreground">—</span>}
+                      {cell ? formatUsdMicros(cell.cost_micros) : <span className="text-muted-foreground">-</span>}
                     </td>
                   );
                 })}

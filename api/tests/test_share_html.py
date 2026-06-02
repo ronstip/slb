@@ -1,4 +1,4 @@
-"""Unit tests for share_html rendering — title/image substitution + body strip.
+"""Unit tests for share_html rendering - title/image substitution + body strip.
 
 These exercise the pure helpers; HTTP integration is covered separately by the
 share-link previews in production (WhatsApp/Slack/iMessage).
@@ -10,10 +10,10 @@ from api.routers import share_html
 _SAMPLE_SHELL = """<!doctype html>
 <html lang="en">
   <head>
-    <title>Scolto — Your team of senior AI analysts</title>
+    <title>Scolto - Your team of senior AI analysts</title>
     <meta name="description" content="Scolto deploys senior AI analysts." />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Scolto — Your team of senior AI analysts" />
+    <meta property="og:title" content="Scolto - Your team of senior AI analysts" />
     <meta property="og:description" content="Old description copy." />
     <meta property="og:url" content="https://scolto.com/" />
     <meta property="og:image" content="https://scolto.com/og-image.png" />
@@ -41,20 +41,20 @@ def test_strip_prerendered_root_empties_div():
 def test_render_shell_swaps_title_and_image_keeps_static_description():
     stripped = share_html._strip_prerendered_root(_SAMPLE_SHELL)
     out = share_html._render_shell(
-        title="Q4 Brand Briefing — Acme",
+        title="Q4 Brand Briefing - Acme",
         image_url="https://scolto.com/og-image/briefing/TOKEN.png",
         page_url="https://scolto.com/shared/briefing/TOKEN",
         shell=stripped,
     )
     # Title swapped in <title> + og:title + twitter:title
-    assert "<title>Q4 Brand Briefing — Acme</title>" in out
-    assert 'property="og:title" content="Q4 Brand Briefing — Acme"' in out
-    assert 'name="twitter:title" content="Q4 Brand Briefing — Acme"' in out
+    assert "<title>Q4 Brand Briefing - Acme</title>" in out
+    assert 'property="og:title" content="Q4 Brand Briefing - Acme"' in out
+    assert 'name="twitter:title" content="Q4 Brand Briefing - Acme"' in out
     # Image swapped
     assert 'content="https://scolto.com/og-image/briefing/TOKEN.png"' in out
     # URL swapped
     assert 'property="og:url" content="https://scolto.com/shared/briefing/TOKEN"' in out
-    # Description replaced by STATIC_DESCRIPTION — same on every share URL
+    # Description replaced by STATIC_DESCRIPTION - same on every share URL
     assert share_html.STATIC_DESCRIPTION in out
     assert "Old description copy." not in out
     assert "Old twitter desc." not in out
@@ -104,7 +104,7 @@ def test_render_og_png_returns_valid_png_bytes():
 
 
 def test_render_og_png_hebrew_title_does_not_crash():
-    """Hebrew titles must render via BiDi reshape — Pillow draws LTR otherwise."""
+    """Hebrew titles must render via BiDi reshape - Pillow draws LTR otherwise."""
     from PIL import Image
     import io
 
@@ -124,7 +124,7 @@ def test_is_rtl_detection():
 
 
 def test_dashboard_share_type_renders_brief_label():
-    """Dashboard share_type must NOT leak the word 'dashboard' to crawlers —
+    """Dashboard share_type must NOT leak the word 'dashboard' to crawlers -
     customer-facing label is 'BRIEF'."""
     assert share_html._TYPE_LABEL["dashboard"] == "BRIEF"
     assert share_html._TYPE_TITLE_PREFIX["dashboard"] == "Brief: "

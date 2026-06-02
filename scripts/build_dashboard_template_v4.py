@@ -35,7 +35,7 @@ if _env_file.exists():
         key, _, value = line.partition("=")
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
-# Re-use briefs from v3 (just import them) — only heights and a few notes
+# Re-use briefs from v3 (just import them) - only heights and a few notes
 # differ in v4. Easier to maintain.
 from scripts.build_dashboard_template_v3 import (  # noqa: E402
     HEADER_MD, SEC_2_MD, SEC_3_MD, SEC_4_MD, SEC_5_MD, SEC_6_MD, SEC_7_MD,
@@ -177,7 +177,7 @@ def write_template(dry_run: bool) -> None:
     print(f"  max y: {max(w['y'] + w['h'] for w in layout)}")
 
     if dry_run:
-        print("DRY RUN — not writing.")
+        print("DRY RUN - not writing.")
         return
 
     fs = get_fs()

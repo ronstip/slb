@@ -1,4 +1,4 @@
-# api — out-of-credit user overdrafts + creates empty "completed" agents
+# api - out-of-credit user overdrafts + creates empty "completed" agents
 
 ## Symptom
 A trial/paid user with **$0** balance stepped through the "Create new agent"
@@ -7,8 +7,8 @@ marked "completed"**, and the wallet ended at **-$0.24**. No block, no toast.
 
 ## Root cause (three independent gaps)
 1. **Ungated paid LLM call (overdraft source).** `wizard_plan_endpoint`
-   (`POST /wizard/plan`, `api/routers/agents.py`) calls `plan_wizard()` — a paid
-   Gemini call — with **no entitlement gate**. `cost_meter` deducts spend
+   (`POST /wizard/plan`, `api/routers/agents.py`) calls `plan_wizard()` - a paid
+   Gemini call - with **no entitlement gate**. `cost_meter` deducts spend
    unconditionally, so 5 ungated planner calls drove the wallet negative. Not a
    `cost_estimate` error.
 2. **Run gate no-op at zero estimate.** `entitlements.require_credit_for_run`

@@ -1,4 +1,4 @@
-"""Core enrichment logic — calls Gemini API with multimodal content.
+"""Core enrichment logic - calls Gemini API with multimodal content.
 
 Pure enrichment: takes PostData, returns EnrichmentResult.
 No BigQuery or Firestore dependencies.
@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 # This is correct because the Gemini API quota is per-GCP-project, not per-user.
 #
 # Three layers of throttling:
-#   1. _general_rate_limiter — caps total enrichment calls per minute
-#   2. _video_rate_limiter   — caps video/* calls per minute (tighter)
-#   3. _global_semaphore     — caps concurrent in-flight calls
+#   1. _general_rate_limiter - caps total enrichment calls per minute
+#   2. _video_rate_limiter   - caps video/* calls per minute (tighter)
+#   3. _global_semaphore     - caps concurrent in-flight calls
 # ---------------------------------------------------------------------------
 
 
@@ -146,7 +146,7 @@ Fields of the analysis:
 - detected_brands: All brand names mentioned, referenced, shown, or visible in the post content or media. Include both text mentions and brands visible in images/video (logos, products, packaging).
 - channel_type: Classify the posting channel/account. "official" for brand or entity accounts, "media" for news outlets and media channels. "Influencer" for Individuals which are known to work as influencer for their living. "ugc" for regular users and creators.
 
-Grounding: base each field on signal you can actually observe in the post — its text, the media, and the channel context. When that signal is thin or ambiguous, prefer empty values (empty list, `neutral`, null) over filling the gap with a plausible guess. It's expected that some posts won't carry enough to extract entities, brands, or themes from — that's a valid outcome, not a failure. If you reference wording from the post in `ai_summary`, only use what was actually written or spoken; don't paraphrase a quote or reconstruct phrasing that wasn't there. When in doubt, lean toward under-calling rather than confidently guessing.
+Grounding: base each field on signal you can actually observe in the post - its text, the media, and the channel context. When that signal is thin or ambiguous, prefer empty values (empty list, `neutral`, null) over filling the gap with a plausible guess. It's expected that some posts won't carry enough to extract entities, brands, or themes from - that's a valid outcome, not a failure. If you reference wording from the post in `ai_summary`, only use what was actually written or spoken; don't paraphrase a quote or reconstruct phrasing that wasn't there. When in doubt, lean toward under-calling rather than confidently guessing.
 
 IMPORTANT: All output fields MUST be in English, regardless of the post's original language.
 
@@ -164,7 +164,7 @@ Post:
 # source. Lets the model interpret the post in light of what it's responding to,
 # instead of inventing a coherent-sounding narrative for ambiguous one-liners.
 REFERENCED_POST_BLOCK_TEMPLATE = """\
-Context — this post is a {ref_type_label} of @{ref_author} who said:
+Context - this post is a {ref_type_label} of @{ref_author} who said:
   "{ref_content}"
 {ref_media_note}
 """
@@ -308,13 +308,13 @@ def _build_content_parts(
 
     parts.append(types.Part.from_text(text=prompt_text))
 
-    # Media parts — prefer GCS URI (permanent), fall back to original CDN URL for images
+    # Media parts - prefer GCS URI (permanent), fall back to original CDN URL for images
     for ref in post.media_refs[: settings.enrichment_max_media_per_post]:
         part = _build_media_part(ref, post.post_id, skip_video, settings)
         if part is not None:
             parts.append(part)
 
-    # Referenced post media (quote/reply context) — appended after parent media
+    # Referenced post media (quote/reply context) - appended after parent media
     # so the parent post's own media stays the primary signal. Uses a small
     # text separator so the model knows the next images belong to the source.
     ref_post = post.referenced_post
@@ -353,7 +353,7 @@ def _build_content_parts(
 
 
 def _render_referenced_post_block(ref: ReferencedPost | None) -> str:
-    """Render the optional 'Context — this is a quote/reply' block.
+    """Render the optional 'Context - this is a quote/reply' block.
 
     Returns '' when no referenced post is set, so the prompt template renders
     seamlessly. Includes a hint about media when the dep had attachments.
@@ -484,13 +484,13 @@ def _enrich_single_post(
     """Enrich a single post. Returns (post_id, result) or (post_id, None) on failure.
 
     Three layers of throttling before calling Gemini:
-      1. General rate limiter (all posts) — prevents overall quota exhaustion
-      2. Video rate limiter (video posts only) — tighter limit for video/* quota
-      3. Global semaphore — caps concurrent in-flight calls
+      1. General rate limiter (all posts) - prevents overall quota exhaustion
+      2. Video rate limiter (video posts only) - tighter limit for video/* quota
+      3. Global semaphore - caps concurrent in-flight calls
 
     Retries with jittered exponential backoff on transient errors
     (429 RESOURCE_EXHAUSTED, 503/504, 500 INTERNAL, ReadTimeout, disconnects).
-    Permanent video errors (PERMISSION_DENIED, 400 INVALID_ARGUMENT) fail fast —
+    Permanent video errors (PERMISSION_DENIED, 400 INVALID_ARGUMENT) fail fast -
     no text-only fallback: a post without its video is not worth enriching.
     """
     settings = get_settings()
@@ -541,7 +541,7 @@ def _enrich_single_post(
             from api.services.cost_meter import log_gemini_response
 
             # Tag platform so the Finance matrix can attribute enrichment
-            # cost (Gemini tokens) to the platform of the post being enriched —
+            # cost (Gemini tokens) to the platform of the post being enriched -
             # otherwise enrichment looks platform-less in the breakdown.
             log_gemini_response(
                 response, feature="enrich", model=model, platform=post.platform,
@@ -581,7 +581,7 @@ def _enrich_single_post(
                 # Signal all threads to back off
                 _signal_global_backoff(cooldown=5.0)
                 logger.warning(
-                    "Enrichment error for post %s — retrying in %.0fs (attempt %d/%d): %s",
+                    "Enrichment error for post %s - retrying in %.0fs (attempt %d/%d): %s",
                     post.post_id, wait, attempt + 1, max_attempts, err_str[:120],
                 )
                 time.sleep(wait)
@@ -616,7 +616,7 @@ def enrich_posts(
         vertexai=True,
         project=settings.gcp_project_id,
         location=settings.gemini_location,
-        http_options=types.HttpOptions(timeout=300_000),  # 300s max per call — video analysis can take >120s
+        http_options=types.HttpOptions(timeout=300_000),  # 300s max per call - video analysis can take >120s
     )
     model = settings.enrichment_model
     config = _build_config(custom_fields, content_types)
@@ -636,7 +636,7 @@ def enrich_posts(
         and not any(_is_video(r.media_type, r.content_type) and r.gcs_uri for r in p.media_refs)
     )
     logger.info(
-        "Enriching %d posts — %d with images, %d with videos in GCS, %d YouTube URLs",
+        "Enriching %d posts - %d with images, %d with videos in GCS, %d YouTube URLs",
         len(posts), n_images, n_videos, n_youtube,
     )
 
@@ -657,7 +657,7 @@ def enrich_posts(
                     results.append((post_id, result))
             except FuturesTimeoutError:
                 logger.warning(
-                    "Enrichment exceeded per-post timeout (%.0fs) for post %s — dropping",
+                    "Enrichment exceeded per-post timeout (%.0fs) for post %s - dropping",
                     per_post_timeout, post.post_id,
                 )
                 future.cancel()

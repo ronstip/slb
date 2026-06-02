@@ -143,7 +143,7 @@ export function WidgetFilterForm({ filters, availableOptions, onChange }: Widget
 
       <Separator />
 
-      {/* Filter sections — each using MultiSelect dropdown */}
+      {/* Filter sections - each using MultiSelect dropdown */}
       {FILTER_SECTIONS.map(({ label, key, placeholder }) => {
         const options = (availableOptions[key] ?? []) as string[];
         if (options.length === 0) return null;
@@ -161,7 +161,7 @@ export function WidgetFilterForm({ filters, availableOptions, onChange }: Widget
         );
       })}
 
-      {/* Custom enrichment fields — one MultiSelect per agent-defined field */}
+      {/* Custom enrichment fields - one MultiSelect per agent-defined field */}
       {customFieldEntries.length > 0 && (
         <>
           <Separator />
@@ -234,7 +234,7 @@ export function WidgetFilterForm({ filters, availableOptions, onChange }: Widget
                 </SelectContent>
               </Select>
 
-              {/* Operator — key on field to force remount when field changes */}
+              {/* Operator - key on field to force remount when field changes */}
               <Select
                 key={`op-${i}-${cond.field}`}
                 value={cond.operator}

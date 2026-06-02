@@ -10,7 +10,7 @@ def compose_email(
 ) -> dict:
     """Send a composed email to a specified recipient.
 
-    WHEN TO USE: When the user explicitly asks you to email something — a
+    WHEN TO USE: When the user explicitly asks you to email something - a
     summary, report highlights, key findings, or any content you've composed
     during the conversation.
 
@@ -22,7 +22,7 @@ def compose_email(
             for this before calling.
         subject: Email subject line. Keep it concise and descriptive.
         body_markdown: Email body as markdown. Write this based on your
-            analysis — include key data points, findings, bullet points,
+            analysis - include key data points, findings, bullet points,
             and any relevant context. Markdown formatting (bold, lists,
             headers) will be converted to HTML.
 

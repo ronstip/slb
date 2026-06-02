@@ -48,7 +48,7 @@ export function SocialProgressListWidget({
     );
   }
 
-  // ── Breakdown mode (groupedCategorical) — segmented bars like Channel Mix ──
+  // ── Breakdown mode (groupedCategorical) - segmented bars like Channel Mix ──
   if (
     data.groupedCategorical &&
     data.groupedCategorical.labels.length > 0 &&

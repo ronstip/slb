@@ -1,6 +1,6 @@
 """Persistence for LLM-taxonomy topics.
 
-Writes to BigQuery `social_listening.topic_clusters` — one row per topic with
+Writes to BigQuery `social_listening.topic_clusters` - one row per topic with
 denormalised membership (member_post_ids ARRAY), real aggregates over
 sampled members (sentiment counts, view/like/comment/share totals,
 earliest/median/latest post time), and extrapolated full-pool metrics
@@ -30,7 +30,7 @@ from workers.topics.schema import Topic
 
 logger = logging.getLogger(__name__)
 
-# Mirror brothers_v1 — top-K by engagement become "representatives".
+# Mirror brothers_v1 - top-K by engagement become "representatives".
 MAX_REPRESENTATIVES = 6
 ALGORITHM_VERSION = "llm_taxonomy_v2"
 
@@ -52,7 +52,7 @@ def write_topic_results(
 ) -> dict[str, Any]:
     """Write topics to BQ and Firestore. Returns counts of rows written.
 
-    `sampled_posts` is the same list that pass-1 saw — we look up metadata
+    `sampled_posts` is the same list that pass-1 saw - we look up metadata
     (engagement score, posted_at, collection_id) keyed by post_id.
     """
     bq = bq or BQClient()
@@ -204,7 +204,7 @@ def _post_time_stats(
 ) -> tuple[datetime | None, datetime | None, datetime | None]:
     """Returns (earliest, median, latest) posted_at across member posts.
 
-    Median uses median_low to avoid datetime averaging — "where is the mass"
+    Median uses median_low to avoid datetime averaging - "where is the mass"
     is fine with the lower of the two middle values on even-length lists.
     """
     times: list[datetime] = []

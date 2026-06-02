@@ -304,7 +304,7 @@ function VideoPlayer({ media, postUrl, thumbnailMedia }: { media: MediaRef; post
     return <InlineVideo media={media} postUrl={postUrl} thumbnailMedia={thumbnailMedia} />;
   }
 
-  // No GCS video yet — show thumbnail with play overlay linking to original
+  // No GCS video yet - show thumbnail with play overlay linking to original
   if (thumbnailMedia) {
     return (
       <a
@@ -323,7 +323,7 @@ function VideoPlayer({ media, postUrl, thumbnailMedia }: { media: MediaRef; post
     );
   }
 
-  // No thumbnail available — simple play link
+  // No thumbnail available - simple play link
   return (
     <a
       href={postUrl}
@@ -357,7 +357,7 @@ function InlineVideo({ media, postUrl, thumbnailMedia, defaultPlaying = false }:
   }
 
   if (!playing) {
-    // Show thumbnail with play button — video is only loaded on click
+    // Show thumbnail with play button - video is only loaded on click
     const thumbUrl = thumbnailMedia
       ? resolveUrl(thumbnailMedia)
       : media.original_url ? mediaUrl(undefined, media.original_url) : undefined;

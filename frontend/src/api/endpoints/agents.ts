@@ -12,7 +12,7 @@ export type AgentStatus =
 
 export type AgentType = 'one_shot' | 'recurring';
 
-/** A single data source — one platform, with its own keywords, post quota,
+/** A single data source - one platform, with its own keywords, post quota,
  *  time range, and region. Each source maps 1:1 to a collection at run time. */
 export interface Source {
   platform: string;
@@ -108,7 +108,7 @@ export interface Agent {
   /** Server-computed for the requesting user: false when this agent is owned by
    *  another member of your org and shared with you. */
   is_owner?: boolean;
-  /** Display name (or email) of the owner — set only on agents shared with you
+  /** Display name (or email) of the owner - set only on agents shared with you
    *  by someone else, so the UI can show "Shared by …". */
   owner_label?: string | null;
   title: string;
@@ -217,7 +217,7 @@ export function runAgent(agentId: string): Promise<{ agent_id: string; run_id: s
 
 /** Re-collect data for selected sources. Targeting: pass `source_idx` for one
  *  card, `platform` to refresh every card on that platform, or omit both to
- *  refresh everything. Does NOT trigger the agent workflow — collection
+ *  refresh everything. Does NOT trigger the agent workflow - collection
  *  pipelines only. */
 export function runAgentSources(
   agentId: string,
@@ -231,7 +231,7 @@ export function runAgentSources(
 
 /** Fetch one or more specific posts by URL through the unified pipeline.
  *  Server parses each URL, groups by platform, and dispatches one collection
- *  per platform — same enrichment/embedding path as keyword-collected posts.
+ *  per platform - same enrichment/embedding path as keyword-collected posts.
  *  Only X/Twitter URLs are supported today; others return 400. */
 export function fetchPostsByUrl(
   agentId: string,
@@ -261,7 +261,7 @@ export interface CreateFromWizardPayload {
   context?: AgentContext;
   constitution?: Constitution;
   existing_agent_ids?: string[];
-  /** Typed outputs — preferred. When set, supersedes the auto_* booleans. */
+  /** Typed outputs - preferred. When set, supersedes the auto_* booleans. */
   outputs?: AgentOutput[];
   /** @deprecated send `outputs` instead. */
   auto_report?: boolean;

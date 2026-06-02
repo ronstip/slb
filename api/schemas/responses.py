@@ -332,7 +332,7 @@ class OrgInviteResponse(BaseModel):
 
 
 # Public preview returned to anonymous visitors clicking an invite link.
-# Deliberately omits invite_id / invite_code — caller already has the code.
+# Deliberately omits invite_id / invite_code - caller already has the code.
 class OrgInvitePreviewResponse(BaseModel):
     org_name: str
     invited_email: str

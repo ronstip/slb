@@ -1,7 +1,7 @@
 """Build the v7 "Strategic Memo Brief" template.
 
 Reverse-engineered from a hand-tuned reference brief that the customer asked
-us to preserve (the Eisenkot / "Uvda" profile brief — Hebrew, X-only, 39h
+us to preserve (the Eisenkot / "Uvda" profile brief - Hebrew, X-only, 39h
 window around a TV broadcast). The reference is a SHORT strategic memo with
 numbered sections + an evidence appendix, NOT the version C longread and
 NOT the v6 research-paper grid.
@@ -13,7 +13,7 @@ Structure (visual top-to-bottom; y/h hand-set, no auto-flow):
                                     scope + the verified event the brief
                                     is anchored to)
     §1 Bottom line                 (2 short paras; bolds the coined concept)
-    §2 The numbers picture         (3 numeric bullets — incl. engagement-
+    §2 The numbers picture         (3 numeric bullets - incl. engagement-
                                     paradox callout if present)
     Sentiment doughnut             (figureText explains the post% vs reach%
                                     gap and names the channels driving it)
@@ -28,17 +28,17 @@ Structure (visual top-to-bottom; y/h hand-set, no auto-flow):
   EVIDENCE
     Quote appendix                 (5 supportive + 5 critical verbatim
                                     quotes, each w/ handle + views + URL)
-    Stance table                   (custom dim — support / oppose / unaddressed)
+    Stance table                   (custom dim - support / oppose / unaddressed)
     Channels table                 (channel_handle × type × posts × likes × views)
     Content-type progress-list     (content_type × sentiment, half-width)
     Reaction-narrative doughnut    (custom dim, half-width, paired w/ above)
     Embedded posts                 (X embeds mirroring appendix URLs)
 
-What this template preserves from the reference brief — load-bearing:
+What this template preserves from the reference brief - load-bearing:
 
   Structure
     - Numbered sections (§1 §2 §3 §4) over a Western longread.
-    - Short text widgets (h≤6) — every section fits on one mobile scroll.
+    - Short text widgets (h≤6) - every section fits on one mobile scroll.
     - Recommendations precede the long narrative analysis. Reader gets the
       action before the diagnosis.
 
@@ -53,7 +53,7 @@ What this template preserves from the reference brief — load-bearing:
     - Header background line names the verified event AND the time window
       around it ("39 hours around broadcast"), not just a generic week.
     - figureText on volatile charts must attribute viral lift to specific
-      channels — anonymous "viral content" is banned.
+      channels - anonymous "viral content" is banned.
 
   Data accuracy
     - Data-scope line up top: post count, view count, time window.
@@ -99,7 +99,7 @@ DATA_SOURCE_PRINCIPLE = (
     "(`window_metrics`, `topic_metrics`, `entity_metrics`, `channel_metrics`) "
     "or a `scope_posts` SELECT. Counting rows by eye, summing series mentally, "
     "normalizing percentages by arithmetic are all banned. If the source TVF "
-    "is sparse for this period, say so — do not invent a baseline."
+    "is sparse for this period, say so - do not invent a baseline."
 )
 
 LOCALIZE = (
@@ -114,7 +114,7 @@ LOCALIZE = (
 # ─── HERO ──────────────────────────────────────────────────────────────────
 
 
-HEADER_MD = f"""# `<Subject>` — Strategic memo (`<event short-name>`, `<YYYY-MM-DD>`)
+HEADER_MD = f"""# `<Subject>` - Strategic memo (`<event short-name>`, `<YYYY-MM-DD>`)
 
 {VOICE}
 
@@ -124,10 +124,10 @@ HEADER_MD = f"""# `<Subject>` — Strategic memo (`<event short-name>`, `<YYYY-M
 (1) the anchoring event, (2) the verified event date, (3) the time window
 around it the corpus covers, and (4) the data scope in numbers. Localize.
 
-**Hard structure — one paragraph, three sentences max.**
+**Hard structure - one paragraph, three sentences max.**
 
 1. **The anchor.** What real-world event is this brief about? What date did
-   it happen? Verify the event date via web grounding — NOT from a corpus
+   it happen? Verify the event date via web grounding - NOT from a corpus
    post date (commemorative / recap posts come days-to-weeks after the
    event and will fool you).
 2. **The window.** How many hours / days of corpus around the event? Why
@@ -135,7 +135,7 @@ around it the corpus covers, and (4) the data scope in numbers. Localize.
    fail when the event is a 90-minute show.)
 3. **The numbers.** `<N>` posts, `<M>K` views, `<K>` platforms / channels.
    These three numbers must agree with what `window_metrics` returns for
-   the same window — pull them, do not estimate.
+   the same window - pull them, do not estimate.
 
 **Forbidden.** Methodology terminology (`scope_posts`, `topic_metrics`,
 TVF, embedding, dedupe). The word "report". "This week's brief". Any
@@ -143,9 +143,9 @@ sentence that would still be true if the anchoring event had not happened.
 
 ---
 
-**Reference example (shape only — do not paste verbatim).**
+**Reference example (shape only - do not paste verbatim).**
 
-# גדי איזנקוט — ניתוח אסטרטגי (כתבת "עובדה", 2026-05-22)
+# גדי איזנקוט - ניתוח אסטרטגי (כתבת "עובדה", 2026-05-22)
 
 **רקע:** הדוח מנתח את התהודה הציבורית ברשת X בעקבות שידור כתבת הפרופיל
 בתוכנית "עובדה" (22 במאי 2026), שליוותה את גדי איזנקוט במשך כשנה. הניתוח
@@ -160,7 +160,7 @@ BOTTOM_LINE_MD = f"""## 1. Bottom line
 {VOICE}
 
 **Agent instructions.** Two short paragraphs. ≤80 words total. This widget
-is read in 8 seconds — every word fights for its place.
+is read in 8 seconds - every word fights for its place.
 
 **Hard structure.**
 
@@ -170,14 +170,14 @@ is read in 8 seconds — every word fights for its place.
    subject as a values-based alternative but created strategic exposure
    on the operational / political axis.")
 2. **Second paragraph (1–2 sentences).** Introduce the brief's **coined
-   concept** — a bolded short Hebrew/English phrase the analyst is naming
+   concept** - a bolded short Hebrew/English phrase the analyst is naming
    for the first time, that the rest of the memo will refer back to.
    ("`<חוב מהות>`" / "`<the essence debt>`" / "`<consciousness
    engineering>`"). The concept names the central tension; not a slogan,
    not a category. It must be specific enough that another analyst
    reading only this widget would know exactly what claim is being made.
 
-**Anti-patterns — automatic fail.**
+**Anti-patterns - automatic fail.**
 - Generic openers: "The broadcast generated significant discourse…",
   "Multiple narratives emerged…", "The subject faces both opportunities
   and challenges…".
@@ -188,7 +188,7 @@ is read in 8 seconds — every word fights for its place.
 
 **Coining rule.** The coined concept is referenced at least once more in
 §3 (Narrative analysis) and at least once in §4 (Recommendations). Three
-appearances total. If it appears only here, it is decorative — replace it
+appearances total. If it appears only here, it is decorative - replace it
 or drop it.
 
 ---
@@ -202,7 +202,7 @@ or drop it.
 והפוליטית.
 
 בעוד שהתמיכה בבסיס היא רגשית ועמוקה, הביקורת מתמקדת ב"הנדסת תודעה" וחוסר
-בתוכן פוליטי מהותי. הקמפיין עומד כעת בפני **"חוב מהות"** — הצורך להוכיח
+בתוכן פוליטי מהותי. הקמפיין עומד כעת בפני **"חוב מהות"** - הצורך להוכיח
 שהאדם הערכי הוא גם מנהיג עם תוכנית עבודה.
 """
 
@@ -214,23 +214,23 @@ NUMBERS_PICTURE_MD = f"""## 2. The numbers picture
 {DATA_SOURCE_PRINCIPLE}
 
 **Agent instructions.** Three bullets. Each bullet is one specific number
-with an attached causal mechanism. Bullets stack — every later bullet
+with an attached causal mechanism. Bullets stack - every later bullet
 adds an angle the previous did not cover.
 
-**Bullet shapes — pick three of the four; do not repeat a shape.**
+**Bullet shapes - pick three of the four; do not repeat a shape.**
 
-- **Shape A — Overall sentiment skew.** `<X>%` of posts are negative /
+- **Shape A - Overall sentiment skew.** `<X>%` of posts are negative /
   positive. Attach the dominant frame in one short clause. ("`<70%>` of
   posts are negative, driven mainly by a `<consciousness-engineering>` /
   `<PR-stunt>` critique.")
-- **Shape B — Engagement paradox.** Posts in one camp generate `<N>×` the
+- **Shape B - Engagement paradox.** Posts in one camp generate `<N>×` the
   engagement-per-post of posts in the other camp. Name the two channels
-  doing the lift. This is the most under-noticed shape — if it holds,
+  doing the lift. This is the most under-noticed shape - if it holds,
   prefer it over Shape A.
-- **Shape C — Lead narrative.** Topic `<X>` (`<N>` posts) vs topic `<Y>`
+- **Shape C - Lead narrative.** Topic `<X>` (`<N>` posts) vs topic `<Y>`
   (`<M>` posts). The ratio between the leading critical and leading
   supportive narrative.
-- **Shape D — Reach-vs-volume gap.** Camp X has `<X>%` of posts but
+- **Shape D - Reach-vs-volume gap.** Camp X has `<X>%` of posts but
   `<Y>%` of reach. Name the viral artifact (one post or one channel)
   that produced the gap.
 
@@ -254,7 +254,7 @@ period without editing.
 * **סנטימנט כללי:** 70% מהפוסטים שליליים, מונע בעיקר מביקורת ממוקדת של
   "יחסי ציבור" ו"הנדסת תודעה".
 * **פרדוקס המעורבות:** פוסטים התומכים באיזנקוט (נרטיב "מנהיגות אותנטית")
-  מייצרים פי 2 מעורבות לפוסט מאשר פוסטים ביקורתיים — מונע מ-2 ערוצים עם
+  מייצרים פי 2 מעורבות לפוסט מאשר פוסטים ביקורתיים - מונע מ-2 ערוצים עם
   חשיפה גבוהה (`<@channel_a>`, `<@channel_b>`).
 * **נרטיב מוביל:** "יחסי ציבור פוליטיים" (55 פוסטים) לעומת "מנהיגות
   אותנטית" (20 פוסטים).
@@ -269,17 +269,17 @@ RECOMMENDATIONS_MD = f"""## 4. Operative recommendations
 {VOICE}
 
 **Agent instructions.** 3–4 bullets. Each bullet is one move. **Each move
-carries verbatim sample copy in bold** — the actual line the campaign
+carries verbatim sample copy in bold** - the actual line the campaign
 should ship, in the data's dominant language, ready to copy-paste.
 
-**Hard structure — every bullet.**
+**Hard structure - every bullet.**
 
 - **Lead with the imperative (bold short phrase + colon).** "Repay the
   essence debt:", "Reclaim the mensch frame:", "Attack the naivete
   narrative:". This is the move's headline.
 - **One sentence of body.** What the move actually does. References the
   coined concept from §1.
-- **One verbatim bolded slogan** — the line that ships. In Hebrew if the
+- **One verbatim bolded slogan** - the line that ships. In Hebrew if the
   corpus is Hebrew. **"בחדר המצב לא צריכים כריזמה, צריכים שיקול דעת"** is
   a pass; *"Position the candidate as decisive"* is a fail (it is
   guidance, not a line).
@@ -308,16 +308,16 @@ write three.
   "מה אני עושה" (ביטחון, כלכלה, משפט). יש להוציא ניירות עמדה מפורטים
   שינטרלו את הטענה ל"ואקום פוליטי".
 * **ניכוס מחדש של ה"מענטש":** במקום להתנצל על היושרה, להציג אותה ככלי
-  הניהולי היחיד שיכול לשקם את האמון הציבורי — **"היחיד שלא משקר לכם"**.
+  הניהולי היחיד שיכול לשקם את האמון הציבורי - **"היחיד שלא משקר לכם"**.
 * **תקיפת נרטיב ה"נאיביות":** להציג את הניסיון הביטחוני העצום כמשקל נגד
-  לכריזמה טלוויזיונית — **"בחדר המצב לא צריכים כריזמה, צריכים שיקול
+  לכריזמה טלוויזיונית - **"בחדר המצב לא צריכים כריזמה, צריכים שיקול
   דעת"**.
 * **ביסוס עצמאות:** הדגשת פערים או עמדות ייחודיות מול לפיד ובנט כדי
   להוכיח שהמועמד שחקן עצמאי.
 """
 
 
-NARRATIVES_ANALYSIS_MD = f"""## 3. Narrative analysis — strengths that became weaknesses
+NARRATIVES_ANALYSIS_MD = f"""## 3. Narrative analysis - strengths that became weaknesses
 
 {VOICE}
 
@@ -325,13 +325,13 @@ NARRATIVES_ANALYSIS_MD = f"""## 3. Narrative analysis — strengths that became 
 asset the subject brought into the period and shows how the discourse
 inverted it. This is the diagnostic that earns the recommendations above.
 
-**Each subsection — exactly this shape.**
+**Each subsection - exactly this shape.**
 
 ### א. `<asset / framing>` vs `<inverted reading>`
 
 One short paragraph (40–70 words). State (a) what the subject's camp was
 trying to project, (b) how the critical discourse re-read it. Quote the
-critical re-reading in bold inside the paragraph — verbatim from the
+critical re-reading in bold inside the paragraph - verbatim from the
 corpus, ≤12 words. ("The claim, in their words: **"`<critic-line>`"**.")
 
 If the subsection is anchored on a discrete moment (a viral clip, a
@@ -366,7 +366,7 @@ into one televised moment.")
 
 ### ג. אירוע ה"נמנום"
 
-הקטע בו המועמד נראה עייף הפך לוויראלי ומזין נרטיב של "חוסר כריזמה" —
+הקטע בו המועמד נראה עייף הפך לוויראלי ומזין נרטיב של "חוסר כריזמה" -
 **חוב המהות** מקובץ לרגע טלוויזיוני אחד.
 """
 
@@ -374,15 +374,15 @@ into one televised moment.")
 # ─── EVIDENCE ──────────────────────────────────────────────────────────────
 
 
-APPENDIX_QUOTES_MD = f"""## Appendix — receipts
+APPENDIX_QUOTES_MD = f"""## Appendix - receipts
 
 {VOICE}
 
 **Agent instructions.** Exactly two sub-sections: **Supportive examples**
 and **Critical examples**. Five quotes each. Pulled directly from the
-corpus — no paraphrasing, no composite quotes.
+corpus - no paraphrasing, no composite quotes.
 
-**Each quote line — exactly this shape.**
+**Each quote line - exactly this shape.**
 
 * **"`<verbatim post text, ≤120 chars>`"** (`<N>K` views): `<URL>`
   *(`<handle>`)*.
@@ -450,7 +450,7 @@ def _text(i: str, md: str, y: int, h: int, w: int = 12, x: int = 0,
 
 
 def _sentiment_doughnut() -> dict:
-    """Sentiment distribution doughnut — toggleable post_count ↔ view_count.
+    """Sentiment distribution doughnut - toggleable post_count ↔ view_count.
 
     Matches the load-bearing sentiment widget in the reference brief. The
     `figureText` placeholder reminds the agent to attribute the post% vs
@@ -479,14 +479,14 @@ def _sentiment_doughnut() -> dict:
             "[Agent: rewrite at runtime.] State the headline split AND the "
             "post%-vs-reach% gap, then attribute the gap to specific named "
             "channels. Reference shape: \"Positive posts are X% of volume "
-            "but Y% of reach — the gap comes from viral posts by "
+            "but Y% of reach - the gap comes from viral posts by "
             "@<channel_a> and the official @<channel_b> account.\""
         ),
     }
 
 
 def _topics_table() -> dict:
-    """Topics ranked by engagement — the narrative-level evidence."""
+    """Topics ranked by engagement - the narrative-level evidence."""
     return {
         "i": "v7topics00",
         "chartType": "table",
@@ -511,7 +511,7 @@ def _topics_table() -> dict:
         },
         "figureText": (
             "[Agent: rewrite at runtime.] Name the narrative that got the "
-            "highest engagement lift AND the source — \"the supportive "
+            "highest engagement lift AND the source - \"the supportive "
             "<authentic-leadership> topic was boosted by viral posts from "
             "@<channel_a> and the official @<channel_b> account.\" "
             "Anonymous \"viral content\" is banned."
@@ -520,7 +520,7 @@ def _topics_table() -> dict:
 
 
 def _stance_table() -> dict:
-    """Explicit stance dimension — support / oppose / not addressed.
+    """Explicit stance dimension - support / oppose / not addressed.
 
     Uses a custom_fields dimension. Agent must define the custom field on
     the agent's enrichment_config; placeholder name here is
@@ -568,7 +568,7 @@ def _stance_table() -> dict:
 
 
 def _channels_table() -> dict:
-    """Top channels by engagement — channel-handle level evidence."""
+    """Top channels by engagement - channel-handle level evidence."""
     return {
         "i": "v7channels0",
         "chartType": "table",
@@ -596,7 +596,7 @@ def _channels_table() -> dict:
 
 
 def _content_types_progress() -> dict:
-    """Content types × sentiment breakdown — half-width pair w/ reaction
+    """Content types × sentiment breakdown - half-width pair w/ reaction
     narrative doughnut.
 
     Removable: drop on single-content-type corpora (e.g. X-only posts with
@@ -622,7 +622,7 @@ def _content_types_progress() -> dict:
 
 
 def _reaction_narrative_doughnut() -> dict:
-    """Reaction narrative breakdown — half-width pair w/ content types.
+    """Reaction narrative breakdown - half-width pair w/ content types.
 
     Removable: drop when the reaction-narrative custom field is empty for
     the agent's enrichment config.
@@ -650,9 +650,9 @@ def _reaction_narrative_doughnut() -> dict:
 
 
 def _embedded_posts() -> dict:
-    """Embedded posts widget — 1:1 mirror of appendix URLs.
+    """Embedded posts widget - 1:1 mirror of appendix URLs.
 
-    `embedUrls` is a placeholder list — agent rewrites at runtime with the
+    `embedUrls` is a placeholder list - agent rewrites at runtime with the
     same 10 URLs that appear in the appendix quote widget above. If a quote
     is dropped from the appendix, drop the matching URL here.
     """
@@ -701,7 +701,7 @@ def write_template(dry_run: bool) -> None:
     print(f"  max y: {max(w['y'] + w['h'] for w in layout)}")
 
     if dry_run:
-        print("\nDRY RUN — not writing to Firestore.")
+        print("\nDRY RUN - not writing to Firestore.")
         return
 
     fs = get_fs()

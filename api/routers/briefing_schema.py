@@ -1,13 +1,13 @@
 """Pydantic schema for the agent-composed Briefing page.
 
 Distinct from the per-run `briefing` field on agent runs (state_of_the_world /
-open_threads / process_notes) — that is an INPUT to this newsletter-style
+open_threads / process_notes) - that is an INPUT to this newsletter-style
 page (the agent's reflection for continuity), not the page itself.
 
 Stories are polymorphic via a discriminated union on `type`:
   - `topic`: anchors to a semantic cluster of social posts (what people are
     talking about).
-  - `data`: an analytical finding authored by the agent — EMV leader,
+  - `data`: an analytical finding authored by the agent - EMV leader,
     competitive gap, anomaly, record, momentum shift, etc. Anchored with
     metrics and an optional chart.
 """
@@ -69,7 +69,7 @@ class DataStory(BaseModel):
     rank: int
     section_label: str | None = None
     metrics: list[MetricItem] = Field(
-        description="2-4 numbers that ARE the story. Required — a data story without "
+        description="2-4 numbers that ARE the story. Required - a data story without "
         "numbers is just a topic story.",
         min_length=1,
     )

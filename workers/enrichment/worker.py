@@ -1,4 +1,4 @@
-"""Enrichment Worker — enriches posts using Gemini API (multimodal).
+"""Enrichment Worker - enriches posts using Gemini API (multimodal).
 
 Two modes:
   - Inline: receives PostData directly from collection pipeline (no BQ read)
@@ -41,7 +41,7 @@ def _write_results_to_bq(
     writes new rows, even when the (post_id, agent_id, agent_version) triple
     already exists. Readers dedupe via the DEDUP_ENRICHED CTE.
 
-    `source` is a free-form tag — currently 'user_override' for manual
+    `source` is a free-form tag - currently 'user_override' for manual
     corrections, NULL for auto enrichment. User-override rows win the dedup.
     """
     if not results:
@@ -150,7 +150,7 @@ def _read_posts_from_bq(
 
     Skip predicate: a post is skipped iff an enriched_posts row exists with
     matching (agent_id, agent_version). NULL legacy rows do NOT count as a
-    match — the new (agent, version) re-enriches them.
+    match - the new (agent, version) re-enriches them.
     """
     rows = bq.query(
         "SELECT p.post_id, p.platform, p.channel_handle, "
@@ -241,7 +241,7 @@ def run_enrichment_inline(
 ) -> list[tuple[str, EnrichmentResult]]:
     """Enrich posts from in-memory data. Used by parallel pipeline callback.
 
-    No BQ read needed — post data is passed directly from collection.
+    No BQ read needed - post data is passed directly from collection.
     custom_fields: per-collection custom field definitions from config.
     enrichment_context: task-level context for relevance judgement.
     content_types: optional closed vocabulary for the content_type field.
@@ -314,12 +314,12 @@ def run_enrichment(collection_id: str, min_likes: int = 0, batch_size: int = 50)
     bq = BQClient(settings)
     fs = FirestoreClient(settings)
 
-    # Status stays "running" — no granular enriching status anymore
+    # Status stays "running" - no granular enriching status anymore
     custom_fields = _load_custom_fields(fs, collection_id)
     enrichment_context = _load_enrichment_context(fs, collection_id)
     content_types = _load_content_types(fs, collection_id)
 
-    # Re-enrichment scope is keyed by (agent_id, agent_version) — read both
+    # Re-enrichment scope is keyed by (agent_id, agent_version) - read both
     # off collection_status (frozen at dispatch time).
     status = fs.get_collection_status(collection_id) or {}
     agent_id = status.get("agent_id")

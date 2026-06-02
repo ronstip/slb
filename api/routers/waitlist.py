@@ -1,4 +1,4 @@
-"""Waitlist router — public endpoint that captures early-access signups.
+"""Waitlist router - public endpoint that captures early-access signups.
 
 The product is still gated (only an allowlist can sign in), but the landing
 page is public. This endpoint accepts an email + optional brief so we can
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/waitlist", tags=["waitlist"])
 
-# Loose RFC-ish check — Firebase/Google have already validated the address by
+# Loose RFC-ish check - Firebase/Google have already validated the address by
 # the time we get here; this just rejects obvious junk from direct POSTs.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -45,7 +45,7 @@ async def join_waitlist(request: Request, body: WaitlistRequest):
         raise HTTPException(status_code=400, detail="Invalid email")
 
     fs = get_fs()
-    # Firestore document IDs can't contain '/' — replace defensively even
+    # Firestore document IDs can't contain '/' - replace defensively even
     # though valid emails won't ever have one.
     doc_id = email.replace("/", "_")
 

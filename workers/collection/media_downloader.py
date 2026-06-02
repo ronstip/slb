@@ -33,7 +33,7 @@ def _download_via_ytdlp(
     try:
         import yt_dlp
     except ImportError:
-        logger.warning("yt-dlp not installed — cannot fallback for %s", post_url)
+        logger.warning("yt-dlp not installed - cannot fallback for %s", post_url)
         return None
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -85,8 +85,8 @@ def download_media(gcs_client: GCSClient, post: Post, collection_id: str) -> lis
     """Download media from URLs and upload to GCS.
 
     Returns list of media_ref dicts. Each ref has either:
-    - gcs_uri set (GCS upload succeeded — works for all media types in Gemini)
-    - original_url only (GCS failed, image CDN fallback — Gemini can fetch images directly)
+    - gcs_uri set (GCS upload succeeded - works for all media types in Gemini)
+    - original_url only (GCS failed, image CDN fallback - Gemini can fetch images directly)
 
     Videos that fail GCS upload are dropped entirely (CDN video URLs don't work with Gemini).
     For platforms in _YTDLP_PLATFORMS, falls back to yt-dlp for failed video downloads.
@@ -115,10 +115,10 @@ def download_media(gcs_client: GCSClient, post: Post, collection_id: str) -> lis
             else:
                 logger.warning("Post %s: CDN and yt-dlp both failed for video", post.post_id)
         elif _is_video_url(url):
-            # Video CDN URLs don't work with Gemini — drop it
+            # Video CDN URLs don't work with Gemini - drop it
             logger.warning("Post %s: video GCS upload failed, skipping for enrichment", post.post_id)
         else:
-            # Image: keep CDN URL as fallback — Gemini can fetch images directly
+            # Image: keep CDN URL as fallback - Gemini can fetch images directly
             media_refs.append({
                 "original_url": url,
                 "media_type": "image",
@@ -126,7 +126,7 @@ def download_media(gcs_client: GCSClient, post: Post, collection_id: str) -> lis
                 "gcs_uri": "",
             })
 
-    # TikTok: if no video was obtained via CDN (expected — video_url is excluded
+    # TikTok: if no video was obtained via CDN (expected - video_url is excluded
     # from media_urls due to expiring tokens), download directly from the post
     # page URL via yt-dlp. yt-dlp resolves the video independently of CDN tokens.
     # NOTE: This fallback is TikTok-specific. Reddit videos are handled inline via
@@ -201,6 +201,6 @@ def download_media_batch(
             _consume(pool)
 
     logger.info(
-        "Media download: %d posts — %d images→GCS, %d videos→GCS, %d images CDN-fallback",
+        "Media download: %d posts - %d images→GCS, %d videos→GCS, %d images CDN-fallback",
         len(posts_with_media), n_gcs_images, n_gcs_videos, n_cdn_images,
     )

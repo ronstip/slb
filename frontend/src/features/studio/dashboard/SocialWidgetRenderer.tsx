@@ -53,7 +53,7 @@ import { cn } from '../../../lib/utils.ts';
 
 // ── Configurable table widget ─────────────────────────────────────────────────
 
-/** Map a dimension to the dashboard filter key — used to wire row-click
+/** Map a dimension to the dashboard filter key - used to wire row-click
  *  filtering. Returns undefined for dimensions that don't correspond to a
  *  single-value filter (e.g. posted_at, or custom enrichment fields). */
 function filterKeyForDimension(dim: CustomDimension): string | undefined {
@@ -106,7 +106,7 @@ function computeColumnStats(
 function formatPct(value: number, total: number): string {
   if (!Number.isFinite(total) || total <= 0) return '0%';
   const p = (value / total) * 100;
-  // 1dp under 10%, none above — keeps narrow columns tidy.
+  // 1dp under 10%, none above - keeps narrow columns tidy.
   return `${p < 10 ? p.toFixed(1) : p.toFixed(0)}%`;
 }
 
@@ -145,7 +145,7 @@ function renderNumericCell(
   if (viz === 'heatmap' && max > 0) {
     const pct = Math.max(0, Math.min(1, value / max));
     // 4% baseline so even zero rows are tinted; primary token = theme accent.
-    // color-mix is used everywhere else in globals.css — --primary is hex, not
+    // color-mix is used everywhere else in globals.css - --primary is hex, not
     // an hsl triplet, so `hsl(var(--primary) / alpha)` does not work.
     const mix = (4 + pct * 36).toFixed(1);
     return (
@@ -200,12 +200,12 @@ function buildTableColumns(
         // wrap to full height (no line cap) so the value is always fully visible.
         minWidth: isFirstDim ? 220 : 170,
         // String values: DataTable's header sort is numeric-only and would
-        // scramble — fall back to aggregateTable's pre-sort by picking this
+        // scramble - fall back to aggregateTable's pre-sort by picking this
         // column in the config dialog's Sort by.
         sortable: false,
         render: (row) => {
           const raw = String(row[col.id] ?? '');
-          const text = raw === '' ? '—' : renameValue(raw, labelOverrides);
+          const text = raw === '' ? '-' : renameValue(raw, labelOverrides);
           if (isChannel) {
             return (
               <div className="flex items-center gap-2 min-w-0">
@@ -309,7 +309,7 @@ function buildPostTableColumns(
           key: id, header, sortable: false,
           render: (row) => {
             const v = String(row[id] ?? '');
-            if (!v) return <span className="text-muted-foreground/40">—</span>;
+            if (!v) return <span className="text-muted-foreground/40">-</span>;
             return (
               <span className="inline-block truncate rounded-full bg-muted px-2 py-0.5 text-[10px] capitalize text-muted-foreground">
                 {v}
@@ -349,7 +349,7 @@ function buildPostTableColumns(
           key: id, header, sortable: false,
           render: (row) => {
             const v = row[id];
-            if (v == null || v === '') return <span className="text-muted-foreground/40">—</span>;
+            if (v == null || v === '') return <span className="text-muted-foreground/40">-</span>;
             const s = Array.isArray(v) ? v.join(', ') : String(v);
             return <span className="break-words text-[12px]" title={s}>{s}</span>;
           },
@@ -404,7 +404,7 @@ function ConfigurableTableWidget({
     ? filterKeyForDimension(firstDimCol.dimension as CustomDimension)
     : undefined;
   // When the active sort key produces strings (any dim column), rely on
-  // aggregateTable's pre-sort — DataTable's sort is numeric-only and would
+  // aggregateTable's pre-sort - DataTable's sort is numeric-only and would
   // scramble the order.
   const sortBy = tableConfig.sortBy ?? tableConfig.columns[0]?.id;
   const sortCol = tableConfig.columns.find((c) => c.id === sortBy);
@@ -423,7 +423,7 @@ function ConfigurableTableWidget({
       defaultSortDir={tableConfig.sortDir ?? 'desc'}
       pageSize={tableConfig.rowLimit ?? (isPostMode ? 50 : 25)}
       // Defaults chosen to match the original Top Channels look:
-      // generous row padding, no stripes — the user can tweak both in the
+      // generous row padding, no stripes - the user can tweak both in the
       // Style tab.
       density={tableConfig.density ?? 'comfortable'}
       striped={tableConfig.striped ?? false}
@@ -1013,7 +1013,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
         </div>
       ) : (
         <div className="flex items-center justify-center h-full text-xs text-muted-foreground italic">
-          Empty text card — click the gear to add markdown
+          Empty text card - click the gear to add markdown
         </div>
       )}
     </div>
@@ -1068,7 +1068,7 @@ function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, 
       <div ref={contentRef} className="w-full" data-embed-widget="1">
         {urls.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-xs text-muted-foreground italic">
-            Empty embed card — click the gear to add post URLs
+            Empty embed card - click the gear to add post URLs
           </div>
         ) : urls.length === 1 ? (
           <div className="flex justify-center">
@@ -1162,7 +1162,7 @@ interface SocialWidgetRendererProps {
   widget: SocialDashboardWidget;
   /** Already globally filtered posts */
   filteredPosts: DashboardPost[];
-  /** Agent-scoped topic_metrics rows. Optional — widgets with
+  /** Agent-scoped topic_metrics rows. Optional - widgets with
    *  `dataSource: 'posts'` ignore this. Empty array when no agent context. */
   topics?: TopicMetric[];
   isEditMode: boolean;
@@ -1192,7 +1192,7 @@ export function SocialWidgetRenderer({
 }: SocialWidgetRendererProps) {
   // Legacy aggregations (`volume`, `sentiment-over-time`) are rewritten to
   // `aggregation: 'custom'` here so the dispatch below stays uniform.
-  // Topic widgets are always custom — coerce here so any stale config
+  // Topic widgets are always custom - coerce here so any stale config
   // (e.g. an agent-emitted layout that set `aggregation: 'kpi'`) routes
   // through the custom path which knows how to read topic data.
   const widget = useMemo(() => {

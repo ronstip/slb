@@ -15,11 +15,11 @@ class TopicCandidate(BaseModel):
     """A single candidate topic emitted by pass 1.
 
     Anchors must come from the enrichment fields that appeared in the batch
-    (open-set themes/entities/brands — no global vocabulary). Anchor lists
+    (open-set themes/entities/brands - no global vocabulary). Anchor lists
     feed pass 2's merge decisions.
 
     `source_post_indices` is the LLM's own claim about which posts inspired
-    this candidate — the basis for topic membership in the v2 algorithm.
+    this candidate - the basis for topic membership in the v2 algorithm.
     """
 
     header: str = Field(
@@ -33,7 +33,7 @@ class TopicCandidate(BaseModel):
         description=(
             "One of: 'event' (specific incident/announcement), 'narrative' "
             "(actor + ongoing stance/framing), 'dynamic' (cross-actor move). "
-            "Drives pass-2 merge decisions — different beat types rarely merge."
+            "Drives pass-2 merge decisions - different beat types rarely merge."
         ),
     )
     keywords: list[str] = Field(
@@ -52,7 +52,7 @@ class TopicCandidate(BaseModel):
             "of truth for topic membership."
         ),
     )
-    # Resolved by the orchestrator after pass-1 parsing — not produced by the LLM.
+    # Resolved by the orchestrator after pass-1 parsing - not produced by the LLM.
     source_post_ids: list[str] = Field(default_factory=list)
 
 
@@ -105,7 +105,7 @@ class Pass2Response(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Index-only merge response — token-efficient pass 2.
+# Index-only merge response - token-efficient pass 2.
 #
 # The LLM emits only groups of input candidate indices. Topic construction is
 # done deterministically (union of anchors, rule from anchors). This keeps the
@@ -117,7 +117,7 @@ class Pass2Response(BaseModel):
 class MergeGroup(BaseModel):
     """A group of candidate indices that the LLM believes describe the SAME
     news beat. Indices are 1-based, matching the prompt's "Candidate {i}:" labels.
-    Singletons (groups of size 1) are normal and expected — most candidates
+    Singletons (groups of size 1) are normal and expected - most candidates
     do not have a duplicate.
     """
 
@@ -129,7 +129,7 @@ class MergeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Pass 3 — post-hoc per-topic membership filter
+# Pass 3 - post-hoc per-topic membership filter
 # ---------------------------------------------------------------------------
 
 
