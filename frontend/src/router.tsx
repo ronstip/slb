@@ -69,6 +69,9 @@ const TermsPage = lazy(() =>
 const RefundPage = lazy(() =>
   import('./legal/LegalPages.tsx').then((m) => ({ default: m.RefundPage })),
 );
+const ManifestoPage = lazy(() =>
+  import('./legal/ManifestoPage.tsx').then((m) => ({ default: m.ManifestoPage })),
+);
 
 function FullScreenSpinner() {
   return (
@@ -107,6 +110,7 @@ const AccountPendingPageRoute = withSuspense(AccountPendingPage);
 const PrivacyPageRoute = withSuspense(PrivacyPage);
 const TermsPageRoute = withSuspense(TermsPage);
 const RefundPageRoute = withSuspense(RefundPage);
+const ManifestoPageRoute = withSuspense(ManifestoPage);
 
 /**
  * Registers the react-router `navigate` function with the API client so
@@ -219,6 +223,10 @@ export const router = createBrowserRouter([
       {
         path: '/refund',
         element: <RefundPageRoute />,
+      },
+      {
+        path: '/manifesto',
+        element: <ManifestoPageRoute />,
       },
       {
         path: '/shared/briefing/:token',
