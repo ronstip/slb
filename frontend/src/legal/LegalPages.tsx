@@ -104,12 +104,6 @@ const A = ({ href, children }: { href: string; children: ReactNode }) => (
 
 // ── Page shell ──────────────────────────────────────────────────────────────
 
-const LEGAL_LINKS = [
-  { to: '/privacy', label: 'Privacy' },
-  { to: '/terms', label: 'Terms' },
-  { to: '/refund', label: 'Refunds' },
-] as const;
-
 function LegalShell({
   eyebrow,
   title,
