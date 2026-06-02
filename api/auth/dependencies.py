@@ -263,6 +263,21 @@ def _get_or_create_user(uid: str, decoded_token: dict, is_anonymous: bool = Fals
                 updates["photo_url"] = picture
             fs.update_user(uid, **updates)
             existing.update(updates)
+        elif not existing.get("email") and decoded_token.get("email"):
+            # Self-heal a non-anonymous doc that has no email - e.g. one created
+            # by an older `link-account` migration that copied the anonymous
+            # doc (email="") without backfilling. Such docs render as blank rows
+            # in the admin Users list and never recover (the anon branch above
+            # requires `is_anonymous`). Repair from the token here.
+            updates = {"email": decoded_token["email"]}
+            name = decoded_token.get("name")
+            if name and not existing.get("display_name"):
+                updates["display_name"] = name
+            picture = decoded_token.get("picture")
+            if picture and not existing.get("photo_url"):
+                updates["photo_url"] = picture
+            fs.update_user(uid, **updates)
+            existing.update(updates)
         # Only update last_login_at once per hour (not on every request)
         now_mono = time.monotonic()
         last_written = _last_login_written.get(uid, 0)

@@ -128,7 +128,16 @@ async def link_account(
     if old_user:
         new_user = fs.get_user(new_uid)
         if not new_user:
+            # Backfill the real identity from the now-authenticated caller. The
+            # old doc was anonymous (email=""), so copying it verbatim would
+            # leave the new uid with a blank email - present in Firestore but
+            # invisible-looking in the admin Users list, even though /me (which
+            # reads the token, not Firestore) shows the right address.
             old_user["is_anonymous"] = False
+            if user.email:
+                old_user["email"] = user.email
+            if user.display_name:
+                old_user["display_name"] = user.display_name
             fs.create_user(new_uid, old_user)
         fs._db.collection("users").document(old_uid).delete()
 
