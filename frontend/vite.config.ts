@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import prerender from '@prerenderer/rollup-plugin'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 
 // Split heavy npm dependencies into their own chunks so:
 //   1) the main entry bundle stays small (faster first paint),
@@ -114,6 +115,21 @@ export default defineConfig({
             },
           }),
         ]),
+    // Upload source maps to Sentry so production stack traces de-minify.
+    // Only runs when SENTRY_AUTH_TOKEN is present (CI / deploy_prod.sh) - never
+    // in local dev. Must be the LAST plugin so it sees the final bundle.
+    // `filesToDeleteAfterUpload` strips the .map files from dist so they are
+    // never served publicly (paired with `build.sourcemap: 'hidden'` below).
+    ...(process.env.SENTRY_AUTH_TOKEN
+      ? [
+          sentryVitePlugin({
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
+          }),
+        ]
+      : []),
   ],
   resolve: {
     alias: {
@@ -140,8 +156,11 @@ export default defineConfig({
     },
   },
   build: {
-    // Flip to 'hidden' once Sentry source-map upload lands (§C.1).
-    sourcemap: false,
+    // 'hidden' emits source maps for Sentry upload but omits the
+    // `//# sourceMappingURL=` comment from the bundles, so browsers never
+    // request them. The Sentry vite plugin uploads then deletes the .map
+    // files from dist (see plugins above), so they never reach the CDN. (§C.1)
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         manualChunks: vendorChunk,

@@ -7,8 +7,11 @@ wraps the corresponding CLI worker script.
 import logging
 import os
 
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+from api.observability.sentry import init_sentry
 
 # Console + file logging (logs/ is git-ignored)
 _log_fmt = "%(asctime)s %(name)s %(levelname)s %(message)s"
@@ -21,6 +24,10 @@ _file_handler.setLevel(logging.INFO)
 _file_handler.setFormatter(logging.Formatter(_log_fmt))
 logging.getLogger().addHandler(_file_handler)
 logger = logging.getLogger(__name__)
+
+# No-op unless SENTRY_DSN is set. The `worker` service tag splits these from
+# the API in the shared Sentry project.
+init_sentry("worker")
 
 app = FastAPI(title="SL Workers")
 
@@ -96,6 +103,10 @@ async def run_collection_handler(request: Request):
         # The pipeline manages its own failure states in Firestore.
         # Retrying a failed pipeline causes duplicate BrightData snapshots and wasted money.
         logger.exception("Collection worker failed for %s", collection_id)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("worker", "collection")
+            scope.set_tag("collection_id", collection_id)
+            sentry_sdk.capture_exception(e)
         return {"status": "error", "collection_id": collection_id, "error": str(e)}
     finally:
         _reset_cost_context(cost_token)
@@ -125,6 +136,10 @@ async def run_enrichment_handler(request: Request):
         return {"status": "ok"}
     except Exception as e:
         logger.exception("Enrichment worker failed")
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("worker", "enrichment")
+            scope.set_tag("collection_id", collection_id)
+            sentry_sdk.capture_exception(e)
         return {"status": "error", "error": str(e)}
     finally:
         _reset_cost_context(cost_token)
@@ -144,6 +159,9 @@ async def run_engagement_handler(request: Request):
         return {"status": "ok"}
     except Exception as e:
         logger.exception("Engagement worker failed")
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("worker", "engagement")
+            sentry_sdk.capture_exception(e)
         return {"status": "error", "error": str(e)}
 
 
@@ -164,6 +182,11 @@ async def run_comments_handler(request: Request):
         return {"status": "ok"}
     except Exception as e:
         logger.exception("Comments worker failed for post %s", post_id)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("worker", "comments")
+            scope.set_tag("collection_id", collection_id)
+            scope.set_tag("post_id", post_id)
+            sentry_sdk.capture_exception(e)
         return {"status": "error", "error": str(e)}
     finally:
         _reset_cost_context(cost_token)

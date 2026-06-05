@@ -1,4 +1,6 @@
 import { toast } from 'sonner';
+import * as Sentry from '@sentry/react';
+import { ApiError } from '../api/client.ts';
 import { parseError, type ParsedError } from './errors.ts';
 import { formatUsdMicros } from './money.ts';
 import { openTopUp } from '../features/settings/topup-host.tsx';
@@ -83,9 +85,41 @@ export function mapError(p: ParsedError, fallback?: string): ToastPlan {
   return plan(p.message || fallback || 'Something went wrong. Please try again.');
 }
 
+/**
+ * Send only high-signal failures to Sentry, never throws.
+ *
+ * We capture server faults (5xx) and unexpected client exceptions (a thrown
+ * `Error` that isn't an `ApiError` - i.e. a real JS bug), and skip routine,
+ * expected outcomes: all 4xx (auth/credit/validation) and bare network blips.
+ * This keeps the free-plan error quota spent on things worth fixing. When the
+ * failure carries our `request_id`, tag it so the FE issue lines up with the
+ * matching API trace in Sentry.
+ */
+function captureToSentry(err: unknown, p: ParsedError): void {
+  const isServerFault = typeof p.status === 'number' && p.status >= 500;
+  const isUnexpectedClientError = err instanceof Error && !(err instanceof ApiError);
+  if (!isServerFault && !isUnexpectedClientError) return;
+
+  let requestId: string | undefined;
+  if (err instanceof ApiError) {
+    try {
+      requestId = (JSON.parse(err.body) as { request_id?: string })?.request_id;
+    } catch {
+      // non-JSON body - no request id to correlate
+    }
+  }
+
+  Sentry.captureException(err, {
+    tags: { ...(p.status ? { http_status: String(p.status) } : {}), ...(requestId ? { request_id: requestId } : {}) },
+    extra: { code: p.code, message: p.message },
+  });
+}
+
 /** Surface any error as a toast. Safe to call from anywhere; never throws. */
 export function notifyError(err: unknown, fallback?: string): void {
-  const plan = mapError(parseError(err), fallback);
+  const parsed = parseError(err);
+  captureToSentry(err, parsed);
+  const plan = mapError(parsed, fallback);
   if (plan.silent) return;
   if (plan.withBuyCredit) {
     toast.error(plan.title, {

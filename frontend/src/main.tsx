@@ -8,7 +8,12 @@ import {
 } from '@tanstack/react-query';
 import { createHead, UnheadProvider } from '@unhead/react/client';
 import { Toaster } from 'sonner';
+import { initSentry } from './lib/sentry.ts';
 import { notifyError } from './lib/notify.ts';
+
+// Initialise error tracking before anything else so early failures are caught.
+// No-op unless VITE_SENTRY_DSN is set (local dev stays silent).
+initSentry();
 import { AuthProvider } from './auth/AuthProvider.tsx';
 import { ThemeProvider } from './components/theme-provider.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';

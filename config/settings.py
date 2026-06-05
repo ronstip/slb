@@ -245,6 +245,14 @@ class Settings(BaseSettings):
     sendgrid_from_email: str = "ronnstip@gmail.com"
     sendgrid_from_name: str = "SLB"
 
+    # Sentry error tracking (§C.1). Empty DSN = disabled (local dev default).
+    # Sample rates default to 0.0 = errors-only, which keeps the Sentry free
+    # plan from ever billing; raise them to experiment with tracing/profiling.
+    sentry_dsn: str = ""
+    sentry_environment: str = ""  # falls back to `environment` when empty
+    sentry_traces_sample_rate: float = 0.0
+    sentry_profiles_sample_rate: float = 0.0
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     def model_post_init(self, __context) -> None:

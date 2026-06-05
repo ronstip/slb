@@ -20,7 +20,8 @@ Scope: P0 = must-ship before lifting `ALLOWED_EMAILS`. P1 = first month after op
 | A - Cost telemetry | ✅ Done (2026-05-16) | Schema migrated, rates filled, capture wired end-to-end, smoke verified |
 | B - Security | ⏳ Pending | All 7 items still to do |
 | C.2 - request_id middleware | ✅ Done | Middleware + propagation in API + workers + Cloud Tasks headers |
-| C.1, C.3–6 - Sentry, Cloud Run, alerts, runbook | ⏳ Pending | |
+| C.1 - Sentry (FE + BE + worker) | 🟡 Code shipped | Init + capture wired on all 3 services + source-map upload in CI; errors-only, sample rates env-gated to 0. Awaiting DSNs + `SENTRY_AUTH_TOKEN` GitHub secrets to go live. |
+| C.3–6 - Cloud Run, alerts, runbook | ⏳ Pending | |
 | D - Compliance minimum | ⏳ Pending | |
 | E - Entitlements + $ credit wallet | ✅ Live | $-based prepaid wallet; gate flipped to `entitlements`. Payments (Lemon Squeezy) still dormant. See docs/production plan/E-entitlements-and-credits.md |
 | P1 / P2 | ⏳ Pending | |
