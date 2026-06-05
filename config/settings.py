@@ -250,6 +250,7 @@ class Settings(BaseSettings):
     # plan from ever billing; raise them to experiment with tracing/profiling.
     sentry_dsn: str = ""
     sentry_environment: str = ""  # falls back to `environment` when empty
+    sentry_release: str = ""  # git SHA, set at deploy; ties events to a release
     sentry_traces_sample_rate: float = 0.0
     sentry_profiles_sample_rate: float = 0.0
 

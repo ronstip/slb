@@ -45,6 +45,9 @@ def init_sentry(service: str) -> None:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
         environment=settings.sentry_environment or settings.environment,
+        # Tie events to a release (git SHA) so Sentry can detect regressions and
+        # surface suspect commits. Empty = unset (release-less), which is fine.
+        release=settings.sentry_release or None,
         traces_sample_rate=settings.sentry_traces_sample_rate,
         profiles_sample_rate=settings.sentry_profiles_sample_rate,
         send_default_pii=False,

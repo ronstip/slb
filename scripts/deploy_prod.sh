@@ -29,6 +29,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Release identifier (git SHA) - ties Sentry events to a release for regression
+# detection + suspect commits. Mirrors `${{ github.sha }}` in deploy.yml so
+# manual + CI deploys tag the same way. Falls back to "unknown" outside a repo.
+RELEASE_SHA="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
+
 # ── Fix Python path for gcloud on Windows ──
 if [ -f "/c/Python314/python.exe" ]; then
     export CLOUDSDK_PYTHON="/c/Python314/python.exe"
@@ -189,7 +194,7 @@ gcloud run deploy sl-api \
     --region "$REGION" \
     --platform managed \
     --service-account "$API_SA" \
-    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|ENABLE_SEARCH_GROUNDING=true|SIGNUP_GATE=entitlements|SUPER_ADMIN_EMAILS=saharmalka@gmail.com,ronneeman19@gmail.com|VETRIC_API_KEY_TWITTER=$VETRIC_API_KEY_TWITTER|VETRIC_API_KEY_INSTAGRAM=$VETRIC_API_KEY_INSTAGRAM|VETRIC_API_KEY_TIKTOK=$VETRIC_API_KEY_TIKTOK|SENTRY_DSN=${SENTRY_DSN:-}|SENTRY_ENVIRONMENT=production" \
+    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|ENABLE_SEARCH_GROUNDING=true|SIGNUP_GATE=entitlements|SUPER_ADMIN_EMAILS=saharmalka@gmail.com,ronneeman19@gmail.com|VETRIC_API_KEY_TWITTER=$VETRIC_API_KEY_TWITTER|VETRIC_API_KEY_INSTAGRAM=$VETRIC_API_KEY_INSTAGRAM|VETRIC_API_KEY_TIKTOK=$VETRIC_API_KEY_TIKTOK|SENTRY_DSN=${SENTRY_DSN:-}|SENTRY_ENVIRONMENT=production|SENTRY_RELEASE=$RELEASE_SHA" \
     --min-instances 1 \
     --max-instances 10 \
     --memory 1Gi \
@@ -222,7 +227,7 @@ gcloud run deploy sl-worker \
     --region "$REGION" \
     --platform managed \
     --service-account "$WORKER_SA" \
-    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|BRIGHTDATA_API_TOKEN=$BRIGHTDATA_API_TOKEN|X_API_BEARER_TOKEN=$X_API_BEARER_TOKEN|APIFY_API_TOKEN=$APIFY_API_TOKEN|APIFY_ACTOR_INSTAGRAM=apidojo/instagram-hashtag-scraper|APIFY_ACTOR_INSTAGRAM_POST=apify/instagram-scraper|APIFY_ACTOR_FACEBOOK=scrapeforge/facebook-search-posts|APIFY_ACTOR_TIKTOK=clockworks/tiktok-scraper|DEFAULT_VENDOR_INSTAGRAM=apify|DEFAULT_VENDOR_FACEBOOK=apify|DEFAULT_VENDOR_TIKTOK=apify|ENRICHMENT_MODEL=gemini-3-flash-preview|ENRICHMENT_VIDEO_FPS=0.5|ENRICHMENT_VIDEO_END_OFFSET=180s|ENRICHMENT_MAX_OUTPUT_TOKENS=4096|VETRIC_API_KEY_TWITTER=$VETRIC_API_KEY_TWITTER|VETRIC_API_KEY_INSTAGRAM=$VETRIC_API_KEY_INSTAGRAM|VETRIC_API_KEY_TIKTOK=$VETRIC_API_KEY_TIKTOK|SENTRY_DSN=${SENTRY_DSN:-}|SENTRY_ENVIRONMENT=production" \
+    --set-env-vars "^|^ENVIRONMENT=production|GCP_PROJECT_ID=$PROJECT_ID|GCP_REGION=$REGION|GOOGLE_GENAI_USE_VERTEXAI=TRUE|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=global|BRIGHTDATA_API_TOKEN=$BRIGHTDATA_API_TOKEN|X_API_BEARER_TOKEN=$X_API_BEARER_TOKEN|APIFY_API_TOKEN=$APIFY_API_TOKEN|APIFY_ACTOR_INSTAGRAM=apidojo/instagram-hashtag-scraper|APIFY_ACTOR_INSTAGRAM_POST=apify/instagram-scraper|APIFY_ACTOR_FACEBOOK=scrapeforge/facebook-search-posts|APIFY_ACTOR_TIKTOK=clockworks/tiktok-scraper|DEFAULT_VENDOR_INSTAGRAM=apify|DEFAULT_VENDOR_FACEBOOK=apify|DEFAULT_VENDOR_TIKTOK=apify|ENRICHMENT_MODEL=gemini-3-flash-preview|ENRICHMENT_VIDEO_FPS=0.5|ENRICHMENT_VIDEO_END_OFFSET=180s|ENRICHMENT_MAX_OUTPUT_TOKENS=4096|VETRIC_API_KEY_TWITTER=$VETRIC_API_KEY_TWITTER|VETRIC_API_KEY_INSTAGRAM=$VETRIC_API_KEY_INSTAGRAM|VETRIC_API_KEY_TIKTOK=$VETRIC_API_KEY_TIKTOK|SENTRY_DSN=${SENTRY_DSN:-}|SENTRY_ENVIRONMENT=production|SENTRY_RELEASE=$RELEASE_SHA" \
     --min-instances 0 \
     --max-instances 5 \
     --memory 2Gi \
@@ -305,6 +310,7 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=662322593981
 VITE_FIREBASE_APP_ID=1:662322593981:web:2cfcae85a1c356b15ef7d4
 VITE_SENTRY_DSN=${VITE_SENTRY_DSN:-}
 VITE_SENTRY_ENVIRONMENT=production
+VITE_SENTRY_RELEASE=$RELEASE_SHA
 ENVEOF
 
 # Source-map upload: the Sentry vite plugin only runs when SENTRY_AUTH_TOKEN is
@@ -312,6 +318,9 @@ ENVEOF
 export SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN:-}"
 export SENTRY_ORG="${SENTRY_ORG:-}"
 export SENTRY_PROJECT="${SENTRY_PROJECT:-}"
+# Exported (not just in .env.production) so the vite plugin sees it via
+# process.env and tags the uploaded source maps with the same release.
+export VITE_SENTRY_RELEASE="$RELEASE_SHA"
 
 npm ci --silent
 npx tsc --noEmit
