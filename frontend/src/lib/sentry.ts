@@ -43,6 +43,6 @@ export function initSentry(): void {
     replaysOnErrorSampleRate: replaysSampleRate,
     // We never want emails / tokens / request bodies leaving the client.
     sendDefaultPii: false,
-    tags: { service: 'frontend' },
+    initialScope: { tags: { service: 'frontend' } },
   });
 }
