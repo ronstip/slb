@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 
+import sentry_sdk
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -48,8 +49,13 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     logger.exception(
         "Unhandled exception [request_id=%s] path=%s", rid, request.url.path
     )
-    # When Sentry lands (§C.1):
-    # sentry_sdk.capture_exception(exc)
+    # Explicit capture: this handler swallows the exception before it reaches the
+    # ASGI layer, so Sentry's FastAPI integration would otherwise never see it.
+    # Tag with the request_id so the captured trace lines up with the client's
+    # error response and the Cloud Logging entry. No-op if Sentry is disabled.
+    with sentry_sdk.new_scope() as scope:
+        scope.set_tag("request_id", rid)
+        sentry_sdk.capture_exception(exc)
     return JSONResponse(
         status_code=500,
         content={"error": "internal_error", "request_id": rid},

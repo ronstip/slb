@@ -8,6 +8,12 @@ from dotenv import load_dotenv
 # Load .env into os.environ so google-genai SDK can find credentials
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+# Initialise Sentry as early as possible so even startup failures are captured.
+# No-op unless SENTRY_DSN is set (local dev stays silent).
+from api.observability.sentry import init_sentry
+
+init_sentry("api")
+
 # Initialize Firebase Admin SDK (must happen before auth imports use it)
 from api.auth.dependencies import enforce_access
 from api.auth.firebase_init import init_firebase
