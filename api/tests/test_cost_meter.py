@@ -168,6 +168,38 @@ def test_log_cost_null_cost_has_null_billed_and_no_deduction(monkeypatch):
     assert fs.deductions == []  # nothing to charge on a rate-table miss
 
 
+def test_log_cost_comments_feature_prices_via_comment_matrix(monkeypatch):
+    # A `feature="comments"` scrape must price through the comments rate
+    # matrix; a `feature="scrape"` call hits the posts rate. No explicit
+    # scrape_kind is passed - it's derived from the feature.
+    import config.cost_rates as cost_rates
+
+    bq = _FakeBQ()
+    monkeypatch.setattr("api.deps.get_bq", lambda: bq)
+    monkeypatch.setattr("api.deps.get_fs", lambda: _FakeFS())
+    monkeypatch.setattr(cost_rates, "_load_pricing_doc", lambda: {
+        "scraper_rates_per_platform": {"x_api": {"twitter": 0.005}},
+        "scraper_comment_rates_per_platform": {"x_api": {"twitter": 0.02}},
+    })
+    cost_rates.invalidate_pricing_cache()
+    try:
+        cost_meter.log_cost(
+            provider="x_api", user_id="u1", feature="comments",
+            platform="twitter", units=10,
+        )
+        cost_meter.log_cost(
+            provider="x_api", user_id="u1", feature="scrape",
+            platform="twitter", units=10,
+        )
+        _wait_for_rows(bq, n=2)
+    finally:
+        cost_rates.invalidate_pricing_cache()
+
+    by_feature = {r["feature"]: r for r in bq.rows}
+    assert by_feature["comments"]["cost_micros"] == 200_000  # 10 × $0.02
+    assert by_feature["scrape"]["cost_micros"] == 50_000     # 10 × $0.005
+
+
 def test_log_cost_honors_override(fake_bq: _FakeBQ):
     # cost_micros_override bypasses the rate-table lookup. Used by the
     # grounding capture path where rates are computed via a specialised
@@ -349,6 +381,82 @@ def test_start_thread_with_cost_context_propagates_ctx(fake_bq: _FakeBQ):
     assert row["agent_id"] == "thread-agent"
     assert row["collection_id"] == "thread-col"
     assert row["platform"] == "facebook"
+
+
+def test_context_aware_pool_propagates_ctx(fake_bq: _FakeBQ):
+    """`ContextAwareThreadPoolExecutor.submit` must capture the parent
+    context so priced calls fired from pool workers inherit user_id /
+    agent_id. A bare `ThreadPoolExecutor` drops them - this guards the
+    enrichment/clustering attribution leak (nested pools logging cost
+    with NULL user_id, hidden from per-user/per-agent admin views)."""
+    with cost_meter.collection_context_scope(
+        user_id="pool-uid", org_id="pool-org",
+        collection_id="pool-col", agent_id="pool-agent",
+    ):
+        with cost_meter.ContextAwareThreadPoolExecutor(max_workers=2) as pool:
+            fut = pool.submit(
+                cost_meter.log_cost,
+                provider="gemini",
+                user_id="",  # must fall back to the propagated ctx
+                feature="enrich",
+                event_type=cost_meter.EVENT_LLM,
+                model="gemini-3-flash-preview",
+                input_tokens=1_000_000,
+                output_tokens=1_000_000,
+            )
+            fut.result(timeout=2)
+
+    _wait_for_rows(fake_bq)
+    row = fake_bq.rows[0]
+    assert row["user_id"] == "pool-uid"
+    assert row["agent_id"] == "pool-agent"
+    assert row["collection_id"] == "pool-col"
+
+
+def test_streaming_runner_pool_propagates_ctx(fake_bq: _FakeBQ):
+    """The enrichment work runs inside `StreamingStepRunner`'s internal
+    pool. Submitting through that pool from within a bound context must
+    keep the attribution - otherwise every `enrich` row lands NULL
+    user_id/agent_id (the production undercount bug)."""
+    from types import SimpleNamespace
+
+    from workers.pipeline.post_state import PostState
+    from workers.pipeline.streaming import StreamingStepRunner
+
+    runner = StreamingStepRunner(
+        name="enrich",
+        ctx=SimpleNamespace(collection_id="streamcoll1234"),
+        claim_state=PostState.READY_FOR_ENRICHMENT,
+        in_flight_state=PostState.ENRICHING,
+        success_state=PostState.ENRICHED,
+        failure_state=PostState.ENRICHMENT_FAILED,
+        concurrency=2,
+        process_fn=lambda post, ctx: ("ok", None),
+        claim_fn=lambda: None,
+    )
+    try:
+        with cost_meter.collection_context_scope(
+            user_id="stream-uid", org_id="stream-org",
+            collection_id="stream-col", agent_id="stream-agent",
+        ):
+            fut = runner._executor.submit(
+                cost_meter.log_cost,
+                provider="gemini",
+                user_id="",
+                feature="enrich",
+                event_type=cost_meter.EVENT_LLM,
+                model="gemini-3-flash-preview",
+                input_tokens=1_000_000,
+                output_tokens=1_000_000,
+            )
+            fut.result(timeout=2)
+    finally:
+        runner._executor.shutdown(wait=True)
+
+    _wait_for_rows(fake_bq)
+    row = fake_bq.rows[0]
+    assert row["user_id"] == "stream-uid"
+    assert row["agent_id"] == "stream-agent"
 
 
 def test_log_cost_picks_up_request_id_from_contextvar(fake_bq: _FakeBQ):

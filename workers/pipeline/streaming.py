@@ -14,9 +14,10 @@ next post is claimed. Pool stays saturated until the queue runs dry.
 import logging
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from typing import Callable
 
+from api.services.cost_meter import ContextAwareThreadPoolExecutor
 from workers.pipeline.post_state import PostState
 from workers.pipeline.steps import StepContext
 
@@ -81,7 +82,13 @@ class StreamingStepRunner:
         # Cap how many posts are in-flight at once. The executor's queue is
         # unbounded, so without this we'd over-claim.
         self._in_flight_sem = threading.Semaphore(self._concurrency)
-        self._executor = ThreadPoolExecutor(
+        # Context-aware pool: snapshots the producer thread's cost-meter
+        # collection context (user_id / agent_id / collection_id) at submit
+        # time and re-runs the task inside it, so enrichment's priced Gemini
+        # calls attribute to the right user/agent. A bare ThreadPoolExecutor
+        # here was the production undercount bug - enrich rows landed with
+        # NULL user_id/agent_id, hidden from per-user/per-agent admin views.
+        self._executor = ContextAwareThreadPoolExecutor(
             max_workers=self._concurrency,
             thread_name_prefix=f"stream-{name}-{ctx.collection_id[:8]}",
         )

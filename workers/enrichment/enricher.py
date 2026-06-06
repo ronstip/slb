@@ -9,7 +9,9 @@ import logging
 import random
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError, as_completed
+
+from api.services.cost_meter import ContextAwareThreadPoolExecutor
 
 from google import genai
 from google.genai import types
@@ -642,7 +644,10 @@ def enrich_posts(
 
     results: list[tuple[str, EnrichmentResult]] = []
 
-    with ThreadPoolExecutor(max_workers=settings.enrichment_concurrency) as executor:
+    # Context-aware pool so enrichment cost from the batch path (standalone /
+    # manual re-enrichment) attributes to the run's user/agent like the
+    # streaming path does.
+    with ContextAwareThreadPoolExecutor(max_workers=settings.enrichment_concurrency) as executor:
         futures = {
             executor.submit(_enrich_single_post, client, model, config, post, custom_fields, enrichment_context): post
             for post in posts

@@ -250,7 +250,10 @@ function RecentActivityByAgent({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="font-heading text-base font-semibold tracking-tight">Recent Activity</CardTitle>
+        <CardTitle className="flex items-center gap-1.5 font-heading text-base font-semibold tracking-tight">
+          Recent Activity
+          <span className="text-xs font-normal text-muted-foreground">(all time, by agent)</span>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
@@ -270,68 +273,16 @@ function RecentActivityByAgent({
                   )}
                   <span className="text-xs text-muted-foreground">
                     {group.events.length} event{group.events.length === 1 ? '' : 's'}
+                    {group.lastEventAt && ` · ${new Date(group.lastEventAt).toLocaleDateString()}`}
                   </span>
                 </div>
+                {/* COST roll-up (not billed) so the header reconciles with the
+                    Cost-breakdown card above. */}
                 <span className="font-mono text-xs text-foreground">
-                  {formatUsdMicros(group.billedTotal, 4)}
+                  {formatUsdMicros(group.costTotal, 4)}
                 </span>
               </summary>
-              <div className="space-y-1 border-t border-border px-3 py-2">
-                {group.events.map((event) => (
-                  <div
-                    key={event.event_id}
-                    className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted/40"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Badge variant="secondary" className="text-xs">
-                        {event.feature || EVENT_TYPE_LABELS[event.event_type] || event.event_type}
-                      </Badge>
-                      {event.provider && (
-                        <span className="text-xs capitalize text-muted-foreground">{event.provider}</span>
-                      )}
-                      {event.platform && (
-                        <Badge variant="outline" className="text-[10px] capitalize">{event.platform}</Badge>
-                      )}
-                      {event.cost_source && COST_SOURCE_BADGE_LABELS[event.cost_source] && (
-                        <span className="inline-flex items-center gap-1">
-                          <Badge
-                            variant={event.cost_source === 'estimated_fallback' ? 'destructive' : 'outline'}
-                            className="text-[10px]"
-                          >
-                            {COST_SOURCE_BADGE_LABELS[event.cost_source]}
-                          </Badge>
-                          <InfoHint text={COST_SOURCE_BADGE_HINT[event.cost_source] ?? ''} />
-                        </span>
-                      )}
-                      {event.collection_id && (
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {event.collection_id.slice(0, 8)}…
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {(() => {
-                        // Show billed when present; fall back to cost (margin
-                        // is 1× by default so they're identical) so the row
-                        // still surfaces what we spent. Em-dash for rows
-                        // that genuinely never priced (rate-table miss).
-                        const value = event.billed_micros ?? event.cost_micros;
-                        if (value == null) {
-                          return <span className="text-xs text-muted-foreground">-</span>;
-                        }
-                        return (
-                          <span className="font-mono text-xs text-foreground">
-                            {formatUsdMicros(value, 4)}
-                          </span>
-                        );
-                      })()}
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(event.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <AgentEventTable events={group.events} />
             </details>
           ))}
         </div>
@@ -340,11 +291,75 @@ function RecentActivityByAgent({
   );
 }
 
+/** Per-agent event table (cost, not billed - matches the breakdown card).
+ *  Rows are already newest-first from the backend (ORDER BY created_at DESC). */
+function AgentEventTable({ events }: { events: AdminEvent[] }) {
+  return (
+    <div className="overflow-x-auto border-t border-border">
+      <table className="w-full text-sm">
+        <thead className="border-b border-border bg-muted/50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Feature</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Provider</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Platform</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Source</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Time</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((event) => (
+            <tr key={event.event_id} className="border-b border-border last:border-0 hover:bg-muted/40">
+              <td className="px-3 py-2">
+                <Badge variant="secondary" className="text-xs">
+                  {event.feature || EVENT_TYPE_LABELS[event.event_type] || event.event_type}
+                </Badge>
+              </td>
+              <td className="px-3 py-2 capitalize text-muted-foreground">{event.provider || '-'}</td>
+              <td className="px-3 py-2">
+                {event.platform
+                  ? <Badge variant="outline" className="text-[10px] capitalize">{event.platform}</Badge>
+                  : <span className="text-muted-foreground">-</span>}
+              </td>
+              <td className="px-3 py-2">
+                {event.cost_source && COST_SOURCE_BADGE_LABELS[event.cost_source] ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Badge
+                      variant={event.cost_source === 'estimated_fallback' ? 'destructive' : 'outline'}
+                      className="text-[10px]"
+                    >
+                      {COST_SOURCE_BADGE_LABELS[event.cost_source]}
+                    </Badge>
+                    <InfoHint text={COST_SOURCE_BADGE_HINT[event.cost_source] ?? ''} />
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">-</span>
+                )}
+              </td>
+              <td className="px-3 py-2 text-xs text-muted-foreground">
+                {new Date(event.created_at).toLocaleString()}
+              </td>
+              <td className="px-3 py-2 text-right font-mono">
+                {/* COST, not billed - the breakdown card sums cost too. Em-dash
+                    for rows that genuinely never priced (rate-table miss). */}
+                {event.cost_micros == null
+                  ? <span className="text-muted-foreground">-</span>
+                  : formatUsdMicros(event.cost_micros, 4)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 interface ActivityGroup {
   key: string;
   label: string;
   isUnassigned: boolean;
-  billedTotal: number;
+  costTotal: number;        // all-time COST roll-up (matches the breakdown card)
+  lastEventAt: string | null;
   events: AdminEvent[];
 }
 
@@ -362,24 +377,34 @@ function groupByAgent(events: AdminEvent[], agentCosts: AdminAgentCost[]): Activ
     bucketed.set(key, list);
   }
 
-  // Build groups; sort by all-time billed desc, but always pin "Unassigned"
-  // LAST so untagged activity is visible without burying real agents.
+  // Build groups; header shows the all-time COST roll-up (so it reconciles
+  // with the Cost-breakdown card above - we bill at margin but the breakdown
+  // is cost). Sort by most-recent activity, but always pin "Unassigned" LAST
+  // so untagged activity stays visible without burying real agents.
   const groups: ActivityGroup[] = [];
   for (const [key, evts] of bucketed.entries()) {
     const meta = costByAgent.get(key);
     const label = key === null ? 'Unassigned' : meta?.agent_name ?? key;
+    // Fall back to the newest event in the (capped) list if the roll-up
+    // didn't carry a timestamp.
+    const lastEventAt =
+      meta?.last_event_at ??
+      evts.reduce<string | null>(
+        (max, e) => (max && max >= e.created_at ? max : e.created_at), null,
+      );
     groups.push({
       key: key ?? '__unassigned__',
       label,
       isUnassigned: key === null,
-      billedTotal: meta?.billed_micros ?? 0,
+      costTotal: meta?.cost_micros ?? 0,
+      lastEventAt,
       events: evts,
     });
   }
 
   groups.sort((a, b) => {
     if (a.isUnassigned !== b.isUnassigned) return a.isUnassigned ? 1 : -1;
-    return b.billedTotal - a.billedTotal;
+    return (b.lastEventAt ?? '').localeCompare(a.lastEventAt ?? '');
   });
 
   return groups;

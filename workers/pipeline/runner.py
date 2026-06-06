@@ -61,6 +61,9 @@ class PipelineRunner:
         self._content_types: list[str] | None = None
         self._total_posts_collected = 0
         self._continuation_scheduled = False
+        # Token for the cost-meter collection context this runner rebinds once
+        # it resolves the owning agent (see _bind_cost_context). Reset in run().
+        self._cost_ctx_token = None
         # Per-step timing stats, populated by _record_step_timing as the loop runs.
         self._stage_timings: dict[str, dict] = {}
         self._stage_timings_lock = threading.Lock()
@@ -99,10 +102,47 @@ class PipelineRunner:
                 )
                 self._set_crashed_status(str(e))
             finally:
+                # Release the rebound cost-meter context (no-op if never bound).
+                if self._cost_ctx_token is not None:
+                    from api.services.cost_meter import reset_collection_context
+                    try:
+                        reset_collection_context(self._cost_ctx_token)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self._cost_ctx_token = None
                 # Release the media pool. wait=False because in-flight downloads
                 # that haven't propagated to BQ yet are caught by
                 # _reconcile_bq_media_refs on the next run anyway.
                 self._media_executor.shutdown(wait=False)
+
+    def _bind_cost_context(self, agent_id: str | None):
+        """Rebind the cost-meter collection context with the resolved owning
+        agent so every downstream priced call (crawl scrape, streaming enrich
+        Gemini, topic_cluster Gemini) attributes to the right user/org/agent.
+
+        Why here, not at the caller: the dev dispatch thread
+        (``api/services/collection_service.py``) binds ``agent_id`` from
+        ``extra_config``, which ``agent_service`` never populates - so dev agent
+        runs would bind ``agent_id=None`` and every enrich/topic_cluster cost
+        row would land unattributed. Prod binds from the Firestore status doc in
+        ``workers/server.py``; rebinding here at the single pipeline chokepoint
+        makes attribution correct regardless of caller. Called after lock
+        acquisition + config load, so the dispatch-time ``agent_id`` write has
+        already landed and ``self._status_doc`` carries the owner identity.
+
+        Returns the contextvar token (also stored on ``self`` for reset in
+        :meth:`run`).
+        """
+        from api.services.cost_meter import set_collection_context
+
+        status = self._status_doc or {}
+        self._cost_ctx_token = set_collection_context(
+            user_id=status.get("user_id") or "",
+            org_id=status.get("org_id"),
+            collection_id=self.collection_id,
+            agent_id=agent_id,
+        )
+        return self._cost_ctx_token
 
     def _get_agent_id(self) -> str | None:
         """Return the agent_id linked to this collection, if any."""
@@ -267,6 +307,12 @@ class PipelineRunner:
         agent_collection_ids = (
             self.fs.get_agent_collection_ids(agent_id) if agent_id else []
         )
+
+        # Rebind the cost-meter context now that the owning agent is resolved.
+        # Must precede every thread/pool spawn below (crawl, streaming enrich,
+        # step workers, collection gates) since those snapshot the current
+        # context at spawn/submit time. See _bind_cost_context for the rationale.
+        self._bind_cost_context(agent_id)
 
         # Prime the in-run idempotency cache from BQ - avoids a per-batch
         # BQ pre-check roundtrip inside action_enrich/action_embed. The
@@ -951,20 +997,55 @@ class PipelineRunner:
                 # the helper at the thread spawn already propagates context
                 # but defensive explicit passing also surfaces bugs faster.
                 owner_agent_id = self._status_doc.get("agent_id")
+                from api.services.cost_meter import EVENT_PROVIDER, log_cost
+                from config.cost_rates import normalize_provider
                 for (prov, plat), cnt in bucket_counts.items():
                     if cnt <= 0:
                         continue
+                    plat_norm = plat if plat != "unknown" else None
+                    # Volume analytics (Firestore counter + posts_collected
+                    # event). Cost-free: the single source of cost truth is
+                    # cost_meter.log_cost (Apify via its adapter's
+                    # provider-reported number; every other scraper priced
+                    # from the rate table just below).
                     try:
                         track_posts_collected(
                             owner_user_id, owner_org_id, self.collection_id,
                             count=cnt, provider=prov,
                             agent_id=owner_agent_id,
-                            platform=plat if plat != "unknown" else None,
+                            platform=plat_norm,
                         )
                     except Exception:
                         logger.warning(
                             "Failed to track posts_collected for provider=%s platform=%s",
                             prov, plat, exc_info=True,
+                        )
+                    # Cost: Apify reports the exact run cost on the call
+                    # itself and logs it from its adapter, so skip it here to
+                    # avoid double-counting. Mock/unknown carry no real cost.
+                    # Everyone else (BrightData, X API, Vetric) is units-priced
+                    # from the rate table - emit one provider_call row so all
+                    # scrape cost flows through the same meter.
+                    norm = normalize_provider(prov) or prov
+                    if norm in ("apify", "mock", "unknown") or not norm:
+                        continue
+                    try:
+                        log_cost(
+                            provider=norm,
+                            user_id=owner_user_id,
+                            feature="scrape",
+                            event_type=EVENT_PROVIDER,
+                            units=cnt,
+                            unit_kind="posts",
+                            platform=plat_norm,
+                            org_id=owner_org_id,
+                            collection_id=self.collection_id,
+                            agent_id=owner_agent_id,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to log scrape cost for provider=%s platform=%s",
+                            norm, plat, exc_info=True,
                         )
 
             # Log progress to task activity feed (every 3 batches to avoid spam)

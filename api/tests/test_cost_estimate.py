@@ -19,8 +19,12 @@ def _pin_pricing_to_seed(monkeypatch):
     monkeypatch.setattr(ce, "get_margin_multiplier", lambda: 1.0)
     monkeypatch.setattr(
         ce, "get_apify_assumed_per_post_usd",
-        lambda: cost_rates.DEFAULT_APIFY_ASSUMED_PER_POST_USD,
+        lambda *a, **k: cost_rates.DEFAULT_APIFY_ASSUMED_PER_POST_USD,
     )
+    # Default: no matrix override → estimator falls back to the legacy seed
+    # rates, so the exact-value assertions above stay deterministic. Individual
+    # tests override this to assert the matrix IS consulted.
+    monkeypatch.setattr(ce, "get_scraper_rate", lambda *a, **k: None)
 
 
 def test_zero_posts_is_zero():
@@ -67,6 +71,46 @@ def test_unknown_provider_uses_default_rate():
     # No providers → DEFAULT_PER_POST_USD (0.005). 100 × 0.005 = $0.50.
     got = ce.estimate_run_cost_micros(n_posts=100, enrichment_enabled=False)
     assert got == 600_000
+
+
+def test_estimate_uses_scraper_matrix_override(monkeypatch):
+    """Admin edits to the per-(provider, platform) scraper matrix must flow into
+    the pre-flight estimate exactly like they do in the live cost meter.
+
+    Without the fix the estimator read only the legacy COST_RATES path and
+    ignored `scraper_rates_per_platform`, so a matrix edit changed live billing
+    but not the gate's estimate (under-estimate → run could exceed the wallet).
+    """
+    # Admin raised BrightData to $0.01/record in the matrix (4× the seed 0.0025).
+    monkeypatch.setattr(
+        ce, "get_scraper_rate",
+        lambda provider, platform=None, kind="posts": 0.01 if provider == "brightdata" else None,
+    )
+    got = ce.estimate_run_cost_micros(
+        n_posts=100, providers=["brightdata"], enrichment_enabled=False,
+    )
+    # 100 × $0.01 = $1.00 = 1_000_000 micros × 1.2 buffer = 1_200_000.
+    assert got == 1_200_000
+
+
+def test_estimate_matrix_override_is_per_platform(monkeypatch):
+    """A per-platform matrix cell is consulted with the platform, so editing one
+    platform's cell moves the estimate for that platform only."""
+    calls: list[tuple] = []
+
+    def _rate(provider, platform=None, kind="posts"):
+        calls.append((provider, platform, kind))
+        return 0.02 if (provider == "brightdata" and platform == "youtube") else None
+
+    monkeypatch.setattr(ce, "get_scraper_rate", _rate)
+    got = ce.estimate_run_cost_micros(
+        n_posts=10,
+        provider_platform_pairs=[("brightdata", "youtube")],
+        enrichment_enabled=False,
+    )
+    # 10 × $0.02 = $0.20 = 200_000 × 1.2 = 240_000.
+    assert got == 240_000
+    assert ("brightdata", "youtube", "posts") in calls
 
 
 def test_search_grounding_adds_cost():

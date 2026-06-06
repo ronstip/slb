@@ -22,6 +22,7 @@ import contextvars
 import json
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
@@ -174,6 +175,29 @@ def submit_with_cost_context(executor, target, /, *args, **kwargs):
     return executor.submit(ctx.run, target, *args, **kwargs)
 
 
+class ContextAwareThreadPoolExecutor(ThreadPoolExecutor):
+    """``ThreadPoolExecutor`` whose ``submit`` snapshots the *calling*
+    thread's contextvars and re-runs the task inside that snapshot on the
+    pool worker.
+
+    ``ThreadPoolExecutor`` workers start with a fresh (empty) context, so a
+    bare ``pool.submit(fn)`` silently drops the cost-meter collection
+    context (``user_id`` / ``agent_id`` / ``collection_id``) bound by the
+    pipeline runner - every priced call fired from the pool then lands
+    unattributed. Using this subclass instead of the stdlib one makes
+    propagation structural: any pool built from it can't leak attribution,
+    so new pool sites don't have to remember :func:`submit_with_cost_context`.
+
+    The snapshot is taken at ``submit`` time on the submitting thread, which
+    is exactly where the bound context lives (e.g. the streaming runner's
+    producer loop), so the worker inherits the right ``user_id`` / ``agent_id``.
+    """
+
+    def submit(self, fn, /, *args, **kwargs):  # type: ignore[override]
+        ctx = contextvars.copy_context()
+        return super().submit(ctx.run, fn, *args, **kwargs)
+
+
 def log_cost(
     *,
     provider: str,
@@ -198,6 +222,7 @@ def log_cost(
     raw_provider_payload: dict | None = None,
     platform: str | None = None,
     cost_source: str | None = None,
+    scrape_kind: str | None = None,
 ) -> None:
     """Fire-and-forget logging of one paid external call.
 
@@ -244,6 +269,13 @@ def log_cost(
         except Exception:
             request_id = None
 
+    # Scraper rate dimension: comment scrapes hit the same providers at a
+    # different rate. Explicit `scrape_kind` wins; otherwise derive it from
+    # the feature so the existing `feature="comments"` call sites
+    # (comments worker, apify comment adapter) price via the comments matrix
+    # with no call-site change. Anything else is a posts/records scrape.
+    kind = scrape_kind or ("comments" if feature == "comments" else "posts")
+
     if cost_micros_override is not None:
         cost_micros: int | None = cost_micros_override
     else:
@@ -260,6 +292,7 @@ def log_cost(
                 provider_reported_cost_usd=provider_reported_cost_usd,
                 bytes_processed=bytes_processed,
                 platform=platform,
+                kind=kind,
             )
         except Exception:
             # Cost computation must never block the row. NULL cost is preferred

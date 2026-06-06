@@ -111,6 +111,7 @@ def test_agent_cost_breakdown_unassigned_bucket(monkeypatch):
         "cost_micros": 8_000_000,
         "billed_micros": 8_000_000,
         "events": 12,
+        "last_event_at": None,
     }
     assert second == {
         "agent_id": None,
@@ -119,6 +120,7 @@ def test_agent_cost_breakdown_unassigned_bucket(monkeypatch):
         "cost_micros": 2_000_000,
         "billed_micros": 2_000_000,
         "events": 3,
+        "last_event_at": None,
     }
 
 
@@ -139,6 +141,7 @@ def test_agent_cost_breakdown_unknown_agent_falls_back_to_id(monkeypatch):
         "cost_micros": 1_000_000,
         "billed_micros": 1_000_000,
         "events": 1,
+        "last_event_at": None,
     }]
 
 
@@ -211,3 +214,35 @@ def test_finance_unspent_defaults_to_zero(monkeypatch):
     )
 
     assert out["unspent_purchased_micros"] == 0
+
+
+def test_finance_splits_absorbed_cost_from_paid_billed(monkeypatch):
+    """admin/free/trial usage is summed at raw COST (we don't bill ourselves
+    margin); only paid-tier usage contributes billed (at margin) revenue.
+
+    NOTE: _FakeBQ replays the same rows for every query in _finance_breakdown,
+    so the per-user rows below also flow through the totals/grouped queries -
+    we only assert on the new split + the by_tier bucketing those rows drive.
+    """
+    per_user_rows = [
+        {"user_id": "admin1", "cost": 1_000_000, "revenue": 10_000_000, "events": 5},
+        {"user_id": "free1", "cost": 2_000_000, "revenue": 20_000_000, "events": 3},
+        {"user_id": "trial1", "cost": 3_000_000, "revenue": 30_000_000, "events": 4},
+        {"user_id": "paid1", "cost": 4_000_000, "revenue": 40_000_000, "events": 6},
+    ]
+    monkeypatch.setattr(admin, "get_bq", lambda: _FakeBQ(per_user_rows))
+
+    out = admin._finance_breakdown(
+        range_key="all",
+        start=None,
+        end=None,
+        tier_by_uid={
+            "admin1": "admin", "free1": "free", "trial1": "trial", "paid1": "paid",
+        },
+        credit={"purchase": 0, "grant": 0, "adjustment": 0, "refund": 0, "other": 0},
+    )
+
+    # Absorbed = raw cost for admin + free + trial (1 + 2 + 3 M).
+    assert out["absorbed_cost_micros"] == 6_000_000
+    # Paid-tier billed (at margin) = the only "real revenue" usage.
+    assert out["paid_billed_micros"] == 40_000_000
