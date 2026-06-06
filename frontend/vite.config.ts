@@ -126,6 +126,13 @@ export default defineConfig({
             org: process.env.SENTRY_ORG,
             project: process.env.SENTRY_PROJECT,
             authToken: process.env.SENTRY_AUTH_TOKEN,
+            // Match the runtime release (VITE_SENTRY_RELEASE, set to the git SHA
+            // at deploy) so uploaded source maps attach to the same release the
+            // browser reports. Omitted when unset → plugin falls back to its own
+            // git detection.
+            ...(process.env.VITE_SENTRY_RELEASE
+              ? { release: { name: process.env.VITE_SENTRY_RELEASE } }
+              : {}),
             sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
           }),
         ]

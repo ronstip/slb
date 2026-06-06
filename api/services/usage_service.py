@@ -136,10 +136,14 @@ def _log_event(
     unit_kind / cost_micros / agent_id) are nullable and only written when
     callers pass them. Legacy callers continue to work unchanged.
 
-    When ``provider`` and ``units`` are set but ``cost_micros`` is not, we
-    attempt a cost lookup via :func:`config.cost_rates.compute_cost_micros`
-    using ``unit_kind`` as the sub-kind hint. A miss is silent (cost stays
-    NULL) and the event is still written for product-level analytics.
+    This is the **product-analytics** event log (volume counts, event types).
+    It is NOT a cost writer: cost lives on a single path,
+    :func:`api.services.cost_meter.log_cost` (event_type ``provider_call`` /
+    ``llm_call``). ``posts_collected`` rows therefore carry ``provider`` /
+    ``platform`` / ``units`` for analytics but ``cost_micros = NULL`` - the
+    matching ``provider_call`` row (Apify adapter / runner rate-table call)
+    holds the cost. This avoids the dual-writer split where some providers
+    were priced here and others in cost_meter.
 
     ``agent_id`` falls back to the bound cost_meter collection context so
     worker call sites that already use ``collection_context_scope`` get
@@ -173,25 +177,12 @@ def _log_event(
     except Exception:
         pass
 
-    # Best-effort cost lookup when provider+units are known. Pass
-    # ``platform`` through so the per-(provider, platform) scraper-rate
-    # matrix (configurable via the admin Pricing editor) wins over the
-    # legacy single-rate-table entries.
+    # No cost lookup here on purpose: cost is owned exclusively by
+    # cost_meter.log_cost (one source of truth). These rows stay cost-free
+    # (cost_micros / cost_source = NULL) and exist for volume analytics only.
+    # Any caller that genuinely has an exact cost may still pass cost_micros
+    # explicitly, but no current caller does.
     cost_source: str | None = None
-    if cost_micros is None and provider and units:
-        try:
-            from config.cost_rates import compute_cost_micros
-
-            cost_micros = compute_cost_micros(
-                provider, sub_kind=unit_kind, units=int(units), platform=platform,
-            )
-            if cost_micros is not None:
-                cost_source = "rate_table"
-        except Exception:
-            logger.debug(
-                "cost_micros lookup failed for provider=%s unit_kind=%s platform=%s",
-                provider, unit_kind, platform, exc_info=True,
-            )
 
     def _insert() -> None:
         try:

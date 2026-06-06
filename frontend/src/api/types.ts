@@ -915,6 +915,12 @@ export interface FinanceSummary {
   granted_micros: number;         // admin grants/adjustments issued (NOT revenue)
   net_micros: number;             // revenue − total cost (true P&L)
   usage_billed_micros: number;    // cost × margin across all usage (informational)
+  /** Raw cost of usage by super-admins + free/trial accounts (granted, not
+   *  purchased credit) - usage WE absorb; reported at cost, no margin. */
+  absorbed_cost_micros: number;
+  /** Billed (cost × margin) for paid-tier usage only - the only "real
+   *  revenue" usage. */
+  paid_billed_micros: number;
   /** Sum of users.credit.balance_micros (point-in-time wallet liability). */
   unspent_purchased_micros: number;
   margin_multiplier: number;      // the configured profit factor (the lever)
@@ -948,6 +954,10 @@ export interface PricingConfig {
    *    legacy single per-record / per-call rate when set).
    *  Cell value `null` means "no override - fall through to '*'". */
   scraper_rates_per_platform: Record<string, Record<string, number | null>>;
+  /** Parallel COMMENTS-rate matrix. Same shape as scraper_rates_per_platform.
+   *  A cell of `null` means "no comment-specific rate - inherit the posts
+   *  rate for that (provider, platform)". */
+  scraper_comment_rates_per_platform: Record<string, Record<string, number | null>>;
   gemini: Record<string, GeminiModelRate>;
   google_search_gemini3_per_query_usd: number | null;
   google_search_gemini25_per_prompt_usd: number | null;
@@ -1008,6 +1018,9 @@ export interface AdminAgentCost {
   cost_micros: number;
   billed_micros: number;
   events: number;
+  /** Most-recent priced event for this agent (ISO). Drives the Recent
+   *  Activity ordering (newest agent first). Null when unknown. */
+  last_event_at: string | null;
 }
 
 export interface AdminUserDetail extends AdminUser {

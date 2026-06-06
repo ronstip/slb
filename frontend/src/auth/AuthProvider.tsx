@@ -17,6 +17,7 @@ import {
   type AuthError,
 } from 'firebase/auth';
 import { useQueryClient } from '@tanstack/react-query';
+import * as Sentry from '@sentry/react';
 import { auth, googleProvider, microsoftProvider, isFirebaseConfigured, signInAnonymously } from './firebase.ts';
 import { setTokenGetter, setSignOutHandler } from '../api/client.ts';
 import { apiGet, apiPost } from '../api/client.ts';
@@ -155,6 +156,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (newUid) localStorage.setItem('slb-auth-uid', newUid);
         else localStorage.removeItem('slb-auth-uid');
       } catch { /* storage unavailable - non-fatal */ }
+
+      // Attach the identity to Sentry so issues show how many (and which) users
+      // are affected. Id only - no email/PII (keeps `sendDefaultPii: false`
+      // honest). Anonymous/signed-out sessions report no user. No-op when
+      // Sentry is disabled (no DSN).
+      Sentry.setUser(u && !u.isAnonymous ? { id: u.uid } : null);
 
       if (!u) {
         setUser(null);

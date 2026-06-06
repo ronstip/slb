@@ -20,6 +20,8 @@ from config.cost_rates import (
     get_active_rates,
     get_apify_assumed_per_post_usd,
     get_margin_multiplier,
+    get_scraper_rate,
+    normalize_provider,
 )
 
 # Estimation-only assumptions (not real telemetry - see module docstring).
@@ -33,9 +35,25 @@ DEFAULT_PER_POST_USD = 0.005  # unknown/unspecified provider → conservative
 ASSUMED_SEARCH_QUERIES = 10
 
 
-def _provider_per_post_usd(provider: str) -> float:
-    """Conservative per-post crawl cost for a provider key (admin-overridable)."""
-    p = (provider or "").lower()
+def _provider_per_post_usd(provider: str, platform: str | None = None) -> float:
+    """Conservative per-post crawl cost for a (provider, platform) pair.
+
+    Reads the admin-editable per-(provider, platform) scraper matrix FIRST -
+    the same `get_scraper_rate` source the live cost meter
+    (`compute_cost_micros`) uses - so a matrix edit in the Finance "Rates &
+    profit margin" editor moves both the estimate and actual billing in
+    lockstep. Falls back to the legacy single COST_RATES entry only when no
+    matrix cell (platform-specific or wildcard) is set.
+    """
+    p = normalize_provider((provider or "").lower()) or (provider or "").lower()
+
+    # Matrix first (admin-editable, per-platform). `platform=None` still picks
+    # up a wildcard "*" cell if the admin set one. None → no matrix cell → fall
+    # through to the legacy rate below.
+    matrix_rate = get_scraper_rate(p, platform, "posts")
+    if matrix_rate is not None:
+        return matrix_rate
+
     rates = get_active_rates()
     if p == "brightdata":
         return rates["brightdata"]["*"]["per_record_usd"]
@@ -44,7 +62,7 @@ def _provider_per_post_usd(provider: str) -> float:
     if p == "vetric":
         return rates["vetric"]["*"]["per_call_usd"]
     if p == "apify":
-        return get_apify_assumed_per_post_usd()
+        return get_apify_assumed_per_post_usd(platform)
     return DEFAULT_PER_POST_USD
 
 
@@ -52,6 +70,7 @@ def estimate_run_cost_micros(
     *,
     n_posts: int,
     providers: list[str] | None = None,
+    provider_platform_pairs: list[tuple[str | None, str | None]] | None = None,
     include_comments: bool = False,
     enrichment_enabled: bool = True,
     gemini_model: str = "gemini-3-flash-preview",
@@ -63,7 +82,13 @@ def estimate_run_cost_micros(
     Args:
         n_posts: requested post ceiling (the cost lever).
         providers: provider rate keys actually used (brightdata/x_api/vetric/
-            apify). When unknown/empty we bill the conservative default rate.
+            apify), platform-agnostic. When unknown/empty we bill the
+            conservative default rate.
+        provider_platform_pairs: explicit (provider, platform) pairs the run
+            will hit. Preferred over ``providers`` because it lets the rate
+            lookup consult the per-platform scraper matrix cell - so an admin
+            edit to e.g. BrightData×YouTube moves this estimate. Falls back to
+            ``providers`` (platform=None) when not given.
         include_comments: fetches extra per-post reads → multiplier.
         enrichment_enabled: bill assumed Gemini enrichment tokens per post.
         gemini_model: model used for enrichment (rate lookup).
@@ -77,8 +102,14 @@ def estimate_run_cost_micros(
     n_posts = max(int(n_posts or 0), 0)
 
     # 1) Crawl - bill the requested ceiling at the most expensive selected
-    #    provider's per-post rate (conservative).
-    if providers:
+    #    (provider, platform) per-post rate (conservative). Prefer the explicit
+    #    (provider, platform) pairs so per-platform matrix cells are consulted;
+    #    fall back to platform-agnostic provider keys, then the default rate.
+    if provider_platform_pairs:
+        per_post = max(
+            _provider_per_post_usd(prov, plat) for prov, plat in provider_platform_pairs
+        )
+    elif providers:
         per_post = max(_provider_per_post_usd(p) for p in providers)
     else:
         per_post = DEFAULT_PER_POST_USD

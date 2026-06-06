@@ -28,15 +28,32 @@ def estimate_request_micros(request: CreateCollectionRequest) -> int:
     Shared by the per-collection gate and the agent-run sum check so both use
     identical assumptions.
     """
+    # Build explicit (provider, platform) pairs so the estimate consults the
+    # same per-(provider, platform) scraper-rate matrix the live cost meter
+    # uses - an admin rate edit then moves the estimate too. Map each selected
+    # platform to its provider via vendor_config (per-platform override, else
+    # the vendor default); fall back to the platform-agnostic provider list
+    # when no platforms are given.
+    vc = request.vendor_config
+    default_provider = ("x_api" if vc.default == "xapi" else vc.default) if vc else "brightdata"
+    overrides = {
+        plat: ("x_api" if prov == "xapi" else prov)
+        for plat, prov in ((vc.platform_overrides or {}).items() if vc else [])
+    }
+
+    pairs: list[tuple[str | None, str | None]] | None = None
     providers: list[str] | None = None
-    if request.vendor_config:
-        vc = request.vendor_config
-        provs = set((vc.platform_overrides or {}).values())
-        provs.add(vc.default)
-        providers = ["x_api" if p == "xapi" else p for p in provs]
+    if request.platforms:
+        pairs = [(overrides.get(plat, default_provider), plat) for plat in request.platforms]
+    elif vc:
+        provs = set(overrides.values())
+        provs.add(default_provider)
+        providers = list(provs)
+
     return estimate_run_cost_micros(
         n_posts=request.n_posts,
         providers=providers,
+        provider_platform_pairs=pairs,
         include_comments=request.include_comments,
         enrichment_enabled=True,
     )

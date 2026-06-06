@@ -16,7 +16,9 @@ poisoning the whole run.
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError, as_completed
+
+from api.services.cost_meter import ContextAwareThreadPoolExecutor
 from typing import Any
 
 from google import genai
@@ -247,7 +249,9 @@ def run_pass1(
     )
 
     candidates: list[TopicCandidate] = []
-    with ThreadPoolExecutor(max_workers=concurrency) as ex:
+    # Context-aware pool so each batch's topic_cluster Gemini cost inherits
+    # the run's user_id/agent_id (bare pool dropped attribution → NULL rows).
+    with ContextAwareThreadPoolExecutor(max_workers=concurrency) as ex:
         future_to_idx = {
             ex.submit(_run_pass1_batch, i, batch, model, thinking_level, customer_brief): i
             for i, batch in enumerate(batches)
@@ -587,7 +591,7 @@ def run_pass3_filter(
     n_before_topics = len(topics)
     n_before_members = sum(len(t.member_post_ids or []) for t in topics)
 
-    with ThreadPoolExecutor(max_workers=concurrency) as ex:
+    with ContextAwareThreadPoolExecutor(max_workers=concurrency) as ex:
         fut_to_topic = {
             ex.submit(_run_pass3_topic, t, pid_to_summary, model, thinking_level): t
             for t in topics

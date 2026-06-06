@@ -28,6 +28,62 @@ DEFAULT_MARGIN_MULTIPLIER = 1.0          # profit factor; 1.0 = bill exact cost
 DEFAULT_APIFY_ASSUMED_PER_POST_USD = 0.004  # apify is PROVIDER_REPORTED; assumed for pre-flight estimate
 
 # ---------------------------------------------------------------------------
+# Seed scraper rate matrices (USD per post / record / read).
+# ---------------------------------------------------------------------------
+#
+# These are the DEFAULT per-(provider, platform) rates the editor shows and
+# `compute_cost_micros` / `get_scraper_rate` use. Admin edits saved to Firestore
+# (`app_config/pricing`) deep-merge OVER these, so a single touched cell wins
+# without wiping the rest. Only the (provider, platform) pairs we ACTUALLY use
+# today are seeded; unused pairs are left absent so they render blank in the
+# editor (fill them when we wire that provider/platform).
+#
+# Which provider serves which platform (see workers/collection/wrapper.py
+# provider order + DEFAULT_VENDOR_* env):
+#   posts:    instagram→apify · facebook/reddit/youtube→brightdata ·
+#             tiktok→apify · twitter→x_api
+#   comments: instagram/tiktok/youtube→apify · twitter→x_api
+#             (facebook/reddit comments are not wired)
+# Vetric is NOT in use - intentionally omitted from the seeds + the editor
+# matrix. Its legacy COST_RATES["vetric"] entry is kept only so a stray call
+# wouldn't crash; re-add it here + to _SCRAPER_PROVIDERS if we adopt it.
+#
+# IMPORTANT: only platform-specific cells are seeded (NOT "*") so the legacy
+# sub_kind paths (e.g. x_api owned_read) still apply when no platform is given.
+#
+# Apify is PROVIDER_REPORTED - the exact run cost (`usageTotalUsd`) is always
+# used first; the Apify cells below are the ESTIMATE fallback for runs that
+# return no cost. BrightData / X_api / Vetric are rate-table priced, so their
+# cells are AUTHORITATIVE.
+#
+# Sources (verified 2026-06; per-result actor prices ÷ 1000):
+#   x_api search read $0.005/post            (docs.x.com pay-per-use, Feb 2026)
+#   brightdata dataset marketplace $2.5/1k   (brightdata.com/pricing/datasets)
+#   apify/instagram-scraper $1.50/1k posts   (apify.com/apify/instagram-scraper)
+#   apify/facebook-posts-scraper $2.00/1k    (apify.com actor page)
+#   apidojo/tiktok-scraper-api $0.30/1k      (apify.com/apidojo/tiktok-scraper-api)
+#   apify/instagram-comment-scraper $2.30/1k (apify.com actor page)
+#   clockworks/tiktok-comments-scraper $5/1k (apify.com/clockworks/tiktok-comments-scraper)
+#   streamers/youtube-comments-scraper $0.50/1k (apify.com/streamers/youtube-comments-scraper)
+#   vetric: PRIVATE CONTRACT - placeholder; confirm from invoice.
+DEFAULT_SCRAPER_RATES: dict[str, dict[str, float]] = {
+    # Estimate fallback only (provider-reported is authoritative).
+    "apify": {"instagram": 0.0015, "facebook": 0.0020, "tiktok": 0.0003},
+    # Authoritative - $0.0025/record across the social datasets we pull.
+    "brightdata": {"facebook": 0.0025, "reddit": 0.0025, "youtube": 0.0025},
+    # Authoritative - $0.005 per post (search) read.
+    "x_api": {"twitter": 0.005},
+}
+
+DEFAULT_SCRAPER_COMMENT_RATES: dict[str, dict[str, float]] = {
+    # Estimate fallback only (Apify comment actors are provider-reported).
+    "apify": {"instagram": 0.0023, "tiktok": 0.0050, "youtube": 0.0005},
+    # Authoritative - reply reads are billed identically to post reads.
+    "x_api": {"twitter": 0.005},
+    # brightdata / vetric comments are not wired → intentionally absent.
+}
+
+# ---------------------------------------------------------------------------
 # Rate table
 # ---------------------------------------------------------------------------
 #
@@ -167,6 +223,31 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
+def _parse_scraper_matrix(raw: Any) -> dict[str, dict[str, float]]:
+    """Normalize a ``{provider: {platform_or_*: usd}}`` matrix from a pricing
+    doc: coerce values to non-negative floats, drop anything malformed, and
+    omit providers that end up with no valid cells. Shared by the posts and
+    comments scraper matrices.
+    """
+    out: dict[str, dict[str, float]] = {}
+    if not isinstance(raw, dict):
+        return out
+    for prov, by_plat in raw.items():
+        if not isinstance(by_plat, dict):
+            continue
+        cells: dict[str, float] = {}
+        for plat, val in by_plat.items():
+            try:
+                v = float(val)
+            except (TypeError, ValueError):
+                continue
+            if v >= 0:
+                cells[str(plat)] = v
+        if cells:
+            out[str(prov)] = cells
+    return out
+
+
 def _load_pricing_doc() -> dict:
     """Read `app_config/pricing` from Firestore; {} on any failure (fail to seed)."""
     try:
@@ -217,22 +298,10 @@ def _refresh_pricing() -> dict[str, Any]:
     # the scalar `apify_assumed_per_post_usd` are folded into
     # ``scraper_rates_per_platform["apify"]`` (the scalar becomes the "*"
     # cell) so existing pricing-config docs still work without rewrite.
-    scraper_matrix_raw = doc.get("scraper_rates_per_platform") or {}
-    scraper_matrix: dict[str, dict[str, float]] = {}
-    if isinstance(scraper_matrix_raw, dict):
-        for prov, by_plat in scraper_matrix_raw.items():
-            if not isinstance(by_plat, dict):
-                continue
-            cells: dict[str, float] = {}
-            for plat, val in by_plat.items():
-                try:
-                    v = float(val)
-                except (TypeError, ValueError):
-                    continue
-                if v >= 0:
-                    cells[str(plat)] = v
-            if cells:
-                scraper_matrix[str(prov)] = cells
+    # Seed defaults first, then let saved (Firestore) cells win cell-by-cell.
+    scraper_matrix = _deep_merge(
+        DEFAULT_SCRAPER_RATES, _parse_scraper_matrix(doc.get("scraper_rates_per_platform") or {}),
+    )
 
     # Fold the legacy Apify per-platform dict into the matrix so a doc
     # written by an older client still drives Apify behaviour. Cells set
@@ -258,11 +327,23 @@ def _refresh_pricing() -> dict[str, Any]:
     apify_cells = scraper_matrix.setdefault("apify", {})
     apify_cells.setdefault("*", apify_pp)
 
+    # Per-(provider, platform) COMMENTS rate matrix - same shape as the posts
+    # matrix above but priced separately because comment scrapes hit the same
+    # providers at a different rate. A cell that's unset here falls through to
+    # the corresponding POSTS rate at lookup time (see `get_scraper_rate`), so
+    # an admin only fills in cells where comments actually cost something
+    # different. No legacy folds - this dimension is new.
+    comment_matrix = _deep_merge(
+        DEFAULT_SCRAPER_COMMENT_RATES,
+        _parse_scraper_matrix(doc.get("scraper_comment_rates_per_platform") or {}),
+    )
+
     cache = {
         "rates": _deep_merge(COST_RATES, doc.get("rate_overrides") or {}),
         "margin_multiplier": margin,
         "apify_assumed_per_post_usd": apify_pp,
         "scraper_rates_per_platform": scraper_matrix,
+        "scraper_comment_rates_per_platform": comment_matrix,
     }
     _pricing_cache = cache
     _pricing_cache_expiry = now + _PRICING_TTL
@@ -279,23 +360,27 @@ def get_margin_multiplier() -> float:
     return _refresh_pricing()["margin_multiplier"]
 
 
-def get_apify_assumed_per_post_usd(platform: str | None = None) -> float:
+def get_apify_assumed_per_post_usd(
+    platform: str | None = None, kind: str = "posts",
+) -> float:
     """Per-post crawl cost assumed for Apify in pre-flight estimates AND
     in the live `estimated_fallback` cost path when Apify returns no
     ``usageTotalUsd`` on a run.
 
     When ``platform`` is given we look up the per-platform override
     from the scraper matrix and fall through to the scalar wildcard
-    rate if no platform-specific override is set.
+    rate if no platform-specific override is set. ``kind`` selects the
+    posts vs comments matrix (comments fall back to the posts rate when
+    unset - see :func:`get_scraper_rate`).
     """
-    rate = get_scraper_rate("apify", platform)
+    rate = get_scraper_rate("apify", platform, kind)
     if rate is not None:
         return rate
     return _refresh_pricing()["apify_assumed_per_post_usd"]
 
 
 def get_scraper_rates_per_platform() -> dict[str, dict[str, float]]:
-    """Return a deep copy of the per-(provider, platform) scraper matrix.
+    """Return a deep copy of the per-(provider, platform) scraper POSTS matrix.
 
     Shape: ``{provider: {platform_or_wildcard: usd}}``. Mutating the
     returned dict is safe (deep-copy); call ``invalidate_pricing_cache``
@@ -304,13 +389,31 @@ def get_scraper_rates_per_platform() -> dict[str, dict[str, float]]:
     return copy.deepcopy(_refresh_pricing().get("scraper_rates_per_platform") or {})
 
 
-def get_scraper_rate(provider: str, platform: str | None = None) -> float | None:
-    """Per-(provider, platform) effective $/post for a scraper.
+def get_scraper_comment_rates_per_platform() -> dict[str, dict[str, float]]:
+    """Return a deep copy of the per-(provider, platform) COMMENTS rate matrix.
 
-    Lookup order:
-      1. ``scraper_rates_per_platform[provider][platform]`` if both keys exist.
-      2. ``scraper_rates_per_platform[provider]["*"]`` if the wildcard is set.
-      3. ``None`` (caller should fall back to the legacy COST_RATES entries).
+    Same shape as :func:`get_scraper_rates_per_platform`. Cells that are
+    unset here fall through to the posts rate at lookup time, so this dict
+    only contains the cells an admin explicitly priced for comments.
+    """
+    return copy.deepcopy(_refresh_pricing().get("scraper_comment_rates_per_platform") or {})
+
+
+def get_scraper_rate(
+    provider: str, platform: str | None = None, kind: str = "posts",
+) -> float | None:
+    """Per-(provider, platform) effective $/unit for a scraper.
+
+    ``kind`` is ``"posts"`` (default) or ``"comments"``. For ``"comments"``
+    the lookup tries the comments matrix first and, when no comments cell is
+    set for this (provider, platform), falls back to the **posts** rate - so
+    an admin only fills comment cells where the price genuinely differs.
+
+    Lookup order (per matrix):
+      1. ``matrix[provider][platform]`` if both keys exist.
+      2. ``matrix[provider]["*"]`` if the wildcard is set.
+      3. (comments only) the posts rate for the same (provider, platform).
+      4. ``None`` (caller falls back to the legacy COST_RATES entries).
 
     Used by:
       - Apify's live ``estimated_fallback`` path when ``run.usageTotalUsd``
@@ -319,7 +422,17 @@ def get_scraper_rate(provider: str, platform: str | None = None) -> float | None
         :func:`compute_cost_micros` (preferred over the legacy
         ``COST_RATES[provider]["*"]`` rate when a matrix cell is set).
     """
-    matrix = _refresh_pricing().get("scraper_rates_per_platform") or {}
+    cache = _refresh_pricing()
+    if kind == "comments":
+        matrix = cache.get("scraper_comment_rates_per_platform") or {}
+        cells = matrix.get(provider) or {}
+        if platform and platform in cells:
+            return cells[platform]
+        if "*" in cells:
+            return cells["*"]
+        # No comment-specific cell - inherit the posts rate.
+        return get_scraper_rate(provider, platform, "posts")
+    matrix = cache.get("scraper_rates_per_platform") or {}
     cells = matrix.get(provider) or {}
     if platform and platform in cells:
         return cells[platform]
@@ -444,11 +557,15 @@ def compute_cost_micros(
     provider_reported_cost_usd: float | None = None,
     bytes_processed: int = 0,
     platform: str | None = None,
+    kind: str = "posts",
 ) -> int | None:
     """Compute cost-micros for one external call.
 
     Args:
         provider: rate-table key ("gemini", "apify", ...).
+        kind: scraper rate dimension - "posts" (default) or "comments".
+            Selects the comments rate matrix for BrightData / X_api / Vetric
+            (comments inherit the posts rate when no comment cell is set).
         model: LLM model id, for gemini.
         sub_kind: optional sub-key for providers that price by endpoint /
             dataset / call type (e.g. x_api "search_per_post", brightdata
@@ -491,7 +608,7 @@ def compute_cost_micros(
     if provider == "brightdata":
         # Per-(platform) matrix wins over the legacy "*" entry when set -
         # lets the admin price IG vs TikTok vs FB records differently.
-        matrix_rate = get_scraper_rate("brightdata", platform)
+        matrix_rate = get_scraper_rate("brightdata", platform, kind)
         if matrix_rate is not None:
             return _usd_to_micros(units * matrix_rate)
         per_ds, _ = _get_or_fallback(rate, sub_kind)
@@ -502,7 +619,7 @@ def compute_cost_micros(
     if provider == "x_api":
         # Matrix override (typically only `x` platform set) wins over
         # endpoint-keyed legacy entries.
-        matrix_rate = get_scraper_rate("x_api", platform)
+        matrix_rate = get_scraper_rate("x_api", platform, kind)
         if matrix_rate is not None:
             return _usd_to_micros(units * matrix_rate)
         per_ep, _ = _get_or_fallback(rate, sub_kind)
@@ -511,7 +628,7 @@ def compute_cost_micros(
         return _usd_to_micros(units * per_ep["per_unit_usd"])
 
     if provider == "vetric":
-        matrix_rate = get_scraper_rate("vetric", platform)
+        matrix_rate = get_scraper_rate("vetric", platform, kind)
         if matrix_rate is not None:
             return _usd_to_micros(units * matrix_rate)
         per_call, _ = _get_or_fallback(rate, sub_kind)

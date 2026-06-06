@@ -2,13 +2,30 @@
 
 import pytest
 
+import config.cost_rates as cost_rates
 from config.cost_rates import (
     COST_RATES,
     PROVIDER_REPORTED,
     _gemini_family,
     compute_cost_micros,
     compute_grounding_cost_micros,
+    get_scraper_rate,
 )
+
+
+@pytest.fixture()
+def pricing_doc(monkeypatch):
+    """Inject a fake `app_config/pricing` doc and reset the process cache.
+
+    Returns a setter; call it with the doc dict, then invalidate runs
+    automatically so the next rate lookup sees the override.
+    """
+    def _set(doc: dict) -> None:
+        monkeypatch.setattr(cost_rates, "_load_pricing_doc", lambda: doc)
+        cost_rates.invalidate_pricing_cache()
+
+    yield _set
+    cost_rates.invalidate_pricing_cache()
 
 
 # ── gemini ────────────────────────────────────────────────────────────
@@ -193,6 +210,95 @@ def test_grounding_unknown_model_falls_back_to_per_prompt():
     # Unknown family bills at the safer over-estimate (gemini-2.5 rate).
     micros = compute_grounding_cost_micros("some-model", prompts_grounded=1)
     assert micros == 35_000
+
+
+# ── comments rate dimension (posts vs comments) ──────────────────────
+
+
+def test_comments_kind_uses_comment_rate_when_set(pricing_doc):
+    # Comment rate set for x_api/twitter; posts matrix empty.
+    pricing_doc({
+        "scraper_comment_rates_per_platform": {"x_api": {"twitter": 0.01}},
+    })
+    comments = compute_cost_micros(
+        "x_api", units=10, platform="twitter", kind="comments",
+    )
+    # 10 × $0.01 = $0.10 = 100_000 micros (comment rate, not the $0.005 post rate).
+    assert comments == 100_000
+    # Posts kind unaffected - falls through to legacy $0.005 read rate.
+    posts = compute_cost_micros("x_api", units=10, platform="twitter", kind="posts")
+    assert posts == 50_000
+
+
+def test_comments_kind_falls_back_to_posts_rate_when_unset(pricing_doc):
+    # Posts rate set for brightdata/instagram; no comment cell.
+    pricing_doc({
+        "scraper_rates_per_platform": {"brightdata": {"instagram": 0.005}},
+    })
+    # Comments inherit the posts rate (no comment-specific cell).
+    comments = compute_cost_micros(
+        "brightdata", units=100, platform="instagram", kind="comments",
+    )
+    posts = compute_cost_micros(
+        "brightdata", units=100, platform="instagram", kind="posts",
+    )
+    assert comments == posts == 500_000
+
+
+def test_get_scraper_rate_comment_inherits_posts_wildcard(pricing_doc):
+    pricing_doc({
+        "scraper_rates_per_platform": {"vetric": {"*": 0.002}},
+    })
+    # No comment matrix at all → comment lookup inherits the posts wildcard.
+    assert get_scraper_rate("vetric", "tiktok", "comments") == 0.002
+    assert get_scraper_rate("vetric", "tiktok", "posts") == 0.002
+
+
+def test_posts_kind_ignores_comment_matrix(pricing_doc):
+    pricing_doc({
+        "scraper_rates_per_platform": {"brightdata": {"instagram": 0.005}},
+        "scraper_comment_rates_per_platform": {"brightdata": {"instagram": 0.05}},
+    })
+    # Posts must use the posts rate even though a (pricier) comment cell exists.
+    assert compute_cost_micros(
+        "brightdata", units=100, platform="instagram", kind="posts",
+    ) == 500_000
+    assert compute_cost_micros(
+        "brightdata", units=100, platform="instagram", kind="comments",
+    ) == 5_000_000
+
+
+# ── seeded scraper-rate defaults (per provider/API we use) ───────────
+
+
+def test_seeded_posts_rates_resolve_for_used_platforms():
+    # BrightData social datasets ($0.0025/record) - facebook/reddit/youtube.
+    assert compute_cost_micros("brightdata", units=1000, platform="facebook") == 2_500_000
+    assert compute_cost_micros("brightdata", units=1000, platform="youtube") == 2_500_000
+    # X API twitter search read ($0.005).
+    assert compute_cost_micros("x_api", units=100, platform="twitter") == 500_000
+
+
+def test_seeded_apify_estimate_fallback_per_platform():
+    from config.cost_rates import get_apify_assumed_per_post_usd
+    # Estimate fallback (provider-reported wins live) - per-actor seed prices.
+    assert get_apify_assumed_per_post_usd("tiktok") == 0.0003
+    assert get_apify_assumed_per_post_usd("instagram") == 0.0015
+    # Comments seeds differ from posts (e.g. tiktok comments $0.005 vs $0.0003).
+    assert get_apify_assumed_per_post_usd("tiktok", kind="comments") == 0.0050
+    assert get_apify_assumed_per_post_usd("youtube", kind="comments") == 0.0005
+
+
+def test_seeded_x_api_comments_match_post_read_rate():
+    # Reply reads are billed like post reads ($0.005), seeded explicitly.
+    assert compute_cost_micros("x_api", units=10, platform="twitter", kind="comments") == 50_000
+
+
+def test_x_api_owned_read_unaffected_by_seed_when_no_platform():
+    # Regression guard: the per-platform seed must NOT shadow the cheaper
+    # owned_read sub_kind when no platform is supplied (matrix lookup misses
+    # because only "twitter" is seeded, not "*").
+    assert compute_cost_micros("x_api", units=100, sub_kind="owned_read") == 100_000
 
 
 # ── unknown providers ────────────────────────────────────────────────

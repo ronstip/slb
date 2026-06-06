@@ -7,6 +7,7 @@ import threading
 import time as _time
 from uuid import uuid4
 
+import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, Request
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.genai import types
@@ -34,6 +35,34 @@ from api.utils.event_parsing import extract_event_data, extract_final_text
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def capture_stream_error(
+    exc: Exception,
+    *,
+    request_id: str,
+    session_id: str,
+    user_id: str | None = None,
+    org_id: str | None = None,
+    agent_id: str | None = None,
+) -> None:
+    """Send a swallowed SSE-stream exception to Sentry.
+
+    The ``/chat`` generator degrades failures to a ``stream_error`` event so the
+    client gets a clean message - which means the exception never propagates to
+    the global handler / ASGI layer, and Sentry would otherwise never see
+    agent-stream crashes (e.g. a planner/tool blowup mid-stream). This is the
+    only capture path for those. Tags line the issue up with Cloud Logging and
+    the client's error response. No-op when Sentry is disabled (no DSN).
+    """
+    with sentry_sdk.new_scope() as scope:
+        scope.set_tag("request_id", request_id)
+        scope.set_tag("session_id", session_id)
+        scope.set_tag("service", "api")
+        scope.set_context(
+            "chat", {"user_id": user_id, "org_id": org_id, "agent_id": agent_id}
+        )
+        sentry_sdk.capture_exception(exc)
 
 
 @router.post("/chat")
@@ -204,14 +233,23 @@ async def chat(request: Request, chat_request: ChatRequest, user: CurrentUser = 
                 restore_and_flush(runner, session, trimmed_prefix)
                 _flushed = True
 
-        except Exception:
+        except Exception as exc:
+            rid = get_request_id() or "unknown"
             logger.exception("Error in event stream")
+            capture_stream_error(
+                exc,
+                request_id=rid,
+                session_id=session_id,
+                user_id=user_id,
+                org_id=user.org_id,
+                agent_id=session.state.get("active_agent_id") if session else None,
+            )
             yield {
                 "event": "error",
                 "data": json.dumps({
                     "event_type": "error",
                     "content": "stream_error",
-                    "request_id": get_request_id() or "unknown",
+                    "request_id": rid,
                 }),
             }
         finally:

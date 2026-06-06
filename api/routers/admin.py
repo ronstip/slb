@@ -419,7 +419,8 @@ def _agent_cost_breakdown(
             SELECT COALESCE(agent_id, @unassigned) AS agent_id,
                    SUM(cost_micros) AS cost_micros,
                    SUM({_REVENUE_EXPR}) AS billed_micros,
-                   COUNT(*) AS events
+                   COUNT(*) AS events,
+                   MAX(created_at) AS last_event_at
             FROM social_listening.usage_events
             WHERE {where}
             GROUP BY agent_id
@@ -430,6 +431,11 @@ def _agent_cost_breakdown(
     except Exception as e:
         logger.warning("Agent cost breakdown failed for %s: %s", user_id, e)
         return []
+
+    def _iso(v) -> str | None:
+        """BQ TIMESTAMP comes back as a datetime; normalise to ISO (the FE
+        sorts agents by this). Strings pass through; None stays None."""
+        return v.isoformat() if hasattr(v, "isoformat") else (v or None)
 
     out: list[dict] = []
     for r in rows:
@@ -442,6 +448,7 @@ def _agent_cost_breakdown(
                 "cost_micros": int(r.get("cost_micros") or 0),
                 "billed_micros": int(r.get("billed_micros") or 0),
                 "events": int(r.get("events") or 0),
+                "last_event_at": _iso(r.get("last_event_at")),
             })
             continue
         meta = agent_meta.get(aid)
@@ -470,6 +477,7 @@ def _agent_cost_breakdown(
             "cost_micros": int(r.get("cost_micros") or 0),
             "billed_micros": int(r.get("billed_micros") or 0),
             "events": int(r.get("events") or 0),
+            "last_event_at": _iso(r.get("last_event_at")),
         })
     return out
 
@@ -1180,6 +1188,18 @@ def _finance_breakdown(
 
     by_tier = sorted(tier_agg.values(), key=lambda b: b["cost_micros"], reverse=True)
 
+    # §E "who absorbs the cost" split. Super-admins + free/trial/demo accounts
+    # run on granted (not purchased) credit - we never actually charge them the
+    # profit margin, so their usage is a cost WE eat. Report it at raw cost.
+    # Only `paid`-tier usage produces real billed-at-margin revenue.
+    _ABSORBED_TIERS = {"admin", "free", "trial"}
+    absorbed_cost_micros = sum(
+        b["cost_micros"] for b in tier_agg.values() if b["key"] in _ABSORBED_TIERS
+    )
+    paid_billed_micros = sum(
+        b["revenue_micros"] for b in tier_agg.values() if b["key"] == "paid"
+    )
+
     purchases = int(credit.get("purchase", 0))
     granted = int(credit.get("grant", 0)) + int(credit.get("adjustment", 0)) + int(credit.get("refund", 0))
 
@@ -1221,6 +1241,10 @@ def _finance_breakdown(
         "granted_micros": granted,              # credit we issued (not revenue)
         "net_micros": purchases - cost_micros,  # true P&L
         "usage_billed_micros": revenue_micros,  # cost × margin across all usage (informational)
+        # §E who-absorbs split: admin/free/trial usage at raw cost (we eat it),
+        # paid-tier usage at margin (the only real billed revenue).
+        "absorbed_cost_micros": int(absorbed_cost_micros),
+        "paid_billed_micros": int(paid_billed_micros),
         # Point-in-time snapshot (NOT range-filterable - credit balances are
         # live counters in Firestore). The wallet liability we still owe
         # users in deliverable usage.
@@ -1275,11 +1299,13 @@ async def admin_finance(
 # and deep-merged over the code seed at runtime.
 # ---------------------------------------------------------------------------
 
+# Only the model actually in use today is exposed in the editor (keeps the
+# pricing UI focused). The seed COST_RATES["gemini"] still carries every model
+# + the "*" fallback, so cost computation keeps working if a call routes a
+# different model - we're trimming the *editor surface*, not the rate table.
+# Re-add a row here (and in the frontend GEMINI_MODELS) when switching models.
 _GEMINI_MODELS = (
     "gemini-3-flash-preview",
-    "gemini-3-pro-preview",
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
 )
 
 
@@ -1287,7 +1313,8 @@ _GEMINI_MODELS = (
 # matrix editor. Order = display order in the UI. The "*" column on the
 # UI side maps to the wildcard cell (`scraper_rates_per_platform[p]["*"]`)
 # and is the fallback used when no platform-specific cell is set.
-_SCRAPER_PROVIDERS = ("apify", "brightdata", "x_api", "vetric")
+# Vetric is omitted - not in use (see config/cost_rates.py); re-add to expose.
+_SCRAPER_PROVIDERS = ("apify", "brightdata", "x_api")
 _SCRAPER_PLATFORMS = ("instagram", "facebook", "tiktok", "twitter", "reddit", "youtube")
 
 
@@ -1330,6 +1357,25 @@ def _scraper_matrix_view() -> dict[str, dict[str, float | None]]:
     return out
 
 
+def _scraper_comment_matrix_view() -> dict[str, dict[str, float | None]]:
+    """Project the live COMMENTS scraper rate matrix into the UI shape.
+
+    Same even grid as :func:`_scraper_matrix_view` but for comment scrapes.
+    Cells stay ``None`` until an admin sets one - a ``None`` cell means "no
+    comment-specific rate, inherit the posts rate" (see
+    :func:`config.cost_rates.get_scraper_rate`). No legacy-wildcard fallback:
+    an unset comment cell is intentionally blank so the editor shows that
+    comments inherit the posts price.
+    """
+    matrix = cost_rates.get_scraper_comment_rates_per_platform()
+    out: dict[str, dict[str, float | None]] = {}
+    for prov in _SCRAPER_PROVIDERS:
+        cells = matrix.get(prov) or {}
+        out[prov] = {p: cells.get(p) for p in _SCRAPER_PLATFORMS}
+        out[prov]["*"] = cells.get("*")
+    return out
+
+
 def _curated_pricing_view() -> dict:
     """Project the effective rate table down to the curated, editable knobs."""
     r = cost_rates.get_active_rates()
@@ -1343,6 +1389,9 @@ def _curated_pricing_view() -> dict:
         # Vetric rate-table replacement). The Pricing editor renders this
         # as a grid; a cell that's NULL means "no override, use wildcard".
         "scraper_rates_per_platform": _scraper_matrix_view(),
+        # Parallel comments-rate matrix - cells default to NULL ("inherit the
+        # posts rate"); only populated where comment scraping costs differently.
+        "scraper_comment_rates_per_platform": _scraper_comment_matrix_view(),
         "gemini": {
             m: {
                 "input_per_mtok": gem.get(m, {}).get("input_per_mtok"),
@@ -1379,6 +1428,9 @@ class PricingUpdate(BaseModel):
     # cell (so it falls through to the wildcard "*" for that provider).
     # Schema: ``{provider: {platform_or_star: usd | None}}``.
     scraper_rates_per_platform: dict[str, dict[str, float | None]] | None = None
+    # Parallel comments-rate matrix, same shape + same partial-edit semantics
+    # (a cell of ``None`` clears that comment rate → inherits the posts rate).
+    scraper_comment_rates_per_platform: dict[str, dict[str, float | None]] | None = None
     gemini: dict[str, _GeminiRate] | None = None
     google_search_gemini3_per_query_usd: float | None = None
     google_search_gemini25_per_prompt_usd: float | None = None
@@ -1388,6 +1440,37 @@ class PricingUpdate(BaseModel):
     bq_per_tb_processed_usd: float | None = None
     gcs_per_gb_stored_usd: float | None = None
     gcs_per_gb_egress_usd: float | None = None
+
+
+def _merge_scraper_matrix(
+    existing: dict | None,
+    patch: dict[str, dict[str, float | None]] | None,
+) -> dict | None:
+    """Merge a partial scraper-rate matrix patch over the stored matrix.
+
+    ``patch`` only carries the cells the admin touched; an explicit ``None``
+    cell clears that cell (so it falls through to the wildcard / posts rate).
+    Providers whose cells all clear are dropped. Returns ``None`` (no change)
+    when ``patch`` is ``None`` so the caller skips persisting that field.
+    Used for both the posts and comments scraper matrices.
+    """
+    if patch is None:
+        return None
+    out = dict(existing or {})
+    for prov, by_plat in patch.items():
+        if not isinstance(by_plat, dict):
+            continue
+        cells = dict(out.get(prov) or {})
+        for plat, val in by_plat.items():
+            if val is None:
+                cells.pop(plat, None)
+            else:
+                cells[plat] = float(val)
+        if cells:
+            out[prov] = cells
+        else:
+            out.pop(prov, None)
+    return out
 
 
 def _build_rate_overrides(body: PricingUpdate) -> dict:
@@ -1460,27 +1543,19 @@ async def admin_update_pricing(
     existing = pricing_doc.get("rate_overrides") or {}
     merged = cost_rates._deep_merge(existing, overrides)
 
-    # Merge the scraper (provider × platform) matrix. The body only sends
+    # Merge the scraper (provider × platform) matrices. The body only sends
     # cells the admin actually touched; an explicit ``null`` clears that
-    # cell so it falls through to the provider's "*" wildcard. Preserves
-    # providers + platforms not in the editor today (forward compat).
-    scraper_matrix_merged: dict | None = None
-    if body.scraper_rates_per_platform is not None:
-        existing_matrix = dict(pricing_doc.get("scraper_rates_per_platform") or {})
-        for prov, by_plat in body.scraper_rates_per_platform.items():
-            if not isinstance(by_plat, dict):
-                continue
-            cells = dict(existing_matrix.get(prov) or {})
-            for plat, val in by_plat.items():
-                if val is None:
-                    cells.pop(plat, None)
-                else:
-                    cells[plat] = float(val)
-            if cells:
-                existing_matrix[prov] = cells
-            else:
-                existing_matrix.pop(prov, None)
-        scraper_matrix_merged = existing_matrix
+    # cell so it falls through to the provider's "*" wildcard (posts) or to
+    # the posts rate (comments). Preserves providers + platforms not in the
+    # editor today (forward compat).
+    scraper_matrix_merged = _merge_scraper_matrix(
+        pricing_doc.get("scraper_rates_per_platform"),
+        body.scraper_rates_per_platform,
+    )
+    scraper_comment_matrix_merged = _merge_scraper_matrix(
+        pricing_doc.get("scraper_comment_rates_per_platform"),
+        body.scraper_comment_rates_per_platform,
+    )
 
     await asyncio.to_thread(
         fs.set_pricing_config,
@@ -1488,6 +1563,7 @@ async def admin_update_pricing(
         margin_multiplier=body.margin_multiplier,
         apify_assumed_per_post_usd=body.apify_assumed_per_post_usd,
         scraper_rates_per_platform=scraper_matrix_merged,
+        scraper_comment_rates_per_platform=scraper_comment_matrix_merged,
         updated_by=user.email,
     )
     cost_rates.invalidate_pricing_cache()
