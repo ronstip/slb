@@ -24,7 +24,7 @@ const MarkdownArtifactEditor = lazy(() =>
 import { cn } from '../../../../lib/utils.ts';
 import type { CustomFieldDef, DashboardPost, TopicMetric } from '../../../../api/types.ts';
 import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension } from '../types-social-dashboard.ts';
-import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig } from '../types-social-dashboard.ts';
+import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig, objectFieldOf, objectFieldOfTable } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
 import { TableDataForm } from './TableDataForm.tsx';
@@ -32,6 +32,7 @@ import { WidgetFilterForm } from './WidgetFilterForm.tsx';
 import { WidgetStyleForm } from './WidgetStyleForm.tsx';
 import { ChartStyleEditor } from './ChartStyleEditor.tsx';
 import { aggregateCustom, aggregatePlatforms, aggregateSentiment, aggregateTable } from '../dashboard-aggregations.ts';
+import { aggregateObjectList, aggregateObjectTable } from '../object-list-aggregations.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from '../topic-aggregations.ts';
 import { extractChartSeriesLabels } from '../chart-series-labels.ts';
 import { SocialWidgetRenderer, applyWidgetFilters } from '../SocialWidgetRenderer.tsx';
@@ -676,10 +677,16 @@ function StyleTab({
         : defaultTableConfigFor((draft.customConfig?.dimension as CustomDimension | undefined) ?? 'channel_handle')),
     );
     // Topic tables read from the topic_metrics rows directly; post tables run
-    // the post aggregator. Filter bar doesn't apply to topics (snapshot data).
+    // the post aggregator. list[object] tables aggregate element-as-unit -
+    // route to the object table aggregator (mirrors SocialWidgetRenderer) so
+    // the rename groups expose the object dimension's leaf values. Filter bar
+    // doesn't apply to topics (snapshot data).
+    const tableObjField = !isTopicsSource ? objectFieldOfTable(tableConfig) : null;
     const rows = isTopicsSource
       ? aggregateTopicsTable(topics, tableConfig)
-      : aggregateTable(applyWidgetFilters(previewPosts, draft.filters), tableConfig);
+      : tableObjField
+        ? aggregateObjectTable(applyWidgetFilters(previewPosts, draft.filters), tableObjField, tableConfig)
+        : aggregateTable(applyWidgetFilters(previewPosts, draft.filters), tableConfig);
 
     // Build a rename group per dimension column - for topic widgets the
     // typical case is one group ("Topic") but other dims (beat_type,
@@ -718,11 +725,18 @@ function StyleTab({
   }
 
   // Charts: compute the labels the chart will render so the per-series picker
-  // matches the legend 1:1.
+  // matches the legend 1:1. list[object] fields aggregate element-as-unit -
+  // route to the object aggregator (mirrors SocialWidgetRenderer) so the
+  // per-series picker shows the object dimension's leaf values.
+  const chartObjField = draft.customConfig && !isTopicsSource
+    ? objectFieldOf(draft.customConfig)
+    : null;
   const previewData = draft.customConfig
-    ? (isTopicsSource
-        ? aggregateTopicsCustom(topics, draft.customConfig)
-        : aggregateCustom(previewPosts, draft.customConfig))
+    ? (chartObjField
+        ? aggregateObjectList(previewPosts, chartObjField, draft.customConfig)
+        : isTopicsSource
+          ? aggregateTopicsCustom(topics, draft.customConfig)
+          : aggregateCustom(previewPosts, draft.customConfig))
     : undefined;
   const seriesLabels = extractChartSeriesLabels(draft.chartType, previewData);
   const styleOverrides: ChartStyleOverrides = draft.styleOverrides
