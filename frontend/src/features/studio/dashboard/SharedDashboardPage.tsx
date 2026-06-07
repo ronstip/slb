@@ -43,6 +43,11 @@ export function SharedDashboardPage() {
   });
 
   const allPosts = response?.posts ?? [];
+  // Landscape ("horizontal") fills a wide canvas; portrait keeps the narrow
+  // A4-style column. The grid itself is w-full, so this wrapper cap is what
+  // actually bounds landscape width.
+  const isLandscape = (response?.orientation ?? 'horizontal') === 'horizontal';
+  const contentMaxW = isLandscape ? 'max-w-none' : 'max-w-6xl';
   // The shared dashboard API copies the owner's `reportScope` through. When
   // present, the filter bar locks those dimensions for the public viewer too.
   const reportScope = (response?.reportScope ?? null) as ReportScope | null;
@@ -157,7 +162,7 @@ export function SharedDashboardPage() {
           {/* Filter bar - editor can hide it for curated reports. */}
           {!response.filterBarHidden && (
             <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-              <div className="mx-auto max-w-6xl px-3 sm:px-6">
+              <div className={`mx-auto ${contentMaxW} px-3 sm:px-6`}>
               <DashboardFilterBar
                 filters={filters}
                 availableOptions={availableOptions}
@@ -174,7 +179,7 @@ export function SharedDashboardPage() {
             </div>
           )}
 
-          <main className="mx-auto max-w-6xl px-3 sm:px-6">
+          <main className={`mx-auto ${contentMaxW} px-3 sm:px-6`}>
             <SocialDashboardView
               artifactId={token!}
               filteredPosts={filteredPosts}

@@ -516,8 +516,11 @@ export function SocialDashboardView({
 
   return (
     <div className="flex flex-col">
-      {/* Grid */}
+      {/* Grid - keyed on orientation so a landscape/portrait switch remounts
+          and re-measures the container width (RGL scales its 12 cols to the
+          measured width; a stale measure leaves panels at the old width). */}
       <SocialDashboardGrid
+        key={orientation}
         widgets={widgets}
         filteredPosts={filteredPosts}
         topics={topics}
