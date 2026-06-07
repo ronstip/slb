@@ -338,10 +338,20 @@ def _build_content_parts(
         and not any(_is_video(r.media_type, r.content_type) and r.gcs_uri for r in post.media_refs)
     ):
         try:
+            # Mirror the GCS-video cap (start/end offset + fps): without
+            # VideoMetadata Gemini ingests the full-length video at default fps,
+            # inflating token cost on long YouTube videos.
             parts.append(
-                types.Part.from_uri(
-                    file_uri=post.post_url,
-                    mime_type="video/mp4",
+                types.Part(
+                    file_data=types.FileData(
+                        file_uri=post.post_url,
+                        mime_type="video/mp4",
+                    ),
+                    video_metadata=types.VideoMetadata(
+                        start_offset=settings.enrichment_video_start_offset,
+                        end_offset=settings.enrichment_video_end_offset,
+                        fps=settings.enrichment_video_fps,
+                    ),
                 )
             )
         except Exception:

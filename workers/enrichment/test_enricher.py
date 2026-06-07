@@ -4,6 +4,7 @@
 
 from workers.enrichment.enricher import (
     ENRICHMENT_PROMPT,
+    _build_content_parts,
     _render_referenced_post_block,
 )
 from workers.enrichment.schema import MediaRef, PostData, ReferencedPost
@@ -112,3 +113,46 @@ def test_post_data_accepts_referenced_post():
 def test_post_data_default_referenced_post_is_none():
     pd = PostData(post_id="9001", platform="twitter", content="just a tweet")
     assert pd.referenced_post is None
+
+
+# ---------------------------------------------------------------------------
+# YouTube direct-URL video part must carry the same VideoMetadata cap as GCS
+# videos, otherwise Gemini processes the full-length video at default fps and
+# inflates token cost.
+# ---------------------------------------------------------------------------
+
+def _youtube_post() -> PostData:
+    return PostData(
+        post_id="yt1", platform="youtube",
+        content="some long video",
+        post_url="https://www.youtube.com/watch?v=abc123",
+    )
+
+
+def test_youtube_url_part_has_bounded_video_metadata():
+    from config.settings import get_settings
+
+    settings = get_settings()
+    parts = _build_content_parts(_youtube_post())
+
+    yt_parts = [
+        p for p in parts
+        if getattr(p, "file_data", None)
+        and p.file_data.file_uri == "https://www.youtube.com/watch?v=abc123"
+    ]
+    assert len(yt_parts) == 1, "expected exactly one YouTube video part"
+
+    vm = yt_parts[0].video_metadata
+    assert vm is not None, "YouTube video part must set VideoMetadata (duration/fps cap)"
+    assert vm.start_offset == settings.enrichment_video_start_offset
+    assert vm.end_offset == settings.enrichment_video_end_offset
+    assert vm.fps == settings.enrichment_video_fps
+
+
+def test_youtube_url_part_omitted_when_video_skipped():
+    parts = _build_content_parts(_youtube_post(), skip_video=True)
+    assert not any(
+        getattr(p, "file_data", None)
+        and p.file_data.file_uri == "https://www.youtube.com/watch?v=abc123"
+        for p in parts
+    )
