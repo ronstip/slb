@@ -1,3 +1,5 @@
+import type { CustomFieldDef } from '../../../api/types.ts';
+
 // ─── Core enums ──────────────────────────────────────────────────────────────
 
 /** Which BigQuery source a widget reads from. `posts` (default) = post-level
@@ -78,6 +80,186 @@ export function customFieldName(dim: `custom:${string}`): string {
   return dim.slice(CUSTOM_DIM_PREFIX.length);
 }
 
+// ─── list[object] custom fields: leaf dimensions + element metrics ────────────
+// A `list[object]` field (e.g. men=[{name,age},...]) is aggregated element-as-
+// unit: each object is the counted row, so a post with N objects never inflates
+// post-level counts. Leaves are addressed with a dot to distinguish them from a
+// scalar custom field:
+//   dimension  `custom:men.name`      → group elements by the `name` leaf
+//   metric     `customobj:men.age`    → avg/min/max/sum of the numeric `age` leaf
+//   metric     `customobj:men.__count`→ count of elements
+const OBJECT_DIM_RE = /^custom:([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$/;
+export const OBJECT_METRIC_PREFIX = 'customobj:';
+// field + any non-empty suffix; the suffix is classified by parseObjectMetric.
+const OBJECT_METRIC_RE = /^customobj:([a-z][a-z0-9_]*)\.(.+)$/;
+/** Sentinel leaf marking the "count of elements" object metric. */
+export const OBJECT_COUNT_LEAF = '__count';
+/** Sentinel leaf marking the "distinct parent posts" object metric (dedup per post). */
+export const OBJECT_DISTINCT_POSTS_LEAF = '__posts';
+/** Suffix prefix marking an inherited parent-post metric, e.g. `post.view_count`. */
+export const OBJECT_INHERITED_PREFIX = 'post.';
+
+/** Post metrics an object element may inherit from its parent post. `post_count`
+ *  is intentionally excluded (it would equal the element count / `__count`). */
+export const OBJECT_INHERITED_METRICS: CustomMetric[] = [
+  'view_count', 'like_count', 'comment_count', 'share_count', 'engagement_total',
+];
+const OBJECT_INHERITED_SET = new Set<string>(OBJECT_INHERITED_METRICS);
+
+export type ObjectMetricKind = 'count' | 'distinctPosts' | 'own' | 'inherited';
+
+/** True for a leaf dimension like `custom:men.name` (dotted), false for a plain
+ *  scalar custom dim like `custom:men`. */
+export function isObjectFieldDimension(dim: AnyDimension | undefined | null): boolean {
+  return typeof dim === 'string' && OBJECT_DIM_RE.test(dim);
+}
+
+export function parseObjectDim(dim: string): { field: string; leaf: string } | null {
+  const m = OBJECT_DIM_RE.exec(dim);
+  return m ? { field: m[1], leaf: m[2] } : null;
+}
+
+export function isObjectMetric(metric: AnyMetric | undefined | null): boolean {
+  return typeof metric === 'string' && OBJECT_METRIC_RE.test(metric);
+}
+
+export interface ParsedObjectMetric {
+  field: string;
+  kind: ObjectMetricKind;
+  /** count → '__count'; distinctPosts → '__posts'; own → the leaf name.
+   *  Undefined for inherited. */
+  leaf?: string;
+  /** inherited only: the parent-post metric to read per element. */
+  metric?: CustomMetric;
+}
+
+/** Parse a `customobj:<field>.<suffix>` token into its kind:
+ *  - `.__count`        → count of elements
+ *  - `.__posts`        → distinct parent posts (dedup per post)
+ *  - `.post.<metric>`  → inherited parent-post metric (per element)
+ *  - `.<leaf>`         → the object's own numeric leaf
+ *  Returns null for an unrecognized suffix. */
+export function parseObjectMetric(metric: string): ParsedObjectMetric | null {
+  const m = OBJECT_METRIC_RE.exec(metric);
+  if (!m) return null;
+  const field = m[1];
+  const suffix = m[2];
+  if (suffix === OBJECT_COUNT_LEAF) return { field, kind: 'count', leaf: suffix };
+  if (suffix === OBJECT_DISTINCT_POSTS_LEAF) return { field, kind: 'distinctPosts', leaf: suffix };
+  if (suffix.startsWith(OBJECT_INHERITED_PREFIX)) {
+    const pm = suffix.slice(OBJECT_INHERITED_PREFIX.length);
+    return OBJECT_INHERITED_SET.has(pm)
+      ? { field, kind: 'inherited', metric: pm as CustomMetric }
+      : null;
+  }
+  return /^[a-z][a-z0-9_]*$/.test(suffix) ? { field, kind: 'own', leaf: suffix } : null;
+}
+
+/** Build an inherited object metric token, e.g. ('men','view_count') →
+ *  `customobj:men.post.view_count`. */
+export function objectInheritedMetric(field: string, metric: CustomMetric): AnyMetric {
+  return `${OBJECT_METRIC_PREFIX}${field}.${OBJECT_INHERITED_PREFIX}${metric}` as AnyMetric;
+}
+
+/** Default aggregation for an object metric kind: own numeric → avg (summing ages
+ *  is meaningless), inherited post metric → sum. count / distinctPosts have no agg. */
+export function defaultAggForObjectMetric(
+  kind: ObjectMetricKind,
+): 'sum' | 'avg' | undefined {
+  if (kind === 'own') return 'avg';
+  if (kind === 'inherited') return 'sum';
+  return undefined;
+}
+
+/** The list[object] field a config targets, or null. Reads the object metric
+ *  first (the metric is always present), then the leaf dimension. Returns null
+ *  when the two reference different fields (an invalid config we won't route). */
+export function objectFieldOf(config: CustomChartConfig): string | null {
+  const fromMetric = isObjectMetric(config.metric)
+    ? parseObjectMetric(config.metric as string)?.field ?? null
+    : null;
+  const fromDim = isObjectFieldDimension(config.dimension)
+    ? parseObjectDim(config.dimension as string)?.field ?? null
+    : null;
+  if (fromMetric && fromDim && fromMetric !== fromDim) return null;
+  return fromMetric ?? fromDim;
+}
+
+const OBJECT_NUMERIC_LEAF_TYPES = new Set(['int', 'float']);
+const OBJECT_CATEGORICAL_LEAF_TYPES = new Set(['str', 'bool', 'literal']);
+
+/** Object metrics offered for a list[object] field: count-of-elements, distinct
+ *  parent posts, one per numeric leaf, then the inherited parent-post metrics. */
+export function objectMetricsForDef(def: CustomFieldDef): AnyMetric[] {
+  const out: AnyMetric[] = [
+    `${OBJECT_METRIC_PREFIX}${def.name}.${OBJECT_COUNT_LEAF}` as AnyMetric,
+    `${OBJECT_METRIC_PREFIX}${def.name}.${OBJECT_DISTINCT_POSTS_LEAF}` as AnyMetric,
+  ];
+  for (const ef of def.element_fields ?? []) {
+    if (OBJECT_NUMERIC_LEAF_TYPES.has(ef.type)) {
+      out.push(`${OBJECT_METRIC_PREFIX}${def.name}.${ef.name}` as AnyMetric);
+    }
+  }
+  for (const m of OBJECT_INHERITED_METRICS) {
+    out.push(objectInheritedMetric(def.name, m));
+  }
+  return out;
+}
+
+/** Object metrics grouped for the editor's Metric dropdown (SelectGroup headers). */
+export function objectMetricGroupsForDef(
+  def: CustomFieldDef,
+): Array<{ label: string; metrics: AnyMetric[] }> {
+  const fieldLabel = humanizeFieldName(def.name);
+  const count: AnyMetric[] = [
+    `${OBJECT_METRIC_PREFIX}${def.name}.${OBJECT_COUNT_LEAF}` as AnyMetric,
+    `${OBJECT_METRIC_PREFIX}${def.name}.${OBJECT_DISTINCT_POSTS_LEAF}` as AnyMetric,
+  ];
+  const own: AnyMetric[] = (def.element_fields ?? [])
+    .filter((ef) => OBJECT_NUMERIC_LEAF_TYPES.has(ef.type))
+    .map((ef) => `${OBJECT_METRIC_PREFIX}${def.name}.${ef.name}` as AnyMetric);
+  const inherited: AnyMetric[] = OBJECT_INHERITED_METRICS.map((m) =>
+    objectInheritedMetric(def.name, m),
+  );
+  const groups: Array<{ label: string; metrics: AnyMetric[] }> = [
+    { label: 'Count', metrics: count },
+  ];
+  if (own.length) groups.push({ label: `${fieldLabel} fields`, metrics: own });
+  groups.push({ label: 'Inherited from post', metrics: inherited });
+  return groups;
+}
+
+/** Object group-by dims offered for a list[object] field: one per categorical
+ *  leaf. */
+export function objectDimsForDef(def: CustomFieldDef): AnyDimension[] {
+  const out: AnyDimension[] = [];
+  for (const ef of def.element_fields ?? []) {
+    if (OBJECT_CATEGORICAL_LEAF_TYPES.has(ef.type)) {
+      out.push(`${CUSTOM_DIM_PREFIX}${def.name}.${ef.name}` as AnyDimension);
+    }
+  }
+  return out;
+}
+
+/** The list[object] field a table config targets (via any object dim or metric
+ *  column), or null. Mixed fields across columns → null (invalid, won't route). */
+export function objectFieldOfTable(config: CustomTableConfig): string | null {
+  let field: string | null = null;
+  for (const col of config.columns) {
+    let f: string | null = null;
+    if (isDimensionColumn(col) && isObjectFieldDimension(col.dimension)) {
+      f = parseObjectDim(col.dimension as string)?.field ?? null;
+    } else if (!isDimensionColumn(col) && !isPostFieldColumn(col) && isObjectMetric(col.metric)) {
+      f = parseObjectMetric(col.metric as string)?.field ?? null;
+    }
+    if (f) {
+      if (field && field !== f) return null;
+      field = f;
+    }
+  }
+  return field;
+}
+
 const UNKNOWN_DIMENSION_META: DimensionMeta = {
   label: 'Unknown',
   icon: 'HelpCircle',
@@ -96,6 +278,14 @@ export interface DimensionMeta {
 
 export function getDimensionMeta(dim: CustomDimension | undefined | null): DimensionMeta {
   if (!dim) return UNKNOWN_DIMENSION_META;
+  const obj = isObjectFieldDimension(dim) ? parseObjectDim(dim) : null;
+  if (obj) {
+    return {
+      label: `${humanizeFieldName(obj.field)} › ${humanizeFieldName(obj.leaf)}`,
+      icon: 'Sparkles',
+      description: `Group ${humanizeFieldName(obj.field)} items by "${obj.leaf}"`,
+    };
+  }
   if (isCustomFieldDimension(dim)) {
     const name = customFieldName(dim);
     return {
@@ -107,13 +297,28 @@ export function getDimensionMeta(dim: CustomDimension | undefined | null): Dimen
   return DIMENSION_META[dim] ?? UNKNOWN_DIMENSION_META;
 }
 
+/** Human label for an object element metric token (`customobj:men.age`). */
+export function getObjectMetricLabel(metric: string): string {
+  const p = parseObjectMetric(metric);
+  if (!p) return metric;
+  const field = humanizeFieldName(p.field);
+  switch (p.kind) {
+    case 'count':         return `Count of ${field}`;
+    case 'distinctPosts': return `Posts with ${field}`;
+    case 'inherited':     return METRIC_META[p.metric as CustomMetric]?.label ?? (p.metric as string);
+    default:              return `${field} › ${humanizeFieldName(p.leaf ?? '')}`;
+  }
+}
+
 export type CustomMetric =
   | 'post_count'
   | 'like_count'
   | 'view_count'
   | 'comment_count'
   | 'share_count'
-  | 'engagement_total';
+  | 'engagement_total'
+  // list[object] element metrics, e.g. `customobj:men.age`, `customobj:men.__count`
+  | `customobj:${string}`;
 
 // ─── Topic dimensions & metrics (used when widget.dataSource === 'topics') ─────
 
@@ -533,6 +738,21 @@ export function autoColumnHeader(col: TableColumn): string {
     return dimAgg === 'distinct_count' ? `# ${base}s` : base;
   }
   const metric = col.metric ?? 'post_count';
+  // Object element metric → "Count of Men" / "Posts with Men" / "Avg Men › Age" / "Views".
+  if (isObjectMetric(metric)) {
+    const parsed = parseObjectMetric(metric as string);
+    const objBase = getObjectMetricLabel(metric as string);
+    // count / distinctPosts have no aggregation prefix.
+    if (parsed?.kind === 'count' || parsed?.kind === 'distinctPosts') return objBase;
+    const defAgg = parsed?.kind === 'inherited' ? 'sum' : 'avg';
+    switch (col.agg ?? defAgg) {
+      case 'avg': return `Avg ${objBase}`;
+      case 'min': return `Min ${objBase}`;
+      case 'max': return `Max ${objBase}`;
+      case 'count': return `# ${objBase}`;
+      default:    return objBase;
+    }
+  }
   // Topic metric → topic label. Post-side metrics fall through.
   const topicMetricMeta = (metric as string) in TOPIC_METRIC_META
     ? TOPIC_METRIC_META[metric as TopicMetric]

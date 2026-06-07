@@ -4,11 +4,14 @@ import { Input } from '../../../../components/ui/input.tsx';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '../../../../components/ui/select.tsx';
 import { cn } from '../../../../lib/utils.ts';
+import type { CustomFieldDef } from '../../../../api/types.ts';
 import type {
   AnyDimension,
   AnyMetric,
@@ -24,14 +27,30 @@ import {
   CUSTOM_DIM_PREFIX,
   DIMENSION_META,
   METRIC_META,
+  OBJECT_METRIC_PREFIX,
+  OBJECT_COUNT_LEAF,
   TOPIC_DIMENSION_META,
   TOPIC_JSON_UNNESTED_DIMENSIONS,
   TOPIC_METRIC_META,
   TOPIC_RATIO_METRICS,
+  defaultAggForObjectMetric,
   getDimensionMeta,
+  getObjectMetricLabel,
   getTopicDimensionMeta,
   getValidChartTypesForCustom,
+  isObjectFieldDimension,
+  isObjectMetric,
+  objectDimsForDef,
+  objectFieldOf,
+  objectMetricGroupsForDef,
+  parseObjectDim,
+  parseObjectMetric,
 } from '../types-social-dashboard.ts';
+
+/** Title-case a raw field name for display (e.g. `men` → "Men"). */
+function humanizeField(name: string): string {
+  return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 const STANDARD_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
 const ALL_POST_METRICS = Object.keys(METRIC_META) as CustomMetric[];
@@ -50,6 +69,10 @@ const RATIO_AGG_OPTIONS = AGG_OPTIONS.filter(
   (o) => o.value === 'avg' || o.value === 'min' || o.value === 'max',
 );
 
+// Inherited post metrics support sum/avg/min/max (count would just count elements).
+const INHERITED_AGG_OPTIONS = AGG_OPTIONS.filter((o) => o.value !== 'count');
+
+
 interface DataSourceFormProps {
   config: CustomChartConfig;
   onChange: (config: CustomChartConfig) => void;
@@ -62,6 +85,9 @@ interface DataSourceFormProps {
    * `custom:<name>` group-by dimensions.
    */
   customFieldNames?: string[];
+  /** Declared list[object] field defs - source of typed object-leaf
+   *  dimensions/metrics. */
+  objectFieldDefs?: CustomFieldDef[];
   /** Which BigQuery source the widget reads. Default 'posts'. The widget-level
    *  Data Source toggle lives in the dialog, not the form. */
   dataSource?: DataSource;
@@ -73,11 +99,27 @@ export function DataSourceForm({
   onChartTypeChange,
   chartType,
   customFieldNames,
+  objectFieldDefs,
   dataSource = 'posts',
 }: DataSourceFormProps) {
   const isTopics = dataSource === 'topics';
   const isJsonUnnestedTopicDim =
     isTopics && TOPIC_JSON_UNNESTED_DIMENSIONS.has(config.dimension as TopicDimension);
+
+  // Element-as-unit object mode: a `customobj:` metric or `custom:field.leaf`
+  // dimension is active. When active, the metric + group-by vocabularies SWAP to
+  // this field's object tokens (never mixed with post metrics, which would fan a
+  // post's engagement out across its N elements).
+  const activeObjField = !isTopics ? objectFieldOf(config) : null;
+  const activeObjDef = activeObjField
+    ? (objectFieldDefs ?? []).find((d) => d.name === activeObjField)
+    : undefined;
+  const objKind = isObjectMetric(config.metric)
+    ? parseObjectMetric(config.metric as string)?.kind ?? null
+    : null;
+  // own numeric leaf / inherited post metric take an aggregation; count and
+  // distinct-posts do not.
+  const isObjAggMetric = objKind === 'own' || objKind === 'inherited';
 
   const allPostDimensions = useMemo<CustomDimension[]>(() => {
     const customDims = (customFieldNames ?? []).map(
@@ -87,10 +129,49 @@ export function DataSourceForm({
   }, [customFieldNames]);
 
   const metricMeta = isTopics ? TOPIC_METRIC_META : METRIC_META;
-  const allMetrics: AnyMetric[] = isTopics ? ALL_TOPIC_METRICS : ALL_POST_METRICS;
-  const allDimensions: AnyDimension[] = isTopics ? TOPIC_DIMENSIONS : allPostDimensions;
+  const labelForMetric = (m: AnyMetric): string =>
+    isObjectMetric(m)
+      ? getObjectMetricLabel(m as string)
+      : metricMeta[m as keyof typeof metricMeta]?.label ?? (m as string);
+
+  // In object mode the Metric dropdown is grouped (Count / field fields /
+  // Inherited from post); other modes use a flat list.
+  const objMetricGroups = activeObjDef ? objectMetricGroupsForDef(activeObjDef) : null;
+  const allMetrics: AnyMetric[] = isTopics
+    ? ALL_TOPIC_METRICS
+    : activeObjField
+      ? (objMetricGroups
+          ? objMetricGroups.flatMap((g) => g.metrics)
+          : [config.metric]) // object token active but defs unavailable (shared dashboard)
+      : ALL_POST_METRICS;
+  const allDimensions: AnyDimension[] = isTopics
+    ? TOPIC_DIMENSIONS
+    : activeObjDef
+      ? objectDimsForDef(activeObjDef)
+      : allPostDimensions;
   const renderDimMeta = (dim: AnyDimension) =>
     isTopics ? getTopicDimensionMeta(dim as TopicDimension) : getDimensionMeta(dim as CustomDimension);
+
+  // Explicit "Aggregate" step: aggregate Posts (default) or the elements of one
+  // list[object] field. Switching seeds a sensible default metric.
+  const objectFieldOptions = !isTopics ? (objectFieldDefs ?? []) : [];
+  const aggregateValue = activeObjField ?? 'posts';
+  const handleAggregateChange = (target: string) => {
+    const reset = {
+      dimension: undefined,
+      breakdownDimension: undefined,
+      timeBucket: undefined,
+      metricToggle: undefined,
+      metricAgg: undefined,
+    } as const;
+    onChange({
+      ...config,
+      ...reset,
+      metric: target === 'posts'
+        ? ('post_count' as AnyMetric)
+        : (`${OBJECT_METRIC_PREFIX}${target}.${OBJECT_COUNT_LEAF}` as AnyMetric),
+    });
+  };
 
   const handleMetricChange = (metric: AnyMetric) => {
     const next: CustomChartConfig = { ...config, metric };
@@ -107,7 +188,32 @@ export function DataSourceForm({
       // old aggregation doesn't carry over into a non-meaningful state.
       delete next.metricAgg;
     } else {
-      const validTypes = getValidChartTypesForCustom(config.dimension as CustomDimension | undefined, metric as CustomMetric);
+      const newObj = isObjectMetric(metric) ? parseObjectMetric(metric as string) : null;
+      const dimField = isObjectFieldDimension(next.dimension)
+        ? parseObjectDim(next.dimension as string)?.field
+        : null;
+      if (newObj) {
+        // Object metric: count / distinct-posts are implicit (no agg); own
+        // numeric defaults to avg, inherited post metric to sum. Reset the agg to
+        // the kind default so a stale agg doesn't carry across kinds.
+        const def = defaultAggForObjectMetric(newObj.kind);
+        if (def) next.metricAgg = def;
+        else delete next.metricAgg;
+        // Same-field switch keeps the group-by; a different field invalidates it.
+        if (dimField && dimField !== newObj.field) {
+          delete next.dimension;
+          delete next.breakdownDimension;
+          delete next.timeBucket;
+          delete next.metricToggle;
+        }
+      } else if (dimField) {
+        // Switched back to a post metric while an object dim was set - drop it.
+        delete next.dimension;
+        delete next.breakdownDimension;
+        delete next.timeBucket;
+        delete next.metricToggle;
+      }
+      const validTypes = getValidChartTypesForCustom(next.dimension as CustomDimension | undefined, metric as CustomMetric);
       onChartTypeChange(validTypes[0]);
     }
     onChange(next);
@@ -119,6 +225,10 @@ export function DataSourceForm({
       // Topics: no time bucket, no breakdown in phase 1.
       delete next.timeBucket;
       delete next.breakdownDimension;
+    } else if (isObjectFieldDimension(dimension)) {
+      // Object leaf dim: no time bucket / breakdown (elements have no timeline).
+      delete next.timeBucket;
+      delete next.breakdownDimension;
     } else {
       if (dimension !== 'posted_at') {
         delete next.timeBucket;
@@ -128,20 +238,60 @@ export function DataSourceForm({
       if (!dimension || dimension === 'posted_at' || next.breakdownDimension === dimension) {
         delete next.breakdownDimension;
       }
-      const validTypes = getValidChartTypesForCustom(dimension as CustomDimension | undefined, config.metric as CustomMetric);
-      if (!validTypes.includes(config.metric as unknown as SocialChartType)) {
-        onChartTypeChange(validTypes[0]);
-      }
+    }
+    const validTypes = getValidChartTypesForCustom(dimension as CustomDimension | undefined, config.metric as CustomMetric);
+    if (!isTopics && !validTypes.includes(config.metric as unknown as SocialChartType)) {
+      onChartTypeChange(validTypes[0]);
     }
     onChange(next);
   };
 
   const aggOptions = isTopics && TOPIC_RATIO_METRICS.has(config.metric as TopicMetric)
     ? RATIO_AGG_OPTIONS
-    : AGG_OPTIONS;
+    : objKind === 'own'
+      ? RATIO_AGG_OPTIONS
+      : objKind === 'inherited'
+        ? INHERITED_AGG_OPTIONS
+        : AGG_OPTIONS;
+  // Aggregation control shows for any grouped widget, plus single-value object
+  // agg metrics (avg age / sum views with no group-by). Count + distinct-posts
+  // need no agg.
+  const showAgg = (!!config.dimension || isObjAggMetric)
+    && objKind !== 'count' && objKind !== 'distinctPosts';
+  const aggFallback = objKind === 'own'
+    ? 'avg'
+    : objKind === 'inherited'
+      ? 'sum'
+      : (isTopics && TOPIC_RATIO_METRICS.has(config.metric as TopicMetric))
+        ? 'avg'
+        : 'sum';
 
   return (
     <div className="space-y-3">
+      {/* Aggregate - explicit object-field step (only when list[object] fields exist).
+          'Posts' = post-level metrics; an object field = aggregate its elements. */}
+      {!isTopics && objectFieldOptions.length > 0 && (
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Aggregate</Label>
+          <Select value={aggregateValue} onValueChange={handleAggregateChange}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="posts">Posts</SelectItem>
+              <SelectGroup>
+                <SelectLabel>Objects</SelectLabel>
+                {objectFieldOptions.map((d) => (
+                  <SelectItem key={d.name} value={d.name}>
+                    {humanizeField(d.name)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Metric */}
       <div className="flex items-center gap-3">
         <Label className="text-xs w-24 shrink-0">Metric</Label>
@@ -153,21 +303,32 @@ export function DataSourceForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {allMetrics.map((metric) => (
-              <SelectItem key={metric} value={metric}>
-                {metricMeta[metric as keyof typeof metricMeta]?.label ?? metric}
-              </SelectItem>
-            ))}
+            {objMetricGroups
+              ? objMetricGroups.map((g) => (
+                  <SelectGroup key={g.label}>
+                    <SelectLabel>{g.label}</SelectLabel>
+                    {g.metrics.map((metric) => (
+                      <SelectItem key={metric as string} value={metric as string}>
+                        {labelForMetric(metric)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))
+              : allMetrics.map((metric) => (
+                  <SelectItem key={metric as string} value={metric as string}>
+                    {labelForMetric(metric)}
+                  </SelectItem>
+                ))}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Aggregation - visible whenever there's a dimension */}
-      {config.dimension && (
+      {/* Aggregation - visible for grouped widgets + single-value object numerics */}
+      {showAgg && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Aggregation</Label>
           <Select
-            value={config.metricAgg ?? (isTopics && TOPIC_RATIO_METRICS.has(config.metric as TopicMetric) ? 'avg' : 'sum')}
+            value={config.metricAgg ?? aggFallback}
             onValueChange={(v) => onChange({ ...config, metricAgg: v as CustomChartConfig['metricAgg'] })}
           >
             <SelectTrigger className="h-8 text-xs">
@@ -218,8 +379,8 @@ export function DataSourceForm({
         </Select>
       </div>
 
-      {/* Breakdown (hue) - posts-mode only; topics defer breakdown to phase 2 */}
-      {!isTopics && config.dimension && (
+      {/* Breakdown (hue) - posts-mode only; topics + object fields defer to phase 2 */}
+      {!isTopics && !activeObjField && config.dimension && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Breakdown</Label>
           <Select
@@ -295,12 +456,12 @@ export function DataSourceForm({
       )}
 
       {/* Optional viewer-facing metric toggle (header chips on the widget) */}
-      {config.dimension && (
+      {config.dimension && !activeObjField && (
         <div className="flex items-start gap-3">
           <Label className="text-xs w-24 shrink-0 pt-1.5">Quick toggle</Label>
           <div className="flex flex-col gap-1.5 flex-1">
             <div className="flex flex-wrap gap-1.5">
-              {allMetrics.map((m) => {
+              {(isTopics ? ALL_TOPIC_METRICS : ALL_POST_METRICS).map((m) => {
                 const checked = config.metricToggle?.includes(m) ?? false;
                 const isPrimary = m === config.metric;
                 return (

@@ -82,6 +82,20 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
     if (p.custom_fields) {
       for (const [name, raw] of Object.entries(p.custom_fields)) {
         if (raw == null) continue;
+        if (Array.isArray(raw) && raw.some((e) => e && typeof e === 'object' && !Array.isArray(e))) {
+          // list[object] field: expose each scalar leaf as its own `field.leaf`
+          // option set (men.name, men.age) instead of stringifying objects to
+          // "[object Object]". Filtering stays post-level (keep/drop whole post).
+          for (const el of raw) {
+            if (!el || typeof el !== 'object' || Array.isArray(el)) continue;
+            for (const [leaf, lv] of Object.entries(el as Record<string, unknown>)) {
+              if (lv == null || typeof lv === 'object') continue;
+              const key = `${name}.${leaf}`;
+              (customSets[key] ?? (customSets[key] = new Set())).add(String(lv));
+            }
+          }
+          continue;
+        }
         const target = customSets[name] ?? (customSets[name] = new Set());
         if (Array.isArray(raw)) {
           for (const v of raw) if (v != null) target.add(String(v));

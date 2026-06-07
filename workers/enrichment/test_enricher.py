@@ -156,3 +156,74 @@ def test_youtube_url_part_omitted_when_video_skipped():
         and p.file_data.file_uri == "https://www.youtube.com/watch?v=abc123"
         for p in parts
     )
+
+
+# ---------------------------------------------------------------------------
+# list[object] custom field - schema validation + dynamic model build
+# ---------------------------------------------------------------------------
+
+import pytest
+from pydantic import ValidationError
+
+from workers.enrichment.enricher import (
+    _build_custom_fields_model,
+    _build_custom_fields_prompt,
+)
+from workers.enrichment.schema import CustomFieldDef
+
+
+def _men_field() -> CustomFieldDef:
+    return CustomFieldDef(
+        name="men",
+        description="People mentioned in the post",
+        type="list[object]",
+        element_fields=[
+            {"name": "name", "description": "Person name", "type": "str"},
+            {"name": "age", "description": "Person age", "type": "int"},
+        ],
+    )
+
+
+def test_list_object_requires_element_fields():
+    with pytest.raises(ValidationError):
+        CustomFieldDef(name="men", description="x", type="list[object]")
+
+
+def test_list_object_nulls_element_fields_for_other_types():
+    f = CustomFieldDef(
+        name="topic",
+        description="x",
+        type="str",
+        element_fields=[{"name": "name", "description": "x", "type": "str"}],
+    )
+    assert f.element_fields is None
+
+
+def test_element_fields_validate_literal_options():
+    with pytest.raises(ValidationError):
+        CustomFieldDef(
+            name="men",
+            description="x",
+            type="list[object]",
+            element_fields=[{"name": "role", "description": "x", "type": "literal"}],
+        )
+
+
+def test_build_model_accepts_valid_list_object():
+    Model = _build_custom_fields_model([_men_field()])
+    inst = Model(men=[{"name": "Alice", "age": 30}, {"name": "Bob", "age": 35}])
+    assert inst.men[0].name == "Alice"
+    assert inst.men[1].age == 35
+
+
+def test_build_model_coerces_or_rejects_bad_leaf_type():
+    Model = _build_custom_fields_model([_men_field()])
+    with pytest.raises(ValidationError):
+        Model(men=[{"name": "Alice", "age": "not-a-number"}])
+
+
+def test_prompt_renders_element_subschema_as_indented_bullets():
+    out = _build_custom_fields_prompt([_men_field()])
+    assert "- men (list[object]):" in out
+    assert "    - name (str):" in out
+    assert "    - age (int):" in out

@@ -496,7 +496,7 @@ export function computeEnhancedKpis(posts: DashboardPost[], serverKpis?: Dashboa
 
 // ─── Custom chart aggregation ──────────────────────────────────────────────────
 
-function getMetricValue(p: DashboardPost, metric: CustomMetric): number {
+export function getMetricValue(p: DashboardPost, metric: CustomMetric): number {
   switch (metric) {
     case 'post_count':       return 1;
     case 'like_count':       return p.like_count;
@@ -504,6 +504,8 @@ function getMetricValue(p: DashboardPost, metric: CustomMetric): number {
     case 'comment_count':    return p.comment_count;
     case 'share_count':      return p.share_count;
     case 'engagement_total': return p.like_count + p.comment_count + p.share_count;
+    // `customobj:` element tokens are resolved by the object aggregator, not here.
+    default: return 0;
   }
 }
 

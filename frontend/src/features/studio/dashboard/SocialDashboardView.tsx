@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
-import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
+import type { CustomFieldDef, DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
 import { AGGREGATION_META, DEFAULT_DASHBOARD_ORIENTATION } from './types-social-dashboard.ts';
 import type { DashboardFilters, FilterOptions } from './use-dashboard-filters.ts';
@@ -84,6 +84,10 @@ interface SocialDashboardViewProps {
   serverKpis?: DashboardKpis;
   /** Agent context - used to ground AI compose for widget annotations. */
   agentId?: string;
+  /** Declared custom-field definitions (incl. element_fields for list[object]).
+   *  Enables typed object-leaf dimensions/metrics in widget config. Undefined on
+   *  dashboards with no agent context. */
+  customFieldDefs?: CustomFieldDef[];
   /** Bumped by the parent when an external mutation (e.g. AI co-author writes
    *  via update_dashboard) lands. Triggers a re-sync of local `widgets` state
    *  from the freshly-refetched layout. Without this, the one-shot
@@ -110,6 +114,7 @@ export function SocialDashboardView({
   defaultOrientation,
   serverKpis,
   agentId,
+  customFieldDefs,
   externalSyncKey = 0,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
@@ -134,6 +139,14 @@ export function SocialDashboardView({
     }
     return [...names].sort();
   }, [allPosts]);
+
+  // Declared list[object] fields - the only ones eligible for typed object-leaf
+  // dimensions/metrics. Empty when no agent context (object widgets still render
+  // from self-describing tokens, they just can't be newly configured).
+  const objectFieldDefs = useMemo(
+    () => (customFieldDefs ?? []).filter((d) => d.type === 'list[object]'),
+    [customFieldDefs],
+  );
 
   // Undo/redo-backed state. One store per artifactId; the cache survives
   // remounts so the user's edit history persists across edit-mode toggles
@@ -548,6 +561,7 @@ export function SocialDashboardView({
         onSave={handleSaveWidget}
         onClose={() => setConfigWidget(null)}
         customFieldNames={customFieldNames}
+        objectFieldDefs={objectFieldDefs}
         agentId={agentId}
         topics={topics}
       />

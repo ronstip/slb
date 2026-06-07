@@ -1156,13 +1156,27 @@ export interface AdminWaitlistList {
 
 // --- Wizard planner ---
 
-export type CustomFieldType = 'str' | 'bool' | 'int' | 'float' | 'list[str]' | 'literal';
+export type CustomFieldType =
+  | 'str' | 'bool' | 'int' | 'float' | 'list[str]' | 'literal' | 'list[object]';
+
+/** Scalar leaf types for the sub-fields of a `list[object]` custom field
+ *  (one level deep - no nested lists/objects). */
+export type ElementFieldType = 'str' | 'bool' | 'int' | 'float' | 'literal';
+
+export interface ElementFieldDef {
+  name: string;
+  description: string;
+  type: ElementFieldType;
+  options?: string[] | null;
+}
 
 export interface CustomFieldDef {
   name: string;
   description: string;
   type: CustomFieldType;
   options?: string[] | null;
+  /** Required when type === 'list[object]'; the typed sub-fields of each item. */
+  element_fields?: ElementFieldDef[] | null;
 }
 
 export interface NewCollectionPlan {

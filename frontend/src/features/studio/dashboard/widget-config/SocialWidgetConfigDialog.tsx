@@ -22,7 +22,7 @@ const MarkdownArtifactEditor = lazy(() =>
   import('../../MarkdownArtifactEditor.tsx').then((m) => ({ default: m.MarkdownArtifactEditor })),
 );
 import { cn } from '../../../../lib/utils.ts';
-import type { DashboardPost, TopicMetric } from '../../../../api/types.ts';
+import type { CustomFieldDef, DashboardPost, TopicMetric } from '../../../../api/types.ts';
 import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension } from '../types-social-dashboard.ts';
 import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
@@ -67,6 +67,8 @@ interface SocialWidgetConfigDialogProps {
   onClose: () => void;
   /** Distinct custom enrichment field names present on the dataset. */
   customFieldNames?: string[];
+  /** Declared list[object] field defs - source of typed object-leaf dims/metrics. */
+  objectFieldDefs?: CustomFieldDef[];
   /** Agent context used to ground AI compose with task title + description. */
   agentId?: string;
   /** Agent-scoped topic_metrics rows. Empty when no agent context (in which
@@ -84,6 +86,7 @@ export function SocialWidgetConfigDialog({
   onSave,
   onClose,
   customFieldNames,
+  objectFieldDefs,
   agentId,
   topics,
 }: SocialWidgetConfigDialogProps) {
@@ -101,6 +104,7 @@ export function SocialWidgetConfigDialog({
       onSave={onSave}
       onClose={onClose}
       customFieldNames={customFieldNames}
+      objectFieldDefs={objectFieldDefs}
       agentId={agentId}
       topics={topics}
     />
@@ -163,6 +167,7 @@ function SocialWidgetConfigDialogInner({
   onSave,
   onClose,
   customFieldNames,
+  objectFieldDefs,
   agentId,
   topics = [],
 }: SocialWidgetConfigDialogProps & { widget: SocialDashboardWidget }) {
@@ -533,6 +538,7 @@ function SocialWidgetConfigDialogInner({
                         : defaultTableConfigFor(draft.customConfig?.dimension as CustomDimension | undefined ?? 'channel_handle'))}
                       onChange={updateTableConfig}
                       customFieldNames={customFieldNames}
+                      objectFieldDefs={objectFieldDefs}
                       dataSource={dataSource}
                     />
                   ) : (
@@ -543,6 +549,7 @@ function SocialWidgetConfigDialogInner({
                       onChartTypeChange={updateChartType}
                       chartType={draft.chartType}
                       customFieldNames={customFieldNames}
+                      objectFieldDefs={objectFieldDefs}
                       dataSource={dataSource}
                     />
                   )}

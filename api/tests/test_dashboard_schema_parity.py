@@ -248,6 +248,42 @@ def test_custom_config_accepts_custom_field_dimension():
         )
 
 
+def test_custom_config_accepts_object_element_metrics():
+    """Frontend `list[object]` widgets use `customobj:<field>.<suffix>` metric
+    tokens (count, distinct posts, own leaf, inherited post metric) and
+    `custom:<field>.<leaf>` leaf dimensions. The Pydantic model must accept these
+    on `customConfig.metric` and table-column metrics - otherwise saving an
+    object-list widget 422s the Done button."""
+    from api.routers.dashboard_schema import CustomChartConfig, CustomTableConfig
+
+    # Count / distinct-posts / own leaf / inherited, grouped by an object leaf.
+    cfg = CustomChartConfig.model_validate(
+        {"dimension": "custom:brand_objects.name", "metric": "customobj:brand_objects.__count"}
+    )
+    assert cfg.metric == "customobj:brand_objects.__count"
+
+    cfg2 = CustomChartConfig.model_validate(
+        {
+            "dimension": "custom:brand_objects.name",
+            "metric": "customobj:brand_objects.post.view_count",
+            "metricAgg": "sum",
+        }
+    )
+    assert cfg2.metric == "customobj:brand_objects.post.view_count"
+
+    tbl = CustomTableConfig.model_validate(
+        {
+            "columns": [
+                {"id": "name", "kind": "dimension", "dimension": "custom:brand_objects.name"},
+                {"id": "cnt", "kind": "metric", "metric": "customobj:brand_objects.__count"},
+                {"id": "posts", "kind": "metric", "metric": "customobj:brand_objects.__posts"},
+                {"id": "views", "kind": "metric", "metric": "customobj:brand_objects.post.view_count", "agg": "sum"},
+            ],
+        }
+    )
+    assert tbl.columns[3].metric == "customobj:brand_objects.post.view_count"
+
+
 def test_custom_config_accepts_topic_dimensions_and_metrics():
     """Topic widgets persist with their own dim/metric vocabulary (e.g.
     `dimension: 'topic'`, `metric: 'signal_score'`). The widened union must

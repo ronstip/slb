@@ -10,6 +10,7 @@ import { Input } from '../../../components/ui/input.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { getDashboardData } from '../../../api/endpoints/dashboard.ts';
+import { getAgent } from '../../../api/endpoints/agents.ts';
 import { exportDashboardPdf } from './exportDashboardPdf.ts';
 import { ShareDashboardDialog } from './ShareDashboardDialog.tsx';
 import { UnderlyingDataDialog } from '../UnderlyingDataDialog.tsx';
@@ -79,6 +80,18 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     queryFn: () => getDashboardData(artifact.collectionIds, artifact.agentId),
     staleTime: 5 * 60 * 1000,
   });
+
+  // Declared custom-field definitions (with element_fields for list[object]) so
+  // widget config can offer typed object-leaf dimensions/metrics. Absent for
+  // dashboards with no agent context - object widgets still render, just can't
+  // be newly configured.
+  const { data: agent } = useQuery({
+    queryKey: ['agent', artifact.agentId],
+    queryFn: () => getAgent(artifact.agentId!),
+    enabled: !!artifact.agentId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const customFieldDefs = agent?.enrichment_config?.custom_fields ?? undefined;
 
   // Pull `reportScope` from the layout doc so the filter hook can intersect it
   // with viewer selections. Absence = standalone dashboard, no scope lock.
@@ -323,6 +336,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             defaultLayout={defaultLayout}
             serverKpis={activeFilterCount === 0 ? response?.kpis : undefined}
             agentId={artifact.agentId}
+            customFieldDefs={customFieldDefs}
             externalSyncKey={externalSyncKey}
           />
         )}

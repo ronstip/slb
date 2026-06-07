@@ -6,7 +6,9 @@ import { Button } from '../../../../components/ui/button.tsx';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '../../../../components/ui/select.tsx';
@@ -39,16 +41,26 @@ import {
   POST_FIELD_META,
   TOPIC_DIMENSION_META,
   TOPIC_METRIC_META,
+  OBJECT_METRIC_PREFIX,
+  OBJECT_COUNT_LEAF,
   getDimensionMeta,
+  getObjectMetricLabel,
   getPostFieldMeta,
   getTopicDimensionMeta,
   CUSTOM_DIM_PREFIX,
   autoColumnHeader,
   isDimensionColumn,
   isPostFieldColumn,
+  isObjectMetric,
+  objectDimsForDef,
+  objectFieldOfTable,
+  objectMetricGroupsForDef,
+  objectMetricsForDef,
+  parseObjectMetric,
   defaultPostTableConfig,
   normalizeTableConfig,
 } from '../types-social-dashboard.ts';
+import type { CustomFieldDef } from '../../../../api/types.ts';
 
 const STANDARD_DIMENSIONS = Object.keys(DIMENSION_META) as CustomDimension[];
 const ALL_METRICS = Object.keys(METRIC_META) as CustomMetric[];
@@ -63,6 +75,11 @@ const AGG_OPTIONS: Array<{ value: TableColumnAgg; label: string }> = [
   { value: 'max',   label: 'Maximum' },
   { value: 'count', label: 'Count' },
 ];
+
+// Object own-leaf columns can't be summed meaningfully (avg/min/max); inherited
+// post-metric columns can sum/avg/min/max but not count.
+const OWN_AGG_OPTIONS = AGG_OPTIONS.filter((o) => o.value !== 'sum' && o.value !== 'count');
+const INHERITED_AGG_OPTIONS = AGG_OPTIONS.filter((o) => o.value !== 'count');
 
 const VIZ_OPTIONS: Array<{ value: TableColumnViz; label: string; Icon: typeof Minus }> = [
   { value: 'none',    label: 'Plain number',   Icon: Minus },
@@ -80,6 +97,9 @@ interface TableDataFormProps {
   config: CustomTableConfig;
   onChange: (config: CustomTableConfig) => void;
   customFieldNames?: string[];
+  /** Declared list[object] field defs - source of typed object-leaf
+   *  dimensions/metrics. */
+  objectFieldDefs?: CustomFieldDef[];
   /** Which BigQuery source the widget reads. Default 'posts'. When 'topics',
    *  the dimension/metric pickers swap to topic vocabulary and post-mode is
    *  unavailable (topic_metrics rows are 1:1 with topics, no per-post mode). */
@@ -94,7 +114,7 @@ function uniqueColumnId(existing: TableColumn[], seed: string): string {
   return `${seed}_${n}`;
 }
 
-export function TableDataForm({ config: rawConfig, onChange, customFieldNames, dataSource = 'posts' }: TableDataFormProps) {
+export function TableDataForm({ config: rawConfig, onChange, customFieldNames, objectFieldDefs, dataSource = 'posts' }: TableDataFormProps) {
   const isTopics = dataSource === 'topics';
   // Migrate legacy `dimension` slot into a first dim column so the form only
   // has to think about one model.
@@ -105,23 +125,55 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
     const { dimension: _drop, ...rest } = next;
     onChange(rest);
   };
+
+  // Element-as-unit object table: the active object field is chosen via the
+  // explicit "Rows are" selector and seeded into the columns; once active, the
+  // column dim/metric vocabularies are this field's object tokens only (never
+  // mixed with post columns, which would fan-out the numbers). Detected from the
+  // columns so legacy saved object tables keep working.
+  const activeObjField = !isTopics ? objectFieldOfTable(config) : null;
+  const activeObjDef = activeObjField
+    ? (objectFieldDefs ?? []).find((d) => d.name === activeObjField)
+    : undefined;
+
   const allDimensions = useMemo<AnyDimension[]>(() => {
     if (isTopics) return TOPIC_DIMENSIONS;
+    if (activeObjDef) return objectDimsForDef(activeObjDef);
     const customDims = (customFieldNames ?? []).map(
       (n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension,
     );
     return [...STANDARD_DIMENSIONS, ...customDims];
-  }, [isTopics, customFieldNames]);
-  const allMetrics: AnyMetric[] = isTopics ? ALL_TOPIC_METRICS : ALL_METRICS;
+  }, [isTopics, activeObjDef, customFieldNames]);
+  const allMetrics: AnyMetric[] = isTopics
+    ? ALL_TOPIC_METRICS
+    : activeObjDef
+      ? objectMetricsForDef(activeObjDef)
+      : [...ALL_METRICS];
+  // Grouped object metrics for the column metric dropdown (Count / fields /
+  // Inherited from post). Null when not in an object table.
+  const objMetricGroups = activeObjDef ? objectMetricGroupsForDef(activeObjDef) : null;
+  // Object fields offered in the "Rows" selector (explicit object-table step).
+  const objectFieldOptions = !isTopics ? (objectFieldDefs ?? []) : [];
   const dimMetaFor = (dim: AnyDimension) =>
     isTopics ? getTopicDimensionMeta(dim as TopicDimension) : getDimensionMeta(dim as CustomDimension);
   const metricLabel = (m: AnyMetric): string =>
-    isTopics
-      ? TOPIC_METRIC_META[m as keyof typeof TOPIC_METRIC_META]?.label ?? String(m)
-      : METRIC_META[m as CustomMetric]?.label ?? String(m);
-  // Sensible defaults when adding a new column on a topic table.
-  const defaultDim: AnyDimension = isTopics ? 'topic' : 'sentiment';
-  const defaultMetric: AnyMetric = isTopics ? 'post_count' : 'like_count';
+    isObjectMetric(m)
+      ? getObjectMetricLabel(m as string)
+      : isTopics
+        ? TOPIC_METRIC_META[m as keyof typeof TOPIC_METRIC_META]?.label ?? String(m)
+        : METRIC_META[m as CustomMetric]?.label ?? String(m);
+  // Sensible defaults when adding a new column. In an active object table, new
+  // columns default to that field's object tokens so they stay on one field.
+  const defaultDim: AnyDimension = isTopics
+    ? 'topic'
+    : activeObjDef
+      ? objectDimsForDef(activeObjDef)[0] ?? 'sentiment'
+      : 'sentiment';
+  const defaultMetric: AnyMetric = isTopics
+    ? 'post_count'
+    : activeObjDef
+      ? objectMetricsForDef(activeObjDef)[0]
+      : 'like_count';
 
   const updateColumn = (idx: number, patch: Partial<TableColumn>) => {
     const next = config.columns.map((c, i) => (i === idx ? { ...c, ...patch } : c));
@@ -205,6 +257,38 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
     }
   };
 
+  /** Explicit "Rows are" step: post-level, plain group-by, or aggregate the
+   *  elements of a specific list[object] field. Picking an object field seeds an
+   *  object table (its first categorical leaf as the group, count as the metric). */
+  const setRows = (target: string) => {
+    if (target === 'post') return setMode('post');
+    if (target === 'group') {
+      // Already a plain (non-object) group table → nothing to do.
+      if (!activeObjField && (config.mode ?? 'group') === 'group') return;
+      return setMode('group');
+    }
+    if (target === activeObjField) return; // already this object field
+    const def = (objectFieldDefs ?? []).find((d) => d.name === target);
+    const firstLeaf = def ? objectDimsForDef(def)[0] : undefined;
+    const columns: TableColumn[] = [];
+    if (firstLeaf) columns.push({ id: '__group_0', kind: 'dimension', dimension: firstLeaf });
+    columns.push({
+      id: 'cnt',
+      kind: 'metric',
+      metric: `${OBJECT_METRIC_PREFIX}${target}.${OBJECT_COUNT_LEAF}` as AnyMetric,
+    });
+    emit({
+      mode: 'group',
+      columns,
+      sortBy: 'cnt',
+      sortDir: 'desc',
+      rowLimit: 25,
+      showRank: true,
+      density: config.density,
+      striped: config.striped,
+    });
+  };
+
   /** Switch a column between metric and dimension while preserving its id and
    *  optional header so existing sort/header settings survive the toggle. */
   const setColumnKind = (idx: number, kind: 'metric' | 'dimension') => {
@@ -219,36 +303,34 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
 
   return (
     <div className="space-y-4">
-      {/* Mode toggle - Group (cross-product rows) vs Post (one row per post).
-          Hidden for topic widgets: topic_metrics rows are already 1:1 with
-          topics, so "post mode" doesn't apply. */}
+      {/* "Rows are" - what each table row represents: a dimension group, one
+          post, or the elements of a list[object] field. Hidden for topic
+          widgets (topic_metrics rows are already 1:1 with topics). */}
       {!isTopics && (
         <div className="flex items-center gap-3">
-          <Label className="text-xs w-24 shrink-0">Mode</Label>
-          <div className="flex items-center gap-1.5">
-            {([
-              { v: 'group', label: 'Group by', title: 'One row per dimension group; metric columns aggregate' },
-              { v: 'post',  label: 'Post',     title: 'One row per post; columns read raw post fields' },
-            ] as const).map(({ v, label, title }) => {
-              const active = (config.mode ?? 'group') === v;
-              return (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setMode(v)}
-                  title={title}
-                  className={cn(
-                    'rounded-md border px-2.5 py-1 text-xs font-medium transition-all',
-                    active
-                      ? 'border-primary bg-primary/5 text-primary'
-                      : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+          <Label className="text-xs w-24 shrink-0">Rows are</Label>
+          <Select
+            value={isPostMode ? 'post' : (activeObjField ?? 'group')}
+            onValueChange={setRows}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="group">Dimension groups</SelectItem>
+              <SelectItem value="post">Posts</SelectItem>
+              {objectFieldOptions.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Object elements</SelectLabel>
+                  {objectFieldOptions.map((d) => (
+                    <SelectItem key={d.name} value={d.name}>
+                      {d.name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -308,8 +390,23 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
               const isDim = isDimensionColumn(col);
               const isPost = isPostFieldColumn(col);
               const kind: 'metric' | 'dimension' = isDim ? 'dimension' : 'metric';
-              const isPostCount = !isDim && !isPost && col.metric === 'post_count';
-              const effectiveAgg: TableColumnAgg = isPostCount ? 'count' : (col.agg ?? 'sum');
+              const objKindCol = !isDim && !isPost && isObjectMetric(col.metric)
+                ? parseObjectMetric(col.metric as string)?.kind ?? null
+                : null;
+              // count / distinct-posts have no aggregation; own numeric defaults
+              // to avg (summing ages is meaningless), inherited post metric to sum.
+              const isCountForced = (!isDim && !isPost && col.metric === 'post_count')
+                || objKindCol === 'count' || objKindCol === 'distinctPosts';
+              const objDefaultAgg: TableColumnAgg | undefined =
+                objKindCol === 'inherited' ? 'sum' : objKindCol === 'own' ? 'avg' : undefined;
+              const effectiveAgg: TableColumnAgg = isCountForced
+                ? 'count'
+                : (col.agg ?? objDefaultAgg ?? 'sum');
+              const colAggOptions = objKindCol === 'own'
+                ? OWN_AGG_OPTIONS
+                : objKindCol === 'inherited'
+                  ? INHERITED_AGG_OPTIONS
+                  : AGG_OPTIONS;
               // Post-field numeric flag - drives viz/display toggle visibility in post mode.
               const postRender = isPost ? getPostFieldMeta(col.postField).render : null;
               // Viz/format toggles only make sense for numeric cells.
@@ -406,11 +503,22 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {allMetrics.map((m) => (
-                          <SelectItem key={m as string} value={m as string}>
-                            {metricLabel(m)}
-                          </SelectItem>
-                        ))}
+                        {objMetricGroups
+                          ? objMetricGroups.map((g) => (
+                              <SelectGroup key={g.label}>
+                                <SelectLabel>{g.label}</SelectLabel>
+                                {g.metrics.map((m) => (
+                                  <SelectItem key={m as string} value={m as string}>
+                                    {metricLabel(m)}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ))
+                          : allMetrics.map((m) => (
+                              <SelectItem key={m as string} value={m as string}>
+                                {metricLabel(m)}
+                              </SelectItem>
+                            ))}
                       </SelectContent>
                     </Select>
                   )}
@@ -435,13 +543,13 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, d
                     <Select
                       value={effectiveAgg}
                       onValueChange={(v) => updateColumn(idx, { agg: v as TableColumnAgg })}
-                      disabled={isPostCount}
+                      disabled={isCountForced}
                     >
-                      <SelectTrigger className={cn('h-7 text-xs w-[120px]', isPostCount && 'opacity-60')}>
+                      <SelectTrigger className={cn('h-7 text-xs w-[120px]', isCountForced && 'opacity-60')}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {AGG_OPTIONS.map((opt) => (
+                        {colAggOptions.map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
                           </SelectItem>

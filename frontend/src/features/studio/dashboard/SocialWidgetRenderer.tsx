@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, normalizeTableConfig } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable } from './types-social-dashboard.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from './topic-aggregations.ts';
+import { aggregateObjectList, aggregateObjectTable } from './object-list-aggregations.ts';
 import {
   ExternalLinkCell,
   PlatformCell,
@@ -379,9 +380,14 @@ function ConfigurableTableWidget({
   const tableConfig = useMemo(() => normalizeTableConfig(rawTableConfig), [rawTableConfig]);
   const isTopicsSource = dataSource === 'topics';
   const rows = useMemo(
-    () => (isTopicsSource
-      ? aggregateTopicsTable(topics ?? [], tableConfig)
-      : aggregateTable(posts, tableConfig)),
+    () => {
+      // Element-as-unit object table when columns reference a list[object] field.
+      const objField = !isTopicsSource ? objectFieldOfTable(tableConfig) : null;
+      if (objField) return aggregateObjectTable(posts, objField, tableConfig);
+      return isTopicsSource
+        ? aggregateTopicsTable(topics ?? [], tableConfig)
+        : aggregateTable(posts, tableConfig);
+    },
     [isTopicsSource, posts, topics, tableConfig],
   );
   const columnStats = useMemo(() => computeColumnStats(tableConfig, rows), [tableConfig, rows]);
@@ -500,6 +506,21 @@ export function applyWidgetFilters(
     if (filters.custom_fields) {
       for (const [name, selected] of Object.entries(filters.custom_fields)) {
         if (!selected?.length) continue;
+        const dot = name.indexOf('.');
+        if (dot >= 0) {
+          // list[object] leaf filter (men.name): keep the post if ANY element's
+          // leaf value is selected. Field names never contain dots, so the dot
+          // unambiguously marks an object leaf.
+          const field = name.slice(0, dot);
+          const leaf = name.slice(dot + 1);
+          const raw = p.custom_fields?.[field];
+          if (!Array.isArray(raw)) return false;
+          const vals = raw
+            .filter((e) => e && typeof e === 'object' && !Array.isArray(e))
+            .map((e) => String((e as Record<string, unknown>)[leaf]));
+          if (!selected.some((s) => vals.includes(s))) return false;
+          continue;
+        }
         const raw = p.custom_fields?.[name];
         if (raw == null) return false;
         const postVals = Array.isArray(raw) ? raw.map((v) => String(v)) : [String(raw)];
@@ -711,6 +732,10 @@ function CustomWidget({
 
   const data = useMemo<WidgetData | null>(() => {
     if (!effectiveConfig) return null;
+    // list[object] fields aggregate element-as-unit on the posts source - check
+    // before the topics branch since object tokens live inside `dataSource:posts`.
+    const objField = objectFieldOf(effectiveConfig);
+    if (objField) return aggregateObjectList(posts, objField, effectiveConfig);
     return isTopicsSource
       ? aggregateTopicsCustom(topics ?? [], effectiveConfig)
       : aggregateCustom(posts, effectiveConfig);

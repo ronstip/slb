@@ -12,9 +12,17 @@ import {
   SelectValue,
 } from '../../../components/ui/select.tsx';
 import { cn } from '../../../lib/utils.ts';
-import type { CustomFieldDef, CustomFieldType } from '../../../api/types.ts';
+import type {
+  CustomFieldDef,
+  CustomFieldType,
+  ElementFieldDef,
+  ElementFieldType,
+} from '../../../api/types.ts';
 
-const FIELD_TYPES: CustomFieldType[] = ['str', 'bool', 'int', 'float', 'list[str]', 'literal'];
+const FIELD_TYPES: CustomFieldType[] = [
+  'str', 'bool', 'int', 'float', 'list[str]', 'literal', 'list[object]',
+];
+const ELEMENT_FIELD_TYPES: ElementFieldType[] = ['str', 'bool', 'int', 'float', 'literal'];
 const NAME_RE = /^[a-z][a-z0-9_]{0,63}$/;
 
 interface EnrichmentEditorProps {
@@ -145,6 +153,25 @@ function CustomFieldRow({ field, onChange, onRemove }: CustomFieldRowProps) {
   const [optionDraft, setOptionDraft] = useState('');
   const nameValid = !field.name || NAME_RE.test(field.name);
   const needsOptions = field.type === 'literal';
+  const needsElements = field.type === 'list[object]';
+
+  const updateElement = (idx: number, patch: Partial<ElementFieldDef>) => {
+    const next = (field.element_fields ?? []).map((ef, i) =>
+      i === idx ? { ...ef, ...patch } : ef,
+    );
+    onChange({ element_fields: next });
+  };
+  const removeElement = (idx: number) => {
+    onChange({ element_fields: (field.element_fields ?? []).filter((_, i) => i !== idx) });
+  };
+  const addElement = () => {
+    onChange({
+      element_fields: [
+        ...(field.element_fields ?? []),
+        { name: '', description: '', type: 'str' as ElementFieldType },
+      ],
+    });
+  };
 
   const addOption = () => {
     const v = optionDraft.trim();
@@ -181,7 +208,11 @@ function CustomFieldRow({ field, onChange, onRemove }: CustomFieldRowProps) {
         <Select
           value={field.type}
           onValueChange={(v) =>
-            onChange({ type: v as CustomFieldType, options: v === 'literal' ? field.options ?? [] : null })
+            onChange({
+              type: v as CustomFieldType,
+              options: v === 'literal' ? field.options ?? [] : null,
+              element_fields: v === 'list[object]' ? field.element_fields ?? [] : null,
+            })
           }
         >
           <SelectTrigger className="h-7 text-xs w-28">
@@ -241,6 +272,158 @@ function CustomFieldRow({ field, onChange, onRemove }: CustomFieldRowProps) {
             </div>
           )}
           {(field.options ?? []).length === 0 && (
+            <p className="text-[10px] text-destructive mt-1">At least one option required</p>
+          )}
+        </div>
+      )}
+
+      {needsElements && (
+        <div className="rounded-md border border-dashed border-border/60 p-2 space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-[11px] font-medium text-muted-foreground">
+              Item fields (each list item is an object)
+            </Label>
+            <button
+              type="button"
+              onClick={addElement}
+              className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80"
+            >
+              <Plus className="h-3 w-3" />
+              Add item field
+            </button>
+          </div>
+          {(field.element_fields ?? []).length === 0 ? (
+            <p className="text-[10px] text-destructive">At least one item field required</p>
+          ) : (
+            <div className="space-y-2">
+              {(field.element_fields ?? []).map((ef, i) => (
+                <ElementFieldRow
+                  key={i}
+                  field={ef}
+                  onChange={(patch) => updateElement(i, patch)}
+                  onRemove={() => removeElement(i)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!nameValid && (
+        <p className="text-[10px] text-destructive">
+          Lowercase snake_case, must start with a letter
+        </p>
+      )}
+    </div>
+  );
+}
+
+interface ElementFieldRowProps {
+  field: ElementFieldDef;
+  onChange: (patch: Partial<ElementFieldDef>) => void;
+  onRemove: () => void;
+}
+
+/** Editor for one scalar sub-field of a list[object] field. Mirrors
+ *  CustomFieldRow but restricted to scalar leaf types. */
+function ElementFieldRow({ field, onChange, onRemove }: ElementFieldRowProps) {
+  const [optionDraft, setOptionDraft] = useState('');
+  const nameValid = !field.name || NAME_RE.test(field.name);
+  const needsOptions = field.type === 'literal';
+
+  const addOption = () => {
+    const v = optionDraft.trim();
+    if (!v) return;
+    const existing = field.options ?? [];
+    if (existing.includes(v)) {
+      setOptionDraft('');
+      return;
+    }
+    onChange({ options: [...existing, v] });
+    setOptionDraft('');
+  };
+  const removeOption = (v: string) => {
+    onChange({ options: (field.options ?? []).filter((o) => o !== v) });
+  };
+  const handleOptionKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addOption();
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-border/50 bg-background p-2 space-y-2">
+      <div className="flex gap-2">
+        <Input
+          value={field.name}
+          onChange={(e) => onChange({ name: e.target.value.toLowerCase() })}
+          placeholder="item_field"
+          className={cn('text-xs h-7 flex-1', !nameValid && 'border-destructive')}
+        />
+        <Select
+          value={field.type}
+          onValueChange={(v) =>
+            onChange({
+              type: v as ElementFieldType,
+              options: v === 'literal' ? field.options ?? [] : null,
+            })
+          }
+        >
+          <SelectTrigger className="h-7 text-xs w-24">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ELEMENT_FIELD_TYPES.map((t) => (
+              <SelectItem key={t} value={t} className="text-xs">
+                {t}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove item field"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border/50 text-muted-foreground hover:text-destructive hover:border-destructive/50"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <Input
+        value={field.description}
+        onChange={(e) => onChange({ description: e.target.value })}
+        placeholder="What this item field captures"
+        className="text-xs h-7"
+      />
+
+      {needsOptions && (
+        <div>
+          <Input
+            value={optionDraft}
+            onChange={(e) => setOptionDraft(e.target.value)}
+            onKeyDown={handleOptionKey}
+            placeholder="Add option and press Enter"
+            className="text-xs h-7"
+          />
+          {(field.options ?? []).length > 0 ? (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {(field.options ?? []).map((o) => (
+                <Badge key={o} variant="secondary" className="gap-1 text-[10px]">
+                  {o}
+                  <button
+                    type="button"
+                    onClick={() => removeOption(o)}
+                    aria-label={`Remove ${o}`}
+                    className="inline-flex items-center text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          ) : (
             <p className="text-[10px] text-destructive mt-1">At least one option required</p>
           )}
         </div>

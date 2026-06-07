@@ -50,7 +50,43 @@ class PostData(BaseModel):
     referenced_post: ReferencedPost | None = None
 
 
-CustomFieldType = Literal["str", "bool", "int", "float", "list[str]", "literal"]
+CustomFieldType = Literal[
+    "str", "bool", "int", "float", "list[str]", "literal", "list[object]"
+]
+# Element leaves are scalar-only: a list[object] is one level deep, its element
+# fields cannot themselves be lists or objects.
+ElementFieldType = Literal["str", "bool", "int", "float", "literal"]
+
+
+def _validate_field_name(v: str) -> str:
+    if not re.match(r"^[a-z][a-z0-9_]{0,63}$", v):
+        raise ValueError(
+            f"Field name must be lowercase alphanumeric + underscores, 1-64 chars: '{v}'"
+        )
+    return v
+
+
+class ElementFieldDef(BaseModel):
+    """A scalar sub-field of a `list[object]` custom field (e.g. the `name` /
+    `age` of each item in `men=[{name, age}, ...]`)."""
+
+    name: str
+    description: str
+    type: ElementFieldType = "str"
+    options: list[str] | None = None  # Required when type="literal"
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        return _validate_field_name(v)
+
+    @model_validator(mode="after")
+    def validate_literal_options(self) -> "ElementFieldDef":
+        if self.type == "literal" and not self.options:
+            raise ValueError("'options' is required when type is 'literal'")
+        if self.type != "literal" and self.options:
+            self.options = None
+        return self
 
 
 class CustomFieldDef(BaseModel):
@@ -60,15 +96,12 @@ class CustomFieldDef(BaseModel):
     description: str
     type: CustomFieldType = "str"
     options: list[str] | None = None  # Required when type="literal"
+    element_fields: list[ElementFieldDef] | None = None  # Required when type="list[object]"
 
     @field_validator("name")
     @classmethod
     def validate_name(cls, v: str) -> str:
-        if not re.match(r"^[a-z][a-z0-9_]{0,63}$", v):
-            raise ValueError(
-                f"Field name must be lowercase alphanumeric + underscores, 1-64 chars: '{v}'"
-            )
-        return v
+        return _validate_field_name(v)
 
     @model_validator(mode="after")
     def validate_literal_options(self) -> "CustomFieldDef":
@@ -76,6 +109,16 @@ class CustomFieldDef(BaseModel):
             raise ValueError("'options' is required when type is 'literal'")
         if self.type != "literal" and self.options:
             self.options = None
+        return self
+
+    @model_validator(mode="after")
+    def validate_element_fields(self) -> "CustomFieldDef":
+        if self.type == "list[object]" and not self.element_fields:
+            raise ValueError(
+                "'element_fields' is required and must be non-empty when type is 'list[object]'"
+            )
+        if self.type != "list[object]" and self.element_fields:
+            self.element_fields = None
         return self
 
 

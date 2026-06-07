@@ -40,7 +40,11 @@ const FILTER_SECTIONS: Array<{ label: string; key: ArrayFilterKey; placeholder: 
 ];
 
 function humanizeFieldName(name: string): string {
-  return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  // Render list[object] leaf keys (men.name) as "Men › Name".
+  return name
+    .split('.')
+    .map((part) => part.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
+    .join(' › ');
 }
 
 function getOperatorsForField(field: FilterConditionField): FilterConditionOperator[] {

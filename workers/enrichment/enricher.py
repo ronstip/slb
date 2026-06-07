@@ -23,6 +23,7 @@ from config.settings import get_settings
 from workers.enrichment.normalize import normalize_labels
 from workers.enrichment.schema import (
     CustomFieldDef,
+    ElementFieldDef,
     EnrichmentResult,
     MediaRef,
     PostData,
@@ -211,7 +212,26 @@ def _build_custom_fields_prompt(custom_fields: list[CustomFieldDef]) -> str:
         else:
             type_hint = f.type
         lines.append(f"- {f.name} ({type_hint}): {f.description}")
+        if f.type == "list[object]" and f.element_fields:
+            for ef in f.element_fields:
+                ef_hint = (
+                    f"one of: {', '.join(ef.options)}"
+                    if ef.type == "literal" and ef.options
+                    else ef.type
+                )
+                lines.append(f"    - {ef.name} ({ef_hint}): {ef.description}")
     return "\n".join(lines)
+
+
+def _build_element_field_type(ef: ElementFieldDef) -> type:
+    """Map a single scalar element field to a Python type for create_model."""
+    if ef.type == "literal" and ef.options:
+        return Literal[tuple(ef.options)]
+    python_type = _CUSTOM_FIELD_TYPE_MAP.get(ef.type)
+    if python_type is None:
+        # Should be unreachable: ElementFieldType is scalar-only and validated.
+        return str
+    return python_type
 
 
 def _build_custom_fields_model(custom_fields: list[CustomFieldDef]) -> type[BaseModel]:
@@ -226,6 +246,15 @@ def _build_custom_fields_model(custom_fields: list[CustomFieldDef]) -> type[Base
             python_type = Literal[tuple(f.options)]
         elif f.type == "list[str]":
             python_type = Annotated[list[str], AfterValidator(normalize_labels)]
+        elif f.type == "list[object]" and f.element_fields:
+            element_model = create_model(
+                f"{f.name}_element",
+                **{
+                    ef.name: (_build_element_field_type(ef) | None, None)
+                    for ef in f.element_fields
+                },
+            )
+            python_type = list[element_model]
         else:
             python_type = _CUSTOM_FIELD_TYPE_MAP.get(f.type)
             if python_type is None:

@@ -77,6 +77,13 @@ CustomMetric = Literal[
     "engagement_total",
 ]
 
+# list[object] element metrics, namespaced `customobj:<field>.<suffix>` where the
+# suffix is `__count`, `__posts`, an object leaf (e.g. `age`), or an inherited
+# post metric (`post.view_count`). Mirrors the TS template-literal arm
+# `\`customobj:${string}\`` in CustomMetric. Kept as a pattern (like
+# CustomFieldDimension) so the Literal parity test stays meaningful.
+CustomObjectMetric = Annotated[str, StringConstraints(pattern=r"^customobj:[^\s]+$")]
+
 # ─── Topic widget vocabulary (when widget.dataSource === 'topics') ────────────
 # Mirrors TopicDimension / TopicMetric in types-social-dashboard.ts. Topic
 # widgets read from `social_listening.topic_metrics(@agent_id)` - see
@@ -118,7 +125,7 @@ TopicMetric = Literal[
 # on the widget's `dataSource` to decide which arm of the union is active;
 # Pydantic validates against the union so both vocabularies round-trip.
 AnyDimension = Union[CustomDimensionField, TopicDimension]
-AnyMetric = Union[CustomMetric, TopicMetric]
+AnyMetric = Union[CustomMetric, TopicMetric, CustomObjectMetric]
 
 DataSource = Literal["posts", "topics"]
 
