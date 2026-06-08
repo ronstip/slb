@@ -199,6 +199,40 @@ function SocialWidgetConfigDialogInner({
 
   const onDragPointerUp = useCallback(() => { dragRef.current.active = false; }, []);
 
+  // ── Resize state ── once the user drags the corner we switch from the
+  // class-based max-width to explicit pixel size on the DialogContent. null =
+  // unsized (use defaults). Min clamps keep both panels usable.
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const resizeRef = useRef({ active: false, startX: 0, startY: 0, origW: 0, origH: 0 });
+
+  const onResizePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = contentRef.current?.getBoundingClientRect();
+    resizeRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origW: rect?.width ?? 1100,
+      origH: rect?.height ?? 600,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const onResizePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!resizeRef.current.active) return;
+    const w = Math.max(640, resizeRef.current.origW + (e.clientX - resizeRef.current.startX) * 2);
+    const h = Math.max(400, resizeRef.current.origH + (e.clientY - resizeRef.current.startY) * 2);
+    setSize({
+      w: Math.min(w, window.innerWidth - 32),
+      h: Math.min(h, window.innerHeight - 32),
+    });
+  }, []);
+
+  const onResizePointerUp = useCallback(() => { resizeRef.current.active = false; }, []);
+
   // Recompute valid chart types whenever dimension/metric changes. For topic
   // widgets, drop the chart types we don't support in phase 1 (line - no time
   // series in topic_metrics).
@@ -289,8 +323,22 @@ function SocialWidgetConfigDialogInner({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
-        className={`${isTextMode ? 'sm:max-w-[min(1600px,95vw)]' : 'sm:max-w-[1100px]'} ${isEmbedMode ? 'sm:max-w-[1200px]' : ''} max-h-[88vh] flex flex-col p-0 gap-0`}
-        style={{ marginLeft: dragOffset.x, marginTop: dragOffset.y }}
+        ref={contentRef}
+        className={cn(
+          size
+            ? 'max-w-none'
+            : isTextMode
+              ? 'sm:max-w-[min(1600px,95vw)]'
+              : isEmbedMode
+                ? 'sm:max-w-[1400px]'
+                : 'sm:max-w-[min(1400px,95vw)]',
+          'max-h-[88vh] flex flex-col p-0 gap-0',
+        )}
+        style={{
+          marginLeft: dragOffset.x,
+          marginTop: dragOffset.y,
+          ...(size ? { width: size.w, height: size.h, maxWidth: 'none', maxHeight: 'none' } : {}),
+        }}
       >
         <DialogHeader
           className="px-6 pt-5 pb-3 border-b border-border shrink-0 cursor-grab active:cursor-grabbing select-none"
@@ -621,6 +669,19 @@ function SocialWidgetConfigDialogInner({
           </Button>
         </DialogFooter>
         {isTextMode && <div ref={setEditorOverlayHost} />}
+
+        {/* ── Corner resize handle (bottom-right) ── */}
+        <div
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerUp}
+          className="absolute bottom-0 right-0 z-50 h-5 w-5 cursor-nwse-resize touch-none select-none"
+          title="Drag to resize"
+        >
+          <svg viewBox="0 0 10 10" className="absolute bottom-1 right-1 h-2.5 w-2.5 text-muted-foreground/50">
+            <path d="M9 1 L9 9 L1 9" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          </svg>
+        </div>
       </DialogContent>
     </Dialog>
   );
