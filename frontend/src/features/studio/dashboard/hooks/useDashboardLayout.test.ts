@@ -9,7 +9,7 @@ const widget = (over: Partial<SocialDashboardWidget>): SocialDashboardWidget => 
   w: 6,
   h: 4,
   aggregation: 'text',
-  chartType: 'text',
+  chartType: 'table',
   title: 't',
   ...over,
 });
