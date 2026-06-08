@@ -194,6 +194,98 @@ def test_widget_round_trip_preserves_figure_text_and_number_size():
     assert dumped["numberSize"] == "big"
 
 
+def test_widget_round_trip_preserves_trendline_config():
+    """The KPI number-card trendline config (`showSparkline`, `trendDimension`,
+    `trendTimeBucket`, `trendCumulative`) is persisted on the frontend widget.
+    With `extra='ignore'`, any field missing from the Pydantic model is dropped
+    on save - so the shared/Brief dashboard would lose the user's trendline
+    settings (e.g. Cumulative). All four must round-trip."""
+    from api.routers.dashboard_schema import SocialDashboardWidget
+
+    payload = {
+        "i": "kpi1",
+        "x": 0,
+        "y": 0,
+        "w": 3,
+        "h": 2,
+        "aggregation": "custom",
+        "chartType": "number-card",
+        "title": "Total Views",
+        "showSparkline": True,
+        "trendDimension": "posted_at",
+        "trendTimeBucket": "week",
+        "trendCumulative": True,
+    }
+    w = SocialDashboardWidget.model_validate(payload)
+    assert w.showSparkline is True
+    assert w.trendDimension == "posted_at"
+    assert w.trendTimeBucket == "week"
+    assert w.trendCumulative is True
+    # Serialized form must keep the fields so they land in Firestore.
+    dumped = w.model_dump(exclude_none=True, by_alias=True)
+    assert dumped["showSparkline"] is True
+    assert dumped["trendDimension"] == "posted_at"
+    assert dumped["trendTimeBucket"] == "week"
+    assert dumped["trendCumulative"] is True
+
+
+def test_widget_round_trip_preserves_line_chart_cumulative():
+    """A line chart's `customConfig.cumulative` (running total) is set in the
+    edit dialog. With `extra='ignore'`, a field missing from the Pydantic
+    CustomChartConfig is dropped on save - so the shared/Brief dashboard would
+    revert to per-bucket values. It must round-trip."""
+    from api.routers.dashboard_schema import SocialDashboardWidget
+
+    payload = {
+        "i": "line1",
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4,
+        "aggregation": "custom",
+        "chartType": "line",
+        "title": "Posts over time",
+        "customConfig": {
+            "dimension": "posted_at",
+            "metric": "post_count",
+            "timeBucket": "day",
+            "cumulative": True,
+        },
+    }
+    w = SocialDashboardWidget.model_validate(payload)
+    assert w.customConfig is not None
+    assert w.customConfig.cumulative is True
+    dumped = w.model_dump(exclude_none=True, by_alias=True)
+    assert dumped["customConfig"]["cumulative"] is True
+
+
+def test_widget_round_trip_preserves_manual_height():
+    """`manualHeight` is set when the user manually resizes a text/embed card,
+    and turns off the content auto-fit so the chosen height sticks. With
+    `extra='ignore'`, a field missing from the Pydantic model is dropped on save
+    - so the shared/Brief dashboard would lose the flag and auto-fit the card
+    back to its content height, re-introducing the bug. It must round-trip."""
+    from api.routers.dashboard_schema import SocialDashboardWidget
+
+    payload = {
+        "i": "t1",
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 2,
+        "aggregation": "text",
+        "chartType": "table",
+        "title": "Title card",
+        "markdownContent": "# Brands Exposure Leader Board",
+        "manualHeight": True,
+    }
+    w = SocialDashboardWidget.model_validate(payload)
+    assert w.manualHeight is True
+    # Serialized form must keep the field so it lands in Firestore + the share.
+    dumped = w.model_dump(exclude_none=True, by_alias=True)
+    assert dumped["manualHeight"] is True
+
+
 def test_custom_config_accepts_custom_field_dimension():
     """Frontend `CustomDimension` includes `custom:<name>` for agent-defined
     enrichment fields (see TS definition). The Pydantic model must accept these

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { streamChat } from '../../../../api/sse-client.ts';
 import { apiPost } from '../../../../api/client.ts';
 import { getReportHistoryStore } from '../dashboard-history-store.ts';
+import { buildCoAuthorMessage, type AttachedWidget } from '../coauthor-context.ts';
 import type {
   LayoutResponse,
   LayoutSavePayload,
@@ -22,6 +23,9 @@ export interface ReportChatMessage {
   toolNotes?: string[];
   /** Set when an assistant turn surfaced an error. */
   error?: string;
+  /** Titles of widgets the user pinned to this turn. Shown as chips under the
+   *  user bubble so the conversation records what the request was scoped to. */
+  attachments?: string[];
 }
 
 interface UseReportAIChatOptions {
@@ -41,7 +45,7 @@ const UPDATE_TOAST_DURATION_MS = 12_000;
 interface UseReportAIChatResult {
   messages: ReportChatMessage[];
   isStreaming: boolean;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, attached?: AttachedWidget[]) => Promise<void>;
   cancel: () => void;
   reset: () => void;
 }
@@ -92,17 +96,22 @@ export function useReportAIChat({
   }, [artifactId]);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, attached: AttachedWidget[] = []) => {
       if (!text.trim() || isStreaming) return;
 
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // Sent to the model: focus preamble (if any pinned widgets) + the text.
+      // Displayed to the user: just `text` - the preamble is machinery.
+      const outgoing = buildCoAuthorMessage(text, attached);
+
       const userMsg: ReportChatMessage = {
         id: `u-${Date.now()}`,
         role: 'user',
         text,
+        attachments: attached.length > 0 ? attached.map((w) => w.title) : undefined,
       };
       const assistantId = `a-${Date.now()}`;
       const assistantMsg: ReportChatMessage = {
@@ -140,7 +149,7 @@ export function useReportAIChat({
       try {
         const stream = streamChat(
           {
-            message: text,
+            message: outgoing,
             session_id: sessionIdRef.current,
             agent_id: agentId,
             mode: 'report_editor',

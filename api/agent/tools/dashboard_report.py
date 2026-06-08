@@ -211,6 +211,20 @@ def _summarize_validation_errors(errors: list[dict]) -> list[str]:
     return out
 
 
+def unrecognized_patch_fields(fields: dict) -> list[str]:
+    """Return the patch field keys the widget model does not recognize.
+
+    `SocialDashboardWidget` is declared `extra="ignore"`, so any field name the
+    LLM invents (e.g. `colors`, `palette`, `colorScheme` instead of the real
+    `accent` / `styleOverrides`) is silently dropped on persist - the layout
+    round-trips unchanged and `update_dashboard` returns success anyway. That
+    produced the "AI says it recolored the chart but nothing changed" bug. We
+    surface these dropped keys so the tool can warn and the agent self-corrects.
+    """
+    recognized = set(SocialDashboardWidget.model_fields)
+    return [k for k in fields if k not in recognized]
+
+
 # ─── Tool 1 - read_dashboard ────────────────────────────────────────────────
 
 
@@ -512,6 +526,10 @@ def update_dashboard(
     widgets: list[dict] = list(data.get("layout") or [])
     by_id = {w.get("i"): i for i, w in enumerate(widgets) if isinstance(w, dict) and w.get("i")}
     touched: list[str] = []
+    # Patch field keys the widget model will silently drop (extra="ignore").
+    # Collected so the success message can warn the agent instead of letting it
+    # falsely believe an invented field (e.g. `palette`) took effect.
+    ignored_fields: set[str] = set()
 
     # 1. patches - shallow merge into existing widget by `i`.
     for idx, patch in enumerate(patches):
@@ -529,6 +547,7 @@ def update_dashboard(
                 "status": "error",
                 "message": f"patches[{idx}]: widget '{widget_i}' not found in dashboard.",
             }
+        ignored_fields.update(unrecognized_patch_fields(fields))
         widgets[pos] = {**widgets[pos], **fields}
         touched.append(widget_i)
 
@@ -620,11 +639,20 @@ def update_dashboard(
         "applied_removals": len(removals),
         "touched_widget_ids": touched,
         "report_scope_updated": validated_scope is not None,
+        "ignored_fields": sorted(ignored_fields),
         "message": (
             f"Applied {len(patches)} patch(es), {len(additions)} addition(s), "
             f"{len(removals)} removal(s)"
             + (" and updated reportScope" if validated_scope is not None else "")
             + "."
+            + (
+                f" WARNING: these field(s) are not part of the widget schema and were "
+                f"dropped (no effect): {', '.join(sorted(ignored_fields))}. "
+                f"To recolor a chart use `accent` (single hue) or "
+                f"`styleOverrides` (accent / seriesColors)."
+                if ignored_fields
+                else ""
+            )
         ),
     }
 

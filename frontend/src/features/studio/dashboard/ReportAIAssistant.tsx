@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, Send, Loader2, RotateCcw, Square } from 'lucide-react';
+import { Sparkles, Send, Loader2, RotateCcw, Square, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import { Popover, PopoverTrigger, PopoverContent } from '../../../components/ui/popover.tsx';
 import { useReportAIChat } from './hooks/useReportAIChat.ts';
+import type { AttachedWidget } from './coauthor-context.ts';
 
 interface ReportAIAssistantProps {
   artifactId: string;
@@ -12,6 +13,16 @@ interface ReportAIAssistantProps {
    *  grid (which holds widgets in local state and would otherwise show
    *  stale data until manual refresh). */
   onLayoutChanged?: () => void;
+  /** Controlled open state. Lifted to the parent so the grid can show the
+   *  per-widget "attach" affordance only while the co-author is open. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Widgets the user pinned on the grid for the next message. */
+  attachedWidgets: AttachedWidget[];
+  /** Remove one pinned widget (chip ✕). */
+  onRemoveAttached: (i: string) => void;
+  /** Clear all pins (after a send, or via "clear"). */
+  onClearAttached: () => void;
 }
 
 /**
@@ -27,8 +38,12 @@ export function ReportAIAssistant({
   artifactId,
   agentId,
   onLayoutChanged,
+  open,
+  onOpenChange,
+  attachedWidgets,
+  onRemoveAttached,
+  onClearAttached,
 }: ReportAIAssistantProps) {
-  const [open, setOpen] = useState(false);
   const { messages, isStreaming, sendMessage, cancel, reset } = useReportAIChat({
     artifactId,
     agentId,
@@ -36,7 +51,7 @@ export function ReportAIAssistant({
   });
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="default"
@@ -52,6 +67,13 @@ export function ReportAIAssistant({
         align="end"
         sideOffset={6}
         className="w-[28rem] max-w-[calc(100vw-2rem)] p-0 flex flex-col max-h-[70vh]"
+        // Clicking a widget's "attach" affordance on the grid is an
+        // interaction outside the popover - without this it would close the
+        // co-author mid-selection. Keep it open for those clicks only.
+        onInteractOutside={(e) => {
+          const target = e.target as Element | null;
+          if (target?.closest('[data-coauthor-attach]')) e.preventDefault();
+        }}
       >
         <ChatPanel
           messages={messages}
@@ -59,6 +81,9 @@ export function ReportAIAssistant({
           sendMessage={sendMessage}
           cancel={cancel}
           reset={reset}
+          attachedWidgets={attachedWidgets}
+          onRemoveAttached={onRemoveAttached}
+          onClearAttached={onClearAttached}
         />
       </PopoverContent>
     </Popover>
@@ -68,12 +93,24 @@ export function ReportAIAssistant({
 interface ChatPanelProps {
   messages: ReturnType<typeof useReportAIChat>['messages'];
   isStreaming: boolean;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, attached?: AttachedWidget[]) => Promise<void>;
   cancel: () => void;
   reset: () => void;
+  attachedWidgets: AttachedWidget[];
+  onRemoveAttached: (i: string) => void;
+  onClearAttached: () => void;
 }
 
-function ChatPanel({ messages, isStreaming, sendMessage, cancel, reset }: ChatPanelProps) {
+function ChatPanel({
+  messages,
+  isStreaming,
+  sendMessage,
+  cancel,
+  reset,
+  attachedWidgets,
+  onRemoveAttached,
+  onClearAttached,
+}: ChatPanelProps) {
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -94,7 +131,9 @@ function ChatPanel({ messages, isStreaming, sendMessage, cancel, reset }: ChatPa
     const text = draft.trim();
     if (!text || isStreaming) return;
     setDraft('');
-    await sendMessage(text);
+    const pinned = attachedWidgets;
+    onClearAttached();
+    await sendMessage(text, pinned);
     textareaRef.current?.focus();
   };
 
@@ -137,13 +176,50 @@ function ChatPanel({ messages, isStreaming, sendMessage, cancel, reset }: ChatPa
       </div>
 
       <div className="p-2 border-t border-border bg-card/40">
+        {attachedWidgets.length > 0 ? (
+          <div className="mb-1.5 flex flex-wrap items-center gap-1">
+            {attachedWidgets.map((w) => (
+              <span
+                key={w.i}
+                className="inline-flex max-w-[12rem] items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[11px] text-foreground"
+                title={w.title || 'Untitled widget'}
+              >
+                <Sparkles className="h-2.5 w-2.5 shrink-0 text-primary" />
+                <span className="truncate">{w.title || 'Untitled widget'}</span>
+                <button
+                  type="button"
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => onRemoveAttached(w.i)}
+                  title="Remove"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              className="ml-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={onClearAttached}
+            >
+              Clear
+            </button>
+          </div>
+        ) : (
+          <p className="mb-1.5 text-[11px] text-muted-foreground px-0.5">
+            Tip: click a widget on the report to focus the AI on it.
+          </p>
+        )}
         <div className="relative">
           <textarea
             ref={textareaRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask the AI to change this report…"
+            placeholder={
+              attachedWidgets.length > 0
+                ? 'Ask the AI to change the selected widget(s)…'
+                : 'Ask the AI to change this report…'
+            }
             rows={2}
             className="w-full resize-none rounded-md border border-input bg-background px-2.5 py-2 pr-9 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             disabled={isStreaming}
@@ -200,7 +276,20 @@ function MessageRow({
 }) {
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-1">
+            {message.attachments.map((title, i) => (
+              <span
+                key={i}
+                className="inline-flex max-w-[10rem] items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary"
+              >
+                <Sparkles className="h-2.5 w-2.5 shrink-0" />
+                <span className="truncate">{title || 'Untitled widget'}</span>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="max-w-[85%] rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm whitespace-pre-wrap break-words">
           {message.text}
         </div>

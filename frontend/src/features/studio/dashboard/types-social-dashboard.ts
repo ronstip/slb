@@ -450,6 +450,10 @@ export interface CustomChartConfig {
   includeOthers?: boolean;
   /** Bar chart stacking when a breakdownDimension is set. Default true. */
   stacked?: boolean;
+  /** Plot a running total instead of per-bucket values. Only applies to time
+   *  series (dimension === 'posted_at'); categorical charts ignore it. Each
+   *  grouped (breakdown) series accumulates independently. */
+  cumulative?: boolean;
   /** When set with 2+ metrics, the widget renders a header toggle so the
    *  viewer can swap the active metric without entering edit mode. The
    *  primary `metric` field is the initial selection; the toggle list should
@@ -1050,6 +1054,10 @@ export interface SocialDashboardWidget {
   /** When true, the number-card trendline shows a running total (cumulative)
    *  rather than per-bucket values. Undefined → false. */
   trendCumulative?: boolean;
+  /** Set once the user manually resizes a text/embed card. Disables the
+   *  auto-fit-height behaviour so the saved `h` is respected (content scrolls
+   *  if it overflows). Undefined → legacy auto-fit for untouched cards. */
+  manualHeight?: boolean;
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────

@@ -29,6 +29,7 @@ import {
   computeEnhancedKpis,
 } from './dashboard-aggregations.ts';
 import { resolveSparklineEnabled, toCumulativeSeries } from './sparkline-visibility.ts';
+import { shouldAutoSizeWidget } from './text-card-sizing.ts';
 import type { ColumnDef } from '../../../components/DataTable/DataTable.tsx';
 import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 import { formatNumber } from '../../../lib/format.ts';
@@ -1094,7 +1095,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
   // content change, and on container resize. Updates are debounced to a
   // single rAF to coalesce burst observer callbacks during layout flush.
   useEffect(() => {
-    if (!onAutoSize || !contentRef.current) return;
+    if (!onAutoSize || !shouldAutoSizeWidget(widget) || !contentRef.current) return;
     const ROW_HEIGHT_PX = 48;
     const MARGIN_Y_PX = 6;
     const BOTTOM_PAD_PX = 24; // visual breathing room below last block
@@ -1118,7 +1119,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
       observer.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [widget.i, widget.h, content, onAutoSize]);
+  }, [widget.i, widget.h, widget.manualHeight, content, onAutoSize]);
 
   // No card chrome: transparent background, no border, no header. In edit mode
   // the entire widget acts as the drag handle and a floating menu surfaces the
@@ -1196,7 +1197,7 @@ function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, 
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!onAutoSize || !contentRef.current) return;
+    if (!onAutoSize || !shouldAutoSizeWidget(widget) || !contentRef.current) return;
     const ROW_HEIGHT_PX = 48;
     const MARGIN_Y_PX = 6;
     const BOTTOM_PAD_PX = 24;
@@ -1220,7 +1221,7 @@ function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, 
       observer.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [widget.i, widget.h, urls.length, onAutoSize]);
+  }, [widget.i, widget.h, widget.manualHeight, urls.length, onAutoSize]);
 
   return (
     <SocialWidgetFrame

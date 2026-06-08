@@ -3,10 +3,13 @@ import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import type { Layout, LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import { Sparkles, Check } from 'lucide-react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
 import { SocialWidgetRenderer } from './SocialWidgetRenderer.tsx';
 import { buildCompactLayout } from './buildCompactLayout.ts';
+import type { AttachedWidget } from './coauthor-context.ts';
+import { getWidgetCategoryLabels, getWidgetRenamableLabels } from './widget-labels.ts';
 
 function mergeRefs<T>(...refs: Array<React.Ref<T | null> | undefined | null>) {
   return (node: T | null) => {
@@ -42,6 +45,13 @@ interface SocialDashboardGridProps {
   serverKpis?: DashboardKpis;
   /** When set, text widgets call this with a measured ideal grid-row height. */
   onAutoSize?: (i: string, h: number) => void;
+  /** True while the AI co-author popover is open - shows the per-widget pin
+   *  affordance + selection ring. */
+  coAuthorActive?: boolean;
+  /** Ids of widgets currently pinned to the co-author message. */
+  attachedWidgetIds?: Set<string>;
+  /** Toggle a widget's pin. Receives id + current title for the chip. */
+  onToggleAttachWidget?: (w: AttachedWidget) => void;
 }
 
 // A4 portrait/landscape content-width ratio (after page margins). Used to
@@ -64,6 +74,9 @@ export function SocialDashboardGrid({
   gridRef,
   serverKpis,
   onAutoSize,
+  coAuthorActive = false,
+  attachedWidgetIds,
+  onToggleAttachWidget,
 }: SocialDashboardGridProps) {
   const [currentBreakpoint, setCurrentBreakpoint] = useState<string>('lg');
   const isDragging = useRef(false);
@@ -91,7 +104,15 @@ export function SocialDashboardGrid({
     w: w.w,
     h: w.h,
     minW: w.chartType === 'number-card' ? 2 : 3,
-    minH: w.chartType === 'number-card' ? 1 : 3,
+    // Text/embed cards are content-scrollable, so allow them to shrink below the
+    // generic 3-row floor for fine manual sizing. Text cards go all the way to a
+    // single row so a one-line title (~34px) can hug its row without a fixed gap;
+    // embeds keep a 2-row floor (an embed needs more vertical room to be useful).
+    minH: w.chartType === 'number-card' || w.aggregation === 'text'
+      ? 1
+      : w.aggregation === 'embeds'
+        ? 2
+        : 3,
     isDraggable: isEditMode && currentBreakpoint === 'lg',
     isResizable: isEditMode && currentBreakpoint === 'lg',
   }));
@@ -103,14 +124,26 @@ export function SocialDashboardGrid({
     xs: buildCompactLayout(widgets, COLS.xs),
   };
 
+  // Id of the widget the user just resized, captured on resize-stop and consumed
+  // by the very next handleLayoutChange (RGL fires onResizeStop then
+  // onLayoutChange synchronously). We fold `manualHeight` into the same layout
+  // commit instead of a separate setWidgets so the flag can't be clobbered by
+  // this concrete commit, and so it never rebuilds `layouts` mid-gesture.
+  const pendingResizeId = useRef<string | null>(null);
+
   const handleLayoutChange = useCallback(
     (layout: Layout) => {
       // Only persist lg-breakpoint positions - compact layouts are auto-derived
       if (!isEditMode || isDragging.current || currentBreakpoint !== 'lg') return;
+      const resizedId = pendingResizeId.current;
+      pendingResizeId.current = null;
       const updated = widgets.map((w) => {
         const item = layout.find((l) => l.i === w.i);
         if (!item) return w;
-        return { ...w, x: item.x, y: item.y, w: item.w, h: item.h };
+        const next = { ...w, x: item.x, y: item.y, w: item.w, h: item.h };
+        // The user took manual control of this card's height - stop auto-fitting.
+        if (w.i === resizedId) next.manualHeight = true;
+        return next;
       });
       onLayoutChange(updated);
     },
@@ -152,24 +185,71 @@ export function SocialDashboardGrid({
         onLayoutChange={handleLayoutChange}
         onDragStart={() => { isDragging.current = true; }}
         onDragStop={() => { isDragging.current = false; }}
+        onResizeStop={(_layout, oldItem, newItem) => {
+          // Record which card was resized; the immediately-following
+          // handleLayoutChange folds `manualHeight: true` into the same commit.
+          pendingResizeId.current = newItem?.i ?? oldItem?.i ?? null;
+        }}
       >
-        {widgets.map((widget) => (
-          <div key={widget.i}>
-            <SocialWidgetRenderer
-              widget={widget}
-              filteredPosts={filteredPosts}
-              topics={topics}
-              isEditMode={isEditMode}
-              onConfigure={() => onConfigure(widget.i)}
-              onRemove={() => onRemove(widget.i)}
-              onDuplicate={onDuplicate ? () => onDuplicate(widget.i) : undefined}
-              onFilterToggle={onFilterToggle}
-              onTopicNavigate={onTopicNavigate}
-              serverKpis={serverKpis}
-              onAutoSize={onAutoSize}
-            />
-          </div>
-        ))}
+        {widgets.map((widget) => {
+          const attached = attachedWidgetIds?.has(widget.i) ?? false;
+          return (
+            <div
+              key={widget.i}
+              className={
+                coAuthorActive && attached
+                  ? 'rounded-xl ring-2 ring-primary ring-offset-1 ring-offset-background'
+                  : undefined
+              }
+            >
+              {coAuthorActive && onToggleAttachWidget && (
+                <button
+                  type="button"
+                  data-coauthor-attach
+                  onClick={() =>
+                    onToggleAttachWidget({
+                      i: widget.i,
+                      title: widget.title,
+                      // Attach the chart's exact category labels so the agent can
+                      // recolor each slice ("make it colorful") and rename the
+                      // category text ("Ugc" → "UGC") instead of being blind to
+                      // data-derived names. Color keys = colorable series only;
+                      // rename keys also include the x-axis categories.
+                      labels: getWidgetCategoryLabels(widget, filteredPosts, topics),
+                      renamableLabels: getWidgetRenamableLabels(widget, filteredPosts, topics),
+                    })
+                  }
+                  title={attached ? 'Unpin from AI message' : 'Pin to AI message'}
+                  aria-pressed={attached}
+                  className={`absolute right-1.5 top-1.5 z-20 inline-flex h-6 w-6 items-center justify-center rounded-md border shadow-sm transition-colors ${
+                    attached
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background/90 text-muted-foreground hover:text-primary hover:border-primary/50'
+                  }`}
+                >
+                  {attached ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              )}
+              <SocialWidgetRenderer
+                widget={widget}
+                filteredPosts={filteredPosts}
+                topics={topics}
+                isEditMode={isEditMode}
+                onConfigure={() => onConfigure(widget.i)}
+                onRemove={() => onRemove(widget.i)}
+                onDuplicate={onDuplicate ? () => onDuplicate(widget.i) : undefined}
+                onFilterToggle={onFilterToggle}
+                onTopicNavigate={onTopicNavigate}
+                serverKpis={serverKpis}
+                onAutoSize={onAutoSize}
+              />
+            </div>
+          );
+        })}
       </ResponsiveGridLayout>
     </div>
   );

@@ -20,16 +20,22 @@ import type { SocialChartType, WidgetData } from './types-social-dashboard.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { generateChartPalette } from '../../../lib/accent-colors.ts';
 import { SENTIMENT_COLORS } from '../../../lib/constants.ts';
+import { makeOverrideResolver } from './series-overrides.ts';
 
 /** Resolve colors for a set of labels.
- *  Order: user override (by exact label) → semantic (sentiment) → accent palette. */
+ *  Order: user override (exact label, then case/separator-tolerant) → semantic
+ *  (sentiment) → accent palette. Tolerant matching means a near-miss override
+ *  key ("Fan Vlog" vs the data's "fan vlog") still colors the slice instead of
+ *  silently doing nothing. */
 function resolveSeriesColors(
   labels: string[],
   accentColors: string[],
   overrides?: Record<string, string>,
 ): string[] {
+  const resolveOverride = makeOverrideResolver(overrides);
   return labels.map((l, i) => {
-    if (overrides && overrides[l]) return overrides[l];
+    const override = resolveOverride(l);
+    if (override) return override;
     const key = l.toLowerCase();
     return key in SENTIMENT_COLORS ? SENTIMENT_COLORS[key] : accentColors[i % accentColors.length];
   });
@@ -152,10 +158,11 @@ function formatLabel(raw: string): string {
     .join('-');
 }
 
-// User rename override > formatLabel humanisation. Both lookups are by the
-// raw label as it appears in the data (same key used for color overrides).
+// User rename override > formatLabel humanisation. Lookup is by the raw label
+// as it appears in the data (same key shape as color overrides), exact first
+// then case/separator-tolerant so a near-miss rename key still applies.
 function displayLabel(raw: string, overrides?: Record<string, string>): string {
-  const renamed = overrides?.[raw];
+  const renamed = makeOverrideResolver(overrides)(raw);
   if (renamed != null && renamed !== '') return renamed;
   return formatLabel(raw);
 }

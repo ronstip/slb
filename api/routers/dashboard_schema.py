@@ -226,6 +226,9 @@ class CustomChartConfig(BaseModel):
     includeOthers: bool | None = None
     stacked: bool | None = None
     metricToggle: list[AnyMetric] | None = None
+    # Running total instead of per-bucket values (time-series line charts).
+    # Must round-trip through Firestore so it reaches the shared/Brief dashboard.
+    cumulative: bool | None = None
 
 
 class ChartStyleOverrides(BaseModel):
@@ -390,6 +393,17 @@ class SocialDashboardWidget(BaseModel):
     embedUrls: list[str] | None = None
     figureText: str | None = None
     numberSize: Literal["small", "medium", "big"] | None = None
+    # Set once the user manually resizes a text/embed card. Must be an explicit
+    # field (not extra='ignore' drop) so the chosen height survives the save and
+    # is honoured on shared/published dashboards instead of auto-fitting back.
+    manualHeight: bool | None = None
+    # KPI number-card trendline (sparkline) config. Must be declared so it
+    # survives the save round-trip into Firestore and reaches the shared/Brief
+    # dashboard (extra='ignore' would otherwise drop them).
+    showSparkline: bool | None = None
+    trendDimension: AnyDimension | None = None
+    trendTimeBucket: Literal["hour", "day", "week", "month"] | None = None
+    trendCumulative: bool | None = None
 
 
 class DashboardLayout(BaseModel):

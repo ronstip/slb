@@ -1,6 +1,7 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { CustomChartConfig, CustomDimension, CustomMetric, CustomTableConfig, PostField, TableColumn, WidgetData } from './types-social-dashboard.ts';
 import { isCustomFieldDimension, customFieldName, isCustomPostField, isDimensionColumn, isPostFieldColumn, normalizeTableConfig } from './types-social-dashboard.ts';
+import { toCumulativeSeries } from './sparkline-visibility.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
 
@@ -599,7 +600,7 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
   const dimension = config.dimension as CustomDimension | undefined;
   const breakdownDimension = config.breakdownDimension as CustomDimension | undefined;
   const metric = config.metric as CustomMetric;
-  const { metricAgg = 'sum', timeBucket = 'day', topN, includeOthers } = config;
+  const { metricAgg = 'sum', timeBucket = 'day', topN, includeOthers, cumulative } = config;
 
   if (!dimension) {
     if (metricAgg === 'count') return { value: posts.length, labels: ['Count'], values: [posts.length] };
@@ -637,15 +638,23 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
     const topKeys = sortedByTotal.slice(0, limit).map(([k]) => k);
     const tailKeys = sortedByTotal.slice(limit).map(([k]) => k);
 
+    // Accumulate a per-series array into a running total in place, preserving
+    // the {date} of each point. No-op unless `cumulative` is set.
+    const accumulate = (series: Array<{ date: string; value: number }>) => {
+      if (!cumulative) return series;
+      const running = toCumulativeSeries(series.map((d) => d.value));
+      return series.map((d, i) => ({ date: d.date, value: running[i] }));
+    };
+
     const grouped: Record<string, Array<{ date: string; value: number }>> = {};
     for (const bk of topKeys) {
-      grouped[bk] = allDates.map((date) => {
+      grouped[bk] = accumulate(allDates.map((date) => {
         const s = acc.get(date)?.get(bk);
         return { date, value: s ? resolveAgg(s, metricAgg) : 0 };
-      });
+      }));
     }
     if (includeOthers && tailKeys.length > 0) {
-      grouped['Others'] = allDates.map((date) => {
+      grouped['Others'] = accumulate(allDates.map((date) => {
         let merged: Stats = { sum: 0, count: 0, min: Infinity, max: -Infinity };
         let any = false;
         for (const bk of tailKeys) {
@@ -653,12 +662,15 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
           if (s) { merged = mergeStats(merged, s); any = true; }
         }
         return { date, value: any ? resolveAgg(merged, metricAgg) : 0 };
-      });
+      }));
     }
 
+    // When cumulative, each series already holds a running total, so its last
+    // point IS that series' true sum - summing every point would over-count.
     let grandTotal = 0;
     for (const series of Object.values(grouped)) {
-      for (const p of series) grandTotal += p.value;
+      if (cumulative) grandTotal += series.length > 0 ? series[series.length - 1].value : 0;
+      else for (const p of series) grandTotal += p.value;
     }
     return { value: grandTotal, groupedTimeSeries: grouped };
   }
@@ -747,11 +759,14 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
     }
     resolved.sort((a, b) => a.label.localeCompare(b.label));
     const total = resolved.reduce((s, r) => s + r.value, 0);
+    const seriesValues = cumulative
+      ? toCumulativeSeries(resolved.map((r) => r.value))
+      : resolved.map((r) => r.value);
     return {
       value: total,
       labels: resolved.map((r) => r.label),
-      values: resolved.map((r) => r.value),
-      timeSeries: resolved.map((r) => ({ date: r.label, value: r.value })),
+      values: seriesValues,
+      timeSeries: resolved.map((r, i) => ({ date: r.label, value: seriesValues[i] })),
     };
   }
 

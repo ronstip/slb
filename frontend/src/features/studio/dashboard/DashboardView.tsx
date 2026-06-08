@@ -22,6 +22,7 @@ import { useDashboardLayout } from './hooks/useDashboardLayout.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
 import type { DashboardToolbarHandlers } from './SocialDashboardView.tsx';
 import { SocialDashboardToolbar } from './SocialDashboardToolbar.tsx';
+import { toggleAttachedWidget, type AttachedWidget } from './coauthor-context.ts';
 
 interface DashboardViewProps {
   artifact: DashboardArtifact;
@@ -48,6 +49,24 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   // SocialDashboardView re-syncs its local widget state from the refetched
   // layout. Without this the AI's additions don't appear until a refresh.
   const [externalSyncKey, setExternalSyncKey] = useState(0);
+  // Co-author popover open state + the widgets the user pinned to focus the
+  // next message. Lifted here (the common ancestor of the popover and the
+  // grid) so clicking a widget on the grid can toggle a pin, and the popover
+  // can show + send them. Pins clear when the popover closes.
+  const [coAuthorOpen, setCoAuthorOpen] = useState(false);
+  const [attachedWidgets, setAttachedWidgets] = useState<AttachedWidget[]>([]);
+
+  const handleToggleAttachWidget = useCallback((w: AttachedWidget) => {
+    setAttachedWidgets((prev) => toggleAttachedWidget(prev, w));
+  }, []);
+  const handleRemoveAttached = useCallback((i: string) => {
+    setAttachedWidgets((prev) => prev.filter((w) => w.i !== i));
+  }, []);
+  const handleClearAttached = useCallback(() => setAttachedWidgets([]), []);
+  const handleCoAuthorOpenChange = useCallback((open: boolean) => {
+    setCoAuthorOpen(open);
+    if (!open) setAttachedWidgets([]);
+  }, []);
 
   const isEditMode = toolbarHandlers?.isEditMode ?? false;
 
@@ -240,6 +259,11 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             artifactId={artifact.id}
             agentId={artifact.agentId}
             onLayoutChanged={() => setExternalSyncKey((k) => k + 1)}
+            open={coAuthorOpen}
+            onOpenChange={handleCoAuthorOpenChange}
+            attachedWidgets={attachedWidgets}
+            onRemoveAttached={handleRemoveAttached}
+            onClearAttached={handleClearAttached}
           />
           <Button
             variant="outline"
@@ -338,6 +362,9 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             agentId={artifact.agentId}
             customFieldDefs={customFieldDefs}
             externalSyncKey={externalSyncKey}
+            coAuthorActive={coAuthorOpen}
+            attachedWidgetIds={attachedWidgets.map((w) => w.i)}
+            onToggleAttachWidget={handleToggleAttachWidget}
           />
         )}
       </div>

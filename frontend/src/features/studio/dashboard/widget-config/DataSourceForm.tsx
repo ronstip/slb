@@ -428,6 +428,22 @@ export function DataSourceForm({
         </div>
       )}
 
+      {/* Cumulative running total - line charts on a time series */}
+      {!isTopics && chartType === 'line' && config.dimension === 'posted_at' && (
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Cumulative</Label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!config.cumulative}
+              onChange={(e) => onChange({ ...config, cumulative: e.target.checked })}
+              className="h-3.5 w-3.5 cursor-pointer"
+            />
+            Plot a running total instead of per-bucket values
+          </label>
+        </div>
+      )}
+
       {/* Stacked vs grouped - bar only, when a breakdown is set */}
       {!isTopics && chartType === 'bar' && config.breakdownDimension && (
         <div className="flex items-center gap-3">

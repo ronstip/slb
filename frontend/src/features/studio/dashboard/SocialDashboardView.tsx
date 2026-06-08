@@ -17,6 +17,7 @@ import { DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import { useDashboardLayout, useSaveDashboardLayout } from './hooks/useDashboardLayout.ts';
 import { SocialDashboardGrid } from './SocialDashboardGrid.tsx';
 import { SocialWidgetConfigDialog } from './widget-config/SocialWidgetConfigDialog.tsx';
+import type { AttachedWidget } from './coauthor-context.ts';
 
 type ArrayFilterKey = Exclude<keyof DashboardFilters, 'date_range'>;
 
@@ -93,6 +94,13 @@ interface SocialDashboardViewProps {
    *  from the freshly-refetched layout. Without this, the one-shot
    *  initialisation guard below keeps the grid showing stale local state. */
   externalSyncKey?: number;
+  /** True while the AI co-author popover is open. Enables the per-widget
+   *  "pin to message" affordance on the grid. */
+  coAuthorActive?: boolean;
+  /** Ids of widgets currently pinned to the co-author message. */
+  attachedWidgetIds?: string[];
+  /** Toggle a widget's pin. Receives id + current title for the chip. */
+  onToggleAttachWidget?: (w: AttachedWidget) => void;
 }
 
 export function SocialDashboardView({
@@ -116,9 +124,16 @@ export function SocialDashboardView({
   agentId,
   customFieldDefs,
   externalSyncKey = 0,
+  coAuthorActive = false,
+  attachedWidgetIds,
+  onToggleAttachWidget,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
   const navigate = useNavigate();
+  const attachedSet = useMemo(
+    () => new Set(attachedWidgetIds ?? []),
+    [attachedWidgetIds],
+  );
   // Topic widgets navigate to the topic detail page on item click. Only wired
   // when an agent context is available (orphan dashboards have no detail
   // route to land on); public/shared dashboards pass no navigate.
@@ -548,6 +563,9 @@ export function SocialDashboardView({
         gridRef={gridRef}
         serverKpis={serverKpis}
         onAutoSize={handleAutoSize}
+        coAuthorActive={coAuthorActive}
+        attachedWidgetIds={attachedSet}
+        onToggleAttachWidget={onToggleAttachWidget}
       />
 
       {/* Single config dialog - used for both add and edit */}
