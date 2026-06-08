@@ -35,7 +35,7 @@ import { aggregateCustom, aggregatePlatforms, aggregateSentiment, aggregateTable
 import { aggregateObjectList, aggregateObjectTable } from '../object-list-aggregations.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from '../topic-aggregations.ts';
 import { extractChartSeriesLabels } from '../chart-series-labels.ts';
-import { SocialWidgetRenderer, applyWidgetFilters } from '../SocialWidgetRenderer.tsx';
+import { SocialWidgetRenderer, applyWidgetFilters, applyWidgetValueFilters } from '../SocialWidgetRenderer.tsx';
 import { composeWidgetField, type WidgetDataSummary } from '../../../../api/endpoints/dashboard.ts';
 
 // ── Chart type metadata ────────────────────────────────────────────────────────
@@ -752,11 +752,15 @@ function StyleTab({
     // the rename groups expose the object dimension's leaf values. Filter bar
     // doesn't apply to topics (snapshot data).
     const tableObjField = !isTopicsSource ? objectFieldOfTable(tableConfig) : null;
+    // previewPosts is already row-filtered (see previewPosts memo); apply the
+    // value-level prune so rename groups list only the selected dimension
+    // values, matching the rendered table.
+    const tableAggPosts = applyWidgetValueFilters(previewPosts, draft.filters);
     const rows = isTopicsSource
       ? aggregateTopicsTable(topics, tableConfig)
       : tableObjField
-        ? aggregateObjectTable(applyWidgetFilters(previewPosts, draft.filters), tableObjField, tableConfig)
-        : aggregateTable(applyWidgetFilters(previewPosts, draft.filters), tableConfig);
+        ? aggregateObjectTable(tableAggPosts, tableObjField, tableConfig)
+        : aggregateTable(tableAggPosts, tableConfig);
 
     // Build a rename group per dimension column - for topic widgets the
     // typical case is one group ("Topic") but other dims (beat_type,
@@ -801,12 +805,15 @@ function StyleTab({
   const chartObjField = draft.customConfig && !isTopicsSource
     ? objectFieldOf(draft.customConfig)
     : null;
+  // Value-level prune so the per-series picker lists only the values the
+  // rendered chart shows (previewPosts is already row-filtered).
+  const chartAggPosts = applyWidgetValueFilters(previewPosts, draft.filters);
   const previewData = draft.customConfig
     ? (chartObjField
-        ? aggregateObjectList(previewPosts, chartObjField, draft.customConfig)
+        ? aggregateObjectList(chartAggPosts, chartObjField, draft.customConfig)
         : isTopicsSource
           ? aggregateTopicsCustom(topics, draft.customConfig)
-          : aggregateCustom(previewPosts, draft.customConfig))
+          : aggregateCustom(chartAggPosts, draft.customConfig))
     : undefined;
   const seriesLabels = extractChartSeriesLabels(draft.chartType, previewData);
   const styleOverrides: ChartStyleOverrides = draft.styleOverrides
@@ -969,7 +976,7 @@ function buildDataSummary(
     }
     const data = isTopicsSource
       ? aggregateTopicsCustom(topics, cfg)
-      : aggregateCustom(previewPosts, cfg);
+      : aggregateCustom(applyWidgetValueFilters(previewPosts, widget.filters), cfg);
     if (!cfg.dimension && typeof data.value === 'number') {
       summary.kpi_value = data.value;
     } else if (data.labels && data.values) {

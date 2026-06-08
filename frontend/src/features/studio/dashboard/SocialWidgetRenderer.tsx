@@ -362,6 +362,7 @@ function buildPostTableColumns(
 
 function ConfigurableTableWidget({
   posts,
+  filters,
   topics,
   dataSource = 'posts',
   tableConfig: rawTableConfig,
@@ -370,6 +371,7 @@ function ConfigurableTableWidget({
   labelOverrides,
 }: {
   posts: DashboardPost[];
+  filters?: SocialDashboardWidget['filters'];
   topics?: TopicMetric[];
   dataSource?: DataSource;
   tableConfig: CustomTableConfig;
@@ -381,14 +383,19 @@ function ConfigurableTableWidget({
   const isTopicsSource = dataSource === 'topics';
   const rows = useMemo(
     () => {
+      // Grouped tables aggregate by dimension, so prune multi-valued fields to
+      // the selected values (value-level filter). Post-mode tables show raw
+      // posts as rows - leave their values intact.
+      const isGrouped = !isTopicsSource && tableConfig.mode !== 'post';
+      const aggPosts = isGrouped ? applyWidgetValueFilters(posts, filters) : posts;
       // Element-as-unit object table when columns reference a list[object] field.
       const objField = !isTopicsSource ? objectFieldOfTable(tableConfig) : null;
-      if (objField) return aggregateObjectTable(posts, objField, tableConfig);
+      if (objField) return aggregateObjectTable(aggPosts, objField, tableConfig);
       return isTopicsSource
         ? aggregateTopicsTable(topics ?? [], tableConfig)
-        : aggregateTable(posts, tableConfig);
+        : aggregateTable(aggPosts, tableConfig);
     },
-    [isTopicsSource, posts, topics, tableConfig],
+    [isTopicsSource, posts, filters, topics, tableConfig],
   );
   const columnStats = useMemo(() => computeColumnStats(tableConfig, rows), [tableConfig, rows]);
   const isPostMode = tableConfig.mode === 'post';
@@ -542,6 +549,104 @@ export function applyWidgetFilters(
   });
 }
 
+/**
+ * Value-level filtering for multi-valued dimensions. `applyWidgetFilters` is a
+ * ROW filter: it keeps a whole post when ANY of its values matches the
+ * selection - which leaves the post's *other* values in place. A breakdown of
+ * that same field then still counts the unselected values (a post tagged
+ * [pricing, support] filtered to [pricing] would still add to "support").
+ *
+ * This pass prunes each multi-valued field down to its selected values so the
+ * aggregators count only what was filtered. It NEVER drops a post (callers pass
+ * row-filtered posts, so a match is already guaranteed; pruning to [] is fine).
+ * Scalar fields are untouched - their row filter already equals a value filter,
+ * and raw post displays (posts table, post-mode table) must not feed through
+ * this - they should show the post's true values.
+ *
+ * Returns the same array reference when nothing multi-valued is filtered, and
+ * the same post reference for posts that needed no pruning, so memoized
+ * consumers stay cheap.
+ */
+export function applyWidgetValueFilters(
+  posts: DashboardPost[],
+  filters: SocialDashboardWidget['filters'],
+): DashboardPost[] {
+  if (!filters) return posts;
+  const themes = filters.themes?.length ? new Set(filters.themes) : null;
+  const entities = filters.entities?.length ? new Set(filters.entities) : null;
+  const brands = filters.brands?.length ? new Set(filters.brands) : null;
+
+  // Custom-field constraints, split by shape: array-of-scalars fields key on the
+  // field name; list[object] fields collect one selected-value Set per leaf.
+  const arrayCustom = new Map<string, Set<string>>();
+  const objectCustom = new Map<string, Map<string, Set<string>>>();
+  for (const [key, vals] of Object.entries(filters.custom_fields ?? {})) {
+    if (!vals?.length) continue;
+    const dot = key.indexOf('.');
+    if (dot >= 0) {
+      const field = key.slice(0, dot);
+      const leaf = key.slice(dot + 1);
+      const m = objectCustom.get(field) ?? new Map<string, Set<string>>();
+      objectCustom.set(field, m);
+      m.set(leaf, new Set(vals));
+    } else {
+      arrayCustom.set(key, new Set(vals));
+    }
+  }
+
+  if (!themes && !entities && !brands && arrayCustom.size === 0 && objectCustom.size === 0) {
+    return posts;
+  }
+
+  return posts.map((p) => {
+    let next: DashboardPost | null = null;
+    const ensure = () => (next ??= { ...p });
+
+    const pruneArr = (arr: string[] | undefined, sel: Set<string>, assign: (v: string[]) => void) => {
+      if (!arr?.length) return;
+      const f = arr.filter((v) => sel.has(v));
+      if (f.length !== arr.length) assign(f);
+    };
+    if (themes) pruneArr(p.themes, themes, (v) => { ensure().themes = v; });
+    if (entities) pruneArr(p.entities, entities, (v) => { ensure().entities = v; });
+    if (brands) pruneArr(p.detected_brands, brands, (v) => { ensure().detected_brands = v; });
+
+    if ((arrayCustom.size || objectCustom.size) && p.custom_fields) {
+      const src = p.custom_fields;
+      let cf: Record<string, unknown> | null = null;
+      const ensureCf = () => (cf ??= { ...src });
+
+      for (const [name, sel] of arrayCustom) {
+        const raw = src[name];
+        if (!Array.isArray(raw)) continue;
+        // Only scalar arrays here; object arrays are handled by objectCustom.
+        if (raw.some((e) => e && typeof e === 'object' && !Array.isArray(e))) continue;
+        const f = raw.filter((v) => v != null && sel.has(String(v)));
+        if (f.length !== raw.length) ensureCf()[name] = f;
+      }
+
+      for (const [field, leafMap] of objectCustom) {
+        const raw = src[field];
+        if (!Array.isArray(raw)) continue;
+        // Keep elements matching ALL active leaf constraints on this field.
+        const f = raw.filter((el) => {
+          if (!el || typeof el !== 'object' || Array.isArray(el)) return false;
+          for (const [leaf, sel] of leafMap) {
+            const lv = (el as Record<string, unknown>)[leaf];
+            if (lv == null || !sel.has(String(lv))) return false;
+          }
+          return true;
+        });
+        if (f.length !== raw.length) ensureCf()[field] = f;
+      }
+
+      if (cf) ensure().custom_fields = cf;
+    }
+
+    return next ?? p;
+  });
+}
+
 function getConditionFieldValue(post: DashboardPost, field: FilterConditionField): string | number {
   switch (field) {
     case 'like_count': return post.like_count ?? 0;
@@ -621,7 +726,10 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
 }
 
 function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, onFilterToggle }: FrameProps & { posts: DashboardPost[]; onFilterToggle?: (key: string, value: string) => void }) {
-  const cloudData = useMemo(() => aggregateThemeCloud(posts), [posts]);
+  const cloudData = useMemo(
+    () => aggregateThemeCloud(applyWidgetValueFilters(posts, widget.filters)),
+    [posts, widget.filters],
+  );
   return (
     <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
       <SocialWordCloudWidget
@@ -633,7 +741,10 @@ function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onD
 }
 
 function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, onFilterToggle }: FrameProps & { posts: DashboardPost[]; onFilterToggle?: (key: string, value: string) => void }) {
-  const entityData = useMemo(() => aggregateEntities(posts), [posts]);
+  const entityData = useMemo(
+    () => aggregateEntities(applyWidgetValueFilters(posts, widget.filters)),
+    [posts, widget.filters],
+  );
   const listData = useMemo<WidgetData>(() => ({
     labels: entityData.map((d) => d.entity),
     values: entityData.map((d) => d.mentions),
@@ -647,6 +758,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
         <ConfigurableTableWidget
           posts={posts}
+          filters={widget.filters}
           tableConfig={tableConfig}
           onFilterToggle={onFilterToggle}
           labelOverrides={widget.styleOverrides?.seriesLabels}
@@ -677,6 +789,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate}>
         <ConfigurableTableWidget
           posts={posts}
+          filters={widget.filters}
           tableConfig={tableConfig}
           onFilterToggle={onFilterToggle}
           labelOverrides={widget.styleOverrides?.seriesLabels}
@@ -730,16 +843,21 @@ function CustomWidget({
     [config, activeMetric],
   );
 
+  // Value-level filtering: prune multi-valued fields to the selected values so a
+  // breakdown of a filtered field counts only what was selected (not the whole
+  // kept post). Row filtering already scoped which posts are here.
+  const aggPosts = useMemo(() => applyWidgetValueFilters(posts, widget.filters), [posts, widget.filters]);
+
   const data = useMemo<WidgetData | null>(() => {
     if (!effectiveConfig) return null;
     // list[object] fields aggregate element-as-unit on the posts source - check
     // before the topics branch since object tokens live inside `dataSource:posts`.
     const objField = objectFieldOf(effectiveConfig);
-    if (objField) return aggregateObjectList(posts, objField, effectiveConfig);
+    if (objField) return aggregateObjectList(aggPosts, objField, effectiveConfig);
     return isTopicsSource
       ? aggregateTopicsCustom(topics ?? [], effectiveConfig)
-      : aggregateCustom(posts, effectiveConfig);
-  }, [isTopicsSource, posts, topics, effectiveConfig]);
+      : aggregateCustom(aggPosts, effectiveConfig);
+  }, [isTopicsSource, aggPosts, topics, effectiveConfig]);
 
   const cloudData = useMemo(() => {
     if (!data?.labels || !data.values) return [];
@@ -840,6 +958,7 @@ function CustomWidget({
         <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} headerAction={headerAction}>
           <ConfigurableTableWidget
             posts={posts}
+            filters={widget.filters}
             topics={topics}
             dataSource={dataSource}
             tableConfig={tableConfig}
@@ -876,44 +995,47 @@ function CustomWidget({
 
 
 function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
+  // Value-level filter: prune multi-valued fields (themes) to the selected
+  // values. Scalar aggregations are unaffected - prune never drops posts.
+  const aggPosts = useMemo(() => applyWidgetValueFilters(posts, widget.filters), [posts, widget.filters]);
   const chartData = useMemo<WidgetData | null>(() => {
     switch (widget.aggregation) {
       case 'sentiment': {
-        const d = aggregateSentiment(posts);
+        const d = aggregateSentiment(aggPosts);
         return { labels: d.map((x) => x.sentiment), values: d.map((x) => x.count) };
       }
       case 'emotion': {
-        const d = aggregateEmotions(posts);
+        const d = aggregateEmotions(aggPosts);
         return { labels: d.map((x) => x.emotion), values: d.map((x) => x.count) };
       }
       case 'platform': {
-        const d = aggregatePlatforms(posts);
+        const d = aggregatePlatforms(aggPosts);
         return { labels: d.map((x) => x.platform), values: d.map((x) => x.post_count) };
       }
       case 'themes': {
-        const d = aggregateThemes(posts);
+        const d = aggregateThemes(aggPosts);
         return { labels: d.map((x) => x.theme), values: d.map((x) => x.post_count) };
       }
       case 'content-type': {
-        const d = aggregateContentTypes(posts);
+        const d = aggregateContentTypes(aggPosts);
         return { labels: d.map((x) => x.content_type), values: d.map((x) => x.count) };
       }
       case 'language': {
-        const d = aggregateLanguages(posts);
+        const d = aggregateLanguages(aggPosts);
         return { labels: d.map((x) => x.language), values: d.map((x) => x.post_count) };
       }
       case 'engagement-rate': {
-        const d = aggregateEngagementRate(posts);
+        const d = aggregateEngagementRate(aggPosts);
         return { timeSeries: d.map((x) => ({ date: x.date, value: x.rate })) };
       }
       case 'theme-cloud': {
-        const d = aggregateThemeCloud(posts);
+        const d = aggregateThemeCloud(aggPosts);
         return { labels: d.map((x) => x.text), values: d.map((x) => x.value) };
       }
       default:
         return null;
     }
-  }, [widget.aggregation, posts]);
+  }, [widget.aggregation, aggPosts]);
 
   if (widget.chartType === 'progress-list') {
     return (
