@@ -59,6 +59,34 @@ def resolve_current_dashboard_title(fs_db, dashboard_id: str, fallback: str) -> 
     return fallback
 
 
+def resolve_share_collection_ids(
+    fs, frozen_collection_ids: list[str], agent_id: str | None
+) -> list[str]:
+    """Resolve the collections a share should serve.
+
+    The share doc freezes `collection_ids` at create time, but the owner's
+    explorer renders the agent's CURRENT collection set (`task.collection_ids`).
+    Collections added to the agent after the share was made - e.g. a later run
+    that introduced new enrichment fields like list[object] - are present in the
+    explorer but missing from the frozen snapshot, so widgets bound to those
+    fields show "No Data" only on the share.
+
+    Union the snapshot with the agent's live collection_ids so the share tracks
+    the agent like the explorer does, never serving fewer collections than were
+    frozen. Best-effort: any lookup failure falls back to the frozen list.
+    """
+    if not agent_id:
+        return frozen_collection_ids
+    try:
+        agent_collection_ids = fs.get_agent_collection_ids(agent_id)
+    except Exception:  # noqa: BLE001 - best-effort; never block the public link
+        logger.exception("Failed to resolve agent collections for %s", agent_id)
+        return frozen_collection_ids
+    if not agent_collection_ids:
+        return frozen_collection_ids
+    return sorted(set(frozen_collection_ids) | set(agent_collection_ids))
+
+
 # Slugs must look like marketing-friendly URL segments: lowercase alnum + single
 # hyphens, 3–64 chars, no leading/trailing hyphen, no consecutive hyphens.
 _SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])?$")
@@ -322,6 +350,13 @@ async def get_shared_dashboard(
                 )
             except Exception:  # noqa: BLE001 - best-effort backfill
                 logger.exception("Failed to backfill agent_id on share %s", token)
+
+    # Track the agent's CURRENT collections, not the snapshot frozen at
+    # share-create time, so collections added later (e.g. a run that introduced
+    # list[object] enrichment) appear on the share just like in the explorer.
+    collection_ids = await asyncio.to_thread(
+        resolve_share_collection_ids, fs, collection_ids, agent_id
+    )
 
     name_rows = await asyncio.to_thread(
         bq.query, COLLECTION_NAMES_SQL, {"collection_ids": collection_ids}
