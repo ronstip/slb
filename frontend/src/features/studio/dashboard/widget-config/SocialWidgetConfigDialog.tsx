@@ -23,7 +23,7 @@ const MarkdownArtifactEditor = lazy(() =>
 );
 import { cn } from '../../../../lib/utils.ts';
 import type { CustomFieldDef, DashboardPost, TopicMetric } from '../../../../api/types.ts';
-import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension } from '../types-social-dashboard.ts';
+import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension, TimeBucket } from '../types-social-dashboard.ts';
 import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig, objectFieldOf, objectFieldOfTable } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
@@ -640,6 +640,25 @@ function SocialWidgetConfigDialogInner({
                         h: NUMBER_SIZE_GRID[numberSize].h,
                       }))
                     }
+                    onShowSparklineChange={(showSparkline) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        showSparkline,
+                        // seed sensible X-axis defaults the first time it's turned on
+                        ...(showSparkline && !prev.trendDimension
+                          ? { trendDimension: 'posted_at' as const, trendTimeBucket: prev.trendTimeBucket ?? 'day' }
+                          : {}),
+                      }))
+                    }
+                    onTrendDimensionChange={(trendDimension) =>
+                      setDraft((prev) => ({ ...prev, trendDimension }))
+                    }
+                    onTrendTimeBucketChange={(trendTimeBucket) =>
+                      setDraft((prev) => ({ ...prev, trendTimeBucket }))
+                    }
+                    onTrendCumulativeChange={(trendCumulative) =>
+                      setDraft((prev) => ({ ...prev, trendCumulative }))
+                    }
                   />
                 </TabsContent>
               </div>
@@ -710,6 +729,10 @@ function StyleTab({
   onAccentChange,
   onTableConfigChange,
   onNumberSizeChange,
+  onShowSparklineChange,
+  onTrendDimensionChange,
+  onTrendTimeBucketChange,
+  onTrendCumulativeChange,
 }: {
   draft: SocialDashboardWidget;
   previewPosts: DashboardPost[];
@@ -719,6 +742,10 @@ function StyleTab({
   onAccentChange: (accent: string | undefined) => void;
   onTableConfigChange: (config: CustomTableConfig) => void;
   onNumberSizeChange: (size: NumberSize) => void;
+  onShowSparklineChange: (show: boolean) => void;
+  onTrendDimensionChange: (dim: CustomDimension) => void;
+  onTrendTimeBucketChange: (bucket: TimeBucket) => void;
+  onTrendCumulativeChange: (cumulative: boolean) => void;
 }) {
   const isTopicsSource = (draft.dataSource ?? 'posts') === 'topics';
   // KPI cards: size + accent + (optional) KPI index picker.
@@ -729,9 +756,17 @@ function StyleTab({
         kpiIndex={draft.kpiIndex}
         accent={draft.styleOverrides?.accent ?? draft.accent}
         numberSize={draft.numberSize}
+        showSparkline={draft.showSparkline}
+        trendDimension={draft.trendDimension}
+        trendTimeBucket={draft.trendTimeBucket}
+        trendCumulative={draft.trendCumulative}
         onKpiIndexChange={onKpiIndexChange}
         onAccentChange={onAccentChange}
         onNumberSizeChange={onNumberSizeChange}
+        onShowSparklineChange={onShowSparklineChange}
+        onTrendDimensionChange={onTrendDimensionChange}
+        onTrendTimeBucketChange={onTrendTimeBucketChange}
+        onTrendCumulativeChange={onTrendCumulativeChange}
       />
     );
   }

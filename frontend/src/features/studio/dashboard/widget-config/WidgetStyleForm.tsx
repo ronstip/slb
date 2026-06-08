@@ -1,8 +1,18 @@
 import { Label } from '../../../../components/ui/label.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../../components/ui/select.tsx';
 import { cn } from '../../../../lib/utils.ts';
-import type { NumberSize, SocialAggregation } from '../types-social-dashboard.ts';
-import { DEFAULT_NUMBER_SIZE, KPI_OPTIONS } from '../types-social-dashboard.ts';
+import type { CustomDimension, NumberSize, SocialAggregation, TimeBucket } from '../types-social-dashboard.ts';
+import { DATETIME_DIMENSIONS, DEFAULT_NUMBER_SIZE, KPI_OPTIONS, getDimensionMeta } from '../types-social-dashboard.ts';
+import { resolveSparklineEnabled } from '../sparkline-visibility.ts';
+
+const TIME_BUCKETS: TimeBucket[] = ['hour', 'day', 'week', 'month'];
 
 const PRESET_COLORS = [
   '#4A7C8F', '#2B5066', '#5A7FA0', '#6B3040', '#9E4A5A',
@@ -20,9 +30,17 @@ interface WidgetStyleFormProps {
   kpiIndex?: number;
   accent?: string;
   numberSize?: NumberSize;
+  showSparkline?: boolean;
+  trendDimension?: CustomDimension;
+  trendTimeBucket?: TimeBucket;
+  trendCumulative?: boolean;
   onKpiIndexChange?: (index: number) => void;
   onAccentChange: (color: string | undefined) => void;
   onNumberSizeChange?: (size: NumberSize) => void;
+  onShowSparklineChange?: (show: boolean) => void;
+  onTrendDimensionChange?: (dim: CustomDimension) => void;
+  onTrendTimeBucketChange?: (bucket: TimeBucket) => void;
+  onTrendCumulativeChange?: (cumulative: boolean) => void;
 }
 
 export function WidgetStyleForm({
@@ -30,11 +48,21 @@ export function WidgetStyleForm({
   kpiIndex,
   accent,
   numberSize,
+  showSparkline,
+  trendDimension,
+  trendTimeBucket,
+  trendCumulative,
   onKpiIndexChange,
   onAccentChange,
   onNumberSizeChange,
+  onShowSparklineChange,
+  onTrendDimensionChange,
+  onTrendTimeBucketChange,
+  onTrendCumulativeChange,
 }: WidgetStyleFormProps) {
   const activeSize = numberSize ?? DEFAULT_NUMBER_SIZE;
+  // default the toggle to the per-size behaviour so the checkbox reflects what's rendered
+  const sparklineOn = showSparkline ?? resolveSparklineEnabled(activeSize, undefined);
   return (
     <div className="space-y-5">
       {/* Size selector (number-card only) */}
@@ -61,6 +89,82 @@ export function WidgetStyleForm({
           <p className="text-[10px] text-muted-foreground">
             Changing size also resizes the widget on the grid.
           </p>
+        </div>
+      )}
+
+      {/* Trendline toggle + X-axis (number-card only) */}
+      {onShowSparklineChange && (
+        <div className="space-y-2.5">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={sparklineOn}
+              onChange={(e) => onShowSparklineChange(e.target.checked)}
+              className="h-3.5 w-3.5 cursor-pointer"
+            />
+            Show trendline
+          </label>
+
+          {sparklineOn && onTrendDimensionChange && (
+            <div className="space-y-2 border-l-2 border-border/60 pl-3">
+              {/* X-axis datetime dimension */}
+              <div className="flex items-center gap-3">
+                <Label className="text-xs w-16 shrink-0 text-muted-foreground">X-axis</Label>
+                <Select
+                  value={trendDimension ?? 'posted_at'}
+                  onValueChange={(v) => onTrendDimensionChange(v as CustomDimension)}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DATETIME_DIMENSIONS.map((dim) => (
+                      <SelectItem key={dim} value={dim} className="text-xs">
+                        {getDimensionMeta(dim).label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Time bucket */}
+              {onTrendTimeBucketChange && (
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs w-16 shrink-0 text-muted-foreground">Bucket</Label>
+                  <div className="flex items-center gap-1.5">
+                    {TIME_BUCKETS.map((bucket) => (
+                      <button
+                        key={bucket}
+                        type="button"
+                        onClick={() => onTrendTimeBucketChange(bucket)}
+                        className={cn(
+                          'rounded-md border px-2.5 py-1 text-xs font-medium capitalize transition-all',
+                          (trendTimeBucket ?? 'day') === bucket
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                        )}
+                      >
+                        {bucket}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cumulative (running total) */}
+              {onTrendCumulativeChange && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!trendCumulative}
+                    onChange={(e) => onTrendCumulativeChange(e.target.checked)}
+                    className="h-3.5 w-3.5 cursor-pointer"
+                  />
+                  Cumulative
+                </label>
+              )}
+            </div>
+          )}
         </div>
       )}
 

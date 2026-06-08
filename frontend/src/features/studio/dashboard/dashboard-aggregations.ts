@@ -509,7 +509,7 @@ export function getMetricValue(p: DashboardPost, metric: CustomMetric): number {
   }
 }
 
-function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartConfig['timeBucket']>): string {
+export function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartConfig['timeBucket']>): string {
   if (!dateStr) return 'unknown';
   if (timeBucket === 'hour') {
     // ISO-8601 hour resolution: YYYY-MM-DDTHH:00:00 (local), kept parseable by `new Date`.
@@ -521,16 +521,19 @@ function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartConfig['
     return `${y}-${mo}-${da}T${h}:00:00`;
   }
   if (timeBucket === 'day') return dateStr.slice(0, 10);
-  const d = new Date(dateStr);
   if (timeBucket === 'week') {
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(d);
-    monday.setDate(diff);
-    return monday.toISOString().slice(0, 10);
+    // Compute the week's Monday in UTC off the calendar day only (no
+    // time-of-day, no local-tz drift), so every post in the same ISO week
+    // collapses to one key. Mixing local date math with toISOString() here
+    // used to fragment a week into 2 keys in non-UTC timezones.
+    const d = new Date(`${dateStr.slice(0, 10)}T00:00:00Z`);
+    const day = d.getUTCDay(); // 0=Sun..6=Sat
+    const toMonday = (day === 0 ? -6 : 1) - day;
+    d.setUTCDate(d.getUTCDate() + toMonday);
+    return d.toISOString().slice(0, 10);
   }
-  // month
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  // month - calendar month from the UTC date string (tz-stable, matches day)
+  return dateStr.slice(0, 7);
 }
 
 function getDimensionKeys(p: DashboardPost, dim: CustomDimension, timeBucket: string): string[] {

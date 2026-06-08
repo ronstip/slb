@@ -423,6 +423,9 @@ export function getTopicDimensionMeta(
   return TOPIC_DIMENSION_META[dim] ?? UNKNOWN_DIMENSION_META;
 }
 
+/** Granularity for time-series (posted_at) aggregation. */
+export type TimeBucket = 'hour' | 'day' | 'week' | 'month';
+
 export interface CustomChartConfig {
   /** What to group by. undefined = no groupBy → number-card.
    *  Vocabulary depends on the widget's `dataSource`:
@@ -434,7 +437,7 @@ export interface CustomChartConfig {
   /** default 'sum' */
   metricAgg?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   /** only applies when dimension === 'posted_at' */
-  timeBucket?: 'hour' | 'day' | 'week' | 'month';
+  timeBucket?: TimeBucket;
   /** Bar orientation - default 'horizontal' */
   barOrientation?: 'horizontal' | 'vertical';
   /** Optional second dimension to split bars/slices into sub-groups. For topic
@@ -467,6 +470,12 @@ export const DIMENSION_META: Record<StandardCustomDimension, DimensionMeta> = {
   entities:       { label: 'Entity',        icon: 'Users',         description: 'Group by mentioned entity' },
   brands:         { label: 'Brand',         icon: 'Sparkles',      description: 'Group by detected brand' },
 };
+
+/** Dimensions that the aggregation framework treats as a datetime/time axis
+ *  (the `aggregateCustom` time-series path). These are the valid X-axis choices
+ *  for a number-card trendline. Currently only `posted_at`; add here (and teach
+ *  `aggregateCustom`) when another datetime dimension becomes available. */
+export const DATETIME_DIMENSIONS: CustomDimension[] = ['posted_at'];
 
 export const METRIC_META: Record<CustomMetric, { label: string; description: string; supportsAvg: boolean }> = {
   post_count:       { label: 'Post Count',        description: 'Number of posts',            supportsAvg: false },
@@ -1029,6 +1038,18 @@ export interface SocialDashboardWidget {
   figureText?: string;
   /** Visual scale for number-card widgets. Undefined → medium. */
   numberSize?: NumberSize;
+  /** Trendline (sparkline) visibility for number-card widgets. Undefined →
+   *  size default (small off, medium/big on). Explicit value overrides. */
+  showSparkline?: boolean;
+  /** X-axis datetime dimension for the number-card trendline. Undefined →
+   *  'posted_at'. The series is produced by the standard `aggregateCustom`
+   *  time-series path, so only datetime dimensions are valid here. */
+  trendDimension?: CustomDimension;
+  /** Time bucket for the number-card trendline X-axis. Undefined → 'day'. */
+  trendTimeBucket?: TimeBucket;
+  /** When true, the number-card trendline shows a running total (cumulative)
+   *  rather than per-bucket values. Undefined → false. */
+  trendCumulative?: boolean;
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────

@@ -25,7 +25,7 @@ from api.schemas.responses import (
 
 logger = logging.getLogger(__name__)
 
-MAX_ROWS = 5000
+MAX_ROWS = 10000
 
 
 def derive_agent_id_for_collections(fs, collection_ids: list[str]) -> str | None:

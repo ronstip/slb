@@ -15,6 +15,7 @@ import { useTheme } from '../../../components/theme-provider.tsx';
 import { generateChartPalette } from '../../../lib/accent-colors.ts';
 import type { NumberSize } from './types-social-dashboard.ts';
 import { DEFAULT_NUMBER_SIZE } from './types-social-dashboard.ts';
+import { resolveSparklineEnabled } from './sparkline-visibility.ts';
 
 const SIZE_STYLES: Record<NumberSize, {
   container: string;
@@ -72,6 +73,8 @@ interface SocialKpiCardProps {
   /** KPI index (0–4) used to pick a shade from the theme palette when no accent is set */
   kpiIndex?: number;
   size?: NumberSize;
+  /** Explicit trendline toggle; undefined falls back to the size default. */
+  showSparkline?: boolean;
   isEditMode?: boolean;
   onConfigure?: () => void;
   onRemove?: () => void;
@@ -121,7 +124,7 @@ function Sparkline({ data, color, height }: { data: number[]; color: string; hei
   );
 }
 
-export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onConfigure, onRemove, onDuplicate }: SocialKpiCardProps) {
+export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, isEditMode, onConfigure, onRemove, onDuplicate }: SocialKpiCardProps) {
   const { accentColor, theme } = useTheme();
   const isDark =
     theme === 'dark' ||
@@ -138,7 +141,10 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
     : '-';
 
   const Icon = kpi ? ICON_MAP[kpi.icon] : Hash;
-  const hasSparkline = styles.showSparkline && (kpi?.sparklineData?.length ?? 0) > 1;
+  const sparkEnabled = resolveSparklineEnabled(size ?? DEFAULT_NUMBER_SIZE, showSparkline);
+  // small cards have sparkH 0; give a usable height when the toggle forces it on
+  const sparkHeight = styles.sparkH || 22;
+  const hasSparkline = sparkEnabled && (kpi?.sparklineData?.length ?? 0) > 1;
 
   return (
     <Card
@@ -222,7 +228,7 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, isEditMode, onC
         )}
         {hasSparkline && kpi && (
           <div className="mt-1.5 -mx-1 opacity-90">
-            <Sparkline data={kpi.sparklineData} color={color} height={styles.sparkH} />
+            <Sparkline data={kpi.sparklineData} color={color} height={sparkHeight} />
           </div>
         )}
       </div>

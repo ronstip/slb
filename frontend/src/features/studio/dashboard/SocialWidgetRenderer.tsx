@@ -28,6 +28,7 @@ import {
   aggregateEngagementRate,
   computeEnhancedKpis,
 } from './dashboard-aggregations.ts';
+import { resolveSparklineEnabled, toCumulativeSeries } from './sparkline-visibility.ts';
 import type { ColumnDef } from '../../../components/DataTable/DataTable.tsx';
 import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 import { formatNumber } from '../../../lib/format.ts';
@@ -717,6 +718,7 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
       accent={widget.styleOverrides?.accent ?? widget.accent}
       kpiIndex={widget.kpiIndex ?? 0}
       size={widget.numberSize}
+      showSparkline={widget.showSparkline}
       isEditMode={isEditMode}
       onConfigure={onConfigure}
       onRemove={onRemove}
@@ -864,9 +866,26 @@ function CustomWidget({
     return data.labels.map((text, i) => ({ text, value: data.values![i] }));
   }, [data]);
 
+  // Trendline series: re-run the SAME aggregation framework over the chosen
+  // datetime X-axis dimension + bucket, so the number-card sparkline shares the
+  // charts' time-series path (no bespoke per-card aggregation). Only computed
+  // when the trendline is enabled.
+  const sparklineData = useMemo(() => {
+    if (!effectiveConfig) return [];
+    if (!resolveSparklineEnabled(widget.numberSize ?? 'medium', widget.showSparkline)) return [];
+    const series = aggregateCustom(aggPosts, {
+      ...effectiveConfig,
+      dimension: widget.trendDimension ?? 'posted_at',
+      timeBucket: widget.trendTimeBucket ?? 'day',
+      breakdownDimension: undefined,
+    });
+    const values = series.values ?? [];
+    return widget.trendCumulative ? toCumulativeSeries(values) : values;
+  }, [effectiveConfig, aggPosts, widget.numberSize, widget.showSparkline, widget.trendDimension, widget.trendTimeBucket, widget.trendCumulative]);
+
   const syntheticKpi = useMemo(
-    () => ({ label: widget.title, value: data?.value ?? 0, icon: 'posts' as const, sparklineData: [] }),
-    [widget.title, data?.value],
+    () => ({ label: widget.title, value: data?.value ?? 0, icon: 'posts' as const, sparklineData }),
+    [widget.title, data?.value, sparklineData],
   );
 
   const metricLabel = (m: AnyMetric): string => {
@@ -911,6 +930,7 @@ function CustomWidget({
         kpi={syntheticKpi}
         accent={widget.styleOverrides?.accent ?? widget.accent}
         size={widget.numberSize}
+        showSparkline={widget.showSparkline}
         isEditMode={isEditMode}
         onConfigure={onConfigure}
         onRemove={onRemove}
