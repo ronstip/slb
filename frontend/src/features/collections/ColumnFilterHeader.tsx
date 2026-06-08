@@ -54,7 +54,14 @@ interface MultiSelectFilterProps {
   renderOption?: (option: string, count: number) => React.ReactNode;
 }
 
-export function MultiSelectFilterHeader({
+/**
+ * The popover *body* of a multi-select filter: search box, scrollable list of
+ * values with per-value counts + an "Only" affordance, and Select All / Clear
+ * actions. Extracted from MultiSelectFilterHeader so it can be reused outside
+ * a column header (e.g. the widget config dialog's Filters tab) with a
+ * different trigger. Single source of truth for the list UI.
+ */
+export function MultiSelectFilterBody({
   label,
   options,
   selected,
@@ -85,8 +92,99 @@ export function MultiSelectFilterHeader({
     onChange(new Set([value]));
   };
 
-  const totalSelected = selected.size;
+  return (
+    <>
+      {/* Search within filter */}
+      {options.length > 5 && (
+        <div className="shrink-0 border-b border-border/40 p-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Search ${label.toLowerCase()}...`}
+              className="h-7 pl-7 text-xs"
+            />
+          </div>
+        </div>
+      )}
 
+      {/* Scrollable options list */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="p-1.5 space-y-0.5">
+          {filtered.length === 0 ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">No matches</div>
+          ) : (
+            filtered.map((opt) => {
+              const isChecked = selected.has(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  className={cn(
+                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-xs cursor-pointer transition-colors',
+                    isChecked
+                      ? 'bg-primary/8 text-foreground'
+                      : 'hover:bg-accent text-foreground/80',
+                  )}
+                >
+                  <Checkbox
+                    checked={isChecked}
+                    onCheckedChange={() => toggle(opt.value)}
+                    className="h-3.5 w-3.5 shrink-0"
+                  />
+                  <span className="flex-1 min-w-0 truncate">
+                    {renderOption
+                      ? renderOption(opt.value, opt.count)
+                      : <span className="capitalize">{opt.value}</span>}
+                  </span>
+                  {/* "Only" - clears every other value, keeps just this one. */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      selectOnly(opt.value);
+                    }}
+                    className="shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary opacity-0 transition-opacity hover:bg-primary/10 group-hover:opacity-100"
+                  >
+                    Only
+                  </button>
+                  <span className="shrink-0 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                    {opt.count.toLocaleString()}
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Action buttons - pinned at bottom */}
+      <div className="shrink-0 flex items-center gap-1.5 border-t border-border/40 px-2 py-1.5 bg-muted/20">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 flex-1 text-[10px] font-semibold"
+          onClick={selectAll}
+        >
+          Select All
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 flex-1 text-[10px] font-semibold text-muted-foreground"
+          onClick={() => onChange(new Set())}
+          disabled={!hasFilter}
+        >
+          Clear
+        </Button>
+      </div>
+    </>
+  );
+}
+
+export function MultiSelectFilterHeader(props: MultiSelectFilterProps) {
+  const hasFilter = props.selected.size > 0;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -96,10 +194,10 @@ export function MultiSelectFilterHeader({
             hasFilter ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
           )}
         >
-          {label}
+          {props.label}
           {hasFilter ? (
             <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
-              {totalSelected}
+              {props.selected.size}
             </span>
           ) : (
             <FilterAffordance active={false} />
@@ -111,91 +209,7 @@ export function MultiSelectFilterHeader({
         className="flex w-56 max-h-80 flex-col overflow-hidden p-0"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Search within filter */}
-        {options.length > 5 && (
-          <div className="shrink-0 border-b border-border/40 p-2">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={`Search ${label.toLowerCase()}...`}
-                className="h-7 pl-7 text-xs"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Scrollable options list */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="p-1.5 space-y-0.5">
-            {filtered.length === 0 ? (
-              <div className="py-4 text-center text-xs text-muted-foreground">No matches</div>
-            ) : (
-              filtered.map((opt) => {
-                const isChecked = selected.has(opt.value);
-                return (
-                  <label
-                    key={opt.value}
-                    className={cn(
-                      'group flex items-center gap-2 rounded-md px-2 py-1.5 text-xs cursor-pointer transition-colors',
-                      isChecked
-                        ? 'bg-primary/8 text-foreground'
-                        : 'hover:bg-accent text-foreground/80',
-                    )}
-                  >
-                    <Checkbox
-                      checked={isChecked}
-                      onCheckedChange={() => toggle(opt.value)}
-                      className="h-3.5 w-3.5 shrink-0"
-                    />
-                    <span className="flex-1 min-w-0 truncate">
-                      {renderOption
-                        ? renderOption(opt.value, opt.count)
-                        : <span className="capitalize">{opt.value}</span>}
-                    </span>
-                    {/* "Only" - clears every other value, keeps just this one. */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        selectOnly(opt.value);
-                      }}
-                      className="shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary opacity-0 transition-opacity hover:bg-primary/10 group-hover:opacity-100"
-                    >
-                      Only
-                    </button>
-                    <span className="shrink-0 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-                      {opt.count.toLocaleString()}
-                    </span>
-                  </label>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Action buttons - pinned at bottom */}
-        <div className="shrink-0 flex items-center gap-1.5 border-t border-border/40 px-2 py-1.5 bg-muted/20">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 flex-1 text-[10px] font-semibold"
-            onClick={selectAll}
-          >
-            Select All
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 flex-1 text-[10px] font-semibold text-muted-foreground"
-            onClick={() => onChange(new Set())}
-            disabled={!hasFilter}
-          >
-            Clear
-          </Button>
-        </div>
+        <MultiSelectFilterBody {...props} />
       </PopoverContent>
     </Popover>
   );

@@ -320,6 +320,11 @@ function SocialWidgetConfigDialogInner({
   // Callback ref + state so the editor re-renders once the host mounts.
   const [editorOverlayHost, setEditorOverlayHost] = useState<HTMLDivElement | null>(null);
 
+  // Portal host for the Filters tab popovers. They must render INSIDE the
+  // modal Dialog's subtree - a body portal sits outside react-remove-scroll's
+  // allowed area, which silently blocks wheel-scrolling the option lists.
+  const [popoverHost, setPopoverHost] = useState<HTMLDivElement | null>(null);
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
@@ -608,6 +613,8 @@ function SocialWidgetConfigDialogInner({
                   <WidgetFilterForm
                     filters={draft.filters ?? {}}
                     availableOptions={availableOptions}
+                    posts={filteredPosts}
+                    portalContainer={popoverHost}
                     onChange={(filters) => setDraft((prev) => ({ ...prev, filters }))}
                   />
                 </TabsContent>
@@ -669,6 +676,8 @@ function SocialWidgetConfigDialogInner({
           </Button>
         </DialogFooter>
         {isTextMode && <div ref={setEditorOverlayHost} />}
+        {/* Filters-tab popover portal host (inside the dialog - see popoverHost). */}
+        <div ref={setPopoverHost} />
 
         {/* ── Corner resize handle (bottom-right) ── */}
         <div

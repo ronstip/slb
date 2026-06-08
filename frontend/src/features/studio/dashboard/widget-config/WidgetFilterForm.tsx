@@ -1,8 +1,13 @@
+import { useMemo } from 'react';
 import { Button } from '../../../../components/ui/button.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { Label } from '../../../../components/ui/label.tsx';
 import { Separator } from '../../../../components/ui/separator.tsx';
-import { MultiSelect } from '../../../../components/ui/multi-select.tsx';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../../../../components/ui/popover.tsx';
 import {
   Select,
   SelectContent,
@@ -10,7 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../../../components/ui/select.tsx';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, ChevronDown } from 'lucide-react';
+import { MultiSelectFilterBody, type FilterOption } from '../../../collections/ColumnFilterHeader.tsx';
+import type { DashboardPost } from '../../../../api/types.ts';
 import type { SocialWidgetFilters, FilterCondition, FilterConditionField, FilterConditionOperator } from '../types-social-dashboard.ts';
 import {
   CONDITION_FIELD_OPTIONS,
@@ -24,6 +31,54 @@ import {
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 
 type ArrayFilterKey = Exclude<keyof SocialWidgetFilters, 'date_range' | 'conditions' | 'custom_fields'>;
+
+/** Per-post value extractor for each multi-select section - mirrors the match
+ *  logic in applyWidgetFilters so the popover counts line up with what the
+ *  filter would actually keep. Array fields (themes/entities/brands) contribute
+ *  all their members; scalar fields contribute their single value. */
+const SECTION_ACCESSORS: Record<ArrayFilterKey, (p: DashboardPost) => string[]> = {
+  sentiment: (p) => (p.sentiment ? [p.sentiment] : []),
+  emotion: (p) => (p.emotion ? [p.emotion] : []),
+  platform: (p) => (p.platform ? [p.platform] : []),
+  language: (p) => (p.language ? [p.language] : []),
+  content_type: (p) => (p.content_type ? [p.content_type] : []),
+  channel_type: (p) => (p.channel_type ? [p.channel_type] : []),
+  collection: (p) => (p.collection_id ? [p.collection_id] : []),
+  channels: (p) => (p.channel_handle ? [p.channel_handle] : []),
+  themes: (p) => p.themes ?? [],
+  entities: (p) => p.entities ?? [],
+  brands: (p) => p.detected_brands ?? [],
+};
+
+/** Distinct custom-field value keys for one post, matching the option keys
+ *  produced by extractOptions: scalar/array fields key on the field name,
+ *  list[object] fields key each scalar leaf as `field.leaf`. */
+function customValueKeys(p: DashboardPost): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  const add = (key: string, value: string) => {
+    (out.get(key) ?? out.set(key, new Set()).get(key)!).add(value);
+  };
+  if (!p.custom_fields) return out;
+  for (const [name, raw] of Object.entries(p.custom_fields)) {
+    if (raw == null) continue;
+    if (Array.isArray(raw) && raw.some((e) => e && typeof e === 'object' && !Array.isArray(e))) {
+      for (const el of raw) {
+        if (!el || typeof el !== 'object' || Array.isArray(el)) continue;
+        for (const [leaf, lv] of Object.entries(el as Record<string, unknown>)) {
+          if (lv == null || typeof lv === 'object') continue;
+          add(`${name}.${leaf}`, String(lv));
+        }
+      }
+      continue;
+    }
+    if (Array.isArray(raw)) {
+      for (const v of raw) if (v != null) add(name, String(v));
+    } else {
+      add(name, String(raw));
+    }
+  }
+  return out;
+}
 
 const FILTER_SECTIONS: Array<{ label: string; key: ArrayFilterKey; placeholder: string }> = [
   { label: 'Sentiment', key: 'sentiment', placeholder: 'All sentiments' },
@@ -59,13 +114,99 @@ function getInputType(field: FilterConditionField): string {
   return 'text';
 }
 
+/** A labeled multi-select filter row: form-style trigger showing the current
+ *  selection summary, opening the shared MultiSelectFilterBody (search +
+ *  per-value counts + Only + Select All / Clear). */
+function FilterRow({
+  label,
+  title,
+  options,
+  counts,
+  selected,
+  placeholder,
+  portalContainer,
+  onChange,
+}: {
+  label: string;
+  title?: string;
+  options: string[];
+  counts: Map<string, number> | undefined;
+  selected: string[];
+  placeholder: string;
+  portalContainer?: HTMLElement | null;
+  onChange: (next: string[]) => void;
+}) {
+  const optionList: FilterOption[] = options.map((o) => ({ value: o, count: counts?.get(o) ?? 0 }));
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const summary =
+    selected.length === 0 ? placeholder : selected.length === 1 ? selected[0] : `${selected.length} selected`;
+
+  return (
+    <div className="flex items-center gap-3">
+      <Label className="text-xs w-24 shrink-0" title={title}>{label}</Label>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="flex h-8 flex-1 items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-xs transition-colors hover:bg-accent/40"
+          >
+            <span className={selected.length ? 'truncate capitalize' : 'truncate text-muted-foreground'}>
+              {summary}
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          container={portalContainer}
+          className="flex w-64 max-h-80 flex-col overflow-hidden p-0"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MultiSelectFilterBody
+            label={label}
+            options={optionList}
+            selected={selectedSet}
+            onChange={(next) => onChange([...next])}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 interface WidgetFilterFormProps {
   filters: SocialWidgetFilters;
   availableOptions: FilterOptions;
+  /** Posts feeding this widget (global-filtered, pre widget-filter) - used to
+   *  compute per-value counts shown in each filter popover. */
+  posts: DashboardPost[];
+  /** Portal target for filter popovers - a node inside the modal Dialog so the
+   *  option lists stay scrollable (react-remove-scroll blocks body portals). */
+  portalContainer?: HTMLElement | null;
   onChange: (filters: SocialWidgetFilters) => void;
 }
 
-export function WidgetFilterForm({ filters, availableOptions, onChange }: WidgetFilterFormProps) {
+export function WidgetFilterForm({ filters, availableOptions, posts, portalContainer, onChange }: WidgetFilterFormProps) {
+  // Per-value post counts for every section + custom field, computed once over
+  // the widget's input posts. Each value is counted at most once per post.
+  const { sectionCounts, customCounts } = useMemo(() => {
+    const section: Record<string, Map<string, number>> = {};
+    for (const key of Object.keys(SECTION_ACCESSORS)) section[key] = new Map();
+    const custom: Record<string, Map<string, number>> = {};
+    const bump = (m: Map<string, number>, v: string) => m.set(v, (m.get(v) ?? 0) + 1);
+
+    for (const p of posts) {
+      for (const [key, accessor] of Object.entries(SECTION_ACCESSORS)) {
+        const m = section[key];
+        for (const v of new Set(accessor(p))) bump(m, v);
+      }
+      for (const [key, values] of customValueKeys(p)) {
+        const m = custom[key] ?? (custom[key] = new Map());
+        for (const v of values) bump(m, v);
+      }
+    }
+    return { sectionCounts: section, customCounts: custom };
+  }, [posts]);
   const activeCount = Object.entries(filters).reduce((n, [k, v]) => {
     if (k === 'date_range') return n + (((v as SocialWidgetFilters['date_range'])?.from || (v as SocialWidgetFilters['date_range'])?.to) ? 1 : 0);
     if (k === 'conditions') return n + ((v as FilterCondition[])?.length ?? 0);
@@ -147,21 +288,21 @@ export function WidgetFilterForm({ filters, availableOptions, onChange }: Widget
 
       <Separator />
 
-      {/* Filter sections - each using MultiSelect dropdown */}
+      {/* Filter sections - shared filter body (counts + Only + Select All) */}
       {FILTER_SECTIONS.map(({ label, key, placeholder }) => {
         const options = (availableOptions[key] ?? []) as string[];
         if (options.length === 0) return null;
         return (
-          <div key={key} className="flex items-center gap-3">
-            <Label className="text-xs w-24 shrink-0">{label}</Label>
-            <MultiSelect
-              value={(filters[key] ?? []) as string[]}
-              options={options.map((o) => ({ label: o, value: o }))}
-              onChange={(selected) => onChange({ ...filters, [key]: selected.length ? selected : undefined })}
-              placeholder={placeholder}
-              className="flex-1"
-            />
-          </div>
+          <FilterRow
+            key={key}
+            label={label}
+            options={options}
+            counts={sectionCounts[key]}
+            selected={(filters[key] ?? []) as string[]}
+            placeholder={placeholder}
+            portalContainer={portalContainer}
+            onChange={(selected) => onChange({ ...filters, [key]: selected.length ? selected : undefined })}
+          />
         );
       })}
 
@@ -175,24 +316,25 @@ export function WidgetFilterForm({ filters, availableOptions, onChange }: Widget
           {customFieldEntries.map(([name, options]) => {
             const selected = filters.custom_fields?.[name] ?? [];
             return (
-              <div key={name} className="flex items-center gap-3">
-                <Label className="text-xs w-24 shrink-0" title={name}>{humanizeFieldName(name)}</Label>
-                <MultiSelect
-                  value={selected}
-                  options={options.map((o) => ({ label: o, value: o }))}
-                  onChange={(next) => {
-                    const cf = { ...(filters.custom_fields ?? {}) };
-                    if (next.length) cf[name] = next;
-                    else delete cf[name];
-                    onChange({
-                      ...filters,
-                      custom_fields: Object.keys(cf).length ? cf : undefined,
-                    });
-                  }}
-                  placeholder={`All ${humanizeFieldName(name).toLowerCase()}`}
-                  className="flex-1"
-                />
-              </div>
+              <FilterRow
+                key={name}
+                label={humanizeFieldName(name)}
+                title={name}
+                options={options}
+                counts={customCounts[name]}
+                selected={selected}
+                placeholder={`All ${humanizeFieldName(name).toLowerCase()}`}
+                portalContainer={portalContainer}
+                onChange={(next) => {
+                  const cf = { ...(filters.custom_fields ?? {}) };
+                  if (next.length) cf[name] = next;
+                  else delete cf[name];
+                  onChange({
+                    ...filters,
+                    custom_fields: Object.keys(cf).length ? cf : undefined,
+                  });
+                }}
+              />
             );
           })}
         </>
