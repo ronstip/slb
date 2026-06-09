@@ -992,3 +992,67 @@ export function aggregateTable(posts: DashboardPost[], rawConfig: CustomTableCon
 
   return rows.slice(0, rowLimit);
 }
+
+/** Per-group breakdown sub-rows for a table's `breakdownDimension`. Returns a
+ *  map keyed by the top-level group's compound key (matching `TableRow.__key`
+ *  from {@link aggregateTable}); each value is the group's rows re-aggregated by
+ *  the breakdown dimension, carrying the table's metric columns under the same
+ *  column ids (so the same renderers/formatting apply). The breakdown value
+ *  lands under the synthetic `__bd` column id. Opt-in: empty map when no
+ *  `breakdownDimension` (or post mode), so callers can no-op cheaply. */
+export const BREAKDOWN_DIM_ID = '__bd';
+
+export function aggregateTableBreakdown(
+  posts: DashboardPost[],
+  rawConfig: CustomTableConfig,
+): Map<string, TableRow[]> {
+  const config = normalizeTableConfig(rawConfig);
+  const result = new Map<string, TableRow[]>();
+  const bd = config.breakdownDimension;
+  if (!bd || config.mode === 'post') return result;
+
+  const { columns, sortBy, sortDir = 'desc' } = config;
+  const dimCols = columns.filter(isDimensionColumn);
+  const metricCols = columns.filter((c) => !isDimensionColumn(c) && c.metric);
+  if (metricCols.length === 0) return result;
+
+  // groupKey -> breakdownValue -> (metric column id -> Stats)
+  const acc = new Map<string, Map<string, Map<string, Stats>>>();
+  for (const p of posts) {
+    const bdKeys = getDimensionKeys(p, bd, 'day');
+    if (bdKeys.length === 0) continue;
+    const groupCombos = compoundDimensionKeys(p, dimCols);
+    for (const { key: gkey } of groupCombos) {
+      let byBd = acc.get(gkey);
+      if (!byBd) { byBd = new Map(); acc.set(gkey, byBd); }
+      for (const bv of bdKeys) {
+        let perMetric = byBd.get(bv);
+        if (!perMetric) { perMetric = new Map(); byBd.set(bv, perMetric); }
+        for (const col of metricCols) {
+          if (col.metric) addToStats(perMetric, col.id, getMetricValue(p, col.metric as CustomMetric));
+        }
+      }
+    }
+  }
+
+  const sortKey = sortBy && metricCols.some((c) => c.id === sortBy) ? sortBy : metricCols[0]?.id;
+  const dir = sortDir === 'asc' ? 1 : -1;
+  for (const [gkey, byBd] of acc) {
+    const subRows: TableRow[] = [];
+    for (const [bv, perMetric] of byBd) {
+      const row: TableRow = { __key: `${gkey}::${bv}`, [BREAKDOWN_DIM_ID]: bv };
+      for (const col of metricCols) {
+        const stats = perMetric.get(col.id) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity };
+        const agg = col.metric === 'post_count' ? 'count' : (col.agg ?? 'sum');
+        row[col.id] = resolveAgg(stats, agg);
+      }
+      subRows.push(row);
+    }
+    if (sortKey) {
+      subRows.sort((a, b) => dir * (Number(a[sortKey] ?? 0) - Number(b[sortKey] ?? 0)));
+    }
+    // Cap per-group breakdown rows - this is a drill-down, not a full table.
+    result.set(gkey, subRows.slice(0, 8));
+  }
+  return result;
+}

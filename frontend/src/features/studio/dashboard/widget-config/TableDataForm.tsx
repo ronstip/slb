@@ -700,6 +700,32 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, o
         <span className="text-[11px] text-muted-foreground">rows</span>
       </div>
 
+      {/* Break down by - secondary dimension drill-down (expandable sub-rows).
+          Group mode only; not for topic or element-as-unit object tables. */}
+      {!isTopics && !activeObjDef && !isPostMode && (
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Break down by</Label>
+          <Select
+            value={config.breakdownDimension ?? '__none__'}
+            onValueChange={(v) =>
+              emit({ ...config, breakdownDimension: v === '__none__' ? undefined : (v as CustomDimension) })
+            }
+          >
+            <SelectTrigger className="h-8 text-xs flex-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">None</SelectItem>
+              {STANDARD_DIMENSIONS.map((dim) => (
+                <SelectItem key={dim as string} value={dim as string}>
+                  {getDimensionMeta(dim).label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Show rank */}
       <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
         <input

@@ -8,6 +8,11 @@ import {
 } from '../../../components/ui/dropdown-menu.tsx';
 import { MoreVertical, Settings2, Trash2, Copy } from 'lucide-react';
 
+// Default titles the system assigns to un-renamed widgets. They read as
+// "unfinished" in a published brief, so we suppress them in read-only views
+// (the owner still sees them in edit mode to know which widget is which).
+const PLACEHOLDER_TITLES = new Set(['Custom Chart', 'Custom', 'Untitled']);
+
 interface SocialWidgetFrameProps {
   title: string;
   description?: string;
@@ -31,6 +36,10 @@ export function SocialWidgetFrame({
   figureText,
   children,
 }: SocialWidgetFrameProps) {
+  const trimmed = title?.trim() ?? '';
+  const isPlaceholder = PLACEHOLDER_TITLES.has(trimmed);
+  const showTitle = trimmed.length > 0 && (isEditMode || !isPlaceholder);
+  const showHeader = showTitle || !!description || !!headerAction;
   return (
     <Card className={`h-full flex flex-col overflow-hidden relative group py-0 gap-0 rounded-md ${
       isEditMode ? 'ring-1 ring-dashed ring-primary/30' : ''
@@ -63,21 +72,25 @@ export function SocialWidgetFrame({
         </div>
       )}
 
-      <CardHeader className={`flex-row items-center gap-2 space-y-0 shrink-0 pt-1.5 pb-1 px-3 !pb-1 border-b border-border/40 ${
-        isEditMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''
-      }`}>
-        <div className="flex-1 min-w-0">
-          <CardTitle className="text-sm font-semibold truncate leading-normal">{title}</CardTitle>
-          {description && (
-            <CardDescription className="text-xs mt-0.5 truncate leading-normal">{description}</CardDescription>
-          )}
-        </div>
-        {headerAction && (
-          <div className="shrink-0" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-            {headerAction}
+      {showHeader && (
+        <CardHeader className={`flex-row items-center gap-2 space-y-0 shrink-0 pt-1.5 pb-1 px-3 !pb-1 border-b border-border/40 ${
+          isEditMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''
+        }`}>
+          <div className="flex-1 min-w-0">
+            {showTitle && (
+              <CardTitle className="text-sm font-semibold truncate leading-normal">{title}</CardTitle>
+            )}
+            {description && (
+              <CardDescription className="text-xs mt-0.5 truncate leading-normal">{description}</CardDescription>
+            )}
           </div>
-        )}
-      </CardHeader>
+          {headerAction && (
+            <div className="shrink-0" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+              {headerAction}
+            </div>
+          )}
+        </CardHeader>
+      )}
 
       <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden px-3 pb-1.5 pt-1">
         <div className="flex-1 min-h-0 flex flex-col">{children}</div>

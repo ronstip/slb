@@ -579,6 +579,10 @@ export type TableColumnViz = 'none' | 'bar' | 'heatmap';
  *  e.g. "1,234 (12.3%)". Ignored for string dimension cells. */
 export type TableColumnDisplay = 'abs' | 'pct' | 'abs_pct';
 
+/** Body/header text size for a table widget. 'xs' (default) matches the
+ *  historical compact look; 'sm'/'base' make the table read larger in a brief. */
+export type TableFontSize = 'xs' | 'sm' | 'base';
+
 /** Post-level field - used when `CustomTableConfig.mode === 'post'`. One row per
  *  post, each column reads a raw field off `DashboardPost`. `custom:<name>` reads
  *  `post.custom_fields[name]`. */
@@ -718,6 +722,22 @@ export interface CustomTableConfig {
   /** Style - minimal subset; chart accent / palette do not apply to tables. */
   density?: 'compact' | 'comfortable';
   striped?: boolean;
+  /** Table accent color. Recolors the in-cell bar/heatmap viz and (with
+   *  `headerBold`) tints the header band. Undefined = theme primary. */
+  accent?: string;
+  /** Body + header text size. Default 'xs'. */
+  fontSize?: TableFontSize;
+  /** Render a bolder, accent-tinted header band. */
+  headerBold?: boolean;
+  /** Bold the leading identity (first dimension) column. */
+  emphasizeFirstColumn?: boolean;
+  /** Column sizing. 'equal' (default): columns share width evenly. 'value':
+   *  widths track each column's content (label columns wider than numeric). */
+  columnWidth?: 'equal' | 'value';
+  /** Optional secondary dimension. When set (group mode only), each group row
+   *  becomes expandable to reveal a per-group breakdown by this dimension,
+   *  carrying the table's metric columns. Undefined = no breakdown (default). */
+  breakdownDimension?: CustomDimension;
 }
 
 /** Migrate a legacy `dimension`-on-config table into the canonical form where
