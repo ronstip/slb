@@ -35,6 +35,7 @@ from __future__ import annotations
 import logging
 import math
 import queue
+import re
 import threading
 import time
 from collections.abc import Iterator
@@ -81,6 +82,42 @@ def _to_yyyymmdd(value: str | None) -> str | None:
     except ValueError:
         return None
     return dt.strftime("%Y-%m-%d")
+
+
+def _normalize_ig_profile_url(raw: str) -> str | None:
+    """Accept a profile URL, "@handle" or bare "handle" → full profile URL
+    (apify/instagram-scraper's directUrls needs a real URL)."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    if s.startswith("http"):
+        return s
+    handle = s.lstrip("@").strip("/")
+    return f"https://www.instagram.com/{handle}/" if handle else None
+
+
+def _normalize_tiktok_profile(raw: str) -> str | None:
+    """Accept a profile URL, "@handle" or bare "handle" → bare username
+    (clockworks/tiktok-scraper's `profiles` field wants usernames)."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    if "tiktok.com/" in s:
+        m = re.search(r"tiktok\.com/@?([^/?#]+)", s)
+        return m.group(1).lstrip("@") if m else None
+    return s.lstrip("@") or None
+
+
+def _normalize_fb_page_url(raw: str) -> str | None:
+    """Accept a page URL, "@handle" or bare "handle"/"PageName" → full FB page
+    URL (apify/facebook-posts-scraper's startUrls needs a real URL)."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    if s.startswith("http"):
+        return s
+    handle = s.lstrip("@").strip("/")
+    return f"https://www.facebook.com/{handle}" if handle else None
 
 
 def _hashtag_url(keyword: str) -> str:
@@ -324,12 +361,11 @@ class ApifyAdapter(DataProviderAdapter):
         keywords = config.get("keywords", []) or []
         channel_urls = config.get("channel_urls", []) or []
 
+        # Channel mode: collect a profile's posts (apify/instagram-scraper, which
+        # handles profile URLs - the apidojo hashtag actor can't). Keywords, if
+        # present, filter the profile's posts client-side (intersection).
         if channel_urls:
-            logger.warning(
-                "[apify/instagram] channel_urls=%d ignored - IG path is "
-                "keyword-only with apidojo/instagram-hashtag-scraper",
-                len(channel_urls),
-            )
+            return self._collect_instagram_channels(channel_urls, config)
 
         if not keywords:
             logger.info("[apify/instagram] no keywords - skipping")
@@ -489,6 +525,56 @@ class ApifyAdapter(DataProviderAdapter):
         )
         return batches
 
+    def _collect_instagram_channels(
+        self, channel_urls: list[str], config: dict,
+    ) -> list[Batch]:
+        """Collect a profile's posts via apify/instagram-scraper (profile mode).
+
+        The keyword actor (apidojo/instagram-hashtag-scraper) only accepts
+        hashtag URLs, so channel collection uses the post-scraper actor with the
+        profile URLs in `directUrls`. `onlyPostsNewerThan` is a server-side date
+        floor (the precise window is still enforced by the pipeline + the parse
+        time gate). Keywords, if present, filter the profile's posts client-side
+        via `_run_and_parse` → `_maybe_filter_channel_keywords`.
+        """
+        actor_id = get_settings().apify_actor_instagram_post
+        n_posts = config.get("max_posts_per_keyword") or 0
+        time_range = config.get("time_range", {}) or {}
+
+        seen: set[str] = set()
+        urls: list[str] = []
+        for raw in channel_urls:
+            u = _normalize_ig_profile_url(raw)
+            if u and u not in seen:
+                seen.add(u)
+                urls.append(u)
+        if not urls:
+            logger.info("[apify/instagram] channel mode: no usable profile URLs")
+            return []
+
+        run_input: dict = {
+            "directUrls": urls,
+            "resultsType": "posts",
+            "addParentData": False,
+            "proxyConfiguration": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": [self._proxy_group],
+            },
+        }
+        if n_posts > 0:
+            run_input["resultsLimit"] = n_posts * len(urls)
+        newer_than = _to_yyyymmdd(time_range.get("start"))
+        if newer_than:
+            run_input["onlyPostsNewerThan"] = newer_than
+
+        logger.info(
+            "[apify/instagram] channel mode: %d profile(s), resultsLimit=%s, newer_than=%s (actor=%s)",
+            len(urls), run_input.get("resultsLimit", "unbounded"), newer_than or "(none)", actor_id,
+        )
+        return self._run_and_parse(
+            "instagram", run_input, config, actor_id=actor_id, scrape_kind="channel",
+        )
+
     def _chunk_into_batches(
         self, posts: list[Post], channels: list[Channel]
     ) -> list[Batch]:
@@ -510,6 +596,14 @@ class ApifyAdapter(DataProviderAdapter):
     # ------------------------------------------------------------------
 
     def _collect_facebook(self, config: dict) -> Iterator[Batch]:
+        channel_urls = config.get("channel_urls", []) or []
+        if channel_urls:
+            # Channel mode: collect a page/profile's feed via
+            # apify/facebook-posts-scraper (startUrls + onlyPostsNewerThan).
+            # Keywords, if present, filter the page's posts client-side.
+            yield from self._collect_facebook_channels(channel_urls, config)
+            return
+
         keywords = config.get("keywords", []) or []
         if not keywords:
             logger.info("[apify/facebook] no keywords - skipping")
@@ -567,6 +661,54 @@ class ApifyAdapter(DataProviderAdapter):
             len(keywords), n_posts * len(keywords), total_parsed, per_query_max,
         )
 
+    def _collect_facebook_channels(
+        self, channel_urls: list[str], config: dict,
+    ) -> Iterator[Batch]:
+        """Collect a page/profile's posts via apify/facebook-posts-scraper.
+
+        The keyword actor (scrapeforge/facebook-search-posts) takes a `query`
+        string and can't target a specific page, so channel collection uses the
+        post-scraper actor with the page URLs in `startUrls`. `onlyPostsNewerThan`
+        is a server-side date floor (the precise window is still enforced by the
+        pipeline's partition_by_time_range gate + the parse time gate). Mirrors
+        the IG channel path (different actor + parser than the keyword default).
+        """
+        actor_id = get_settings().apify_actor_facebook_page
+        n_posts = config.get("max_posts_per_keyword") or 0
+        time_range = config.get("time_range", {}) or {}
+
+        seen: set[str] = set()
+        urls: list[str] = []
+        for raw in channel_urls:
+            u = _normalize_fb_page_url(raw)
+            if u and u not in seen:
+                seen.add(u)
+                urls.append(u)
+        if not urls:
+            logger.info("[apify/facebook] channel mode: no usable page URLs")
+            return
+
+        run_input: dict = {
+            "startUrls": [{"url": u} for u in urls],
+            "proxyConfiguration": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": [self._proxy_group],
+            },
+        }
+        if n_posts > 0:
+            run_input["resultsLimit"] = n_posts * len(urls)
+        newer_than = _to_yyyymmdd(time_range.get("start"))
+        if newer_than:
+            run_input["onlyPostsNewerThan"] = newer_than
+
+        logger.info(
+            "[apify/facebook] channel mode: %d page(s), resultsLimit=%s, newer_than=%s (actor=%s)",
+            len(urls), run_input.get("resultsLimit", "unbounded"), newer_than or "(none)", actor_id,
+        )
+        yield from self._run_and_parse(
+            "facebook", run_input, config, actor_id=actor_id, scrape_kind="channel",
+        )
+
     # ------------------------------------------------------------------
     # TikTok - clockworks/tiktok-scraper
     #   Hits TikTok's default "Top" search section (engagement-ranked).
@@ -578,6 +720,15 @@ class ApifyAdapter(DataProviderAdapter):
     # ------------------------------------------------------------------
 
     def _collect_tiktok(self, config: dict) -> Iterator[Batch]:
+        channel_urls = config.get("channel_urls", []) or []
+        if channel_urls:
+            # Channel mode: clockworks/tiktok-scraper `profiles` input + a
+            # server-side `oldestPostDateUnified` floor. Unlike the keyword Top
+            # path we DO apply the date gate (the user picked a window). Keywords
+            # filter the profile's posts client-side.
+            yield from self._collect_tiktok_channels(channel_urls, config)
+            return
+
         keywords = config.get("keywords", []) or []
         if not keywords:
             logger.info("[apify/tiktok] no keywords - skipping")
@@ -640,6 +791,44 @@ class ApifyAdapter(DataProviderAdapter):
             len(keywords), n_posts * len(keywords), total_parsed,
         )
 
+    def _collect_tiktok_channels(
+        self, channel_urls: list[str], config: dict,
+    ) -> Iterator[Batch]:
+        """Collect TikTok profiles via clockworks/tiktok-scraper `profiles` mode
+        (same actor + parser as the keyword Top path, different input)."""
+        n_posts = config.get("max_posts_per_keyword") or 0
+        time_range = config.get("time_range", {}) or {}
+
+        profiles = [p for p in (_normalize_tiktok_profile(u) for u in channel_urls) if p]
+        if not profiles:
+            logger.info("[apify/tiktok] channel mode: no usable profile handles")
+            return
+
+        run_input: dict = {
+            "profiles": profiles,
+            "shouldDownloadVideos": False,
+            "shouldDownloadCovers": False,
+            "shouldDownloadSlideshowImages": False,
+            "shouldDownloadAvatars": False,
+            "proxyConfiguration": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": [self._proxy_group],
+            },
+        }
+        if n_posts > 0:
+            run_input["resultsPerPage"] = n_posts
+        oldest = _to_yyyymmdd(time_range.get("start"))
+        if oldest:
+            run_input["oldestPostDateUnified"] = oldest
+
+        logger.info(
+            "[apify/tiktok] channel mode: %d profile(s), resultsPerPage=%s, oldest=%s",
+            len(profiles), n_posts or "unbounded", oldest or "(none)",
+        )
+        yield from self._run_and_parse(
+            "tiktok", run_input, config, apply_time_gate=True, scrape_kind="channel",
+        )
+
     # ------------------------------------------------------------------
     # Shared run + parse + gate
     # ------------------------------------------------------------------
@@ -651,6 +840,7 @@ class ApifyAdapter(DataProviderAdapter):
         *,
         feature: str = "scrape",
         actor_id: str | None = None,
+        scrape_kind: str | None = None,
     ) -> list[dict]:
         """Trigger one actor run and return raw dataset items. Empty on failure.
 
@@ -662,6 +852,9 @@ class ApifyAdapter(DataProviderAdapter):
         "comments" for per-post comment fetches). `actor_id`, when set,
         overrides the per-platform default actor - used by the comments
         path to invoke a different actor than the collection actor.
+        `scrape_kind="channel"` tags channel-mode runs so Finance breaks them
+        out and the estimate fallback uses the channel rate cell (Apify live
+        cost is provider-reported either way).
         """
         if not self._claim_run():
             return []
@@ -742,6 +935,7 @@ class ApifyAdapter(DataProviderAdapter):
                     provider_reported_cost_usd=float(reported),
                     cost_source=COST_SOURCE_PROVIDER_REPORTED,
                     raw_provider_payload=payload,
+                    scrape_kind=scrape_kind,
                 )
             else:
                 # Provider went silent - estimate from the admin-configured
@@ -751,7 +945,7 @@ class ApifyAdapter(DataProviderAdapter):
 
                 # Per-platform fallback rate (admin-tunable): IG vs FB vs
                 # TikTok each have a distinct effective per-call price.
-                assumed = get_apify_assumed_per_post_usd(platform)
+                assumed = get_apify_assumed_per_post_usd(platform, scrape_kind or "posts")
                 estimated_usd = max(0.0, float(assumed) * len(raw_items))
                 logger.warning(
                     "Apify run %s returned no cost (run.usageTotalUsd=%s, "
@@ -776,6 +970,7 @@ class ApifyAdapter(DataProviderAdapter):
                     provider_reported_cost_usd=estimated_usd,
                     cost_source=COST_SOURCE_ESTIMATED_FALLBACK,
                     raw_provider_payload=payload,
+                    scrape_kind=scrape_kind,
                 )
         except Exception:
             logger.warning("Failed to log apify cost", exc_info=True)
@@ -789,10 +984,17 @@ class ApifyAdapter(DataProviderAdapter):
         config: dict,
         *,
         apply_time_gate: bool = True,
+        actor_id: str | None = None,
+        scrape_kind: str | None = None,
     ) -> list[Batch]:
         """Trigger one actor run, iterate the dataset, parse, time-gate, batch."""
-        raw_items = self._run_actor_collect_raw(platform, run_input)
-        return self._parse_results(platform, raw_items, config, apply_time_gate=apply_time_gate)
+        raw_items = self._run_actor_collect_raw(
+            platform, run_input, actor_id=actor_id, scrape_kind=scrape_kind,
+        )
+        return self._parse_results(
+            platform, raw_items, config, apply_time_gate=apply_time_gate,
+            actor_id=actor_id,
+        )
 
     def _parse_results(
         self,
@@ -801,11 +1003,18 @@ class ApifyAdapter(DataProviderAdapter):
         config: dict,
         *,
         apply_time_gate: bool = True,
+        actor_id: str | None = None,
     ) -> list[Batch]:
         if not raw_items:
             return []
 
-        parse_post, parse_channel = self._parsers[platform]
+        # `actor_id` lets a channel/profile path parse with a DIFFERENT actor's
+        # parser than the platform's default keyword actor (e.g. IG profile uses
+        # apify/instagram-scraper, not the apidojo hashtag scraper).
+        if actor_id:
+            parse_post, parse_channel = get_parsers(platform, actor_id)
+        else:
+            parse_post, parse_channel = self._parsers[platform]
         time_range = config.get("time_range", {}) or {}
         gate_start = self._parse_iso(time_range.get("start")) if apply_time_gate else None
         gate_end = self._parse_iso(time_range.get("end")) if apply_time_gate else None

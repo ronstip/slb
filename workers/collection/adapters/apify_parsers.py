@@ -383,6 +383,112 @@ def parse_scrapeforge_facebook_channel(item: dict) -> Channel:
 
 
 # ---------------------------------------------------------------------------
+# Facebook (channel/page) - apify/facebook-posts-scraper
+# Collects a specific page/profile's feed from `startUrls` (page URLs), unlike
+# the keyword actor (scrapeforge/facebook-search-posts) which takes a `query`.
+# Output schema differs from scrapeforge, so it gets its own parser. Field-name
+# fallbacks cover known build variations:
+#   postId / post_id, url / topLevelUrl / postUrl, text / message,
+#   time (ISO) / timestamp (unix sec) / date, user{id,name,profileUrl} / pageName,
+#   likes / reactionsCount (+ likesCount), comments / commentsCount,
+#   shares / sharesCount / reshareCount, media[] / attachments[].
+# ---------------------------------------------------------------------------
+
+def parse_apify_facebook_page_post(item: dict) -> Post:
+    post_url = _first(item, "url", "topLevelUrl", "postUrl", "facebookUrl", default="")
+    post_id = str(_first(item, "postId", "post_id", "id", default="")) or (
+        _hash_id(post_url) if post_url else ""
+    )
+
+    posted_at = (
+        _parse_dt(_first(item, "timestamp", "time", "date", "publishedTime"))
+        or datetime.fromtimestamp(0, tz=timezone.utc)
+    )
+
+    user = item.get("user")
+    if not isinstance(user, dict):
+        user = {}
+    channel_id = str(_first(user, "id", default="") or item.get("pageId") or "")
+    channel_handle = _first(
+        user, "name", default=_first(item, "pageName", "userName", default=""),
+    )
+
+    media_urls: list[str] = []
+    media = item.get("media")
+    if isinstance(media, list):
+        for m in media:
+            if isinstance(m, str):
+                media_urls.append(m)
+            elif isinstance(m, dict):
+                photo = m.get("photo_image") if isinstance(m.get("photo_image"), dict) else {}
+                u = m.get("thumbnail") or photo.get("uri") or m.get("url") or m.get("uri")
+                if u:
+                    media_urls.append(u)
+    # Single image/video fields some builds emit alongside / instead of media[].
+    for key in ("imageUrl", "image", "thumbnailUrl"):
+        val = item.get(key)
+        if isinstance(val, str) and val:
+            media_urls.append(val)
+
+    has_video = bool(
+        item.get("videoUrl") or item.get("video")
+        or str(_first(item, "type", default="")).lower() in ("video", "reel")
+    )
+    post_type = "video" if has_video else ("image" if media_urls else "text")
+
+    return Post(
+        post_id=post_id,
+        platform="facebook",
+        channel_handle=str(channel_handle),
+        channel_id=channel_id or None,
+        title=None,
+        content=_first(item, "text", "message", default=""),
+        post_url=post_url,
+        posted_at=posted_at,
+        post_type=post_type,
+        parent_post_id=None,
+        media_urls=media_urls,
+        media_refs=[],
+        likes=_safe_int(_first(item, "likes", "reactionsCount", "likesCount", default=None)),
+        shares=_safe_int(_first(item, "shares", "sharesCount", "reshareCount", default=None)),
+        comments_count=_safe_int(_first(item, "comments", "commentsCount", default=None)),
+        views=_safe_int(_first(item, "viewsCount", "videoViewCount", default=None)),
+        saves=None,
+        comments=[],
+        platform_metadata={
+            "platform": "facebook",
+            "type": item.get("type"),
+            "page_name": item.get("pageName"),
+            "facebook_url": item.get("facebookUrl"),
+            "input_url": _first(item, "inputUrl", "facebookUrl", default=None),
+        },
+        crawl_provider="apify",
+    )
+
+
+def parse_apify_facebook_page_channel(item: dict) -> Channel:
+    user = item.get("user")
+    if not isinstance(user, dict):
+        user = {}
+    handle = _first(user, "name", default=_first(item, "pageName", default=""))
+    return Channel(
+        channel_id=str(_first(user, "id", default="") or item.get("pageId") or ""),
+        platform="facebook",
+        channel_handle=str(handle),
+        subscribers=_safe_int(_first(item, "pageLikes", "likes", default=None))
+        if not item.get("user") else None,
+        total_posts=None,
+        channel_url=_first(user, "profileUrl", default=None)
+        or _first(item, "facebookUrl", default=None),
+        description=None,
+        created_date=None,
+        channel_metadata={
+            "page_name": item.get("pageName"),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # TikTok - clockworks/tiktok-scraper
 # Sample dataset shape:
 #   id, text, textLanguage, createTime (unix), createTimeISO, isAd, isPinned,
@@ -509,6 +615,10 @@ _PARSER_REGISTRY: dict[tuple[str, str], tuple[ParsePostFn, ParseChannelFn]] = {
     ("facebook", "scrapeforge/facebook-search-posts"): (
         parse_scrapeforge_facebook_post,
         parse_scrapeforge_facebook_channel,
+    ),
+    ("facebook", "apify/facebook-posts-scraper"): (
+        parse_apify_facebook_page_post,
+        parse_apify_facebook_page_channel,
     ),
     ("tiktok", "clockworks/tiktok-scraper"): (
         parse_clockworks_tiktok_post,

@@ -47,6 +47,38 @@ def test_picks_most_expensive_provider():
     assert got == 600_000  # 500_000 × 1.2
 
 
+def test_channel_mode_bills_channel_rate(monkeypatch):
+    # In channel mode the crawl bills at the CHANNEL rate cell (kind="channel"),
+    # not the posts rate. Stub get_scraper_rate to price channel ≠ posts.
+    monkeypatch.setattr(
+        ce, "get_scraper_rate",
+        lambda prov, plat=None, kind="posts": 0.01 if kind == "channel" else 0.001,
+    )
+    got = ce.estimate_run_cost_micros(
+        n_posts=100,
+        provider_platform_pairs=[("brightdata", "youtube")],
+        channel_mode=True,
+        enrichment_enabled=False,
+    )
+    # 100 × $0.01 (channel) = $1.00 = 1_000_000 × 1.2 buffer = 1_200_000.
+    assert got == 1_200_000
+
+
+def test_channel_mode_off_uses_posts_rate(monkeypatch):
+    monkeypatch.setattr(
+        ce, "get_scraper_rate",
+        lambda prov, plat=None, kind="posts": 0.01 if kind == "channel" else 0.001,
+    )
+    got = ce.estimate_run_cost_micros(
+        n_posts=100,
+        provider_platform_pairs=[("brightdata", "youtube")],
+        channel_mode=False,
+        enrichment_enabled=False,
+    )
+    # 100 × $0.001 (posts) = $0.10 = 100_000 × 1.2 = 120_000.
+    assert got == 120_000
+
+
 def test_include_comments_multiplier():
     base = ce.estimate_run_cost_micros(
         n_posts=100, providers=["brightdata"], enrichment_enabled=False,

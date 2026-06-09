@@ -268,6 +268,36 @@ def test_posts_kind_ignores_comment_matrix(pricing_doc):
     ) == 5_000_000
 
 
+# ── channel kind ──────────────────────────────────────────────────────
+
+
+def test_channel_kind_uses_channel_rate_when_set(pricing_doc):
+    # Channel rate set for brightdata/youtube; distinct from the posts rate.
+    pricing_doc({
+        "scraper_rates_per_platform": {"brightdata": {"youtube": 0.0025}},
+        "scraper_channel_rates_per_platform": {"brightdata": {"youtube": 0.01}},
+    })
+    channel = compute_cost_micros(
+        "brightdata", units=100, platform="youtube", kind="channel",
+    )
+    # 100 × $0.01 = $1.00 = 1_000_000 micros (channel rate, not the post rate).
+    assert channel == 1_000_000
+    posts = compute_cost_micros("brightdata", units=100, platform="youtube", kind="posts")
+    assert posts == 250_000
+
+
+def test_channel_kind_falls_back_to_posts_rate_when_unset(pricing_doc):
+    pricing_doc({
+        "scraper_rates_per_platform": {"brightdata": {"facebook": 0.0025}},
+    })
+    # No channel cell → channel lookup inherits the posts rate.
+    assert get_scraper_rate("brightdata", "facebook", "channel") == 0.0025
+    channel = compute_cost_micros(
+        "brightdata", units=100, platform="facebook", kind="channel",
+    )
+    assert channel == 250_000
+
+
 # ── seeded scraper-rate defaults (per provider/API we use) ───────────
 
 

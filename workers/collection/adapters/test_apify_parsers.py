@@ -18,6 +18,8 @@ from workers.collection.adapters.apify_parsers import (
     parse_apify_instagram_post,
     parse_clockworks_tiktok_channel,
     parse_clockworks_tiktok_post,
+    parse_apify_facebook_page_channel,
+    parse_apify_facebook_page_post,
     parse_scrapeforge_facebook_channel,
     parse_scrapeforge_facebook_post,
 )
@@ -325,6 +327,70 @@ def test_facebook_channel_parsing():
     assert ch.channel_handle == "Some Page"
     assert ch.channel_id == "page_42"
     assert ch.channel_url == "https://www.facebook.com/somepage"
+
+
+# ---------------------------------------------------------------------------
+# Facebook (channel/page) - apify/facebook-posts-scraper
+# ---------------------------------------------------------------------------
+
+_FB_PAGE_FIXTURE = {
+    "postId": "987654321",
+    "pageName": "ESPN",
+    "url": "https://www.facebook.com/espn/posts/987654321",
+    "facebookUrl": "https://www.facebook.com/espn",
+    "time": "2026-05-02T14:00:00.000Z",
+    "timestamp": 1777989600,
+    "user": {"id": "100044", "name": "ESPN", "profileUrl": "https://www.facebook.com/espn"},
+    "text": "Game day.",
+    "likes": 4200,
+    "comments": 310,
+    "shares": 88,
+    "media": [{"thumbnail": "https://scontent.example/t.jpg"}],
+}
+
+
+def test_facebook_page_post_basic_fields():
+    post = parse_apify_facebook_page_post(_FB_PAGE_FIXTURE)
+    assert post.platform == "facebook"
+    assert post.post_id == "987654321"
+    assert post.channel_handle == "ESPN"
+    assert post.channel_id == "100044"
+    assert post.post_url == "https://www.facebook.com/espn/posts/987654321"
+    assert post.likes == 4200
+    assert post.shares == 88
+    assert post.comments_count == 310
+    assert post.posted_at.tzinfo is not None  # tz-aware
+    assert post.posted_at.year == 2026 and post.posted_at.month == 5
+    assert post.post_type == "image"
+    assert post.crawl_provider == "apify"
+    assert any("t.jpg" in u for u in post.media_urls)
+
+
+def test_facebook_page_post_id_hashed_from_url_when_missing():
+    item = {k: v for k, v in _FB_PAGE_FIXTURE.items() if k != "postId"}
+    post = parse_apify_facebook_page_post(item)
+    assert post.post_id and len(post.post_id) == 16
+
+
+def test_facebook_page_post_parses_iso_time_without_timestamp():
+    item = {k: v for k, v in _FB_PAGE_FIXTURE.items() if k != "timestamp"}
+    post = parse_apify_facebook_page_post(item)
+    assert post.posted_at.year == 2026 and post.posted_at.month == 5
+
+
+def test_facebook_page_channel_parsing():
+    ch = parse_apify_facebook_page_channel(_FB_PAGE_FIXTURE)
+    assert ch.platform == "facebook"
+    assert ch.channel_handle == "ESPN"
+    assert ch.channel_id == "100044"
+    assert ch.channel_url == "https://www.facebook.com/espn"
+
+
+def test_facebook_page_actor_registered():
+    assert ("facebook", "apify/facebook-posts-scraper") in _PARSER_REGISTRY
+    post_fn, ch_fn = get_parsers("facebook", "apify/facebook-posts-scraper")
+    assert post_fn is parse_apify_facebook_page_post
+    assert ch_fn is parse_apify_facebook_page_channel
 
 
 # ---------------------------------------------------------------------------

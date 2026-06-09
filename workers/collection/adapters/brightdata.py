@@ -249,6 +249,13 @@ class BrightDataAdapter(DataProviderAdapter):
     # ------------------------------------------------------------------
 
     def _collect_youtube(self, config: dict) -> Iterator[Batch]:
+        channel_urls = config.get("channel_urls", [])
+        if channel_urls:
+            # Channel mode: pull a channel's videos via the youtube posts
+            # dataset in URL-discovery mode (keywords, if any, filter upstream).
+            yield from self._collect_youtube_channels(channel_urls, config)
+            return
+
         keywords = config.get("keywords", [])
         if not keywords:
             return
@@ -299,13 +306,70 @@ class BrightDataAdapter(DataProviderAdapter):
         for batch in self._parse_results("youtube", all_results):
             yield batch
 
+    def _collect_youtube_channels(
+        self, channel_urls: list[str], config: dict,
+    ) -> Iterator[Batch]:
+        """Collect a YouTube channel's videos via the youtube POSTS dataset in
+        URL-discovery mode (``discover_by="url"`` with the channel URL).
+
+        NOTE: this deliberately uses the POSTS dataset (same as the keyword
+        path), NOT the youtube/profiles dataset. The profiles dataset returns a
+        single channel-metadata record (subscribers, video count, …), not the
+        channel's videos - so it yields zero parseable posts. URL discovery on
+        the posts dataset returns the same per-video schema the keyword path
+        already parses. The precise date window is enforced downstream by the
+        pipeline's ``partition_by_time_range`` gate.
+        """
+        if not self._check_snapshot_budget():
+            return
+        num_per = config.get("max_posts_per_keyword") or 0
+
+        inputs = []
+        for url in channel_urls:
+            inp: dict = {"url": url}
+            if num_per > 0:
+                inp["num_of_posts"] = num_per
+            inputs.append(inp)
+
+        logger.info(
+            "[youtube] channel mode: %d url(s), num_per=%s (date window applied downstream)",
+            len(channel_urls), num_per or "unlimited",
+        )
+        try:
+            results = self._client.scrape_and_wait(
+                dataset_id=self._DATASET_IDS["youtube"]["posts"],
+                inputs=inputs,
+                discover_by="url",
+                limit_per_input=num_per if num_per > 0 else None,
+                snapshot_callback=self._snapshot_tracker,
+            )
+        except BrightDataAPIError as e:
+            logger.error("BrightData YouTube channel batch failed: %s", e)
+            return
+        except Exception:
+            logger.exception("Unexpected error fetching YouTube channels")
+            return
+
+        valid = [r for r in results if not _is_error_item(r)]
+        self._track_funnel_raw(len(results), len(results) - len(valid))
+        logger.info("[youtube] channels (%d) → %d/%d posts", len(channel_urls), len(valid), len(results))
+        yield from self._parse_results("youtube", valid)
+
     # ------------------------------------------------------------------
     # Reddit
     # ------------------------------------------------------------------
 
     def _collect_reddit(self, config: dict) -> Iterator[Batch]:
         keywords = config.get("keywords", [])
-        subreddit_urls = config.get("reddit_subreddits", [])
+        # Channel mode: a source's channels arrive as `channel_urls` (the
+        # platform-wide key). Reddit treats them as subreddit URLs. Legacy
+        # `reddit_subreddits` is still honored. In channel mode keywords only
+        # filter the fetched subreddit posts (applied upstream in the wrapper),
+        # so route them to subreddit discovery, NOT keyword discovery.
+        subreddit_urls = config.get("reddit_subreddits", []) or config.get("channel_urls", [])
+        channel_mode = bool(config.get("channel_urls"))
+        if channel_mode:
+            keywords = []  # keywords are a client-side filter in channel mode
         if not keywords and not subreddit_urls:
             return
 
@@ -341,9 +405,10 @@ class BrightDataAdapter(DataProviderAdapter):
         # Strategy 2: subreddit URL discovery (when explicit subreddits provided)
         if subreddit_urls and self._check_snapshot_budget():
             inputs = []
-            for url in subreddit_urls:
-                if not url.startswith("http"):
-                    url = f"https://www.reddit.com/r/{url}/"
+            for raw_url in subreddit_urls:
+                url = _normalize_subreddit_url(raw_url)
+                if not url:
+                    continue
                 sub_inp: dict = {"url": url}
                 if num_per_kw > 0:
                     sub_inp["num_of_posts"] = num_per_kw
@@ -388,6 +453,11 @@ class BrightDataAdapter(DataProviderAdapter):
     def _collect_facebook(self, config: dict) -> Iterator[Batch]:
         channel_urls = config.get("channel_urls", [])
         keywords = config.get("keywords", [])
+        # Channel mode: collect from the group/page URLs only. Keywords (if any)
+        # filter those posts client-side upstream (wrapper) - don't also fire the
+        # marketplace keyword-discovery strategy.
+        if channel_urls:
+            keywords = []
         if not channel_urls and not keywords:
             return
 
@@ -703,6 +773,25 @@ def _to_bd_date_mmddyyyy(date_str: str | None) -> str:
         return dt.strftime("%m-%d-%Y")
     except ValueError:
         return date_str
+
+
+def _normalize_subreddit_url(raw: str) -> str | None:
+    """Accept a subreddit URL, "r/name", "/r/name", or a bare "name" → canonical
+    https://www.reddit.com/r/<name>/ URL.
+
+    The "reddit.com/r/name or name" channel placeholder invites "r/name", so a
+    bare prepend turns "r/nba" into .../r/r/nba/ (a double "r/" → invalid
+    subreddit → 0 posts). Strip any leading "r/" before building the URL.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return None
+    if s.startswith("http"):
+        return s
+    name = s.strip("/")
+    if name.lower().startswith("r/"):
+        name = name[2:].strip("/")
+    return f"https://www.reddit.com/r/{name}/" if name else None
 
 
 def _iso_date_to_reddit_filter(date_str: str) -> str:

@@ -439,3 +439,58 @@ def test_collect_with_post_urls_all_invalid_returns_empty():
     assert batches == []
     adapter._client.get.assert_not_called()
     assert adapter.platform_stats["twitter"]["errors"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Channel mode: from:{handle} search (with keywords) vs user_timeline (without)
+# ---------------------------------------------------------------------------
+
+def test_channel_with_keyword_builds_from_search():
+    """A source with both a channel and keywords means "kw posts FROM @handle":
+    X scopes this natively with the `from:` search operator."""
+    adapter = _build_adapter()
+    calls: list[tuple[str, str]] = []
+
+    def _cap(task_type, target, *a, **k):
+        calls.append((task_type, target))
+        return []
+
+    with patch.object(adapter, "_run_task", side_effect=_cap):
+        adapter.collect({
+            "platforms": ["twitter"],
+            "channel_urls": ["https://x.com/espn"],
+            "keywords": ["Lakers"],
+            "time_range": {"start": "2026-05-01T00:00:00Z", "end": "2026-06-01T00:00:00Z"},
+        })
+
+    assert calls == [("search", "from:espn Lakers")]
+
+
+def test_channel_only_builds_user_timeline():
+    adapter = _build_adapter()
+    calls: list[tuple[str, str]] = []
+
+    def _cap(task_type, target, *a, **k):
+        calls.append((task_type, target))
+        return []
+
+    with patch.object(adapter, "_run_task", side_effect=_cap):
+        adapter.collect({
+            "platforms": ["twitter"],
+            "channel_urls": ["https://x.com/espn"],
+            "keywords": [],
+            "time_range": {"start": "2026-05-01T00:00:00Z", "end": "2026-06-01T00:00:00Z"},
+        })
+
+    assert calls == [("user_timeline", "espn")]
+
+
+def test_extract_twitter_username_accepts_urls_and_bare_handles():
+    from workers.collection.adapters.x_api_parsers import extract_twitter_username
+    assert extract_twitter_username("https://x.com/espn") == "espn"
+    assert extract_twitter_username("https://twitter.com/ESPN?lang=en") == "ESPN"
+    assert extract_twitter_username("@espn") == "espn"
+    assert extract_twitter_username("espn") == "espn"
+    assert extract_twitter_username("  @ESPN  ") == "ESPN"
+    assert extract_twitter_username("https://x.com/search") is None
+    assert extract_twitter_username("") is None

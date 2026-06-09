@@ -83,6 +83,32 @@ DEFAULT_SCRAPER_COMMENT_RATES: dict[str, dict[str, float]] = {
     # brightdata / vetric comments are not wired → intentionally absent.
 }
 
+# Per-(provider, platform) CHANNEL (profile / page / subreddit) scrape rate
+# matrix. Channel collection hits a DIFFERENT API/actor/dataset than keyword
+# search, often at a different price - so it gets its own dimension (same shape
+# as the comments matrix; unset cells fall through to the POSTS rate at lookup,
+# see `get_scraper_rate`).
+#
+# Channel-mode routing (config/collection_routing.py): instagram/tiktok/facebook
+# → apify, youtube/reddit → brightdata, twitter → x_api.
+#   apify   → PROVIDER_REPORTED: these are ESTIMATE-fallback only; live cost is
+#             the exact run cost regardless of actor.
+#   brightdata (youtube/profiles, facebook groups, reddit subreddit) + x_api
+#             (twitter timeline/from: search) → rate-table priced, AUTHORITATIVE.
+# PLACEHOLDER values - confirm from provider invoices (file convention).
+DEFAULT_SCRAPER_CHANNEL_RATES: dict[str, dict[str, float]] = {
+    "apify": {
+        "instagram": 0.0020,  # apify/instagram-scraper profile mode
+        "tiktok": 0.0040,     # clockworks/tiktok-scraper (profiles)
+        "facebook": 0.0020,   # apify/facebook-posts-scraper page feed
+    },
+    "brightdata": {
+        "youtube": 0.0025,    # youtube/profiles dataset
+        "reddit": 0.0025,     # reddit subreddit posts dataset
+    },
+    "x_api": {"twitter": 0.005},  # user_timeline / from: search read
+}
+
 # ---------------------------------------------------------------------------
 # Rate table
 # ---------------------------------------------------------------------------
@@ -338,12 +364,20 @@ def _refresh_pricing() -> dict[str, Any]:
         _parse_scraper_matrix(doc.get("scraper_comment_rates_per_platform") or {}),
     )
 
+    # Per-(provider, platform) CHANNEL scrape rate matrix - same shape/fallthrough
+    # as comments (unset cell → posts rate). New dimension, no legacy folds.
+    channel_matrix = _deep_merge(
+        DEFAULT_SCRAPER_CHANNEL_RATES,
+        _parse_scraper_matrix(doc.get("scraper_channel_rates_per_platform") or {}),
+    )
+
     cache = {
         "rates": _deep_merge(COST_RATES, doc.get("rate_overrides") or {}),
         "margin_multiplier": margin,
         "apify_assumed_per_post_usd": apify_pp,
         "scraper_rates_per_platform": scraper_matrix,
         "scraper_comment_rates_per_platform": comment_matrix,
+        "scraper_channel_rates_per_platform": channel_matrix,
     }
     _pricing_cache = cache
     _pricing_cache_expiry = now + _PRICING_TTL
@@ -399,15 +433,25 @@ def get_scraper_comment_rates_per_platform() -> dict[str, dict[str, float]]:
     return copy.deepcopy(_refresh_pricing().get("scraper_comment_rates_per_platform") or {})
 
 
+def get_scraper_channel_rates_per_platform() -> dict[str, dict[str, float]]:
+    """Return a deep copy of the per-(provider, platform) CHANNEL rate matrix.
+
+    Same shape as :func:`get_scraper_rates_per_platform`. Cells unset here fall
+    through to the posts rate at lookup time, so this dict only contains the
+    cells an admin explicitly priced for channel collection.
+    """
+    return copy.deepcopy(_refresh_pricing().get("scraper_channel_rates_per_platform") or {})
+
+
 def get_scraper_rate(
     provider: str, platform: str | None = None, kind: str = "posts",
 ) -> float | None:
     """Per-(provider, platform) effective $/unit for a scraper.
 
-    ``kind`` is ``"posts"`` (default) or ``"comments"``. For ``"comments"``
-    the lookup tries the comments matrix first and, when no comments cell is
-    set for this (provider, platform), falls back to the **posts** rate - so
-    an admin only fills comment cells where the price genuinely differs.
+    ``kind`` is ``"posts"`` (default), ``"comments"`` or ``"channel"``. For
+    ``"comments"``/``"channel"`` the lookup tries that matrix first and, when no
+    cell is set for this (provider, platform), falls back to the **posts** rate -
+    so an admin only fills cells where the price genuinely differs.
 
     Lookup order (per matrix):
       1. ``matrix[provider][platform]`` if both keys exist.
@@ -431,6 +475,15 @@ def get_scraper_rate(
         if "*" in cells:
             return cells["*"]
         # No comment-specific cell - inherit the posts rate.
+        return get_scraper_rate(provider, platform, "posts")
+    if kind == "channel":
+        matrix = cache.get("scraper_channel_rates_per_platform") or {}
+        cells = matrix.get(provider) or {}
+        if platform and platform in cells:
+            return cells[platform]
+        if "*" in cells:
+            return cells["*"]
+        # No channel-specific cell - inherit the posts rate.
         return get_scraper_rate(provider, platform, "posts")
     matrix = cache.get("scraper_rates_per_platform") or {}
     cells = matrix.get(provider) or {}
@@ -563,9 +616,9 @@ def compute_cost_micros(
 
     Args:
         provider: rate-table key ("gemini", "apify", ...).
-        kind: scraper rate dimension - "posts" (default) or "comments".
-            Selects the comments rate matrix for BrightData / X_api / Vetric
-            (comments inherit the posts rate when no comment cell is set).
+        kind: scraper rate dimension - "posts" (default), "comments" or
+            "channel". Selects the matching rate matrix for BrightData / X_api /
+            Vetric (comments/channel inherit the posts rate when no cell is set).
         model: LLM model id, for gemini.
         sub_kind: optional sub-key for providers that price by endpoint /
             dataset / call type (e.g. x_api "search_per_post", brightdata
