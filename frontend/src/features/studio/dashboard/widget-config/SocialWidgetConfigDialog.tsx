@@ -1009,6 +1009,16 @@ function TableStyleForm({
           />
           Bold first column
         </label>
+
+        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={(config.columnWidth ?? 'equal') === 'equal'}
+            onChange={(e) => onChange({ ...config, columnWidth: e.target.checked ? 'equal' : 'value' })}
+            className="h-3.5 w-3.5 cursor-pointer"
+          />
+          Equal column widths
+        </label>
       </div>
 
       {dimGroups.length > 0 && (

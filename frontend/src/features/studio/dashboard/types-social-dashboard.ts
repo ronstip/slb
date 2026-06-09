@@ -731,6 +731,9 @@ export interface CustomTableConfig {
   headerBold?: boolean;
   /** Bold the leading identity (first dimension) column. */
   emphasizeFirstColumn?: boolean;
+  /** Column sizing. 'equal' (default): columns share width evenly. 'value':
+   *  widths track each column's content (label columns wider than numeric). */
+  columnWidth?: 'equal' | 'value';
   /** Optional secondary dimension. When set (group mode only), each group row
    *  becomes expandable to reveal a per-group breakdown by this dimension,
    *  carrying the table's metric columns. Undefined = no breakdown (default). */

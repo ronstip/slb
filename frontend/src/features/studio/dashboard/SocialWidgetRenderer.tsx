@@ -523,6 +523,7 @@ function ConfigurableTableWidget({
       fontSize={tableConfig.fontSize ?? 'xs'}
       accentColor={tableConfig.accent}
       headerBold={tableConfig.headerBold}
+      columnWidth={tableConfig.columnWidth ?? 'equal'}
       emptyMessage="No data"
       renderExpandedRow={breakdownMap ? renderBreakdown : undefined}
       onRowClick={

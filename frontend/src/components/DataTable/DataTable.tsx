@@ -53,6 +53,11 @@ export interface DataTableProps<T> {
   accentColor?: string;
   /** Render a bolder, accent-tinted header row. */
   headerBold?: boolean;
+  /** Column sizing. 'equal' (default): columns share the width evenly via
+   *  table-fixed. 'value': each column claims its declared `minWidth`, so
+   *  label/identity columns get more room than numeric ones. On mobile both
+   *  modes fit up to 4 columns across the viewport and scroll beyond that. */
+  columnWidth?: 'equal' | 'value';
 }
 
 const FONT_SIZE_CLASS: Record<'xs' | 'sm' | 'base', string> = {
@@ -83,6 +88,7 @@ export function DataTable<T>({
   fontSize = 'xs',
   accentColor,
   headerBold = false,
+  columnWidth = 'equal',
 }: DataTableProps<T>) {
   const headerPadY = density === 'comfortable' ? 'py-3' : 'py-2';
   const cellPadY = density === 'comfortable' ? 'py-3' : 'py-1.5';
@@ -95,11 +101,14 @@ export function DataTable<T>({
   // horizontally scrollable instead of silently truncated.
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  // Live container width drives the mobile "fit up to 4 columns" sizing below.
+  const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = () => {
       setCanScrollRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 1);
+      setContainerWidth(el.clientWidth);
     };
     update();
     el.addEventListener('scroll', update, { passive: true });
@@ -140,16 +149,33 @@ export function DataTable<T>({
   const isExpandable = renderExpandedRow != null;
   const colCount = columns.length;
 
-  // Sum of per-column minimums: the table claims at least this width and the
-  // container scrolls horizontally once it exceeds the viewport, so adding
-  // columns no longer squeezes everything into the screen.
-  const effMinWidth = (col: ColumnDef<T>): number => {
-    const base = col.minWidth ?? DEFAULT_COL_MIN_PX;
-    // Sticky identity columns keep their full width (they're pinned, not
-    // squeezed); other label columns are clamped on mobile to fit more on screen.
-    return isMobile && !col.sticky ? Math.min(base, MOBILE_COL_MAX_PX) : base;
+  // Per-column pixel widths. Desktop honors the sizing mode (even share vs
+  // value-based minimums); mobile overrides both to fit up to 4 columns across
+  // the viewport, scrolling horizontally beyond that.
+  const RANK_PX = 40; // the w-10 rank gutter
+  const MIN_COL_PX = 64;
+  const isRankCol = (col: ColumnDef<T>) => col.width === 'w-10';
+  const flexCount = Math.max(1, columns.filter((c) => !isRankCol(c)).length);
+  const rankPx = columns.some(isRankCol) ? RANK_PX : 0;
+
+  // Returns the explicit width for a column, or undefined to let table-fixed
+  // distribute it evenly (desktop 'equal' mode).
+  const colWidthPx = (col: ColumnDef<T>): number | undefined => {
+    if (isRankCol(col)) return RANK_PX;
+    if (isMobile) {
+      const slots = Math.min(flexCount, 4);
+      const share = containerWidth > 0 ? (containerWidth - rankPx) / slots : MOBILE_COL_MAX_PX;
+      return Math.max(MIN_COL_PX, Math.floor(share));
+    }
+    return columnWidth === 'value' ? (col.minWidth ?? DEFAULT_COL_MIN_PX) : undefined;
   };
-  const minTableWidth = columns.reduce((sum, col) => sum + effMinWidth(col), 0);
+
+  // The table claims at least the sum of effective column widths and scrolls
+  // horizontally once that exceeds the container, instead of squeezing columns.
+  const minTableWidth = columns.reduce(
+    (sum, col) => sum + (colWidthPx(col) ?? col.minWidth ?? DEFAULT_COL_MIN_PX),
+    0,
+  );
 
   // Class added to a sticky cell to mask the scrolling content beneath it. Falls
   // back to an opaque surface when the row isn't striped (rowBg can be '').
@@ -165,9 +191,12 @@ export function DataTable<T>({
   const theadStyle: React.CSSProperties | undefined = headerBold
     ? { backgroundColor: 'color-mix(in srgb, var(--primary) 14%, var(--card))' }
     : undefined;
+  // z-20 (above the z-10 sticky body cells): the header's stacking context must
+  // outrank the pinned identity columns, otherwise those body cells — equal z,
+  // later in the DOM — paint over the pinned header cells on vertical scroll.
   const theadClass = headerBold
-    ? 'sticky top-0 z-10 font-semibold text-foreground'
-    : 'sticky top-0 z-10 bg-muted';
+    ? 'sticky top-0 z-20 font-semibold text-foreground'
+    : 'sticky top-0 z-20 bg-muted';
 
   return (
     <div className="relative min-h-0 flex-1 flex flex-col" style={rootStyle}>
@@ -175,7 +204,7 @@ export function DataTable<T>({
         <table className={`w-full table-fixed ${FONT_SIZE_CLASS[fontSize]}`} style={{ minWidth: minTableWidth }}>
           <colgroup>
             {columns.map((col) => (
-              <col key={col.key} className={col.width ?? ''} />
+              <col key={col.key} className={col.width ?? ''} style={{ width: colWidthPx(col) }} />
             ))}
           </colgroup>
           <thead className={theadClass} style={theadStyle}>
@@ -192,7 +221,7 @@ export function DataTable<T>({
                     } ${isSortable ? 'cursor-pointer select-none' : ''} ${
                       col.sticky ? `sticky z-20 ${headerBold ? '' : 'bg-muted'}` : ''
                     } ${isLastSticky ? 'shadow-[1px_0_0_0_var(--border)]' : ''}`}
-                    style={col.sticky ? { left: col.stickyLeftPx ?? 0, ...(headerBold ? theadStyle : undefined) } : undefined}
+                    style={col.sticky ? { left: col.stickyLeftPx ?? 0, top: 0, ...(headerBold ? theadStyle : undefined) } : undefined}
                     title={typeof col.header === 'string' ? col.header : undefined}
                     onClick={isSortable ? () => onSort(colSortKey) : undefined}
                   >
