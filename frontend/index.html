@@ -90,6 +90,18 @@
       })();
     </script>
     <div id="root"></div>
+    <script>
+      // The build-time prerender bakes the landing-page markup into #root for
+      // SEO at '/'. The SPA serves this same index.html for every route, so on
+      // any non-landing path (e.g. /shared/briefing/:token) that static landing
+      // HTML would paint for ~1s before React mounts and the router swaps in the
+      // real route. Clear it synchronously, before first paint, off the landing
+      // route. (#root is empty in dev/un-prerendered builds → harmless no-op.)
+      if (window.location.pathname !== '/') {
+        var __root = document.getElementById('root');
+        if (__root) __root.innerHTML = '';
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -45,8 +45,13 @@ export function buildCompactLayout(
       });
       y += rowOffset + 2;
     } else {
-      layout.push({ i: w.i, x: 0, y, w: cols, h: Math.max(w.h, 4) });
-      y += Math.max(w.h, 4);
+      // Text cards auto-fit their height to content and can legitimately be a
+      // single row (a one-line title). Flooring them to the 4-row chart minimum
+      // leaves a big empty gap below them on mobile, so preserve their own h.
+      const minH = w.aggregation === 'text' ? 1 : 4;
+      const h = Math.max(w.h, minH);
+      layout.push({ i: w.i, x: 0, y, w: cols, h });
+      y += h;
       i++;
     }
   }

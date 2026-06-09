@@ -104,4 +104,15 @@ describe('buildCompactLayout', () => {
     expect(sorted.map((l) => l.i)).toEqual(['a', 'b']);
     sorted.forEach((l) => expect(l.w).toBe(4));
   });
+
+  it('does not floor a short text card to the 4-row chart minimum', () => {
+    // A text card auto-sized to hug a one-line title (h=1) on desktop must not
+    // be inflated to 4 rows on mobile, which leaves a big empty gap below it.
+    const widgets: SocialDashboardWidget[] = [
+      makeWidget('text', 0, 0, 'bar', { aggregation: 'text', h: 1 }),
+    ];
+    const layout = buildCompactLayout(widgets, 4);
+    const text = layout.find((l) => l.i === 'text')!;
+    expect(text.h).toBe(1);
+  });
 });
