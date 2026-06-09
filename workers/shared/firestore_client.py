@@ -1225,6 +1225,7 @@ class FirestoreClient:
         apify_assumed_per_post_usd: float | None = None,
         scraper_rates_per_platform: dict | None = None,
         scraper_comment_rates_per_platform: dict | None = None,
+        scraper_channel_rates_per_platform: dict | None = None,
         updated_by: str | None = None,
     ) -> None:
         """Merge pricing fields into `app_config/pricing` (stamps updated_at).
@@ -1233,8 +1234,9 @@ class FirestoreClient:
         ``{provider: {platform_or_star: usd}}`` matrix - caller is
         responsible for merging in the cells they touched on top of the
         existing dict before passing in, so partial UI edits don't drop
-        un-touched cells. ``scraper_comment_rates_per_platform`` is the
-        parallel comments-rate matrix (same shape + same merge contract).
+        un-touched cells. ``scraper_comment_rates_per_platform`` and
+        ``scraper_channel_rates_per_platform`` are the parallel comments- and
+        channel-rate matrices (same shape + same merge contract).
         """
         payload: dict = {"updated_at": datetime.now(timezone.utc)}
         if rate_overrides is not None:
@@ -1247,6 +1249,8 @@ class FirestoreClient:
             payload["scraper_rates_per_platform"] = scraper_rates_per_platform
         if scraper_comment_rates_per_platform is not None:
             payload["scraper_comment_rates_per_platform"] = scraper_comment_rates_per_platform
+        if scraper_channel_rates_per_platform is not None:
+            payload["scraper_channel_rates_per_platform"] = scraper_channel_rates_per_platform
         if updated_by is not None:
             payload["updated_by"] = updated_by
         self._db.collection("app_config").document("pricing").set(payload, merge=True)

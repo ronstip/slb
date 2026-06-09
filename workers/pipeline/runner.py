@@ -60,6 +60,10 @@ class PipelineRunner:
         self._enrichment_context: str | None = None
         self._content_types: list[str] | None = None
         self._total_posts_collected = 0
+        # Posts that entered the state machine THIS run (in-range, deduped). Used
+        # to skip the agent-wide topic-clustering Gemini calls when a run added
+        # nothing new - re-clustering an unchanged corpus is paid-for no-op work.
+        self._posts_marked_this_run = 0
         self._continuation_scheduled = False
         # Token for the cost-meter collection context this runner rebinds once
         # it resolves the owning agent (see _bind_cost_context). Reset in run().
@@ -960,6 +964,7 @@ class PipelineRunner:
             # because download_media_batch above already pushed media to GCS, so
             # media posts skip the download step and go straight to enrichment.
             self.state_manager.mark_collected(in_range, media_resolved=True)
+            self._posts_marked_this_run += len(in_range)
 
             # Usage tracking (fire-and-forget) - group by (provider, platform)
             # so the Finance "platform × provider" matrix gets accurate
@@ -1029,6 +1034,11 @@ class PipelineRunner:
                     norm = normalize_provider(prov) or prov
                     if norm in ("apify", "mock", "unknown") or not norm:
                         continue
+                    # Channel mode hits a different API/dataset at a different
+                    # rate (e.g. BD youtube/profiles, X user_timeline) - tag the
+                    # event so the meter picks the CHANNEL rate cell and Finance
+                    # breaks it out. Apify (provider-reported) is skipped above.
+                    scrape_kind = "channel" if self._config.get("channel_urls") else None
                     try:
                         log_cost(
                             provider=norm,
@@ -1041,6 +1051,7 @@ class PipelineRunner:
                             org_id=owner_org_id,
                             collection_id=self.collection_id,
                             agent_id=owner_agent_id,
+                            scrape_kind=scrape_kind,
                         )
                     except Exception:
                         logger.warning(
@@ -1883,6 +1894,15 @@ class PipelineRunner:
                     logger.info(
                         "Agent %s topics_config.auto_regenerate_on_pipeline=False - skipping",
                         agent_id,
+                    )
+                elif self._posts_marked_this_run <= 0:
+                    # Nothing new entered the corpus this run - re-clustering would
+                    # reproduce the existing topics and burn Gemini spend for no
+                    # change. Skip (the prior topic_clusters rows remain valid).
+                    logger.info(
+                        "No new posts this run for %s - skipping topic regeneration "
+                        "(corpus unchanged, avoids paid no-op clustering)",
+                        self.collection_id,
                     )
                 else:
                     settings_local = _get_settings()

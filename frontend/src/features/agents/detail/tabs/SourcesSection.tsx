@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -70,6 +70,15 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [pendingRun, setPendingRun] = useState<PendingRun>(null);
   const [isRunning, setIsRunning] = useState(false);
+  // Which run target is currently collecting (post-confirm). Drives the
+  // per-platform spinner + "Collecting…" status until the collection finishes.
+  const [activeRun, setActiveRun] = useState<
+    | { kind: 'platform'; platform: string }
+    | { kind: 'one'; platform: string; sourceIdx: number }
+    | { kind: 'all' }
+    | null
+  >(null);
+  const sawRunningRef = useRef(false);
   const [addByUrlOpen, setAddByUrlOpen] = useState(false);
   const queryClient = useQueryClient();
   const sources = task.data_scope?.sources ?? [];
@@ -135,6 +144,17 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
       toast.success(
         n === 1 ? 'Source refresh started' : `Refreshing ${n} source${n === 1 ? '' : 's'}`,
       );
+      // Mark the targeted platform(s) as collecting so the row shows a spinner
+      // + "Collecting…" until the new collection's stats flip off 'running'.
+      sawRunningRef.current = false;
+      if (pendingRun.kind === 'all') {
+        setActiveRun({ kind: 'all' });
+      } else if (pendingRun.kind === 'platform') {
+        setActiveRun({ kind: 'platform', platform: pendingRun.platform });
+      } else {
+        const plat = sources[pendingRun.sourceIdx]?.platform;
+        if (plat) setActiveRun({ kind: 'one', platform: plat, sourceIdx: pendingRun.sourceIdx });
+      }
       queryClient.invalidateQueries({ queryKey: ['agent-detail', task.agent_id] });
       queryClient.invalidateQueries({ queryKey: ['agent-source-stats', task.agent_id] });
     } catch {
@@ -176,14 +196,56 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
   // Posts / Posts last 3d in sync with what's actually in BigQuery.
   const collectionIds = task.collection_ids ?? [];
   const taskIsRunning = task.status === 'running';
+  // Poll aggressively while a refresh is in flight so the spinner clears
+  // promptly when the collection lands; otherwise fall back to the slow cadence.
+  const liveStats = taskIsRunning || activeRun !== null;
   const { data: allStats } = useQuery({
     queryKey: ['agent-source-stats', task.agent_id, collectionIds],
     queryFn: () => Promise.all(collectionIds.map((id) => refreshCollectionStats(id))),
     enabled: collectionIds.length > 0,
-    staleTime: taskIsRunning ? 0 : 30_000,
-    refetchInterval: taskIsRunning ? 30_000 : false,
+    staleTime: liveStats ? 0 : 30_000,
+    refetchInterval: activeRun ? 8_000 : taskIsRunning ? 30_000 : false,
     refetchOnMount: 'always',
   });
+
+  // A collection is mid-run when its last-computed status was 'running'. Use it
+  // both to surface per-platform progress and to clear `activeRun` on landing.
+  const anyCollectionRunning = useMemo(
+    () => (allStats ?? []).some((s) => s.collection_status_at_compute === 'running'),
+    [allStats],
+  );
+  const runningBreakdownPlatforms = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of allStats ?? []) {
+      if (s.collection_status_at_compute === 'running') {
+        for (const b of s.platform_breakdown ?? []) set.add(b.value);
+      }
+    }
+    return set;
+  }, [allStats]);
+
+  // Clear the active-run marker once the collection we kicked off has finished
+  // (we observed it running, then stop seeing any running collection). A 3-min
+  // safety timeout covers collections that land before we ever poll 'running'.
+  useEffect(() => {
+    if (!activeRun) return;
+    if (anyCollectionRunning) {
+      sawRunningRef.current = true;
+      return;
+    }
+    if (sawRunningRef.current) {
+      setActiveRun(null);
+      sawRunningRef.current = false;
+    }
+  }, [anyCollectionRunning, activeRun]);
+  useEffect(() => {
+    if (!activeRun) return;
+    const t = setTimeout(() => {
+      setActiveRun(null);
+      sawRunningRef.current = false;
+    }, 180_000);
+    return () => clearTimeout(t);
+  }, [activeRun]);
 
   const { platformPostTotals, platformPostsLast3d, totalPosts } = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -208,6 +270,37 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
     const total = Object.values(totals).reduce((a, b) => a + b, 0);
     return { platformPostTotals: totals, platformPostsLast3d: last3d, totalPosts: total };
   }, [allStats, fallbackTotalPosts]);
+
+  // Platforms to render as "Collecting…" with a spinner: those in a running
+  // collection's breakdown, plus the just-clicked target (covers the window
+  // before the new collection's stats have been polled).
+  const collectingPlatforms = useMemo(() => {
+    const set = new Set(runningBreakdownPlatforms);
+    if (activeRun) {
+      if (activeRun.kind === 'all') {
+        platformRollups.forEach((r) => set.add(r.platform));
+      } else {
+        set.add(activeRun.platform);
+      }
+    }
+    return set;
+  }, [runningBreakdownPlatforms, activeRun, platformRollups]);
+
+  // Per-source-row collecting state. A single-source run (kind:'one') spins ONLY
+  // the targeted row - not every row sharing its platform. Without this, running
+  // one of two Twitter/X sources lights up a spinner on BOTH rows (the backend
+  // correctly collects just one). Platform/all runs, and stats-derived running
+  // (which is only platform-granular), still fall back to platform-level.
+  const isRowCollecting = (sourceIdx: number, platform: string): boolean => {
+    if (activeRun?.kind === 'one') {
+      if (activeRun.sourceIdx === sourceIdx) return true;
+      // Same-platform sibling of the single targeted run: don't spin it.
+      if (platform === activeRun.platform) return false;
+      // A genuinely-separate platform still mid-run elsewhere: surface it.
+      return runningBreakdownPlatforms.has(platform);
+    }
+    return collectingPlatforms.has(platform);
+  };
 
   const visibleRows = useMemo(
     () =>
@@ -330,6 +423,7 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
               onJumpToPlatform={(platform) => { setActiveTab(platform); setExpandedKey(null); }}
               onRunPlatform={handleRunPlatform}
               isRunning={isRunning}
+              collectingPlatforms={collectingPlatforms}
             />
           )}
 
@@ -357,6 +451,7 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
               ? previewList(source.channels, 2)
               : null;
             const isChannelSearch = !!source.channels?.length;
+            const rowCollecting = isRowCollecting(sourceIdx, source.platform);
 
             return (
               <div key={key} className="border-b border-border/30 last:border-b-0">
@@ -395,11 +490,20 @@ function SourcesSectionImpl({ task, onAddPlatforms }: { task: Agent; onAddPlatfo
                         label: `${platformLabel} (${keywordsPreview ?? channelsPreview ?? 'source'})`,
                       });
                     }}
-                    disabled={isRunning}
-                    aria-label={`Run ${platformLabel} source`}
+                    disabled={isRunning || rowCollecting}
+                    aria-label={
+                      rowCollecting
+                        ? `${platformLabel} source collecting`
+                        : `Run ${platformLabel} source`
+                    }
+                    title={rowCollecting ? 'Collecting…' : undefined}
                     className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-primary/5 disabled:opacity-40"
                   >
-                    <Play className="h-3 w-3" />
+                    {rowCollecting ? (
+                      <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+                    ) : (
+                      <Play className="h-3 w-3" />
+                    )}
                   </button>
                 </button>
 
@@ -509,6 +613,7 @@ interface SourcesSummaryViewProps {
   onJumpToPlatform?: (platform: string) => void;
   onRunPlatform?: (platform: string) => void;
   isRunning?: boolean;
+  collectingPlatforms?: Set<string>;
 }
 
 // One row per platform - aggregated across all source cards for that platform.
@@ -522,6 +627,7 @@ function SourcesSummaryViewImpl({
   onJumpToPlatform,
   onRunPlatform,
   isRunning,
+  collectingPlatforms,
 }: SourcesSummaryViewProps) {
   return (
     <div>
@@ -545,6 +651,7 @@ function SourcesSummaryViewImpl({
             const posts = platformPostTotals[r.platform] ?? 0;
             const last3d = platformPostsLast3d[r.platform] ?? 0;
             const platformLabel = PLATFORM_LABELS[r.platform] || r.platform;
+            const isCollecting = collectingPlatforms?.has(r.platform) ?? false;
             return (
               <tr key={r.platform} className="border-b border-border/20 last:border-b-0">
                 <td className="py-1.5 pr-2">
@@ -567,13 +674,20 @@ function SourcesSummaryViewImpl({
                 </td>
                 <td className="py-1.5 pr-2 text-muted-foreground max-w-[160px] truncate">{query}</td>
                 <td className="py-1.5 pr-2">
-                  <span className={cn(
-                    'inline-flex items-center gap-1 text-[10px] font-medium',
-                    isActive ? 'text-emerald-600' : 'text-muted-foreground',
-                  )}>
-                    <span className={cn('h-1.5 w-1.5 rounded-full', isActive ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
-                    {isActive ? 'Active' : 'Inactive'}
-                  </span>
+                  {isCollecting ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                      Collecting…
+                    </span>
+                  ) : (
+                    <span className={cn(
+                      'inline-flex items-center gap-1 text-[10px] font-medium',
+                      isActive ? 'text-emerald-600' : 'text-muted-foreground',
+                    )}>
+                      <span className={cn('h-1.5 w-1.5 rounded-full', isActive ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+                      {isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  )}
                 </td>
                 <td className="py-1.5 pr-2 text-right text-foreground/80 tabular-nums">{formatNumber(r.targetPosts)}</td>
                 <td className="py-1.5 pr-2 text-right text-muted-foreground tabular-nums">{formatNumber(posts)}</td>
@@ -583,20 +697,28 @@ function SourcesSummaryViewImpl({
                     <button
                       type="button"
                       onClick={() => onRunPlatform(r.platform)}
-                      disabled={isRunning}
+                      disabled={isRunning || isCollecting}
                       aria-label={
-                        r.sourceCount > 1
-                          ? `Run all ${r.sourceCount} ${platformLabel} sources`
-                          : `Run ${platformLabel} source`
+                        isCollecting
+                          ? `${platformLabel} collecting`
+                          : r.sourceCount > 1
+                            ? `Run all ${r.sourceCount} ${platformLabel} sources`
+                            : `Run ${platformLabel} source`
                       }
                       title={
-                        r.sourceCount > 1
-                          ? `Refresh all ${r.sourceCount} ${platformLabel} sources`
-                          : `Refresh ${platformLabel}`
+                        isCollecting
+                          ? 'Collecting…'
+                          : r.sourceCount > 1
+                            ? `Refresh all ${r.sourceCount} ${platformLabel} sources`
+                            : `Refresh ${platformLabel}`
                       }
                       className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-primary/5 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
-                      <Play className="h-3 w-3" />
+                      {isCollecting ? (
+                        <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+                      ) : (
+                        <Play className="h-3 w-3" />
+                      )}
                     </button>
                   )}
                 </td>

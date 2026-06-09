@@ -781,6 +781,88 @@ function KeywordsEditor({
   );
 }
 
+// Platforms whose providers support channel (profile / page / subreddit)
+// collection today. The channel input is only shown for these; see
+// config/collection_routing.py CHANNEL_PROVIDER_BY_PLATFORM for the backend map.
+const CHANNEL_CAPABLE_PLATFORMS = new Set([
+  'twitter', 'instagram', 'facebook', 'reddit', 'tiktok', 'youtube',
+]);
+
+// Platforms whose API can scope a keyword search to a channel ("Lakers from
+// @ESPN") - only X today (the `from:` operator). Everywhere else keyword and
+// channel are mutually exclusive per source: you collect a channel's posts OR
+// search by keyword, never both (the platform can't intersect them, and a
+// fetch-then-discard filter would burn cost and risk 0 results).
+const NATIVE_KW_CHANNEL_PLATFORMS = new Set(['twitter']);
+
+const CHANNEL_PLACEHOLDERS: Record<string, string> = {
+  twitter: 'Profile URL or @handle',
+  instagram: 'Profile URL or @handle',
+  facebook: 'Page or group URL',
+  reddit: 'reddit.com/r/name or name',
+  tiktok: 'Profile URL or @handle',
+  youtube: 'Channel URL',
+};
+
+function ChannelsEditor({
+  channels,
+  onChange,
+  placeholder = 'Add a channel and press Enter',
+}: {
+  channels: string[];
+  onChange: (chs: string[]) => void;
+  placeholder?: string;
+}) {
+  const [input, setInput] = useState('');
+
+  const add = () => {
+    const trimmed = input.trim();
+    if (trimmed && !channels.includes(trimmed)) {
+      onChange([...channels, trimmed]);
+      setInput('');
+    }
+  };
+
+  const remove = (ch: string) => onChange(channels.filter((c) => c !== ch));
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      add();
+    }
+  };
+
+  return (
+    <div>
+      <Label className="text-xs font-medium text-muted-foreground mb-2 block">Channels</Label>
+      <Input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="text-sm h-8"
+      />
+      {channels.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {channels.map((ch) => (
+            <Badge key={ch} variant="secondary" className="gap-1 text-xs">
+              {ch}
+              <button
+                type="button"
+                onClick={() => remove(ch)}
+                aria-label={`Remove ${ch}`}
+                className="inline-flex items-center text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SourceCardEditor({
   source,
   onUpdate,
@@ -792,6 +874,17 @@ function SourceCardEditor({
 }) {
   const platform = source.platform;
   const platformLabel = PLATFORM_LABELS[platform] ?? platform;
+  const channelsSupported = CHANNEL_CAPABLE_PLATFORMS.has(platform);
+  const hasChannels = (source.channels ?? []).length > 0;
+  const hasKeywords = (source.keywords ?? []).length > 0;
+  // Mutual exclusivity for non-native platforms: lock to whichever the user has
+  // started filling. Both empty → show both (first entry locks the other).
+  const exclusive = channelsSupported && !NATIVE_KW_CHANNEL_PLATFORMS.has(platform);
+  const lockToChannels = exclusive && hasChannels && !hasKeywords;
+  const lockToKeywords = exclusive && hasKeywords && !hasChannels;
+  const showKeywords = !lockToChannels;
+  const showChannels = channelsSupported && !lockToKeywords;
+  const exclusiveConflict = exclusive && hasChannels && hasKeywords;  // legacy data only
   return (
     <div className="rounded-xl border border-border/50 bg-card shadow-sm">
       <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/40">
@@ -810,11 +903,55 @@ function SourceCardEditor({
       </div>
 
       <div className="px-4 py-4 space-y-4">
-        <KeywordsEditor
-          keywords={source.keywords ?? []}
-          onChange={(kws) => onUpdate({ keywords: kws })}
-          placeholder={`Keywords for ${platformLabel}`}
-        />
+        {showKeywords && (
+          <KeywordsEditor
+            keywords={source.keywords ?? []}
+            onChange={(kws) => onUpdate({ keywords: kws })}
+            placeholder={`Keywords for ${platformLabel}`}
+          />
+        )}
+
+        {showChannels && (
+          <ChannelsEditor
+            channels={source.channels ?? []}
+            onChange={(chs) => onUpdate({ channels: chs })}
+            placeholder={CHANNEL_PLACEHOLDERS[platform] ?? 'Add a channel and press Enter'}
+          />
+        )}
+
+        {/* Twitter/X: keyword + channel intersect natively (from:handle). */}
+        {!exclusive && channelsSupported && hasChannels && hasKeywords && (
+          <p className="text-[11px] text-muted-foreground -mt-1">
+            Keywords act as a filter <span className="font-medium">within</span> these channels —
+            only channel posts matching a keyword are collected.
+          </p>
+        )}
+
+        {/* Non-native: keyword/channel are mutually exclusive. */}
+        {exclusive && !hasChannels && !hasKeywords && (
+          <p className="text-[11px] text-muted-foreground -mt-1">
+            For {platformLabel}, use <span className="font-medium">either</span> keywords{' '}
+            <span className="font-medium">or</span> a channel — not both (this platform can't
+            filter a channel's posts by keyword).
+          </p>
+        )}
+        {lockToChannels && (
+          <p className="text-[11px] text-muted-foreground -mt-1">
+            Collecting from {(source.channels ?? []).length} channel
+            {(source.channels ?? []).length === 1 ? '' : 's'}. Clear channels to search by keyword instead.
+          </p>
+        )}
+        {lockToKeywords && (
+          <p className="text-[11px] text-muted-foreground -mt-1">
+            Searching by keyword. Clear keywords to collect from a channel instead.
+          </p>
+        )}
+        {exclusiveConflict && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-500 -mt-1">
+            {platformLabel} can't combine keywords and channels — clear one. Only the channel
+            will be used until you do.
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[140px]">

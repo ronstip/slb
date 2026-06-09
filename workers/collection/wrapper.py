@@ -84,14 +84,25 @@ class DataProviderWrapper:
 
     def _resolve_preferred_vendor(self, platform: str) -> str | None:
         """Vendor selection precedence (highest to lowest):
-        1. Per-collection `vendor_config.platform_overrides[platform]`
-        2. Env `DEFAULT_VENDOR_<PLATFORM>` (e.g. DEFAULT_VENDOR_INSTAGRAM)
-        3. Per-collection `vendor_config.default`
-        4. None - caller falls back to first-supporting adapter
+        1. Per-collection `vendor_config.platform_overrides[platform]` (explicit user choice)
+        2. Channel mode: `config.channel_urls` present → channel-capable provider
+           for this platform (config.collection_routing). Channel collection uses
+           a different API/actor than keyword search for some platforms, so this
+           wins over env/`default` but never over an explicit user override.
+        3. Env `DEFAULT_VENDOR_<PLATFORM>` (e.g. DEFAULT_VENDOR_INSTAGRAM)
+        4. Per-collection `vendor_config.default`
+        5. None - caller falls back to first-supporting adapter
         """
         override = self._vendor_config.get("platform_overrides", {}).get(platform)
         if override:
             return override
+
+        if self.config.get("channel_urls"):
+            from config.collection_routing import channel_provider_for
+
+            channel_vendor = channel_provider_for(platform)
+            if channel_vendor:
+                return channel_vendor
 
         settings = get_settings()
         env_default = getattr(settings, f"default_vendor_{platform}", "") or ""

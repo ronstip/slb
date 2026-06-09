@@ -35,7 +35,9 @@ DEFAULT_PER_POST_USD = 0.005  # unknown/unspecified provider → conservative
 ASSUMED_SEARCH_QUERIES = 10
 
 
-def _provider_per_post_usd(provider: str, platform: str | None = None) -> float:
+def _provider_per_post_usd(
+    provider: str, platform: str | None = None, kind: str = "posts",
+) -> float:
     """Conservative per-post crawl cost for a (provider, platform) pair.
 
     Reads the admin-editable per-(provider, platform) scraper matrix FIRST -
@@ -49,8 +51,9 @@ def _provider_per_post_usd(provider: str, platform: str | None = None) -> float:
 
     # Matrix first (admin-editable, per-platform). `platform=None` still picks
     # up a wildcard "*" cell if the admin set one. None → no matrix cell → fall
-    # through to the legacy rate below.
-    matrix_rate = get_scraper_rate(p, platform, "posts")
+    # through to the legacy rate below. `kind="channel"` consults the channel
+    # matrix (which itself falls back to the posts rate when a cell is unset).
+    matrix_rate = get_scraper_rate(p, platform, kind)
     if matrix_rate is not None:
         return matrix_rate
 
@@ -71,6 +74,7 @@ def estimate_run_cost_micros(
     n_posts: int,
     providers: list[str] | None = None,
     provider_platform_pairs: list[tuple[str | None, str | None]] | None = None,
+    channel_mode: bool = False,
     include_comments: bool = False,
     enrichment_enabled: bool = True,
     gemini_model: str = "gemini-3-flash-preview",
@@ -89,6 +93,10 @@ def estimate_run_cost_micros(
             lookup consult the per-platform scraper matrix cell - so an admin
             edit to e.g. BrightData×YouTube moves this estimate. Falls back to
             ``providers`` (platform=None) when not given.
+        channel_mode: when True the crawl is channel collection - bill at the
+            CHANNEL rate cell for each (provider, platform) pair (falls back to
+            the posts rate when unset). The pairs must already be the
+            channel-mode providers (see config.collection_routing).
         include_comments: fetches extra per-post reads → multiplier.
         enrichment_enabled: bill assumed Gemini enrichment tokens per post.
         gemini_model: model used for enrichment (rate lookup).
@@ -105,12 +113,14 @@ def estimate_run_cost_micros(
     #    (provider, platform) per-post rate (conservative). Prefer the explicit
     #    (provider, platform) pairs so per-platform matrix cells are consulted;
     #    fall back to platform-agnostic provider keys, then the default rate.
+    rate_kind = "channel" if channel_mode else "posts"
     if provider_platform_pairs:
         per_post = max(
-            _provider_per_post_usd(prov, plat) for prov, plat in provider_platform_pairs
+            _provider_per_post_usd(prov, plat, rate_kind)
+            for prov, plat in provider_platform_pairs
         )
     elif providers:
-        per_post = max(_provider_per_post_usd(p) for p in providers)
+        per_post = max(_provider_per_post_usd(p, None, rate_kind) for p in providers)
     else:
         per_post = DEFAULT_PER_POST_USD
     crawl_usd = n_posts * per_post

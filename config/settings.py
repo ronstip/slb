@@ -166,7 +166,13 @@ class Settings(BaseSettings):
     # that handles directUrls. Defaults to apify/instagram-scraper (parser
     # already registered in apify_parsers.py).
     apify_actor_instagram_post: str = "apify/instagram-scraper"
-    apify_actor_facebook: str = "apify/facebook-posts-scraper"
+    apify_actor_facebook: str = "scrapeforge/facebook-search-posts"
+    # Channel/page actor - the keyword actor (scrapeforge/facebook-search-posts)
+    # takes a `query` string and can't collect a specific page's feed, so channel
+    # mode uses apify/facebook-posts-scraper with startUrls (page URLs) +
+    # onlyPostsNewerThan. Parser registered in apify_parsers.py. Mirrors the IG
+    # split (apify_actor_instagram vs apify_actor_instagram_post).
+    apify_actor_facebook_page: str = "apify/facebook-posts-scraper"
     apify_actor_tiktok: str = "apidojo/tiktok-scraper-api"
     apify_run_timeout_sec: int = 1500
     apify_max_runs_per_collection: int = 30

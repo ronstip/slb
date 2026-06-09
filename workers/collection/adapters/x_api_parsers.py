@@ -351,15 +351,30 @@ def extract_twitter_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-def extract_twitter_username(url: str) -> str | None:
-    """Extract the @handle from an x.com or twitter.com URL.
+_RESERVED_TWITTER_PATHS = {
+    "i", "search", "home", "explore", "notifications", "messages",
+}
 
-    Returns None for known non-handle paths (search, home, i/...).
+
+def extract_twitter_username(url: str) -> str | None:
+    """Extract the handle from an x.com/twitter.com URL OR a bare handle.
+
+    Accepts ``https://x.com/espn``, ``@espn`` and ``espn`` (the Data Sources
+    channel input invites "Profile URL or @handle", so all three must work).
+    Returns None for known non-handle paths (search, home, i/...) or junk.
     """
-    match = re.search(r"(?:twitter|x)\.com/([^/?#]+)", url)
-    if not match:
+    if not url:
         return None
-    candidate = match.group(1)
-    if candidate in {"i", "search", "home", "explore", "notifications", "messages"}:
+    text = url.strip()
+    match = re.search(r"(?:twitter|x)\.com/([^/?#]+)", text)
+    if match:
+        candidate = match.group(1)
+    elif "/" not in text and "." not in text:
+        # Bare handle ("@espn" or "espn") - no URL present.
+        candidate = text.lstrip("@")
+    else:
+        return None
+    candidate = candidate.strip().lstrip("@")
+    if not candidate or candidate in _RESERVED_TWITTER_PATHS:
         return None
     return candidate

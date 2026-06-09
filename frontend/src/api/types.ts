@@ -958,6 +958,10 @@ export interface PricingConfig {
    *  A cell of `null` means "no comment-specific rate - inherit the posts
    *  rate for that (provider, platform)". */
   scraper_comment_rates_per_platform: Record<string, Record<string, number | null>>;
+  /** Parallel CHANNEL-rate matrix (profile/page/subreddit collection). Same
+   *  shape; a cell of `null` inherits the posts rate for that (provider,
+   *  platform). */
+  scraper_channel_rates_per_platform: Record<string, Record<string, number | null>>;
   gemini: Record<string, GeminiModelRate>;
   google_search_gemini3_per_query_usd: number | null;
   google_search_gemini25_per_prompt_usd: number | null;

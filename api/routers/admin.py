@@ -1376,6 +1376,22 @@ def _scraper_comment_matrix_view() -> dict[str, dict[str, float | None]]:
     return out
 
 
+def _scraper_channel_matrix_view() -> dict[str, dict[str, float | None]]:
+    """Project the live CHANNEL scraper rate matrix into the UI shape.
+
+    Same even grid as :func:`_scraper_comment_matrix_view`. A ``None`` cell means
+    "no channel-specific rate, inherit the posts rate" (see
+    :func:`config.cost_rates.get_scraper_rate`).
+    """
+    matrix = cost_rates.get_scraper_channel_rates_per_platform()
+    out: dict[str, dict[str, float | None]] = {}
+    for prov in _SCRAPER_PROVIDERS:
+        cells = matrix.get(prov) or {}
+        out[prov] = {p: cells.get(p) for p in _SCRAPER_PLATFORMS}
+        out[prov]["*"] = cells.get("*")
+    return out
+
+
 def _curated_pricing_view() -> dict:
     """Project the effective rate table down to the curated, editable knobs."""
     r = cost_rates.get_active_rates()
@@ -1392,6 +1408,10 @@ def _curated_pricing_view() -> dict:
         # Parallel comments-rate matrix - cells default to NULL ("inherit the
         # posts rate"); only populated where comment scraping costs differently.
         "scraper_comment_rates_per_platform": _scraper_comment_matrix_view(),
+        # Parallel channel-rate matrix - same NULL-inherits-posts semantics; only
+        # populated where channel (profile/page/subreddit) collection costs
+        # differently than keyword search.
+        "scraper_channel_rates_per_platform": _scraper_channel_matrix_view(),
         "gemini": {
             m: {
                 "input_per_mtok": gem.get(m, {}).get("input_per_mtok"),
@@ -1431,6 +1451,8 @@ class PricingUpdate(BaseModel):
     # Parallel comments-rate matrix, same shape + same partial-edit semantics
     # (a cell of ``None`` clears that comment rate → inherits the posts rate).
     scraper_comment_rates_per_platform: dict[str, dict[str, float | None]] | None = None
+    # Parallel channel-rate matrix, same shape + semantics (None → inherit posts).
+    scraper_channel_rates_per_platform: dict[str, dict[str, float | None]] | None = None
     gemini: dict[str, _GeminiRate] | None = None
     google_search_gemini3_per_query_usd: float | None = None
     google_search_gemini25_per_prompt_usd: float | None = None
@@ -1556,6 +1578,10 @@ async def admin_update_pricing(
         pricing_doc.get("scraper_comment_rates_per_platform"),
         body.scraper_comment_rates_per_platform,
     )
+    scraper_channel_matrix_merged = _merge_scraper_matrix(
+        pricing_doc.get("scraper_channel_rates_per_platform"),
+        body.scraper_channel_rates_per_platform,
+    )
 
     await asyncio.to_thread(
         fs.set_pricing_config,
@@ -1564,6 +1590,7 @@ async def admin_update_pricing(
         apify_assumed_per_post_usd=body.apify_assumed_per_post_usd,
         scraper_rates_per_platform=scraper_matrix_merged,
         scraper_comment_rates_per_platform=scraper_comment_matrix_merged,
+        scraper_channel_rates_per_platform=scraper_channel_matrix_merged,
         updated_by=user.email,
     )
     cost_rates.invalidate_pricing_cache()
