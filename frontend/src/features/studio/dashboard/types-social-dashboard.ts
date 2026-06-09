@@ -88,7 +88,7 @@ export function customFieldName(dim: `custom:${string}`): string {
  * brand-icon treatment beyond one hardcoded field without sprinkling icons on
  * unrelated columns (sentiment, channel, country, ...).
  */
-export function isBrandDimension(dim: CustomDimension | undefined | null): boolean {
+export function isBrandDimension(dim: AnyDimension | undefined | null): boolean {
   if (!dim) return false;
   if (dim === 'brands') return true;
   return isCustomFieldDimension(dim) && /brand/i.test(customFieldName(dim));
