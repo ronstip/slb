@@ -71,7 +71,7 @@ export type StandardCustomDimension = Exclude<CustomDimension, `custom:${string}
 export const CUSTOM_DIM_PREFIX = 'custom:';
 
 export function isCustomFieldDimension(
-  dim: CustomDimension | undefined | null,
+  dim: AnyDimension | undefined | null,
 ): dim is `custom:${string}` {
   return typeof dim === 'string' && dim.startsWith(CUSTOM_DIM_PREFIX);
 }
