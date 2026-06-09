@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, getDimensionMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from './topic-aggregations.ts';
 import { aggregateObjectList, aggregateObjectTable } from './object-list-aggregations.ts';
 import {
@@ -14,7 +14,7 @@ import {
   TimeAgoCell,
   ContentPreview,
 } from '../../../components/DataTable/cells.tsx';
-import { aggregateCustom, aggregateTable, type TableRow } from './dashboard-aggregations.ts';
+import { aggregateCustom, aggregateTable, aggregateTableBreakdown, BREAKDOWN_DIM_ID, type TableRow } from './dashboard-aggregations.ts';
 import {
   aggregateSentiment,
   aggregateEmotions,
@@ -176,12 +176,17 @@ function buildTableColumns(
 ): ColumnDef<TableRow>[] {
   const cols: ColumnDef<TableRow>[] = [];
 
-  if (tableConfig.showRank !== false) {
+  const rankShown = tableConfig.showRank !== false;
+  if (rankShown) {
     cols.push({
       key: '__rank',
       header: '#',
       width: 'w-10',
       sortable: false,
+      // Pin the rank gutter so wide tables keep their row anchor while the
+      // metric columns scroll horizontally on mobile.
+      sticky: true,
+      stickyLeftPx: 0,
       render: (_row, idx) => (
         <span className="text-[11px] tabular-nums text-muted-foreground/50">{idx + 1}</span>
       ),
@@ -190,6 +195,9 @@ function buildTableColumns(
 
   // First dim column (if any) gets the channel/platform-icon treatment when
   // its dimension is `channel_handle`. Subsequent dim columns render plain.
+  // Cell text size is left to the table's `fontSize`; the identity column's
+  // weight is configurable via `emphasizeFirstColumn`.
+  const firstDimWeight = tableConfig.emphasizeFirstColumn ? 'font-bold' : 'font-medium';
   let dimColSeen = false;
   for (const col of tableConfig.columns) {
     if (isDimensionColumn(col)) {
@@ -201,6 +209,11 @@ function buildTableColumns(
         key: col.id,
         header: col.header || autoColumnHeader(col),
         align: 'left',
+        // Pin the first label column (the row's identity) so it stays visible
+        // while metric columns scroll horizontally on mobile. Offset past the
+        // rank gutter (w-10 = 40px) when it's shown.
+        sticky: isFirstDim,
+        stickyLeftPx: isFirstDim ? (rankShown ? 40 : 0) : undefined,
         // Label columns hold narrative text -> give them more room and let them
         // wrap to full height (no line cap) so the value is always fully visible.
         minWidth: isFirstDim ? 220 : 170,
@@ -218,7 +231,7 @@ function buildTableColumns(
                   <PlatformIcon platform={row.__platform} className="h-3.5 w-3.5 shrink-0" />
                 )}
                 <span
-                  className="text-[12px] font-medium text-foreground break-words"
+                  className={cn('break-words text-foreground', isFirstDim ? firstDimWeight : '')}
                   title={raw === '' ? text : `@${text}`}
                 >
                   {raw === '' ? text : `@${text}`}
@@ -232,8 +245,8 @@ function buildTableColumns(
                 <BrandIcon brand={raw} className="h-3.5 w-3.5 shrink-0" />
                 <span
                   className={cn(
-                    'text-[12px] break-words',
-                    isFirstDim ? 'font-medium text-foreground' : 'text-foreground',
+                    'break-words',
+                    isFirstDim ? `${firstDimWeight} text-foreground` : 'text-foreground',
                   )}
                   title={text}
                 >
@@ -245,8 +258,8 @@ function buildTableColumns(
           return (
             <span
               className={cn(
-                'text-[12px] break-words',
-                isFirstDim ? 'font-medium text-foreground' : 'text-foreground',
+                'break-words',
+                isFirstDim ? `${firstDimWeight} text-foreground` : 'text-foreground',
               )}
               title={text}
             >
@@ -425,6 +438,53 @@ function ConfigurableTableWidget({
       : buildTableColumns(tableConfig, columnStats, labelOverrides),
     [isPostMode, tableConfig, columnStats, labelOverrides],
   );
+  // Optional per-group breakdown (opt-in via tableConfig.breakdownDimension).
+  // Grouped post tables only - not topics or element-as-unit object tables.
+  const breakdownDim = tableConfig.breakdownDimension;
+  const breakdownMap = useMemo(() => {
+    if (isTopicsSource || isPostMode || !breakdownDim) return null;
+    if (objectFieldOfTable(tableConfig)) return null;
+    const aggPosts = applyWidgetValueFilters(posts, filters);
+    return aggregateTableBreakdown(aggPosts, tableConfig);
+  }, [isTopicsSource, isPostMode, breakdownDim, posts, filters, tableConfig]);
+  const breakdownMetricCols = useMemo(
+    () => tableConfig.columns.filter((c) => !isDimensionColumn(c) && c.metric),
+    [tableConfig],
+  );
+  const breakdownHeader = breakdownDim ? getDimensionMeta(breakdownDim).label : '';
+  const renderBreakdown = (row: TableRow) => {
+    const sub = breakdownMap?.get(row.__key) ?? [];
+    if (sub.length === 0) {
+      return <div className="py-1 text-xs text-muted-foreground italic">No breakdown data</div>;
+    }
+    return (
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-muted-foreground">
+            <th className="py-1 pr-3 text-left font-medium">{breakdownHeader}</th>
+            {breakdownMetricCols.map((c) => (
+              <th key={c.id} className="py-1 pl-3 text-right font-medium">{c.header || autoColumnHeader(c)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sub.map((r) => (
+            <tr key={r.__key} className="border-t border-border/30">
+              <td className="py-1 pr-3 text-foreground break-words">
+                {renameValue(String(r[BREAKDOWN_DIM_ID] ?? ''), labelOverrides) || '-'}
+              </td>
+              {breakdownMetricCols.map((c) => (
+                <td key={c.id} className="py-1 pl-3 text-right tabular-nums">
+                  {formatNumber(Number(r[c.id] ?? 0))}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
+
   // Row-click filtering (group mode only): use the first dim column whose
   // dimension maps to a filter key. Post mode rows have no group identity to
   // filter on; clicks fall through to the link cell instead.
@@ -460,18 +520,26 @@ function ConfigurableTableWidget({
       // Style tab.
       density={tableConfig.density ?? 'comfortable'}
       striped={tableConfig.striped ?? false}
+      fontSize={tableConfig.fontSize ?? 'xs'}
+      accentColor={tableConfig.accent}
+      headerBold={tableConfig.headerBold}
       emptyMessage="No data"
+      renderExpandedRow={breakdownMap ? renderBreakdown : undefined}
       onRowClick={
-        isTopicsSource && onTopicNavigate
-          ? (r) => {
-              if (r.__key) onTopicNavigate(r.__key);
-            }
-          : filterKey && firstDimCol && onFilterToggle
+        // Breakdown expansion owns the row click - skip filter/navigate so a
+        // click only toggles the drill-down.
+        breakdownMap
+          ? undefined
+          : isTopicsSource && onTopicNavigate
             ? (r) => {
-                const v = r[firstDimCol.id];
-                if (typeof v === 'string' && v) onFilterToggle(filterKey, v);
+                if (r.__key) onTopicNavigate(r.__key);
               }
-            : undefined
+            : filterKey && firstDimCol && onFilterToggle
+              ? (r) => {
+                  const v = r[firstDimCol.id];
+                  if (typeof v === 'string' && v) onFilterToggle(filterKey, v);
+                }
+              : undefined
       }
     />
   );
@@ -1117,25 +1185,34 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
     const ROW_HEIGHT_PX = 48;
     const MARGIN_Y_PX = 6;
     const BOTTOM_PAD_PX = 24; // visual breathing room below last block
-    let raf = 0;
+    // Trailing debounce: a single layout shift can fire the ResizeObserver many
+    // times in a row (most notably while a web font swaps in and reflows the
+    // headings taller, step by step). Measuring + onAutoSize on every callback
+    // turns that burst into a re-render storm that React aborts with
+    // "Maximum update depth exceeded". Collapsing the burst into one measurement
+    // after it settles keeps the fit correct without the storm.
+    let timer = 0;
     const recompute = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => {
         if (!contentRef.current) return;
         const contentH = contentRef.current.scrollHeight;
         const cellPx = contentH + BOTTOM_PAD_PX;
         const targetH = Math.max(2, Math.ceil(cellPx / (ROW_HEIGHT_PX + MARGIN_Y_PX)));
-        if (Math.abs(targetH - widget.h) >= 1) {
+        // Asymmetric dead-band: grow freely, only shrink on a >=2-row drop, so a
+        // sub-pixel reflow can't oscillate the height by a single row.
+        const delta = targetH - widget.h;
+        if (delta >= 1 || delta <= -2) {
           onAutoSize(widget.i, targetH);
         }
-      });
+      }, 120);
     };
     const observer = new ResizeObserver(recompute);
     observer.observe(contentRef.current);
     recompute();
     return () => {
       observer.disconnect();
-      cancelAnimationFrame(raf);
+      clearTimeout(timer);
     };
   }, [widget.i, widget.h, widget.manualHeight, content, onAutoSize]);
 
@@ -1181,7 +1258,12 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
       )}
 
       {content.trim() ? (
-        <div className="h-full overflow-y-auto">
+        // `scrollbar-gutter: stable` reserves the scrollbar's width whether or
+        // not it's shown, so a transient scrollbar (while auto-size catches up)
+        // can't shrink the content width, reflow the text, and oscillate the
+        // measured height. Without it, classic (non-overlay) scrollbars cause an
+        // infinite grow/shrink loop in the auto-size effect above.
+        <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
           {/* Inner div is the natural-height content; outer wrapper provides
               the scrolling fallback if auto-size hasn't caught up yet. The
               `ref` is placed on the inner div so scrollHeight measures the
@@ -1191,7 +1273,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
               autoDir
               stripComments={false}
               headingIds
-              className="agent-prose max-w-none break-words text-sm leading-relaxed"
+              className="agent-prose brief-prose max-w-none break-words text-sm leading-relaxed"
             >
               {content}
             </Markdown>
@@ -1219,25 +1301,30 @@ function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, 
     const ROW_HEIGHT_PX = 48;
     const MARGIN_Y_PX = 6;
     const BOTTOM_PAD_PX = 24;
-    let raf = 0;
+    // Trailing debounce (see TextWidget) - coalesces ResizeObserver bursts (embed
+    // iframes resizing as they load) into a single measurement + update.
+    let timer = 0;
     const recompute = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => {
         if (!contentRef.current) return;
         const contentH = contentRef.current.scrollHeight;
         const cellPx = contentH + BOTTOM_PAD_PX;
         const targetH = Math.max(4, Math.ceil(cellPx / (ROW_HEIGHT_PX + MARGIN_Y_PX)));
-        if (Math.abs(targetH - widget.h) >= 1) {
+        // Asymmetric dead-band (see TextWidget): grow freely, only shrink on a
+        // >=2-row drop, so a sub-pixel reflow can't oscillate the height.
+        const delta = targetH - widget.h;
+        if (delta >= 1 || delta <= -2) {
           onAutoSize(widget.i, targetH);
         }
-      });
+      }, 120);
     };
     const observer = new ResizeObserver(recompute);
     observer.observe(contentRef.current);
     recompute();
     return () => {
       observer.disconnect();
-      cancelAnimationFrame(raf);
+      clearTimeout(timer);
     };
   }, [widget.i, widget.h, widget.manualHeight, urls.length, onAutoSize]);
 

@@ -55,6 +55,11 @@ const ALL_CHART_TYPES: Array<{ type: SocialChartType; label: string; icon: React
  *  snapshot - no time series, so `line` doesn't apply. */
 const TOPIC_DISABLED_CHART_TYPES: ReadonlySet<SocialChartType> = new Set(['line']);
 
+/** Preset accent swatches for table styling (mirrors the chart style palette). */
+const TABLE_ACCENT_COLORS = [
+  '#4A7C8F', '#2B5066', '#6B3040', '#9A7B3C', '#3E6B52', '#6B4A6E',
+];
+
 // ── Public wrapper ─────────────────────────────────────────────────────────────
 
 interface SocialWidgetConfigDialogProps {
@@ -915,6 +920,66 @@ function TableStyleForm({
           </div>
         </div>
 
+        {/* Text size */}
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Text size</Label>
+          <div className="flex items-center gap-1.5">
+            {([['xs', 'Small'], ['sm', 'Medium'], ['base', 'Large']] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onChange({ ...config, fontSize: value })}
+                className={cn(
+                  'rounded-md border px-2.5 py-1 text-xs font-medium transition-all',
+                  (config.fontSize ?? 'xs') === value
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Accent color - recolors in-cell bars/heatmaps + (with bold header) the header band */}
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Accent</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            {TABLE_ACCENT_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => onChange({ ...config, accent: color })}
+                className={cn(
+                  'h-6 w-6 rounded-full border-2 transition-transform hover:scale-110',
+                  config.accent === color ? 'border-foreground scale-110' : 'border-transparent',
+                )}
+                style={{ backgroundColor: color }}
+                title={color}
+              />
+            ))}
+            <input
+              type="color"
+              className="h-6 w-9 cursor-pointer rounded border border-border p-0.5"
+              value={config.accent ?? '#4A7C8F'}
+              onChange={(e) => onChange({ ...config, accent: e.target.value })}
+              title="Custom color"
+            />
+            <button
+              type="button"
+              onClick={() => onChange({ ...config, accent: undefined })}
+              className={cn(
+                'h-6 w-6 rounded-full border-2 text-[10px] font-medium text-muted-foreground transition-all hover:scale-110',
+                !config.accent ? 'border-foreground scale-110 bg-muted' : 'border-dashed border-border bg-muted/50',
+              )}
+              title="Auto (theme color)"
+            >
+              A
+            </button>
+          </div>
+        </div>
+
         <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
           <input
             type="checkbox"
@@ -923,6 +988,26 @@ function TableStyleForm({
             className="h-3.5 w-3.5 cursor-pointer"
           />
           Striped rows
+        </label>
+
+        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={config.headerBold ?? false}
+            onChange={(e) => onChange({ ...config, headerBold: e.target.checked })}
+            className="h-3.5 w-3.5 cursor-pointer"
+          />
+          Bold accent header
+        </label>
+
+        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={config.emphasizeFirstColumn ?? false}
+            onChange={(e) => onChange({ ...config, emphasizeFirstColumn: e.target.checked })}
+            className="h-3.5 w-3.5 cursor-pointer"
+          />
+          Bold first column
         </label>
       </div>
 

@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '../ui/button.tsx';
 import { useTableSort, type SortDir } from './use-table-sort.ts';
+import { useIsMobile } from '../../hooks/useIsMobile.ts';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -17,11 +18,20 @@ export interface ColumnDef<T> {
   align?: 'left' | 'right';
   sortable?: boolean;
   sortKey?: string;
+  /** Pin this column to the left edge while the table scrolls horizontally
+   *  (mobile-wide tables). Sticky columns must be the leading contiguous run;
+   *  `stickyLeftPx` is the cumulative pixel offset of preceding sticky columns. */
+  sticky?: boolean;
+  stickyLeftPx?: number;
   render: (row: T, idx: number) => ReactNode;
 }
 
 /** Fallback min width for columns that don't declare one. */
 const DEFAULT_COL_MIN_PX = 120;
+
+/** On narrow viewports, clamp generous label-column minimums so a multi-column
+ *  table needs less horizontal scrolling and the first few metrics stay in view. */
+const MOBILE_COL_MAX_PX = 150;
 
 export interface DataTableProps<T> {
   data: T[];
@@ -36,7 +46,20 @@ export interface DataTableProps<T> {
   className?: string;
   striped?: boolean;
   density?: 'compact' | 'comfortable';
+  /** Body/header text size. Default 'xs'. */
+  fontSize?: 'xs' | 'sm' | 'base';
+  /** Accent color: overrides `--primary` within the table so in-cell bars /
+   *  heatmaps recolor, and (with `headerBold`) tints the header band. */
+  accentColor?: string;
+  /** Render a bolder, accent-tinted header row. */
+  headerBold?: boolean;
 }
+
+const FONT_SIZE_CLASS: Record<'xs' | 'sm' | 'base', string> = {
+  xs: 'text-xs',
+  sm: 'text-sm',
+  base: 'text-[15px]',
+};
 
 /* ------------------------------------------------------------------ */
 /* DataTable                                                           */
@@ -57,11 +80,36 @@ export function DataTable<T>({
   className,
   striped = true,
   density = 'compact',
+  fontSize = 'xs',
+  accentColor,
+  headerBold = false,
 }: DataTableProps<T>) {
   const headerPadY = density === 'comfortable' ? 'py-3' : 'py-2';
   const cellPadY = density === 'comfortable' ? 'py-3' : 'py-1.5';
   const cellPadX = density === 'comfortable' ? 'px-3' : 'px-2';
   const hasSorting = defaultSortKey != null;
+  const isMobile = useIsMobile(600);
+
+  // Right-edge scroll affordance: a fade overlay shown while the table can
+  // still be scrolled further right, so wide tables on mobile read as
+  // horizontally scrollable instead of silently truncated.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      setCanScrollRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 1);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, [data, columns]);
   const { sorted, sortKey, sortDir, handleSort } = useTableSort(
     data,
     defaultSortKey ?? '',
@@ -95,31 +143,56 @@ export function DataTable<T>({
   // Sum of per-column minimums: the table claims at least this width and the
   // container scrolls horizontally once it exceeds the viewport, so adding
   // columns no longer squeezes everything into the screen.
-  const minTableWidth = columns.reduce(
-    (sum, col) => sum + (col.minWidth ?? DEFAULT_COL_MIN_PX),
-    0,
-  );
+  const effMinWidth = (col: ColumnDef<T>): number => {
+    const base = col.minWidth ?? DEFAULT_COL_MIN_PX;
+    // Sticky identity columns keep their full width (they're pinned, not
+    // squeezed); other label columns are clamped on mobile to fit more on screen.
+    return isMobile && !col.sticky ? Math.min(base, MOBILE_COL_MAX_PX) : base;
+  };
+  const minTableWidth = columns.reduce((sum, col) => sum + effMinWidth(col), 0);
+
+  // Class added to a sticky cell to mask the scrolling content beneath it. Falls
+  // back to an opaque surface when the row isn't striped (rowBg can be '').
+  const stickyCellClasses = (rowBg: string) =>
+    `sticky z-10 ${rowBg || 'bg-background'}`;
+
+  // Accent override scoped to the table: in-cell bar/heatmap viz read
+  // `var(--primary)`, so setting it here recolors them without touching the
+  // global theme. Also used to tint the header band when `headerBold` is on.
+  const rootStyle = accentColor
+    ? ({ ['--primary' as string]: accentColor } as React.CSSProperties)
+    : undefined;
+  const theadStyle: React.CSSProperties | undefined = headerBold
+    ? { backgroundColor: 'color-mix(in srgb, var(--primary) 14%, var(--card))' }
+    : undefined;
+  const theadClass = headerBold
+    ? 'sticky top-0 z-10 font-semibold text-foreground'
+    : 'sticky top-0 z-10 bg-muted';
 
   return (
-    <>
-      <div className={`min-h-0 flex-1 overflow-auto ${className ?? ''}`}>
-        <table className="w-full table-fixed text-xs" style={{ minWidth: minTableWidth }}>
+    <div className="relative min-h-0 flex-1 flex flex-col" style={rootStyle}>
+      <div ref={scrollRef} className={`min-h-0 flex-1 overflow-auto ${className ?? ''}`}>
+        <table className={`w-full table-fixed ${FONT_SIZE_CLASS[fontSize]}`} style={{ minWidth: minTableWidth }}>
           <colgroup>
             {columns.map((col) => (
               <col key={col.key} className={col.width ?? ''} />
             ))}
           </colgroup>
-          <thead className="sticky top-0 z-10 bg-muted">
-            <tr className="border-b border-border/60 text-muted-foreground">
+          <thead className={theadClass} style={theadStyle}>
+            <tr className={`border-b border-border/60 ${headerBold ? '' : 'text-muted-foreground'}`}>
               {columns.map((col) => {
                 const isSortable = col.sortable && hasSorting;
                 const colSortKey = col.sortKey ?? col.key;
+                const isLastSticky = col.sticky && !columns[columns.indexOf(col) + 1]?.sticky;
                 return (
                   <th
                     key={col.key}
                     className={`truncate ${cellPadX} ${headerPadY} font-medium ${
                       col.align === 'right' ? 'text-right' : 'text-left'
-                    } ${isSortable ? 'cursor-pointer select-none' : ''}`}
+                    } ${isSortable ? 'cursor-pointer select-none' : ''} ${
+                      col.sticky ? `sticky z-20 ${headerBold ? '' : 'bg-muted'}` : ''
+                    } ${isLastSticky ? 'shadow-[1px_0_0_0_var(--border)]' : ''}`}
+                    style={col.sticky ? { left: col.stickyLeftPx ?? 0, ...(headerBold ? theadStyle : undefined) } : undefined}
                     title={typeof col.header === 'string' ? col.header : undefined}
                     onClick={isSortable ? () => onSort(colSortKey) : undefined}
                   >
@@ -155,14 +228,20 @@ export function DataTable<T>({
                       onRowClick?.(row);
                     }}
                   >
-                    {columns.map((col) => (
-                      <td
-                        key={col.key}
-                        className={`${cellPadX} ${cellPadY} overflow-hidden ${col.align === 'right' ? 'text-right' : ''}`}
-                      >
-                        {col.render(row, idx)}
-                      </td>
-                    ))}
+                    {columns.map((col) => {
+                      const isLastSticky = col.sticky && !columns[columns.indexOf(col) + 1]?.sticky;
+                      return (
+                        <td
+                          key={col.key}
+                          className={`${cellPadX} ${cellPadY} overflow-hidden ${col.align === 'right' ? 'text-right' : ''} ${
+                            col.sticky ? stickyCellClasses(rowBg) : ''
+                          } ${isLastSticky ? 'shadow-[1px_0_0_0_var(--border)]' : ''}`}
+                          style={col.sticky ? { left: col.stickyLeftPx ?? 0 } : undefined}
+                        >
+                          {col.render(row, idx)}
+                        </td>
+                      );
+                    })}
                   </tr>
                   {isExpanded && renderExpandedRow && (
                     <tr>
@@ -186,6 +265,14 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
+
+      {/* Right-edge fade: signals more columns are reachable by scrolling. */}
+      {canScrollRight && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent"
+        />
+      )}
 
       {hasPagination && (
         <div className="flex shrink-0 items-center justify-between border-t border-border/60 bg-muted/20 px-3 py-2">
@@ -215,7 +302,7 @@ export function DataTable<T>({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
