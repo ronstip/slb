@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable } from './types-social-dashboard.ts';
+import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from './topic-aggregations.ts';
 import { aggregateObjectList, aggregateObjectTable } from './object-list-aggregations.ts';
 import {
@@ -32,6 +32,7 @@ import { resolveSparklineEnabled, toCumulativeSeries } from './sparkline-visibil
 import { shouldAutoSizeWidget } from './text-card-sizing.ts';
 import type { ColumnDef } from '../../../components/DataTable/DataTable.tsx';
 import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
+import { BrandIcon } from '../../../components/BrandIcon.tsx';
 import { formatNumber } from '../../../lib/format.ts';
 import { SocialChartWidget } from './SocialChartWidget.tsx';
 import { SocialKpiCard } from './SocialKpiCard.tsx';
@@ -195,6 +196,7 @@ function buildTableColumns(
       const isFirstDim = !dimColSeen;
       dimColSeen = true;
       const isChannel = col.dimension === 'channel_handle';
+      const isBrand = isBrandDimension(col.dimension);
       cols.push({
         key: col.id,
         header: col.header || autoColumnHeader(col),
@@ -220,6 +222,22 @@ function buildTableColumns(
                   title={raw === '' ? text : `@${text}`}
                 >
                   {raw === '' ? text : `@${text}`}
+                </span>
+              </div>
+            );
+          }
+          if (isBrand && raw !== '') {
+            return (
+              <div className="flex items-center gap-2 min-w-0">
+                <BrandIcon brand={raw} className="h-3.5 w-3.5 shrink-0" />
+                <span
+                  className={cn(
+                    'text-[12px] break-words',
+                    isFirstDim ? 'font-medium text-foreground' : 'text-foreground',
+                  )}
+                  title={text}
+                >
+                  {text}
                 </span>
               </div>
             );

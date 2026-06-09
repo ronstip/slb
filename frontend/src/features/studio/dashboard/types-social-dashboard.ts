@@ -80,6 +80,20 @@ export function customFieldName(dim: `custom:${string}`): string {
   return dim.slice(CUSTOM_DIM_PREFIX.length);
 }
 
+/**
+ * True when a dimension column holds brand names — the built-in `brands`
+ * dimension or any custom enrichment field whose name reads as a brand
+ * ("brand_name", "brand", "detected_brands", ...). Used to decide whether a
+ * table column's values should render with a brand icon. Generalizes the
+ * brand-icon treatment beyond one hardcoded field without sprinkling icons on
+ * unrelated columns (sentiment, channel, country, ...).
+ */
+export function isBrandDimension(dim: CustomDimension | undefined | null): boolean {
+  if (!dim) return false;
+  if (dim === 'brands') return true;
+  return isCustomFieldDimension(dim) && /brand/i.test(customFieldName(dim));
+}
+
 // ─── list[object] custom fields: leaf dimensions + element metrics ────────────
 // A `list[object]` field (e.g. men=[{name,age},...]) is aggregated element-as-
 // unit: each object is the counted row, so a post with N objects never inflates
