@@ -7,7 +7,10 @@ export function formatNumber(n: number | undefined | null): string {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+  // Sub-1000: round to at most one decimal so computed metrics (averages,
+  // virality, engagement-rate) never leak raw floats like "467.90909090909093".
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
 /**

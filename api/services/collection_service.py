@@ -34,6 +34,28 @@ def estimate_request_micros(request: CreateCollectionRequest) -> int:
     # platform to its provider via vendor_config (per-platform override, else
     # the vendor default); fall back to the platform-agnostic provider list
     # when no platforms are given.
+    # Channel mode: a collection with channel_urls is routed to the channel
+    # provider for each platform (config.collection_routing) and billed at the
+    # CHANNEL rate. Keywords (if any) only filter the channel fetch - they don't
+    # add keyword-crawl cost - so the whole n_posts is channel-mode crawl.
+    if request.channel_urls:
+        from config.collection_routing import channel_provider_for
+
+        ch_pairs = [
+            (
+                ("x_api" if channel_provider_for(plat) == "xapi" else channel_provider_for(plat)),
+                plat,
+            )
+            for plat in (request.platforms or [])
+        ]
+        return estimate_run_cost_micros(
+            n_posts=request.n_posts,
+            provider_platform_pairs=ch_pairs or None,
+            channel_mode=True,
+            include_comments=request.include_comments,
+            enrichment_enabled=True,
+        )
+
     vc = request.vendor_config
     default_provider = ("x_api" if vc.default == "xapi" else vc.default) if vc else "brightdata"
     overrides = {
@@ -165,8 +187,18 @@ def create_collection_from_request(
             "end": end_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
         "n_posts": request.n_posts,
+        # Per-target post budget (despite the legacy "_per_keyword" name, the
+        # adapters consume it as a per-input cap). In channel mode the targets
+        # are the channels (keywords only filter the channel fetch); in keyword
+        # mode the targets are the keywords. Divide n_posts across whichever.
         "max_posts_per_keyword": (
-            __import__("math").ceil(request.n_posts / (max(len(request.platforms), 1) * max(len(request.keywords), 1)))
+            __import__("math").ceil(
+                request.n_posts
+                / (
+                    max(len(request.platforms), 1)
+                    * max(len((request.channel_urls or [])) or len(request.keywords), 1)
+                )
+            )
             if request.n_posts > 0 else None
         ),
         "include_comments": request.include_comments,

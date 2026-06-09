@@ -305,6 +305,56 @@ def test_collect_facebook_caps_max_results_at_1000():
     assert captured[0]["max_results"] == 1000
 
 
+def test_collect_facebook_channel_mode_uses_page_actor():
+    """channel_urls routes Facebook to the page path
+    (apify/facebook-posts-scraper via startUrls) with onlyPostsNewerThan + a
+    channel cost tag - NOT the keyword actor's `query` shape."""
+    adapter = _build_adapter()
+
+    calls: list[tuple] = []
+
+    def _cap(platform, run_input, *, actor_id=None, scrape_kind=None, feature="scrape"):
+        calls.append((platform, run_input, actor_id, scrape_kind))
+        return []
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_cap), \
+         patch.object(adapter, "_parse_results", return_value=[]):
+        list(adapter._collect_facebook({
+            "keywords": [],
+            "channel_urls": ["https://www.facebook.com/espn", "espn"],
+            "max_posts_per_keyword": 10,
+            "time_range": {"start": "2026-05-01T00:00:00Z"},
+        }))
+
+    assert len(calls) == 1
+    _platform, run_input, actor_id, scrape_kind = calls[0]
+    # Bare handle normalized to a page URL; duplicate of the explicit URL deduped.
+    assert run_input["startUrls"] == [{"url": "https://www.facebook.com/espn"}]
+    assert run_input["resultsLimit"] == 10  # 10 * 1 page
+    assert run_input["onlyPostsNewerThan"] == "2026-05-01"
+    assert "query" not in run_input  # not the keyword/search path
+    assert scrape_kind == "channel"
+    assert actor_id == "apify/facebook-posts-scraper"
+
+
+def test_collect_facebook_keyword_mode_ignores_channel_branch():
+    """No channel_urls → the keyword/search path still fires (regression guard
+    that the new channel branch didn't swallow keyword collection)."""
+    adapter = _build_adapter()
+    captured: list[dict] = []
+
+    def _capture(platform, run_input, config, *, apply_time_gate=True):
+        captured.append(run_input)
+        return []
+
+    with patch.object(adapter, "_run_and_parse", side_effect=_capture):
+        list(adapter._collect_facebook({"keywords": ["nike"], "max_posts_per_keyword": 5}))
+
+    assert len(captured) == 1
+    assert captured[0]["query"] == "nike"
+    assert "startUrls" not in captured[0]
+
+
 # ---------------------------------------------------------------------------
 # Instagram - apidojo/instagram-hashtag-scraper
 # ---------------------------------------------------------------------------
@@ -349,25 +399,36 @@ def test_collect_instagram_builds_actor_input_with_new_shape():
     assert "directUrls" not in run_input
 
 
-def test_collect_instagram_warns_and_ignores_channel_urls():
-    """The new actor only accepts hashtag URLs. channel_urls should be logged
-    and ignored, not break the run, not be sent to the actor."""
+def test_collect_instagram_channel_mode_uses_profile_actor():
+    """channel_urls now routes IG to the profile path (apify/instagram-scraper
+    via directUrls) with a date floor and a channel cost tag - NOT the hashtag
+    actor's startUrls."""
     adapter = _build_ig_adapter()
 
-    raw_calls: list[dict] = []
-    with patch.object(adapter, "_run_actor_collect_raw", side_effect=lambda p, ri: raw_calls.append(ri) or []), \
+    calls: list[tuple] = []
+
+    def _cap(platform, run_input, *, actor_id=None, scrape_kind=None, feature="scrape"):
+        calls.append((platform, run_input, actor_id, scrape_kind))
+        return []
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_cap), \
          patch.object(adapter, "_parse_results", return_value=[]):
         adapter._collect_instagram({
-            "keywords": ["climate"],
-            "channel_urls": ["https://www.instagram.com/someprofile/"],
+            "keywords": [],
+            "channel_urls": ["https://www.instagram.com/espn/"],
             "max_posts_per_keyword": 10,
+            "time_range": {"start": "2026-05-01T00:00:00Z"},
         })
 
-    assert len(raw_calls) == 1
-    # Only the keyword-derived hashtag URL should be in startUrls.
-    assert raw_calls[0]["startUrls"] == [
-        "https://www.instagram.com/explore/tags/climate/"
-    ]
+    assert len(calls) == 1
+    _platform, run_input, actor_id, scrape_kind = calls[0]
+    assert run_input["directUrls"] == ["https://www.instagram.com/espn/"]
+    assert run_input["resultsType"] == "posts"
+    assert run_input["resultsLimit"] == 10
+    assert run_input["onlyPostsNewerThan"] == "2026-05-01"
+    assert "startUrls" not in run_input  # not the hashtag path
+    assert scrape_kind == "channel"
+    assert actor_id and "hashtag" not in actor_id  # the profile/post actor, not apidojo hashtag
 
 
 def test_collect_instagram_concats_multi_word_keywords():
@@ -419,15 +480,15 @@ def test_collect_instagram_runs_when_all_keywords_multi_word():
     ]
 
 
-def test_collect_instagram_skips_when_no_keywords():
-    """Empty keywords short-circuits without spending an actor run, even when
-    channel_urls is set (those are now ignored)."""
+def test_collect_instagram_skips_when_no_keywords_and_no_channels():
+    """Empty keywords AND empty channels short-circuits without an actor run.
+    (channel_urls now routes to the profile path - see the channel-mode test.)"""
     adapter = _build_ig_adapter()
     with patch.object(adapter, "_run_actor_collect_raw") as raw, \
          patch.object(adapter, "_parse_results") as parse:
         result = adapter._collect_instagram({
             "keywords": [],
-            "channel_urls": ["https://www.instagram.com/someprofile/"],
+            "channel_urls": [],
         })
     assert result == []
     raw.assert_not_called()

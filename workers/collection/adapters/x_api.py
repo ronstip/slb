@@ -148,12 +148,22 @@ class XAPIAdapter(DataProviderAdapter):
             hard_cap = None
 
         tasks: list[tuple[str, str]] = []
-        for kw in keywords:
-            tasks.append(("search", kw))
-        for url in channel_urls:
-            uname = extract_twitter_username(url)
-            if uname:
-                tasks.append(("user_timeline", uname))
+        if channel_urls:
+            # Channel mode. With keywords this is an INTERSECTION ("kw posts from
+            # @handle"): X's search supports the `from:` operator natively, so one
+            # search task per (handle × keyword) - `_build_search_query` appends
+            # `-is:retweet`. Without keywords, pull each handle's full timeline.
+            handles = [h for h in (extract_twitter_username(u) for u in channel_urls) if h]
+            if keywords:
+                for h in handles:
+                    for kw in keywords:
+                        tasks.append(("search", f"from:{h} {kw}"))
+            else:
+                for h in handles:
+                    tasks.append(("user_timeline", h))
+        else:
+            for kw in keywords:
+                tasks.append(("search", kw))
 
         if not tasks:
             with self._stats_lock:

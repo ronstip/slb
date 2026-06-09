@@ -590,6 +590,7 @@ function PricingEditor() {
         <ScraperMatrixEditor
           matrix={draft.scraper_rates_per_platform}
           commentMatrix={draft.scraper_comment_rates_per_platform}
+          channelMatrix={draft.scraper_channel_rates_per_platform}
           apifyWildcardFallback={draft.apify_assumed_per_post_usd}
           onCellChange={(provider, platform, value) =>
             set({
@@ -608,6 +609,17 @@ function PricingEditor() {
                 ...draft.scraper_comment_rates_per_platform,
                 [provider]: {
                   ...(draft.scraper_comment_rates_per_platform?.[provider] ?? {}),
+                  [platform]: value,
+                },
+              },
+            })
+          }
+          onChannelCellChange={(provider, platform, value) =>
+            set({
+              scraper_channel_rates_per_platform: {
+                ...draft.scraper_channel_rates_per_platform,
+                [provider]: {
+                  ...(draft.scraper_channel_rates_per_platform?.[provider] ?? {}),
                   [platform]: value,
                 },
               },
@@ -663,14 +675,16 @@ function PricingEditor() {
  *  column edits the wildcard cell - fallthrough when no platform-specific
  *  cell is set. A blank comments rate inherits the posts rate. */
 function ScraperMatrixEditor({
-  matrix, commentMatrix, apifyWildcardFallback,
-  onCellChange, onCommentCellChange, onApifyWildcardChange,
+  matrix, commentMatrix, channelMatrix, apifyWildcardFallback,
+  onCellChange, onCommentCellChange, onChannelCellChange, onApifyWildcardChange,
 }: {
   matrix: Record<string, Record<string, number | null>>;
   commentMatrix: Record<string, Record<string, number | null>>;
+  channelMatrix: Record<string, Record<string, number | null>>;
   apifyWildcardFallback: number;
   onCellChange: (provider: string, platform: string, value: number | null) => void;
   onCommentCellChange: (provider: string, platform: string, value: number | null) => void;
+  onChannelCellChange: (provider: string, platform: string, value: number | null) => void;
   onApifyWildcardChange: (v: number | null) => void;
 }) {
   // Effective posts rate for a (provider, platform) - cell, else wildcard.
@@ -687,10 +701,11 @@ function ScraperMatrixEditor({
         Scrapers / crawlers - $/unit per (provider × platform)
         <InfoHint text={
           'Edit the per-call price for each (provider, platform) combination. ' +
-          'Each cell has two rates: P = posts, C = comments. ' +
-          'Comment scrapes hit the same providers but often at a different ' +
-          'price; leave C blank to inherit the posts rate (its placeholder ' +
-          'shows the inherited value). The "*" column is the wildcard ' +
+          'Each cell has three rates: P = posts, C = comments, Ch = channel ' +
+          '(profile/page/subreddit collection). Comment and channel scrapes hit ' +
+          'the same providers but often at a different price; leave C / Ch blank ' +
+          'to inherit the posts rate (its placeholder shows the inherited value). ' +
+          'The "*" column is the wildcard ' +
           'fallback when no platform-specific cell is set. For Apify, cells ' +
           'drive the estimated_fallback path when the actor returns no ' +
           'usageTotalUsd; for BrightData / X_api / Vetric the cell is the ' +
@@ -712,6 +727,7 @@ function ScraperMatrixEditor({
             {SCRAPER_PROVIDERS.map((prov) => {
               const row = matrix?.[prov] ?? {};
               const crow = commentMatrix?.[prov] ?? {};
+              const hrow = channelMatrix?.[prov] ?? {};
               return (
                 <tr key={prov} className="border-b border-border last:border-0">
                   <td className="px-3 py-2 align-middle">
@@ -726,8 +742,11 @@ function ScraperMatrixEditor({
                         postsValue={row[plat] ?? null}
                         commentsValue={crow[plat] ?? null}
                         commentsPlaceholder={postsRate(prov, plat)}
+                        channelValue={hrow[plat] ?? null}
+                        channelPlaceholder={postsRate(prov, plat)}
                         onPostsChange={(v) => onCellChange(prov, plat, v)}
                         onCommentsChange={(v) => onCommentCellChange(prov, plat, v)}
+                        onChannelChange={(v) => onChannelCellChange(prov, plat, v)}
                       />
                     </td>
                   ))}
@@ -739,9 +758,12 @@ function ScraperMatrixEditor({
                       postsValue={prov === 'apify' ? apifyWildcardFallback : (row['*'] ?? null)}
                       commentsValue={crow['*'] ?? null}
                       commentsPlaceholder={postsRate(prov, '*')}
+                      channelValue={hrow['*'] ?? null}
+                      channelPlaceholder={postsRate(prov, '*')}
                       onPostsChange={(v) =>
                         prov === 'apify' ? onApifyWildcardChange(v) : onCellChange(prov, '*', v)}
                       onCommentsChange={(v) => onCommentCellChange(prov, '*', v)}
+                      onChannelChange={(v) => onChannelCellChange(prov, '*', v)}
                     />
                   </td>
                 </tr>
@@ -751,8 +773,9 @@ function ScraperMatrixEditor({
         </table>
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        P = posts, C = comments. Blank P ⇒ falls through to that provider's "*" wildcard;
-        blank C ⇒ inherits the posts rate. Numeric values are USD per post / record / call.
+        P = posts, C = comments, Ch = channel (profile/page/subreddit). Blank P ⇒ falls
+        through to that provider's "*" wildcard; blank C / Ch ⇒ inherits the posts rate.
+        Numeric values are USD per post / record / call.
       </p>
     </div>
   );
@@ -764,13 +787,17 @@ function ScraperMatrixEditor({
  *  posts rate (placeholder shows the inherited value). */
 function MatrixCellInput({
   postsValue, commentsValue, commentsPlaceholder,
-  onPostsChange, onCommentsChange,
+  channelValue, channelPlaceholder,
+  onPostsChange, onCommentsChange, onChannelChange,
 }: {
   postsValue: number | null | undefined;
   commentsValue: number | null | undefined;
   commentsPlaceholder: number | null | undefined;
+  channelValue: number | null | undefined;
+  channelPlaceholder: number | null | undefined;
   onPostsChange: (v: number | null) => void;
   onCommentsChange: (v: number | null) => void;
+  onChannelChange: (v: number | null) => void;
 }) {
   const parse = (raw: string): number | null => {
     if (raw === '') return null;
@@ -801,6 +828,15 @@ function MatrixCellInput({
           onChange={(e) => onCommentsChange(parse(e.target.value))}
           className={noSpinner}
           placeholder={commentsPlaceholder != null ? String(commentsPlaceholder) : '-'}
+        />
+      </label>
+      <label className="flex items-center gap-1">
+        <span className="w-3 text-[9px] text-muted-foreground">Ch</span>
+        <Input
+          type="number" step="0.0001" value={channelValue ?? ''}
+          onChange={(e) => onChannelChange(parse(e.target.value))}
+          className={noSpinner}
+          placeholder={channelPlaceholder != null ? String(channelPlaceholder) : '-'}
         />
       </label>
     </div>

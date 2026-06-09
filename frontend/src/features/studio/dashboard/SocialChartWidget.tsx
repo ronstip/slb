@@ -261,15 +261,25 @@ const barDatalabelsPlugin = {
           const cy = isHorizontalBar ? props.y : (props.y + props.base) / 2;
           ctx.fillText(formatNumber(val), cx, cy);
         } else {
+          // Declutter: skip the value label when the bar is too thin to hold it
+          // without colliding with neighbours (common with grouped/side-by-side
+          // bars). The tooltip still surfaces the exact value on hover.
+          const barEl = bar as unknown as { width?: number; height?: number };
+          const txt = formatNumber(val);
+          const txtW = ctx.measureText(txt).width;
           ctx.fillStyle = fg;
           if (isHorizontalBar) {
+            const slot = barEl.height ?? Infinity;
+            if (slot < 10) { ctx.restore(); return; }
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText(formatNumber(val), props.x + 4, props.y);
+            ctx.fillText(txt, props.x + 4, props.y);
           } else {
+            const slot = barEl.width ?? Infinity;
+            if (txtW > slot + 6) { ctx.restore(); return; }
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
-            ctx.fillText(formatNumber(val), props.x, props.y - 4);
+            ctx.fillText(txt, props.x, props.y - 4);
           }
         }
         ctx.restore();
@@ -572,7 +582,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       ...getAxisStyle(),
       ticks: { ...getAxisStyle().ticks, callback: (v: string | number) => formatNumber(Number(v)) },
     };
-    const categoryAxisCfg = { ...getAxisStyle(), grid: { display: false }, ticks: { ...getAxisStyle().ticks, font: { size: 12 } } };
+    const categoryAxisCfg = { ...getAxisStyle(), grid: { display: false }, ticks: { ...getAxisStyle().ticks, font: { size: 12 }, autoSkip: true, autoSkipPadding: 4, maxRotation: 45, minRotation: 0 } };
 
     const options = {
       responsive: true,
@@ -712,7 +722,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       ...getAxisStyle(),
       ticks: { ...getAxisStyle().ticks, callback: (v: string | number) => formatNumber(Number(v)) },
     };
-    const categoryAxisCfg = { ...getAxisStyle(), grid: { display: false }, ticks: { ...getAxisStyle().ticks, font: { size: 12 } } };
+    const categoryAxisCfg = { ...getAxisStyle(), grid: { display: false }, ticks: { ...getAxisStyle().ticks, font: { size: 12 }, autoSkip: true, autoSkipPadding: 4, maxRotation: 45, minRotation: 0 } };
 
     const options = {
       responsive: true,
