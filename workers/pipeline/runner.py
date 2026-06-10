@@ -1026,13 +1026,15 @@ class PipelineRunner:
                             prov, plat, exc_info=True,
                         )
                     # Cost: Apify reports the exact run cost on the call
-                    # itself and logs it from its adapter, so skip it here to
-                    # avoid double-counting. Mock/unknown carry no real cost.
+                    # itself and logs it from its adapter, and HikerAPI's
+                    # adapter logs its own units=requests event (it bills per
+                    # REQUEST, not per post) - skip both here to avoid
+                    # double-counting. Mock/unknown carry no real cost.
                     # Everyone else (BrightData, X API, Vetric) is units-priced
                     # from the rate table - emit one provider_call row so all
                     # scrape cost flows through the same meter.
                     norm = normalize_provider(prov) or prov
-                    if norm in ("apify", "mock", "unknown") or not norm:
+                    if norm in ("apify", "hikerapi", "mock", "unknown") or not norm:
                         continue
                     # Channel mode hits a different API/dataset at a different
                     # rate (e.g. BD youtube/profiles, X user_timeline) - tag the

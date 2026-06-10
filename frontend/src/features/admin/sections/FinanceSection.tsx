@@ -8,11 +8,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../../components/ui/select.tsx';
 import {
-  getFinance, getPricing, updatePricing, type CostRange,
+  getFinance, getPricing, updatePricing, getRouting, updateRouting, type CostRange,
 } from '../../../api/endpoints/admin.ts';
 import type {
   FinanceItem, FinanceSummary, GeminiModelRate, PlatformProviderCell,
-  PricingConfig, PricingUpdate,
+  PricingConfig, PricingUpdate, RoutingConfig, RoutingUpdate,
 } from '../../../api/types.ts';
 import { formatUsdMicros } from '../../../lib/money.ts';
 import { InfoHint } from '../InfoHint.tsx';
@@ -36,7 +36,7 @@ const GEMINI_MODELS = [
 // (fallthrough when no platform-specific override is set).
 // Vetric omitted - not in use. Keep in sync with `_SCRAPER_PROVIDERS` in
 // api/routers/admin.py; re-add 'vetric' to both to expose it again.
-const SCRAPER_PROVIDERS = ['apify', 'brightdata', 'x_api'] as const;
+const SCRAPER_PROVIDERS = ['apify', 'brightdata', 'x_api', 'hikerapi'] as const;
 const SCRAPER_PLATFORMS = ['instagram', 'facebook', 'tiktok', 'twitter', 'reddit', 'youtube'] as const;
 
 const SCRAPER_PROVIDER_HINTS: Record<string, string> = {
@@ -50,6 +50,10 @@ const SCRAPER_PROVIDER_HINTS: Record<string, string> = {
   x_api:
     'X API per-post-read price. X has one platform (Twitter), but the ' +
     'matrix keeps the editing UI consistent across providers.',
+  hikerapi:
+    'HikerAPI (Instagram keyword/reels SERP). Flat price per REQUEST (not ' +
+    'per post) - the IG cell is $/request, authoritative (the provider ' +
+    'returns no cost). Only the Instagram cell is used today.',
 };
 
 const EMPTY_FINANCE: FinanceSummary = {
@@ -227,7 +231,162 @@ export function FinanceSection() {
 
       {/* Editable rates + margin */}
       <PricingEditor />
+
+      {/* Editable per-platform provider routing (keyword vs channel) */}
+      <RoutingEditor />
     </div>
+  );
+}
+
+// Sentinel for the "use default (first-supporting adapter)" option - shadcn
+// Select can't hold an empty-string value, so we map this to null on save.
+const ROUTING_AUTO = '__auto__';
+
+/** Per-platform provider routing editor: pick the keyword and channel provider
+ *  for each platform. Persists to app_config/routing (no redeploy). "Auto"
+ *  clears the override so routing falls back to the code seed / first-supporting
+ *  adapter. */
+function RoutingEditor() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['admin', 'routing'], queryFn: getRouting });
+  const [draft, setDraft] = useState<RoutingConfig | null>(null);
+  useEffect(() => { if (data) setDraft(data); }, [data]);
+
+  const dirty = useMemo(() => {
+    if (!draft || !data) return false;
+    return (
+      JSON.stringify(draft.keyword_provider_by_platform) !==
+        JSON.stringify(data.keyword_provider_by_platform) ||
+      JSON.stringify(draft.channel_provider_by_platform) !==
+        JSON.stringify(data.channel_provider_by_platform)
+    );
+  }, [draft, data]);
+
+  const mut = useMutation({
+    mutationFn: (payload: RoutingUpdate) => updateRouting(payload),
+    onSuccess: (fresh) => {
+      toast.success('Routing updated');
+      setDraft(fresh);
+      qc.invalidateQueries({ queryKey: ['admin', 'routing'] });
+    },
+    onError: () => toast.error('Failed to update routing'),
+    meta: { silent: true },
+  });
+
+  if (!draft) {
+    return (
+      <Card>
+        <CardHeader><CardTitle className="text-base">Provider routing</CardTitle></CardHeader>
+        <CardContent><p className="text-sm text-muted-foreground">Loading…</p></CardContent>
+      </Card>
+    );
+  }
+
+  const setCell = (
+    intent: 'keyword_provider_by_platform' | 'channel_provider_by_platform',
+    platform: string,
+    value: string,
+  ) =>
+    setDraft({
+      ...draft,
+      [intent]: { ...draft[intent], [platform]: value === ROUTING_AUTO ? null : value },
+    });
+
+  const save = () =>
+    mut.mutate({
+      keyword_provider_by_platform: draft.keyword_provider_by_platform,
+      channel_provider_by_platform: draft.channel_provider_by_platform,
+    });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-1.5 text-base">
+            Provider routing
+            <InfoHint text={
+              'Which data provider serves each platform, split by collection ' +
+              'intent:\n• Keyword - keyword/hashtag search collection.\n' +
+              '• Channel - collecting a specific account/page/subreddit.\n' +
+              'Changes apply at runtime (no redeploy). "Auto" clears the ' +
+              'override so the platform falls back to the built-in default / ' +
+              'first-supporting adapter. URL-based work (engagement refresh, ' +
+              'direct post-by-URL fetch) is NOT a separate knob - it auto-routes ' +
+              'to a URL-capable provider, so keyword-only providers like ' +
+              'HikerAPI are never used for it.'
+            } />
+          </CardTitle>
+          {draft.updated_by && (
+            <span className="text-xs text-muted-foreground">
+              Updated by {draft.updated_by}
+              {draft.updated_at ? ` · ${new Date(draft.updated_at).toLocaleString()}` : ''}
+            </span>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border bg-muted/50">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Platform</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Keyword provider</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Channel provider</th>
+              </tr>
+            </thead>
+            <tbody>
+              {draft.platforms.map((plat) => (
+                <tr key={plat} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2 capitalize">{plat}</td>
+                  <td className="px-3 py-2">
+                    <ProviderSelect
+                      value={draft.keyword_provider_by_platform[plat] ?? null}
+                      vendors={draft.vendors}
+                      onChange={(v) => setCell('keyword_provider_by_platform', plat, v)}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <ProviderSelect
+                      value={draft.channel_provider_by_platform[plat] ?? null}
+                      vendors={draft.vendors}
+                      onChange={(v) => setCell('channel_provider_by_platform', plat, v)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button size="sm" onClick={save} disabled={mut.isPending || !dirty}>
+            {mut.isPending ? 'Saving…' : 'Save routing'}
+          </Button>
+          {!dirty && !mut.isPending && (
+            <span className="text-xs text-muted-foreground">No changes to save</span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProviderSelect({
+  value, vendors, onChange,
+}: {
+  value: string | null;
+  vendors: string[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <Select value={value ?? ROUTING_AUTO} onValueChange={onChange}>
+      <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ROUTING_AUTO}>Auto (default)</SelectItem>
+        {vendors.map((v) => (
+          <SelectItem key={v} value={v}>{v === 'xapi' ? 'X API' : v}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

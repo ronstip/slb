@@ -1314,7 +1314,7 @@ _GEMINI_MODELS = (
 # UI side maps to the wildcard cell (`scraper_rates_per_platform[p]["*"]`)
 # and is the fallback used when no platform-specific cell is set.
 # Vetric is omitted - not in use (see config/cost_rates.py); re-add to expose.
-_SCRAPER_PROVIDERS = ("apify", "brightdata", "x_api")
+_SCRAPER_PROVIDERS = ("apify", "brightdata", "x_api", "hikerapi")
 _SCRAPER_PLATFORMS = ("instagram", "facebook", "tiktok", "twitter", "reddit", "youtube")
 
 
@@ -1347,6 +1347,7 @@ def _scraper_matrix_view() -> dict[str, dict[str, float | None]]:
         "brightdata": ((legacy_rates.get("brightdata") or {}).get("*") or {}).get("per_record_usd"),
         "x_api": ((legacy_rates.get("x_api") or {}).get("*") or {}).get("per_unit_usd"),
         "vetric": ((legacy_rates.get("vetric") or {}).get("*") or {}).get("per_call_usd"),
+        "hikerapi": ((legacy_rates.get("hikerapi") or {}).get("*") or {}).get("per_request_usd"),
     }
 
     out: dict[str, dict[str, float | None]] = {}
@@ -1600,6 +1601,115 @@ async def admin_update_pricing(
         fs.write_admin_audit,
         {
             "event": "pricing_change",
+            "actor_uid": user.uid,
+            "actor_email": user.email,
+            "before": before,
+            "after": after,
+        },
+    )
+    return after
+
+
+# ---------------------------------------------------------------------------
+# Provider routing - admin-editable per-platform vendor (keyword vs channel).
+# Persisted to app_config/routing; deep-merged over the code seeds in
+# config/collection_routing.py. Lets us switch a platform's provider (e.g. flip
+# IG keyword between hikerapi and apify) WITHOUT a redeploy.
+# ---------------------------------------------------------------------------
+
+# Vendor tokens selectable in the editor (match wrapper._VENDOR_CLASS_MAP keys).
+_ROUTING_VENDORS = ("apify", "brightdata", "xapi", "vetric", "hikerapi")
+# Platforms shown in the routing editor (display order).
+_ROUTING_PLATFORMS = ("instagram", "tiktok", "twitter", "facebook", "youtube", "reddit")
+
+
+def _routing_view() -> dict:
+    """Effective per-platform keyword + channel provider + editor options."""
+    from config import collection_routing
+
+    eff = collection_routing.effective_routing_view()
+    return {
+        "platforms": list(_ROUTING_PLATFORMS),
+        "vendors": list(_ROUTING_VENDORS),
+        # {platform: vendor|None} for each intent (None = first-supporting).
+        "keyword_provider_by_platform": {
+            p: eff["keyword_provider_by_platform"].get(p) for p in _ROUTING_PLATFORMS
+        },
+        "channel_provider_by_platform": {
+            p: eff["channel_provider_by_platform"].get(p) for p in _ROUTING_PLATFORMS
+        },
+    }
+
+
+class RoutingUpdate(BaseModel):
+    # Each map carries only the platforms the admin touched; a value of ``None``
+    # (or empty string) clears that platform's override so it falls back to the
+    # code seed / first-supporting. Unknown platforms/vendors are rejected.
+    keyword_provider_by_platform: dict[str, str | None] | None = None
+    channel_provider_by_platform: dict[str, str | None] | None = None
+
+
+def _merge_routing_map(existing: dict | None, patch: dict[str, str | None] | None) -> dict | None:
+    """Merge a partial routing patch over the stored map. ``None``/empty clears
+    a cell. Returns None (skip persisting) when patch is None."""
+    if patch is None:
+        return None
+    out = dict(existing or {})
+    for plat, vendor in patch.items():
+        if plat not in _ROUTING_PLATFORMS:
+            raise HTTPException(status_code=400, detail=f"unknown platform: {plat}")
+        if vendor in (None, ""):
+            out.pop(plat, None)
+        elif vendor not in _ROUTING_VENDORS:
+            raise HTTPException(status_code=400, detail=f"unknown vendor: {vendor}")
+        else:
+            out[plat] = vendor
+    return out
+
+
+@router.get("/routing")
+async def admin_get_routing(user: CurrentUser = Depends(_admin_user)):
+    """Return the effective per-platform provider routing + editor options."""
+    fs = get_fs()
+    doc = await asyncio.to_thread(fs.get_routing_config)
+    view = await asyncio.to_thread(_routing_view)
+    view["updated_at"] = doc.get("updated_at")
+    view["updated_by"] = doc.get("updated_by")
+    return view
+
+
+@router.put("/routing")
+async def admin_update_routing(
+    body: RoutingUpdate,
+    user: CurrentUser = Depends(_admin_user),
+):
+    """Persist edited provider routing; invalidate the cache; audit the change."""
+    from config import collection_routing
+
+    fs = get_fs()
+    before = await asyncio.to_thread(_routing_view)
+
+    routing_doc = await asyncio.to_thread(fs.get_routing_config)
+    keyword_merged = _merge_routing_map(
+        routing_doc.get("keyword_provider_by_platform"), body.keyword_provider_by_platform,
+    )
+    channel_merged = _merge_routing_map(
+        routing_doc.get("channel_provider_by_platform"), body.channel_provider_by_platform,
+    )
+
+    await asyncio.to_thread(
+        fs.set_routing_config,
+        keyword_provider_by_platform=keyword_merged,
+        channel_provider_by_platform=channel_merged,
+        updated_by=user.email,
+    )
+    collection_routing.invalidate_routing_cache()
+
+    after = await asyncio.to_thread(_routing_view)
+    await asyncio.to_thread(
+        fs.write_admin_audit,
+        {
+            "event": "routing_change",
             "actor_uid": user.uid,
             "actor_email": user.email,
             "before": before,
