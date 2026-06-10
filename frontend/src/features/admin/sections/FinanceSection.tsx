@@ -28,6 +28,7 @@ const BILLED_HINT = 'Billed = cost × the configured profit margin - what a payi
 // re-add a row here when switching the app's model.
 const GEMINI_MODELS = [
   'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite-preview',
 ] as const;
 
 // Providers + platforms exposed in the scraper rate matrix editor. Keep

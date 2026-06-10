@@ -5,7 +5,7 @@
 
 // --- Requests ---
 
-export type ChatModelKey = 'flash' | 'pro';
+export type ChatModelKey = 'flash-lite' | 'flash' | 'pro';
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high';
 
 export type ChatMode = 'chat' | 'report_editor';

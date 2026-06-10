@@ -1306,6 +1306,7 @@ async def admin_finance(
 # Re-add a row here (and in the frontend GEMINI_MODELS) when switching models.
 _GEMINI_MODELS = (
     "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
 )
 
 

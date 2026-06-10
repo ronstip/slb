@@ -138,6 +138,11 @@ COST_RATES: dict[str, Any] = {
             "output_per_mtok": 3.00,
             "cached_per_mtok": 0.05,
         },
+        "gemini-3.1-flash-lite-preview": {
+            "input_per_mtok": 0.25,
+            "output_per_mtok": 1.50,
+            "cached_per_mtok": 0.025,
+        },
         "gemini-3-pro-preview": {
             "input_per_mtok": 2.00,
             "output_per_mtok": 12.00,

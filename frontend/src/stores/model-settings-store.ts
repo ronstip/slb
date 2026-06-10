@@ -42,6 +42,11 @@ export const MODEL_OPTIONS: {
   description: string;
 }[] = [
   {
+    key: 'flash-lite',
+    label: 'Gemini 3.1 Flash-Lite',
+    description: 'Cheapest and fastest - good for simple, high-volume queries.',
+  },
+  {
     key: 'flash',
     label: 'Gemini 3 Flash',
     description: 'Fast and capable - best for most queries.',

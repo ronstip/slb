@@ -16,6 +16,7 @@ from api.agent.tools.registry import AgentMode
 MODEL_ALIASES: dict[str, str] = {
     # gemini-3-pro-preview was discontinued on Vertex AI 2026-03-26 - use
     # gemini-3.1-pro-preview as its successor. Flash 3.x is still preview-only.
+    "flash-lite": "gemini-3.1-flash-lite-preview",
     "flash": "gemini-3-flash-preview",
     "pro": "gemini-3.1-pro-preview",
 }
