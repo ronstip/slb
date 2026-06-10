@@ -1127,6 +1127,18 @@ wheels = [
 ]
 
 [[package]]
+name = "hikerapi"
+version = "1.7.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/26/8b/e23e91384cd25fed6517539d7337ed402b176f1d2f899bb87fa399a1ca43/hikerapi-1.7.9.tar.gz", hash = "sha256:255045a454d6391da82a8b5580a388e9a9a8b708896ec782a909b43fbfb40065", size = 15588, upload-time = "2026-04-17T19:41:53.034Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/31/f9db8e008e1e2b0bdbd686f6ff8f3edda4eb7148c3b712e5974f78e4e19f/hikerapi-1.7.9-py3-none-any.whl", hash = "sha256:651cd6a4aed17394b9d23a022e831502c6eb0ba909a521f1e91c0c87b972e74b", size = 16494, upload-time = "2026-04-17T19:41:51.843Z" },
+]
+
+[[package]]
 name = "hpack"
 version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2709,6 +2721,7 @@ dependencies = [
     { name = "google-cloud-firestore" },
     { name = "google-cloud-storage" },
     { name = "google-cloud-tasks" },
+    { name = "hikerapi" },
     { name = "httpx" },
     { name = "markdown" },
     { name = "numpy" },
@@ -2745,6 +2758,7 @@ requires-dist = [
     { name = "google-cloud-firestore", specifier = ">=2.19.0" },
     { name = "google-cloud-storage", specifier = ">=2.18.0" },
     { name = "google-cloud-tasks", specifier = ">=2.16.0" },
+    { name = "hikerapi", specifier = ">=1.7.9" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "markdown", specifier = ">=3.6" },
     { name = "numpy", specifier = ">=1.26" },

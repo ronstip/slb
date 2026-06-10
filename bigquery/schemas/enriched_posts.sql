@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS social_listening.enriched_posts (
     ai_summary STRING,
     language STRING,
     content_type STRING,
+    relevance_reason STRING,
     is_related_to_task BOOL,
     detected_brands ARRAY<STRING>,
     channel_type STRING,
@@ -31,6 +32,7 @@ CLUSTER BY post_id, agent_id;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS agent_id STRING;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS agent_version INT64;
 -- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS source STRING;
+-- ALTER TABLE social_listening.enriched_posts ADD COLUMN IF NOT EXISTS relevance_reason STRING;
 -- Note: re-clustering by (post_id, agent_id) requires CREATE OR REPLACE on
 -- existing tables; new partitions written after the ALTER use the original
 -- cluster spec until the table is rewritten. Acceptable for now.

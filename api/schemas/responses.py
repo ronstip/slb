@@ -7,6 +7,9 @@ class CollectionStatusResponse(BaseModel):
     collection_id: str
     status: str
     posts_collected: int = 0
+    # Raw provider records before cross-keyword/in-memory dedup (what the
+    # provider returned and we were billed for). None for runs with no funnel.
+    raw_posts_collected: int | None = None
     posts_enriched: int = 0
     total_views: int = 0
     positive_pct: float | None = None

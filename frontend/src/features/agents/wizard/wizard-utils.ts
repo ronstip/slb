@@ -1,8 +1,44 @@
 import { PLATFORM_LABELS, buildScheduleString, formatSchedule, localTimeToUtc } from '../../../lib/constants.ts';
 import type { WizardCollectionSettings, WizardAgentSettings } from './AgentCreationWizard.tsx';
 import type { Constitution, CreateFromWizardPayload, Source } from '../../../api/endpoints/agents.ts';
+import type { WizardPlan } from '../../../api/types.ts';
 
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Platforms a brand-new collection starts with when the planner doesn't
+ *  specify any. Kept in sync with DEFAULT_COLLECTION in AgentCreationWizard. */
+const DEFAULT_NEW_COLLECTION_PLATFORMS = ['instagram', 'tiktok'];
+
+/**
+ * Map a planner response into the wizard's collection-settings shape.
+ *
+ * The new-collection block (platforms / keywords / time window / region /
+ * max posts) is gated in the UI behind `newCollectionEnabled`. The planner's
+ * two-call (research + synthesis) flow sometimes omits `new_collection`
+ * entirely even for agents that clearly need fresh data, which used to
+ * collapse every source control with no way to bring them back. So we only
+ * leave the new collection disabled when the planner *deliberately* attached
+ * existing collections instead - otherwise a fresh agent always exposes the
+ * controls, pre-filled with sensible defaults.
+ */
+export function planToCollectionSettings(plan: WizardPlan): WizardCollectionSettings {
+  const nc = plan.new_collection;
+  const newCollectionEnabled = nc !== null || plan.existing_collection_ids.length === 0;
+  return {
+    platforms: nc?.platforms ?? DEFAULT_NEW_COLLECTION_PLATFORMS,
+    keywords: nc?.keywords ?? [],
+    channelUrls: nc?.channel_urls ?? [],
+    timeRangeDays: nc?.time_range_days ?? 90,
+    geoScope: nc?.geo_scope ?? 'global',
+    nPosts: nc?.n_posts ?? 500,
+    existingAgentIds: [],
+    newCollectionEnabled,
+    customFields: plan.custom_fields ?? [],
+    enrichmentContext: plan.enrichment_context ?? '',
+    enrichmentFromAI: true,
+    contentTypes: plan.content_types ?? [],
+  };
+}
 
 function intervalHoursToSchedule(hours: number, time: string): string {
   if (hours < 24) return buildScheduleString('hour', hours, time);

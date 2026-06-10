@@ -512,15 +512,17 @@ function OutputsGrid({
       {OUTPUT_CARDS.map((card) => {
         const active = isOn(card.type);
         const Icon = card.icon;
+        // Wrapper is a <div>, not a <button>: it contains a <Switch> (itself a
+        // <button>), and a button inside a button is invalid HTML / a hydration
+        // error. The Switch is the real keyboard-accessible control; the card
+        // body click is a mouse convenience that toggles the same state.
         return (
-          <button
+          <div
             key={card.type}
-            type="button"
             onClick={() => toggle(card)}
-            disabled={card.disabled}
             className={cn(
               'group flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all',
-              card.disabled && 'opacity-60 cursor-not-allowed',
+              card.disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
               active
                 ? 'border-primary/40 bg-primary/[0.04] shadow-sm'
                 : 'border-border bg-card hover:border-border hover:bg-muted/30',
@@ -551,7 +553,7 @@ function OutputsGrid({
               onClick={(e) => e.stopPropagation()}
               aria-label={`Toggle ${card.title}`}
             />
-          </button>
+          </div>
         );
       })}
     </div>

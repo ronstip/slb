@@ -1403,7 +1403,7 @@ const LP_MeetScolto = () => {
     { hue: LP_BRAND.green,  v: 3, name: '3P reviewers',     meta: 'live · 11 creators' },
   ];
   return (
-    <section className="lp-section" style={{
+    <section id="how-it-works" className="lp-section" style={{
       padding: '96px 64px 84px', background: LP_BRAND.cream2,
       borderTop: `1px solid ${LP_BRAND.rule}`, borderBottom: `1px solid ${LP_BRAND.rule}`,
     }}>
@@ -2647,6 +2647,16 @@ const LP_Pricing = ({ openWaitlist }: { openWaitlist: () => void }) => {
                 </svg>
               </button>
 
+              {/* Reassurance microcopy */}
+              {shown != null && (
+                <div style={{
+                  marginTop: 9, textAlign: 'center', fontFamily: "'Inter Tight',sans-serif", fontSize: 11.5,
+                  color: t.featured ? '#A9A3BC' : LP_BRAND.mutedDark,
+                }}>
+                  Cancel anytime · no contracts
+                </div>
+              )}
+
               {/* What's included */}
               <div style={{
                 marginTop: 24, paddingTop: 20,
@@ -2776,7 +2786,16 @@ const LP_Nav = ({ openAuth, openWaitlist }: { openAuth: () => void; openWaitlist
   }}>
     <LP_ScoltoLogo markSize={34} fontSize={44} />
     <nav className="lp-nav-links" style={{ display: 'flex', gap: 32, fontFamily: "'Inter Tight',sans-serif", fontSize: 13.5, color: LP_BRAND.ink }}>
-      <a style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'default' }}>How it works</a>
+      <a
+        href="#how-it-works"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
+        }}
+        style={{ color: LP_BRAND.ink, textDecoration: 'none', cursor: 'pointer' }}
+      >
+        How it works
+      </a>
       <a
         href="#pricing"
         onClick={(e) => {
