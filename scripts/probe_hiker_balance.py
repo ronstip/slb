@@ -17,10 +17,15 @@ def _load_key() -> str:
 
 from hikerapi import Client  # noqa: E402
 
+# ONLY /sys/balance - HikerAPI charges for ANY successful response incl. 404s,
+# so probing non-existent paths costs real money ($0.02/hit at the testing tier).
 c = Client(token=_load_key())
-for path in ("/sys/balance", "/sys/me", "/sys/account", "/sys/usage", "/balance"):
-    try:
-        r = c._request("get", path)
-        print(path, "->", r)
-    except Exception as e:  # noqa: BLE001
-        print(path, "ERR", type(e).__name__, e)
+r = c._request("get", "/sys/balance")
+print("/sys/balance ->", r)
+try:
+    reqs = float(r.get("requests") or 0)
+    amount = float(r.get("amount") or 0)
+    if reqs:
+        print(f"effective rate = amount/requests = ${amount / reqs:.5f}/request")
+except (TypeError, ValueError, AttributeError):
+    pass

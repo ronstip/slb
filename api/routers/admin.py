@@ -1034,10 +1034,11 @@ async def admin_collection_audit(
     except Exception as e:
         logger.warning("BQ post count query failed for %s: %s", collection_id, e)
 
-    # Compute discrepancy indicators
-    bd_raw = funnel.get("bd_raw_records", 0)
+    # Compute discrepancy indicators (raw = every record we paid a provider
+    # for: BrightData records + HikerAPI extracted media).
+    raw_records = (funnel.get("bd_raw_records") or 0) + (funnel.get("hiker_raw_media") or 0)
     posts_stored = funnel.get("worker_posts_stored", 0)
-    discrepancy_pct = round((1 - posts_stored / bd_raw) * 100, 1) if bd_raw > 0 else 0
+    discrepancy_pct = round((1 - posts_stored / raw_records) * 100, 1) if raw_records > 0 else 0
 
     return {
         "collection_id": collection_id,

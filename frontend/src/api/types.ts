@@ -1123,10 +1123,19 @@ export interface CollectionFunnel {
   bd_parse_failures: number;
   bd_empty_post_id: number;
   bd_valid_posts: number;
+  // HikerAPI funnel (absent on audits from before the hiker provider shipped)
+  hiker_requests?: number;
+  hiker_raw_media?: number;
+  hiker_duplicates?: number;
+  hiker_parse_failures?: number;
+  hiker_valid_posts?: number;
   worker_in_memory_dedup: number;
   worker_bq_dedup: number;
   worker_bq_insert_failures: number;
   worker_posts_stored: number;
+  // Stored either way; out-of-range posts just skip enrichment.
+  posts_in_range?: number;
+  posts_out_of_range?: number;
   per_platform: Record<string, {
     raw_into_parse: number;
     deduped: number;
