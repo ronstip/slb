@@ -11,6 +11,8 @@ import type {
   FinanceSummary,
   PricingConfig,
   PricingUpdate,
+  RoutingConfig,
+  RoutingUpdate,
   PlanTier,
 } from '../types.ts';
 
@@ -95,6 +97,14 @@ export function getPricing(): Promise<PricingConfig> {
 
 export function updatePricing(body: PricingUpdate): Promise<PricingConfig> {
   return apiPut<PricingConfig>('/admin/pricing', body);
+}
+
+export function getRouting(): Promise<RoutingConfig> {
+  return apiGet<RoutingConfig>('/admin/routing');
+}
+
+export function updateRouting(body: RoutingUpdate): Promise<RoutingConfig> {
+  return apiPut<RoutingConfig>('/admin/routing', body);
 }
 
 export function startImpersonation(targetUid: string): Promise<void> {

@@ -20,7 +20,7 @@ import type { AgentOutput, Constitution } from '../../../api/endpoints/agents.ts
 import { DescribePanel } from './DescribePanel.tsx';
 import { CollectionSettingsPanel } from './CollectionSettingsPanel.tsx';
 import { AgentSettingsPanel } from './AgentSettingsPanel.tsx';
-import { buildWizardRequestBody } from './wizard-utils.ts';
+import { buildWizardRequestBody, planToCollectionSettings } from './wizard-utils.ts';
 import { EMPTY_CONSTITUTION } from './AgentContextEditor.tsx';
 import { BotAvatar } from '../../../components/BrandElements.tsx';
 import { BRAND_NAME } from '../../../components/Logo.tsx';
@@ -143,21 +143,7 @@ export function AgentCreationWizard() {
     setPlanSummary(plan.summary || '');
     setPlanReasoning(plan.reasoning || '');
 
-    const nc = plan.new_collection;
-    setCollectionSettings({
-      platforms: nc?.platforms ?? DEFAULT_COLLECTION.platforms,
-      keywords: nc?.keywords ?? [],
-      channelUrls: nc?.channel_urls ?? [],
-      timeRangeDays: nc?.time_range_days ?? 90,
-      geoScope: nc?.geo_scope ?? 'global',
-      nPosts: nc?.n_posts ?? 500,
-      existingAgentIds: [],
-      newCollectionEnabled: nc !== null,
-      customFields: plan.custom_fields ?? [],
-      enrichmentContext: plan.enrichment_context ?? '',
-      enrichmentFromAI: true,
-      contentTypes: plan.content_types ?? [],
-    });
+    setCollectionSettings(planToCollectionSettings(plan));
 
     // Outputs come from the planner directly; fall back to deriving them from
     // the legacy auto_* booleans for older planner responses.

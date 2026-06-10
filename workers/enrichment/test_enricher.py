@@ -227,3 +227,93 @@ def test_prompt_renders_element_subschema_as_indented_bullets():
     assert "- men (list[object]):" in out
     assert "    - name (str):" in out
     assert "    - age (int):" in out
+
+
+# ---------------------------------------------------------------------------
+# Anti-hallucination round: relevance_reason field + context-as-yardstick
+# framing + brand-grounding tightening.
+# ---------------------------------------------------------------------------
+
+from workers.enrichment.schema import EnrichmentResult
+from workers.enrichment.worker import _write_results_via_values
+
+
+def _minimal_result(**overrides) -> EnrichmentResult:
+    base = dict(
+        context="ctx", ai_summary="sum", language="en",
+        sentiment="neutral", emotion="neutral",
+        entities=[], themes=[], content_type="post",
+        is_related_to_task=True,
+    )
+    base.update(overrides)
+    return EnrichmentResult(**base)
+
+
+def test_relevance_reason_defaults_to_empty_for_legacy_reconstruction():
+    """Legacy BQ rows have no relevance_reason; reconstructing an
+    EnrichmentResult from them must not raise."""
+    r = _minimal_result()
+    assert r.relevance_reason == ""
+
+
+def test_relevance_reason_is_generated_before_is_related_to_task():
+    """Field order = Gemini structured-output generation order; the reason
+    must precede the boolean so the model reasons then commits."""
+    fields = list(EnrichmentResult.model_fields)
+    assert fields.index("relevance_reason") < fields.index("is_related_to_task")
+
+
+def test_prompt_injects_task_as_yardstick_block_at_top():
+    body = ENRICHMENT_PROMPT.format(
+        platform="twitter", channel_handle="alice", posted_at="2026-04-30",
+        title="", content="hello", enrichment_context="acme running shoes",
+        referenced_post_block="",
+    )
+    # Task text surfaces as an explicit yardstick near the top, before the
+    # field list, and is framed as a relevance yardstick (not a content hint).
+    assert "acme running shoes" in body
+    assert "yardstick" in body.lower()
+    assert body.index("acme running shoes") < body.index("- context:")
+
+
+def test_prompt_lists_relevance_reason_before_is_related():
+    body = ENRICHMENT_PROMPT.format(
+        platform="x", channel_handle="a", posted_at="t",
+        title="", content="c", enrichment_context="task",
+        referenced_post_block="",
+    )
+    assert "- relevance_reason:" in body
+    assert body.index("- relevance_reason:") < body.index("- is_related_to_task:")
+
+
+def test_prompt_brand_instruction_forbids_inferred_brands():
+    body = ENRICHMENT_PROMPT.format(
+        platform="x", channel_handle="a", posted_at="t",
+        title="", content="c", enrichment_context="task",
+        referenced_post_block="",
+    )
+    brand_line = next(
+        ln for ln in body.splitlines() if ln.startswith("- detected_brands:")
+    )
+    low = brand_line.lower()
+    assert "do not" in low or "don't" in low
+    assert "infer" in low
+
+
+class _FakeBQ:
+    def __init__(self):
+        self.sql = None
+
+    def query(self, sql, *args, **kwargs):
+        self.sql = sql
+        return []
+
+
+def test_write_path_persists_relevance_reason_column():
+    bq = _FakeBQ()
+    r = _minimal_result(relevance_reason="post explicitly reviews the acme shoe")
+    _write_results_via_values(
+        bq, [("p1", r)], collection_id="c1", agent_id="a1", agent_version=2,
+    )
+    assert "relevance_reason" in bq.sql
+    assert "post explicitly reviews the acme shoe" in bq.sql

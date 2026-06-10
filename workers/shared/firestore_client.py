@@ -1255,6 +1255,50 @@ class FirestoreClient:
             payload["updated_by"] = updated_by
         self._db.collection("app_config").document("pricing").set(payload, merge=True)
 
+    # ------------------------------------------------------------------
+    # Provider routing config - admin-editable per-platform vendor selection
+    # (keyword vs channel). Singleton doc `app_config/routing` deep-merged over
+    # the code seeds in config/collection_routing.py. Read on a short cache by
+    # the routing layer. Lets us switch a platform's provider without redeploy.
+    # ------------------------------------------------------------------
+
+    def get_routing_config(self) -> dict:
+        """Return the routing-override doc, or {} if unset (use code seeds)."""
+        try:
+            doc = self._db.collection("app_config").document("routing").get()
+            if not doc.exists:
+                return {}
+            data = doc.to_dict() or {}
+            ts = data.get("updated_at")
+            if hasattr(ts, "isoformat"):
+                data["updated_at"] = ts.isoformat()
+            return data
+        except Exception as e:
+            logger.warning("Failed to read routing config: %s", e)
+            return {}
+
+    def set_routing_config(
+        self,
+        *,
+        keyword_provider_by_platform: dict | None = None,
+        channel_provider_by_platform: dict | None = None,
+        updated_by: str | None = None,
+    ) -> None:
+        """Merge routing maps into `app_config/routing` (stamps updated_at).
+
+        Each map is the full ``{platform: vendor_token}`` dict - the caller
+        merges the cells they touched on top of the existing dict before
+        passing in, so partial UI edits don't drop untouched platforms.
+        """
+        payload: dict = {"updated_at": datetime.now(timezone.utc)}
+        if keyword_provider_by_platform is not None:
+            payload["keyword_provider_by_platform"] = keyword_provider_by_platform
+        if channel_provider_by_platform is not None:
+            payload["channel_provider_by_platform"] = channel_provider_by_platform
+        if updated_by is not None:
+            payload["updated_by"] = updated_by
+        self._db.collection("app_config").document("routing").set(payload, merge=True)
+
     # --- Artifact methods ---
 
     def create_artifact(self, artifact_id: str, data: dict) -> None:

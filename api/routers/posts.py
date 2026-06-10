@@ -96,6 +96,7 @@ class EnrichmentResponse(BaseModel):
 
     post_id: str
     is_related_to_task: bool
+    relevance_reason: str = ""
     ai_summary: str
     sentiment: str
     emotion: str
@@ -412,6 +413,7 @@ def _merge_fields(current: dict, fields: dict) -> EnrichmentResult:
         "entities": _as_list(current.get("entities")),
         "themes": _as_list(current.get("themes")),
         "content_type": current.get("content_type") or "other",
+        "relevance_reason": current.get("relevance_reason") or "",
         "is_related_to_task": bool(current.get("is_related_to_task")),
         "detected_brands": _as_list(current.get("detected_brands")),
         "channel_type": current.get("channel_type") or "ugc",
@@ -455,6 +457,7 @@ def _to_response(post_id: str, r: EnrichmentResult, *, source: str | None) -> En
     return EnrichmentResponse(
         post_id=post_id,
         is_related_to_task=r.is_related_to_task,
+        relevance_reason=r.relevance_reason,
         ai_summary=r.ai_summary,
         sentiment=r.sentiment,
         emotion=r.emotion,
@@ -516,8 +519,8 @@ def _call_llm_draft(
         k: current.get(k)
         for k in (
             "context", "ai_summary", "language", "sentiment", "emotion",
-            "entities", "themes", "content_type", "is_related_to_task",
-            "detected_brands", "channel_type", "custom_fields",
+            "entities", "themes", "content_type", "relevance_reason",
+            "is_related_to_task", "detected_brands", "channel_type", "custom_fields",
         )
     }
     current_for_prompt["entities"] = _as_list(current_for_prompt.get("entities"))

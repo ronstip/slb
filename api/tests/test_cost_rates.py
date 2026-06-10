@@ -134,6 +134,30 @@ def test_vetric_per_call():
     assert micros == 2_000
 
 
+# ── hikerapi ─────────────────────────────────────────────────────────
+
+
+def test_hikerapi_per_request_instagram_matrix_cell():
+    # IG matrix cell: $0.02 per REQUEST × 3 requests = $0.06 = 60_000 micros.
+    # ($0.02 = the testing tier MEASURED on our account 2026-06-10 via
+    # /sys/balance; the advertised $0.0006 is the high-volume floor, not ours.)
+    micros = compute_cost_micros("hikerapi", units=3, platform="instagram", unit_kind="requests")
+    assert micros == 60_000
+
+
+def test_hikerapi_per_request_falls_back_to_wildcard_when_no_platform():
+    # No platform → no matrix cell → legacy "*" per_request_usd = $0.02.
+    micros = compute_cost_micros("hikerapi", units=10, unit_kind="requests")
+    assert micros == 200_000
+
+
+def test_hikerapi_rate_admin_editable_via_matrix(pricing_doc):
+    pricing_doc({"scraper_rates_per_platform": {"hikerapi": {"instagram": 0.001}}})
+    micros = compute_cost_micros("hikerapi", units=2, platform="instagram", unit_kind="requests")
+    # 2 × $0.001 = $0.002 = 2_000 micros (admin override wins over seed).
+    assert micros == 2_000
+
+
 # ── bq ───────────────────────────────────────────────────────────────
 
 

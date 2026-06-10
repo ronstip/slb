@@ -73,6 +73,15 @@ DEFAULT_SCRAPER_RATES: dict[str, dict[str, float]] = {
     "brightdata": {"facebook": 0.0025, "reddit": 0.0025, "youtube": 0.0025},
     # Authoritative - $0.005 per post (search) read.
     "x_api": {"twitter": 0.005},
+    # Authoritative - HikerAPI bills per REQUEST (each request returns many
+    # reels). Cost basis is requests, NOT records - the adapter passes
+    # units=requests_made / unit_kind="requests". IG keyword surface only.
+    # Pricing is TIERED by prepaid balance ($0.02 testing → $0.0006 enterprise
+    # floor, hikerapi.com/pricing). $0.02 MEASURED on our account 2026-06-10
+    # via GET /sys/balance ($1.16 balance ÷ 54 requests remaining ≈ $0.0215);
+    # lower this via the admin Finance matrix when a top-up unlocks a cheaper
+    # tier (re-derive: balance amount ÷ requests from /sys/balance).
+    "hikerapi": {"instagram": 0.02},
 }
 
 DEFAULT_SCRAPER_COMMENT_RATES: dict[str, dict[str, float]] = {
@@ -137,6 +146,11 @@ COST_RATES: dict[str, Any] = {
             "input_per_mtok": 0.50,
             "output_per_mtok": 3.00,
             "cached_per_mtok": 0.05,
+        },
+        "gemini-3.1-flash-lite-preview": {
+            "input_per_mtok": 0.25,
+            "output_per_mtok": 1.50,
+            "cached_per_mtok": 0.025,
         },
         "gemini-3-pro-preview": {
             "input_per_mtok": 2.00,
@@ -207,6 +221,18 @@ COST_RATES: dict[str, Any] = {
     # - placeholder until we get a copy of the invoice.
     "vetric": {
         "*": {"per_call_usd": 0.0005},
+    },
+
+    # ── HikerAPI - Instagram private-API; per-REQUEST price ────────────
+    # Rate-table priced (AUTHORITATIVE): the provider returns no cost, so we
+    # bill requests_made × per_request_usd. The per-(provider, platform) matrix
+    # cell (scraper_rates_per_platform["hikerapi"]) wins over this "*" entry
+    # when set; this is the fallback. units=requests, NOT records.
+    # TIERED by prepaid balance; $0.02 measured on our account 2026-06-10 via
+    # /sys/balance (the advertised $0.0006 is the enterprise floor) - keep in
+    # sync with the matrix seed above.
+    "hikerapi": {
+        "*": {"per_request_usd": 0.02},
     },
 
     # ── Google Cloud infra ────────────────────────────────────────────
@@ -688,6 +714,17 @@ def compute_cost_micros(
         if not per_call:
             return None
         return _usd_to_micros(units * per_call["per_call_usd"])
+
+    if provider == "hikerapi":
+        # Flat per-REQUEST price: units = requests made (not records). Matrix
+        # cell wins; falls back to the legacy per_request_usd entry.
+        matrix_rate = get_scraper_rate("hikerapi", platform, kind)
+        if matrix_rate is not None:
+            return _usd_to_micros(units * matrix_rate)
+        per_req, _ = _get_or_fallback(rate, sub_kind)
+        if not per_req:
+            return None
+        return _usd_to_micros(units * per_req["per_request_usd"])
 
     if provider == "bq":
         per_tb = rate.get("per_tb_processed_usd", 0.0)

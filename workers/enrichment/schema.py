@@ -136,6 +136,11 @@ class EnrichmentResult(BaseModel):
     entities: list[str]
     themes: list[str]
     content_type: str
+    # relevance_reason is generated BEFORE is_related_to_task so the model
+    # cites observable signal first, then commits the boolean (reason-then-
+    # decide curbs relevance hallucination). Defaults "" so legacy BQ rows
+    # without the column reconstruct cleanly (e.g. user-override merge).
+    relevance_reason: str = ""
     is_related_to_task: bool
     detected_brands: list[str] = []
     channel_type: Literal["official", "media", "influencer", "ugc"] = "ugc"

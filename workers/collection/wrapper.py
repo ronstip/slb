@@ -7,6 +7,7 @@ from config.settings import get_settings
 from workers.collection.adapters.apify import ApifyAdapter
 from workers.collection.adapters.base import DataProviderAdapter
 from workers.collection.adapters.brightdata import BrightDataAdapter
+from workers.collection.adapters.hikerapi import HikerAPIAdapter
 from workers.collection.adapters.mock_adapter import MockAdapter
 from workers.collection.adapters.vetric import VetricAdapter
 from workers.collection.adapters.x_api import XAPIAdapter
@@ -64,6 +65,17 @@ class DataProviderWrapper:
                     logger.info("ApifyAdapter initialized (%s mode)", mode)
                 except ValueError as e:
                     logger.warning("ApifyAdapter init failed, skipping: %s", e)
+            # HikerAPI - Instagram keyword (reels SERP) provider. Ships AFTER
+            # Apify so the first-supporting fallback still prefers Apify; hiker
+            # is selected only when routing explicitly names it (default for IG
+            # keyword via config/collection_routing.py). Keyword-only - the
+            # wrapper keeps URL-based work off it via supported_url_platforms().
+            if settings.hikerapi_api_key:
+                try:
+                    self._providers.append(HikerAPIAdapter())
+                    logger.info("HikerAPIAdapter initialized (%s mode)", mode)
+                except ValueError as e:
+                    logger.warning("HikerAPIAdapter init failed, skipping: %s", e)
             if not self._providers:
                 if settings.is_dev:
                     self._providers = [MockAdapter()]
@@ -79,53 +91,70 @@ class DataProviderWrapper:
         "brightdata": BrightDataAdapter,
         "xapi": XAPIAdapter,
         "apify": ApifyAdapter,
+        "hikerapi": HikerAPIAdapter,
         "mock": MockAdapter,
     }
 
     def _resolve_preferred_vendor(self, platform: str) -> str | None:
         """Vendor selection precedence (highest to lowest):
         1. Per-collection `vendor_config.platform_overrides[platform]` (explicit user choice)
-        2. Channel mode: `config.channel_urls` present → channel-capable provider
-           for this platform (config.collection_routing). Channel collection uses
-           a different API/actor than keyword search for some platforms, so this
-           wins over env/`default` but never over an explicit user override.
-        3. Env `DEFAULT_VENDOR_<PLATFORM>` (e.g. DEFAULT_VENDOR_INSTAGRAM)
+        2. Channel mode (`config.channel_urls` present) → `channel_provider_for`
+           (admin-editable; channel collection uses a different API/actor than
+           keyword search for some platforms).
+        3. Keyword mode → `keyword_provider_for` (admin-editable; itself falls
+           back to the env `DEFAULT_VENDOR_<PLATFORM>` seed).
         4. Per-collection `vendor_config.default`
         5. None - caller falls back to first-supporting adapter
+
+        Both (2) and (3) read `config.collection_routing`, which deep-merges the
+        admin-editable `app_config/routing` Firestore doc over the code seeds -
+        so a provider can be switched per (platform, intent) without a redeploy.
         """
         override = self._vendor_config.get("platform_overrides", {}).get(platform)
         if override:
             return override
 
-        if self.config.get("channel_urls"):
-            from config.collection_routing import channel_provider_for
+        from config.collection_routing import channel_provider_for, keyword_provider_for
 
+        if self.config.get("channel_urls"):
             channel_vendor = channel_provider_for(platform)
             if channel_vendor:
                 return channel_vendor
-
-        settings = get_settings()
-        env_default = getattr(settings, f"default_vendor_{platform}", "") or ""
-        if env_default:
-            return env_default
+        else:
+            keyword_vendor = keyword_provider_for(platform)
+            if keyword_vendor:
+                return keyword_vendor
 
         return self._vendor_config.get("default")
 
     def _get_adapter(self, platform: str) -> DataProviderAdapter:
         """Select adapter using the layered precedence. If the preferred vendor
         was requested but is not initialized (e.g. missing API token), log a
-        warning and fall through to first-supporting so the crawl still runs."""
+        warning and fall through to first-supporting so the crawl still runs.
+
+        URL mode: when the collection fetches specific posts by URL
+        (`config.post_urls`), keyword-only providers (whose
+        `supported_url_platforms()` excludes this platform - e.g. HikerAPI's
+        reels SERP) can't resolve a post URL, so they're skipped in favour of a
+        URL-capable adapter (e.g. Apify, which handles IG directUrls)."""
+        url_mode = bool(self.config.get("post_urls"))
+
+        def _supports(provider: DataProviderAdapter) -> bool:
+            if url_mode:
+                return platform in provider.supported_url_platforms()
+            return platform in provider.supported_platforms()
+
         preferred = self._resolve_preferred_vendor(platform)
 
         if preferred:
             target_class = self._VENDOR_CLASS_MAP.get(preferred)
             if target_class:
                 for provider in self._providers:
-                    if isinstance(provider, target_class) and platform in provider.supported_platforms():
+                    if isinstance(provider, target_class) and _supports(provider):
                         return provider
                 logger.warning(
-                    "Preferred vendor %r for platform %r is not initialized - "
-                    "falling back to first-supporting adapter",
+                    "Preferred vendor %r for platform %r is not initialized or "
+                    "can't serve this mode - falling back to first-supporting adapter",
                     preferred, platform,
                 )
             else:
@@ -134,9 +163,9 @@ class DataProviderWrapper:
                     preferred, platform,
                 )
 
-        # Fallback: first adapter that supports this platform (backward compatible)
+        # Fallback: first adapter that supports this platform (and mode).
         for provider in self._providers:
-            if platform in provider.supported_platforms():
+            if _supports(provider):
                 return provider
         raise ValueError(f"No adapter supports platform: {platform}")
 
@@ -261,8 +290,29 @@ class DataProviderWrapper:
         return combined
 
     def fetch_engagements(self, platform: str, post_urls: list[str]) -> list[dict]:
-        adapter = self._get_adapter(platform)
-        return adapter.fetch_engagements(post_urls)
+        """Route engagement refresh (a URL-based op) to a URL-capable adapter.
+
+        Mirrors `fetch_comments` routing: the preferred vendor is used only if
+        it can serve URL-based work for the platform (`supported_url_platforms`),
+        else the first URL-capable supporting adapter. This keeps refresh off
+        keyword-only providers (HikerAPI) - so e.g. IG posts collected via hiker
+        still refresh via Apify by their canonical /p/{code}/ URLs - while every
+        other platform keeps today's resolution.
+        """
+        preferred = self._resolve_preferred_vendor(platform)
+        if preferred:
+            target_class = self._VENDOR_CLASS_MAP.get(preferred)
+            if target_class:
+                for provider in self._providers:
+                    if (
+                        isinstance(provider, target_class)
+                        and platform in provider.supported_url_platforms()
+                    ):
+                        return provider.fetch_engagements(post_urls)
+        for provider in self._providers:
+            if platform in provider.supported_url_platforms():
+                return provider.fetch_engagements(post_urls)
+        raise ValueError(f"No adapter supports URL fetch for platform: {platform}")
 
     def fetch_comments(self, platform: str, post: dict) -> CommentBatch:
         """Route to the first provider whose `supported_comment_platforms`

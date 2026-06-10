@@ -39,7 +39,9 @@ interface CollectionFormProps {
 
 const TIME_RANGES = [
   { label: '24 hours', value: 1 },
+  { label: '3 days', value: 3 },
   { label: '7 days', value: 7 },
+  { label: '14 days', value: 14 },
   { label: '30 days', value: 30 },
   { label: '90 days', value: 90 },
   { label: '1 year', value: 365 },

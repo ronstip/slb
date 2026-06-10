@@ -7,7 +7,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
     agent_id: str | None = None  # Active agent - auto-loads agent context into session
-    model: str | None = None  # "flash" (default) or "pro"
+    model: str | None = None  # "flash-lite", "flash" (default) or "pro"
     # Per-request thinking override: "off" disables, otherwise minimal|low|medium|high.
     # None = fall back to settings.agent_thinking_level.
     thinking_level: str | None = None

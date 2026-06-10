@@ -388,10 +388,16 @@ async def get_collection_status(
     if not can_access_collection(user, status):
         raise HTTPException(status_code=403, detail="Access denied")
 
+    # Raw-before-dedup count from the run funnel: provider records returned
+    # (= what we paid for). Summed across providers; None when no funnel exists.
+    funnel = (status.get("run_log") or {}).get("funnel") or {}
+    raw_collected = (funnel.get("apify_raw_records") or 0) + (funnel.get("bd_raw_records") or 0)
+
     return CollectionStatusResponse(
         collection_id=collection_id,
         status=status.get("status", "unknown"),
         posts_collected=status.get("posts_collected", 0),
+        raw_posts_collected=raw_collected or None,
         posts_enriched=status.get("posts_enriched", 0),
         total_views=status.get("total_views", 0),
         positive_pct=status.get("positive_pct"),
