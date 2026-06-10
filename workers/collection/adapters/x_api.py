@@ -41,6 +41,9 @@ _DEFAULT_FALLBACK_DAYS = 30  # used only if caller omits time_range (defensive)
 _TWEETS_LOOKUP_BATCH_SIZE = 100  # /2/tweets?ids= hard cap
 _PAGE_SIZE_MIN = 10  # X API /search/all requires max_results >= 10
 _PAGE_SIZE_MAX = 500  # X API /search/all max_results upper bound
+# X API forces max_results <= 100 when context_annotations is requested; this is
+# the real per-page yield, so pagination depth (max_calls) must derive from it.
+_CONTEXT_ANNOTATIONS_PAGE_CAP = 100
 _VALID_SORT_ORDERS = {"recency", "relevancy"}
 _VALID_HAS_MEDIA = {"with", "without", "any"}
 _DEFAULT_HAS_MEDIA = "any"
@@ -83,6 +86,13 @@ class XAPIAdapter(DataProviderAdapter):
             min_request_interval_sec=settings.x_api_min_request_interval_sec,
         )
         self._max_results = max(_PAGE_SIZE_MIN, min(_PAGE_SIZE_MAX, settings.x_api_max_results))
+        # Effective page yield after the context_annotations clamp - the value
+        # both the request `max_results` and the pagination depth must agree on.
+        self._effective_page_size = (
+            min(self._max_results, _CONTEXT_ANNOTATIONS_PAGE_CAP)
+            if "context_annotations" in self.DEFAULT_TWEET_FIELDS
+            else self._max_results
+        )
         self._default_sort_order = _normalize_sort_order(settings.x_api_sort_order)
         self._fallback_max_calls = max(1, settings.x_api_default_max_calls)
         self._unpack_referenced = bool(settings.x_api_unpack_referenced_posts)
@@ -139,7 +149,7 @@ class XAPIAdapter(DataProviderAdapter):
         # Always request a full page so X's relevance ranking has density to work
         # with; truncate to budget after parsing in `_paginate`.
         per_task_budget = config.get("max_posts_per_keyword") or 0
-        page_size = self._max_results
+        page_size = self._effective_page_size
         if per_task_budget > 0:
             max_calls = max(1, math.ceil(per_task_budget / page_size))
             hard_cap = per_task_budget
@@ -260,7 +270,7 @@ class XAPIAdapter(DataProviderAdapter):
         query = self._build_search_query(keyword, has_media)
         # X API requires max_results <= 100 when context_annotations is requested.
         if "context_annotations" in self.DEFAULT_TWEET_FIELDS:
-            page_size = min(page_size, 100)
+            page_size = min(page_size, _CONTEXT_ANNOTATIONS_PAGE_CAP)
         params: dict = {
             "query": query,
             "max_results": page_size,
