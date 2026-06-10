@@ -16,14 +16,24 @@ So collection per keyword runs in PHASES, falling through while the target is
 unmet:
   1. `fbsearch_reels_v2`        - viral keyword SERP (best content, low yield)
   2. `hashtag_medias_top_chunk_v1`   - top posts for #keyword (real pagination)
-  3. `hashtag_medias_top_recent_chunk_v1` - RECENT posts for #keyword - the
-     surface that actually fills a narrow time window (top/viral content is
-     usually older than the window)
+  3. `hashtag_medias_top_recent_chunk_v1` - recent posts for #keyword
   4. `hashtag_medias_clips_chunk_v1` - reels for #keyword (real pagination)
 
 And collection across keywords POOLS to the run's total `n_posts` budget:
 after the per-keyword round, underfilled budget is redistributed to keywords
 that can still produce, so one dry keyword doesn't starve the run.
+
+NO TIME GATE here: none of these surfaces accept a date parameter, so every
+fetched post is already paid for. The adapter returns everything (the
+pipeline's `partition_by_time_range` stores out-of-window posts but skips
+enrichment - same treatment as the Apify/TikTok flow). The only
+window-awareness is the final trim: when results exceed `n_posts`, in-window
+posts are kept first so the user's actual ask wins over old viral extras.
+
+Funnel: reported through the standard wrapper funnel (`funnel_stats`,
+aggregated by `DataProviderWrapper.get_funnel_stats` into the admin
+Collections audit), same as BrightData/Apify. Keys: hiker_requests,
+hiker_raw_media, hiker_duplicates, hiker_parse_failures, hiker_valid_posts.
 
 Scope (v1): KEYWORD collection only. This surface can't resolve a specific
 post URL, so:
@@ -65,10 +75,6 @@ _MAX_WORKERS_KEYWORDS = 5
 # unique posts - the surface has saturated / started looping even if it still
 # claims has_more (the reels SERP ALWAYS does this after page 1-2).
 _SATURATION_PAGES = 2
-# Advance to the next phase after this many CONSECUTIVE pages that DO return
-# new unique posts but ALL of them fall outside the requested time window -
-# bounds spend when a narrow window meets a surface with no date filter.
-_FRUITLESS_PAGES = 4
 
 
 def _extract_media(obj, out: list[dict]) -> None:
@@ -143,30 +149,28 @@ class _KeywordStream:
 
     _PHASES = ("reels_serp", "hashtag_top", "hashtag_recent", "hashtag_clips")
 
-    def __init__(
-        self,
-        adapter: "HikerAPIAdapter",
-        keyword: str,
-        gate_start: datetime | None,
-        gate_end: datetime | None,
-    ):
+    def __init__(self, adapter: "HikerAPIAdapter", keyword: str):
         self._adapter = adapter
         self.keyword = keyword
         self._hashtag = _hashtagize(keyword)
-        self._gate_start = gate_start
-        self._gate_end = gate_end
 
         self.posts: list[Post] = []
         self.channels: dict[str, Channel] = {}
         self.target = 0  # raised by the pooling loop
         self.exhausted = False
 
+        # Funnel counters (stream totals; aggregated into the adapter's
+        # standard `funnel_stats` for the admin Collections audit).
+        self.raw_media = 0
+        self.duplicates = 0
+        self.parse_failures = 0
+
         self._seen_pks: set[str] = set()
         self._phase_idx = 0
         self._cursor = None
         self._empty_streak = 0
-        self._fruitless_streak = 0
         self._pages_used = 0
+        self._phase_funnel = {"pages": 0, "raw": 0, "new": 0}
 
     # -- phase plumbing -------------------------------------------------
 
@@ -204,10 +208,17 @@ class _KeywordStream:
         return media, next_cursor, bool(media and next_cursor)
 
     def _advance_phase(self) -> None:
+        f = self._phase_funnel
+        if f["pages"]:
+            logger.info(
+                "HikerAPI '%s' %s done: pages=%d raw=%d new_unique=%d (stream total=%d)",
+                self.keyword, self._PHASES[self._phase_idx],
+                f["pages"], f["raw"], f["new"], len(self.posts),
+            )
+        self._phase_funnel = {"pages": 0, "raw": 0, "new": 0}
         self._phase_idx += 1
         self._cursor = None
         self._empty_streak = 0
-        self._fruitless_streak = 0
         if self._phase_idx >= len(self._PHASES):
             self.exhausted = True
         # Skip hashtag phases when the keyword reduces to an empty hashtag.
@@ -217,17 +228,19 @@ class _KeywordStream:
     # -- main loop -------------------------------------------------------
 
     def pull(self) -> int:
-        """Collect until ``self.target`` is met or every phase is exhausted.
+        """Collect until ``self.target`` unique posts or every phase is exhausted.
 
         Returns the number of posts added this call. A target of 0 means
         "no explicit ask" - collect the reels SERP only (legacy behaviour),
-        bounded by the page setting.
+        bounded by the page setting. No time filtering happens here - every
+        fetched post is paid for and flows to the pipeline, which stores
+        out-of-window posts without enriching them.
         """
         added_this_call = 0
         # Backstop only: scale generously with the ask so the requested count
         # is always reachable even on a low-yield term (worst case ~1
-        # net-new/page). The saturation/fruitless streaks halt an exhausted
-        # term long before this ceiling in practice.
+        # net-new/page). The saturation streak halts an exhausted term long
+        # before this ceiling in practice.
         page_ceiling = self._adapter._max_pages
         if self.target:
             page_ceiling = max(page_ceiling, self.target + 5)
@@ -259,26 +272,25 @@ class _KeywordStream:
                 self._adapter._requests_made += 1
 
             new_unique = 0
-            kept = 0
+            self.raw_media += len(media)
+            self._phase_funnel["pages"] += 1
+            self._phase_funnel["raw"] += len(media)
             for item in media:
                 try:
                     post = parse_hikerapi_instagram_post(item)
                 except Exception:  # noqa: BLE001 - one bad item must not kill the keyword
+                    self.parse_failures += 1
                     logger.warning("HikerAPI media parse failed - skipping item", exc_info=True)
                     continue
                 if not post.post_id or post.post_id in self._seen_pks:
+                    self.duplicates += 1
                     continue
                 self._seen_pks.add(post.post_id)
                 new_unique += 1
-                # Client-side time gate (these surfaces have no date filter).
-                if self._gate_start and post.posted_at < self._gate_start:
-                    continue
-                if self._gate_end and post.posted_at > self._gate_end:
-                    continue
+                self._phase_funnel["new"] += 1
                 post.crawl_provider = "hikerapi"
                 post.search_keyword = self.keyword
                 self.posts.append(post)
-                kept += 1
                 added_this_call += 1
                 try:
                     ch = parse_hikerapi_instagram_channel(item)
@@ -287,18 +299,10 @@ class _KeywordStream:
                 except Exception:  # noqa: BLE001
                     logger.debug("HikerAPI channel parse skipped", exc_info=True)
 
-            # Streak accounting decides when this phase is done:
-            #   no new unique pks   -> the surface is looping (reels SERP) or dry
-            #   new-but-all-gated   -> surface alive but outside the time window
+            # Saturation accounting: consecutive pages with zero new unique pks
+            # mean the surface is looping (reels SERP) or dry -> next phase.
             self._empty_streak = self._empty_streak + 1 if new_unique == 0 else 0
-            self._fruitless_streak = (
-                self._fruitless_streak + 1 if (new_unique > 0 and kept == 0) else 0
-            )
-            if (
-                self._empty_streak >= _SATURATION_PAGES
-                or self._fruitless_streak >= _FRUITLESS_PAGES
-                or not has_more
-            ):
+            if self._empty_streak >= _SATURATION_PAGES or not has_more:
                 self._advance_phase()
                 continue
             self._cursor = next_cursor
@@ -324,9 +328,21 @@ class HikerAPIAdapter(DataProviderAdapter):
         self._max_pages = max(1, int(getattr(settings, "hikerapi_max_pages_per_keyword", 3)))
         self._stats_lock = threading.Lock()
         self._platform_stats: dict[str, dict] = {}
+        self._funnel: dict = self._fresh_funnel()
         self._requests_made = 0
         self._account_error: str | None = None
         logger.info("HikerAPIAdapter initialized (max_pages_per_keyword=%d)", self._max_pages)
+
+    @staticmethod
+    def _fresh_funnel() -> dict:
+        return {
+            "hiker_requests": 0,
+            "hiker_raw_media": 0,
+            "hiker_duplicates": 0,
+            "hiker_parse_failures": 0,
+            "hiker_valid_posts": 0,
+            "per_platform": {},
+        }
 
     # ------------------------------------------------------------------
     # Capability surface
@@ -347,6 +363,13 @@ class HikerAPIAdapter(DataProviderAdapter):
     def platform_stats(self) -> dict[str, dict]:
         return dict(self._platform_stats)
 
+    @property
+    def funnel_stats(self) -> dict:
+        """Standard wrapper funnel (admin Collections audit) - see
+        DataProviderWrapper._FUNNEL_KEYS."""
+        with self._stats_lock:
+            return dict(self._funnel)
+
     # ------------------------------------------------------------------
     # Collection
     # ------------------------------------------------------------------
@@ -354,6 +377,7 @@ class HikerAPIAdapter(DataProviderAdapter):
     def collect(self, config: dict) -> list[Batch]:
         self._requests_made = 0
         self._platform_stats = {}
+        self._funnel = self._fresh_funnel()
         self._account_error = None
 
         platforms = config.get("platforms") or []
@@ -371,10 +395,6 @@ class HikerAPIAdapter(DataProviderAdapter):
         if not keywords:
             return []
 
-        time_range = config.get("time_range") or {}
-        gate_start = _parse_gate(time_range.get("start"))
-        gate_end = _parse_gate(time_range.get("end"))
-
         try:
             n_total = int(config.get("n_posts") or 0)
         except (TypeError, ValueError):
@@ -386,9 +406,7 @@ class HikerAPIAdapter(DataProviderAdapter):
         if not cap:
             cap = n_total  # legacy fallback: no per-keyword slice -> use the total
 
-        streams = [
-            _KeywordStream(self, kw, gate_start, gate_end) for kw in keywords
-        ]
+        streams = [_KeywordStream(self, kw) for kw in keywords]
         for s in streams:
             s.target = cap
 
@@ -430,14 +448,22 @@ class HikerAPIAdapter(DataProviderAdapter):
         else:
             self._dedupe_across_streams(streams)
 
-        # Trim: to n_posts globally (keep most-engaging) when a total budget is
-        # set; otherwise to the per-keyword cap (legacy direct-config path).
+        # Trim to the requested count. Window-PRIORITIZED, not window-gated:
+        # in-window posts are kept first (the user's actual ask), then the
+        # most-engaging out-of-window extras fill the remainder. Everything
+        # returned is stored by the pipeline; out-of-window posts just skip
+        # enrichment (partition_by_time_range).
+        time_range = config.get("time_range") or {}
+        gate_start = _parse_gate(time_range.get("start"))
+        gate_end = _parse_gate(time_range.get("end"))
         if n_total:
-            self._trim_global(streams, n_total)
+            self._trim_global(streams, n_total, gate_start, gate_end)
         elif cap:
             for s in streams:
                 if len(s.posts) > cap:
-                    s.posts.sort(key=self._engagement_score, reverse=True)
+                    s.posts.sort(
+                        key=lambda p: self._trim_key(p, gate_start, gate_end), reverse=True,
+                    )
                     s.posts = s.posts[:cap]
         for s in streams:
             kept_ch = {p.channel_id for p in s.posts if p.channel_id}
@@ -450,12 +476,37 @@ class HikerAPIAdapter(DataProviderAdapter):
         ]
         total_posts = sum(len(b.posts) for b in batches)
 
+        raw_media = sum(s.raw_media for s in streams)
+        duplicates = sum(s.duplicates for s in streams)
+        parse_failures = sum(s.parse_failures for s in streams)
         with self._stats_lock:
             self._platform_stats["instagram"] = {
                 "posts": total_posts,
                 "batches": len(batches),
                 "requests": self._requests_made,
             }
+            self._funnel = {
+                "hiker_requests": self._requests_made,
+                "hiker_raw_media": raw_media,
+                "hiker_duplicates": duplicates,
+                "hiker_parse_failures": parse_failures,
+                "hiker_valid_posts": total_posts,
+                "per_platform": {
+                    "instagram": {
+                        "raw_into_parse": raw_media,
+                        "deduped": duplicates,
+                        "parse_failures": parse_failures,
+                        "empty_post_id": 0,
+                        "valid_posts": total_posts,
+                    }
+                },
+            }
+        logger.info(
+            "HikerAPI collected %d post(s) in %d batch(es) from %d request(s) "
+            "(raw_media=%d duplicates=%d parse_failures=%d, asked n_posts=%d)",
+            total_posts, len(batches), self._requests_made,
+            raw_media, duplicates, parse_failures, n_total,
+        )
 
         # Flat per-REQUEST billing: cost = requests_made × rate. No provider
         # cost is returned, so this is the authoritative source. user/org/
@@ -497,12 +548,30 @@ class HikerAPIAdapter(DataProviderAdapter):
             s.posts = kept
 
     @classmethod
-    def _trim_global(cls, streams: list[_KeywordStream], n_total: int) -> None:
-        """Keep the most-engaging ``n_total`` posts across all streams."""
+    def _trim_key(
+        cls, post: Post, gate_start: datetime | None, gate_end: datetime | None,
+    ) -> tuple[int, float]:
+        """Sort key for trimming: in-window first, then engagement."""
+        in_window = 1
+        if gate_start and post.posted_at < gate_start:
+            in_window = 0
+        if gate_end and post.posted_at > gate_end:
+            in_window = 0
+        return (in_window, cls._engagement_score(post))
+
+    @classmethod
+    def _trim_global(
+        cls,
+        streams: list[_KeywordStream],
+        n_total: int,
+        gate_start: datetime | None,
+        gate_end: datetime | None,
+    ) -> None:
+        """Keep the best ``n_total`` posts across all streams (in-window first)."""
         everything = [p for s in streams for p in s.posts]
         if len(everything) <= n_total:
             return
-        everything.sort(key=cls._engagement_score, reverse=True)
+        everything.sort(key=lambda p: cls._trim_key(p, gate_start, gate_end), reverse=True)
         keep_ids = {p.post_id for p in everything[:n_total]}
         for s in streams:
             s.posts = [p for p in s.posts if p.post_id in keep_ids]

@@ -272,6 +272,9 @@ class DataProviderWrapper:
         "apify_runs_triggered", "apify_runs_succeeded", "apify_runs_failed",
         "apify_runs_budget_exhausted", "apify_raw_records",
         "apify_filtered_by_time_window", "apify_parse_failures", "apify_valid_posts",
+        # HikerAPI funnel (billed per REQUEST; raw_media = extracted IG media objects)
+        "hiker_requests", "hiker_raw_media", "hiker_duplicates",
+        "hiker_parse_failures", "hiker_valid_posts",
     )
 
     def get_funnel_stats(self) -> dict:

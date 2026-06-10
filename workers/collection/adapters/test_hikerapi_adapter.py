@@ -296,52 +296,49 @@ def test_global_trim_to_n_posts_by_engagement():
     assert {p.post_id for p in posts} == {"pk5", "pk4"}
 
 
-def test_hashtag_recent_phase_fills_when_top_content_is_old():
-    # Time-windowed ask: reels SERP + top hashtag content are all OLD (gated
-    # out); the recent-chunk phase carries fresh in-window posts and must fill
-    # the target. (Real case: keyword "Nike", 7-day window - viral/top posts
-    # are months old, only the recent surface has this week's content.)
-    in_window = 1739500000  # inside the gate below
-    old = 1000000000
-    reels = {"nike": [_reels_resp([_media("r1", "R1", taken_at=old)], None, False)]}
-    top = {"nike": [_chunk_resp([_media("t1", "T1", taken_at=old)], None)]}
-    recent = {"nike": [
-        _chunk_resp([_media("n1", "N1", taken_at=in_window), _media("n2", "N2", taken_at=in_window)], "1"),
-        _chunk_resp([_media("n3", "N3", taken_at=in_window)], None),
-    ]}
-    fake = _FakeClient(reels=reels, top=top, recent=recent)
-    adapter = _build_adapter(fake, max_pages=15)
-    with patch("api.services.cost_meter.log_cost"):
-        batches = adapter.collect({
-            "platforms": ["instagram"], "keywords": ["nike"],
-            "max_posts_per_keyword": 3, "n_posts": 3,
-            "time_range": {"start": "2025-02-10T00:00:00Z", "end": "2025-02-20T00:00:00Z"},
-        })
-    posts = _posts(batches)
-    assert {p.post_id for p in posts} == {"n1", "n2", "n3"}
-    assert [c[0] for c in fake.calls].count("recent") == 2
-
-
-def test_time_gate_does_not_loop_forever():
-    # Every page returns NEW unique posts that are all OUTSIDE the window.
-    # Without a fruitless-page bound this would page to the ceiling; the
-    # adapter must advance phases / stop after a few fruitless pages per phase.
-    old = 1000000000  # far before the gate
-    reels = {"x": [
-        _reels_resp([_media(f"pk{i}a", f"Ca{i}", taken_at=old), _media(f"pk{i}b", f"Cb{i}", taken_at=old)], str(i + 1), True)
-        for i in range(30)
-    ]}
-    fake = _FakeClient(reels=reels)
-    adapter = _build_adapter(fake, max_pages=15)
+def test_out_of_window_posts_are_returned_not_discarded():
+    # We PAID for every fetched post - out-of-window posts must flow through to
+    # the pipeline (which stores them but skips enrichment via
+    # partition_by_time_range), exactly like the Apify/TikTok flow. The adapter
+    # does NOT time-gate.
+    old = 1000000000  # far before the window
+    reels = {"x": [_reels_resp(
+        [_media("old1", "O1", taken_at=old), _media("new1", "N1", taken_at=1739500000)],
+        None, False,
+    )]}
+    adapter = _build_adapter(_FakeClient(reels=reels))
     with patch("api.services.cost_meter.log_cost"):
         batches = adapter.collect({
             "platforms": ["instagram"], "keywords": ["x"],
-            "max_posts_per_keyword": 20, "n_posts": 20,
-            "time_range": {"start": "2025-02-01T00:00:00Z", "end": "2025-02-28T00:00:00Z"},
+            "max_posts_per_keyword": 5, "n_posts": 5,
+            "time_range": {"start": "2025-02-10T00:00:00Z", "end": "2025-02-20T00:00:00Z"},
         })
-    assert _posts(batches) == []
-    # Bounded: a handful of fruitless pages per phase, NOT target+5 (=25) pages.
-    assert len(fake.calls) <= 12
+    assert {p.post_id for p in _posts(batches)} == {"old1", "new1"}
+
+
+def test_trim_prefers_in_window_posts():
+    # When over target, keep in-window posts first (the user's actual ask),
+    # even when out-of-window posts have higher engagement; fill any remainder
+    # with the most-engaging out-of-window extras.
+    old = 1000000000
+    in_window = 1739500000  # inside the window below
+    reels = {"x": [_reels_resp(
+        [
+            _media("viral_old", "V1", likes=999999, taken_at=old),
+            _media("fresh1", "F1", likes=10, taken_at=in_window),
+            _media("fresh2", "F2", likes=20, taken_at=in_window),
+        ],
+        None, False,
+    )]}
+    adapter = _build_adapter(_FakeClient(reels=reels))
+    with patch("api.services.cost_meter.log_cost"):
+        batches = adapter.collect({
+            "platforms": ["instagram"], "keywords": ["x"],
+            "max_posts_per_keyword": 3, "n_posts": 2,
+            "time_range": {"start": "2025-02-10T00:00:00Z", "end": "2025-02-20T00:00:00Z"},
+        })
+    posts = _posts(batches)
+    assert {p.post_id for p in posts} == {"fresh1", "fresh2"}
 
 
 def test_collect_returns_what_serp_has_when_below_target():
@@ -428,6 +425,29 @@ def test_account_error_midrun_returns_partial():
             "max_posts_per_keyword": 5, "n_posts": 5,
         })
     assert {p.post_id for p in _posts(batches)} == {"pk1"}
+
+
+def test_funnel_stats_feed_the_admin_collections_funnel():
+    # The adapter reports through the SAME wrapper funnel system as
+    # BrightData/Apify (admin dashboard -> Collections -> audit), not a
+    # parallel stats channel. 3 raw media: 2 unique, 1 duplicate-pk.
+    reels = {"x": [_reels_resp(
+        [_media("pk1", "C1"), _media("pk1", "C1"), _media("pk2", "C2")],
+        None, False,
+    )]}
+    adapter = _build_adapter(_FakeClient(reels=reels))
+    with patch("api.services.cost_meter.log_cost"):
+        adapter.collect({"platforms": ["instagram"], "keywords": ["x"]})
+    f = adapter.funnel_stats
+    assert f["hiker_requests"] == 1
+    assert f["hiker_raw_media"] == 3
+    assert f["hiker_duplicates"] == 1
+    assert f["hiker_valid_posts"] == 2
+    assert f["hiker_parse_failures"] == 0
+    per_ig = f["per_platform"]["instagram"]
+    assert per_ig["raw_into_parse"] == 3
+    assert per_ig["deduped"] == 1
+    assert per_ig["valid_posts"] == 2
 
 
 def test_collect_ignores_non_instagram_and_empty_keywords():

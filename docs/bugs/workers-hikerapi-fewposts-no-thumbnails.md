@@ -22,8 +22,29 @@
 - **Parsers:** `_epoch_to_utc` accepts string epochs; adapter skips unparseable items instead of killing the keyword.
 - **Account errors:** raise `RuntimeError` when nothing was collected (visible crawl error), keep partials otherwise. Raised AFTER cost logging.
 
+## Prod follow-up (2026-06-11): 1000 asked → 37 stored
+First prod run (collection d1c7865a) confirmed phases + chunk pagination work
+(49 requests, correct cost), but the adapter's CLIENT-SIDE TIME GATE discarded
+most fetched posts (World-Cup hashtags are dominated by 2022-era virals; only
+37 of the raw media fell in the 7-day window). Discarding paid-for posts is
+wrong AND inconsistent with the Apify/TikTok flow, where the PIPELINE
+partitions: `partition_by_time_range` stores out-of-window posts (media
+downloaded to GCS too) and only skips enrichment.
+
+**Redesign:** adapter no longer time-gates. Every unique fetched post counts
+toward the target and is returned; the pipeline stores all and enriches only
+in-window ones. The final trim to `n_posts` is window-PRIORITIZED (in-window
+first by engagement, then out-of-window extras) so old virals can't displace
+fresh posts. Funnel moved off the bespoke platform_stats counters onto the
+standard wrapper funnel (`hiker_requests/raw_media/duplicates/parse_failures/
+valid_posts` in `_FUNNEL_KEYS`) so the admin Collections audit shows it; the
+audit UI also now renders hiker funnels + an "Out of Time Window" row
+(`posts_out_of_range`), and the discrepancy calc counts hiker raw media.
+
 ## Tests
-`workers/collection/adapters/test_hikerapi_adapter.py` (phases, pooling, dedupe, fruitless bound, account errors), `test_hikerapi_parsers.py` (string taken_at, image-first media).
+`workers/collection/adapters/test_hikerapi_adapter.py` (phases, pooling, dedupe,
+no-discard, window-prioritized trim, wrapper funnel, account errors),
+`test_hikerapi_parsers.py` (string taken_at, image-first media).
 
 ## Note
-Fixes apply to NEW collections only. See also `workers-hikerapi-cost-undercount.md` (same session). Not yet committed (branch `dev`).
+Fixes apply to NEW collections only. See also `workers-hikerapi-cost-undercount.md`. Not yet committed (branch `dev`).

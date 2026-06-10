@@ -109,8 +109,11 @@ function AuditDialog({ collectionId, open, onClose }: { collectionId: string; op
 
 function AuditContent({ audit }: { audit: CollectionAudit }) {
   const f = audit.funnel;
-  const hasFunnel = f && f.bd_raw_records > 0;
-  const totalLost = hasFunnel ? f.bd_raw_records - f.worker_posts_stored : 0;
+  const bdRaw = f?.bd_raw_records ?? 0;
+  const hikerRaw = f?.hiker_raw_media ?? 0;
+  const rawTotal = bdRaw + hikerRaw;
+  const hasFunnel = f && rawTotal > 0;
+  const totalLost = hasFunnel ? rawTotal - f.worker_posts_stored : 0;
   const platformErrors = audit.run_log?.collection?.errors ?? [];
   const enrichmentGap = audit.posts_collected_firestore > 0
     ? audit.posts_collected_firestore - audit.posts_enriched
@@ -150,9 +153,11 @@ function AuditContent({ audit }: { audit: CollectionAudit }) {
       {/* Headline numbers */}
       <div className="grid grid-cols-4 gap-2">
         <div className="rounded-lg border p-2.5 text-center">
-          <p className="text-[11px] text-muted-foreground">BD Raw</p>
-          <p className="text-xl font-bold">{hasFunnel ? f.bd_raw_records.toLocaleString() : '-'}</p>
-          <p className="text-[10px] text-muted-foreground">charged</p>
+          <p className="text-[11px] text-muted-foreground">{hikerRaw > 0 && bdRaw === 0 ? 'Hiker Raw' : 'Raw'}</p>
+          <p className="text-xl font-bold">{hasFunnel ? rawTotal.toLocaleString() : '-'}</p>
+          <p className="text-[10px] text-muted-foreground">
+            {hikerRaw > 0 ? `${(f.hiker_requests ?? 0).toLocaleString()} requests charged` : 'charged'}
+          </p>
         </div>
         <div className="rounded-lg border p-2.5 text-center">
           <p className="text-[11px] text-muted-foreground">Stored</p>
@@ -189,20 +194,31 @@ function AuditContent({ audit }: { audit: CollectionAudit }) {
         </div>
       )}
 
-      {/* BD funnel breakdown */}
+      {/* Provider funnel breakdown */}
       {hasFunnel && (
         <div className="space-y-1.5">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Post Funnel</h3>
           <div className="space-y-1.5 rounded-lg border p-3">
-            <FunnelRow label="BD Error Items" count={f.bd_error_items_filtered} total={f.bd_raw_records} color="bg-red-400" />
-            <FunnelRow label="Cross-Keyword Dedup" count={f.bd_cross_keyword_dedup} total={f.bd_raw_records} color="bg-amber-400" />
-            <FunnelRow label="Parse Failures" count={f.bd_parse_failures} total={f.bd_raw_records} color="bg-red-400" />
-            <FunnelRow label="Empty Post ID" count={f.bd_empty_post_id} total={f.bd_raw_records} color="bg-orange-400" />
-            <FunnelRow label="Worker Dedup" count={f.worker_in_memory_dedup} total={f.bd_raw_records} color="bg-amber-400" />
-            <FunnelRow label="BQ Dedup" count={f.worker_bq_dedup} total={f.bd_raw_records} color="bg-amber-400" />
-            <FunnelRow label="BQ Insert Failures" count={f.worker_bq_insert_failures} total={f.bd_raw_records} color="bg-red-400" />
+            {bdRaw > 0 && (
+              <>
+                <FunnelRow label="BD Error Items" count={f.bd_error_items_filtered} total={rawTotal} color="bg-red-400" />
+                <FunnelRow label="Cross-Keyword Dedup" count={f.bd_cross_keyword_dedup} total={rawTotal} color="bg-amber-400" />
+                <FunnelRow label="Parse Failures" count={f.bd_parse_failures} total={rawTotal} color="bg-red-400" />
+                <FunnelRow label="Empty Post ID" count={f.bd_empty_post_id} total={rawTotal} color="bg-orange-400" />
+              </>
+            )}
+            {hikerRaw > 0 && (
+              <>
+                <FunnelRow label="Hiker Duplicates" count={f.hiker_duplicates ?? 0} total={rawTotal} color="bg-amber-400" />
+                <FunnelRow label="Hiker Parse Failures" count={f.hiker_parse_failures ?? 0} total={rawTotal} color="bg-red-400" />
+              </>
+            )}
+            <FunnelRow label="Worker Dedup" count={f.worker_in_memory_dedup} total={rawTotal} color="bg-amber-400" />
+            <FunnelRow label="BQ Dedup" count={f.worker_bq_dedup} total={rawTotal} color="bg-amber-400" />
+            <FunnelRow label="BQ Insert Failures" count={f.worker_bq_insert_failures} total={rawTotal} color="bg-red-400" />
+            <FunnelRow label="Out of Time Window" count={f.posts_out_of_range ?? 0} total={rawTotal} color="bg-sky-400" />
             <div className="border-t pt-1.5">
-              <FunnelRow label="Posts Stored" count={f.worker_posts_stored} total={f.bd_raw_records} color="bg-green-500" />
+              <FunnelRow label="Posts Stored" count={f.worker_posts_stored} total={rawTotal} color="bg-green-500" />
             </div>
           </div>
         </div>
