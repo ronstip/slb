@@ -485,6 +485,42 @@ def test_channel_only_builds_user_timeline():
     assert calls == [("user_timeline", "espn")]
 
 
+# ---------------------------------------------------------------------------
+# Pagination depth must account for the context_annotations 100-cap
+# ---------------------------------------------------------------------------
+
+def _build_adapter_with(**settings_overrides) -> XAPIAdapter:
+    s = _settings(**settings_overrides)
+    with patch("workers.collection.adapters.x_api.get_settings", return_value=s), \
+         patch("workers.collection.adapters.x_api.XAPIClient"):
+        return XAPIAdapter()
+
+
+def test_max_calls_accounts_for_context_annotations_page_cap():
+    """`x_api_max_results` may be 500, but requesting `context_annotations`
+    clamps each page to 100. `max_calls` must be derived from the *effective*
+    page size (100), else a 334-post budget yields ceil(334/500)=1 call and
+    silently caps the keyword at ~100 posts. Regression for collection
+    2df01110 (1000 requested across 3 keywords -> only ~265 returned)."""
+    adapter = _build_adapter_with(x_api_max_results=500)
+    captured: list[int] = []
+
+    def _cap(task_type, target, page_size, max_calls, *a, **k):
+        captured.append(max_calls)
+        return []
+
+    with patch.object(adapter, "_run_task", side_effect=_cap):
+        adapter.collect({
+            "platforms": ["twitter"],
+            "keywords": ["World Cup 2026"],
+            "max_posts_per_keyword": 334,
+            "time_range": {"start": "2026-06-03T00:00:00Z", "end": "2026-06-10T00:00:00Z"},
+        })
+
+    # 334 / effective-page-size(100) -> 4 calls, not ceil(334/500)=1.
+    assert captured == [4]
+
+
 def test_extract_twitter_username_accepts_urls_and_bare_handles():
     from workers.collection.adapters.x_api_parsers import extract_twitter_username
     assert extract_twitter_username("https://x.com/espn") == "espn"
