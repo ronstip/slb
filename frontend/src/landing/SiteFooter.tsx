@@ -48,7 +48,7 @@ export const SiteFooter = () => (
       <div className="lp-footer-links" style={{ display: 'flex', gap: 64, fontFamily: "'Inter Tight',sans-serif", fontSize: 13 }}>
         <div style={{ display: 'grid', gap: 8 }}>
           <Mono size={9.5} color="#7E7666" style={{ marginBottom: 4 }}>Product</Mono>
-          <Link to="/" style={{ color: '#D6CFBF', textDecoration: 'none' }}>How it works</Link>
+          <a href="/#how-it-works" style={{ color: '#D6CFBF', textDecoration: 'none' }}>How it works</a>
           <Link to="/" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Examples</Link>
           <Link to="/" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Changelog</Link>
         </div>
