@@ -3,6 +3,7 @@ import { apiGet, apiPost } from '../client.ts';
 export interface EnrichmentOverride {
   post_id: string;
   is_related_to_task: boolean;
+  relevance_reason?: string;
   ai_summary: string;
   sentiment: string;
   emotion: string;

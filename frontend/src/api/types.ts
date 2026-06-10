@@ -257,6 +257,7 @@ export interface FeedPost {
   language?: string;
   custom_fields?: Record<string, unknown> | null;
   context?: string;
+  relevance_reason?: string;
   detected_brands?: string[];
   channel_type?: string;
   collection_id?: string;
@@ -512,6 +513,7 @@ export interface DashboardPost {
   custom_fields?: Record<string, unknown> | null;
   ai_summary?: string;
   context?: string;
+  relevance_reason?: string;
   detected_brands?: string[];
   channel_type?: string;
   media_refs?: string;

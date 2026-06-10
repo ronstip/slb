@@ -98,6 +98,7 @@ def _write_results_via_values(
             f"'{_esc(r.ai_summary)}' AS ai_summary, "
             f"'{_esc(r.language)}' AS language, "
             f"'{_esc(r.content_type)}' AS content_type, "
+            f"'{_esc(r.relevance_reason)}' AS relevance_reason, "
             f"{'TRUE' if r.is_related_to_task else 'FALSE'} AS is_related_to_task, "
             f"{brands_sql} AS detected_brands, "
             f"'{_esc(r.channel_type)}' AS channel_type, "
@@ -112,7 +113,7 @@ def _write_results_via_values(
 INSERT INTO social_listening.enriched_posts (
     post_id, collection_id, agent_id, agent_version,
     context, sentiment, emotion, entities, themes, ai_summary,
-    language, content_type, is_related_to_task, detected_brands,
+    language, content_type, relevance_reason, is_related_to_task, detected_brands,
     channel_type, custom_fields, source, enriched_at
 )
 {source_sql};"""

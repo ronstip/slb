@@ -135,9 +135,12 @@ def _get_general_rate_limiter() -> _TokenBucketRateLimiter:
 ENRICHMENT_PROMPT = """\
 Your job is to analyze the attached social media post to determine its primary content, context, intent, tone, and cultural relevance and narrative.
 
+Task under analysis: "{enrichment_context}"
+Use this ONLY as the yardstick for judging relevance. It is NOT a hint that the task's subject, brands, or entities appear in this post - many posts you see will be unrelated. Do not let the task topic seed context, entities, or brands you cannot actually observe. Judge every field from what the post itself shows.
+
 
 Fields of the analysis:
-- context: the context and background which the post content is living in and referring to. to be used later to fill in the rest of analysis.
+- context: the background the post is operating in, inferred ONLY from observable signal (its text, media, and channel). This is a hypothesis to help interpret the post - NOT an assumption that the task's subject is present. Keep it minimal when signal is thin; do not let the task topic invent context.
 - ai_summary: A summary paragraph of the post, its content, context, and narrative
 - language: ISO code of the post language (e.g. en, es, he)
 - sentiment: The sentiment of the post towards the main entity of the task. You should determine the sentiment of the post is from their POV. Positive: A proactive support toward the entity or its proxy, that make its perceived reputation and opinion more positive. Neutral: Content that its opinion about the entity is ambiguous, ambivalent, or is not opinionated at all like facts. Negative: Explicit or implicit criticism, bad or negative reaction towards the entity or its proxy. Content that is harming the reputation of the entity
@@ -145,8 +148,9 @@ Fields of the analysis:
 - entities: brands, products, people mentioned (in text, visual or transcript)
 - themes: topic themes (e.g. "skincare routine", "product review")
 - content_type: The type, category of the content.
-- is_related_to_task: Whether this post is genuinely related to the task: "{enrichment_context}". True if the post is meaningfully about what the task is focusing. Combine the information about the post such as context, content, publish time, entities with the web information to determine if relevant or not.
-- detected_brands: All brand names mentioned, referenced, shown, or visible in the post content or media. Include both text mentions and brands visible in images/video (logos, products, packaging).
+- relevance_reason: 1-2 sentences citing the SPECIFIC observable signal in THIS post that connects it to - or fails to connect it to - the task above. Point at what is actually present (or note that nothing in the post touches the task). Write this BEFORE deciding is_related_to_task.
+- is_related_to_task: Decide strictly from relevance_reason. True only if the post is meaningfully about what the task is focusing on. The task is a yardstick, not a hint - topic adjacency is not relevance, and absence of the task's subject is a valid False. Do not mark related just because the task topic is plausible.
+- detected_brands: Brand names you can DIRECTLY observe - named in the text/caption/transcript, or visible in the media (logo, packaging, product). Do NOT add brands inferred from the task topic, the post's category, or likely competitors unless they actually appear. If none are observable, return an empty list.
 - channel_type: Classify the posting channel/account. "official" for brand or entity accounts, "media" for news outlets and media channels. "Influencer" for Individuals which are known to work as influencer for their living. "ugc" for regular users and creators.
 
 Grounding: base each field on signal you can actually observe in the post - its text, the media, and the channel context. When that signal is thin or ambiguous, prefer empty values (empty list, `neutral`, null) over filling the gap with a plausible guess. It's expected that some posts won't carry enough to extract entities, brands, or themes from - that's a valid outcome, not a failure. If you reference wording from the post in `ai_summary`, only use what was actually written or spoken; don't paraphrase a quote or reconstruct phrasing that wasn't there. When in doubt, lean toward under-calling rather than confidently guessing.
