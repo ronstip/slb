@@ -192,10 +192,25 @@ class Settings(BaseSettings):
     apify_actor_youtube_comments: str = "streamers/youtube-comments-scraper"
     apify_youtube_comments_max: int = 100  # per-post fetch cap (cost guard)
 
+    # HikerAPI - Instagram private-API provider; reaches the logged-in
+    # `fbsearch_reels_v2` keyword->reels SERP (viral content) that Apify can't.
+    # Keyword-collection only; channel + URL-based ops stay on Apify. Flat
+    # $0.0006/request (priced in config/cost_rates.py, not here, mirroring Apify).
+    hikerapi_api_key: str = ""
+    # Anti-runaway BACKSTOP on reels-SERP pages per keyword (1 request each,
+    # $0.0006/request) - NOT the normal stop. Pagination is request-driven: it
+    # stops when the requested post count is reached, the SERP runs dry, or it
+    # saturates (pages stop adding new posts). The effective ceiling scales with
+    # the requested count (~cap/3 + 5), so this value only acts as a floor for
+    # untargeted collects + a guard against a pathological infinite-paging API.
+    hikerapi_max_pages_per_keyword: int = 15
+
     # Per-platform default vendor selection. Empty string falls through to
     # `vendor_config.default` then to the first-supporting adapter.
-    # Read in `wrapper._get_adapter` between collection-level platform_overrides
-    # and collection-level default.
+    # NOTE: these env defaults are now a low-priority SEED fallback - the
+    # admin-editable Firestore routing config (`app_config/routing`, see
+    # config/collection_routing.py) supersedes them at runtime so the provider
+    # can be switched without a redeploy. Read in `keyword_provider_for`.
     default_vendor_instagram: str = ""
     default_vendor_facebook: str = ""
     default_vendor_tiktok: str = "apify"

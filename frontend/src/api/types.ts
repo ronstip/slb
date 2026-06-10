@@ -981,6 +981,28 @@ export interface PricingConfig {
 
 export type PricingUpdate = Partial<Omit<PricingConfig, 'updated_at' | 'updated_by'>>;
 
+/** Admin-editable per-platform provider routing (keyword vs channel). Lets an
+ *  admin switch a platform's provider (e.g. IG keyword between hikerapi and
+ *  apify) without a redeploy. A value of `null` means "no override - use the
+ *  code seed / first-supporting adapter". */
+export interface RoutingConfig {
+  /** Platforms shown in the editor (display order). */
+  platforms: string[];
+  /** Selectable vendor tokens (match wrapper._VENDOR_CLASS_MAP keys). */
+  vendors: string[];
+  keyword_provider_by_platform: Record<string, string | null>;
+  channel_provider_by_platform: Record<string, string | null>;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
+/** Partial routing edit: only the platforms touched are sent; `null`/'' clears
+ *  a platform's override. */
+export interface RoutingUpdate {
+  keyword_provider_by_platform?: Record<string, string | null>;
+  channel_provider_by_platform?: Record<string, string | null>;
+}
+
 export interface AdminAuditEntry {
   id: string;
   event: string;

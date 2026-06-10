@@ -47,3 +47,16 @@ class DataProviderAdapter(ABC):
         the post-collection routing precedence.
         """
         return []
+
+    def supported_url_platforms(self) -> list[str]:
+        """Subset of supported_platforms for which the adapter can serve
+        URL-based operations: direct post-by-URL fetch (`collect` with
+        `post_urls`) and engagement refresh (`fetch_engagements`).
+
+        Default: every supported platform (most adapters look posts up by URL
+        natively). Override to `[]` (or a subset) for keyword-only providers
+        whose surface can't resolve a specific post URL - e.g. HikerAPI's reels
+        SERP. The wrapper uses this to keep URL-based work off keyword-only
+        adapters and route it to a URL-capable provider instead.
+        """
+        return self.supported_platforms()

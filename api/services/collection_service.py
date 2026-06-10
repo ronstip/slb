@@ -63,10 +63,23 @@ def estimate_request_micros(request: CreateCollectionRequest) -> int:
         for plat, prov in ((vc.platform_overrides or {}).items() if vc else [])
     }
 
+    # Keyword mode: map each platform to the SAME provider the wrapper will use
+    # (per-collection override > admin/seed keyword routing > vendor default), so
+    # the estimate consults the matching rate cell (e.g. IG keyword → hikerapi at
+    # its per-request rate, not the generic default). `_xapi`→`x_api` for the key.
+    from config.collection_routing import keyword_provider_for
+
+    def _keyword_provider(plat: str) -> str:
+        if plat in overrides:
+            return overrides[plat]
+        kw = keyword_provider_for(plat)
+        kw = "x_api" if kw == "xapi" else kw
+        return kw or default_provider
+
     pairs: list[tuple[str | None, str | None]] | None = None
     providers: list[str] | None = None
     if request.platforms:
-        pairs = [(overrides.get(plat, default_provider), plat) for plat in request.platforms]
+        pairs = [(_keyword_provider(plat), plat) for plat in request.platforms]
     elif vc:
         provs = set(overrides.values())
         provs.add(default_provider)
