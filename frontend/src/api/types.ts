@@ -207,6 +207,8 @@ export interface CollectionStatusResponse {
   collection_id: string;
   status: CollectionStatus;
   posts_collected: number;
+  /** Raw provider records before dedup (what we were billed for); null if no run funnel. */
+  raw_posts_collected?: number | null;
   posts_enriched: number;
   total_views: number;
   positive_pct: number | null;

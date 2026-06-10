@@ -101,6 +101,11 @@ export function CollectionProgressCard({ collectionId, variant = 'standalone', o
                 {formatNumber(statusData?.posts_collected ?? 0)}
               </p>
               <p className="text-[10px] text-muted-foreground">Collected</p>
+              {(statusData?.raw_posts_collected ?? 0) > (statusData?.posts_collected ?? 0) && (
+                <p className="text-[9px] tabular-nums text-muted-foreground/70" title="Raw provider records before duplicates were removed">
+                  of {formatNumber(statusData!.raw_posts_collected!)} raw
+                </p>
+              )}
             </div>
             <div className="rounded-lg bg-muted/40 px-3 py-2 text-center">
               <p className="text-base font-bold tabular-nums text-foreground">
