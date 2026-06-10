@@ -2647,6 +2647,16 @@ const LP_Pricing = ({ openWaitlist }: { openWaitlist: () => void }) => {
                 </svg>
               </button>
 
+              {/* Reassurance microcopy */}
+              {shown != null && (
+                <div style={{
+                  marginTop: 9, textAlign: 'center', fontFamily: "'Inter Tight',sans-serif", fontSize: 11.5,
+                  color: t.featured ? '#A9A3BC' : LP_BRAND.mutedDark,
+                }}>
+                  Cancel anytime · no contracts
+                </div>
+              )}
+
               {/* What's included */}
               <div style={{
                 marginTop: 24, paddingTop: 20,

@@ -65,6 +65,11 @@ export const SiteFooter = () => (
           <Link to="/terms" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Terms</Link>
           <Link to="/refund" style={{ color: '#D6CFBF', textDecoration: 'none' }}>Refunds</Link>
         </div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Mono size={9.5} color="#7E7666" style={{ marginBottom: 4 }}>Social</Mono>
+          <a href="https://www.linkedin.com/company/scolto" target="_blank" rel="noopener noreferrer" style={{ color: '#D6CFBF', textDecoration: 'none' }}>LinkedIn</a>
+          <a href="https://x.com/ScoltoSocial" target="_blank" rel="noopener noreferrer" style={{ color: '#D6CFBF', textDecoration: 'none' }}>X</a>
+        </div>
       </div>
     </div>
     <div className="lp-footer-bottom" style={{
