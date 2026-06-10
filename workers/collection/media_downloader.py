@@ -16,10 +16,30 @@ _YTDLP_PLATFORMS = frozenset({"tiktok", "reddit"})
 # Markers used to classify a URL as video (mirrors GCS client + worker seeding heuristic)
 _VIDEO_URL_MARKERS = (".mp4", ".mov", ".webm", "mime_type=video", "googlevideo.com", "videoplayback", "v.redd.it")
 
+# Facebook serves videos behind a page URL (no direct CDN file), so they can't be
+# fetched with a plain GET. These markers identify such page URLs.
+_FB_VIDEO_PAGE_MARKERS = ("/reel/", "/reels/", "/videos/", "/watch")
+
 
 def _is_video_url(url: str) -> bool:
     url_lower = url.lower()
     return any(m in url_lower for m in _VIDEO_URL_MARKERS)
+
+
+def _is_fb_video_page_url(url: str) -> bool:
+    url_lower = url.lower()
+    return any(m in url_lower for m in _FB_VIDEO_PAGE_MARKERS)
+
+
+def _needs_page_url_video_fallback(post: Post) -> bool:
+    """Platforms whose video must be resolved from the post page URL via yt-dlp
+    (CDN has no direct file, or its tokens expire). TikTok always; Facebook only
+    for video posts."""
+    if post.platform == "tiktok":
+        return True
+    if post.platform == "facebook":
+        return post.post_type == "video" or _is_fb_video_page_url(post.post_url)
+    return False
 
 
 def _download_via_ytdlp(
@@ -44,6 +64,11 @@ def _download_via_ytdlp(
             "quiet": True,
             "no_warnings": True,
             "socket_timeout": 30,
+            # Facebook drops the connection mid-stream on a single large GET
+            # (IncompleteRead). Chunked transfer + retries make it reliable.
+            "http_chunk_size": 1048576,
+            "retries": 5,
+            "fragment_retries": 5,
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -117,6 +142,11 @@ def download_media(gcs_client: GCSClient, post: Post, collection_id: str) -> lis
         elif _is_video_url(url):
             # Video CDN URLs don't work with Gemini - drop it
             logger.warning("Post %s: video GCS upload failed, skipping for enrichment", post.post_id)
+        elif post.platform == "facebook" and _is_fb_video_page_url(url):
+            # Facebook video/reel page URL (HTML, not an image) - the real video
+            # is resolved from post.post_url via yt-dlp below. Don't store the page
+            # URL as a bogus image ref (breaks UI render + enrichment).
+            logger.info("Post %s: FB video page URL, deferring to yt-dlp fallback", post.post_id)
         else:
             # Image: keep CDN URL as fallback - Gemini can fetch images directly
             media_refs.append({
@@ -126,13 +156,13 @@ def download_media(gcs_client: GCSClient, post: Post, collection_id: str) -> lis
                 "gcs_uri": "",
             })
 
-    # TikTok: if no video was obtained via CDN (expected - video_url is excluded
-    # from media_urls due to expiring tokens), download directly from the post
-    # page URL via yt-dlp. yt-dlp resolves the video independently of CDN tokens.
-    # NOTE: This fallback is TikTok-specific. Reddit videos are handled inline via
-    # _is_video_url() above; firing yt-dlp for Reddit text/image posts causes 403s.
+    # TikTok / Facebook: the video lives behind the post page URL (TikTok CDN
+    # tokens expire; Facebook serves no direct CDN file). If no video was obtained
+    # above, resolve it from post.post_url via yt-dlp, which works independently of
+    # CDN tokens. NOTE: Reddit videos are handled inline via _is_video_url() above;
+    # firing yt-dlp for Reddit text/image posts causes 403s.
     if (
-        post.platform == "tiktok"
+        _needs_page_url_video_fallback(post)
         and not ytdlp_used
         and post.post_url
         and not any(r.get("media_type") == "video" for r in media_refs)
