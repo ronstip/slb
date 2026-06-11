@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
-import { NUMERIC_CONDITION_FIELDS, DATE_CONDITION_FIELDS, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, getDimensionMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
+import { DATE_CONDITION_FIELDS, isPostCountCondition, isCustomFieldDimension, customFieldName, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, getDimensionMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from './topic-aggregations.ts';
 import { aggregateObjectList, aggregateObjectTable } from './object-list-aggregations.ts';
 import {
@@ -14,7 +14,7 @@ import {
   TimeAgoCell,
   ContentPreview,
 } from '../../../components/DataTable/cells.tsx';
-import { aggregateCustom, aggregateTable, aggregateTableBreakdown, BREAKDOWN_DIM_ID, type TableRow } from './dashboard-aggregations.ts';
+import { aggregateCustom, aggregateTable, aggregateTableBreakdown, getDimensionKeys, BREAKDOWN_DIM_ID, type TableRow } from './dashboard-aggregations.ts';
 import {
   aggregateSentiment,
   aggregateEmotions,
@@ -393,6 +393,13 @@ function buildPostTableColumns(
   return cols;
 }
 
+/** First group-by dimension of a grouped table - resolves a `post_count`
+ *  (min group size) condition against the table's own rows. */
+export function tablePrimaryDimension(tableConfig: CustomTableConfig): CustomDimension | undefined {
+  const dimCol = tableConfig.columns.find(isDimensionColumn);
+  return dimCol?.dimension as CustomDimension | undefined;
+}
+
 function ConfigurableTableWidget({
   posts,
   filters,
@@ -420,7 +427,9 @@ function ConfigurableTableWidget({
       // the selected values (value-level filter). Post-mode tables show raw
       // posts as rows - leave their values intact.
       const isGrouped = !isTopicsSource && tableConfig.mode !== 'post';
-      const aggPosts = isGrouped ? applyWidgetValueFilters(posts, filters) : posts;
+      const aggPosts = isGrouped
+        ? applyWidgetValueFilters(posts, filters, tablePrimaryDimension(tableConfig))
+        : posts;
       // Element-as-unit object table when columns reference a list[object] field.
       const objField = !isTopicsSource ? objectFieldOfTable(tableConfig) : null;
       if (objField) return aggregateObjectTable(aggPosts, objField, tableConfig);
@@ -444,7 +453,7 @@ function ConfigurableTableWidget({
   const breakdownMap = useMemo(() => {
     if (isTopicsSource || isPostMode || !breakdownDim) return null;
     if (objectFieldOfTable(tableConfig)) return null;
-    const aggPosts = applyWidgetValueFilters(posts, filters);
+    const aggPosts = applyWidgetValueFilters(posts, filters, tablePrimaryDimension(tableConfig));
     return aggregateTableBreakdown(aggPosts, tableConfig);
   }, [isTopicsSource, isPostMode, breakdownDim, posts, filters, tableConfig]);
   const breakdownMetricCols = useMemo(
@@ -638,6 +647,100 @@ export function applyWidgetFilters(
   });
 }
 
+/** Dimension values whose post count satisfies a `post_count` condition. Counts
+ *  each post once per distinct value (matching the aggregators' grouping). */
+function postCountAllowedValues(
+  posts: DashboardPost[],
+  cond: FilterCondition,
+  dim: CustomDimension,
+): Set<string> {
+  const counts = new Map<string, number>();
+  for (const p of posts) {
+    for (const v of new Set(conditionDimensionKeys(p, dim))) {
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+  }
+  const cv = Number(cond.value);
+  const cv2 = Number(cond.value2 ?? cond.value);
+  const allowed = new Set<string>();
+  for (const [v, c] of counts) {
+    let ok = false;
+    switch (cond.operator) {
+      case 'greaterThan': ok = c > cv; break;
+      case 'lessThan': ok = c < cv; break;
+      case 'equals': ok = c === cv; break;
+      case 'between': ok = c >= cv && c <= cv2; break;
+    }
+    if (ok) allowed.add(v);
+  }
+  return allowed;
+}
+
+/** Prune a post's values for a multi-valued dimension down to `allowed`. Scalar
+ *  dimensions can't be partially pruned (one value) so are returned untouched. */
+function pruneDimValues(p: DashboardPost, dim: CustomDimension, allowed: Set<string>): DashboardPost {
+  if (dim === 'themes') return { ...p, themes: (p.themes ?? []).filter((v) => allowed.has(v)) };
+  if (dim === 'entities') return { ...p, entities: (p.entities ?? []).filter((v) => allowed.has(v)) };
+  if (dim === 'brands') return { ...p, detected_brands: (p.detected_brands ?? []).filter((v) => allowed.has(v)) };
+  if (isCustomFieldDimension(dim)) {
+    const name = customFieldName(dim);
+    const dot = name.indexOf('.');
+    const cf = { ...(p.custom_fields ?? {}) };
+    if (dot >= 0) {
+      const field = name.slice(0, dot);
+      const leaf = name.slice(dot + 1);
+      const raw = cf[field];
+      if (Array.isArray(raw)) {
+        cf[field] = raw.filter((el) =>
+          el && typeof el === 'object' && !Array.isArray(el)
+          && allowed.has(String((el as Record<string, unknown>)[leaf])));
+      }
+    } else {
+      const raw = cf[name];
+      if (Array.isArray(raw)) cf[name] = raw.filter((v) => v != null && allowed.has(String(v)));
+    }
+    return { ...p, custom_fields: cf };
+  }
+  return p;
+}
+
+/**
+ * Group-count row filter: each `post_count` condition hides aggregation groups
+ * whose post count fails the threshold. For a scalar count-dimension this drops
+ * the group's posts (removing the row); for a multi-valued dimension it prunes
+ * each post's values to the surviving groups. Runs only on the aggregation layer
+ * (callers of `applyWidgetValueFilters`), so raw post displays are untouched.
+ */
+function applyPostCountConditions(
+  posts: DashboardPost[],
+  conditions: FilterCondition[] | undefined,
+  primaryDimension: CustomDimension | undefined,
+): DashboardPost[] {
+  // A post_count condition counts members of the widget's own groups. Resolve
+  // each to the widget's primary grouping dimension (or a legacy explicit one);
+  // with no grouping (e.g. number cards, raw lists) there is nothing to filter.
+  const pcConds = (conditions ?? [])
+    .filter(isPostCountCondition)
+    .map((c) => ({ cond: c, dim: c.dimension ?? primaryDimension }))
+    .filter((x): x is { cond: FilterCondition; dim: CustomDimension } => x.dim != null);
+  if (pcConds.length === 0) return posts;
+  let working = posts;
+  for (const { cond, dim } of pcConds) {
+    const allowed = postCountAllowedValues(working, cond, dim);
+    const out: DashboardPost[] = [];
+    for (const p of working) {
+      const keys = conditionDimensionKeys(p, dim);
+      if (keys.length === 0) continue; // not in any counted group → drop
+      const kept = keys.filter((k) => allowed.has(k));
+      if (kept.length === 0) continue; // whole group(s) below threshold → drop
+      if (kept.length === keys.length) { out.push(p); continue; }
+      out.push(pruneDimValues(p, dim, allowed)); // partial (multi-valued) → prune
+    }
+    working = out;
+  }
+  return working;
+}
+
 /**
  * Value-level filtering for multi-valued dimensions. `applyWidgetFilters` is a
  * ROW filter: it keeps a whole post when ANY of its values matches the
@@ -646,21 +749,25 @@ export function applyWidgetFilters(
  * [pricing, support] filtered to [pricing] would still add to "support").
  *
  * This pass prunes each multi-valued field down to its selected values so the
- * aggregators count only what was filtered. It NEVER drops a post (callers pass
- * row-filtered posts, so a match is already guaranteed; pruning to [] is fine).
- * Scalar fields are untouched - their row filter already equals a value filter,
- * and raw post displays (posts table, post-mode table) must not feed through
- * this - they should show the post's true values.
+ * aggregators count only what was filtered. Apart from `post_count` group-count
+ * conditions (which intentionally drop whole groups), it never drops a post -
+ * callers pass row-filtered posts, so a match is already guaranteed; pruning to
+ * [] is fine. Scalar fields are untouched - their row filter already equals a
+ * value filter, and raw post displays (posts table, post-mode table) must not
+ * feed through this - they should show the post's true values.
  *
- * Returns the same array reference when nothing multi-valued is filtered, and
- * the same post reference for posts that needed no pruning, so memoized
- * consumers stay cheap.
+ * Returns the same array reference when nothing is filtered, and the same post
+ * reference for posts that needed no pruning, so memoized consumers stay cheap.
  */
 export function applyWidgetValueFilters(
   posts: DashboardPost[],
   filters: SocialDashboardWidget['filters'],
+  /** The widget's primary group-by dimension, used to resolve `post_count`
+   *  (min group size) conditions. Omit for ungrouped widgets - those no-op. */
+  primaryDimension?: CustomDimension,
 ): DashboardPost[] {
   if (!filters) return posts;
+  const working = applyPostCountConditions(posts, filters.conditions, primaryDimension);
   const themes = filters.themes?.length ? new Set(filters.themes) : null;
   const entities = filters.entities?.length ? new Set(filters.entities) : null;
   const brands = filters.brands?.length ? new Set(filters.brands) : null;
@@ -684,10 +791,10 @@ export function applyWidgetValueFilters(
   }
 
   if (!themes && !entities && !brands && arrayCustom.size === 0 && objectCustom.size === 0) {
-    return posts;
+    return working;
   }
 
-  return posts.map((p) => {
+  return working.map((p) => {
     let next: DashboardPost | null = null;
     const ensure = () => (next ??= { ...p });
 
@@ -736,7 +843,34 @@ export function applyWidgetValueFilters(
   });
 }
 
-function getConditionFieldValue(post: DashboardPost, field: FilterConditionField): string | number {
+function asStringArray(v: string | number | string[]): string[] {
+  return Array.isArray(v) ? v : [String(v)];
+}
+
+/** Grouping keys for a condition dimension. Mirrors `getDimensionKeys` but also
+ *  resolves object-leaf custom dims (`custom:men.name`), which the aggregator
+ *  handles on a separate element-as-unit path. */
+function conditionDimensionKeys(post: DashboardPost, dim: CustomDimension): string[] {
+  if (isCustomFieldDimension(dim)) {
+    const name = customFieldName(dim);
+    const dot = name.indexOf('.');
+    if (dot >= 0) {
+      const field = name.slice(0, dot);
+      const leaf = name.slice(dot + 1);
+      const raw = post.custom_fields?.[field];
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .filter((el) => el && typeof el === 'object' && !Array.isArray(el))
+        .map((el) => String((el as Record<string, unknown>)[leaf]));
+    }
+  }
+  return getDimensionKeys(post, dim, 'day');
+}
+
+function getConditionFieldValue(
+  post: DashboardPost,
+  field: FilterConditionField,
+): string | number | string[] {
   switch (field) {
     case 'like_count': return post.like_count ?? 0;
     case 'view_count': return post.view_count ?? 0;
@@ -745,34 +879,55 @@ function getConditionFieldValue(post: DashboardPost, field: FilterConditionField
     case 'engagement_total': return (post.like_count ?? 0) + (post.comment_count ?? 0) + (post.share_count ?? 0);
     case 'posted_at': return post.posted_at?.slice(0, 10) ?? '';
     case 'text': return post.content ?? '';
+    case 'post_count': return ''; // handled at the aggregation layer; never read here
   }
+  // Categorical built-ins (sentiment, platform, themes, …) + custom:<name>:
+  // reuse the aggregation grouping keys so conditions agree with the aggregator.
+  return conditionDimensionKeys(post, field as CustomDimension);
 }
 
 function matchesCondition(post: DashboardPost, cond: FilterCondition): boolean {
-  const val = getConditionFieldValue(post, cond.field);
-  if (NUMERIC_CONDITION_FIELDS.includes(cond.field)) {
-    const n = val as number;
+  // Group-count conditions are a row filter on the aggregation layer; they must
+  // never drop posts at the post level (or raw-post frames would be wrong).
+  if (isPostCountCondition(cond)) return true;
+
+  const { operator: op } = cond;
+  const raw = getConditionFieldValue(post, cond.field);
+
+  // Categorical multi-select (built-in categorical + custom literal/list[str]/bool).
+  if (op === 'isAnyOf' || op === 'isNoneOf') {
+    const sel = new Set(cond.values ?? []);
+    if (sel.size === 0) return true; // half-configured → no-op
+    const hit = asStringArray(raw).some((v) => sel.has(v));
+    return op === 'isAnyOf' ? hit : !hit;
+  }
+
+  // Numeric comparisons: built-in numeric fields + numeric custom fields.
+  if ((op === 'greaterThan' || op === 'lessThan' || op === 'equals' || op === 'between')
+      && !DATE_CONDITION_FIELDS.includes(cond.field)) {
+    const n = Number(Array.isArray(raw) ? raw[0] : raw);
     const cv = Number(cond.value);
-    switch (cond.operator) {
+    switch (op) {
       case 'greaterThan': return n > cv;
       case 'lessThan': return n < cv;
       case 'equals': return n === cv;
       case 'between': return n >= cv && n <= Number(cond.value2 ?? cv);
-      default: return true;
     }
   }
-  if (DATE_CONDITION_FIELDS.includes(cond.field)) {
-    const d = val as string;
-    switch (cond.operator) {
+
+  // Date comparisons (posted_at).
+  if (op === 'before' || op === 'after' || op === 'between') {
+    const d = Array.isArray(raw) ? (raw[0] ?? '') : String(raw);
+    switch (op) {
       case 'before': return d < String(cond.value);
       case 'after': return d > String(cond.value);
       case 'between': return d >= String(cond.value) && d <= String(cond.value2 ?? cond.value);
-      default: return true;
     }
   }
-  // text fields
-  const t = (val as string).toLowerCase();
-  switch (cond.operator) {
+
+  // Text operators (post text + str custom).
+  const t = (Array.isArray(raw) ? raw.join(' ') : String(raw)).toLowerCase();
+  switch (op) {
     case 'contains': return t.includes(String(cond.value).toLowerCase());
     case 'notContains': return !t.includes(String(cond.value).toLowerCase());
     case 'isEmpty': return t.length === 0;
@@ -817,7 +972,7 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
 
 function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, onFilterToggle }: FrameProps & { posts: DashboardPost[]; onFilterToggle?: (key: string, value: string) => void }) {
   const cloudData = useMemo(
-    () => aggregateThemeCloud(applyWidgetValueFilters(posts, widget.filters)),
+    () => aggregateThemeCloud(applyWidgetValueFilters(posts, widget.filters, 'themes')),
     [posts, widget.filters],
   );
   return (
@@ -832,7 +987,7 @@ function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onD
 
 function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, onFilterToggle }: FrameProps & { posts: DashboardPost[]; onFilterToggle?: (key: string, value: string) => void }) {
   const entityData = useMemo(
-    () => aggregateEntities(applyWidgetValueFilters(posts, widget.filters)),
+    () => aggregateEntities(applyWidgetValueFilters(posts, widget.filters, 'entities')),
     [posts, widget.filters],
   );
   const listData = useMemo<WidgetData>(() => ({
@@ -936,7 +1091,10 @@ function CustomWidget({
   // Value-level filtering: prune multi-valued fields to the selected values so a
   // breakdown of a filtered field counts only what was selected (not the whole
   // kept post). Row filtering already scoped which posts are here.
-  const aggPosts = useMemo(() => applyWidgetValueFilters(posts, widget.filters), [posts, widget.filters]);
+  const aggPosts = useMemo(
+    () => applyWidgetValueFilters(posts, widget.filters, config?.dimension as CustomDimension | undefined),
+    [posts, widget.filters, config?.dimension],
+  );
 
   const data = useMemo<WidgetData | null>(() => {
     if (!effectiveConfig) return null;
@@ -1105,7 +1263,10 @@ function CustomWidget({
 function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
   // Value-level filter: prune multi-valued fields (themes) to the selected
   // values. Scalar aggregations are unaffected - prune never drops posts.
-  const aggPosts = useMemo(() => applyWidgetValueFilters(posts, widget.filters), [posts, widget.filters]);
+  const aggPosts = useMemo(
+    () => applyWidgetValueFilters(posts, widget.filters, widget.aggregation as CustomDimension),
+    [posts, widget.filters, widget.aggregation],
+  );
   const chartData = useMemo<WidgetData | null>(() => {
     switch (widget.aggregation) {
       case 'sentiment': {

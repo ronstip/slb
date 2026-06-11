@@ -580,6 +580,7 @@ export function SocialDashboardView({
         onClose={() => setConfigWidget(null)}
         customFieldNames={customFieldNames}
         objectFieldDefs={objectFieldDefs}
+        customFieldDefs={customFieldDefs}
         agentId={agentId}
         topics={topics}
       />

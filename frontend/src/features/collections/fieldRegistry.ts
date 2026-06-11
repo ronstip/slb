@@ -9,6 +9,7 @@ export type FieldKind =
   | 'enum'       // single string from a finite set (sentiment, channel_type, ...)
   | 'multi_enum' // list-of-string (themes, entities, detected_brands)
   | 'text'       // free-form string (title, content, ai_summary, channel_handle, ...)
+  | 'url'        // post URL - matched after canonicalisation (see normalizeUrl)
   | 'number'
   | 'bool'
   | 'date';
@@ -49,6 +50,13 @@ const BUILTIN_FIELDS: FieldDef[] = [
   { key: 'is_retweet',     label: 'Retweet',       kind: 'bool',       source: 'builtin', accessor: (p) => p.is_retweet },
   { key: 'is_quote',       label: 'Quote',         kind: 'bool',       source: 'builtin', accessor: (p) => p.is_quote },
 ];
+
+/** The post URL (redirecting link). Deliberately NOT in BUILTIN_FIELDS so it
+ *  never shows in the ColumnPicker - it's rendered by the always-on `__link`
+ *  column. Exposed only so its text filter can be matched by applyColumnFilters. */
+export const URL_FIELD: FieldDef = {
+  key: 'post_url', label: 'URL', kind: 'url', source: 'builtin', accessor: (p) => p.post_url,
+};
 
 /** Map a custom field definition to a generic FieldDef. */
 function customFieldToFieldDef(cf: CustomFieldDef): FieldDef {

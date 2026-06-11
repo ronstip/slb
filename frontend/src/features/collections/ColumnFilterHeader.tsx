@@ -223,6 +223,9 @@ interface TextFilterProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  /** Override the input placeholder (defaults to `Filter <label>...`). Useful
+   *  when the trigger label is empty, e.g. the narrow URL column. */
+  placeholder?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -333,7 +336,7 @@ export function BoolFilterHeader({ label, value, onChange }: BoolFilterProps) {
   );
 }
 
-export function TextFilterHeader({ label, value, onChange }: TextFilterProps) {
+export function TextFilterHeader({ label, value, onChange, placeholder }: TextFilterProps) {
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasFilter = value.length > 0;
@@ -364,7 +367,7 @@ export function TextFilterHeader({ label, value, onChange }: TextFilterProps) {
             ref={inputRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={`Filter ${label.toLowerCase()}...`}
+            placeholder={placeholder ?? `Filter ${label.toLowerCase()}...`}
             className="h-7 pl-7 text-xs"
           />
         </div>

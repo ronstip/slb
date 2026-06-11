@@ -17,16 +17,20 @@ import {
 } from '../../../../components/ui/select.tsx';
 import { X, Plus, ChevronDown } from 'lucide-react';
 import { MultiSelectFilterBody, type FilterOption } from '../../../collections/ColumnFilterHeader.tsx';
-import type { DashboardPost } from '../../../../api/types.ts';
-import type { SocialWidgetFilters, FilterCondition, FilterConditionField, FilterConditionOperator } from '../types-social-dashboard.ts';
+import type { CustomFieldDef, DashboardPost } from '../../../../api/types.ts';
+import type {
+  SocialWidgetFilters, FilterCondition, FilterConditionField, FilterConditionOperator,
+  StandardCustomDimension,
+} from '../types-social-dashboard.ts';
 import {
   CONDITION_FIELD_OPTIONS,
-  NUMERIC_CONDITION_FIELDS,
-  DATE_CONDITION_FIELDS,
-  NUMERIC_OPERATORS,
-  DATE_OPERATORS,
-  TEXT_OPERATORS,
+  CATEGORICAL_CONDITION_FIELDS,
   OPERATOR_LABELS,
+  DIMENSION_META,
+  conditionFieldKind,
+  operatorsForConditionField,
+  customFieldName,
+  CUSTOM_DIM_PREFIX,
 } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 
@@ -102,16 +106,34 @@ function humanizeFieldName(name: string): string {
     .join(' › ');
 }
 
-function getOperatorsForField(field: FilterConditionField): FilterConditionOperator[] {
-  if (NUMERIC_CONDITION_FIELDS.includes(field)) return NUMERIC_OPERATORS;
-  if (DATE_CONDITION_FIELDS.includes(field)) return DATE_OPERATORS;
-  return TEXT_OPERATORS;
+function getInputType(field: FilterConditionField, customFieldDefs?: CustomFieldDef[]): string {
+  const kind = conditionFieldKind(field, customFieldDefs);
+  if (kind === 'numeric' || kind === 'postCount') return 'number';
+  if (kind === 'date') return 'date';
+  return 'text';
 }
 
-function getInputType(field: FilterConditionField): string {
-  if (NUMERIC_CONDITION_FIELDS.includes(field)) return 'number';
-  if (DATE_CONDITION_FIELDS.includes(field)) return 'date';
-  return 'text';
+/** Condition field → FilterOptions section key for built-in categorical enums. */
+const CATEGORICAL_SECTION_KEY: Partial<Record<FilterConditionField, ArrayFilterKey>> = {
+  sentiment: 'sentiment', emotion: 'emotion', platform: 'platform', language: 'language',
+  content_type: 'content_type', channel_type: 'channel_type', channel_handle: 'channels',
+  themes: 'themes', entities: 'entities', brands: 'brands',
+};
+
+function conditionFieldLabel(field: FilterConditionField): string {
+  const base = CONDITION_FIELD_OPTIONS.find((o) => o.value === field);
+  if (base) return base.label;
+  if (field === 'post_count') return 'Post count';
+  if (field.startsWith(CUSTOM_DIM_PREFIX)) {
+    return humanizeFieldName(customFieldName(field as `custom:${string}`));
+  }
+  return DIMENSION_META[field as StandardCustomDimension]?.label ?? field;
+}
+
+/** A reasonable starting value for a freshly-switched condition field kind. */
+function defaultConditionValue(field: FilterConditionField, customFieldDefs?: CustomFieldDef[]): string | number {
+  const kind = conditionFieldKind(field, customFieldDefs);
+  return kind === 'numeric' || kind === 'postCount' ? 0 : '';
 }
 
 /** A labeled multi-select filter row: form-style trigger showing the current
@@ -180,13 +202,15 @@ interface WidgetFilterFormProps {
   /** Posts feeding this widget (global-filtered, pre widget-filter) - used to
    *  compute per-value counts shown in each filter popover. */
   posts: DashboardPost[];
+  /** All declared custom field defs - types condition operators/inputs. */
+  customFieldDefs?: CustomFieldDef[];
   /** Portal target for filter popovers - a node inside the modal Dialog so the
    *  option lists stay scrollable (react-remove-scroll blocks body portals). */
   portalContainer?: HTMLElement | null;
   onChange: (filters: SocialWidgetFilters) => void;
 }
 
-export function WidgetFilterForm({ filters, availableOptions, posts, portalContainer, onChange }: WidgetFilterFormProps) {
+export function WidgetFilterForm({ filters, availableOptions, posts, customFieldDefs, portalContainer, onChange }: WidgetFilterFormProps) {
   // Per-value post counts for every section + custom field, computed once over
   // the widget's input posts. Each value is counted at most once per post.
   const { sectionCounts, customCounts } = useMemo(() => {
@@ -221,11 +245,67 @@ export function WidgetFilterForm({ filters, availableOptions, posts, portalConta
     .filter(([, values]) => values.length > 0)
     .sort(([a], [b]) => a.localeCompare(b));
 
+  const customFieldKeys = useMemo(
+    () => Object.keys(availableOptions.custom_fields ?? {}).sort((a, b) => a.localeCompare(b)),
+    [availableOptions.custom_fields],
+  );
+
+  // Condition field picker options: group-count, numeric/date/text builtins,
+  // categorical builtins that have values, and one entry per custom field.
+  const conditionFieldOptions = useMemo<Array<{ value: FilterConditionField; label: string }>>(() => {
+    const opts: Array<{ value: FilterConditionField; label: string }> = [
+      { value: 'post_count', label: 'Post count' },
+      ...CONDITION_FIELD_OPTIONS,
+    ];
+    for (const f of CATEGORICAL_CONDITION_FIELDS) {
+      const sk = CATEGORICAL_SECTION_KEY[f];
+      if (sk && ((availableOptions[sk] as string[] | undefined)?.length ?? 0) > 0) {
+        opts.push({ value: f, label: conditionFieldLabel(f) });
+      }
+    }
+    for (const k of customFieldKeys) {
+      opts.push({ value: `${CUSTOM_DIM_PREFIX}${k}` as FilterConditionField, label: humanizeFieldName(k) });
+    }
+    return opts;
+  }, [availableOptions, customFieldKeys]);
+
+  // Enum values (+ counts) for a categorical condition field.
+  const fieldValueOptions = (field: FilterConditionField): FilterOption[] => {
+    if (field.startsWith(CUSTOM_DIM_PREFIX)) {
+      const name = customFieldName(field as `custom:${string}`);
+      const vals = availableOptions.custom_fields?.[name] ?? [];
+      const counts = customCounts[name];
+      return vals.map((v) => ({ value: v, count: counts?.get(v) ?? 0 }));
+    }
+    const sk = CATEGORICAL_SECTION_KEY[field];
+    if (!sk) return [];
+    const vals = (availableOptions[sk] ?? []) as string[];
+    const counts = sectionCounts[sk];
+    return vals.map((v) => ({ value: v, count: counts?.get(v) ?? 0 }));
+  };
+
   const conditions = filters.conditions ?? [];
 
   const addCondition = () => {
     const newCond: FilterCondition = { field: 'like_count', operator: 'greaterThan', value: 0 };
     onChange({ ...filters, conditions: [...conditions, newCond] });
+  };
+
+  // Switch a condition's field: re-validate the operator and reset value shape
+  // for the new field kind (numeric→0, categorical→values:[], post_count→dim).
+  const changeConditionField = (index: number, field: FilterConditionField) => {
+    const ops = operatorsForConditionField(field, customFieldDefs);
+    const prevOp = conditions[index]?.operator;
+    const operator = prevOp && ops.includes(prevOp) ? prevOp : ops[0];
+    const patch: Partial<FilterCondition> = {
+      field,
+      operator,
+      value: defaultConditionValue(field, customFieldDefs),
+      value2: undefined,
+      values: undefined,
+      dimension: undefined, // post_count uses the widget's own grouping
+    };
+    updateCondition(index, patch);
   };
 
   const updateCondition = (index: number, patch: Partial<FilterCondition>) => {
@@ -348,31 +428,26 @@ export function WidgetFilterForm({ filters, availableOptions, posts, portalConta
         </Label>
 
         {conditions.map((cond, i) => {
-          const operators = getOperatorsForField(cond.field);
+          const kind = conditionFieldKind(cond.field, customFieldDefs);
+          const operators = operatorsForConditionField(cond.field, customFieldDefs);
+          const isCategorical = kind === 'categorical';
+          const numericInput = kind === 'numeric' || kind === 'postCount';
           const noValue = cond.operator === 'isEmpty' || cond.operator === 'isNotEmpty';
           const isBetween = cond.operator === 'between';
+          const selectedValues = cond.values ?? [];
 
           return (
-            <div key={i} className="flex items-center gap-1 w-full min-w-0">
+            <div key={i} className="flex flex-wrap items-center gap-1 w-full min-w-0">
               {/* Field */}
               <Select
                 value={cond.field}
-                onValueChange={(field) => {
-                  const ops = getOperatorsForField(field as FilterConditionField);
-                  const validOp = ops.includes(cond.operator) ? cond.operator : ops[0];
-                  updateCondition(i, {
-                    field: field as FilterConditionField,
-                    operator: validOp,
-                    value: NUMERIC_CONDITION_FIELDS.includes(field as FilterConditionField) ? 0 : '',
-                    value2: undefined,
-                  });
-                }}
+                onValueChange={(field) => changeConditionField(i, field as FilterConditionField)}
               >
                 <SelectTrigger className="h-8 text-xs min-w-0 flex-[2] truncate">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CONDITION_FIELD_OPTIONS.map((opt) => (
+                  {conditionFieldOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>
@@ -399,32 +474,61 @@ export function WidgetFilterForm({ filters, availableOptions, posts, portalConta
               </Select>
 
               {/* Value(s) */}
-              {!noValue && (
+              {isCategorical ? (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-8 flex-[2] min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-xs transition-colors hover:bg-accent/40"
+                    >
+                      <span className={selectedValues.length ? 'truncate capitalize' : 'truncate text-muted-foreground'}>
+                        {selectedValues.length === 0
+                          ? 'Select values'
+                          : selectedValues.length === 1
+                            ? selectedValues[0]
+                            : `${selectedValues.length} selected`}
+                      </span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    container={portalContainer}
+                    className="flex w-64 max-h-80 flex-col overflow-hidden p-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MultiSelectFilterBody
+                      label={conditionFieldLabel(cond.field)}
+                      options={fieldValueOptions(cond.field)}
+                      selected={new Set(selectedValues)}
+                      onChange={(next) => updateCondition(i, { values: [...next] })}
+                    />
+                  </PopoverContent>
+                </Popover>
+              ) : !noValue ? (
                 <>
                   <Input
-                    type={getInputType(cond.field)}
+                    type={getInputType(cond.field, customFieldDefs)}
                     value={cond.value}
-                    onChange={(e) => {
-                      const v = NUMERIC_CONDITION_FIELDS.includes(cond.field) ? Number(e.target.value) : e.target.value;
-                      updateCondition(i, { value: v });
-                    }}
-                    placeholder={DATE_CONDITION_FIELDS.includes(cond.field) ? 'YYYY-MM-DD' : 'Value'}
+                    onChange={(e) =>
+                      updateCondition(i, { value: numericInput ? Number(e.target.value) : e.target.value })
+                    }
+                    placeholder={kind === 'date' ? 'YYYY-MM-DD' : 'Value'}
                     className="h-8 text-xs min-w-0 flex-[1.5]"
                   />
                   {isBetween && (
                     <Input
-                      type={getInputType(cond.field)}
+                      type={getInputType(cond.field, customFieldDefs)}
                       value={cond.value2 ?? ''}
-                      onChange={(e) => {
-                        const v = NUMERIC_CONDITION_FIELDS.includes(cond.field) ? Number(e.target.value) : e.target.value;
-                        updateCondition(i, { value2: v });
-                      }}
+                      onChange={(e) =>
+                        updateCondition(i, { value2: numericInput ? Number(e.target.value) : e.target.value })
+                      }
                       placeholder="Value 2"
                       className="h-8 text-xs min-w-0 flex-[1.5]"
                     />
                   )}
                 </>
-              )}
+              ) : null}
 
               <Button
                 variant="ghost"

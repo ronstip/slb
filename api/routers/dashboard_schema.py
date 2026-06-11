@@ -242,29 +242,17 @@ class ChartStyleOverrides(BaseModel):
 class FilterCondition(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    field: Literal[
-        "like_count",
-        "view_count",
-        "comment_count",
-        "share_count",
-        "engagement_total",
-        "posted_at",
-        "text",
-    ]
-    operator: Literal[
-        "greaterThan",
-        "lessThan",
-        "equals",
-        "between",
-        "before",
-        "after",
-        "contains",
-        "notContains",
-        "isEmpty",
-        "isNotEmpty",
-    ]
+    # `field` and `operator` are loose strings: `field` carries dynamic
+    # `custom:<name>` values + the synthetic `post_count` group-row filter that a
+    # Literal can't enumerate; both are validated client-side.
+    field: str
+    operator: str
     value: str | float
     value2: str | float | None = None
+    # Selected values for `isAnyOf` / `isNoneOf` categorical operators.
+    values: list[str] | None = None
+    # Group-by dimension counted when `field == "post_count"`.
+    dimension: str | None = None
 
 
 class DateRange(BaseModel):

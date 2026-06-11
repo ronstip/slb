@@ -35,7 +35,7 @@ import { aggregateCustom, aggregatePlatforms, aggregateSentiment, aggregateTable
 import { aggregateObjectList, aggregateObjectTable } from '../object-list-aggregations.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from '../topic-aggregations.ts';
 import { extractChartSeriesLabels } from '../chart-series-labels.ts';
-import { SocialWidgetRenderer, applyWidgetFilters, applyWidgetValueFilters } from '../SocialWidgetRenderer.tsx';
+import { SocialWidgetRenderer, applyWidgetFilters, applyWidgetValueFilters, tablePrimaryDimension } from '../SocialWidgetRenderer.tsx';
 import { composeWidgetField, type WidgetDataSummary } from '../../../../api/endpoints/dashboard.ts';
 
 // ── Chart type metadata ────────────────────────────────────────────────────────
@@ -75,6 +75,8 @@ interface SocialWidgetConfigDialogProps {
   customFieldNames?: string[];
   /** Declared list[object] field defs - source of typed object-leaf dims/metrics. */
   objectFieldDefs?: CustomFieldDef[];
+  /** All declared custom field defs - drives condition operator/input typing. */
+  customFieldDefs?: CustomFieldDef[];
   /** Agent context used to ground AI compose with task title + description. */
   agentId?: string;
   /** Agent-scoped topic_metrics rows. Empty when no agent context (in which
@@ -93,6 +95,7 @@ export function SocialWidgetConfigDialog({
   onClose,
   customFieldNames,
   objectFieldDefs,
+  customFieldDefs,
   agentId,
   topics,
 }: SocialWidgetConfigDialogProps) {
@@ -111,6 +114,7 @@ export function SocialWidgetConfigDialog({
       onClose={onClose}
       customFieldNames={customFieldNames}
       objectFieldDefs={objectFieldDefs}
+      customFieldDefs={customFieldDefs}
       agentId={agentId}
       topics={topics}
     />
@@ -174,6 +178,7 @@ function SocialWidgetConfigDialogInner({
   onClose,
   customFieldNames,
   objectFieldDefs,
+  customFieldDefs,
   agentId,
   topics = [],
 }: SocialWidgetConfigDialogProps & { widget: SocialDashboardWidget }) {
@@ -619,6 +624,7 @@ function SocialWidgetConfigDialogInner({
                     filters={draft.filters ?? {}}
                     availableOptions={availableOptions}
                     posts={filteredPosts}
+                    customFieldDefs={customFieldDefs}
                     portalContainer={popoverHost}
                     onChange={(filters) => setDraft((prev) => ({ ...prev, filters }))}
                   />
@@ -795,7 +801,7 @@ function StyleTab({
     // previewPosts is already row-filtered (see previewPosts memo); apply the
     // value-level prune so rename groups list only the selected dimension
     // values, matching the rendered table.
-    const tableAggPosts = applyWidgetValueFilters(previewPosts, draft.filters);
+    const tableAggPosts = applyWidgetValueFilters(previewPosts, draft.filters, tablePrimaryDimension(tableConfig));
     const rows = isTopicsSource
       ? aggregateTopicsTable(topics, tableConfig)
       : tableObjField
@@ -847,7 +853,7 @@ function StyleTab({
     : null;
   // Value-level prune so the per-series picker lists only the values the
   // rendered chart shows (previewPosts is already row-filtered).
-  const chartAggPosts = applyWidgetValueFilters(previewPosts, draft.filters);
+  const chartAggPosts = applyWidgetValueFilters(previewPosts, draft.filters, draft.customConfig?.dimension as CustomDimension | undefined);
   const previewData = draft.customConfig
     ? (chartObjField
         ? aggregateObjectList(chartAggPosts, chartObjField, draft.customConfig)
@@ -1106,7 +1112,7 @@ function buildDataSummary(
     }
     const data = isTopicsSource
       ? aggregateTopicsCustom(topics, cfg)
-      : aggregateCustom(applyWidgetValueFilters(previewPosts, widget.filters), cfg);
+      : aggregateCustom(applyWidgetValueFilters(previewPosts, widget.filters, cfg.dimension as CustomDimension | undefined), cfg);
     if (!cfg.dimension && typeof data.value === 'number') {
       summary.kpi_value = data.value;
     } else if (data.labels && data.values) {

@@ -489,6 +489,129 @@ def parse_apify_facebook_page_channel(item: dict) -> Channel:
 
 
 # ---------------------------------------------------------------------------
+# Facebook (group) - apify/facebook-groups-scraper
+# Collects a group's feed from `startUrls` (group URLs). The page actor
+# (apify/facebook-posts-scraper) returns NO-DATA for group feeds, so group URLs
+# get their own actor + parser. Unlike pages, the "channel" is the GROUP, not
+# the member who posted - so channel identity maps to groupId/groupTitle and the
+# poster lands in platform_metadata.author. Field-name fallbacks cover known
+# build variations:
+#   postId / post_id, url / topLevelUrl / postUrl / facebookUrl, text / message,
+#   time (ISO) / timestamp (unix sec) / date, groupId / groupTitle (+ url path),
+#   user/author{id,name,profileUrl}, likes / reactionsCount, comments /
+#   commentsCount, shares / sharesCount, media[] / attachments[].
+# ---------------------------------------------------------------------------
+
+def _fb_group_id_from_url(url: str | None) -> str:
+    """Extract the group id from a facebook.com/groups/<id> URL ("" if absent)."""
+    m = re.search(r"/groups/([^/?#]+)", url or "")
+    return m.group(1) if m else ""
+
+
+def _fb_group_identity(item: dict) -> tuple[str, str, str]:
+    """Return (group_id, group_title, group_url) for a groups-actor item."""
+    group_url = _first(item, "facebookUrl", "groupUrl", "inputUrl", "url", "topLevelUrl", default="")
+    group_id = str(
+        # `facebookId` is the canonical numeric group id the groups actor emits;
+        # the URL fallback may yield a slug (e.g. /groups/smartflights/).
+        _first(item, "groupId", "group_id", "facebookId", default="")
+        or _fb_group_id_from_url(group_url)
+    )
+    group_title = str(_first(item, "groupTitle", "groupName", "pageName", default=""))
+    return group_id, group_title, group_url
+
+
+def parse_apify_facebook_group_post(item: dict) -> Post:
+    post_url = _first(item, "url", "topLevelUrl", "postUrl", "facebookUrl", default="")
+    post_id = str(_first(item, "postId", "post_id", "id", default="")) or (
+        _hash_id(post_url) if post_url else ""
+    )
+
+    posted_at = (
+        _parse_dt(_first(item, "timestamp", "time", "date", "publishedTime"))
+        or datetime.fromtimestamp(0, tz=timezone.utc)
+    )
+
+    group_id, group_title, _group_url = _fb_group_identity(item)
+
+    author = item.get("user")
+    if not isinstance(author, dict):
+        author = item.get("author") if isinstance(item.get("author"), dict) else {}
+
+    media_urls: list[str] = []
+    media = item.get("media")
+    if isinstance(media, list):
+        for m in media:
+            if isinstance(m, str):
+                media_urls.append(m)
+            elif isinstance(m, dict):
+                photo = m.get("photo_image") if isinstance(m.get("photo_image"), dict) else {}
+                u = m.get("thumbnail") or photo.get("uri") or m.get("url") or m.get("uri")
+                if u:
+                    media_urls.append(u)
+    for key in ("imageUrl", "image", "thumbnailUrl"):
+        val = item.get(key)
+        if isinstance(val, str) and val:
+            media_urls.append(val)
+
+    has_video = bool(
+        item.get("videoUrl") or item.get("video")
+        or str(_first(item, "type", default="")).lower() in ("video", "reel")
+    )
+    post_type = "video" if has_video else ("image" if media_urls else "text")
+
+    return Post(
+        post_id=post_id,
+        platform="facebook",
+        # Channel == the group, not the individual member who posted.
+        channel_handle=group_title,
+        channel_id=group_id or None,
+        title=None,
+        content=_first(item, "text", "message", default=""),
+        post_url=post_url,
+        posted_at=posted_at,
+        post_type=post_type,
+        parent_post_id=None,
+        media_urls=media_urls,
+        media_refs=[],
+        likes=_safe_int(_first(item, "likes", "reactionsCount", "likesCount", default=None)),
+        shares=_safe_int(_first(item, "shares", "sharesCount", "reshareCount", default=None)),
+        comments_count=_safe_int(_first(item, "comments", "commentsCount", default=None)),
+        views=_safe_int(_first(item, "viewsCount", "videoViewCount", default=None)),
+        saves=None,
+        comments=[],
+        platform_metadata={
+            "platform": "facebook",
+            "type": item.get("type"),
+            "group_id": group_id or None,
+            "group_title": group_title or None,
+            "author_id": str(_first(author, "id", default="")) or None,
+            "author_name": _first(author, "name", default=None),
+            "facebook_url": item.get("facebookUrl"),
+            "input_url": _first(item, "inputUrl", "facebookUrl", default=None),
+        },
+        crawl_provider="apify",
+    )
+
+
+def parse_apify_facebook_group_channel(item: dict) -> Channel:
+    group_id, group_title, group_url = _fb_group_identity(item)
+    return Channel(
+        channel_id=group_id,
+        platform="facebook",
+        channel_handle=group_title,
+        subscribers=_safe_int(_first(item, "groupMembers", "memberCount", default=None)),
+        total_posts=None,
+        channel_url=group_url or None,
+        description=None,
+        created_date=None,
+        channel_metadata={
+            "group_title": group_title or None,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # TikTok - clockworks/tiktok-scraper
 # Sample dataset shape:
 #   id, text, textLanguage, createTime (unix), createTimeISO, isAd, isPinned,
@@ -619,6 +742,10 @@ _PARSER_REGISTRY: dict[tuple[str, str], tuple[ParsePostFn, ParseChannelFn]] = {
     ("facebook", "apify/facebook-posts-scraper"): (
         parse_apify_facebook_page_post,
         parse_apify_facebook_page_channel,
+    ),
+    ("facebook", "apify/facebook-groups-scraper"): (
+        parse_apify_facebook_group_post,
+        parse_apify_facebook_group_channel,
     ),
     ("tiktok", "clockworks/tiktok-scraper"): (
         parse_clockworks_tiktok_post,

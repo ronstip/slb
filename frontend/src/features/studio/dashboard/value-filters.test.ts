@@ -86,3 +86,94 @@ describe('value filtering closes the multi-valued aggregation leak', () => {
     expect(data.values).toEqual([1]);
   });
 });
+
+describe('applyWidgetValueFilters - post_count (min group size on the widget grouping)', () => {
+  // 3 instagram + 1 twitter posts.
+  const mixed = () => [
+    p({ post_id: 'a', platform: 'instagram' }),
+    p({ post_id: 'b', platform: 'instagram' }),
+    p({ post_id: 'c', platform: 'instagram' }),
+    p({ post_id: 'd', platform: 'twitter' }),
+  ];
+  const ids = (ps: DashboardPost[]) => ps.map((x) => x.post_id).sort();
+  const pc = (operator: string, value: number, value2?: number) =>
+    ({ conditions: [{ field: 'post_count', operator, value, value2 }] }) as never;
+
+  it('drops groups below the threshold using the widget grouping (greaterThan)', () => {
+    // post_count carries NO dimension; the widget's grouping (platform) is supplied.
+    const out = applyWidgetValueFilters(mixed(), pc('greaterThan', 2), 'platform');
+    expect(ids(out)).toEqual(['a', 'b', 'c']); // twitter (count 1) removed
+  });
+
+  it('no-ops when the widget has no grouping (e.g. a number card)', () => {
+    const out = applyWidgetValueFilters(mixed(), pc('greaterThan', 2), undefined);
+    expect(ids(out)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('equals boundary keeps only exact-count groups', () => {
+    const out = applyWidgetValueFilters(mixed(), pc('equals', 1), 'platform');
+    expect(ids(out)).toEqual(['d']);
+  });
+
+  it('between bounds the group count inclusively', () => {
+    const out = applyWidgetValueFilters(mixed(), pc('between', 1, 1), 'platform');
+    expect(ids(out)).toEqual(['d']);
+  });
+
+  it('counts each post once per distinct value (no double-count on repeats)', () => {
+    // post a repeats 'pricing'; the group count must treat it as 1, not 2.
+    // counts: pricing=1 (from a, deduped), support=1 (from b). equals 1 → both survive.
+    const out = applyWidgetValueFilters(
+      [
+        p({ post_id: 'a', themes: ['pricing', 'pricing'] }),
+        p({ post_id: 'b', themes: ['support'] }),
+      ],
+      pc('equals', 1),
+      'themes',
+    );
+    expect(out.map((x) => x.post_id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('multi-valued grouping prunes values rather than dropping the post', () => {
+    const out = applyWidgetValueFilters(
+      [
+        p({ post_id: 'a', themes: ['pricing', 'support'] }),
+        p({ post_id: 'b', themes: ['pricing'] }),
+      ],
+      pc('greaterThan', 1),
+      'themes',
+    );
+    expect(out.find((x) => x.post_id === 'a')!.themes).toEqual(['pricing']);
+  });
+
+  it('runs even when no other multi-valued filter is active (defeats early return)', () => {
+    const out = applyWidgetValueFilters(mixed(), pc('greaterThan', 2), 'platform');
+    expect(out).toHaveLength(3);
+  });
+
+  it('group-counts a scalar custom grouping', () => {
+    const out = applyWidgetValueFilters(
+      [
+        p({ post_id: 'a', custom_fields: { region: 'eu' } }),
+        p({ post_id: 'b', custom_fields: { region: 'eu' } }),
+        p({ post_id: 'c', custom_fields: { region: 'us' } }),
+      ],
+      pc('greaterThan', 1),
+      'custom:region',
+    );
+    expect(ids(out)).toEqual(['a', 'b']);
+  });
+
+  it('buckets posted_at by day when that is the grouping', () => {
+    const out = applyWidgetValueFilters(
+      [
+        p({ post_id: 'a', posted_at: '2026-01-01T09:00:00Z' }),
+        p({ post_id: 'b', posted_at: '2026-01-01T18:00:00Z' }),
+        p({ post_id: 'c', posted_at: '2026-01-02T09:00:00Z' }),
+      ],
+      pc('greaterThan', 1),
+      'posted_at',
+    );
+    expect(ids(out)).toEqual(['a', 'b']); // 2026-01-01 has 2, 2026-01-02 has 1
+  });
+});
