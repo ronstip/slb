@@ -12,7 +12,8 @@ Native media shape (relevant keys):
     pk / id, code, like_count, comment_count,
     play_count / ig_play_count / view_count, caption{text} | caption_text,
     user{pk, username, full_name, is_verified, follower_count, ...},
-    taken_at (epoch seconds), media_type (1=image, 2=video, 8=carousel),
+    taken_at (int epoch on reels SERP; ISO-8601 string + int `taken_at_ts` on
+    hashtag_medias_*_chunk_v1), media_type (1=image, 2=video, 8=carousel),
     product_type ("clips" | "feed" | "igtv" | ...).
 """
 
@@ -42,17 +43,60 @@ def _safe_int(value: Any) -> int | None:
         return None
 
 
-def _epoch_to_utc(value: Any) -> datetime:
-    """Epoch seconds (int, float, OR string - the v1 hashtag chunk endpoints
-    return taken_at as a string) -> tz-aware UTC datetime; epoch 0 on garbage."""
-    try:
-        ts = float(value)
-    except (TypeError, ValueError):
-        ts = 0.0
-    try:
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
-    except (OSError, OverflowError, ValueError):
-        return datetime.fromtimestamp(0, tz=timezone.utc)
+def _to_utc(value: Any) -> datetime | None:
+    """Parse one HikerAPI timestamp value -> tz-aware UTC datetime, or None.
+
+    Handles every shape the IG surfaces actually return:
+      - int/float epoch seconds      (fbsearch_reels_v2 `taken_at`)
+      - numeric string epoch         (`taken_at_ts` arrives as int, kept for safety)
+      - ISO-8601 string e.g. '...Z'  (hashtag_medias_*_chunk_v1 `taken_at`)
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        # Numeric string -> epoch seconds. ISO strings ('2026-...') raise here
+        # and fall through to fromisoformat below.
+        try:
+            return datetime.fromtimestamp(float(s), tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            pass
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return None
+
+
+def _resolve_taken_at(item: dict) -> datetime:
+    """Resolve a post's timestamp from an IG media object.
+
+    The chunk endpoints (hashtag_medias_*_chunk_v1) return `taken_at` as an
+    ISO-8601 STRING plus an int epoch in `taken_at_ts`; the reels SERP returns
+    `taken_at` as an int epoch and no `taken_at_ts`. Prefer the unambiguous int
+    epoch, then fall back to whatever `taken_at` parses to. Epoch 0 means
+    "unknown" - and because the collection time-window filter drops 1970-dated
+    posts, an unparseable timestamp silently discards the post, so log it loudly.
+    """
+    for key in ("taken_at_ts", "taken_at"):
+        dt = _to_utc(item.get(key))
+        if dt is not None:
+            return dt
+    logger.warning(
+        "hikerapi: unparseable taken_at (taken_at=%r taken_at_ts=%r) for media pk=%s",
+        item.get("taken_at"), item.get("taken_at_ts"), item.get("pk"),
+    )
+    return datetime.fromtimestamp(0, tz=timezone.utc)
 
 
 def _first_int(item: dict, *keys: str) -> int | None:
@@ -129,7 +173,7 @@ def parse_hikerapi_instagram_post(item: dict) -> Post:
         title=None,
         content=_caption_text(item),
         post_url=post_url,
-        posted_at=_epoch_to_utc(item.get("taken_at")),
+        posted_at=_resolve_taken_at(item),
         post_type=post_type,
         parent_post_id=None,
         media_urls=_media_urls(item),

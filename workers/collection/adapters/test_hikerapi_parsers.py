@@ -97,6 +97,28 @@ def test_taken_at_string_epoch():
     assert post.posted_at == datetime.fromtimestamp(1739000000, tz=timezone.utc)
 
 
+def test_taken_at_iso_string_from_chunk_endpoints():
+    # REAL shape of hashtag_medias_*_chunk_v1 (verified live 2026-06-11):
+    # taken_at is an ISO-8601 string, with the epoch in a separate taken_at_ts.
+    # Previously float("2026-...Z") raised -> silent epoch-0 -> dropped by the
+    # collection time-window filter (929/1000 posts on collection 61e8797...).
+    item = dict(_HIKER_ITEM)
+    item["taken_at"] = "2026-06-10T20:10:42Z"
+    item["taken_at_ts"] = 1781122242
+    post = parse_hikerapi_instagram_post(item)
+    assert post.posted_at == datetime.fromtimestamp(1781122242, tz=timezone.utc)
+
+
+def test_taken_at_ts_preferred_over_iso_string():
+    # taken_at_ts (int epoch) is the most robust field - use it when present.
+    item = {k: v for k, v in _HIKER_ITEM.items() if k != "taken_at"}
+    item["taken_at"] = "2026-06-10T20:10:42Z"
+    item["taken_at_ts"] = 1781122242
+    assert parse_hikerapi_instagram_post(item).posted_at == datetime.fromtimestamp(
+        1781122242, tz=timezone.utc
+    )
+
+
 def test_taken_at_garbage_falls_back_to_epoch_zero():
     item = dict(_HIKER_ITEM)
     item["taken_at"] = "not-a-number"
