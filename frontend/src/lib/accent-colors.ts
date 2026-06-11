@@ -59,6 +59,27 @@ export function hslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`.toUpperCase();
 }
 
+// ── Categorical palette ──
+// Multi-hue, brand-anchored palette from the Veille/Scolto design system. Used
+// as the DEFAULT for charts with multiple categories (donuts, pies, word
+// clouds, multi-series lines, KPI accents) so slices read as distinct colors
+// instead of monochromatic shades of the single accent. A per-widget accent
+// override still falls back to monochromatic shades of that accent.
+export const CATEGORICAL_PALETTE = [
+  '#D97757', '#2F8E6C', '#3A6FB6', '#B6843A', '#7B5BD9', '#4FA3A0', '#C2557E',
+];
+
+// Slightly lifted variants for legibility on the dark warm surface.
+export const CATEGORICAL_PALETTE_DARK = [
+  '#E08A6B', '#4FB58D', '#5B8FD0', '#C9974E', '#9B82E8', '#6FC0BD', '#D584A4',
+];
+
+/** N categorical colors (cycled) for the active theme. */
+export function getCategoricalPalette(isDark: boolean, count = 5): string[] {
+  const base = isDark ? CATEGORICAL_PALETTE_DARK : CATEGORICAL_PALETTE;
+  return Array.from({ length: count }, (_, i) => base[i % base.length]);
+}
+
 // ── Palette generation ──
 
 /**

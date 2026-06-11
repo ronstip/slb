@@ -1,7 +1,7 @@
 import type { WidgetData } from './types-social-dashboard.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
-import { generateChartPalette } from '../../../lib/accent-colors.ts';
-import { SENTIMENT_COLORS } from '../../../lib/constants.ts';
+import { SENTIMENT_COLORS, PLATFORM_COLORS } from '../../../lib/constants.ts';
+import { getCategoricalPalette } from '../../../lib/accent-colors.ts';
 
 function fmt(val: number): string {
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
@@ -13,6 +13,7 @@ function resolveColor(label: string, fallback: string, overrides?: Record<string
   if (overrides?.[label]) return overrides[label];
   const key = label.toLowerCase();
   if (key in SENTIMENT_COLORS) return SENTIMENT_COLORS[key];
+  if (key in PLATFORM_COLORS) return PLATFORM_COLORS[key];
   return fallback;
 }
 
@@ -38,7 +39,13 @@ export function SocialProgressListWidget({
   const isDark =
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  const palette = generateChartPalette(accent ?? accentColor, isDark);
+  // Single-dimension bars read as one brand-orange family (design's clean
+  // Share-of-Voice). Sentiment/platform rows still pick up their semantic color
+  // via resolveColor; a per-widget accent overrides the orange. The breakdown
+  // (segmented) mode needs distinct segment colors, so it uses the categorical
+  // palette.
+  const barColor = accent ?? accentColor;
+  const palette = getCategoricalPalette(isDark, 7);
 
   if (!data) {
     return (
@@ -164,8 +171,8 @@ export function SocialProgressListWidget({
 
   const maxValue = Math.max(...values, 1);
   const total = values.reduce((a, b) => a + b, 0);
-  const getColor = (label: string, index: number): string =>
-    resolveColor(label, palette[index % palette.length], seriesColorOverrides);
+  const getColor = (label: string, _index: number): string =>
+    resolveColor(label, barColor, seriesColorOverrides);
 
   return (
     <div className="flex flex-col gap-3 overflow-y-auto h-full pr-1">

@@ -30,7 +30,8 @@ export type SocialAggregation =
   | 'posts'
   | 'custom'
   | 'text'
-  | 'embeds';
+  | 'embeds'
+  | 'media';
 
 export type SocialChartType =
   | 'bar'
@@ -1101,6 +1102,26 @@ export interface ReportScope {
 
 // ─── Widget config ────────────────────────────────────────────────────────────
 
+/** Media-widget payload (aggregation === 'media'). */
+export interface SocialMediaConfig {
+  /** 'image' covers png/jpg/webp + animated GIF (rendered via <img>); 'video'
+   *  is mp4/webm (rendered via <video>). */
+  kind: 'image' | 'video';
+  /** External URL when added by link. Ignored when `uploadPath` is set. */
+  src?: string;
+  /** GCS blob path of an uploaded file; served via `/media/<uploadPath>`. */
+  uploadPath?: string;
+  /** How the media fills the widget frame. Undefined → 'contain'. */
+  fit?: 'cover' | 'contain';
+  /** Alt text (images) / accessible label. */
+  alt?: string;
+  // ── video-only display toggles (all default sensibly when undefined) ──
+  loop?: boolean;
+  muted?: boolean;
+  autoplay?: boolean;
+  controls?: boolean;
+}
+
 export interface SocialDashboardWidget {
   /** Unique widget ID (nanoid) */
   i: string;
@@ -1142,6 +1163,9 @@ export interface SocialDashboardWidget {
   /** Post URLs to embed - set when aggregation === 'embeds'. Mode (single vs
    *  carousel) is derived from length at render time; user does not choose. */
   embedUrls?: string[];
+  /** Media payload - set when aggregation === 'media'. Either an uploaded
+   *  file (served via `/media/<uploadPath>`) or an external URL (`src`). */
+  media?: SocialMediaConfig;
   /** Optional figure-style caption rendered below the chart body (figcaption).
    *  The widget's `title` doubles as the figure header - there's only one. */
   figureText?: string;
@@ -1218,6 +1242,7 @@ export const VALID_CHART_TYPES: Record<SocialAggregation, SocialChartType[]> = {
   'custom': ['bar', 'pie', 'doughnut', 'line', 'number-card', 'progress-list', 'word-cloud', 'table'],
   'text': ['table'],
   'embeds': ['embed'],
+  'media': ['embed'],
 };
 
 // ─── Aggregation metadata (for UI display) ────────────────────────────────────
@@ -1367,6 +1392,14 @@ export const AGGREGATION_META: Record<SocialAggregation, AggregationMeta> = {
     defaultChartType: 'embed',
     defaultTitle: 'Embedded Posts',
     defaultSize: { w: 4, h: 8 },
+  },
+  'media': {
+    label: 'Image / Video',
+    description: 'Show an image, GIF, or video - upload a file or paste a link',
+    icon: 'Image',
+    defaultChartType: 'embed',
+    defaultTitle: 'Media',
+    defaultSize: { w: 4, h: 6 },
   },
 };
 

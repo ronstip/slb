@@ -24,7 +24,9 @@ function mergeRefs<T>(...refs: Array<React.Ref<T | null> | undefined | null>) {
 const BREAKPOINTS = { lg: 600, md: 480, sm: 360, xs: 0 };
 const COLS = { lg: 12, md: 8, sm: 4, xs: 2 };
 const ROW_HEIGHT = 48;
-const MARGIN: [number, number] = [6, 6];
+// Inter-widget gap. Matches the Claude design's 14px grid gap (db-app.jsx
+// `gap: 14`) for the airier card separation the design calls for.
+const MARGIN: [number, number] = [14, 14];
 
 interface SocialDashboardGridProps {
   widgets: SocialDashboardWidget[];
@@ -103,14 +105,15 @@ export function SocialDashboardGrid({
     y: w.y,
     w: w.w,
     h: w.h,
-    minW: w.chartType === 'number-card' ? 2 : 3,
+    minW: w.chartType === 'number-card' || w.aggregation === 'media' ? 2 : 3,
     // Text/embed cards are content-scrollable, so allow them to shrink below the
     // generic 3-row floor for fine manual sizing. Text cards go all the way to a
     // single row so a one-line title (~34px) can hug its row without a fixed gap;
-    // embeds keep a 2-row floor (an embed needs more vertical room to be useful).
+    // embeds and media keep a 2-row floor (an embed needs vertical room; media
+    // just scales the image/video to fit, so a small 2-row card is fine).
     minH: w.chartType === 'number-card' || w.aggregation === 'text'
       ? 1
-      : w.aggregation === 'embeds'
+      : w.aggregation === 'embeds' || w.aggregation === 'media'
         ? 2
         : 3,
     isDraggable: isEditMode && currentBreakpoint === 'lg',
@@ -161,8 +164,10 @@ export function SocialDashboardGrid({
       ? { maxWidth: `${VERTICAL_WIDTH_RATIO * 100}%`, marginLeft: 'auto', marginRight: 'auto' }
       : {};
 
-  // Tighter side padding on mobile so widgets get more of the viewport.
-  const containerPadding: [number, number] = isNarrowViewport ? [4, 8] : [12, 8];
+  // Side padding lives on the outer page container (px-7 ≈ 28px, matching the
+  // design's page margin); the grid itself sits flush so we don't double up.
+  // Mobile keeps a little inset so card shadows don't clip the viewport edge.
+  const containerPadding: [number, number] = isNarrowViewport ? [4, 8] : [0, 8];
 
   return (
     <div
@@ -191,7 +196,7 @@ export function SocialDashboardGrid({
           pendingResizeId.current = newItem?.i ?? oldItem?.i ?? null;
         }}
       >
-        {widgets.map((widget) => {
+        {widgets.map((widget, widgetIndex) => {
           const attached = attachedWidgetIds?.has(widget.i) ?? false;
           return (
             <div
@@ -236,6 +241,7 @@ export function SocialDashboardGrid({
               )}
               <SocialWidgetRenderer
                 widget={widget}
+                widgetIndex={widgetIndex}
                 filteredPosts={filteredPosts}
                 topics={topics}
                 isEditMode={isEditMode}
