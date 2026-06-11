@@ -18,6 +18,8 @@ from workers.collection.adapters.apify_parsers import (
     parse_apify_instagram_post,
     parse_clockworks_tiktok_channel,
     parse_clockworks_tiktok_post,
+    parse_apify_facebook_group_channel,
+    parse_apify_facebook_group_post,
     parse_apify_facebook_page_channel,
     parse_apify_facebook_page_post,
     parse_scrapeforge_facebook_channel,
@@ -391,6 +393,73 @@ def test_facebook_page_actor_registered():
     post_fn, ch_fn = get_parsers("facebook", "apify/facebook-posts-scraper")
     assert post_fn is parse_apify_facebook_page_post
     assert ch_fn is parse_apify_facebook_page_channel
+
+
+# ---------------------------------------------------------------------------
+# Facebook (group) - apify/facebook-groups-scraper
+# ---------------------------------------------------------------------------
+
+_FB_GROUP_FIXTURE = {
+    "postId": "456456456",
+    "groupTitle": "Dog Spotting",
+    "groupId": "1526461191971818",
+    "url": "https://www.facebook.com/groups/1526461191971818/posts/456456456/",
+    "facebookUrl": "https://www.facebook.com/groups/1526461191971818",
+    "time": "2026-05-02T14:00:00.000Z",
+    "timestamp": 1777989600,
+    "user": {"id": "200055", "name": "Jane Member", "profileUrl": "https://www.facebook.com/jane"},
+    "text": "Spotted a very good dog.",
+    "likes": 120,
+    "comments": 14,
+    "shares": 3,
+    "media": [{"thumbnail": "https://scontent.example/dog.jpg"}],
+}
+
+
+def test_facebook_group_post_basic_fields():
+    post = parse_apify_facebook_group_post(_FB_GROUP_FIXTURE)
+    assert post.platform == "facebook"
+    assert post.post_id == "456456456"
+    assert post.content == "Spotted a very good dog."
+    assert post.post_url == "https://www.facebook.com/groups/1526461191971818/posts/456456456/"
+    # Channel == the GROUP, not the individual member who posted.
+    assert post.channel_id == "1526461191971818"
+    assert post.channel_handle == "Dog Spotting"
+    assert post.likes == 120
+    assert post.shares == 3
+    assert post.comments_count == 14
+    assert post.posted_at.tzinfo is not None
+    assert post.posted_at.year == 2026 and post.posted_at.month == 5
+    assert post.post_type == "image"
+    assert post.crawl_provider == "apify"
+    assert any("dog.jpg" in u for u in post.media_urls)
+
+
+def test_facebook_group_post_id_hashed_from_url_when_missing():
+    item = {k: v for k, v in _FB_GROUP_FIXTURE.items() if k != "postId"}
+    post = parse_apify_facebook_group_post(item)
+    assert post.post_id and len(post.post_id) == 16
+
+
+def test_facebook_group_id_falls_back_to_url():
+    item = {k: v for k, v in _FB_GROUP_FIXTURE.items() if k != "groupId"}
+    post = parse_apify_facebook_group_post(item)
+    assert post.channel_id == "1526461191971818"
+
+
+def test_facebook_group_channel_parsing():
+    ch = parse_apify_facebook_group_channel(_FB_GROUP_FIXTURE)
+    assert ch.platform == "facebook"
+    assert ch.channel_id == "1526461191971818"
+    assert ch.channel_handle == "Dog Spotting"
+    assert ch.channel_url == "https://www.facebook.com/groups/1526461191971818"
+
+
+def test_facebook_group_actor_registered():
+    assert ("facebook", "apify/facebook-groups-scraper") in _PARSER_REGISTRY
+    post_fn, ch_fn = get_parsers("facebook", "apify/facebook-groups-scraper")
+    assert post_fn is parse_apify_facebook_group_post
+    assert ch_fn is parse_apify_facebook_group_channel
 
 
 # ---------------------------------------------------------------------------

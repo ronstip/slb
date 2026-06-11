@@ -173,6 +173,12 @@ class Settings(BaseSettings):
     # onlyPostsNewerThan. Parser registered in apify_parsers.py. Mirrors the IG
     # split (apify_actor_instagram vs apify_actor_instagram_post).
     apify_actor_facebook_page: str = "apify/facebook-posts-scraper"
+    # Group actor - the page actor (apify/facebook-posts-scraper) only scrapes
+    # pages/profiles and returns NO-DATA for group feeds, so group URLs
+    # (facebook.com/groups/...) route to apify/facebook-groups-scraper instead.
+    # Same startUrls/resultsLimit/onlyPostsNewerThan input shape; auto-detected
+    # by URL in _collect_facebook_channels. Parser registered in apify_parsers.py.
+    apify_actor_facebook_group: str = "apify/facebook-groups-scraper"
     apify_actor_tiktok: str = "apidojo/tiktok-scraper-api"
     apify_run_timeout_sec: int = 1500
     apify_max_runs_per_collection: int = 30

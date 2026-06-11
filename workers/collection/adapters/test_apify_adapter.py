@@ -21,6 +21,7 @@ from workers.collection.adapters.apify import (
     ApifyAdapter,
     _detect_platform_from_url,
     _hashtag_url,
+    _is_fb_group_url,
     _to_yyyymmdd,
 )
 
@@ -353,6 +354,86 @@ def test_collect_facebook_keyword_mode_ignores_channel_branch():
     assert len(captured) == 1
     assert captured[0]["query"] == "nike"
     assert "startUrls" not in captured[0]
+
+
+def test_is_fb_group_url():
+    """Group URLs (full, bare handle normalized to /groups/) detect True; pages False."""
+    assert _is_fb_group_url("https://www.facebook.com/groups/1526461191971818") is True
+    assert _is_fb_group_url("https://www.facebook.com/groups/dogspotting") is True
+    assert _is_fb_group_url("https://www.facebook.com/espn") is False
+    assert _is_fb_group_url("") is False
+    assert _is_fb_group_url(None) is False
+
+
+def test_collect_facebook_group_mode_uses_group_actor():
+    """A /groups/ URL routes to apify/facebook-groups-scraper (NOT the page
+    actor) with the same startUrls/resultsLimit/onlyPostsNewerThan shape and a
+    `group` cost tag."""
+    adapter = _build_adapter()
+
+    calls: list[tuple] = []
+
+    def _cap(platform, run_input, *, actor_id=None, scrape_kind=None, feature="scrape"):
+        calls.append((platform, run_input, actor_id, scrape_kind))
+        return []
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_cap), \
+         patch.object(adapter, "_parse_results", return_value=[]):
+        list(adapter._collect_facebook({
+            "keywords": [],
+            "channel_urls": ["https://www.facebook.com/groups/1526461191971818"],
+            "max_posts_per_keyword": 10,
+            "time_range": {"start": "2026-05-01T00:00:00Z"},
+        }))
+
+    assert len(calls) == 1
+    _platform, run_input, actor_id, scrape_kind = calls[0]
+    assert run_input["startUrls"] == [
+        {"url": "https://www.facebook.com/groups/1526461191971818"}
+    ]
+    assert run_input["resultsLimit"] == 10  # 10 * 1 group
+    assert run_input["onlyPostsNewerThan"] == "2026-05-01"
+    assert "query" not in run_input
+    assert scrape_kind == "group"
+    assert actor_id == "apify/facebook-groups-scraper"
+
+
+def test_collect_facebook_mixed_pages_and_groups_split_actors():
+    """A source mixing a page URL and a group URL fans out to BOTH actors, each
+    with only its own URLs and a per-bucket resultsLimit."""
+    adapter = _build_adapter()
+
+    calls: list[tuple] = []
+
+    def _cap(platform, run_input, *, actor_id=None, scrape_kind=None, feature="scrape"):
+        calls.append((actor_id, run_input, scrape_kind))
+        return []
+
+    with patch.object(adapter, "_run_actor_collect_raw", side_effect=_cap), \
+         patch.object(adapter, "_parse_results", return_value=[]):
+        list(adapter._collect_facebook({
+            "channel_urls": [
+                "https://www.facebook.com/espn",
+                "https://www.facebook.com/groups/1526461191971818",
+            ],
+            "max_posts_per_keyword": 10,
+        }))
+
+    by_actor = {actor_id: (run_input, kind) for actor_id, run_input, kind in calls}
+    assert set(by_actor) == {
+        "apify/facebook-posts-scraper",
+        "apify/facebook-groups-scraper",
+    }
+    page_input, page_kind = by_actor["apify/facebook-posts-scraper"]
+    group_input, group_kind = by_actor["apify/facebook-groups-scraper"]
+    assert page_input["startUrls"] == [{"url": "https://www.facebook.com/espn"}]
+    assert page_input["resultsLimit"] == 10  # 10 * 1 page
+    assert page_kind == "channel"
+    assert group_input["startUrls"] == [
+        {"url": "https://www.facebook.com/groups/1526461191971818"}
+    ]
+    assert group_input["resultsLimit"] == 10  # 10 * 1 group
+    assert group_kind == "group"
 
 
 # ---------------------------------------------------------------------------

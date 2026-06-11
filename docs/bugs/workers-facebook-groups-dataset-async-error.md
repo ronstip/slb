@@ -60,3 +60,49 @@ unreachable for channel mode (routing no longer sends FB channels there).
 
 ## Fix commit
 Uncommitted on branch `dev` (alongside the channel-collection work).
+
+## Reopened 2026-06-11 — page actor returns NO-DATA for GROUP feeds
+The Apify migration above only wired the **page** actor
+(`apify/facebook-posts-scraper`), which scrapes pages/profiles ONLY. A user
+collected a public group (`facebook.com/groups/1526461191971818`) → 0 posts +
+Sentry `SCOLTO-BACKEND-H`: `[NO-DATA]: 1526461191971818` (the actor's own run
+log, captured by Sentry — not our code). Group URLs were passed straight into
+the page actor's `startUrls` via `_normalize_fb_page_url`, which doesn't
+distinguish page from group.
+
+### Resolution — dedicated groups actor, auto-routed by URL (seamless, no UI change)
+- `config/settings.py`: new `apify_actor_facebook_group = "apify/facebook-groups-scraper"`.
+- `workers/collection/adapters/apify.py`:
+  - new `_is_fb_group_url(url)` (`/groups/` in normalized URL).
+  - `_collect_facebook_channels` is now a dispatcher: normalize+dedup, then
+    partition into page_urls / group_urls and fan out one run per bucket via the
+    new shared `_run_fb_channel_urls(urls, config, actor_id, scrape_kind, label)`
+    helper (pages→`channel`, groups→`group`; per-bucket `resultsLimit`). A source
+    can mix both. Page and group actors share the same
+    `startUrls`/`resultsLimit`/`onlyPostsNewerThan` input shape.
+- `workers/collection/adapters/apify_parsers.py`: new
+  `parse_apify_facebook_group_post` / `parse_apify_facebook_group_channel`
+  (channel == the GROUP, not the member who posted: `channel_id`=groupId via
+  `groupId`/URL fallback, `channel_handle`=groupTitle; poster → platform_metadata),
+  registered for `("facebook", "apify/facebook-groups-scraper")`.
+- Cost: no change — keyed by (provider, platform); apify+facebook cell covers
+  groups and apify is PROVIDER_REPORTED (live run cost captured).
+- Deploy parity: `APIFY_ACTOR_FACEBOOK_GROUP` added to `.env.example`,
+  `scripts/deploy_prod.sh`, `.github/workflows/deploy.yml`.
+
+UX: the channel field already reads "Page or group URL"; routing is automatic by
+URL, so users just paste any FB URL. No frontend change.
+
+Tests: `test_apify_adapter.py::{test_is_fb_group_url,
+test_collect_facebook_group_mode_uses_group_actor,
+test_collect_facebook_mixed_pages_and_groups_split_actors}` (+ page-mode
+regression guard stays green); `test_apify_parsers.py::test_facebook_group_*`.
+
+### Still to verify live
+The groups actor's real output field names + whether it accepts
+`onlyPostsNewerThan` — re-run the collection on `groups/1526461191971818`,
+confirm posts > 0, and adjust the parser `_first()` fallbacks if the actor emits
+different keys. Sentry `SCOLTO-BACKEND-H` to resolve once verified.
+
+### Fix commit (groups)
+Uncommitted on branch `dev`.

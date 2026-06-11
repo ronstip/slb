@@ -120,6 +120,17 @@ def _normalize_fb_page_url(raw: str) -> str | None:
     return f"https://www.facebook.com/{handle}" if handle else None
 
 
+def _is_fb_group_url(url: str | None) -> bool:
+    """True for Facebook group URLs (facebook.com/groups/...). Detect on the
+    normalized URL - _normalize_fb_page_url turns a bare `groups/<id>` handle
+    into a full /groups/ URL, so the `/groups/` check covers both forms.
+
+    Groups need apify/facebook-groups-scraper; the page actor
+    (apify/facebook-posts-scraper) returns NO-DATA for group feeds.
+    """
+    return "/groups/" in (url or "")
+
+
 def _hashtag_url(keyword: str) -> str:
     """Build an Instagram hashtag URL from a keyword.
 
@@ -664,29 +675,61 @@ class ApifyAdapter(DataProviderAdapter):
     def _collect_facebook_channels(
         self, channel_urls: list[str], config: dict,
     ) -> Iterator[Batch]:
-        """Collect a page/profile's posts via apify/facebook-posts-scraper.
+        """Collect a page's or group's posts, routing each URL to the right actor.
 
         The keyword actor (scrapeforge/facebook-search-posts) takes a `query`
         string and can't target a specific page, so channel collection uses the
-        post-scraper actor with the page URLs in `startUrls`. `onlyPostsNewerThan`
-        is a server-side date floor (the precise window is still enforced by the
-        pipeline's partition_by_time_range gate + the parse time gate). Mirrors
-        the IG channel path (different actor + parser than the keyword default).
+        post-scraper actor with the URLs in `startUrls`. Pages/profiles go to
+        apify/facebook-posts-scraper; group URLs (facebook.com/groups/...) go to
+        apify/facebook-groups-scraper - the page actor returns NO-DATA for group
+        feeds. A source can mix both, so we partition and fan out one run per
+        bucket. `onlyPostsNewerThan` is a server-side date floor (the precise
+        window is still enforced by the pipeline's partition_by_time_range gate +
+        the parse time gate). Mirrors the IG channel path (different actor +
+        parser than the keyword default).
         """
-        actor_id = get_settings().apify_actor_facebook_page
-        n_posts = config.get("max_posts_per_keyword") or 0
-        time_range = config.get("time_range", {}) or {}
+        settings = get_settings()
 
         seen: set[str] = set()
-        urls: list[str] = []
+        page_urls: list[str] = []
+        group_urls: list[str] = []
         for raw in channel_urls:
             u = _normalize_fb_page_url(raw)
-            if u and u not in seen:
-                seen.add(u)
-                urls.append(u)
-        if not urls:
-            logger.info("[apify/facebook] channel mode: no usable page URLs")
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            (group_urls if _is_fb_group_url(u) else page_urls).append(u)
+
+        if not page_urls and not group_urls:
+            logger.info("[apify/facebook] channel mode: no usable page/group URLs")
             return
+
+        if page_urls:
+            yield from self._run_fb_channel_urls(
+                page_urls, config,
+                actor_id=settings.apify_actor_facebook_page,
+                scrape_kind="channel", label="page",
+            )
+        if group_urls:
+            yield from self._run_fb_channel_urls(
+                group_urls, config,
+                actor_id=settings.apify_actor_facebook_group,
+                scrape_kind="group", label="group",
+            )
+
+    def _run_fb_channel_urls(
+        self, urls: list[str], config: dict, *,
+        actor_id: str, scrape_kind: str, label: str,
+    ) -> Iterator[Batch]:
+        """Run one Facebook channel/group actor over `urls` (page or group feed).
+
+        Page and group actors (apify/facebook-posts-scraper /
+        apify/facebook-groups-scraper) share the same startUrls + resultsLimit +
+        onlyPostsNewerThan input shape, so this builder serves both. resultsLimit
+        is per-bucket (n_posts * len(urls)) to preserve the per-URL budget.
+        """
+        n_posts = config.get("max_posts_per_keyword") or 0
+        time_range = config.get("time_range", {}) or {}
 
         run_input: dict = {
             "startUrls": [{"url": u} for u in urls],
@@ -702,11 +745,12 @@ class ApifyAdapter(DataProviderAdapter):
             run_input["onlyPostsNewerThan"] = newer_than
 
         logger.info(
-            "[apify/facebook] channel mode: %d page(s), resultsLimit=%s, newer_than=%s (actor=%s)",
-            len(urls), run_input.get("resultsLimit", "unbounded"), newer_than or "(none)", actor_id,
+            "[apify/facebook] %s mode: %d url(s), resultsLimit=%s, newer_than=%s (actor=%s)",
+            label, len(urls), run_input.get("resultsLimit", "unbounded"),
+            newer_than or "(none)", actor_id,
         )
         yield from self._run_and_parse(
-            "facebook", run_input, config, actor_id=actor_id, scrape_kind="channel",
+            "facebook", run_input, config, actor_id=actor_id, scrape_kind=scrape_kind,
         )
 
     # ------------------------------------------------------------------
