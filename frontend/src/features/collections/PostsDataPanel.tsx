@@ -32,7 +32,7 @@ import {
 import { PLATFORMS, PLATFORM_LABELS, SENTIMENT_COLORS } from '../../lib/constants.ts';
 import type { Source } from '../../stores/sources-store.ts';
 import { DateTimeRangeFilter, type DateTimeRange } from './DateTimeRangeFilter.tsx';
-import { buildFieldRegistry } from './fieldRegistry.ts';
+import { buildFieldRegistry, URL_FIELD } from './fieldRegistry.ts';
 import {
   ColumnPicker,
   mergeColumnPrefs,
@@ -187,7 +187,9 @@ export function PostsDataPanel({
   // Apply per-column filters (all client-side, ANDed). Channel filtering now
   // flows through the channel_handle column filter like every other column.
   const afterColumnFilters = useMemo(() => {
-    return applyColumnFilters(allPosts, columnFilters, registry);
+    // URL_FIELD isn't in the picker registry; append it so the __link column's
+    // paste-a-URL text filter resolves.
+    return applyColumnFilters(allPosts, columnFilters, [...registry, URL_FIELD]);
   }, [allPosts, columnFilters, registry]);
 
   // Apply global search on top

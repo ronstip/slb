@@ -19,7 +19,7 @@ import {
   BoolFilterHeader,
   DateRangeFilterHeader,
 } from './ColumnFilterHeader.tsx';
-import { type FieldDef, extractFieldOptions } from './fieldRegistry.ts';
+import { type FieldDef, extractFieldOptions, URL_FIELD } from './fieldRegistry.ts';
 import type { ColumnPref } from './ColumnPicker.tsx';
 
 /* ------------------------------------------------------------------ */
@@ -63,6 +63,81 @@ function isFilterActive(v: ColumnFilterValue | undefined): boolean {
   );
 }
 
+/* Canonicalise a post URL so cosmetic variants of the SAME post compare equal:
+ *  different path types, tracking query params, mobile/amp subdomains, www and
+ *  protocol all collapse. Each platform keys on its native post id (mirrors the
+ *  backend `parse_post_url` in workers/collection/url_parsers.py). Unrecognised
+ *  URLs fall back to a generic strip so they still match their own variants.
+ *
+ *  Search-only - never persisted. The post id is kept verbatim (Instagram and
+ *  YouTube ids are case-sensitive); only the domain / path-type is folded. When
+ *  in doubt we under-normalise rather than risk merging two different posts. */
+type UrlMatcher = (s: string) => string | null;
+
+// twitter / x: status id is globally unique, so the @handle is decorative.
+// twitter.com == x.com; mobile. and tracking ?s=&t= drop out.
+const matchTwitter: UrlMatcher = (s) => {
+  const m = s.match(/^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/(?:[^/?#]+\/status|i\/web\/status|i\/status|statuses)\/(\d+)/i);
+  return m ? `twitter.com/status/${m[1]}` : null;
+};
+
+// instagram: shortcode. reel|reels|tv|p all address the same post.
+const matchInstagram: UrlMatcher = (s) => {
+  const m = s.match(/^https?:\/\/(?:www\.|m\.)?instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
+  return m ? `instagram.com/p/${m[1]}` : null;
+};
+
+// tiktok: numeric video/photo id (the @handle is stable but the id alone is unique).
+const matchTiktok: UrlMatcher = (s) => {
+  const m = s.match(/^https?:\/\/(?:www\.|m\.)?tiktok\.com\/@[^/?#]+\/(?:video|photo)\/(\d+)/i);
+  return m ? `tiktok.com/video/${m[1]}` : null;
+};
+
+// youtube: id lives in ?v= (must be read BEFORE stripping the query), or in
+// youtu.be/<id>, /shorts/<id>, /embed/<id>, /v/<id>, /live/<id>.
+const matchYoutube: UrlMatcher = (s) => {
+  const byPath = s.match(/^https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|embed\/|v\/|live\/)([A-Za-z0-9_-]+)/i);
+  if (byPath) return `youtube.com/v/${byPath[1]}`;
+  const short = s.match(/^https?:\/\/youtu\.be\/([A-Za-z0-9_-]+)/i);
+  return short ? `youtube.com/v/${short[1]}` : null;
+};
+
+// reddit: base-36 comment id; subreddit + title slug are decorative. old/np/amp/m subdomains.
+const matchReddit: UrlMatcher = (s) => {
+  const full = s.match(/^https?:\/\/(?:www\.|old\.|np\.|amp\.|m\.)?reddit\.com\/(?:r\/[^/?#]+\/)?comments\/([A-Za-z0-9]+)/i);
+  if (full) return `reddit.com/comments/${full[1]}`;
+  const short = s.match(/^https?:\/\/redd\.it\/([A-Za-z0-9]+)/i);
+  return short ? `reddit.com/comments/${short[1]}` : null;
+};
+
+// facebook: many shapes - pull the numeric post/video id where it's unambiguous.
+const matchFacebook: UrlMatcher = (s) => {
+  const byPath = s.match(/^https?:\/\/(?:www\.|m\.|web\.)?facebook\.com\/(?:watch\/?\?(?:[^#]*&)?v=|reel\/|[^/?#]+\/(?:videos|posts)\/)(\d+)/i);
+  if (byPath) return `facebook.com/${byPath[1]}`;
+  const story = s.match(/story_fbid=(\d+)/i);
+  return story ? `facebook.com/${story[1]}` : null;
+};
+
+const URL_MATCHERS: UrlMatcher[] = [
+  matchTwitter, matchInstagram, matchTiktok, matchYoutube, matchReddit, matchFacebook,
+];
+
+export function normalizeUrl(u: string): string {
+  const s = u.trim();
+  for (const match of URL_MATCHERS) {
+    const canonical = match(s);
+    if (canonical) return canonical;
+  }
+  // Generic fallback for unrecognised hosts: strip protocol, noise subdomains,
+  // query, fragment and trailing slash, then lowercase.
+  return s
+    .replace(/[?#].*$/, '')
+    .replace(/^https?:\/\//i, '')
+    .replace(/^(?:www|m|mobile|amp)\./i, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+}
+
 function matchOne(field: FieldDef, raw: unknown, v: ColumnFilterValue): boolean {
   switch (field.kind) {
     case 'enum': {
@@ -78,6 +153,11 @@ function matchOne(field: FieldDef, raw: unknown, v: ColumnFilterValue): boolean 
       if (!v.contains) return true;
       const hay = typeof raw === 'string' ? raw.toLowerCase() : raw == null ? '' : String(raw).toLowerCase();
       return hay.includes(v.contains.toLowerCase());
+    }
+    case 'url': {
+      if (!v.contains) return true;
+      const hay = normalizeUrl(typeof raw === 'string' ? raw : raw == null ? '' : String(raw));
+      return hay.includes(normalizeUrl(v.contains));
     }
     case 'number': {
       if (v.min == null && v.max == null) return true;
@@ -201,6 +281,7 @@ function FilterHeaderForField({
       );
     }
     case 'text':
+    case 'url':
       return (
         <TextFilterHeader
           label={label}
@@ -388,13 +469,21 @@ export function collectionsPostColumns(
     onFiltersChange({ ...filters, [key]: next });
   };
 
-  // Always-on leading column: external-link / hover preview
+  // Always-on leading column: external-link / hover preview. Header carries a
+  // paste-a-URL text filter (matched via URL_FIELD in applyColumnFilters).
   const cols: ColumnDef<FeedPost>[] = [
     {
       key: '__link',
-      header: '',
-      width: 'w-7',
-      minWidth: 36,
+      header: (
+        <TextFilterHeader
+          label=""
+          value={filters[URL_FIELD.key]?.contains ?? ''}
+          onChange={(s) => setFilterFor(URL_FIELD.key, { ...filters[URL_FIELD.key], contains: s })}
+          placeholder="Filter by URL..."
+        />
+      ),
+      width: 'w-9',
+      minWidth: 44,
       render: (row) => (
         <ExternalLinkCell url={row.post_url} hoverContent={<PostCard post={row} />} />
       ),
