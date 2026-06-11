@@ -31,6 +31,7 @@ SocialAggregation = Literal[
     "custom",
     "text",
     "embeds",
+    "media",
 ]
 
 SocialChartType = Literal[
@@ -175,6 +176,7 @@ VALID_CHART_TYPES: dict[str, tuple[str, ...]] = {
     "custom": ("bar", "pie", "doughnut", "line", "number-card", "progress-list", "word-cloud", "table"),
     "text": ("table",),
     "embeds": ("embed",),
+    "media": ("embed",),
 }
 
 # Per-aggregation defaults - mirrors AGGREGATION_META in TS.
@@ -198,6 +200,7 @@ AGGREGATION_DEFAULTS: dict[str, dict] = {
     "custom": {"chartType": "bar", "title": "Custom Chart", "w": 6, "h": 6},
     "text": {"chartType": "table", "title": "Text", "w": 6, "h": 3},
     "embeds": {"chartType": "embed", "title": "Embedded Posts", "w": 4, "h": 8},
+    "media": {"chartType": "embed", "title": "Media", "w": 4, "h": 6},
 }
 
 GRID_COLS = 12
@@ -349,6 +352,24 @@ class CustomTableConfig(BaseModel):
 # ─── Widget ───────────────────────────────────────────────────────────────────
 
 
+class SocialMediaConfig(BaseModel):
+    """Media-widget payload (aggregation == 'media'). Mirrors the TS
+    `SocialMediaConfig`. Declared explicitly so it survives the save
+    round-trip into Firestore (the widget model uses extra='ignore')."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: Literal["image", "video"]
+    src: str | None = None
+    uploadPath: str | None = None
+    fit: Literal["cover", "contain"] | None = None
+    alt: str | None = None
+    loop: bool | None = None
+    muted: bool | None = None
+    autoplay: bool | None = None
+    controls: bool | None = None
+
+
 class SocialDashboardWidget(BaseModel):
     """One widget in a dashboard layout.
 
@@ -379,6 +400,9 @@ class SocialDashboardWidget(BaseModel):
     tableConfig: CustomTableConfig | None = None
     markdownContent: str | None = None
     embedUrls: list[str] | None = None
+    # Media-widget payload (aggregation == 'media'). Declared so it round-trips
+    # into Firestore + shared dashboards instead of being dropped by extra='ignore'.
+    media: SocialMediaConfig | None = None
     figureText: str | None = None
     numberSize: Literal["small", "medium", "big"] | None = None
     # Set once the user manually resizes a text/embed card. Must be an explicit

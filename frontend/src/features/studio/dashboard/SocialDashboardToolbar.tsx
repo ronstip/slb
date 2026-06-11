@@ -1,4 +1,4 @@
-import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, Quote, RectangleHorizontal, RectangleVertical, Filter, FilterX, Undo2, Redo2 } from 'lucide-react';
+import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, Quote, Image, RectangleHorizontal, RectangleVertical, Filter, FilterX, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -139,6 +139,10 @@ export function SocialDashboardToolbar({
           <DropdownMenuItem onClick={() => onAddWidget('embeds')} className="gap-2 text-xs">
             <Quote className="h-3.5 w-3.5" />
             Embed Posts
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onAddWidget('media')} className="gap-2 text-xs">
+            <Image className="h-3.5 w-3.5" />
+            Image / Video
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

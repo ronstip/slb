@@ -19,6 +19,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Dashboard media-widget uploads. Extension → (content-type, kind). Animated
+# GIFs count as images (rendered via <img>); mp4/webm are video.
+MEDIA_EXTENSIONS: dict[str, tuple[str, str]] = {
+    "png": ("image/png", "image"),
+    "jpg": ("image/jpeg", "image"),
+    "jpeg": ("image/jpeg", "image"),
+    "webp": ("image/webp", "image"),
+    "gif": ("image/gif", "image"),
+    "mp4": ("video/mp4", "video"),
+    "webm": ("video/webm", "video"),
+}
+MAX_MEDIA_BYTES = 50 * 1024 * 1024  # 50MB - covers short clips and large images
+
 
 @router.get("/media/{path:path}")
 async def serve_media(path: str):
@@ -149,6 +162,48 @@ async def upload_ppt_template(
         logger.warning("Failed to persist ppt_template to user profile: %s", e)
 
     return {"gcs_path": blob_name, "filename": safe_filename}
+
+
+@router.post("/upload/media")
+async def upload_media(
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Upload an image / GIF / video for a dashboard media widget.
+
+    Stored in the public media bucket under the user's namespace so the
+    existing ``GET /media/{path}`` proxy serves it. Returns the GCS blob
+    path (caller renders it via ``/media/<path>``) and the media kind.
+    """
+    ext = ((file.filename or "").rsplit(".", 1)[-1] or "").lower()
+    entry = MEDIA_EXTENSIONS.get(ext)
+    if not entry:
+        allowed = ", ".join(sorted(MEDIA_EXTENSIONS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {allowed}",
+        )
+    content_type, kind = entry
+
+    contents = await file.read()
+    if len(contents) > MAX_MEDIA_BYTES:
+        max_mb = MAX_MEDIA_BYTES // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"File too large - maximum {max_mb}MB")
+
+    settings = get_settings()
+    blob_name = f"dashboard-media/{user.uid}/{uuid4().hex}.{ext}"
+    bucket_name = settings.gcs_media_bucket
+
+    try:
+        client = get_gcs()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_string(contents, content_type=content_type)
+    except Exception as e:
+        logger.error("Media upload failed for user %s: %s", user.uid, e)
+        raise HTTPException(status_code=500, detail="Failed to store media")
+
+    return {"gcs_path": blob_name, "kind": kind}
 
 
 @router.get("/presentations/{presentation_id}")

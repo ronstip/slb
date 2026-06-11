@@ -89,6 +89,10 @@
   --foreground: #1B1815;
   --card: #FFFFFF;
   --card-foreground: #1B1815;
+  /* Dashboard widget surface only (design's `surface` #FBFAF6) - a warm cream
+     that sits a touch lighter than the page. Scoped to dashboard widgets via
+     .widget-surface so the rest of the app keeps its white cards. */
+  --widget-surface: #FBFAF6;
   --popover: #FFFFFF;
   --popover-foreground: #1B1815;
   --primary: #D97757;
@@ -124,6 +128,7 @@
 .dark {
   --background: #14110F;
   --foreground: #F2EEE6;
+  --widget-surface: #1C1A14;
   --card: #1F1B17;
   --card-foreground: #F2EEE6;
   --popover: #1F1B17;
@@ -443,6 +448,52 @@
   color: color-mix(in srgb, var(--foreground) 75%, transparent);
 }
 
+/* ── Dashboard text card (db-text) ──────────────────────────────────────────
+   The dashboard summary card follows the compact design spec (db-widgets.jsx
+   TextCard): smaller 12.5px body in a warm muted ink, tighter bullet rhythm.
+   Scoped to the dashboard text widget so published briefs keep their larger,
+   editorial typography. */
+.db-text.brief-prose p,
+.db-text.brief-prose li {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+.db-text.brief-prose ul,
+.db-text.brief-prose ol {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+.db-text.brief-prose li + li {
+  margin-top: 9px;
+}
+.db-text.brief-prose strong {
+  color: var(--foreground);
+  font-weight: 700;
+}
+/* Summary heading reads as the card's own title (design: dark, normal-case,
+   compact) rather than the accent uppercase kicker used inside briefs. */
+.db-text.brief-prose h2,
+.db-text.brief-prose h3 {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--foreground);
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+/* ── Dashboard page title (db-title) ────────────────────────────────────────
+   The frameless heading widget is the dashboard's display title. Design uses
+   Fraunces at 30px / weight 500 with a muted trailing clause. */
+.db-title .brief-prose h1 {
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.1;
+}
+
 /* Shimmer animation for progress bars */
 @keyframes shimmer {
   100% { transform: translateX(200%); }
@@ -454,26 +505,37 @@
   50% { opacity: 0; }
 }
 
-/* Custom scrollbar - visible enough that users notice it on the cream background */
+/* Custom scrollbar - thin, rounded thumb, no arrow buttons (design idiom:
+   9px rail, warm thumb on a transparent track). */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 ::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--border) 40%, transparent);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
-  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted-foreground) 38%, transparent);
+  border-radius: 6px;
   border: 2px solid transparent;
-  background-clip: padding-box;
+  background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
-  background-clip: padding-box;
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  background-clip: content-box;
+}
+/* Kill the up/down arrow buttons (some platforms render them by default). */
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 * {
-  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent) transparent;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 38%, transparent) transparent;
 }
 
 /* Polished range-slider used by the wizard (Max posts per run, etc.).

@@ -47,7 +47,12 @@ export function SharedDashboardPage() {
   // A4-style column. The grid itself is w-full, so this wrapper cap is what
   // actually bounds landscape width.
   const isLandscape = (response?.orientation ?? 'horizontal') === 'horizontal';
-  const contentMaxW = isLandscape ? 'max-w-none' : 'max-w-6xl';
+  // Bound landscape to a fixed centred canvas (matches the design's 1380px
+  // container) instead of letting it run edge-to-edge. The header, filter bar
+  // and grid all share this width so the page reads as one consistent column
+  // with even side margins top-to-bottom (no "full-width header over a
+  // narrower body" mismatch).
+  const contentMaxW = isLandscape ? 'max-w-[1380px]' : 'max-w-6xl';
   // The shared dashboard API copies the owner's `reportScope` through. When
   // present, the filter bar locks those dimensions for the public viewer too.
   const reportScope = (response?.reportScope ?? null) as ReportScope | null;
@@ -94,7 +99,7 @@ export function SharedDashboardPage() {
     >
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="mx-auto grid max-w-6xl grid-cols-3 items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5">
+        <div className={`mx-auto grid ${contentMaxW} grid-cols-3 items-center gap-2 sm:gap-3 px-3 sm:px-7 py-2.5`}>
           <a
             href="/"
             aria-label={BRAND_NAME}
@@ -126,7 +131,7 @@ export function SharedDashboardPage() {
 
       {/* Loading */}
       {isLoading && (
-        <div className="mx-auto max-w-6xl px-6 py-8 space-y-4">
+        <div className={`mx-auto ${contentMaxW} px-3 sm:px-7 py-8 space-y-4`}>
           <Skeleton className="h-10 rounded-lg" />
           <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
             {[...Array(5)].map((_, i) => (
@@ -162,7 +167,7 @@ export function SharedDashboardPage() {
           {/* Filter bar - editor can hide it for curated reports. */}
           {!response.filterBarHidden && (
             <div className="sticky top-[45px] z-10 border-b border-border bg-background/80 backdrop-blur-sm">
-              <div className={`mx-auto ${contentMaxW} px-3 sm:px-6`}>
+              <div className={`mx-auto ${contentMaxW} px-3 sm:px-7`}>
               <DashboardFilterBar
                 filters={filters}
                 availableOptions={availableOptions}
@@ -179,7 +184,7 @@ export function SharedDashboardPage() {
             </div>
           )}
 
-          <main className={`mx-auto ${contentMaxW} px-3 sm:px-6`}>
+          <main className={`mx-auto ${contentMaxW} px-3 sm:px-7`}>
             <SocialDashboardView
               artifactId={token!}
               filteredPosts={filteredPosts}

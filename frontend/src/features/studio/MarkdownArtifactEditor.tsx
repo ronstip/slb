@@ -37,7 +37,10 @@ import {
   ArrowLeftToLine,
   Space,
   Image as ImageIcon,
+  Baseline,
+  Highlighter,
 } from 'lucide-react';
+import { useRef } from 'react';
 import { ReportChart, tryParseChartSpec } from './ReportChart.tsx';
 
 interface MarkdownArtifactEditorProps {
@@ -150,6 +153,60 @@ function InsertImageButton() {
   );
 }
 
+/** Recolor the selected text by wrapping it in a styled `<span>`. Mirrors the
+ *  raw-HTML snippet approach of the align/dir buttons - the span shows as HTML
+ *  source inside the editor but renders colored in the preview and on the saved
+ *  dashboard (Markdown.tsx allows `span` + inline `style`).
+ *
+ *  Selection is captured on `mousedown` (with `preventDefault` so the editor
+ *  keeps both DOM focus and its Lexical RangeSelection). `insertMarkdown$` runs
+ *  `$insertNodes`, which replaces the active selection - so we feed it the
+ *  captured text as the span body to recolor exactly the selected run (or a
+ *  `text` placeholder when nothing is selected). */
+function ColorButton({
+  title,
+  icon,
+  cssProp,
+  defaultColor,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  cssProp: 'color' | 'background-color';
+  defaultColor: string;
+}) {
+  const insertMarkdown = usePublisher(insertMarkdown$);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const selectedRef = useRef('');
+  return (
+    <>
+      <button
+        type="button"
+        title={title}
+        className="inline-flex h-7 min-w-7 items-center justify-center rounded px-1 hover:bg-black/5 dark:hover:bg-white/10"
+        onMouseDown={(e) => {
+          e.preventDefault(); // keep the editor's text selection + focus alive
+          selectedRef.current = window.getSelection()?.toString() ?? '';
+          inputRef.current?.click();
+        }}
+      >
+        {icon}
+      </button>
+      <input
+        ref={inputRef}
+        type="color"
+        defaultValue={defaultColor}
+        aria-hidden
+        tabIndex={-1}
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+        onChange={(e) => {
+          const text = selectedRef.current || 'text';
+          insertMarkdown(`<span style="${cssProp}: ${e.target.value}">${text}</span>`);
+        }}
+      />
+    </>
+  );
+}
+
 function Toolbar() {
   return (
     <DiffSourceToggleWrapper>
@@ -157,6 +214,19 @@ function Toolbar() {
       <Separator />
       <BoldItalicUnderlineToggles />
       <StrikeThroughSupSubToggles />
+      <Separator />
+      <ColorButton
+        title="Text color"
+        icon={<Baseline size={15} strokeWidth={1.75} />}
+        cssProp="color"
+        defaultColor="#e11d48"
+      />
+      <ColorButton
+        title="Highlight color"
+        icon={<Highlighter size={15} strokeWidth={1.75} />}
+        cssProp="background-color"
+        defaultColor="#fde047"
+      />
       <Separator />
       <BlockTypeSelect />
       <Separator />
