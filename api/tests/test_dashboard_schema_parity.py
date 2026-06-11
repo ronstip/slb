@@ -286,6 +286,39 @@ def test_widget_round_trip_preserves_manual_height():
     assert dumped["manualHeight"] is True
 
 
+def test_widget_round_trip_preserves_media_config():
+    """A media widget persists its image/video source on `widget.media`. With
+    `extra='ignore'`, a field missing from the Pydantic model is dropped on save
+    - so reloading or sharing the dashboard would lose the media. The `media`
+    object (and its nested fields) must round-trip."""
+    from api.routers.dashboard_schema import SocialDashboardWidget
+
+    payload = {
+        "i": "m1",
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 6,
+        "aggregation": "media",
+        "chartType": "embed",
+        "title": "",
+        "media": {
+            "kind": "image",
+            "uploadPath": "dashboard-media/user-1/abc123.png",
+            "fit": "cover",
+            "alt": "Launch banner",
+        },
+    }
+    w = SocialDashboardWidget.model_validate(payload)
+    assert w.aggregation == "media"
+    assert w.media is not None
+    assert w.media.uploadPath == "dashboard-media/user-1/abc123.png"
+    assert w.media.fit == "cover"
+    dumped = w.model_dump(exclude_none=True, by_alias=True)
+    assert dumped["media"]["uploadPath"] == "dashboard-media/user-1/abc123.png"
+    assert dumped["media"]["kind"] == "image"
+
+
 def test_custom_config_accepts_custom_field_dimension():
     """Frontend `CustomDimension` includes `custom:<name>` for agent-defined
     enrichment fields (see TS definition). The Pydantic model must accept these

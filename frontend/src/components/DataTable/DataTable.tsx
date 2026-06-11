@@ -58,6 +58,10 @@ export interface DataTableProps<T> {
    *  label/identity columns get more room than numeric ones. On mobile both
    *  modes fit up to 4 columns across the viewport and scroll beyond that. */
   columnWidth?: 'equal' | 'value';
+  /** Background the sticky header/columns paint to mask scrolling rows beneath
+   *  them. Defaults to the card token; dashboard widgets pass their warm
+   *  `--widget-surface` so the masks match the cream card they sit in. */
+  surfaceColor?: string;
 }
 
 const FONT_SIZE_CLASS: Record<'xs' | 'sm' | 'base', string> = {
@@ -89,6 +93,7 @@ export function DataTable<T>({
   accentColor,
   headerBold = false,
   columnWidth = 'equal',
+  surfaceColor = 'var(--card)',
 }: DataTableProps<T>) {
   const headerPadY = density === 'comfortable' ? 'py-3' : 'py-2';
   const cellPadY = density === 'comfortable' ? 'py-3' : 'py-1.5';
@@ -179,8 +184,12 @@ export function DataTable<T>({
 
   // Class added to a sticky cell to mask the scrolling content beneath it. Falls
   // back to an opaque surface when the row isn't striped (rowBg can be '').
-  const stickyCellClasses = (rowBg: string) =>
-    `sticky z-10 ${rowBg || 'bg-background'}`;
+  // Sticky body cells need an opaque mask matching the card surface. When the
+  // row is striped, the stripe class supplies it; otherwise we paint
+  // `surfaceColor` inline so it tracks the (possibly cream) widget surface.
+  const stickyCellClasses = (rowBg: string) => `sticky z-10 ${rowBg}`;
+  const stickyCellStyle = (rowBg: string): React.CSSProperties | undefined =>
+    rowBg ? undefined : { backgroundColor: surfaceColor };
 
   // Accent override scoped to the table: in-cell bar/heatmap viz read
   // `var(--primary)`, so setting it here recolors them without touching the
@@ -188,15 +197,18 @@ export function DataTable<T>({
   const rootStyle = accentColor
     ? ({ ['--primary' as string]: accentColor } as React.CSSProperties)
     : undefined;
-  const theadStyle: React.CSSProperties | undefined = headerBold
+  const theadStyle: React.CSSProperties = headerBold
     ? { backgroundColor: 'color-mix(in srgb, var(--primary) 14%, var(--card))' }
-    : undefined;
+    : { backgroundColor: surfaceColor };
   // z-20 (above the z-10 sticky body cells): the header's stacking context must
   // outrank the pinned identity columns, otherwise those body cells — equal z,
   // later in the DOM — paint over the pinned header cells on vertical scroll.
+  // Plain header reads as the card surface with a rule beneath it (design's
+  // clean table header), not a filled grey band. `bg-card` still masks the
+  // scrolling body rows under the sticky header.
   const theadClass = headerBold
     ? 'sticky top-0 z-20 font-semibold text-foreground'
-    : 'sticky top-0 z-20 bg-muted';
+    : 'sticky top-0 z-20';
 
   return (
     <div className="relative min-h-0 flex-1 flex flex-col" style={rootStyle}>
@@ -208,7 +220,7 @@ export function DataTable<T>({
             ))}
           </colgroup>
           <thead className={theadClass} style={theadStyle}>
-            <tr className={`border-b border-border/60 ${headerBold ? '' : 'text-muted-foreground'}`}>
+            <tr className={`border-b border-border ${headerBold ? '' : 'text-muted-foreground'}`}>
               {columns.map((col) => {
                 const isSortable = col.sortable && hasSorting;
                 const colSortKey = col.sortKey ?? col.key;
@@ -216,12 +228,12 @@ export function DataTable<T>({
                 return (
                   <th
                     key={col.key}
-                    className={`truncate ${cellPadX} ${headerPadY} font-medium ${
+                    className={`truncate ${cellPadX} ${headerPadY} font-semibold uppercase tracking-[0.06em] text-[10.5px] ${
                       col.align === 'right' ? 'text-right' : 'text-left'
                     } ${isSortable ? 'cursor-pointer select-none' : ''} ${
-                      col.sticky ? `sticky z-20 ${headerBold ? '' : 'bg-muted'}` : ''
+                      col.sticky ? 'sticky z-20' : ''
                     } ${isLastSticky ? 'shadow-[1px_0_0_0_var(--border)]' : ''}`}
-                    style={col.sticky ? { left: col.stickyLeftPx ?? 0, top: 0, ...(headerBold ? theadStyle : undefined) } : undefined}
+                    style={col.sticky ? { left: col.stickyLeftPx ?? 0, top: 0, ...theadStyle } : undefined}
                     title={typeof col.header === 'string' ? col.header : undefined}
                     onClick={isSortable ? () => onSort(colSortKey) : undefined}
                   >
@@ -265,7 +277,7 @@ export function DataTable<T>({
                           className={`${cellPadX} ${cellPadY} overflow-hidden ${col.align === 'right' ? 'text-right' : ''} ${
                             col.sticky ? stickyCellClasses(rowBg) : ''
                           } ${isLastSticky ? 'shadow-[1px_0_0_0_var(--border)]' : ''}`}
-                          style={col.sticky ? { left: col.stickyLeftPx ?? 0 } : undefined}
+                          style={col.sticky ? { left: col.stickyLeftPx ?? 0, ...stickyCellStyle(rowBg) } : undefined}
                         >
                           {col.render(row, idx)}
                         </td>

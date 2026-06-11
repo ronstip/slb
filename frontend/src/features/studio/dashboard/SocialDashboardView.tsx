@@ -41,7 +41,7 @@ function migrateWidgets(widgets: SocialDashboardWidget[]): SocialDashboardWidget
   });
 }
 
-export type AddWidgetKind = 'chart' | 'text' | 'embeds';
+export type AddWidgetKind = 'chart' | 'text' | 'embeds' | 'media';
 
 export interface DashboardToolbarHandlers {
   onEdit: () => void;
@@ -377,7 +377,7 @@ export function SocialDashboardView({
   // Open config dialog for a new widget. Chart starts as custom; text starts
   // blank markdown; embeds starts with an empty URL list.
   const handleOpenAdd = useCallback((kind: AddWidgetKind = 'chart') => {
-    const metaKey = kind === 'text' ? 'text' : kind === 'embeds' ? 'embeds' : 'custom';
+    const metaKey = kind === 'text' ? 'text' : kind === 'embeds' ? 'embeds' : kind === 'media' ? 'media' : 'custom';
     const meta = AGGREGATION_META[metaKey];
     let draft: SocialDashboardWidget;
     if (kind === 'text') {
@@ -403,6 +403,18 @@ export function SocialDashboardView({
         chartType: meta.defaultChartType,
         title: meta.defaultTitle,
         embedUrls: [],
+      };
+    } else if (kind === 'media') {
+      draft = {
+        i: nanoid(),
+        x: 0,
+        y: Infinity,
+        w: meta.defaultSize.w,
+        h: meta.defaultSize.h,
+        aggregation: 'media',
+        chartType: meta.defaultChartType,
+        title: '',
+        media: { kind: 'image', fit: 'contain' },
       };
     } else {
       draft = {

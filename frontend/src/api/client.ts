@@ -242,3 +242,9 @@ export function mediaUrl(gcsUri?: string, originalUrl?: string): string {
   }
   return '';
 }
+
+/** Build the public serve URL for a GCS blob path (e.g. an uploaded media
+ *  widget file at `dashboard-media/<uid>/<id>.png`) via the `/media` proxy. */
+export function mediaServeUrl(path: string): string {
+  return `${API_BASE}/media/${path}`;
+}

@@ -18,15 +18,15 @@ import { Bar, Doughnut, Pie, Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 import type { SocialChartType, WidgetData } from './types-social-dashboard.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
-import { generateChartPalette } from '../../../lib/accent-colors.ts';
-import { SENTIMENT_COLORS } from '../../../lib/constants.ts';
+import { getCategoricalPalette } from '../../../lib/accent-colors.ts';
+import { SENTIMENT_COLORS, PLATFORM_COLORS } from '../../../lib/constants.ts';
 import { makeOverrideResolver } from './series-overrides.ts';
 
 /** Resolve colors for a set of labels.
  *  Order: user override (exact label, then case/separator-tolerant) → semantic
- *  (sentiment) → accent palette. Tolerant matching means a near-miss override
- *  key ("Fan Vlog" vs the data's "fan vlog") still colors the slice instead of
- *  silently doing nothing. */
+ *  (sentiment) → platform brand color → provided palette. Tolerant matching
+ *  means a near-miss override key ("Fan Vlog" vs the data's "fan vlog") still
+ *  colors the slice instead of silently doing nothing. */
 function resolveSeriesColors(
   labels: string[],
   accentColors: string[],
@@ -37,7 +37,9 @@ function resolveSeriesColors(
     const override = resolveOverride(l);
     if (override) return override;
     const key = l.toLowerCase();
-    return key in SENTIMENT_COLORS ? SENTIMENT_COLORS[key] : accentColors[i % accentColors.length];
+    if (key in SENTIMENT_COLORS) return SENTIMENT_COLORS[key];
+    if (key in PLATFORM_COLORS) return PLATFORM_COLORS[key];
+    return accentColors[i % accentColors.length];
   });
 }
 
@@ -169,52 +171,10 @@ function displayLabel(raw: string, overrides?: Record<string, string>): string {
 
 // ── Datalabel plugins ─────────────────────────────────────────────────────────
 
-type ArcGetProps = (
-  p: ['x', 'y', 'startAngle', 'endAngle', 'innerRadius', 'outerRadius'],
-  a: boolean,
-) => { x: number; y: number; startAngle: number; endAngle: number; innerRadius: number; outerRadius: number };
-
 type BarGetProps = (
   p: ['x', 'y', 'base'],
   a: boolean,
 ) => { x: number; y: number; base: number };
-
-const pieDatalabelsPlugin = {
-  id: 'pieDatalabels',
-  afterDatasetsDraw(chart: ChartJS) {
-    const { ctx } = chart;
-    const meta = chart.getDatasetMeta(0);
-    const values = chart.data.datasets[0]?.data as number[] | undefined;
-    if (!values?.length) return;
-    const total = values.reduce((a, b) => a + (b || 0), 0);
-    if (total === 0) return;
-
-    ctx.save();
-    ctx.font = '600 11px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0,0,0,0.55)';
-    ctx.shadowBlur = 3;
-
-    meta.data.forEach((arc, i) => {
-      const val = values[i];
-      if (!val) return;
-      const pct = (val / total) * 100;
-      if (pct < 5) return;
-      const props = (arc as unknown as { getProps: ArcGetProps }).getProps(
-        ['x', 'y', 'startAngle', 'endAngle', 'innerRadius', 'outerRadius'],
-        true,
-      );
-      const angle = (props.startAngle + props.endAngle) / 2;
-      const radius = (props.innerRadius + props.outerRadius) / 2;
-      const x = props.x + Math.cos(angle) * radius;
-      const y = props.y + Math.sin(angle) * radius;
-      ctx.fillText(`${pct.toFixed(0)}%`, x, y);
-    });
-    ctx.restore();
-  },
-};
 
 const barDatalabelsPlugin = {
   id: 'barDatalabels',
@@ -315,14 +275,21 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
+  // Multi-hue categorical palette — for charts with many co-equal categories
+  // (donuts, pies, multi-series). Sentiment/platform labels still resolve to
+  // their semantic colors inside resolveSeriesColors.
   const colors = useMemo(() => {
-    // Per-widget accent override → monochromatic shades of that accent
     if (accent) return getAccentColors(accent, 15);
-    // Default → derive from the app's accent color (monochromatic)
-    const basePalette = generateChartPalette(accentColor, themeIsDark);
-    // Extend the 5-color palette to 15 by cycling with slight alpha variation
-    return Array.from({ length: 15 }, (_, i) => basePalette[i % basePalette.length]);
-  }, [accent, accentColor, themeIsDark]);
+    return getCategoricalPalette(themeIsDark, 15);
+  }, [accent, themeIsDark]);
+
+  // Single-series bars read as one brand-orange family in the design (not a
+  // rainbow) — every bar is the accent unless its label is a sentiment/platform.
+  const barAccent = accent ?? accentColor;
+  const monoColors = useMemo(
+    () => Array.from({ length: 15 }, () => barAccent),
+    [barAccent],
+  );
 
   const timeScale = useMemo(() => {
     if (timeBucket === 'hour') {
@@ -635,7 +602,10 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       const total = values.reduce((a, b) => a + b, 0);
       const chartColors = resolveSeriesColors(labels, colors, seriesColorOverrides);
       const cardBg = resolveThemeColor('--card');
-      const legendPosition = labels.length <= 6 ? 'bottom' as const : 'right' as const;
+      // Design idiom (db-charts.jsx DonutChart): the legend is a vertical list
+      // beside the ring, not stacked underneath. Fall back to a bottom row only
+      // for large category sets that would overflow a side rail.
+      const legendPosition = labels.length <= 8 ? 'right' as const : 'bottom' as const;
 
       const formattedLabels = labels.map((l) => displayLabel(l, seriesLabelOverrides));
       const chartData = {
@@ -653,7 +623,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       const options: ChartOptions<'doughnut' | 'pie'> = {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: chartType === 'doughnut' ? '70%' : undefined,
+        cutout: chartType === 'doughnut' ? '62%' : undefined,
         plugins: {
           legend: {
             position: legendPosition,
@@ -685,7 +655,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       };
 
       if (chartType === 'pie') {
-        return <div className="h-full w-full"><Pie ref={pieRef as never} data={chartData} options={options as ChartOptions<'pie'>} plugins={[pieDatalabelsPlugin]} /></div>;
+        return <div className="h-full w-full"><Pie ref={pieRef as never} data={chartData} options={options as ChartOptions<'pie'>} /></div>;
       }
 
       return (
@@ -708,7 +678,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       datasets: [{
         label: 'Value',
         data: values,
-        backgroundColor: resolveSeriesColors(labels, colors, seriesColorOverrides),
+        backgroundColor: resolveSeriesColors(labels, monoColors, seriesColorOverrides),
         borderWidth: 0,
         borderRadius: 6,
         barPercentage: 0.65,
@@ -803,7 +773,7 @@ const DoughnutWithCenter = forwardRef<ChartJS<'doughnut'>, DoughnutWithCenterPro
 
     return (
       <div className="h-full w-full">
-        <Doughnut ref={ref as never} data={data} options={mergedOptions} plugins={[doughnutCenterTextPlugin, pieDatalabelsPlugin]} />
+        <Doughnut ref={ref as never} data={data} options={mergedOptions} plugins={[doughnutCenterTextPlugin]} />
       </div>
     );
   },

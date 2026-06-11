@@ -15,8 +15,11 @@ import { Label } from '../../../../components/ui/label.tsx';
 import { Separator } from '../../../../components/ui/separator.tsx';
 import {
   BarChart3, TrendingUp, PieChart, Circle, Hash, Cloud, List, Table2,
-  Database, Filter, Palette, GripHorizontal,
+  Database, Filter, Palette, GripHorizontal, Upload, Link as LinkIcon,
 } from 'lucide-react';
+import { Switch } from '../../../../components/ui/switch.tsx';
+import { apiUploadFile } from '../../../../api/client.ts';
+import type { SocialMediaConfig } from '../types-social-dashboard.ts';
 
 const MarkdownArtifactEditor = lazy(() =>
   import('../../MarkdownArtifactEditor.tsx').then((m) => ({ default: m.MarkdownArtifactEditor })),
@@ -124,9 +127,10 @@ export function SocialWidgetConfigDialog({
 // ── Preset → custom conversion ─────────────────────────────────────────────────
 
 function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
-  // Text and embed widgets have no data/chart config - pass through untouched.
+  // Text, embed, and media widgets have no data/chart config - pass through untouched.
   if (widget.aggregation === 'text') return widget;
   if (widget.aggregation === 'embeds') return widget;
+  if (widget.aggregation === 'media') return widget;
   // Preserve the preset's chart type if it was set - e.g. channels/entities
   // ship with `chartType: 'table'` and the rich table view should survive the
   // round-trip through the edit dialog. Without this, opening any 'channels'
@@ -322,6 +326,7 @@ function SocialWidgetConfigDialogInner({
 
   const isTextMode = draft.aggregation === 'text';
   const isEmbedMode = draft.aggregation === 'embeds';
+  const isMediaMode = draft.aggregation === 'media';
 
   // MDXEditor portals its toolbar popups (block-type dropdown, link dialog)
   // into this host. Keeping it inside DialogContent puts the popups in the
@@ -372,6 +377,8 @@ function SocialWidgetConfigDialogInner({
           <div className={`${isTextMode || isEmbedMode ? 'w-[55%]' : 'w-[55%]'} border-r border-border flex flex-col min-h-0 bg-white dark:bg-zinc-950`}>
             {isEmbedMode ? (
               <EmbedConfigPanel draft={draft} setDraft={setDraft} />
+            ) : isMediaMode ? (
+              <MediaConfigPanel draft={draft} setDraft={setDraft} />
             ) : isTextMode ? (
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
                 <div className="flex items-center gap-3">
@@ -1220,6 +1227,220 @@ function ComposeButton({
 // ── Embed Posts config panel ─────────────────────────────────────────────────
 // One URL per line. Render mode (single vs carousel) is auto-derived from the
 // list length at render time - the user does not pick.
+
+/** Infer media kind from a URL's file extension (mp4/webm → video, else image). */
+function inferMediaKind(url: string): 'image' | 'video' {
+  return /\.(mp4|webm)(\?|#|$)/i.test(url) ? 'video' : 'image';
+}
+
+function MediaConfigPanel({
+  draft,
+  setDraft,
+}: {
+  draft: SocialDashboardWidget;
+  setDraft: React.Dispatch<React.SetStateAction<SocialDashboardWidget>>;
+}) {
+  const media = draft.media ?? { kind: 'image' as const };
+  const [sourceMode, setSourceMode] = useState<'upload' | 'url'>(
+    media.uploadPath ? 'upload' : 'url',
+  );
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const patchMedia = (patch: Partial<SocialMediaConfig>) =>
+    setDraft((prev) => ({
+      ...prev,
+      media: { ...(prev.media ?? { kind: 'image' }), ...patch },
+    }));
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await apiUploadFile<{ gcs_path: string; kind: 'image' | 'video' }>(
+        '/upload/media',
+        file,
+      );
+      patchMedia({ uploadPath: res.gcs_path, kind: res.kind, src: undefined });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const isVideo = media.kind === 'video';
+
+  return (
+    <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Title</Label>
+        <Input
+          value={draft.title}
+          onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
+          className="h-8 text-xs"
+          placeholder="Optional title"
+        />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Description</Label>
+        <Input
+          value={draft.description ?? ''}
+          onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value || undefined }))}
+          className="h-8 text-xs"
+          placeholder="Optional subtitle"
+        />
+      </div>
+
+      <Separator />
+
+      {/* Source: Upload | URL */}
+      <div className="space-y-2">
+        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Source
+        </Label>
+        <div className="inline-flex rounded-md border border-border p-0.5">
+          <Button
+            type="button"
+            variant={sourceMode === 'upload' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => setSourceMode('upload')}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Upload
+          </Button>
+          <Button
+            type="button"
+            variant={sourceMode === 'url' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => setSourceMode('url')}
+          >
+            <LinkIcon className="h-3.5 w-3.5" />
+            Link
+          </Button>
+        </div>
+      </div>
+
+      {sourceMode === 'upload' ? (
+        <div className="space-y-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"
+            className="hidden"
+            onChange={handleFile}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            {uploading ? 'Uploading…' : media.uploadPath ? 'Replace file' : 'Choose file'}
+          </Button>
+          {media.uploadPath && !uploading && (
+            <p className="text-[11px] text-muted-foreground truncate">
+              Uploaded · {media.kind}
+            </p>
+          )}
+          <p className="text-[11px] text-muted-foreground">
+            PNG, JPG, WebP, GIF, MP4, or WebM. Max 50MB.
+          </p>
+          {error && <p className="text-[11px] text-destructive">{error}</p>}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Input
+            value={media.uploadPath ? '' : (media.src ?? '')}
+            onChange={(e) => {
+              const url = e.target.value.trim();
+              patchMedia({ src: url || undefined, uploadPath: undefined, kind: inferMediaKind(url) });
+            }}
+            className="h-8 text-xs font-mono"
+            placeholder="https://example.com/image.gif"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Paste an image, GIF, or video URL. Detected as {isVideo ? 'video' : 'image'}.
+          </p>
+        </div>
+      )}
+
+      <Separator />
+
+      {/* Fit: Contain | Cover */}
+      <div className="space-y-2">
+        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Fit
+        </Label>
+        <div className="inline-flex rounded-md border border-border p-0.5">
+          {(['contain', 'cover'] as const).map((f) => (
+            <Button
+              key={f}
+              type="button"
+              variant={(media.fit ?? 'contain') === f ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs capitalize"
+              onClick={() => patchMedia({ fit: f })}
+            >
+              {f}
+            </Button>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Contain shows the whole media; Cover fills the frame and may crop.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Label className="text-xs w-24 shrink-0">Alt text</Label>
+        <Input
+          value={media.alt ?? ''}
+          onChange={(e) => patchMedia({ alt: e.target.value || undefined })}
+          className="h-8 text-xs"
+          placeholder="Accessibility description"
+        />
+      </div>
+
+      {isVideo && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Video playback
+            </Label>
+            {([
+              ['controls', 'Show controls', media.controls ?? true],
+              ['autoplay', 'Autoplay', media.autoplay ?? false],
+              ['loop', 'Loop', media.loop ?? false],
+              ['muted', 'Muted', media.muted ?? false],
+            ] as const).map(([key, label, val]) => (
+              <div key={key} className="flex items-center justify-between">
+                <Label className="text-xs">{label}</Label>
+                <Switch
+                  checked={val}
+                  onCheckedChange={(checked) => patchMedia({ [key]: checked } as Partial<SocialMediaConfig>)}
+                />
+              </div>
+            ))}
+            <p className="text-[11px] text-muted-foreground">
+              Autoplay forces muted playback (browser requirement).
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function EmbedConfigPanel({
   draft,

@@ -12,7 +12,7 @@ import {
 import type { EnhancedKpi } from './dashboard-aggregations.ts';
 import { formatNumber } from '../../../lib/format.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
-import { generateChartPalette } from '../../../lib/accent-colors.ts';
+import { getCategoricalPalette } from '../../../lib/accent-colors.ts';
 import type { NumberSize } from './types-social-dashboard.ts';
 import { DEFAULT_NUMBER_SIZE } from './types-social-dashboard.ts';
 import { resolveSparklineEnabled } from './sparkline-visibility.ts';
@@ -38,13 +38,13 @@ const SIZE_STYLES: Record<NumberSize, {
     showSparkline: false,
   },
   medium: {
-    container: 'pl-5 pr-4 pt-2.5 pb-1',
-    label: 'text-[10px] mb-1',
-    value: 'text-2xl',
+    container: 'px-4 pt-[14px] pb-0',
+    label: 'text-[10.5px] mb-2 tracking-[0.09em]',
+    value: 'text-[30px]',
     skeleton: 'h-7 w-16',
     icon: 'h-3 w-3',
-    iconWrap: 'h-6 w-6',
-    sparkH: 22,
+    iconWrap: 'h-[26px] w-[26px]',
+    sparkH: 38,
     showSparkline: true,
   },
   big: {
@@ -125,11 +125,12 @@ function Sparkline({ data, color, height }: { data: number[]; color: string; hei
 }
 
 export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, isEditMode, onConfigure, onRemove, onDuplicate }: SocialKpiCardProps) {
-  const { accentColor, theme } = useTheme();
+  const { theme } = useTheme();
   const isDark =
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  const palette = useMemo(() => generateChartPalette(accentColor, isDark), [accentColor, isDark]);
+  // Design KPI accents: terracotta, green, blue, amber (categorical[0..3]).
+  const palette = useMemo(() => getCategoricalPalette(isDark, 5), [isDark]);
   // Use per-widget accent if explicitly set, otherwise derive from theme palette
   const color = accent ?? palette[kpiIndex % palette.length];
   const styles = SIZE_STYLES[size ?? DEFAULT_NUMBER_SIZE];
@@ -148,22 +149,11 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, 
 
   return (
     <Card
-      className={`h-full relative group overflow-hidden py-0 gap-0 rounded-md transition-[box-shadow,transform] hover:shadow-md hover:-translate-y-px ${
+      style={{ backgroundColor: 'var(--widget-surface)' }}
+      className={`h-full relative group overflow-hidden py-0 gap-0 rounded-[14px] shadow-[0_1px_2px_rgba(35,30,22,0.04),0_1px_1px_rgba(35,30,22,0.03)] transition-[box-shadow,transform] duration-150 hover:shadow-[0_6px_24px_-10px_rgba(35,30,22,0.18),0_2px_6px_rgba(35,30,22,0.05)] hover:-translate-y-px ${
         isEditMode ? 'drag-handle ring-1 ring-dashed ring-primary/30 cursor-grab active:cursor-grabbing' : ''
       }`}
-      style={{
-        backgroundImage: `linear-gradient(135deg, ${color}14 0%, transparent 55%)`,
-      }}
     >
-      {/* Left accent bar with subtle glow */}
-      <div
-        className="absolute left-0 top-0 bottom-0 w-1"
-        style={{
-          backgroundColor: color,
-          boxShadow: `0 0 12px ${color}66`,
-        }}
-      />
-
       {/* Edit controls */}
       {isEditMode && (
         <div
@@ -200,7 +190,7 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, 
       {/* Top-right icon chip (hidden when edit menu visible) */}
       {kpi && size !== 'small' && (
         <div
-          className={`absolute top-2 right-2 ${styles.iconWrap} flex items-center justify-center rounded-sm ${
+          className={`absolute top-2 right-2 ${styles.iconWrap} flex items-center justify-center rounded-lg ${
             isEditMode ? 'opacity-0 group-hover:opacity-0' : 'opacity-80'
           }`}
           style={{
@@ -213,21 +203,18 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, 
       )}
 
       <div className={`flex flex-col justify-center h-full ${styles.container}`}>
-        <div className={`font-semibold text-muted-foreground/70 uppercase tracking-[0.1em] leading-none ${styles.label}`}>
+        <div className={`font-semibold text-muted-foreground uppercase tracking-[0.1em] leading-none ${styles.label}`}>
           {kpi?.label ?? '-'}
         </div>
         {!kpi ? (
           <div className={`rounded bg-muted animate-pulse ${styles.skeleton}`} />
         ) : (
-          <div
-            className={`font-bold tracking-tight leading-none tabular-nums ${styles.value}`}
-            style={{ color: isDark ? undefined : undefined }}
-          >
+          <div className={`font-bold tracking-tight leading-none tabular-nums ${styles.value}`}>
             {displayValue}
           </div>
         )}
         {hasSparkline && kpi && (
-          <div className="mt-1.5 -mx-1 opacity-90">
+          <div className="mt-auto -mx-4 -mb-px pt-2 opacity-90">
             <Sparkline data={kpi.sparklineData} color={color} height={sparkHeight} />
           </div>
         )}
